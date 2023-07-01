@@ -7,8 +7,11 @@
 
     /* Bundler mode */
     "moduleResolution": "node",
-    "declaration": true,
-    "sourceMap": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "noEmit": true,
 
     /* Linting */
     "strict": true,
