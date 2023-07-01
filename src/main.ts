@@ -90,33 +90,11 @@ export const TagData: Record<TagType, (eles: HtmlElement[]) => void> = {
       canMoveEle.addEventListener("mousedown", dragStart);
       canMoveEle.addEventListener("mouseup", dragEnd);
       canMoveEle.addEventListener("mousemove", drag);
-      // canMoveEle.addEventListener("dragstart", dragStart);
-      // canMoveEle.addEventListener("dragend", dragEnd);
-      // canMoveEle.addEventListener("ondrag", drag);
     }
   },
   [TagType.CanSpin]: (spinEles) => {
     for (const spinEle of spinEles) {
       const spinElement = new SpinElement(spinEle);
-      // spinEle.style.transform = `rotate(0deg)`;
-      // spinEle.style.transition = `transform 0.5s ease-in-out`;
-      // let isClicking = false;
-      // spinEle.addEventListener("mousedown", () => (isClicking = true));
-      // spinEle.addEventListener("mouseup", () => (isClicking = false));
-      // spinEle.addEventListener("onmouseleave", () => (isClicking = false));
-      // spinEle.addEventListener("mousemove", (e) => {
-      //   if (!isClicking) {
-      //     return;
-      //   }
-      //   // going right spins the element clockwise, going left spins the element counter-clockwise
-      //   const direction = e.movementX > 0 ? 1 : -1;
-      //   const currentRotation = spinEle.style.transform;
-      //   const currentRotationValue = currentRotation
-      //     ? parseInt(currentRotation.replace("rotate(", "").replace("deg)", ""))
-      //     : 0;
-      //   const newRotationValue = currentRotationValue + direction * 30;
-      //   spinEle.style.transform = `rotate(${newRotationValue}deg)`;
-      // });
     }
   },
 };

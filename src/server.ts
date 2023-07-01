@@ -1,4 +1,3 @@
-/// <reference no-default-lib="true"/>
 /// <reference types="@cloudflare/workers-types" />
 
 import type { PartyKitServer } from "partykit/server";
