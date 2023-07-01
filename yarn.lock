@@ -840,6 +840,11 @@ isexe@^2.0.0:
   resolved "https://registry.yarnpkg.com/isexe/-/isexe-2.0.0.tgz#e8fbf374dc556ff8947a10dcb0572d633f2cfa10"
   integrity sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==
 
+isomorphic.js@^0.2.4:
+  version "0.2.5"
+  resolved "https://registry.yarnpkg.com/isomorphic.js/-/isomorphic.js-0.2.5.tgz#13eecf36f2dba53e85d355e11bf9d4208c6f7f88"
+  integrity sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw==
+
 "js-tokens@^3.0.0 || ^4.0.0":
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/js-tokens/-/js-tokens-4.0.0.tgz#19203fb59991df98e3a287050d4647cdeaf32499"
@@ -864,6 +869,18 @@ kleur@^4.1.5:
   version "4.1.5"
   resolved "https://registry.yarnpkg.com/kleur/-/kleur-4.1.5.tgz#95106101795f7050c6c650f350c683febddb1780"
   integrity sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==
+
+lib0@^0.2.42, lib0@^0.2.60, lib0@^0.2.74:
+  version "0.2.78"
+  resolved "https://registry.yarnpkg.com/lib0/-/lib0-0.2.78.tgz#9aa34733075caafb3edf228da6e609d15ada0088"
+  integrity sha512-SV2nU43/6eaYnGH3l0lg2wg1ziB/TH3sAd2E8quXPGwrqo+aX98SNT2ZKucpUr5B8A52jD7ZMjAl+r87Fa/bLQ==
+  dependencies:
+    isomorphic.js "^0.2.4"
+
+lodash.debounce@^4.0.8:
+  version "4.0.8"
+  resolved "https://registry.yarnpkg.com/lodash.debounce/-/lodash.debounce-4.0.8.tgz#82d79bff30a67c4005ffd5e2515300ad9ca4d7af"
+  integrity sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==
 
 lodash@^4.17.21:
   version "4.17.21"
@@ -1074,6 +1091,13 @@ partykit@^0.0.0-e7aa4cd:
     undici "^5.21.0"
     ws "^8.13.0"
     zod "^3.21.4"
+
+partysocket@^0.0.0-e7aa4cd:
+  version "0.0.0-e7aa4cd"
+  resolved "https://registry.yarnpkg.com/partysocket/-/partysocket-0.0.0-e7aa4cd.tgz#d85a10a358e5bc6d9a1bb296efe5949ddcc78107"
+  integrity sha512-JbU/x8s2If7ZkulA9XEneTHfSLg0f+TFXMHp1e9Invk2OcVLuIVVkwh07V8tJi+ixB7zmVVZlRmh6ncYYO2O1w==
+  dependencies:
+    react "^18.2.0"
 
 patch-console@^2.0.0:
   version "2.0.0"
@@ -1579,10 +1603,34 @@ ws@^8.11.0, ws@^8.12.0, ws@^8.13.0:
   resolved "https://registry.yarnpkg.com/ws/-/ws-8.13.0.tgz#9a9fb92f93cf41512a0735c8f4dd09b8a1211cd0"
   integrity sha512-x9vcZYTrFPC7aSIbj7sRCYo7L/Xb8Iy+pW0ng0wt2vCJv7M9HOMy0UoN3rr+IFC7hb7vXoqS+P9ktyLLLhO+LA==
 
+y-partykit@^0.0.0-e7aa4cd:
+  version "0.0.0-e7aa4cd"
+  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.0-e7aa4cd.tgz#469e348ffafbdaa4e6787be8c4cc88fb2b9cb2bd"
+  integrity sha512-l4Bxwjp4eoIR9bszBEZ3svIlT40tYyXYReARVCCtcj6wF5JQ+IAivYfgqLovk+baVXw3CD//R4+mxQtv8rA9cg==
+  dependencies:
+    lib0 "^0.2.60"
+    lodash.debounce "^4.0.8"
+    y-protocols "^1.0.5"
+    yjs "^13.5.44"
+
+y-protocols@^1.0.5:
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/y-protocols/-/y-protocols-1.0.5.tgz#91d574250060b29fcac8f8eb5e276fbad594245e"
+  integrity sha512-Wil92b7cGk712lRHDqS4T90IczF6RkcvCwAD0A2OPg+adKmOe+nOiT/N2hvpQIWS3zfjmtL4CPaH5sIW1Hkm/A==
+  dependencies:
+    lib0 "^0.2.42"
+
 yallist@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/yallist/-/yallist-4.0.0.tgz#9bb92790d9c0effec63be73519e11a35019a3a72"
   integrity sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==
+
+yjs@^13.5.44, yjs@^13.6.6:
+  version "13.6.6"
+  resolved "https://registry.yarnpkg.com/yjs/-/yjs-13.6.6.tgz#586b2dd25121a8cdb55ba85bb8760ec8904e037c"
+  integrity sha512-VTvezMeMuOra9jKG1Ym5XuQ2H4xXOubIIIupv/B5oygasa9IqDE7Ufv93QTSe9uz69J5VZGMQb2WTEmJv4kJFQ==
+  dependencies:
+    lib0 "^0.2.74"
 
 yoga-wasm-web@~0.3.3:
   version "0.3.3"

@@ -4,10 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + TS</title>
+    <title>open websites</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div
+        style="background: green; width: 400px; height: 400px"
+        can-move
+        id="sign"
+      >
+        Welcome to open websites!
+      </div>
+      <div
+        style="
+          background: yellow;
+          width: 150px;
+          height: 150px;
+          border-radius: 50%;
+          border: 10px dotted dodgerblue;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        "
+        can-spin
+        id="wheel"
+      >
+        wee
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -15,6 +15,9 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
-    "partykit": "^0.0.0-e7aa4cd"
+    "partykit": "^0.0.0-e7aa4cd",
+    "partysocket": "^0.0.0-e7aa4cd",
+    "y-partykit": "^0.0.0-e7aa4cd",
+    "yjs": "^13.6.6"
   }
 }
