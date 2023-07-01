@@ -1,12 +1,16 @@
+// Demo Styles
 #app {
   display: flex;
   flex-direction: column;
   margin: 80px 4vw;
 }
 
+// Library Styles
+// TODO: move this into a separate stylesheet so it can be imported with the library
 .__open-websites-can-move {
   cursor: pointer;
 }
 .__open-websites-can-spin {
   cursor: pointer;
+  transition: transform 0.15s ease-in-out;
 }

@@ -1,3 +1,5 @@
+/// <reference lib="dom"/>
+
 import PartySocket from "partysocket";
 import YProvider from "y-partykit/provider";
 import "./style.scss";
@@ -8,45 +10,46 @@ import { SpinElement } from "./elements";
 // This is the code that is running when the library is imported.
 
 // YJS approach
-// declare const PARTYKIT_HOST: string | undefined;
+declare const PARTYKIT_HOST: string | undefined;
 
-// const partykitHost =
-//   typeof PARTYKIT_HOST === "undefined" ? "localhost:1999" : PARTYKIT_HOST;
+const partykitHost =
+  typeof PARTYKIT_HOST === "undefined" ? "localhost:1999" : PARTYKIT_HOST;
 
-// const doc = new Y.Doc();
-// const provider = new YProvider(partykitHost, "yjs-demo", doc, {
-//   connect: false,
-// });
+const doc = new Y.Doc();
+const provider = new YProvider(partykitHost, "yjs-demo", doc, {
+  connect: false,
+});
+provider.connect();
 
 // Vanilla approach
-const socket = new PartySocket({
-  host: "localhost:1999", // for local development
-  // host: "openwebsites.spencerc99.partykit.dev", // for production
-  room: window.location.href,
-});
+// const socket = new PartySocket({
+//   host: "localhost:1999", // for local development
+//   // host: "openwebsites.spencerc99.partykit.dev", // for production
+//   room: window.location.href,
+// });
 
-socket.onerror = (err) => console.error({ err });
-socket.onclose = (evt) => console.log("closed", evt);
-socket.onopen = () => socket.send("ping");
-socket.onmessage = (evt) => {
-  console.log("onMessage");
-  console.log(evt);
-  const message = JSON.parse(evt.data) as Message;
-  // Handle each MessageType
-  // Hydrate the element's position from the server
-  switch (message.type) {
-    case MessageType.Position: {
-      console.log("position", message);
-      const { id, x, y } = message;
-      // TODO: handle smart ID
-      const ele = document.getElementById(id);
-      ele.style.transform = `translate(${x}px, ${y}px)`;
-    }
-  }
-  return;
-};
+// socket.onerror = (err) => console.error({ err });
+// socket.onclose = (evt) => console.log("closed", evt);
+// socket.onopen = () => socket.send("ping");
+// socket.onmessage = (evt) => {
+//   console.log("onMessage");
+//   console.log(evt);
+//   const message = JSON.parse(evt.data) as Message;
+//   // Handle each MessageType
+//   // Hydrate the element's position from the server
+//   switch (message.type) {
+//     case MessageType.Position: {
+//       console.log("position", message);
+//       const { id, x, y } = message;
+//       // TODO: handle smart ID
+//       const ele = document.getElementById(id);
+//       ele.style.transform = `translate(${x}px, ${y}px)`;
+//     }
+//   }
+//   return;
+// };
 
-export const TagData: Record<TagType, (eles: HtmlElement[]) => void> = {
+export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
   [TagType.CanMove]: (canMoveEles) => {
     function setTranslate(xPos: number, yPos: number, el: HTMLElement) {
       el.style.transform = `translate(${xPos}px, ${yPos}px)`;
@@ -93,16 +96,34 @@ export const TagData: Record<TagType, (eles: HtmlElement[]) => void> = {
     }
   },
   [TagType.CanSpin]: (spinEles) => {
+    const spinInfo: Y.Map<number> = doc.getMap(TagType.CanSpin);
+    console.log("spinInfo", JSON.stringify(spinInfo));
+    // spinInfo.observe((event) => {
+    // });
     for (const spinEle of spinEles) {
-      const spinElement = new SpinElement(spinEle);
+      // TODO: load from persistence.
+      const id = spinEle.id;
+      const yRotation = spinInfo.get(id) || 0;
+      new SpinElement(spinEle, yRotation, (newRotation) => {
+        console.log("setting new rotation", newRotation);
+        spinInfo.set(id, newRotation);
+      });
     }
   },
 };
 
-for (const [tag, setup] of Object.entries(TagData)) {
-  const tagElements = document.querySelectorAll(`[${tag}]`);
-  tagElements.forEach((ele) => {
-    ele.classList.add(`__open-websites-${tag}`);
-  });
-  setup(tagElements);
-}
+// TODO: provide some loading state for these elements immediately?
+// some sort of "hydration" state?
+provider.on("sync", (connected: boolean) => {
+  if (!connected) {
+    console.error("Issue connecting to yjs...");
+  }
+
+  for (const [tag, setup] of Object.entries(TagData)) {
+    const tagElements = document.querySelectorAll(`[${tag}]`);
+    tagElements.forEach((ele) => {
+      ele.classList.add(`__open-websites-${tag}`);
+    });
+    setup(tagElements as any);
+  }
+});
