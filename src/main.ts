@@ -1,15 +1,10 @@
 /// <reference lib="dom"/>
-
-import PartySocket from "partysocket";
 import YProvider from "y-partykit/provider";
 import "./style.scss";
-import { Message, MessageType, TagType } from "./types";
+import { Position, TagType } from "./types";
 import * as Y from "yjs";
-import { SpinElement } from "./elements";
+import { MoveElement, SpinElement } from "./elements";
 
-// This is the code that is running when the library is imported.
-
-// YJS approach
 declare const PARTYKIT_HOST: string | undefined;
 
 const partykitHost =
@@ -21,91 +16,47 @@ const provider = new YProvider(partykitHost, "yjs-demo", doc, {
 });
 provider.connect();
 
-// Vanilla approach
-// const socket = new PartySocket({
-//   host: "localhost:1999", // for local development
-//   // host: "openwebsites.spencerc99.partykit.dev", // for production
-//   room: window.location.href,
-// });
-
-// socket.onerror = (err) => console.error({ err });
-// socket.onclose = (evt) => console.log("closed", evt);
-// socket.onopen = () => socket.send("ping");
-// socket.onmessage = (evt) => {
-//   console.log("onMessage");
-//   console.log(evt);
-//   const message = JSON.parse(evt.data) as Message;
-//   // Handle each MessageType
-//   // Hydrate the element's position from the server
-//   switch (message.type) {
-//     case MessageType.Position: {
-//       console.log("position", message);
-//       const { id, x, y } = message;
-//       // TODO: handle smart ID
-//       const ele = document.getElementById(id);
-//       ele.style.transform = `translate(${x}px, ${y}px)`;
-//     }
-//   }
-//   return;
-// };
+function getIdForElement(ele: HTMLElement): string {
+  // TODO: need to find a good way to robustly generate a uniqueID for an element
+  // if ID is not provided, and it should degrade gracefully
+  // return ele.id || btoa(ele.innerHTML);
+  return ele.id;
+}
 
 export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
   [TagType.CanMove]: (canMoveEles) => {
-    function setTranslate(xPos: number, yPos: number, el: HTMLElement) {
-      el.style.transform = `translate(${xPos}px, ${yPos}px)`;
-    }
+    const moveInfo: Y.Map<Position> = doc.getMap(TagType.CanMove);
 
     for (const canMoveEle of canMoveEles) {
-      console.log("setup");
-      // canMoveEle.style.position = "absolute";
-      // canMoveEle.setAttribute("draggable", "true");
+      const elementId = getIdForElement(canMoveEle);
+      const savedPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
+      // TODO: add new method for preventing updates while someone else is moving it?
+      new MoveElement(canMoveEle, savedPosition, (newPosition) => {
+        const existingPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
+        if (
+          existingPosition.x === newPosition.x &&
+          existingPosition.y === newPosition.y
+        ) {
+          return;
+        }
 
-      // TODO: need to find a good way to robustly generate a uniqueID for an element
-      // if ID is not provided, and it should degrade gracefully
-      const elementId = canMoveEle.id || btoa(canMoveEle.innerHTML);
-      const initialX = canMoveEle.getBoundingClientRect().left;
-      const initialY = canMoveEle.getBoundingClientRect().top;
-      let isDragging = false;
-      const dragStart = () => {
-        console.log("DRAGSTART");
-        isDragging = true;
-      };
-
-      function dragEnd() {
-        console.log("DRAGEND");
-        isDragging = false;
-      }
-
-      function drag(event: MouseEvent) {
-        console.log("DRAG");
-        if (!isDragging) return;
-
-        event.preventDefault();
-
-        const currentX = event.clientX - initialX;
-        const currentY = event.clientY - initialY;
-
-        setTranslate(currentX, currentY, canMoveEle);
-      }
-
-      // if ID is not provided, set it for the ele
-      // canMove.id = ...
-      canMoveEle.addEventListener("mousedown", dragStart);
-      canMoveEle.addEventListener("mouseup", dragEnd);
-      canMoveEle.addEventListener("mousemove", drag);
+        moveInfo.set(elementId, newPosition);
+      });
     }
   },
   [TagType.CanSpin]: (spinEles) => {
     const spinInfo: Y.Map<number> = doc.getMap(TagType.CanSpin);
     console.log("spinInfo", JSON.stringify(spinInfo));
-    // spinInfo.observe((event) => {
-    // });
+
     for (const spinEle of spinEles) {
-      // TODO: load from persistence.
-      const id = spinEle.id;
-      const yRotation = spinInfo.get(id) || 0;
-      new SpinElement(spinEle, yRotation, (newRotation) => {
-        console.log("setting new rotation", newRotation);
+      const id = getIdForElement(spinEle);
+      const savedRotation = spinInfo.get(id) || 0;
+      // TODO: add new method for preventing updates while someone else is spinning it?
+      new SpinElement(spinEle, savedRotation, (newRotation) => {
+        if (spinInfo.get(id) === newRotation) {
+          return;
+        }
+
         spinInfo.set(id, newRotation);
       });
     }
