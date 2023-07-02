@@ -26,40 +26,88 @@ function getIdForElement(ele: HTMLElement): string {
 export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
   [TagType.CanMove]: (canMoveEles) => {
     const moveInfo: Y.Map<Position> = doc.getMap(TagType.CanMove);
+    const moveElementHandlers = new Map<string, MoveElement>();
+
+    function updateMoveInfo(elementId: string, newPosition: Position) {
+      const existingPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
+      if (
+        existingPosition.x === newPosition.x &&
+        existingPosition.y === newPosition.y
+      ) {
+        return;
+      }
+
+      moveInfo.set(elementId, newPosition);
+    }
 
     for (const canMoveEle of canMoveEles) {
       const elementId = getIdForElement(canMoveEle);
       const savedPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
       // TODO: add new method for preventing updates while someone else is moving it?
-      new MoveElement(canMoveEle, savedPosition, (newPosition) => {
-        const existingPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
-        if (
-          existingPosition.x === newPosition.x &&
-          existingPosition.y === newPosition.y
-        ) {
-          return;
-        }
-
-        moveInfo.set(elementId, newPosition);
-      });
+      moveElementHandlers.set(
+        elementId,
+        new MoveElement(canMoveEle, savedPosition, (newPosition) =>
+          updateMoveInfo(elementId, newPosition)
+        )
+      );
     }
+
+    moveInfo.observe((event) => {
+      event.changes.keys.forEach((change, key) => {
+        if (change.action === "add") {
+          moveElementHandlers.set(
+            key,
+            new MoveElement(canMoveEles[0], moveInfo.get(key)!, (newPosition) =>
+              updateMoveInfo(key, newPosition)
+            )
+          );
+        } else if (change.action === "update") {
+          const moveElementHandler = moveElementHandlers.get(key)!;
+          moveElementHandler.position = moveInfo.get(key)!;
+        }
+        // NOTE: not handling delete because it shouldn't ever happen here.
+      });
+    });
   },
   [TagType.CanSpin]: (spinEles) => {
     const spinInfo: Y.Map<number> = doc.getMap(TagType.CanSpin);
-    console.log("spinInfo", JSON.stringify(spinInfo));
+    const spinElementHandlers = new Map<string, SpinElement>();
+    function updateSpinInfo(elementId: string, newRotation: number) {
+      if (spinInfo.get(elementId) === newRotation) {
+        return;
+      }
+
+      spinInfo.set(elementId, newRotation);
+    }
 
     for (const spinEle of spinEles) {
-      const id = getIdForElement(spinEle);
-      const savedRotation = spinInfo.get(id) || 0;
+      const elementId = getIdForElement(spinEle);
+      const savedRotation = spinInfo.get(elementId) || 0;
       // TODO: add new method for preventing updates while someone else is spinning it?
-      new SpinElement(spinEle, savedRotation, (newRotation) => {
-        if (spinInfo.get(id) === newRotation) {
-          return;
-        }
-
-        spinInfo.set(id, newRotation);
-      });
+      spinElementHandlers.set(
+        elementId,
+        new SpinElement(spinEle, savedRotation, (newRotation) =>
+          updateSpinInfo(elementId, newRotation)
+        )
+      );
     }
+
+    spinInfo.observe((event) => {
+      event.changes.keys.forEach((change, key) => {
+        if (change.action === "add") {
+          spinElementHandlers.set(
+            key,
+            new SpinElement(spinEles[0], spinInfo.get(key)!, (newPosition) =>
+              updateSpinInfo(key, newPosition)
+            )
+          );
+        } else if (change.action === "update") {
+          const spinElementHandler = spinElementHandlers.get(key)!;
+          spinElementHandler.rotation = spinInfo.get(key)!;
+        }
+        // NOTE: not handling delete because it shouldn't ever happen here.
+      });
+    });
   },
 };
 

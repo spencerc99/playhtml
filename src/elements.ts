@@ -13,7 +13,7 @@ export class SpinElement {
   element: HTMLElement;
   isDown: boolean;
   startX: number;
-  rotation: number;
+  _rotation: number = 0;
   onChange: (rotation: number) => void;
 
   constructor(
@@ -24,14 +24,23 @@ export class SpinElement {
     this.element = element;
     this.isDown = false;
     this.startX = 0;
-    this.rotation = rotation;
-    this.element.style.transform = `rotate(${this.rotation}deg)`;
     this.onChange = onChange;
+    this.rotation = rotation;
 
     this.element.addEventListener("mousedown", (e) => this.mouseDownHandler(e));
     // TODO: probably should accumulate these and then put them all in one big one to avoid so many listeners
     document.addEventListener("mousemove", (e) => this.mouseMoveHandler(e));
     document.addEventListener("mouseup", (e) => this.mouseUpHandler(e));
+  }
+
+  get rotation(): number {
+    return this._rotation;
+  }
+
+  set rotation(rotation: number) {
+    this._rotation = rotation;
+    this.element.style.transform = `rotate(${rotation}deg)`;
+    this.onChange(rotation);
   }
 
   mouseDownHandler(e: MouseEvent) {
@@ -53,8 +62,7 @@ export class SpinElement {
       // Move left
       this.rotation -= distance; // Change rotation proportional to the distance moved
     }
-    this.element.style.transform = `rotate(${this.rotation}deg)`;
-    this.onChange(this.rotation);
+
     this.startX = e.pageX;
   }
 
