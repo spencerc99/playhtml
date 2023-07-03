@@ -1,11 +1,22 @@
+import { BaseElement, MoveElement, SpinElement } from "./elements";
+
 export type Position = { x: number; y: number };
+
+export interface TagTypeToElement {
+  [TagType.CanMove]: MoveElement;
+  [TagType.CanSpin]: SpinElement;
+}
+
 // Supported Tags
 export enum TagType {
   "CanMove" = "can-move",
   "CanSpin" = "can-spin",
+  // "CanDraw" = "can-draw",
+  // "CanDrive" = "can-drive",
+  // "CanHighlight" = "can-highlight",
+  // "CanStamp" = "can-stamp",
 
   // "CanFall" = "can-fall", See https://mrdoob.com/projects/chromeexperiments/google-space/
-  // "CanDraw" = "can-draw",
   // "CanAge" = "can-age",
   // "CanFingerprint" = "can-fingerprint",
   // "CanTake" = "can-take",

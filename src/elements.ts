@@ -3,7 +3,7 @@ import { Position } from "./types";
 
 // TODO: make all the other ones extend this and make it such that you never update the local state for the element without updating it in the server and updating the downstream element effect.
 // lol i really need a reactive db rn... like riffle.
-abstract class BaseElement<T> {
+export abstract class BaseElement<T> {
   element: HTMLElement;
   abstract _data: T;
   onChange: (data: T) => void;

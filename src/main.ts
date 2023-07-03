@@ -19,6 +19,7 @@ provider.connect();
 function getIdForElement(ele: HTMLElement): string {
   // TODO: need to find a good way to robustly generate a uniqueID for an element
   // if ID is not provided, and it should degrade gracefully
+  // perhaps could allow people to do custom selectors instead of an ID and just select the first one?
   // return ele.id || btoa(ele.innerHTML);
   return ele.id;
 }
@@ -119,11 +120,19 @@ provider.on("sync", (connected: boolean) => {
   }
 
   for (const [tag, setup] of Object.entries(TagData)) {
-    const tagElements = document.querySelectorAll(`[${tag}]`);
+    const tagElements: HTMLElement[] = Array.from(
+      document.querySelectorAll(`[${tag}]`)
+    ).filter(isHTMLElement);
+    setup(tagElements);
+
+    // Set up the common classes for affected elements.
     tagElements.forEach((ele) => {
       ele.classList.add(`__open-websites-element`);
       ele.classList.add(`__open-websites-${tag}`);
     });
-    setup(tagElements as any);
   }
 });
+
+function isHTMLElement(ele: any): ele is HTMLElement {
+  return ele instanceof HTMLElement;
+}
