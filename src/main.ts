@@ -63,7 +63,7 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
           );
         } else if (change.action === "update") {
           const moveElementHandler = moveElementHandlers.get(key)!;
-          moveElementHandler.position = moveInfo.get(key)!;
+          moveElementHandler.data = moveInfo.get(key)!;
         }
         // NOTE: not handling delete because it shouldn't ever happen here.
       });
@@ -103,7 +103,7 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
           );
         } else if (change.action === "update") {
           const spinElementHandler = spinElementHandlers.get(key)!;
-          spinElementHandler.rotation = spinInfo.get(key)!;
+          spinElementHandler.data = spinInfo.get(key)!;
         }
         // NOTE: not handling delete because it shouldn't ever happen here.
       });
