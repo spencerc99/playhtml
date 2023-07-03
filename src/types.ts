@@ -3,6 +3,8 @@ export type Position = { x: number; y: number };
 export enum TagType {
   "CanMove" = "can-move",
   "CanSpin" = "can-spin",
+
+  // "CanFall" = "can-fall", See https://mrdoob.com/projects/chromeexperiments/google-space/
   // "CanDraw" = "can-draw",
   // "CanAge" = "can-age",
   // "CanFingerprint" = "can-fingerprint",
@@ -13,6 +15,7 @@ export enum TagType {
   // A BUNCH FROM Copilot completions
   // "CanOpen" = "can-open",
   // "CanClose" = "can-close",
+  // "CanChat" = "can-chat",
   // "CanRead" = "can-read",
   // "CanWrite" = "can-write",
   // "CanEat" = "can-eat",

@@ -121,6 +121,7 @@ provider.on("sync", (connected: boolean) => {
   for (const [tag, setup] of Object.entries(TagData)) {
     const tagElements = document.querySelectorAll(`[${tag}]`);
     tagElements.forEach((ele) => {
+      ele.classList.add(`__open-websites-element`);
       ele.classList.add(`__open-websites-${tag}`);
     });
     setup(tagElements as any);
