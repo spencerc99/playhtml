@@ -54,6 +54,27 @@ body {
   }
 }
 
+#plantContainer {
+}
+
+#plant {
+  background: green;
+  border-top-left-radius: 50%;
+  border-top-right-radius: 50%;
+  height: 200px;
+  width: 50px;
+}
+
+.pot {
+  background: burlywood;
+  width: 160px;
+  height: 120px;
+  border-radius: 10px;
+  margin-left: -55px;
+  position: absolute;
+  z-index: 1;
+}
+
 // Library Styles
 // TODO: move this into a separate stylesheet so it can be imported with the library
 // TODO: add indicator to all of them that they are interactive, slight wiggle on hover? (how to indicate on mobile?)
@@ -67,6 +88,14 @@ body {
   will-change: transform;
 }
 .__open-websites-can-spin {
+  transition: transform 250ms;
+  will-change: transform;
+}
+.__open-websites-can-grow {
+  // cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
+  //     16 0,
+  //   auto; /*!emojicursor.app*/
+  //   cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='48' viewport='0 0 100 100' style='fill:black;font-size:24px;'><text y='50%'>✂️</text></svg>") 16 0,auto; /*!emojicursor.app*/
   transition: transform 250ms;
   will-change: transform;
 }

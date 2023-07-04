@@ -3,7 +3,7 @@ import YProvider from "y-partykit/provider";
 import "./style.scss";
 import { Position, TagType } from "./types";
 import * as Y from "yjs";
-import { MoveElement, SpinElement } from "./elements";
+import { GrowElement, MoveElement, SpinElement } from "./elements";
 
 declare const PARTYKIT_HOST: string | undefined;
 
@@ -43,7 +43,7 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
 
     for (const canMoveEle of canMoveEles) {
       const elementId = getIdForElement(canMoveEle);
-      const savedPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
+      const savedPosition = moveInfo.get(elementId);
       // TODO: add new method for preventing updates while someone else is moving it?
       moveElementHandlers.set(
         elementId,
@@ -63,6 +63,7 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
             )
           );
         } else if (change.action === "update") {
+          console.log(key);
           const moveElementHandler = moveElementHandlers.get(key)!;
           moveElementHandler.data = moveInfo.get(key)!;
         }
@@ -105,6 +106,46 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
         } else if (change.action === "update") {
           const spinElementHandler = spinElementHandlers.get(key)!;
           spinElementHandler.data = spinInfo.get(key)!;
+        }
+        // NOTE: not handling delete because it shouldn't ever happen here.
+      });
+    });
+  },
+  [TagType.CanGrow]: (growEles) => {
+    const growInfo: Y.Map<number> = doc.getMap(TagType.CanGrow);
+    const growElementHandlers = new Map<string, GrowElement>();
+    function updateGrowInfo(elementId: string, newScale: number) {
+      if (growInfo.get(elementId) === newScale) {
+        return;
+      }
+
+      growInfo.set(elementId, newScale);
+    }
+
+    for (const growEle of growEles) {
+      const elementId = getIdForElement(growEle);
+      const savedScale = growInfo.get(elementId);
+      // TODO: add new method for preventing updates while someone else is spinning it?
+      growElementHandlers.set(
+        elementId,
+        new GrowElement(growEle, savedScale, (newRotation) =>
+          updateGrowInfo(elementId, newRotation)
+        )
+      );
+    }
+
+    growInfo.observe((event) => {
+      event.changes.keys.forEach((change, key) => {
+        if (change.action === "add") {
+          growElementHandlers.set(
+            key,
+            new GrowElement(growEles[0], growInfo.get(key)!, (newPosition) =>
+              updateGrowInfo(key, newPosition)
+            )
+          );
+        } else if (change.action === "update") {
+          const growElementHandler = growElementHandlers.get(key)!;
+          growElementHandler.data = growInfo.get(key)!;
         }
         // NOTE: not handling delete because it shouldn't ever happen here.
       });

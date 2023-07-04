@@ -1,16 +1,18 @@
-import { BaseElement, MoveElement, SpinElement } from "./elements";
+import { GrowElement, MoveElement, SpinElement } from "./elements";
 
 export type Position = { x: number; y: number };
 
 export interface TagTypeToElement {
   [TagType.CanMove]: MoveElement;
   [TagType.CanSpin]: SpinElement;
+  [TagType.CanGrow]: GrowElement;
 }
 
 // Supported Tags
 export enum TagType {
   "CanMove" = "can-move",
   "CanSpin" = "can-spin",
+  "CanGrow" = "can-grow",
   // "CanDraw" = "can-draw",
   // "CanDrive" = "can-drive",
   // "CanHighlight" = "can-highlight",
