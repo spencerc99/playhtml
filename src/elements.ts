@@ -126,9 +126,9 @@ export class MoveElement extends BaseElement<Position> {
 
   mouseMoveHandler(e: MouseEvent) {
     if (!this.isDown) return;
-    console.log("mouseX", e.clientX, "mouseY", e.clientY);
-    console.log("startX", this.startMouseX, "startY", this.startMouseY);
-    console.log("x", this.data.x, "y", this.data.y);
+    // console.log("mouseX", e.clientX, "mouseY", e.clientY);
+    // console.log("startX", this.startMouseX, "startY", this.startMouseY);
+    // console.log("x", this.data.x, "y", this.data.y);
 
     e.preventDefault();
     // Calculate distance mouse has moved from the last known position

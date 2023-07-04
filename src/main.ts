@@ -63,7 +63,6 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
             )
           );
         } else if (change.action === "update") {
-          console.log(key);
           const moveElementHandler = moveElementHandlers.get(key)!;
           moveElementHandler.data = moveInfo.get(key)!;
         }
