@@ -1,20 +1,35 @@
 {
   "name": "open-websites",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.2",
+  "license": "MIT",
   "type": "module",
+  "main": "./dist/open-websites.umd.js",
+  "types": "./dist/main.d.ts",
+  "module": "./dist/open-websites.es.js",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/open-websites.es.js",
+      "require": "./dist/open-websites.umd.js"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "publish-npm": "yarn run build && yarn publish"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20230518.0",
+    "@types/node": "^20.3.3",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
-    "vite": "^4.3.9"
+    "vite": "^4.3.9",
+    "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@cloudflare/workers-types": "^4.20230518.0",
     "partykit": "^0.0.0-e7aa4cd",
     "partysocket": "^0.0.0-e7aa4cd",
     "y-partykit": "^0.0.0-e7aa4cd",
