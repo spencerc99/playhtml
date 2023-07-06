@@ -2,19 +2,19 @@
 // TODO: add indicator to all of them that they are interactive, slight wiggle on hover? (how to indicate on mobile?)
 // TODO: these timings should scale depending on the size of the element?
 // Common classes to every open websites element.
-.__open-websites-element {
+.__playhtml-element {
   cursor: pointer;
 }
-.__open-websites-can-move {
+.__playhtml-can-move {
   // TODO: this needs to reset the display otherwise it won't always work (ex with inline elements)
   transition: transform 150ms;
   will-change: transform;
 }
-.__open-websites-can-spin {
+.__playhtml-can-spin {
   transition: transform 250ms;
   will-change: transform;
 }
-.__open-websites-can-grow {
+.__playhtml-can-grow {
   // cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
   //     16 0,
   //   auto; /*!emojicursor.app*/

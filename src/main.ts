@@ -167,8 +167,8 @@ provider.on("sync", (connected: boolean) => {
 
     // Set up the common classes for affected elements.
     tagElements.forEach((ele) => {
-      ele.classList.add(`__open-websites-element`);
-      ele.classList.add(`__open-websites-${tag}`);
+      ele.classList.add(`__playhtml-element`);
+      ele.classList.add(`__playhtml-${tag}`);
     });
   }
 });

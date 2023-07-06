@@ -1,18 +1,18 @@
 {
-  "name": "open-websites",
+  "name": "playhtml",
   "version": "0.1.2",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/open-websites.umd.js",
+  "main": "./dist/playhtml.umd.js",
   "types": "./dist/main.d.ts",
-  "module": "./dist/open-websites.es.js",
+  "module": "./dist/playhtml.es.js",
   "files": [
     "dist"
   ],
   "exports": {
     ".": {
-      "import": "./dist/open-websites.es.js",
-      "require": "./dist/open-websites.umd.js"
+      "import": "./dist/playhtml.es.js",
+      "require": "./dist/playhtml.umd.js"
     }
   },
   "scripts": {

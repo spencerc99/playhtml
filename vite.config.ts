@@ -7,8 +7,8 @@ export default defineConfig({
   build: {
     lib: {
       entry: path.resolve(__dirname, "src/main.ts"),
-      name: "open-websites",
-      fileName: (format) => `open-websites.${format}.js`,
+      name: "playhtml",
+      fileName: (format) => `playhtml.${format}.js`,
     },
   },
 });
