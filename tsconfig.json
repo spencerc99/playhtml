@@ -16,9 +16,12 @@
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "**/__tests__/*"]
+  "exclude": [
+    "node_modules/*",
+    "**/__tests__/*",
+    "node_modules/@cloudflare/workers-types/index.ts"
+  ]
 }
