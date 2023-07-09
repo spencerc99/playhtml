@@ -3,12 +3,13 @@ import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
 
 export default defineConfig({
+  base: "/playhtml/",
   plugins: [dts()],
+
   build: {
-    lib: {
-      entry: path.resolve(__dirname, "src/main.ts"),
-      name: "playhtml",
-      fileName: (format) => `playhtml.${format}.js`,
+    rollupOptions: {
+      input: path.resolve(__dirname, "index.html"),
     },
+    outDir: "site",
   },
 });
