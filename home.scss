@@ -1,12 +1,25 @@
 // Demo Styles
 body {
   background: #c6e1ea;
+  font-family: "Play";
+}
+
+h1 {
+  font-family: "Carter One";
+  color: rgb(80, 75, 69);
 }
 
 #app {
   display: flex;
   flex-direction: column;
+  align-items: center;
   margin: 80px 4vw;
+  position: relative;
+}
+
+footer {
+  position: fixed;
+  bottom: 40px;
 }
 
 #stamp {
@@ -19,8 +32,8 @@ body {
   transition: filter 0.2s ease-in-out;
 
   position: absolute;
-  top: 30vh;
-  left: 30%;
+  top: 50vh;
+  left: 15%;
 }
 
 // Source: https://css-tricks.com/how-to-create-neon-text-with-css/
@@ -29,8 +42,8 @@ body {
   animation: pulsate 2.5s infinite alternate;
   font-size: 4.2rem;
   background-image: url("https://cdn.pixabay.com/photo/2017/02/12/12/42/wall-2059909_640.png");
-  width: 550px;
-  height: 400px;
+  width: 320px;
+  height: 240px;
   border-radius: 8px;
   font-family: "Yellowtail", serif;
 
@@ -39,6 +52,8 @@ body {
   align-items: center;
   text-align: center;
   padding: 0 40px;
+  position: absolute;
+  right: 4px;
 }
 
 @keyframes pulsate {
@@ -55,22 +70,28 @@ body {
 }
 
 #plantContainer {
+  position: absolute;
+  left: 20vw;
 }
 
 #plant {
   background: green;
   border-top-left-radius: 50%;
   border-top-right-radius: 50%;
-  height: 200px;
-  width: 50px;
+  height: 150px;
+  width: 30px;
 }
 
 .pot {
   background: burlywood;
-  width: 160px;
-  height: 120px;
+  width: 90px;
+  height: 80px;
   border-radius: 10px;
-  margin-left: -55px;
+  margin-left: -30px;
   position: absolute;
   z-index: 1;
+}
+
+.content {
+  margin-top: 20vh;
 }

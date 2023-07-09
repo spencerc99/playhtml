@@ -4,17 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css?family=Yellowtail:400"
+      href="https://fonts.googleapis.com/css2?family=Carter+One&family=Play:wght@400;700&family=Rubik+Pixels&family=Yellowtail&display=swap"
       rel="stylesheet"
-      type="text/css"
     />
 
-    <title>open websites</title>
+    <title>playhtml</title>
   </head>
   <body>
     <div id="app">
-      <div can-move id="sign">open websites<br />now open</div>
+      <div can-move id="sign">playhtml<br />now open</div>
       <img
         src="https://spencerchang.me/assets/name-stamp.png"
         can-spin
@@ -24,6 +25,27 @@
         <div id="plant" can-grow></div>
         <div class="pot"></div>
       </div>
+      <div class="content">
+        <h1>playhtml</h1>
+        <p>
+          interactive, collaborative html elements with a single data attribute.
+        </p>
+        <h2>existing tags</h2>
+        <ol>
+          <li>can-move</li>
+          <li>can-spin</li>
+          <li>can-grow</li>
+          <li>
+            <a href="https://github.com/spencerc99/playhtml/pulls"
+              >yours-here</a
+            >
+          </li>
+        </ol>
+      </div>
+      <footer>
+        a library created and maintained by
+        <a href="https://www.spencerchang.me/">spencer</a>
+      </footer>
     </div>
     <script type="module" src="./index.ts"></script>
     <script type="module" src="src/main.ts"></script>

@@ -11,7 +11,11 @@ const partykitHost =
   typeof PARTYKIT_HOST === "undefined" ? "localhost:1999" : PARTYKIT_HOST;
 
 const doc = new Y.Doc();
-const provider = new YProvider(partykitHost, "yjs-demo", doc, {
+// TODO: should the room include search?
+// option 1: room = window.location.hostname + window.location.pathname
+// option 2: room = window.location.href
+// option 3: default to 1 and expose custom option to user.
+const provider = new YProvider(partykitHost, window.location.href, doc, {
   connect: false,
 });
 provider.connect();
@@ -159,6 +163,19 @@ provider.on("sync", (connected: boolean) => {
     console.error("Issue connecting to yjs...");
   }
 
+  setupElements();
+});
+
+function isHTMLElement(ele: any): ele is HTMLElement {
+  return ele instanceof HTMLElement;
+}
+
+/**
+ * Sets up any playhtml elements that are currently on the page.
+ * Can be repeatedly called to set up new elements without affecting existing ones.
+ */
+export function setupElements(): void {
+  // TODO: need to expose some function to set up new elements that are added after the fact (like when elements are hydrated).
   for (const [tag, setup] of Object.entries(TagData)) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
@@ -171,8 +188,4 @@ provider.on("sync", (connected: boolean) => {
       ele.classList.add(`__playhtml-${tag}`);
     });
   }
-});
-
-function isHTMLElement(ele: any): ele is HTMLElement {
-  return ele instanceof HTMLElement;
 }

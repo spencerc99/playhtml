@@ -9,47 +9,109 @@ const debounce = (fn: Function, ms = 300) => {
   };
 };
 
+type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
+const ModifierKeyToName: Record<ModifierKey, string> = {
+  ctrlKey: "Control",
+  altKey: "Alt",
+  shiftKey: "Shift",
+  metaKey: "Meta",
+};
+
 // TODO: make all the other ones extend this and make it such that you never update the local state for the element without updating it in the server and updating the downstream element effect.
 // lol i really need a reactive db rn... like riffle.
 export abstract class BaseElement<T> {
   element: HTMLElement;
+  abstract initialData: T;
   _data: T;
   onChange: (data: T) => void;
   debouncedOnChange: (data: T) => void;
+  resetShortcut?: ModifierKey;
 
   // TODO: fix this optional thing
-  constructor(element: HTMLElement, data: T, onChange: (data: T) => void) {
+  constructor(
+    element: HTMLElement,
+    data: T,
+    onChange: (data: T) => void,
+    resetShortcut?: ModifierKey
+  ) {
     this.element = element;
     this.onChange = onChange;
+    this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, 25);
     this._data = data;
     this.data = data;
+
+    if (resetShortcut) {
+      if (!element.title) {
+        element.title = `Hold down the ${ModifierKeyToName[resetShortcut]} key while clicking to reset.`;
+      }
+      element.addEventListener("click", (e) => {
+        switch (resetShortcut) {
+          case "ctrlKey":
+            if (!e.ctrlKey) {
+              return;
+            }
+            break;
+          case "altKey":
+            if (!e.altKey) {
+              return;
+            }
+            break;
+          case "shiftKey":
+            if (!e.shiftKey) {
+              return;
+            }
+            break;
+          case "metaKey":
+            if (!e.metaKey) {
+              return;
+            }
+            break;
+          default:
+            return;
+        }
+        this.reset();
+      });
+    }
   }
 
   get data(): T {
     return this._data;
   }
 
+  /**
+   * Updates the internal state with the given data and handles all the downstream effects
+   * (e.g. calling `updateElement` and `onChange`)
+   */
   set data(data: T) {
     this._data = data;
     this.updateElement(data);
     this.debouncedOnChange(data);
-    // this.onChange(data);
   }
 
+  /**
+   * Updates the element to reflect the new data (e.g. updating the style and functionality)
+   */
   abstract updateElement(data: T): void;
+  /**
+   * Resets the element to its default state.
+   */
+  reset() {
+    this.data = this.initialData;
+  }
 }
 
 export class SpinElement extends BaseElement<number> {
   isDown: boolean;
   startX: number;
+  initialData: number = 0;
 
   constructor(
     element: HTMLElement,
     rotation: number = 0,
     onChange: (rotation: number) => void
   ) {
-    super(element, rotation, onChange);
+    super(element, rotation, onChange, "shiftKey");
     this.isDown = false;
     this.startX = 0;
 
@@ -93,6 +155,7 @@ export class SpinElement extends BaseElement<number> {
 
 // TODO: need to figure out how to resolve between px movement and % movement
 export class MoveElement extends BaseElement<Position> {
+  initialData: Position = { x: 0, y: 0 };
   isDown: boolean;
   startMouseX: number;
   startMouseY: number;
@@ -102,7 +165,7 @@ export class MoveElement extends BaseElement<Position> {
     position: Position = { x: 0, y: 0 },
     onChange: (position: Position) => void
   ) {
-    super(element, position, onChange);
+    super(element, position, onChange, "shiftKey");
     this.isDown = false;
     this.startMouseX = 0;
     this.startMouseY = 0;
@@ -147,6 +210,7 @@ export class MoveElement extends BaseElement<Position> {
 }
 
 export class GrowElement extends BaseElement<number> {
+  initialData: number = 1;
   maxScale: number;
   readonly originalCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
       16 0,
@@ -160,7 +224,7 @@ export class GrowElement extends BaseElement<number> {
     onChange: (scale: number) => void,
     maxScale: number = 2
   ) {
-    super(element, scale, onChange);
+    super(element, scale, onChange, "shiftKey");
     this.maxScale = maxScale;
     element.addEventListener("mouseenter", (e) => this.mouseOverHandler(e));
     element.addEventListener("mouseout", (e) => {
