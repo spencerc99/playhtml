@@ -17,8 +17,6 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
   metaKey: "Meta",
 };
 
-// TODO: make all the other ones extend this and make it such that you never update the local state for the element without updating it in the server and updating the downstream element effect.
-// lol i really need a reactive db rn... like riffle.
 export abstract class BaseElement<T> {
   element: HTMLElement;
   abstract initialData: T;
@@ -27,7 +25,6 @@ export abstract class BaseElement<T> {
   debouncedOnChange: (data: T) => void;
   resetShortcut?: ModifierKey;
 
-  // TODO: fix this optional thing
   constructor(
     element: HTMLElement,
     data: T,
@@ -37,7 +34,7 @@ export abstract class BaseElement<T> {
     this.element = element;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
-    this.debouncedOnChange = debounce(this.onChange, 25);
+    this.debouncedOnChange = this.onChange;
     this._data = data;
     this.data = data;
 
@@ -153,7 +150,6 @@ export class SpinElement extends BaseElement<number> {
   }
 }
 
-// TODO: need to figure out how to resolve between px movement and % movement
 export class MoveElement extends BaseElement<Position> {
   initialData: Position = { x: 0, y: 0 };
   isDown: boolean;
@@ -169,11 +165,19 @@ export class MoveElement extends BaseElement<Position> {
     this.isDown = false;
     this.startMouseX = 0;
     this.startMouseY = 0;
+    // TODO: this needs to reset the display otherwise it won't always work (ex with inline elements)
+    this.updateDisplay();
 
     this.element.addEventListener("mousedown", (e) => this.mouseDownHandler(e));
     // TODO: probably should accumulate these and then put them all in one big one to avoid so many listeners
     document.addEventListener("mousemove", (e) => this.mouseMoveHandler(e));
     document.addEventListener("mouseup", (e) => this.mouseUpHandler(e));
+  }
+
+  updateDisplay() {
+    if (this.element.style.display === "inline") {
+      this.element.style.display = "inline-block";
+    }
   }
 
   updateElement({ x, y }: Position): void {
@@ -182,7 +186,6 @@ export class MoveElement extends BaseElement<Position> {
 
   mouseDownHandler(e: MouseEvent) {
     this.isDown = true;
-    // TODO: some bug when swapping between diff size screens, prob need to account for the last basis?
     this.startMouseX = e.clientX;
     this.startMouseY = e.clientY;
   }
