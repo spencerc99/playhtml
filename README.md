@@ -45,3 +45,7 @@ To contribute your capability, see sample PR (TODO: LINK).
 ## Contributing
 
 Outside of contributing new capabilities, feel free to submit any issues or PRs for bugs or improvements to the core of the library.
+
+## Support & Maintenance
+
+If you enjoy the idea of this library or like using it, please consider [sponsoring the project](https://github.com/sponsors/spencerc99). This will help ensure that the library is maintained and improved over time.
