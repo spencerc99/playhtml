@@ -20,7 +20,8 @@ const room = window.location.href;
 const yprovider = new YPartyKitProvider(partykitHost, room, doc, {
   connect: false,
 });
-const indexedDBProvider = new IndexeddbPersistence(room, doc);
+// @ts-ignore
+const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 yprovider.connect();
 
 function getIdForElement(ele: HTMLElement): string {
