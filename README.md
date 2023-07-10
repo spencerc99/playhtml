@@ -10,7 +10,9 @@ playhtml is a library for magically creating collaborative interactive HTML elem
 
 This is designed as an open library for anyone to add on new interactions and capabilities. To get started, see the [New Capabilities](#new-capabilities).
 
-## Getting Started
+![](./demo.mov)
+
+## Usage
 
 To use this library, you can import the library and the associated styles from a CDN (in this case we will use [unpkg.com](https://unpkg.com)). Please make sure to do this after all the HTML elements on the page.
 
@@ -26,8 +28,7 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 
 ```js
 <script type="module">
-  import {setupElements} from "https://unpkg.com/playhtml"; 
-  setupElements();
+  import {setupElements} from "https://unpkg.com/playhtml"; setupElements();
 </script>
 ```
 
@@ -42,7 +43,3 @@ To contribute your capability, see sample PR (TODO: LINK).
 ## Contributing
 
 Outside of contributing new capabilities, feel free to submit any issues or PRs for bugs or improvements to the core of the library.
-
-```
-
-```
