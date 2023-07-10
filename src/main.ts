@@ -1,5 +1,6 @@
 /// <reference lib="dom"/>
-import YProvider from "y-partykit/provider";
+import YPartyKitProvider from "y-partykit/provider";
+import { IndexeddbPersistence } from "y-indexeddb";
 import "./style.scss";
 import { Position, TagType } from "./types";
 import * as Y from "yjs";
@@ -15,10 +16,12 @@ const doc = new Y.Doc();
 // option 1: room = window.location.hostname + window.location.pathname
 // option 2: room = window.location.href
 // option 3: default to 1 and expose custom option to user.
-const provider = new YProvider(partykitHost, window.location.href, doc, {
+const room = window.location.href;
+const yprovider = new YPartyKitProvider(partykitHost, room, doc, {
   connect: false,
 });
-provider.connect();
+const indexedDBProvider = new IndexeddbPersistence(room, doc);
+yprovider.connect();
 
 function getIdForElement(ele: HTMLElement): string {
   // TODO: need to find a good way to robustly generate a uniqueID for an element
@@ -158,7 +161,7 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
 
 // TODO: provide some loading state for these elements immediately?
 // some sort of "hydration" state?
-provider.on("sync", (connected: boolean) => {
+yprovider.on("sync", (connected: boolean) => {
   if (!connected) {
     console.error("Issue connecting to yjs...");
   }

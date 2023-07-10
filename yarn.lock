@@ -1986,6 +1986,13 @@ ws@^8.11.0, ws@^8.12.0, ws@^8.13.0:
   resolved "https://registry.yarnpkg.com/ws/-/ws-8.13.0.tgz#9a9fb92f93cf41512a0735c8f4dd09b8a1211cd0"
   integrity sha512-x9vcZYTrFPC7aSIbj7sRCYo7L/Xb8Iy+pW0ng0wt2vCJv7M9HOMy0UoN3rr+IFC7hb7vXoqS+P9ktyLLLhO+LA==
 
+y-indexeddb@^9.0.11:
+  version "9.0.11"
+  resolved "https://registry.yarnpkg.com/y-indexeddb/-/y-indexeddb-9.0.11.tgz#eb4e4a1816caae9a2c906e64e7b41f78e0d75fda"
+  integrity sha512-HOKQ70qW1h2WJGtOKu9rE8fbX86ExVZedecndMuhwax3yM4DQsQzCTGHt/jvTrFZr/9Ahvd8neD6aZ4dMMjtdg==
+  dependencies:
+    lib0 "^0.2.74"
+
 y-partykit@^0.0.0-e7aa4cd:
   version "0.0.0-e7aa4cd"
   resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.0-e7aa4cd.tgz#469e348ffafbdaa4e6787be8c4cc88fb2b9cb2bd"

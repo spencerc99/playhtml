@@ -7,6 +7,8 @@ export default {
   async onConnect(ws, room) {
     // Yjs method
     // @ts-ignore
-    return onConnect(ws, room, { persist: true });
+    return onConnect(ws, room, {
+      persist: true,
+    });
   },
 } satisfies PartyKitServer;
