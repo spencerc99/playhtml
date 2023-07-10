@@ -10,9 +10,7 @@ playhtml is a library for magically creating collaborative interactive HTML elem
 
 This is designed as an open library for anyone to add on new interactions and capabilities. To get started, see the [New Capabilities](#new-capabilities).
 
-<video width="480" height="360" controls>
-  <source src="./demo.mov" type="video/mp4">
-</video>
+https://github.com/spencerc99/playhtml/assets/14796580/00e84e15-2c1c-4b4b-8e15-2af22f39db7a
 
 ## Usage
 
