@@ -32,12 +32,17 @@ function getIdForElement(ele: HTMLElement): string {
   return ele.id;
 }
 
+function getElementFromId(id: string): HTMLElement | null {
+  return document.getElementById(id);
+}
+
 export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
   [TagType.CanMove]: (canMoveEles) => {
     const moveInfo: Y.Map<Position> = doc.getMap(TagType.CanMove);
     const moveElementHandlers = new Map<string, MoveElement>();
 
     function updateMoveInfo(elementId: string, newPosition: Position) {
+      // TODO: generically handle redundancy checks, this is just a crutch that makes it easy to have bugs with reactivity.
       const existingPosition = moveInfo.get(elementId) || { x: 0, y: 0 };
       if (
         existingPosition.x === newPosition.x &&
@@ -66,13 +71,15 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
         if (change.action === "add") {
           moveElementHandlers.set(
             key,
-            new MoveElement(canMoveEles[0], moveInfo.get(key)!, (newPosition) =>
-              updateMoveInfo(key, newPosition)
+            new MoveElement(
+              getElementFromId(key)!,
+              moveInfo.get(key)!,
+              (newPosition) => updateMoveInfo(key, newPosition)
             )
           );
         } else if (change.action === "update") {
           const moveElementHandler = moveElementHandlers.get(key)!;
-          moveElementHandler.data = moveInfo.get(key)!;
+          moveElementHandler.__data = moveInfo.get(key)!;
         }
         // NOTE: not handling delete because it shouldn't ever happen here.
       });
@@ -106,13 +113,15 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
         if (change.action === "add") {
           spinElementHandlers.set(
             key,
-            new SpinElement(spinEles[0], spinInfo.get(key)!, (newPosition) =>
-              updateSpinInfo(key, newPosition)
+            new SpinElement(
+              getElementFromId(key)!,
+              spinInfo.get(key)!,
+              (newPosition) => updateSpinInfo(key, newPosition)
             )
           );
         } else if (change.action === "update") {
           const spinElementHandler = spinElementHandlers.get(key)!;
-          spinElementHandler.data = spinInfo.get(key)!;
+          spinElementHandler.__data = spinInfo.get(key)!;
         }
         // NOTE: not handling delete because it shouldn't ever happen here.
       });
@@ -146,13 +155,15 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
         if (change.action === "add") {
           growElementHandlers.set(
             key,
-            new GrowElement(growEles[0], growInfo.get(key)!, (newPosition) =>
-              updateGrowInfo(key, newPosition)
+            new GrowElement(
+              getElementFromId(key)!,
+              growInfo.get(key)!,
+              (newPosition) => updateGrowInfo(key, newPosition)
             )
           );
         } else if (change.action === "update") {
           const growElementHandler = growElementHandlers.get(key)!;
-          growElementHandler.data = growInfo.get(key)!;
+          growElementHandler.__data = growInfo.get(key)!;
         }
         // NOTE: not handling delete because it shouldn't ever happen here.
       });

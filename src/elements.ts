@@ -18,6 +18,11 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
   metaKey: "Meta",
 };
 
+interface AdvancedOptions {
+  debounceMs?: number;
+  resetShortcut?: ModifierKey;
+}
+
 export abstract class BaseElement<T> {
   element: HTMLElement;
   abstract initialData: T;
@@ -30,12 +35,12 @@ export abstract class BaseElement<T> {
     element: HTMLElement,
     data: T,
     onChange: (data: T) => void,
-    resetShortcut?: ModifierKey
+    { debounceMs = 100, resetShortcut }: AdvancedOptions
   ) {
     this.element = element;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
-    this.debouncedOnChange = this.onChange;
+    this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this._data = data;
     this.data = data;
 
@@ -78,12 +83,26 @@ export abstract class BaseElement<T> {
   }
 
   /**
-   * Updates the internal state with the given data and handles all the downstream effects
+   * // PRIVATE USE ONLY \\
+   *
+   * Updates the internal state with the given data and handles all the downstream effects. Should only be used by the sync code to ensure one-way
+   * reactivity.
    * (e.g. calling `updateElement` and `onChange`)
    */
-  set data(data: T) {
+  set __data(data: T) {
     this._data = data;
     this.updateElement(data);
+  }
+
+  // TODO: turn from setter into a method to allow for debouncing
+  /**
+   * Public-use setter for data that makes the change to all clients.
+   */
+  set data(data: T) {
+    this.onChange(data);
+  }
+
+  setDataDebounced(data: T) {
     this.debouncedOnChange(data);
   }
 
@@ -109,7 +128,7 @@ export class SpinElement extends BaseElement<number> {
     rotation: number = 0,
     onChange: (rotation: number) => void
   ) {
-    super(element, rotation, onChange, "shiftKey");
+    super(element, rotation, onChange, { resetShortcut: "shiftKey" });
     this.isDown = false;
     this.startX = 0;
 
@@ -162,7 +181,7 @@ export class MoveElement extends BaseElement<Position> {
     position: Position = { x: 0, y: 0 },
     onChange: (position: Position) => void
   ) {
-    super(element, position, onChange, "shiftKey");
+    super(element, position, onChange, { resetShortcut: "shiftKey" });
     this.isDown = false;
     this.startMouseX = 0;
     this.startMouseY = 0;
@@ -193,9 +212,6 @@ export class MoveElement extends BaseElement<Position> {
 
   mouseMoveHandler(e: MouseEvent) {
     if (!this.isDown) return;
-    // console.log("mouseX", e.clientX, "mouseY", e.clientY);
-    // console.log("startX", this.startMouseX, "startY", this.startMouseY);
-    // console.log("x", this.data.x, "y", this.data.y);
 
     e.preventDefault();
     // Calculate distance mouse has moved from the last known position
@@ -228,7 +244,7 @@ export class GrowElement extends BaseElement<number> {
     onChange: (scale: number) => void,
     maxScale: number = 2
   ) {
-    super(element, scale, onChange, "shiftKey");
+    super(element, scale, onChange, { resetShortcut: "shiftKey" });
     this.maxScale = maxScale;
     element.addEventListener("mouseenter", (e) => this.mouseOverHandler(e));
     element.addEventListener("mouseout", (e) => {
