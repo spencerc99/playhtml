@@ -6,10 +6,10 @@ import { Position, TagType } from "./types";
 import * as Y from "yjs";
 import { GrowElement, MoveElement, SpinElement } from "./elements";
 
-declare const PARTYKIT_HOST: string | undefined;
-
 const partykitHost =
-  typeof PARTYKIT_HOST === "undefined" ? "localhost:1999" : PARTYKIT_HOST;
+  process.env.NODE_ENV === "development"
+    ? "localhost:1999"
+    : "yjs.threepointone.partykit.dev/party";
 
 const doc = new Y.Doc();
 // TODO: should the room include search?
