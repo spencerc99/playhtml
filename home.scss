@@ -13,7 +13,7 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 80px 4vw;
+  margin: 0px 4vw;
   position: relative;
 }
 
@@ -32,8 +32,8 @@ footer {
   transition: filter 0.2s ease-in-out;
 
   position: absolute;
-  top: 50vh;
-  left: 15%;
+  top: 20vh;
+  right: 15%;
 }
 
 // Source: https://css-tricks.com/how-to-create-neon-text-with-css/
@@ -71,7 +71,7 @@ footer {
 
 #plantContainer {
   position: absolute;
-  left: 20vw;
+  left: 10vw;
 }
 
 #plant {
@@ -94,4 +94,46 @@ footer {
 
 .content {
   margin-top: 20vh;
+
+  @media screen and (max-width: 768px) {
+    margin-top: 30vh;
+  }
+}
+
+#lampContainer {
+  position: relative;
+  float: right;
+}
+
+#lamp {
+  width: 100px;
+  background-color: transparent;
+  cursor: pointer;
+
+  &:hover {
+    animation: jiggle 0.5s ease-in-out;
+  }
+
+  &.clicked.clicked {
+    filter: brightness(1.2) saturate(1.6)
+      drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
+  }
+}
+
+@keyframes jiggle {
+  0% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(7deg);
+  }
+  50% {
+    transform: rotate(0deg);
+  }
+  66% {
+    transform: rotate(-5deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
 }

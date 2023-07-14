@@ -32,3 +32,40 @@
 //   ): TagTypeToElement[V];
 //   abstract setup: (elements: HTMLElement[]) => void;
 // }
+
+// What is the minimal set of "handlers" that create the most flexibility to
+// onclick
+// ondrag - combination of clicked and onmousemove
+// onhover
+
+// <div onclick={onClick}></div>
+
+// function createCapability(onClick: (stateObject) => {}): { onClick: (e: MouseEvent) => void; onDrag; onHover} {
+//     const stateObject: CSSPropertyRule = {};
+//     return {
+//         onClick: () => {
+
+//         },
+//         onDrag: () => {},
+//         onHover: () => {},
+//     }
+// }
+
+// bindCapability(element, capability) {
+//     element.addEventListener("click", capability.onClick);
+//     element.addEventListener("drag", capability.onDrag);
+//     element.addEventListener("hover", capability.onHover);
+// }
+
+// function onClick(e: MouseEvent)  {
+
+// }
+
+/*
+// alternatively the wish / listen method
+// wish="can-move"
+// wish={e => {
+      
+}}
+
+*/

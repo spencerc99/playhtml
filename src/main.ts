@@ -4,7 +4,13 @@ import { IndexeddbPersistence } from "y-indexeddb";
 import "./style.scss";
 import { Position, TagType } from "./types";
 import * as Y from "yjs";
-import { GrowElement, MoveElement, SpinElement } from "./elements";
+import {
+  DrawElement,
+  GrowElement,
+  ClickElement,
+  MoveElement,
+  SpinElement,
+} from "./elements";
 
 const partykitHost =
   process.env.NODE_ENV === "development"
@@ -169,6 +175,60 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
       });
     });
   },
+  [TagType.CanClick]: (hoverEles) => {
+    const hoverInfo: Y.Map<string> = doc.getMap(TagType.CanClick);
+    const hoverElementHandlers = new Map<string, ClickElement>();
+
+    const updateHoverInfo = (elementId: string, newHover: string) => {
+      if (hoverInfo.get(elementId) === newHover) {
+        return;
+      }
+
+      hoverInfo.set(elementId, newHover);
+    };
+
+    for (const hoverEle of hoverEles) {
+      const elementId = getIdForElement(hoverEle);
+      // TODO: handle multiple
+      const key = hoverEle.getAttribute(TagType.CanClick)!;
+      const savedHover = hoverInfo.get(elementId) || "";
+      hoverElementHandlers.set(
+        elementId,
+        new ClickElement(
+          hoverEle,
+          savedHover,
+          (newHover) => {
+            hoverInfo.set(elementId, newHover);
+          },
+          key
+        )
+      );
+    }
+
+    hoverInfo.observe((event) => {
+      event.changes.keys.forEach((change, key) => {
+        if (change.action === "add") {
+          const updateKey = document
+            .querySelector(`#${key}`)!
+            .getAttribute(TagType.CanClick)!;
+          hoverElementHandlers.set(
+            key,
+            new ClickElement(
+              document.querySelector(`#${key}`)!,
+              hoverInfo.get(key)!,
+              (newHover) => updateHoverInfo(key, newHover),
+              updateKey
+            )
+          );
+        } else if (change.action === "update") {
+          console.log("UPDATING");
+          const drawElementHandler = hoverElementHandlers.get(key)!;
+          drawElementHandler.__data = hoverInfo.get(key)!;
+        }
+        // NOTE: not handling delete because it shouldn't ever happen here.
+      });
+    });
+  },
 };
 
 // TODO: provide some loading state for these elements immediately?
@@ -203,4 +263,14 @@ export function setupElements(): void {
       ele.classList.add(`__playhtml-${tag}`);
     });
   }
+}
+
+// TODO: eventually need a way to import this that keeps library small and only imports the requested tags.
+
+function areArraysEqual(a: any[], b: any[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((item, index) => item === b[index]);
 }

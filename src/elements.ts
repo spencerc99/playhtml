@@ -23,6 +23,18 @@ interface AdvancedOptions {
   resetShortcut?: ModifierKey;
 }
 
+// TODO: these probably need to use localStorage for certain things that are big..
+function retrieveElementData(element: HTMLElement, key: string): any {
+  return JSON.parse(element.dataset[key] || "null");
+}
+
+function setElementData(element: HTMLElement, key: string, value: any): void {
+  element.dataset[key] = JSON.stringify(value);
+}
+
+// TODO: should be able to have set of allowable elements
+// TODO: should be able to accept arbitrary input? (like max/min)
+// TODO: should be able to add permission conditions?
 export abstract class BaseElement<T> {
   element: HTMLElement;
   abstract initialData: T;
@@ -42,7 +54,7 @@ export abstract class BaseElement<T> {
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this._data = data;
-    this.data = data;
+    this.__data = data;
 
     if (resetShortcut) {
       if (!element.title) {
@@ -74,6 +86,8 @@ export abstract class BaseElement<T> {
             return;
         }
         this.reset();
+        e.preventDefault();
+        e.stopPropagation();
       });
     }
   }
@@ -301,5 +315,135 @@ export class GrowElement extends BaseElement<number> {
 
       this.data += 0.1;
     }
+  }
+}
+
+export class DrawElement extends BaseElement<string[]> {
+  initialData: string[] = [];
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  isDown: boolean = false;
+  radius: number = 10;
+  lastDrewActionIdx: number = -1;
+  canvasX: number = 0;
+  canvasY: number = 0;
+  debouncedSaveCanvas: () => void;
+  appliedActions: Set<string> = new Set();
+
+  constructor(
+    element: HTMLElement,
+    data: string[] = [],
+    onChange: (data: string[]) => void
+  ) {
+    const div = document.createElement("div");
+    div.classList.add("__playhtml-draw-container");
+    const canvas = document.createElement("canvas");
+    // TODO: this needs to update if the underlying element ever changes
+    canvas.height = element.getBoundingClientRect().height;
+    canvas.width = element.getBoundingClientRect().width;
+    div.appendChild(canvas);
+    element.appendChild(div);
+
+    super(element, data, onChange, { resetShortcut: "shiftKey" });
+
+    this.debouncedSaveCanvas = debounce(() => {
+      this.saveCanvas();
+    }, 1000);
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d")!;
+    canvas.addEventListener("mousedown", (e) => this.mouseDownHandler(e));
+    canvas.addEventListener("mousemove", (e) => this.mouseMoveHandler(e));
+    canvas.addEventListener("mouseup", (e) => this.mouseUpHandler(e));
+  }
+
+  async updateElement(data: string[]): Promise<void> {
+    // TODO: take diff of data arrays. handle deletions
+    const canvas: HTMLCanvasElement = this.element.querySelector(
+      ".__playhtml-draw-container canvas"
+    )!;
+
+    const ctx = canvas.getContext("2d")!;
+    for (const action of data) {
+      if (this.appliedActions.has(action)) continue;
+
+      var canvasPic = new Image();
+      canvasPic.src = action;
+      await canvasPic.decode();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(canvasPic, 0, 0);
+      this.appliedActions.add(action);
+    }
+  }
+
+  get canvasPosition() {
+    return this.canvas.getBoundingClientRect();
+  }
+
+  mouseDownHandler(e: MouseEvent) {
+    this.isDown = true;
+    this.ctx.lineWidth = 1;
+
+    this.ctx.beginPath();
+    const { x, y } = this.canvasPosition;
+    this.canvasX = e.pageX - x;
+    this.canvasY = e.pageY - y;
+    this.ctx.moveTo(this.canvasX, this.canvasY);
+  }
+
+  mouseMoveHandler(e: MouseEvent) {
+    if (!this.isDown) return;
+    const { x, y } = this.canvasPosition;
+
+    this.canvasX = e.clientX - x;
+    this.canvasY = e.clientY - y;
+    this.ctx.lineTo(this.canvasX, this.canvasY);
+    this.ctx.strokeStyle = "#000";
+    this.ctx.stroke();
+    this.debouncedSaveCanvas();
+  }
+
+  mouseUpHandler(_e: MouseEvent) {
+    this.isDown = false;
+    this.ctx.closePath();
+    this.saveCanvas();
+  }
+
+  saveCanvas() {
+    // if want to support redo, need to save index and then reset and pop redos when
+    // new action.
+    this.data = [...this.data, this.canvas.toDataURL()];
+    this.appliedActions.add(this.canvas.toDataURL());
+    this.lastDrewActionIdx++;
+  }
+}
+
+export class ClickElement extends BaseElement<string> {
+  initialData: string = "";
+  key: string;
+
+  constructor(
+    element: HTMLElement,
+    data: string,
+    onChange: (data: string) => void,
+    key: string
+  ) {
+    super(element, data, onChange, {
+      resetShortcut: "shiftKey",
+    });
+    this.key = key;
+    element.addEventListener("click", (e) => this.mouseOverHandler(e));
+    // TODO: fix this inheritance thing ugh
+    this.__data = data;
+  }
+
+  updateElement(data: string): void {
+    this.element.style[this.key] = data;
+  }
+
+  mouseOverHandler(e: MouseEvent) {
+    this.element.style[this.key] = "";
+    this.element.classList.toggle("clicked");
+    console.log("second", getComputedStyle(this.element)[this.key]);
+    this.data = getComputedStyle(this.element)[this.key]!.toString();
   }
 }
