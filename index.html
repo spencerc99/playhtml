@@ -16,7 +16,6 @@
   <body>
     <div id="app">
       <div can-move id="sign">playhtml<br />now open</div>
-      <!-- <div ondrag="e => " id="sign">playhtml<br />now open</div> -->
 
       <img
         src="https://spencerchang.me/assets/name-stamp.png"
@@ -43,8 +42,16 @@
         <div id="lampContainer">
           <img id="lamp" src="/noguchi-hanging-lamp.png" can-click="filter" />
         </div>
-        <i>what if everywhere on the web was a space for everyone?</i>
-        <p>interactive, collaborative html elements with a single attribute.</p>
+        <i>interactive, collaborative html elements with a single attribute.</i>
+        <p>
+          playhtml is an open-source library that enables interactive
+          capabilities with minimal code and maximal expressiveness by handling
+          real-time syncing, persistence, and reactivity.
+        </p>
+        <p>
+          This is my current answer to the question:
+          <i>what if everywhere on the web was a space for everyone?</i>
+        </p>
         <h2>existing tags</h2>
         <!-- TODO: move this into React to dynamically update -->
         <ol>
@@ -61,7 +68,8 @@
       </div>
       <footer>
         a library created and maintained by
-        <a href="https://www.spencerchang.me/">spencer</a>
+        <a href="https://www.spencerchang.me/">spencer</a>, powered by
+        <a href="https://partykit.io">partykit</a>
       </footer>
     </div>
     <script type="module" src="./index.ts"></script>
