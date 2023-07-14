@@ -437,13 +437,12 @@ export class ClickElement extends BaseElement<string> {
   }
 
   updateElement(data: string): void {
-    this.element.style[this.key] = data;
+    this.element.style.setProperty(this.key, data);
   }
 
   mouseOverHandler(e: MouseEvent) {
-    this.element.style[this.key] = "";
+    this.element.style.removeProperty(this.key);
     this.element.classList.toggle("clicked");
-    console.log("second", getComputedStyle(this.element)[this.key]);
-    this.data = getComputedStyle(this.element)[this.key]!.toString();
+    this.data = getComputedStyle(this.element).getPropertyValue(this.key);
   }
 }
