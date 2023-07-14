@@ -12,7 +12,7 @@ export interface TagTypeToElement {
   [TagType.CanMove]: MoveElement;
   [TagType.CanSpin]: SpinElement;
   [TagType.CanGrow]: GrowElement;
-  // [TagType.CanDraw]: DrawElement;
+  [TagType.CanDraw]: DrawElement;
   // [TagType.CanBounce]: BounceElement;
   [TagType.CanClick]: ClickElement;
 }
@@ -23,7 +23,7 @@ export enum TagType {
   "CanSpin" = "can-spin",
   "CanGrow" = "can-grow",
   "CanClick" = "can-click",
-  // "CanDraw" = "can-draw",
+  "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
   // "CanHover" = "can-hover",
   // "CanDrive" = "can-drive",

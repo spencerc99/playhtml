@@ -175,6 +175,49 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
       });
     });
   },
+  [TagType.CanDraw]: (drawEles) => {
+    const drawInfo: Y.Map<string[]> = doc.getMap(TagType.CanDraw);
+    const drawElementHandlers = new Map<string, DrawElement>();
+    function updateDrawInfo(elementId: string, newStack: string[]) {
+      if (areArraysEqual(drawInfo.get(elementId) || [], newStack)) {
+        return;
+      }
+
+      drawInfo.set(elementId, newStack);
+    }
+
+    for (const drawEle of drawEles) {
+      console.log("drawEle", drawEle);
+      const elementId = getIdForElement(drawEle);
+      const savedStack = drawInfo.get(elementId);
+      // TODO: add new method for preventing updates while someone else is spinning it?
+      drawElementHandlers.set(
+        elementId,
+        new DrawElement(drawEle, savedStack, (newRotation) =>
+          updateDrawInfo(elementId, newRotation)
+        )
+      );
+    }
+
+    drawInfo.observe((event) => {
+      event.changes.keys.forEach((change, key) => {
+        if (change.action === "add") {
+          drawElementHandlers.set(
+            key,
+            new DrawElement(
+              document.querySelector(`#${key}`)!,
+              drawInfo.get(key)!,
+              (newPosition) => updateDrawInfo(key, newPosition)
+            )
+          );
+        } else if (change.action === "update") {
+          const drawElementHandler = drawElementHandlers.get(key)!;
+          drawElementHandler.__data = drawInfo.get(key)!;
+        }
+        // NOTE: not handling delete because it shouldn't ever happen here.
+      });
+    });
+  },
   [TagType.CanClick]: (hoverEles) => {
     const hoverInfo: Y.Map<string> = doc.getMap(TagType.CanClick);
     const hoverElementHandlers = new Map<string, ClickElement>();
