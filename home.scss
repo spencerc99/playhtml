@@ -137,3 +137,12 @@ footer {
     transform: rotate(0deg);
   }
 }
+
+.letter {
+  // margin: 0 4px;
+  display: inline-block;
+
+  &.clicked {
+    text-shadow: rgb(random(255), random(255), random(255)) 0px 0px 10px;
+  }
+}
