@@ -10,12 +10,16 @@ import {
   ClickElement,
   MoveElement,
   SpinElement,
+  ToggleElement,
+  TagTypeToElement,
+  ElementData,
+  ElementHandler,
 } from "./elements";
 
 const partykitHost =
   process.env.NODE_ENV === "development"
     ? "localhost:1999"
-    : "yjs.threepointone.partykit.dev/party";
+    : "playhtml.spencerc99.partykit.dev";
 
 const doc = new Y.Doc();
 // TODO: should the room include search?
@@ -29,6 +33,8 @@ const yprovider = new YPartyKitProvider(partykitHost, room, doc, {
 // @ts-ignore
 const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 yprovider.connect();
+
+export const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
 
 function getIdForElement(ele: HTMLElement): string {
   // TODO: need to find a good way to robustly generate a uniqueID for an element
@@ -175,11 +181,11 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
       });
     });
   },
-  [TagType.CanClick]: (hoverEles) => {
-    const hoverInfo: Y.Map<string> = doc.getMap(TagType.CanClick);
-    const hoverElementHandlers = new Map<string, ClickElement>();
+  [TagType.CanToggle]: (hoverEles) => {
+    const hoverInfo: Y.Map<boolean> = doc.getMap(TagType.CanToggle);
+    const hoverElementHandlers = new Map<string, ToggleElement>();
 
-    const updateHoverInfo = (elementId: string, newHover: string) => {
+    const updateHoverInfo = (elementId: string, newHover: boolean) => {
       if (hoverInfo.get(elementId) === newHover) {
         return;
       }
@@ -190,38 +196,27 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
     for (const hoverEle of hoverEles) {
       const elementId = getIdForElement(hoverEle);
       // TODO: handle multiple
-      const key = hoverEle.getAttribute(TagType.CanClick)!;
-      const savedHover = hoverInfo.get(elementId) || "";
+      const savedHover = hoverInfo.get(elementId) || false;
       hoverElementHandlers.set(
         elementId,
-        new ClickElement(
-          hoverEle,
-          savedHover,
-          (newHover) => {
-            hoverInfo.set(elementId, newHover);
-          },
-          key
-        )
+        new ToggleElement(hoverEle, savedHover, (newHover) => {
+          hoverInfo.set(elementId, newHover);
+        })
       );
     }
 
     hoverInfo.observe((event) => {
       event.changes.keys.forEach((change, key) => {
         if (change.action === "add") {
-          const updateKey = document
-            .querySelector(`#${key}`)!
-            .getAttribute(TagType.CanClick)!;
           hoverElementHandlers.set(
             key,
-            new ClickElement(
+            new ToggleElement(
               document.querySelector(`#${key}`)!,
               hoverInfo.get(key)!,
-              (newHover) => updateHoverInfo(key, newHover),
-              updateKey
+              (newHover) => updateHoverInfo(key, newHover)
             )
           );
         } else if (change.action === "update") {
-          console.log("UPDATING");
           const drawElementHandler = hoverElementHandlers.get(key)!;
           drawElementHandler.__data = hoverInfo.get(key)!;
         }
@@ -245,24 +240,110 @@ function isHTMLElement(ele: any): ele is HTMLElement {
   return ele instanceof HTMLElement;
 }
 
+function registerPlayElement(element: HTMLElement, tag: TagType) {
+  const commonTagInfo = TagTypeToElement[tag];
+  type tagType = (typeof commonTagInfo)["initialData"];
+  const tagData: Y.Map<tagType> = globalData.get(tag);
+
+  const elementId = getIdForElement(element);
+  const elementData: ElementData = {
+    ...commonTagInfo,
+    initialData: tagData.get(elementId) || commonTagInfo.initialData,
+    element,
+    onChange: (newData) => {
+      if (tagData.get(elementId) === newData) {
+        return;
+      }
+
+      tagData.set(elementId, newData);
+    },
+  };
+
+  return new ElementHandler(elementData);
+}
+
 /**
  * Sets up any playhtml elements that are currently on the page.
  * Can be repeatedly called to set up new elements without affecting existing ones.
  */
 export function setupElements(): void {
   // TODO: need to expose some function to set up new elements that are added after the fact (like when elements are hydrated).
-  for (const [tag, setup] of Object.entries(TagData)) {
+
+  const elementHandlers = new Map<string, ElementHandler>();
+
+  for (const tag of Object.keys(TagData)) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
-    setup(tagElements);
+    if (!tagElements.length) {
+      continue;
+    }
 
-    // Set up the common classes for affected elements.
-    tagElements.forEach((ele) => {
-      ele.classList.add(`__playhtml-element`);
-      ele.classList.add(`__playhtml-${tag}`);
+    const commonTagInfo = TagTypeToElement[tag as TagType];
+    if (!commonTagInfo) {
+      continue;
+    }
+    type tagType = (typeof commonTagInfo)["initialData"];
+    if (!globalData.get(tag as TagType)) {
+      globalData.set(tag as TagType, new Y.Map<tagType>());
+    }
+
+    const tagData: Y.Map<tagType> = globalData.get(tag as TagType)!;
+    for (const element of tagElements) {
+      const elementHandler = registerPlayElement(element, tag as TagType);
+      elementHandlers.set(getIdForElement(element), elementHandler);
+      // Set up the common classes for affected elements.
+      element.classList.add(`__playhtml-element`);
+      element.classList.add(`__playhtml-${tag}`);
+    }
+
+    tagData.observe((event) => {
+      event.changes.keys.forEach((change, key) => {
+        if (change.action === "add") {
+          // TODO: use custom selector here
+          const element = document.querySelector(`#${key}`)!;
+          if (!isHTMLElement(element)) {
+            console.log(`Element ${key} not an HTML element. Ignoring.`);
+            return;
+          }
+          const registeredElement = registerPlayElement(
+            element,
+            tag as TagType
+          );
+          elementHandlers.set(getIdForElement(element), registeredElement);
+        } else if (change.action === "update") {
+          const elementHandler = elementHandlers.get(key)!;
+          elementHandler.__data = tagData.get(key)!;
+        } else if (change.action === "delete") {
+          elementHandlers.delete(key);
+        } else {
+          console.log(`Unhandled action: ${change.action}`);
+        }
+      });
     });
   }
+
+  globalData.observe((event) => {
+    event.changes.keys.forEach((change, key) => {
+      if (change.action === "add") {
+        globalData.set(key, globalData.get(key)!);
+        // TODO: need to re-initialize the above handlers here too...?
+      }
+    });
+  });
+
+  // for (const [tag, setup] of Object.entries(TagData)) {
+  //   const tagElements: HTMLElement[] = Array.from(
+  //     document.querySelectorAll(`[${tag}]`)
+  //   ).filter(isHTMLElement);
+  //   setup(tagElements);
+
+  //   // Set up the common classes for affected elements.
+  //   tagElements.forEach((ele) => {
+  //     ele.classList.add(`__playhtml-element`);
+  //     ele.classList.add(`__playhtml-${tag}`);
+  //   });
+  // }
 }
 
 // TODO: eventually need a way to import this that keeps library small and only imports the requested tags.

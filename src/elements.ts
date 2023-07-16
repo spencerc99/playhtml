@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { Position } from "./types";
+import { Position, TagType } from "./types";
 
 // @ts-ignore
 const debounce = (fn: Function, ms = 300) => {
@@ -431,7 +431,7 @@ export class ClickElement extends BaseElement<string> {
       resetShortcut: "shiftKey",
     });
     this.key = key;
-    element.addEventListener("click", (e) => this.mouseOverHandler(e));
+    element.addEventListener("click", (e) => this.clickHandler(e));
     // TODO: fix this inheritance thing ugh
     this.__data = data;
   }
@@ -440,9 +440,190 @@ export class ClickElement extends BaseElement<string> {
     this.element.style.setProperty(this.key, data);
   }
 
-  mouseOverHandler(e: MouseEvent) {
+  clickHandler(e: MouseEvent) {
     this.element.style.removeProperty(this.key);
     this.element.classList.toggle("clicked");
     this.data = getComputedStyle(this.element).getPropertyValue(this.key);
+  }
+}
+
+/**
+ * ToggleElement is a special case of ClickElement where the data is a boolean
+ * and the element is toggled on and off. Relies on the element having a
+ * "clicked" class, which is toggled by the user.
+ */
+export class ToggleElement extends BaseElement<boolean> {
+  initialData: boolean = false;
+
+  constructor(
+    element: HTMLElement,
+    data: boolean,
+    onChange: (data: boolean) => void
+  ) {
+    super(element, data, onChange, {
+      resetShortcut: "shiftKey",
+    });
+    element.addEventListener("click", (e) => this.clickHandler(e));
+  }
+
+  updateElement(data: boolean): void {
+    this.element.classList.toggle("clicked", data);
+  }
+
+  clickHandler(e: MouseEvent) {
+    this.data = !this.data;
+  }
+}
+
+interface ElementInitializer<T = any> {
+  initialData: T;
+  updateElement: (element: Element, data: T) => void;
+
+  // Event handlers
+  // TODO: what happens if you return undefined? should that register a change?
+  onClick?: (e: MouseEvent, data: T) => T;
+  onDrag?: (e: MouseEvent, data: T) => T;
+
+  // Advanced settings
+  resetShortcut?: ModifierKey;
+  debounceMs?: number;
+}
+
+export interface ElementData<T = any> extends ElementInitializer<T> {
+  element: HTMLElement;
+  onChange: (data: T) => void;
+}
+
+interface SyncData<T> {
+  selector: string;
+  data: T;
+}
+
+export const TagTypeToElement: Record<TagType, ElementInitializer> = {
+  [TagType.CanToggle]: {
+    initialData: false,
+    updateElement: (element: Element, data: boolean) => {
+      element.classList.toggle("clicked", data);
+    },
+    onClick: (e: MouseEvent, data: boolean) => {
+      return !data;
+    },
+    resetShortcut: "shiftKey",
+  },
+};
+
+// const ClickElementData = {
+//   onClick: (e: MouseEvent, data: boolean) => {
+//     this.element.classList.toggle("clicked");
+//   },
+// };
+
+export class ElementHandler<T = any> {
+  initialData: T;
+  element: HTMLElement;
+  _data: T;
+  onChange: (data: T) => void;
+  debouncedOnChange: (data: T) => void;
+  resetShortcut?: ModifierKey;
+  updateElement: (element: Element, data: T) => void;
+
+  constructor({
+    element,
+    onChange,
+    initialData,
+    updateElement,
+    onClick,
+    resetShortcut,
+    debounceMs,
+  }: ElementData<T>) {
+    this.element = element;
+    this.initialData = initialData;
+    this.onChange = onChange;
+    this.resetShortcut = resetShortcut;
+    this.debouncedOnChange = debounce(this.onChange, debounceMs);
+    this.updateElement = updateElement;
+    // Needed to get around the typescript error even though it is assigned in __data.
+    this._data = initialData;
+    this.__data = initialData;
+
+    // Handle all the event handlers
+    if (onClick) {
+      element.addEventListener("click", (e) => {
+        const newData = onClick(e, this.data);
+        if (newData !== undefined) {
+          this.data = newData;
+        }
+      });
+    }
+
+    if (resetShortcut) {
+      if (!element.title) {
+        element.title = `Hold down the ${ModifierKeyToName[resetShortcut]} key while clicking to reset.`;
+      }
+      element.addEventListener("click", (e) => {
+        switch (resetShortcut) {
+          case "ctrlKey":
+            if (!e.ctrlKey) {
+              return;
+            }
+            break;
+          case "altKey":
+            if (!e.altKey) {
+              return;
+            }
+            break;
+          case "shiftKey":
+            if (!e.shiftKey) {
+              return;
+            }
+            break;
+          case "metaKey":
+            if (!e.metaKey) {
+              return;
+            }
+            break;
+          default:
+            return;
+        }
+        this.reset();
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    }
+  }
+
+  get data(): T {
+    return this._data;
+  }
+
+  /**
+   * // PRIVATE USE ONLY \\
+   *
+   * Updates the internal state with the given data and handles all the downstream effects. Should only be used by the sync code to ensure one-way
+   * reactivity.
+   * (e.g. calling `updateElement` and `onChange`)
+   */
+  set __data(data: T) {
+    this._data = data;
+    this.updateElement(this.element, data);
+  }
+
+  // TODO: turn from setter into a method to allow for debouncing
+  /**
+   * Public-use setter for data that makes the change to all clients.
+   */
+  set data(data: T) {
+    this.onChange(data);
+  }
+
+  setDataDebounced(data: T) {
+    this.debouncedOnChange(data);
+  }
+
+  /**
+   * Resets the element to its default state.
+   */
+  reset() {
+    this.data = this.initialData;
   }
 }

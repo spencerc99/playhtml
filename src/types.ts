@@ -9,20 +9,22 @@ import {
 export type Position = { x: number; y: number };
 
 export interface TagTypeToElement {
+  [TagType.CanPlay]: Element;
   [TagType.CanMove]: MoveElement;
   [TagType.CanSpin]: SpinElement;
   [TagType.CanGrow]: GrowElement;
   // [TagType.CanDraw]: DrawElement;
   // [TagType.CanBounce]: BounceElement;
-  [TagType.CanClick]: ClickElement;
+  [TagType.CanToggle]: ClickElement;
 }
 
 // Supported Tags
 export enum TagType {
+  "CanPlay" = "can-play",
   "CanMove" = "can-move",
   "CanSpin" = "can-spin",
   "CanGrow" = "can-grow",
-  "CanClick" = "can-click",
+  "CanToggle" = "can-toggle",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
   // "CanHover" = "can-hover",
