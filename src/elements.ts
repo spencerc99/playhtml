@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { Position, TagType } from "./types";
+import { MoveData, Position, SpinData, TagType } from "./types";
 
 // @ts-ignore
 const debounce = (fn: Function, ms = 300) => {
@@ -476,13 +476,14 @@ export class ToggleElement extends BaseElement<boolean> {
 }
 
 interface ElementInitializer<T = any> {
-  initialData: T;
-  updateElement: (element: Element, data: T) => void;
+  defaultData: T;
+  updateElement: (element: HTMLElement, data: T) => void;
 
   // Event handlers
   // TODO: what happens if you return undefined? should that register a change?
   onClick?: (e: MouseEvent, data: T) => T;
   onDrag?: (e: MouseEvent, data: T) => T;
+  onDragStart?: (e: MouseEvent, data: T) => T;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -490,6 +491,8 @@ interface ElementInitializer<T = any> {
 }
 
 export interface ElementData<T = any> extends ElementInitializer<T> {
+  // localData and sharedData interfaces?
+  data?: T;
   element: HTMLElement;
   onChange: (data: T) => void;
 }
@@ -500,9 +503,63 @@ interface SyncData<T> {
 }
 
 export const TagTypeToElement: Record<TagType, ElementInitializer> = {
+  [TagType.CanMove]: {
+    defaultData: { x: 0, y: 0, startMouseX: 0, startMouseY: 0 } as MoveData,
+    updateElement: (element: HTMLElement, data: MoveData) => {
+      element.style.transform = `translate(${data.x}px, ${data.y}px)`;
+    },
+    onDragStart: (e: MouseEvent, data: MoveData) => {
+      return {
+        ...data,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+      };
+    },
+    onDrag: (e: MouseEvent, data: MoveData) => {
+      return {
+        x: data.x + e.clientX - data.startMouseX,
+        y: data.y + e.clientY - data.startMouseY,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+      };
+    },
+    resetShortcut: "shiftKey",
+  },
+  [TagType.CanSpin]: {
+    defaultData: { rotation: 0, startMouseX: 0 } as SpinData,
+    updateElement: (element: HTMLElement, data: SpinData) => {
+      element.style.transform = `rotate(${data.rotation}deg)`;
+    },
+    onDragStart: (e: MouseEvent, data: SpinData) => {
+      return {
+        ...data,
+        startMouseX: e.clientX,
+      };
+    },
+    onDrag: (e: MouseEvent, data: SpinData) => {
+      // Calculate distance mouse has moved from the last known position
+      // TODO: scale this according to size
+      let distance = Math.abs(e.pageX - data.startMouseX) * 2;
+      let rotation = data.rotation;
+
+      if (e.pageX > data.startMouseX) {
+        // Move right
+        rotation += distance; // Change rotation proportional to the distance moved
+      } else if (e.pageX < data.startMouseX) {
+        // Move left
+        rotation -= distance; // Change rotation proportional to the distance moved
+      }
+
+      return {
+        rotation,
+        startMouseX: e.pageX,
+      };
+    },
+    resetShortcut: "shiftKey",
+  },
   [TagType.CanToggle]: {
-    initialData: false,
-    updateElement: (element: Element, data: boolean) => {
+    defaultData: false,
+    updateElement: (element: HTMLElement, data: boolean) => {
       element.classList.toggle("clicked", data);
     },
     onClick: (e: MouseEvent, data: boolean) => {
@@ -512,36 +569,34 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
   },
 };
 
-// const ClickElementData = {
-//   onClick: (e: MouseEvent, data: boolean) => {
-//     this.element.classList.toggle("clicked");
-//   },
-// };
-
 export class ElementHandler<T = any> {
-  initialData: T;
+  defaultData: T;
   element: HTMLElement;
   _data: T;
   onChange: (data: T) => void;
   debouncedOnChange: (data: T) => void;
   resetShortcut?: ModifierKey;
-  updateElement: (element: Element, data: T) => void;
+  updateElement: (element: HTMLElement, data: T) => void;
 
   constructor({
     element,
     onChange,
-    initialData,
+    defaultData,
+    data,
     updateElement,
     onClick,
+    onDrag,
+    onDragStart,
     resetShortcut,
     debounceMs,
   }: ElementData<T>) {
     this.element = element;
-    this.initialData = initialData;
+    this.defaultData = defaultData;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.updateElement = updateElement;
+    const initialData = data === undefined ? defaultData : data;
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData;
     this.__data = initialData;
@@ -556,6 +611,33 @@ export class ElementHandler<T = any> {
       });
     }
 
+    if (onDrag) {
+      element.addEventListener("mousedown", (e) => {
+        if (onDragStart) {
+          // Need to be able to not persist everything in the data, causing some lag.
+          const newData = onDragStart(e, this.data);
+          if (newData !== undefined) {
+            this.data = newData;
+          }
+        }
+
+        const onMouseMove = (e: MouseEvent) => {
+          e.preventDefault();
+          const newData = onDrag(e, this.data);
+          if (newData !== undefined) {
+            this.data = newData;
+          }
+        };
+        const onMouseUp = (e: MouseEvent) => {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+        };
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+    }
+
+    // Handle advanced settings
     if (resetShortcut) {
       if (!element.title) {
         element.title = `Hold down the ${ModifierKeyToName[resetShortcut]} key while clicking to reset.`;
@@ -624,6 +706,6 @@ export class ElementHandler<T = any> {
    * Resets the element to its default state.
    */
   reset() {
-    this.data = this.initialData;
+    this.data = this.defaultData;
   }
 }

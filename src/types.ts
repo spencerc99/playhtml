@@ -7,6 +7,16 @@ import {
 } from "./elements";
 
 export type Position = { x: number; y: number };
+export type MoveData = {
+  x: number;
+  y: number;
+  startMouseX: number;
+  startMouseY: number;
+};
+export type SpinData = {
+  rotation: number;
+  startMouseX: number;
+};
 
 export interface TagTypeToElement {
   [TagType.CanPlay]: Element;

@@ -181,49 +181,6 @@ export const TagData: Record<TagType, (eles: HTMLElement[]) => void> = {
       });
     });
   },
-  [TagType.CanToggle]: (hoverEles) => {
-    const hoverInfo: Y.Map<boolean> = doc.getMap(TagType.CanToggle);
-    const hoverElementHandlers = new Map<string, ToggleElement>();
-
-    const updateHoverInfo = (elementId: string, newHover: boolean) => {
-      if (hoverInfo.get(elementId) === newHover) {
-        return;
-      }
-
-      hoverInfo.set(elementId, newHover);
-    };
-
-    for (const hoverEle of hoverEles) {
-      const elementId = getIdForElement(hoverEle);
-      // TODO: handle multiple
-      const savedHover = hoverInfo.get(elementId) || false;
-      hoverElementHandlers.set(
-        elementId,
-        new ToggleElement(hoverEle, savedHover, (newHover) => {
-          hoverInfo.set(elementId, newHover);
-        })
-      );
-    }
-
-    hoverInfo.observe((event) => {
-      event.changes.keys.forEach((change, key) => {
-        if (change.action === "add") {
-          hoverElementHandlers.set(
-            key,
-            new ToggleElement(
-              document.querySelector(`#${key}`)!,
-              hoverInfo.get(key)!,
-              (newHover) => updateHoverInfo(key, newHover)
-            )
-          );
-        } else if (change.action === "update") {
-          const drawElementHandler = hoverElementHandlers.get(key)!;
-          drawElementHandler.__data = hoverInfo.get(key)!;
-        }
-        // NOTE: not handling delete because it shouldn't ever happen here.
-      });
-    });
-  },
 };
 
 // TODO: provide some loading state for these elements immediately?
@@ -242,13 +199,13 @@ function isHTMLElement(ele: any): ele is HTMLElement {
 
 function registerPlayElement(element: HTMLElement, tag: TagType) {
   const commonTagInfo = TagTypeToElement[tag];
-  type tagType = (typeof commonTagInfo)["initialData"];
+  type tagType = (typeof commonTagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag);
 
   const elementId = getIdForElement(element);
   const elementData: ElementData = {
     ...commonTagInfo,
-    initialData: tagData.get(elementId) || commonTagInfo.initialData,
+    data: tagData.get(elementId) || commonTagInfo.defaultData,
     element,
     onChange: (newData) => {
       if (tagData.get(elementId) === newData) {
@@ -270,8 +227,9 @@ export function setupElements(): void {
   // TODO: need to expose some function to set up new elements that are added after the fact (like when elements are hydrated).
 
   const elementHandlers = new Map<string, ElementHandler>();
+  console.log("EXISTING DATA", globalData.toJSON());
 
-  for (const tag of Object.keys(TagData)) {
+  for (const tag of Object.values(TagType)) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
@@ -279,18 +237,20 @@ export function setupElements(): void {
       continue;
     }
 
-    const commonTagInfo = TagTypeToElement[tag as TagType];
+    const commonTagInfo = TagTypeToElement[tag];
+    console.log(commonTagInfo);
     if (!commonTagInfo) {
       continue;
     }
-    type tagType = (typeof commonTagInfo)["initialData"];
-    if (!globalData.get(tag as TagType)) {
-      globalData.set(tag as TagType, new Y.Map<tagType>());
+    console.log(`initializing ${tag}`);
+    type tagType = (typeof commonTagInfo)["defaultData"];
+    if (!globalData.get(tag)) {
+      globalData.set(tag, new Y.Map<tagType>());
     }
 
-    const tagData: Y.Map<tagType> = globalData.get(tag as TagType)!;
+    const tagData: Y.Map<tagType> = globalData.get(tag)!;
     for (const element of tagElements) {
-      const elementHandler = registerPlayElement(element, tag as TagType);
+      const elementHandler = registerPlayElement(element, tag);
       elementHandlers.set(getIdForElement(element), elementHandler);
       // Set up the common classes for affected elements.
       element.classList.add(`__playhtml-element`);
