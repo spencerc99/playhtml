@@ -18,14 +18,13 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
   metaKey: "Meta",
 };
 
-// TODO: these probably need to use localStorage for certain things that are big..
-function retrieveElementData(element: HTMLElement, key: string): any {
-  return JSON.parse(element.dataset[key] || "null");
-}
-
-function setElementData(element: HTMLElement, key: string, value: any): void {
-  element.dataset[key] = JSON.stringify(value);
-}
+// TODO: Expose these to the user to simplify accessing data in `globalData`
+// function retrieveElementData(element: HTMLElement, key: string): any {
+//   return JSON.parse(element.dataset[key] || "null");
+// }
+// function setElementData(element: HTMLElement, key: string, value: any): void {
+//   element.dataset[key] = JSON.stringify(value);
+// }
 
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)
@@ -54,19 +53,6 @@ export interface ElementData<T = any> extends ElementInitializer<T> {
   data?: T;
   element: HTMLElement;
   onChange: (data: T) => void;
-}
-
-interface ElementEventHandlerData<T = any, U = any> {
-  data: T;
-  localData: U;
-  element: HTMLElement;
-  setData: (data: T) => void;
-  setLocalData: (data: U) => void;
-}
-
-interface SyncData<T> {
-  selector: string;
-  data: T;
 }
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")

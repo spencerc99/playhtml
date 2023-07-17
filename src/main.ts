@@ -55,7 +55,7 @@ function isHTMLElement(ele: any): ele is HTMLElement {
 function registerPlayElement(element: HTMLElement, tag: TagType) {
   const commonTagInfo = TagTypeToElement[tag];
   type tagType = (typeof commonTagInfo)["defaultData"];
-  const tagData: Y.Map<tagType> = globalData.get(tag);
+  const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
   const elementId = getIdForElement(element);
   const elementData: ElementData = {
