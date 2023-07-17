@@ -30,6 +30,7 @@ function setElementData(element: HTMLElement, key: string, value: any): void {
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
+// TODO: add new method for preventing updates while someone else is moving it?
 interface ElementInitializer<T = any> {
   defaultData: T;
   updateElement: (element: HTMLElement, data: T) => void;
@@ -95,10 +96,9 @@ function canGrowCursorHandler(
   return { ...data };
 }
 
-export const TagTypeToElement: Record<
-  Exclude<TagType, "can-play">,
-  ElementInitializer
-> = {
+// TODO: make it a function that takes in element to get result?
+export const TagTypeToElement: Record<TagType, ElementInitializer> = {
+  [TagType.CanPlay]: {},
   [TagType.CanMove]: {
     defaultData: { x: 0, y: 0, startMouseX: 0, startMouseY: 0 } as MoveData,
     updateElement: (element: HTMLElement, data: MoveData) => {
