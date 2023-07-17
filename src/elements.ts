@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { MoveData, Position, SpinData, TagType } from "./types";
+import { GrowData, MoveData, Position, SpinData, TagType } from "./types";
 
 // @ts-ignore
 const debounce = (fn: Function, ms = 300) => {
@@ -481,9 +481,12 @@ interface ElementInitializer<T = any> {
 
   // Event handlers
   // TODO: what happens if you return undefined? should that register a change?
-  onClick?: (e: MouseEvent, data: T) => T;
-  onDrag?: (e: MouseEvent, data: T) => T;
-  onDragStart?: (e: MouseEvent, data: T) => T;
+  onClick?: (e: MouseEvent, data: T, element: HTMLElement) => T;
+  onDrag?: (e: MouseEvent, data: T, element: HTMLElement) => T;
+  onDragStart?: (e: MouseEvent, data: T, element: HTMLElement) => T;
+  onMouseEnter?: (e: MouseEvent, data: T, element: HTMLElement) => T;
+  onKeyDown?: (e: KeyboardEvent, data: T, element: HTMLElement) => T;
+  onKeyUp?: (e: KeyboardEvent, data: T, element: HTMLElement) => T;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -497,12 +500,50 @@ export interface ElementData<T = any> extends ElementInitializer<T> {
   onChange: (data: T) => void;
 }
 
+interface ElementEventHandlerData<T = any, U = any> {
+  data: T;
+  localData: U;
+  element: HTMLElement;
+  setData: (data: T) => void;
+  setLocalData: (data: U) => void;
+}
+
 interface SyncData<T> {
   selector: string;
   data: T;
 }
 
-export const TagTypeToElement: Record<TagType, ElementInitializer> = {
+const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
+      16 0,
+    auto`;
+const cutCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='48' viewport='0 0 100 100' style='fill:black;font-size:24px;'><text y='50%'>✂️</text></svg>") 16 0,auto`;
+function canGrowCursorHandler(
+  e: MouseEvent | KeyboardEvent,
+  data: GrowData,
+  element: HTMLElement
+) {
+  data.isHovering = true;
+  if (e.altKey) {
+    if (data.scale <= 0.5) {
+      element.style.cursor = "not-allowed";
+      return;
+    }
+    element.style.cursor = cutCursor;
+  } else {
+    if (data.scale >= data.maxScale) {
+      element.style.cursor = "not-allowed";
+      return;
+    }
+    element.style.cursor = growCursor;
+  }
+
+  return { ...data };
+}
+
+export const TagTypeToElement: Record<
+  Exclude<TagType, "can-play">,
+  ElementInitializer
+> = {
   [TagType.CanMove]: {
     defaultData: { x: 0, y: 0, startMouseX: 0, startMouseY: 0 } as MoveData,
     updateElement: (element: HTMLElement, data: MoveData) => {
@@ -567,6 +608,38 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
     },
     resetShortcut: "shiftKey",
   },
+  [TagType.CanGrow]: {
+    // TODO: turn this into a function so you can accept arbitrary user input?
+    defaultData: { scale: 1, maxScale: 2, isHovering: false } as GrowData,
+    updateElement: (element: HTMLElement, data: GrowData) => {
+      element.style.transform = `scale(${data.scale})`;
+    },
+    onClick: (e: MouseEvent, data: GrowData, element: HTMLElement) => {
+      if (e.altKey) {
+        // shrink
+        if (data.scale <= 0.5) {
+          return;
+        }
+
+        data.scale -= 0.1;
+      } else {
+        // grow
+        element.style.cursor = growCursor;
+        if (data.scale >= data.maxScale) {
+          return;
+        }
+
+        data.scale += 0.1;
+      }
+      return {
+        ...data,
+        scale: data.scale >= data.maxScale ? 1 : data.scale + 0.1,
+      };
+    },
+    onMouseEnter: canGrowCursorHandler,
+    onKeyDown: canGrowCursorHandler,
+    onKeyUp: canGrowCursorHandler,
+  },
 };
 
 export class ElementHandler<T = any> {
@@ -587,6 +660,9 @@ export class ElementHandler<T = any> {
     onClick,
     onDrag,
     onDragStart,
+    onMouseEnter,
+    onKeyDown,
+    onKeyUp,
     resetShortcut,
     debounceMs,
   }: ElementData<T>) {
@@ -604,7 +680,7 @@ export class ElementHandler<T = any> {
     // Handle all the event handlers
     if (onClick) {
       element.addEventListener("click", (e) => {
-        const newData = onClick(e, this.data);
+        const newData = onClick(e, this.data, this.element);
         if (newData !== undefined) {
           this.data = newData;
         }
@@ -615,7 +691,7 @@ export class ElementHandler<T = any> {
       element.addEventListener("mousedown", (e) => {
         if (onDragStart) {
           // Need to be able to not persist everything in the data, causing some lag.
-          const newData = onDragStart(e, this.data);
+          const newData = onDragStart(e, this.data, this.element);
           if (newData !== undefined) {
             this.data = newData;
           }
@@ -623,7 +699,7 @@ export class ElementHandler<T = any> {
 
         const onMouseMove = (e: MouseEvent) => {
           e.preventDefault();
-          const newData = onDrag(e, this.data);
+          const newData = onDrag(e, this.data, this.element);
           if (newData !== undefined) {
             this.data = newData;
           }
@@ -634,6 +710,33 @@ export class ElementHandler<T = any> {
         };
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
+      });
+    }
+
+    if (onMouseEnter) {
+      element.addEventListener("mouseenter", (e) => {
+        const newData = onMouseEnter(e, this.data, this.element);
+        if (newData !== undefined) {
+          this.data = newData;
+        }
+      });
+    }
+
+    if (onKeyDown) {
+      element.addEventListener("keydown", (e) => {
+        const newData = onKeyDown(e, this.data, this.element);
+        if (newData !== undefined) {
+          this.data = newData;
+        }
+      });
+    }
+
+    if (onKeyUp) {
+      element.addEventListener("keyup", (e) => {
+        const newData = onKeyUp(e, this.data, this.element);
+        if (newData !== undefined) {
+          this.data = newData;
+        }
       });
     }
 

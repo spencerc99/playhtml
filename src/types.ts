@@ -17,6 +17,11 @@ export type SpinData = {
   rotation: number;
   startMouseX: number;
 };
+export type GrowData = {
+  scale: number;
+  maxScale: number;
+  isHovering: boolean;
+};
 
 export interface TagTypeToElement {
   [TagType.CanPlay]: Element;
