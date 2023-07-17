@@ -1,4 +1,5 @@
 /// <reference lib="dom"/>
+/// <reference types="vite/client" />
 import YPartyKitProvider from "y-partykit/provider";
 import { IndexeddbPersistence } from "y-indexeddb";
 import "./style.scss";
@@ -6,10 +7,11 @@ import { TagType } from "./types";
 import * as Y from "yjs";
 import { TagTypeToElement, ElementData, ElementHandler } from "./elements";
 
-const partykitHost =
-  process !== undefined && process.env.NODE_ENV === "development"
-    ? "localhost:1999"
-    : "playhtml.spencerc99.partykit.dev";
+// TODO: there's a typescript error here but it all seems to work...
+// @ts-ignore
+const partykitHost = import.meta.env.DEV
+  ? "localhost:1999"
+  : "playhtml.spencerc99.partykit.dev";
 
 const doc = new Y.Doc();
 // TODO: should the room include search?
