@@ -188,7 +188,6 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       }
       return {
         ...data,
-        scale: data.scale >= data.maxScale ? 1 : data.scale + 0.1,
       };
     },
     onMouseEnter: canGrowCursorHandler,
