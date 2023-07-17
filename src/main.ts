@@ -7,7 +7,7 @@ import * as Y from "yjs";
 import { TagTypeToElement, ElementData, ElementHandler } from "./elements";
 
 const partykitHost =
-  process.env.NODE_ENV === "development"
+  process !== undefined && process.env.NODE_ENV === "development"
     ? "localhost:1999"
     : "playhtml.spencerc99.partykit.dev";
 
