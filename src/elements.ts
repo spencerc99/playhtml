@@ -98,7 +98,7 @@ function canGrowCursorHandler(
 
 // TODO: make it a function that takes in element to get result?
 export const TagTypeToElement: Record<TagType, ElementInitializer> = {
-  [TagType.CanPlay]: {},
+  // [TagType.CanPlay]: {},
   [TagType.CanMove]: {
     defaultData: { x: 0, y: 0, startMouseX: 0, startMouseY: 0 } as MoveData,
     updateElement: (element: HTMLElement, data: MoveData) => {

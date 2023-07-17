@@ -16,7 +16,7 @@ export type GrowData = {
 
 // Supported Tags
 export enum TagType {
-  "CanPlay" = "can-play",
+  // "CanPlay" = "can-play",
   "CanMove" = "can-move",
   "CanSpin" = "can-spin",
   "CanGrow" = "can-grow",
