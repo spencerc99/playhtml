@@ -1,28 +1,26 @@
-import {
-  ClickElement,
-  DrawElement,
-  GrowElement,
-  MoveElement,
-  SpinElement,
-} from "./elements";
-
-export type Position = { x: number; y: number };
-
-export interface TagTypeToElement {
-  [TagType.CanMove]: MoveElement;
-  [TagType.CanSpin]: SpinElement;
-  [TagType.CanGrow]: GrowElement;
-  // [TagType.CanDraw]: DrawElement;
-  // [TagType.CanBounce]: BounceElement;
-  [TagType.CanClick]: ClickElement;
-}
+export type MoveData = {
+  x: number;
+  y: number;
+  startMouseX: number;
+  startMouseY: number;
+};
+export type SpinData = {
+  rotation: number;
+  startMouseX: number;
+};
+export type GrowData = {
+  scale: number;
+  maxScale: number;
+  isHovering: boolean;
+};
 
 // Supported Tags
 export enum TagType {
+  // "CanPlay" = "can-play",
   "CanMove" = "can-move",
   "CanSpin" = "can-spin",
   "CanGrow" = "can-grow",
-  "CanClick" = "can-click",
+  "CanToggle" = "can-toggle",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
   // "CanHover" = "can-hover",
