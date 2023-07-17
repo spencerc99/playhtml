@@ -237,6 +237,8 @@ export function setupElements(): void {
       continue;
     }
 
+    // TODO: need way to override this from the element itself?
+    // how does the generic `CanPlay` work here? Does it just look at the existing event handlers?
     const commonTagInfo = TagTypeToElement[tag];
     console.log(commonTagInfo);
     if (!commonTagInfo) {
