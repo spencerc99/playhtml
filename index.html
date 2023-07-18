@@ -35,8 +35,19 @@
           ><span class="letter" id="l" can-toggle>l</span>
         </h1>
         <div id="lampContainer">
-          <img id="lamp" src="/noguchi-hanging-lamp.png" can-toggle />
+          <img
+            class="lamp"
+            id="lamp-hanging"
+            src="/noguchi-hanging-lamp.png"
+            can-toggle
+          />
         </div>
+        <img
+          class="lamp"
+          id="lamp-akari"
+          src="/noguchi-akari-a1.png"
+          can-toggle
+        />
         <i>interactive, collaborative html elements with a single attribute.</i>
         <p>
           playhtml is an open-source library that enables interactive
@@ -45,7 +56,10 @@
         </p>
         <p>
           This is my current answer to the question:
-          <i>what if everywhere on the web was a space for everyone?</i>
+          <i
+            >what if everywhere on the web was a space for everyone to shape,
+            change, and maintain?</i
+          >
         </p>
         <h2>existing tags</h2>
         <!-- TODO: move this into React to dynamically update -->
@@ -60,6 +74,25 @@
             >
           </li>
         </ol>
+        <div id="guestbook">
+          <h2>guestbook</h2>
+          <p>
+            leave a message in the guestbook! (your message will be saved
+            forever)
+          </p>
+          <form id="guestbookForm" can-post>
+            <input type="text" name="name" placeholder="your name" required />
+            <!-- emoji message -->
+            <input
+              type="text"
+              name="message"
+              placeholder="5 chars max, emojis recommended"
+              maxlength="5"
+            />
+            <button type="submit">submit</button>
+          </form>
+          <div id="guestbookMessages"></div>
+        </div>
       </div>
       <footer>
         a library created and maintained by

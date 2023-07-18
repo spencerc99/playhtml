@@ -36,7 +36,7 @@ function getIdForElement(ele: HTMLElement): string {
   return ele.id;
 }
 
-function getElementFromId(id: string): HTMLElement | null {
+export function getElementFromId(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
@@ -60,6 +60,7 @@ function registerPlayElement(element: HTMLElement, tag: TagType) {
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
   const elementId = getIdForElement(element);
+  console.log(elementId, tagData.get(elementId));
   const elementData: ElementData = {
     ...commonTagInfo,
     data: tagData.get(elementId) || commonTagInfo.defaultData,
@@ -97,7 +98,6 @@ export function setupElements(): void {
     // TODO: need way to override this from the element itself?
     // how does the generic `CanPlay` work here? Does it just look at the existing event handlers?
     const commonTagInfo = TagTypeToElement[tag];
-    console.log(commonTagInfo);
     if (!commonTagInfo) {
       continue;
     }

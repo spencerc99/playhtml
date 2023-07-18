@@ -1,4 +1,5 @@
 /// <reference lib="dom"/>
+import { getElementFromId } from "./main";
 import { GrowData, MoveData, SpinData, TagType } from "./types";
 
 // @ts-ignore
@@ -42,6 +43,7 @@ interface ElementInitializer<T = any> {
   onMouseEnter?: (e: MouseEvent, data: T, element: HTMLElement) => T;
   onKeyDown?: (e: KeyboardEvent, data: T, element: HTMLElement) => T;
   onKeyUp?: (e: KeyboardEvent, data: T, element: HTMLElement) => T;
+  onSubmit?: (e: SubmitEvent, data: T, element: HTMLElement) => T;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -180,7 +182,63 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
     onKeyDown: canGrowCursorHandler,
     onKeyUp: canGrowCursorHandler,
   },
+  [TagType.CanPost]: {
+    defaultData: { entries: [], addedEntries: new Set() } as GuestbookData,
+    updateElement: (element: HTMLElement, entries: FormData[]) => {
+      const addedEntries = new Set();
+      const entriesToAdd = entries.filter(
+        (entry) => !addedEntries.has(entry.id)
+      );
+
+      const guestbookDiv = getElementFromId("guestbookMessages");
+      if (guestbookDiv?.children.length === entries.length) {
+        return;
+      }
+
+      entriesToAdd.forEach((entry) => {
+        const newEntry = document.createElement("div");
+        newEntry.classList.add("guestbook-entry");
+        const entryDate = new Date(entry.timestamp);
+        const time = entryDate.toTimeString().split(" ")[0];
+        const isToday = entryDate.toDateString() === new Date().toDateString();
+        newEntry.innerHTML = `
+        <span class="guestbook-entry-timestamp">${
+          !isToday ? entryDate.toDateString() + " " : ""
+        }${time}</span><span class="guestbook-entry-name">${
+          entry.name
+        }</span> <span class="guestbook-entry-message">${entry.message}</span>`;
+        guestbookDiv.prepend(newEntry);
+        addedEntries.add(entry.id);
+      });
+    },
+    onSubmit: (e: SubmitEvent, entries: FormData[]) => {
+      // get input children of the form element
+      e.preventDefault();
+      const formData = new FormData(e.target as HTMLFormElement);
+      // massage formData into new object
+      const inputData = Object.fromEntries(formData.entries());
+      const timestamp = Date.now();
+      const newEntry: FormData = {
+        ...inputData,
+        timestamp,
+        id: `${timestamp}-${inputData.name}`,
+      };
+      return [...entries, newEntry];
+    },
+  },
 };
+
+interface GuestbookData {
+  entries: FormData[];
+  addedEntries: Set<string>;
+}
+
+interface FormData {
+  id: string;
+  name: string;
+  message: string;
+  timestamp: number;
+}
 
 export class ElementHandler<T = any> {
   defaultData: T;
@@ -203,6 +261,7 @@ export class ElementHandler<T = any> {
     onMouseEnter,
     onKeyDown,
     onKeyUp,
+    onSubmit,
     resetShortcut,
     debounceMs,
   }: ElementData<T>) {
@@ -277,6 +336,17 @@ export class ElementHandler<T = any> {
         if (newData !== undefined) {
           this.data = newData;
         }
+      });
+    }
+
+    if (onSubmit) {
+      element.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const newData = onSubmit(e, this.data, this.element);
+        if (newData !== undefined) {
+          this.data = newData;
+        }
+        return false;
       });
     }
 

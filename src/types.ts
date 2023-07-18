@@ -21,6 +21,7 @@ export enum TagType {
   "CanSpin" = "can-spin",
   "CanGrow" = "can-grow",
   "CanToggle" = "can-toggle",
+  "CanPost" = "can-post",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
   // "CanHover" = "can-hover",
