@@ -169,29 +169,30 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
   },
   [TagType.CanGrow]: {
     // TODO: turn this into a function so you can accept arbitrary user input?
-    defaultData: { scale: 1, maxScale: 2 },
-    defaultLocalData: { isHovering: false },
+    defaultData: { scale: 1 },
+    defaultLocalData: { maxScale: 2, isHovering: false },
     updateElement: ({ element, data }) => {
       element.style.transform = `scale(${data.scale})`;
     },
-    onClick: (e: MouseEvent, { data, element, setData }) => {
+    onClick: (e: MouseEvent, { data, element, setData, localData }) => {
+      let { scale } = data;
       if (e.altKey) {
         // shrink
         if (data.scale <= 0.5) {
           return;
         }
 
-        data.scale -= 0.1;
+        scale -= 0.1;
       } else {
         // grow
         element.style.cursor = growCursor;
-        if (data.scale >= data.maxScale) {
+        if (data.scale >= localData.maxScale) {
           return;
         }
 
-        data.scale += 0.1;
+        scale += 0.1;
       }
-      setData(data);
+      setData({ ...data, scale });
     },
     onMouseEnter: canGrowCursorHandler,
     onKeyDown: canGrowCursorHandler,
