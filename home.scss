@@ -2,6 +2,7 @@
 body {
   background: #c6e1ea;
   font-family: "Play";
+  margin-bottom: 80px;
 }
 
 h1 {
@@ -45,10 +46,12 @@ footer {
   position: absolute;
   top: 20vh;
   right: 15%;
+  z-index: 10;
 }
 
 // Source: https://css-tricks.com/how-to-create-neon-text-with-css/
 #sign {
+  z-index: 10;
   color: #fff;
   animation: pulsate 2.5s infinite alternate;
   font-size: 4.2rem;
@@ -83,6 +86,7 @@ footer {
 #plantContainer {
   position: absolute;
   left: 10vw;
+  z-index: 10;
 }
 
 #plant {
@@ -162,6 +166,11 @@ footer {
   &.clicked {
     text-shadow: rgb(random(255), random(255), random(255)) 0px 0px 10px;
   }
+}
+
+#guestbook {
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .guestbook-entry {

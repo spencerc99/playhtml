@@ -119,11 +119,11 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       });
     },
     onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
+      setLocalData({ startMouseX: e.pageX, startMouseY: e.pageY });
       setData({
-        x: data.x + e.clientX - localData.startMouseX,
-        y: data.y + e.clientY - localData.startMouseY,
+        x: data.x + e.pageX - localData.startMouseX,
+        y: data.y + e.pageY - localData.startMouseY,
       });
-      setLocalData({ startMouseX: e.clientX, startMouseY: e.clientY });
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<MoveData>,
@@ -163,6 +163,8 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       element.classList.toggle("clicked", data);
     },
     onClick: (e: MouseEvent, { data, setData }) => {
+      console.log(data, setData);
+      e.preventDefault();
       setData(!data);
     },
     resetShortcut: "shiftKey",
@@ -205,6 +207,7 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       data: entries,
       localData: { addedEntries },
       setLocalData,
+      setData,
     }) => {
       const entriesToAdd = entries.filter(
         (entry) => !addedEntries.has(entry.id)
@@ -282,6 +285,7 @@ export class ElementHandler<T = any, U = any> {
     resetShortcut,
     debounceMs,
   }: ElementData<T>) {
+    console.log("🔨 constructing ", element.id);
     this.element = element;
     this.defaultData = defaultData;
     this.localData = defaultLocalData;
@@ -297,7 +301,7 @@ export class ElementHandler<T = any, U = any> {
     // Handle all the event handlers
     if (onClick) {
       element.addEventListener("click", (e) => {
-        onClick(e, this.eventHandlerData);
+        onClick(e, this.getEventHandlerData());
       });
     }
 
@@ -305,12 +309,12 @@ export class ElementHandler<T = any, U = any> {
       element.addEventListener("mousedown", (e) => {
         if (onDragStart) {
           // Need to be able to not persist everything in the data, causing some lag.
-          onDragStart(e, this.eventHandlerData);
+          onDragStart(e, this.getEventHandlerData());
         }
 
         const onMouseMove = (e: MouseEvent) => {
           e.preventDefault();
-          onDrag(e, this.eventHandlerData);
+          onDrag(e, this.getEventHandlerData());
         };
         const onMouseUp = (e: MouseEvent) => {
           document.removeEventListener("mousemove", onMouseMove);
@@ -323,26 +327,26 @@ export class ElementHandler<T = any, U = any> {
 
     if (onMouseEnter) {
       element.addEventListener("mouseenter", (e) => {
-        onMouseEnter(e, this.eventHandlerData);
+        onMouseEnter(e, this.getEventHandlerData());
       });
     }
 
     if (onKeyDown) {
       element.addEventListener("keydown", (e) => {
-        onKeyDown(e, this.eventHandlerData);
+        onKeyDown(e, this.getEventHandlerData());
       });
     }
 
     if (onKeyUp) {
       element.addEventListener("keyup", (e) => {
-        onKeyUp(e, this.eventHandlerData);
+        onKeyUp(e, this.getEventHandlerData());
       });
     }
 
     if (onSubmit) {
       element.addEventListener("submit", (e) => {
         e.preventDefault();
-        onSubmit(e, this.eventHandlerData);
+        onSubmit(e, this.getEventHandlerData());
         return false;
       });
     }
@@ -388,12 +392,8 @@ export class ElementHandler<T = any, U = any> {
     return this._data;
   }
 
-  setData(data: T): void {
-    this.data = data;
-  }
-
-  setLocalData(data: U): void {
-    this.localData = data;
+  setLocalData(localData: U): void {
+    this.localData = localData;
   }
 
   /**
@@ -405,10 +405,10 @@ export class ElementHandler<T = any, U = any> {
    */
   set __data(data: T) {
     this._data = data;
-    this.updateElement(this.eventHandlerData);
+    this.updateElement(this.getEventHandlerData());
   }
 
-  get eventHandlerData(): ElementEventHandlerData<T, U> {
+  getEventHandlerData(): ElementEventHandlerData<T, U> {
     return {
       element: this.element,
       data: this.data,
@@ -422,7 +422,7 @@ export class ElementHandler<T = any, U = any> {
   /**
    * Public-use setter for data that makes the change to all clients.
    */
-  set data(data: T) {
+  setData(data: T): void {
     this.onChange(data);
   }
 
@@ -434,6 +434,6 @@ export class ElementHandler<T = any, U = any> {
    * Resets the element to its default state.
    */
   reset() {
-    this.data = this.defaultData;
+    this.setData(this.defaultData);
   }
 }

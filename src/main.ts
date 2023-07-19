@@ -125,6 +125,10 @@ export function setupElements(): void {
             console.log(`Element ${key} not an HTML element. Ignoring.`);
             return;
           }
+          if (elementHandlers.has(key)) {
+            console.log(`Element ${key} already registered. Ignoring.`);
+            return;
+          }
           const registeredElement = registerPlayElement(
             element,
             tag as TagType
