@@ -48,9 +48,7 @@ A full list can be found in `types.ts` under `TagType`.
 
 ### `can-move`
 
-
 https://github.com/spencerc99/playhtml/assets/14796580/9c2b9bf6-142c-41e2-8c8f-93a3b121a73e
-
 
 Creates a movable object using 2D `translate` on the element. Dragging the element around will move it
 
@@ -65,7 +63,7 @@ Creates a rotatable object using a `rotate` `transform` on the element. Dragging
 
 ### `can-toggle`
 
-https://twitter.com/spencerc99/status/1681048824884895744?s=20
+<blockquote class="twitter-tweet"><p lang="en" dir="ltr">today i installed some lamps on the demos-and-chill website<br><br>then <a href="https://twitter.com/_jzhao?ref_src=twsrc%5Etfw">@_jzhao</a> and i fought on whether to keep them on or not. <a href="https://t.co/sCspTwmRpS">pic.twitter.com/sCspTwmRpS</a></p>&mdash; spencer chang ☀️ (spencerchang.me @ bsky) (@spencerc99) <a href="https://twitter.com/spencerc99/status/1681048824884895744?ref_src=twsrc%5Etfw">July 17, 2023</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
 Creates an object that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
 
