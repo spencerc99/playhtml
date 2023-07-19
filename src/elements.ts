@@ -163,8 +163,6 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       element.classList.toggle("clicked", data);
     },
     onClick: (e: MouseEvent, { data, setData }) => {
-      console.log(data, setData);
-      e.preventDefault();
       setData(!data);
     },
     resetShortcut: "shiftKey",
@@ -288,7 +286,7 @@ export class ElementHandler<T = any, U = any> {
     resetShortcut,
     debounceMs,
   }: ElementData<T>) {
-    console.log("🔨 constructing ", element.id);
+    // console.log("🔨 constructing ", element.id);
     this.element = element;
     this.defaultData = defaultData;
     this.localData = defaultLocalData;

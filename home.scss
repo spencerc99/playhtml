@@ -110,6 +110,7 @@ footer {
 .content {
   margin-top: 20vh;
   position: relative;
+  max-width: 800px;
 
   @media screen and (max-width: 768px) {
     margin-top: 30vh;

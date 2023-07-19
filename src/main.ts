@@ -55,12 +55,13 @@ function isHTMLElement(ele: any): ele is HTMLElement {
 }
 
 function registerPlayElement(element: HTMLElement, tag: TagType) {
+  // console.log(elementId, tagData.get(elementId));
+
   const commonTagInfo = TagTypeToElement[tag];
   type tagType = (typeof commonTagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
   const elementId = getIdForElement(element);
-  console.log(elementId, tagData.get(elementId));
   const elementData: ElementData = {
     ...commonTagInfo,
     data: tagData.get(elementId) || commonTagInfo.defaultData,
@@ -101,7 +102,7 @@ export function setupElements(): void {
     if (!commonTagInfo) {
       continue;
     }
-    console.log(`initializing ${tag}`);
+    // console.log(`initializing ${tag}`);
     type tagType = (typeof commonTagInfo)["defaultData"];
     if (!globalData.get(tag)) {
       globalData.set(tag, new Y.Map<tagType>());
@@ -109,6 +110,9 @@ export function setupElements(): void {
 
     const tagData: Y.Map<tagType> = globalData.get(tag)!;
     for (const element of tagElements) {
+      if (elementHandlers.has(getIdForElement(element))) {
+        continue;
+      }
       const elementHandler = registerPlayElement(element, tag);
       elementHandlers.set(getIdForElement(element), elementHandler);
       // Set up the common classes for affected elements.
