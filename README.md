@@ -12,6 +12,8 @@ This is designed as an open library for anyone to add on new interactions and ca
 
 https://github.com/spencerc99/playhtml/assets/14796580/00e84e15-2c1c-4b4b-8e15-2af22f39db7a
 
+If you enjoy this, please consider [sponsoring the project or sending a small donation](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
+
 ## Usage
 
 To use this library, you can import the library and the associated styles from a CDN (in this case we will use [unpkg.com](https://unpkg.com)). Please make sure to do this after all the HTML elements on the page and ensure that the HTML elements you are "magic-ifying" have an `id` set.
@@ -40,18 +42,51 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 </script>
 ```
 
-TODO: add import for React.
+## Capabilities
 
-## New Capabilities
+A full list can be found in `types.ts` under `TagType`.
+
+### `can-move`
+
+Creates a movable object using 2D `translate` on the element. Dragging the element around will move it
+
+**troubleshooting**
+
+- This currently doesn't work on `inline` display elements.
+- This currently doesn't work on touch screens.
+
+### `can-spin`
+
+Creates a rotatable object using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
+
+### `can-toggle`
+
+Creates an object that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
+
+### `can-grow`
+
+Creates an object that can be resized using a `scale` `transform`. Clicking the object will grow it, clicking with <kbd>ALT</kbd> will shrink it. Currently, the max size is 2x the original size and the min size is 1/2 the original size.
+
+### `can-post`
+
+Creates a communal forum from a `form` element. The form will sync any new submissions including all the `input` elements in the form, using their `name` property as the key and their value as the value. New messages will be currently prepended to the element with the `guestbookMessages` ID. TODO: make this generic and take user input
+
+---
+
+To add new ones, please find contributor guidelines in [New Capabilities](#new-capabilities).
+
+## Contributing
+
+### New Capabilities
 
 `playhtml` is designed to be a collective library of magical capabilities that anyone can attach to arbitrary HTML elements. If you have an idea for a new capability, please first ensure that there is not a duplicate existing one in the current library (see `TagType` in `types.ts`). Please make a proposal for the capability you would like to add by opening an issue with the `new-capability` label.
 
 To contribute your capability, see sample PR (TODO: LINK).
 
-## Contributing
+---
 
 Outside of contributing new capabilities, feel free to submit any issues or PRs for bugs or improvements to the core of the library.
 
 ## Support & Maintenance
 
-If you enjoy the idea of this library or like using it, please consider [sponsoring the project](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
+Thank you for considering reading this little README and browing this project! I'd love to see you share the library and what you've made with it to me and with your friends. And if you enjoy using this, please consider [sponsoring the project or sending a small donation](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
