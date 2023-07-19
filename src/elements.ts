@@ -213,7 +213,7 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
         (entry) => !addedEntries.has(entry.id)
       );
 
-      const guestbookDiv = getElementFromId("guestbookMessages");
+      const guestbookDiv = getElementFromId("guestbookMessages")!;
       entriesToAdd.forEach((entry) => {
         const newEntry = document.createElement("div");
         newEntry.classList.add("guestbook-entry");
@@ -239,9 +239,12 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
 
       const formData = new FormData(e.target as HTMLFormElement);
       // massage formData into new object
+      // @ts-ignore
       const inputData = Object.fromEntries(formData.entries());
       const timestamp = Date.now();
       const newEntry: FormData = {
+        name: "someone",
+        message: "something",
         ...inputData,
         timestamp,
         id: `${timestamp}-${inputData.name}`,
