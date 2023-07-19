@@ -194,6 +194,7 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       }
       setData({ ...data, scale });
     },
+    // TODO: this still needs to use te document as a whole
     onMouseEnter: canGrowCursorHandler,
     onKeyDown: canGrowCursorHandler,
     onKeyUp: canGrowCursorHandler,
@@ -202,11 +203,9 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
     defaultData: [],
     defaultLocalData: { addedEntries: new Set() },
     updateElement: ({
-      element,
       data: entries,
       localData: { addedEntries },
       setLocalData,
-      setData,
     }) => {
       const entriesToAdd = entries.filter(
         (entry) => !addedEntries.has(entry.id)
