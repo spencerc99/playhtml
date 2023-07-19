@@ -1,12 +1,9 @@
 export type MoveData = {
   x: number;
   y: number;
-  startMouseX: number;
-  startMouseY: number;
 };
 export type SpinData = {
   rotation: number;
-  startMouseX: number;
 };
 export type GrowData = {
   scale: number;

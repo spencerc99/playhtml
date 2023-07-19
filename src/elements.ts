@@ -31,30 +31,50 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
-interface ElementInitializer<T = any> {
+interface ElementInitializer<T = any, U = any> {
   defaultData: T;
-  updateElement: (element: HTMLElement, data: T) => void;
+  defaultLocalData?: U;
+  updateElement: (data: ElementEventHandlerData<T, U>) => void;
 
   // Event handlers
-  // TODO: what happens if you return undefined? should that register a change?
-  onClick?: (e: MouseEvent, data: T, element: HTMLElement) => T;
-  onDrag?: (e: MouseEvent, data: T, element: HTMLElement) => T;
-  onDragStart?: (e: MouseEvent, data: T, element: HTMLElement) => T;
-  onMouseEnter?: (e: MouseEvent, data: T, element: HTMLElement) => T;
-  onKeyDown?: (e: KeyboardEvent, data: T, element: HTMLElement) => T;
-  onKeyUp?: (e: KeyboardEvent, data: T, element: HTMLElement) => T;
-  onSubmit?: (e: SubmitEvent, data: T, element: HTMLElement) => T;
+  onClick?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  onDrag?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  onDragStart?: (
+    e: MouseEvent,
+    eventData: ElementEventHandlerData<T, U>
+  ) => void;
+  onMouseEnter?: (
+    e: MouseEvent,
+    eventData: ElementEventHandlerData<T, U>
+  ) => void;
+  onKeyDown?: (
+    e: KeyboardEvent,
+    eventData: ElementEventHandlerData<T, U>
+  ) => void;
+  onKeyUp?: (
+    e: KeyboardEvent,
+    eventData: ElementEventHandlerData<T, U>
+  ) => void;
+  onSubmit?: (e: SubmitEvent, eventData: ElementEventHandlerData<T, U>) => void;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
   debounceMs?: number;
 }
 
-export interface ElementData<T = any> extends ElementInitializer<T> {
-  // localData and sharedData interfaces?
+export interface ElementData<T = any, U = any> extends ElementInitializer<T> {
   data?: T;
+  localData?: U;
   element: HTMLElement;
   onChange: (data: T) => void;
+}
+
+interface ElementEventHandlerData<T = any, U = any> {
+  data: T;
+  localData: U;
+  element: HTMLElement;
+  setData: (data: T) => void;
+  setLocalData: (data: U) => void;
 }
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
@@ -63,10 +83,9 @@ const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 const cutCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='48' viewport='0 0 100 100' style='fill:black;font-size:24px;'><text y='50%'>✂️</text></svg>") 16 0,auto`;
 function canGrowCursorHandler(
   e: MouseEvent | KeyboardEvent,
-  data: GrowData,
-  element: HTMLElement
+  { data, element, localData, setLocalData }: ElementEventHandlerData<GrowData>
 ) {
-  data.isHovering = true;
+  localData.isHovering = true;
   if (e.altKey) {
     if (data.scale <= 0.5) {
       element.style.cursor = "not-allowed";
@@ -81,83 +100,81 @@ function canGrowCursorHandler(
     element.style.cursor = growCursor;
   }
 
-  return { ...data };
+  setLocalData(localData);
 }
 
 // TODO: make it a function that takes in element to get result?
 export const TagTypeToElement: Record<TagType, ElementInitializer> = {
   // [TagType.CanPlay]: {},
   [TagType.CanMove]: {
-    defaultData: { x: 0, y: 0, startMouseX: 0, startMouseY: 0 } as MoveData,
-    updateElement: (element: HTMLElement, data: MoveData) => {
+    defaultData: { x: 0, y: 0 },
+    defaultLocalData: { startMouseX: 0, startMouseY: 0 },
+    updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
     },
-    onDragStart: (e: MouseEvent, data: MoveData) => {
-      return {
-        ...data,
+    onDragStart: (e: MouseEvent, { setLocalData }) => {
+      setLocalData({
         startMouseX: e.clientX,
         startMouseY: e.clientY,
-      };
+      });
     },
-    onDrag: (e: MouseEvent, data: MoveData) => {
-      return {
-        x: data.x + e.clientX - data.startMouseX,
-        y: data.y + e.clientY - data.startMouseY,
-        startMouseX: e.clientX,
-        startMouseY: e.clientY,
-      };
+    onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
+      setData({
+        x: data.x + e.clientX - localData.startMouseX,
+        y: data.y + e.clientY - localData.startMouseY,
+      });
+      setLocalData({ startMouseX: e.clientX, startMouseY: e.clientY });
     },
     resetShortcut: "shiftKey",
-  },
+  } as ElementInitializer<MoveData>,
   [TagType.CanSpin]: {
-    defaultData: { rotation: 0, startMouseX: 0 } as SpinData,
-    updateElement: (element: HTMLElement, data: SpinData) => {
+    defaultData: { rotation: 0 },
+    defaultLocalData: { startMouseX: 0 },
+    updateElement: ({ element, data }) => {
       element.style.transform = `rotate(${data.rotation}deg)`;
     },
-    onDragStart: (e: MouseEvent, data: SpinData) => {
-      return {
-        ...data,
+    onDragStart: (e: MouseEvent, { setLocalData }) => {
+      setLocalData({
         startMouseX: e.clientX,
-      };
+      });
     },
-    onDrag: (e: MouseEvent, data: SpinData) => {
+    onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
       // Calculate distance mouse has moved from the last known position
       // TODO: scale this according to size
-      let distance = Math.abs(e.pageX - data.startMouseX) * 2;
+      let distance = Math.abs(e.pageX - localData.startMouseX) * 2;
       let rotation = data.rotation;
 
-      if (e.pageX > data.startMouseX) {
+      if (e.pageX > localData.startMouseX) {
         // Move right
         rotation += distance; // Change rotation proportional to the distance moved
-      } else if (e.pageX < data.startMouseX) {
+      } else if (e.pageX < localData.startMouseX) {
         // Move left
         rotation -= distance; // Change rotation proportional to the distance moved
       }
 
-      return {
-        rotation,
-        startMouseX: e.pageX,
-      };
+      setData({ rotation });
+      setLocalData({ startMouseX: e.pageX });
     },
     resetShortcut: "shiftKey",
-  },
+  } as ElementInitializer<SpinData>,
   [TagType.CanToggle]: {
     defaultData: false,
-    updateElement: (element: HTMLElement, data: boolean) => {
+    updateElement: ({ element, data }) => {
       element.classList.toggle("clicked", data);
     },
-    onClick: (e: MouseEvent, data: boolean) => {
-      return !data;
+    onClick: (e: MouseEvent, { data, setData }) => {
+      setData(!data);
     },
     resetShortcut: "shiftKey",
   },
   [TagType.CanGrow]: {
     // TODO: turn this into a function so you can accept arbitrary user input?
-    defaultData: { scale: 1, maxScale: 2, isHovering: false } as GrowData,
-    updateElement: (element: HTMLElement, data: GrowData) => {
+    defaultData: { scale: 1, maxScale: 2 },
+    defaultLocalData: { isHovering: false },
+    updateElement: ({ element, data }) => {
       element.style.transform = `scale(${data.scale})`;
     },
-    onClick: (e: MouseEvent, data: GrowData, element: HTMLElement) => {
+    onClick: (e: MouseEvent, { data, element, setData }) => {
       if (e.altKey) {
         // shrink
         if (data.scale <= 0.5) {
@@ -174,27 +191,26 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
 
         data.scale += 0.1;
       }
-      return {
-        ...data,
-      };
+      setData(data);
     },
     onMouseEnter: canGrowCursorHandler,
     onKeyDown: canGrowCursorHandler,
     onKeyUp: canGrowCursorHandler,
-  },
+  } as ElementInitializer<GrowData>,
   [TagType.CanPost]: {
-    defaultData: { entries: [], addedEntries: new Set() } as GuestbookData,
-    updateElement: (element: HTMLElement, entries: FormData[]) => {
-      const addedEntries = new Set();
+    defaultData: [],
+    defaultLocalData: { addedEntries: new Set() },
+    updateElement: ({
+      element,
+      data: entries,
+      localData: { addedEntries },
+      setLocalData,
+    }) => {
       const entriesToAdd = entries.filter(
         (entry) => !addedEntries.has(entry.id)
       );
 
       const guestbookDiv = getElementFromId("guestbookMessages");
-      if (guestbookDiv?.children.length === entries.length) {
-        return;
-      }
-
       entriesToAdd.forEach((entry) => {
         const newEntry = document.createElement("div");
         newEntry.classList.add("guestbook-entry");
@@ -210,10 +226,14 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
         guestbookDiv.prepend(newEntry);
         addedEntries.add(entry.id);
       });
+
+      setLocalData({ addedEntries });
     },
-    onSubmit: (e: SubmitEvent, entries: FormData[]) => {
+    onSubmit: (e: SubmitEvent, { data: entries, setData }) => {
       // get input children of the form element
       e.preventDefault();
+      e.stopImmediatePropagation();
+
       const formData = new FormData(e.target as HTMLFormElement);
       // massage formData into new object
       const inputData = Object.fromEntries(formData.entries());
@@ -223,15 +243,10 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
         timestamp,
         id: `${timestamp}-${inputData.name}`,
       };
-      return [...entries, newEntry];
+      setData([...entries, newEntry]);
     },
-  },
+  } as ElementInitializer<FormData[]>,
 };
-
-interface GuestbookData {
-  entries: FormData[];
-  addedEntries: Set<string>;
-}
 
 interface FormData {
   id: string;
@@ -240,19 +255,21 @@ interface FormData {
   timestamp: number;
 }
 
-export class ElementHandler<T = any> {
+export class ElementHandler<T = any, U = any> {
   defaultData: T;
+  localData: U;
   element: HTMLElement;
   _data: T;
   onChange: (data: T) => void;
   debouncedOnChange: (data: T) => void;
   resetShortcut?: ModifierKey;
-  updateElement: (element: HTMLElement, data: T) => void;
+  updateElement: (data: ElementEventHandlerData<T, U>) => void;
 
   constructor({
     element,
     onChange,
     defaultData,
+    defaultLocalData,
     data,
     updateElement,
     onClick,
@@ -267,6 +284,7 @@ export class ElementHandler<T = any> {
   }: ElementData<T>) {
     this.element = element;
     this.defaultData = defaultData;
+    this.localData = defaultLocalData;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
@@ -279,10 +297,7 @@ export class ElementHandler<T = any> {
     // Handle all the event handlers
     if (onClick) {
       element.addEventListener("click", (e) => {
-        const newData = onClick(e, this.data, this.element);
-        if (newData !== undefined) {
-          this.data = newData;
-        }
+        onClick(e, this.eventHandlerData);
       });
     }
 
@@ -290,18 +305,12 @@ export class ElementHandler<T = any> {
       element.addEventListener("mousedown", (e) => {
         if (onDragStart) {
           // Need to be able to not persist everything in the data, causing some lag.
-          const newData = onDragStart(e, this.data, this.element);
-          if (newData !== undefined) {
-            this.data = newData;
-          }
+          onDragStart(e, this.eventHandlerData);
         }
 
         const onMouseMove = (e: MouseEvent) => {
           e.preventDefault();
-          const newData = onDrag(e, this.data, this.element);
-          if (newData !== undefined) {
-            this.data = newData;
-          }
+          onDrag(e, this.eventHandlerData);
         };
         const onMouseUp = (e: MouseEvent) => {
           document.removeEventListener("mousemove", onMouseMove);
@@ -314,38 +323,26 @@ export class ElementHandler<T = any> {
 
     if (onMouseEnter) {
       element.addEventListener("mouseenter", (e) => {
-        const newData = onMouseEnter(e, this.data, this.element);
-        if (newData !== undefined) {
-          this.data = newData;
-        }
+        onMouseEnter(e, this.eventHandlerData);
       });
     }
 
     if (onKeyDown) {
       element.addEventListener("keydown", (e) => {
-        const newData = onKeyDown(e, this.data, this.element);
-        if (newData !== undefined) {
-          this.data = newData;
-        }
+        onKeyDown(e, this.eventHandlerData);
       });
     }
 
     if (onKeyUp) {
       element.addEventListener("keyup", (e) => {
-        const newData = onKeyUp(e, this.data, this.element);
-        if (newData !== undefined) {
-          this.data = newData;
-        }
+        onKeyUp(e, this.eventHandlerData);
       });
     }
 
     if (onSubmit) {
       element.addEventListener("submit", (e) => {
         e.preventDefault();
-        const newData = onSubmit(e, this.data, this.element);
-        if (newData !== undefined) {
-          this.data = newData;
-        }
+        onSubmit(e, this.eventHandlerData);
         return false;
       });
     }
@@ -391,6 +388,14 @@ export class ElementHandler<T = any> {
     return this._data;
   }
 
+  setData(data: T): void {
+    this.data = data;
+  }
+
+  setLocalData(data: U): void {
+    this.localData = data;
+  }
+
   /**
    * // PRIVATE USE ONLY \\
    *
@@ -400,7 +405,17 @@ export class ElementHandler<T = any> {
    */
   set __data(data: T) {
     this._data = data;
-    this.updateElement(this.element, data);
+    this.updateElement(this.eventHandlerData);
+  }
+
+  get eventHandlerData(): ElementEventHandlerData<T, U> {
+    return {
+      element: this.element,
+      data: this.data,
+      localData: this.localData,
+      setData: (newData) => this.setData(newData),
+      setLocalData: (newData) => this.setLocalData(newData),
+    };
   }
 
   // TODO: turn from setter into a method to allow for debouncing
