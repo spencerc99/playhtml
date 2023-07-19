@@ -48,6 +48,10 @@ A full list can be found in `types.ts` under `TagType`.
 
 ### `can-move`
 
+
+https://github.com/spencerc99/playhtml/assets/14796580/9c2b9bf6-142c-41e2-8c8f-93a3b121a73e
+
+
 Creates a movable object using 2D `translate` on the element. Dragging the element around will move it
 
 **troubleshooting**
@@ -61,6 +65,8 @@ Creates a rotatable object using a `rotate` `transform` on the element. Dragging
 
 ### `can-toggle`
 
+https://twitter.com/spencerc99/status/1681048824884895744?s=20
+
 Creates an object that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
 
 ### `can-grow`
@@ -68,6 +74,8 @@ Creates an object that can be switched on and off. Clicking the element will tog
 Creates an object that can be resized using a `scale` `transform`. Clicking the object will grow it, clicking with <kbd>ALT</kbd> will shrink it. Currently, the max size is 2x the original size and the min size is 1/2 the original size.
 
 ### `can-post`
+
+![image](https://github.com/spencerc99/playhtml/assets/14796580/6de3fcab-2372-4080-b46f-cd768f1ed44e)
 
 Creates a communal forum from a `form` element. The form will sync any new submissions including all the `input` elements in the form, using their `name` property as the key and their value as the value. New messages will be currently prepended to the element with the `guestbookMessages` ID. TODO: make this generic and take user input
 
