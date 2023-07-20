@@ -31,7 +31,7 @@
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "partykit": "^0.0.0-e7aa4cd",
+    "partykit": "^0.0.0-39cf5ce",
     "partysocket": "^0.0.0-e7aa4cd",
     "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.0-e7aa4cd",
