@@ -34,7 +34,7 @@
     "partykit": "^0.0.0-39cf5ce",
     "partysocket": "^0.0.0-e7aa4cd",
     "y-indexeddb": "^9.0.11",
-    "y-partykit": "^0.0.0-e7aa4cd",
-    "yjs": "^13.6.6"
+    "y-partykit": "^0.0.0-39cf5ce",
+    "yjs": "^13.5.44"
   }
 }

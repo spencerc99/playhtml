@@ -1132,12 +1132,17 @@ kolorist@^1.8.0:
   resolved "https://registry.yarnpkg.com/kolorist/-/kolorist-1.8.0.tgz#edddbbbc7894bc13302cdf740af6374d4a04743c"
   integrity sha512-Y+60/zizpJ3HRH8DCss+q95yr6145JXZo46OTpFvDZWLfRCE4qChOyk1b26nMaNpfHHgxagk9dXT5OP0Tfe+dQ==
 
-lib0@^0.2.74:
+lib0@^0.2.42, lib0@^0.2.60, lib0@^0.2.74:
   version "0.2.78"
   resolved "https://registry.yarnpkg.com/lib0/-/lib0-0.2.78.tgz#9aa34733075caafb3edf228da6e609d15ada0088"
   integrity sha512-SV2nU43/6eaYnGH3l0lg2wg1ziB/TH3sAd2E8quXPGwrqo+aX98SNT2ZKucpUr5B8A52jD7ZMjAl+r87Fa/bLQ==
   dependencies:
     isomorphic.js "^0.2.4"
+
+lodash.debounce@^4.0.8:
+  version "4.0.8"
+  resolved "https://registry.yarnpkg.com/lodash.debounce/-/lodash.debounce-4.0.8.tgz#82d79bff30a67c4005ffd5e2515300ad9ca4d7af"
+  integrity sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==
 
 lodash.get@^4.4.2:
   version "4.4.2"
@@ -1998,20 +2003,32 @@ y-indexeddb@^9.0.11:
   dependencies:
     lib0 "^0.2.74"
 
-y-partykit@^0.0.0-e7aa4cd:
-  version "0.0.0"
-  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.0.tgz#ddf7754dc897960e844c6a3cfafbe6576180b44c"
-  integrity sha512-QCSPK4LwPP0lwNga/14MT1UK1v0/qgbFE9GvECl9efo8xXo3AkkwK/uhbDZKbDwLZ2YDzjiY+Fw7xwnZJVQVxw==
+y-partykit@^0.0.0-39cf5ce:
+  version "0.0.0-39cf5ce"
+  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.0-39cf5ce.tgz#1e1014a4ecae2f15fce1faa7e42f0528daa9d8fb"
+  integrity sha512-y3w9lGR/dQ54RVojxI3KcBsGhbJxhywTgyO/+wUemNPpD8qricSqlkT/MMw3kj+JcCQ1bn0WSHkWkWj0BdP06Q==
+  dependencies:
+    lib0 "^0.2.60"
+    lodash.debounce "^4.0.8"
+    y-protocols "^1.0.5"
+    yjs "^13.5.44"
+
+y-protocols@^1.0.5:
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/y-protocols/-/y-protocols-1.0.5.tgz#91d574250060b29fcac8f8eb5e276fbad594245e"
+  integrity sha512-Wil92b7cGk712lRHDqS4T90IczF6RkcvCwAD0A2OPg+adKmOe+nOiT/N2hvpQIWS3zfjmtL4CPaH5sIW1Hkm/A==
+  dependencies:
+    lib0 "^0.2.42"
 
 yallist@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/yallist/-/yallist-4.0.0.tgz#9bb92790d9c0effec63be73519e11a35019a3a72"
   integrity sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==
 
-yjs@^13.6.6:
-  version "13.6.6"
-  resolved "https://registry.yarnpkg.com/yjs/-/yjs-13.6.6.tgz#586b2dd25121a8cdb55ba85bb8760ec8904e037c"
-  integrity sha512-VTvezMeMuOra9jKG1Ym5XuQ2H4xXOubIIIupv/B5oygasa9IqDE7Ufv93QTSe9uz69J5VZGMQb2WTEmJv4kJFQ==
+yjs@^13.5.44:
+  version "13.6.7"
+  resolved "https://registry.yarnpkg.com/yjs/-/yjs-13.6.7.tgz#f1176c37f65eb566cf390bd813e2099d598795f4"
+  integrity sha512-mCZTh4kjvUS2DnaktsYN6wLH3WZCJBLqrTdkWh1bIDpA/sB/GNFaLA/dyVJj2Hc7KwONuuoC/vWe9bwBBosZLQ==
   dependencies:
     lib0 "^0.2.74"
 
