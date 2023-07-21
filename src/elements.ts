@@ -294,7 +294,7 @@ export class ElementHandler<T = any, U = any> {
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.updateElement = updateElement;
-    const initialData = data === undefined ? defaultData : data;
+    const initialData = data === undefined ? this.defaultData : data;
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData;
     this.__data = initialData;
