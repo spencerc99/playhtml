@@ -89,7 +89,6 @@
           </p>
         </details>
         <h2>existing tags</h2>
-        <!-- TODO: move this into React to dynamically update -->
         <img can-play id="customCandle" src="/candle-gif.gif" can-move />
         <!-- Set data for custom (can-play) playhtml elements -->
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
@@ -110,10 +109,18 @@
           customCandle.resetShortcut = "shiftKey";
         </script>
         <ol>
+          <!-- TODO: move this into React to dynamically update -->
+          <li>
+            can-play (custom capabilities
+            <a href="https://github.com/spencerc99/playhtml#can-play"
+              >with your code</a
+            >!)
+          </li>
           <li>can-move</li>
           <li>can-spin</li>
           <li>can-grow</li>
           <li>can-toggle</li>
+          <li>can-post</li>
           <li>
             <a href="https://github.com/spencerc99/playhtml/pulls"
               >yours-here</a
