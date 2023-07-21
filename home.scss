@@ -1,6 +1,7 @@
 // Demo Styles
+$color-background: #c6e1ea;
 body {
-  background: #c6e1ea;
+  background: $color-background;
   font-family: "Play";
   margin-bottom: 80px;
 }
@@ -180,8 +181,25 @@ footer {
 }
 
 #guestbook {
-  max-height: 400px;
-  overflow-y: auto;
+  // hack to make the position: fixed relative to this container
+  // https://stackoverflow.com/questions/6794000/fixed-position-but-relative-to-container
+  -webkit-transform: translateZ(0);
+
+  #guestbookMessages {
+    max-height: 400px;
+    overflow-y: auto;
+
+    &::after {
+      content: "";
+      background: linear-gradient(transparent, $color-background);
+      width: 100%;
+      // Keep this aligned with the padding above
+      height: 22px;
+      position: fixed;
+      bottom: 0px;
+      left: 0;
+    }
+  }
 }
 
 .guestbook-entry {
