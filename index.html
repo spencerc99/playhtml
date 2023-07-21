@@ -91,6 +91,7 @@
         <h2>existing tags</h2>
         <!-- TODO: move this into React to dynamically update -->
         <ol>
+          <img can-play id="customCandle" src="/candle-gif.gif" can-move />
           <li>can-move</li>
           <li>can-spin</li>
           <li>can-grow</li>
@@ -126,6 +127,20 @@
         <a href="https://partykit.io">partykit</a>
       </footer>
     </div>
+
+    <!-- Set data for custom (can-play) playhtml elements -->
+    <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
+    <script>
+      customCandle.defaultData = true;
+      customCandle.onClick = (_e, { data, setData }) => {
+        setData(!data);
+      };
+      customCandle.updateElement = ({ data }) => {
+        customCandle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+      };
+      customCandle.resetShortcut = "shiftKey";
+    </script>
+
     <script type="module" src="./index.ts"></script>
     <script type="module" src="src/main.ts"></script>
     <!-- import cursor chat -->

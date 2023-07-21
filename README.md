@@ -46,6 +46,54 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 
 A full list can be found in `types.ts` under `TagType`.
 
+## Custom Capabilities
+
+### `can-play`
+
+`can-play` is the fully customizable experience of `playhtml`. You can create anything using simple HTML, CSS, and Javascript by simply adding on the functionality needed to the element itself. The library will handle magically syncing and persisting any data that you store.
+
+Here's the simple example included on the playhtml website:
+
+```html
+<img can-play id="customCandle" src="/candle-gif.gif" />
+<!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
+<script>
+  // Every HTML element with an ID has a variable corresponding to that ID name in the global context (see https://stackoverflow.com/questions/3434278/do-dom-tree-elements-with-ids-become-global-properties/3434388#3434388)
+  // This is fun, magical, and readable for small projects, but if you have a larger, complex project, I would advise using `document.getElementById` or `document.querySelector`...
+  customCandle.defaultData = true;
+  customCandle.onClick = (_e, { data, setData }) => {
+    setData(!data);
+  };
+  customCandle.updateElement = ({ data }) => {
+    customCandle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+  };
+  customCandle.resetShortcut = "shiftKey";
+
+  // Alternatively
+  // let candle = document.getElementById('customCandle');
+  // candle.defaultData = true;
+  // candle.onClick = (_e, { data, setData }) => {
+  //   setData(!data);
+  // };
+  // candle.updateElement = ({ data }) => {
+  //   candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+  // };
+  // candle.resetShortcut = "shiftKey";
+</script>
+
+<!-- Import playhtml -->
+<script type="module" src="https://unpkg.com/playhtml"></script>
+<link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
+```
+
+The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `additionalSetup` property). See more examples based on the definitions for the included capabilities in `elements.ts`.
+
+## Plug-and-play Capabilities
+
+These capabilities are common ones that have been designed and created by the community. You should expect that they are relatively well-tested, and they simply build on top of the same API and constructs that `can-play` uses.
+
+We welcome any contributions if you have custom `can-play` elements that you would like to add to the library! Please make a PR.
+
 ### `can-move`
 
 https://github.com/spencerc99/playhtml/assets/14796580/9c2b9bf6-142c-41e2-8c8f-93a3b121a73e
