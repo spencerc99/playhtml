@@ -32,30 +32,20 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
 interface ElementInitializer<T = any, U = any> {
-  defaultData: T;
-  defaultLocalData?: U;
+  defaultData: T | ((element: HTMLElement) => T);
+  defaultLocalData?: U | ((element: HTMLElement) => U);
   updateElement: (data: ElementEventHandlerData<T, U>) => void;
 
   // Event handlers
-  onClick?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  // Abstracts to handle clicking and dragging the element to handle both mouse and touch events.
+  // Takes inspiration from https://github.com/react-grid-layout/react-draggable
   onDrag?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  onClick?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
   onDragStart?: (
     e: MouseEvent,
     eventData: ElementEventHandlerData<T, U>
   ) => void;
-  onMouseEnter?: (
-    e: MouseEvent,
-    eventData: ElementEventHandlerData<T, U>
-  ) => void;
-  onKeyDown?: (
-    e: KeyboardEvent,
-    eventData: ElementEventHandlerData<T, U>
-  ) => void;
-  onKeyUp?: (
-    e: KeyboardEvent,
-    eventData: ElementEventHandlerData<T, U>
-  ) => void;
-  onSubmit?: (e: SubmitEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  additionalSetup?: (eventData: ElementEventHandlerData<T, U>) => void;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -194,10 +184,17 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       }
       setData({ ...data, scale });
     },
-    // TODO: this still needs to use te document as a whole
-    onMouseEnter: canGrowCursorHandler,
-    onKeyDown: canGrowCursorHandler,
-    onKeyUp: canGrowCursorHandler,
+    additionalSetup: (eventData) => {
+      eventData.element.addEventListener("mouseenter", (e) =>
+        canGrowCursorHandler(e, eventData)
+      );
+      document.addEventListener("keydown", (e) =>
+        canGrowCursorHandler(e, eventData)
+      );
+      document.addEventListener("keyup", (e) =>
+        canGrowCursorHandler(e, eventData)
+      );
+    },
   } as ElementInitializer<GrowData>,
   [TagType.CanPost]: {
     defaultData: [],
@@ -230,24 +227,26 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
 
       setLocalData({ addedEntries });
     },
-    onSubmit: (e: SubmitEvent, { data: entries, setData }) => {
-      // get input children of the form element
-      e.preventDefault();
-      e.stopImmediatePropagation();
+    additionalSetup: ({ element, data: entries, setData }) => {
+      element.addEventListener("submit", (e: SubmitEvent) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
 
-      const formData = new FormData(e.target as HTMLFormElement);
-      // massage formData into new object
-      // @ts-ignore
-      const inputData = Object.fromEntries(formData.entries());
-      const timestamp = Date.now();
-      const newEntry: FormData = {
-        name: "someone",
-        message: "something",
-        ...inputData,
-        timestamp,
-        id: `${timestamp}-${inputData.name}`,
-      };
-      setData([...entries, newEntry]);
+        const formData = new FormData(e.target as HTMLFormElement);
+        // massage formData into new object
+        // @ts-ignore
+        const inputData = Object.fromEntries(formData.entries());
+        const timestamp = Date.now();
+        const newEntry: FormData = {
+          name: "someone",
+          message: "something",
+          ...inputData,
+          timestamp,
+          id: `${timestamp}-${inputData.name}`,
+        };
+        setData([...entries, newEntry]);
+        return false;
+      });
     },
   } as ElementInitializer<FormData[]>,
 };
@@ -279,17 +278,18 @@ export class ElementHandler<T = any, U = any> {
     onClick,
     onDrag,
     onDragStart,
-    onMouseEnter,
-    onKeyDown,
-    onKeyUp,
-    onSubmit,
+    additionalSetup,
     resetShortcut,
     debounceMs,
   }: ElementData<T>) {
     // console.log("🔨 constructing ", element.id);
     this.element = element;
-    this.defaultData = defaultData;
-    this.localData = defaultLocalData;
+    this.defaultData =
+      defaultData instanceof Function ? defaultData(element) : defaultData;
+    this.localData =
+      defaultLocalData instanceof Function
+        ? defaultLocalData(element)
+        : defaultLocalData;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
@@ -326,30 +326,8 @@ export class ElementHandler<T = any, U = any> {
       });
     }
 
-    if (onMouseEnter) {
-      element.addEventListener("mouseenter", (e) => {
-        onMouseEnter(e, this.getEventHandlerData());
-      });
-    }
-
-    if (onKeyDown) {
-      element.addEventListener("keydown", (e) => {
-        onKeyDown(e, this.getEventHandlerData());
-      });
-    }
-
-    if (onKeyUp) {
-      element.addEventListener("keyup", (e) => {
-        onKeyUp(e, this.getEventHandlerData());
-      });
-    }
-
-    if (onSubmit) {
-      element.addEventListener("submit", (e) => {
-        e.preventDefault();
-        onSubmit(e, this.getEventHandlerData());
-        return false;
-      });
+    if (additionalSetup) {
+      additionalSetup(this.getEventHandlerData());
     }
 
     // Handle advanced settings
