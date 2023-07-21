@@ -66,10 +66,17 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
   customCandle.onClick = (_e, { data, setData }) => {
     setData(!data);
   };
+  // The above statement could also be done using the `additionalSetup`
+  // which can initialize several different event listeners and custom logic.
+  // customCandle.additionalSetup = ({ getData, setData }) => {
+  //   customCandle.addEventListener("click", (_e) => {
+  //     const data = getData();
+  //     setData(!data);
+  //   });
+  // };
   customCandle.updateElement = ({ data }) => {
     customCandle.src = data ? "/candle-gif.gif" : "/candle-off.png";
   };
-  customCandle.resetShortcut = "shiftKey";
 
   // Alternatively
   // let candle = document.getElementById('customCandle');

@@ -24,12 +24,10 @@ const doc = new Y.Doc();
 // option 2: room = window.location.href
 // option 3: default to 1 and expose custom option to user.
 const room = window.location.href;
-const yprovider = new YPartyKitProvider(partykitHost, room, doc, {
-  connect: false,
-});
-// @ts-ignore
 const _indexedDBProvider = new IndexeddbPersistence(room, doc);
-yprovider.connect();
+const yprovider = new YPartyKitProvider(partykitHost, room, doc);
+// @ts-ignore
+// yprovider.connect();
 
 export const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
 
@@ -99,7 +97,6 @@ function getElementInitializerInfoForElement(
   element: HTMLElement
 ) {
   if (tag === TagType.CanPlay) {
-    console.log("PLAY");
     const customElement = element as any;
     const elementInitializerInfo: Required<ElementInitializer> = {
       defaultData: customElement.defaultData,
@@ -127,7 +124,13 @@ export const elementHandlers = new Map<string, Map<string, ElementHandler>>();
 export function setupElements(): void {
   // TODO: need to expose some function to set up new elements that are added after the fact (like when elements are hydrated).
 
-  console.log("EXISTING DATA", globalData.toJSON());
+  console.log(
+    `
+࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
+࿂࿂࿂࿂ INITIALIZING playhtml ࿂࿂࿂࿂
+࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
+    globalData.toJSON()
+  );
 
   for (const tag of Object.values(TagType)) {
     const tagElementHandlers = new Map<string, ElementHandler>();

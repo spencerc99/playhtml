@@ -45,7 +45,7 @@ export interface ElementInitializer<T = any, U = any> {
     e: MouseEvent,
     eventData: ElementEventHandlerData<T, U>
   ) => void;
-  additionalSetup?: (eventData: ElementEventHandlerData<T, U>) => void;
+  additionalSetup?: (eventData: ElementSetupData<T, U>) => void;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -67,14 +67,26 @@ interface ElementEventHandlerData<T = any, U = any> {
   setLocalData: (data: U) => void;
 }
 
+interface ElementSetupData<T = any, U = any> {
+  getData: () => T;
+  getLocalData: () => U;
+  getElement: () => HTMLElement;
+  setData: (data: T) => void;
+  setLocalData: (data: U) => void;
+}
+
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
       16 0,
     auto`;
 const cutCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='48' viewport='0 0 100 100' style='fill:black;font-size:24px;'><text y='50%'>✂️</text></svg>") 16 0,auto`;
 function canGrowCursorHandler(
   e: MouseEvent | KeyboardEvent,
-  { data, element, localData, setLocalData }: ElementEventHandlerData<GrowData>
+  { getData, getElement, getLocalData, setLocalData }: ElementSetupData
 ) {
+  const data = getData();
+  const localData = getLocalData();
+  const element = getElement();
+
   localData.isHovering = true;
   if (e.altKey) {
     if (data.scale <= 0.5) {
@@ -187,14 +199,14 @@ export const TagTypeToElement: Record<
       setData({ ...data, scale });
     },
     additionalSetup: (eventData) => {
-      eventData.element.addEventListener("mouseenter", (e) => {
+      eventData.getElement().addEventListener("mouseenter", (e) => {
         canGrowCursorHandler(e, eventData);
         const onKeyDownUp = (e: KeyboardEvent) =>
           canGrowCursorHandler(e, eventData);
         document.addEventListener("keydown", onKeyDownUp);
         document.addEventListener("keyup", onKeyDownUp);
 
-        eventData.element.addEventListener("mouseleave", (e) => {
+        eventData.getElement().addEventListener("mouseleave", (e) => {
           document.removeEventListener("keydown", onKeyDownUp);
           document.removeEventListener("keyup", onKeyDownUp);
         });
@@ -242,10 +254,12 @@ export const TagTypeToElement: Record<
 
       setLocalData({ addedEntries });
     },
-    additionalSetup: ({ element, data: entries, setData }) => {
+    additionalSetup: ({ getElement, getData, setData }) => {
+      const element = getElement();
       element.addEventListener("submit", (e: SubmitEvent) => {
         e.preventDefault();
         e.stopImmediatePropagation();
+        const entries = getData();
 
         const formData = new FormData(e.target as HTMLFormElement);
         // massage formData into new object
@@ -344,7 +358,7 @@ export class ElementHandler<T = any, U = any> {
     }
 
     if (additionalSetup) {
-      additionalSetup(this.getEventHandlerData());
+      additionalSetup(this.getSetupData());
     }
 
     // Handle advanced settings
@@ -409,6 +423,16 @@ export class ElementHandler<T = any, U = any> {
       element: this.element,
       data: this.data,
       localData: this.localData,
+      setData: (newData) => this.setData(newData),
+      setLocalData: (newData) => this.setLocalData(newData),
+    };
+  }
+
+  getSetupData(): ElementSetupData<T, U> {
+    return {
+      getElement: () => this.element,
+      getData: () => this.data,
+      getLocalData: () => this.localData,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
     };
