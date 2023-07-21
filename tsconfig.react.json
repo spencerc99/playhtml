@@ -12,17 +12,17 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "noEmit": true,
+    "jsx": "preserve",
 
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["src/react.tsx"],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",
-    "node_modules/@cloudflare/workers-types/index.ts",
-    "src/react.tsx"
+    "node_modules/@cloudflare/workers-types/index.ts"
   ]
 }

@@ -25,6 +25,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
     "@types/node": "^20.3.3",
+    "@types/react": "^18.2.15",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
@@ -33,8 +34,12 @@
   "dependencies": {
     "partykit": "^0.0.0-39cf5ce",
     "partysocket": "^0.0.0-e7aa4cd",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.0-39cf5ce",
-    "yjs": "^13.5.44"
+    "yjs": "^13.5.44",
+    "zustand": "^4.3.9",
+    "zustand-yjs": "^0.0.14"
   }
 }

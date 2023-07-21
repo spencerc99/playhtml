@@ -9,7 +9,7 @@ import { TagTypeToElement, ElementData, ElementHandler } from "./elements";
 
 // TODO: there's a typescript error here but it all seems to work...
 // @ts-ignore
-const partykitHost = import.meta.env.DEV
+export const PartykitHost = import.meta.env.DEV
   ? "localhost:1999"
   : "playhtml.spencerc99.partykit.dev";
 
@@ -18,15 +18,17 @@ const doc = new Y.Doc();
 // option 1: room = window.location.hostname + window.location.pathname
 // option 2: room = window.location.href
 // option 3: default to 1 and expose custom option to user.
-const room = window.location.href;
-const yprovider = new YPartyKitProvider(partykitHost, room, doc, {
+export const PartykitRoom = window.location.href;
+const yprovider = new YPartyKitProvider(PartykitHost, PartykitRoom, doc, {
   connect: false,
 });
 // @ts-ignore
-const _indexedDBProvider = new IndexeddbPersistence(room, doc);
+const _indexedDBProvider = new IndexeddbPersistence(PartykitRoom, doc);
 yprovider.connect();
 
 export const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
+// make available at the browser level.
+window.globalData = globalData;
 
 function getIdForElement(ele: HTMLElement): string {
   // TODO: need to find a good way to robustly generate a uniqueID for an element
@@ -55,8 +57,6 @@ function isHTMLElement(ele: any): ele is HTMLElement {
 }
 
 function registerPlayElement(element: HTMLElement, tag: TagType) {
-  // console.log(elementId, tagData.get(elementId));
-
   const commonTagInfo = TagTypeToElement[tag];
   type tagType = (typeof commonTagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
@@ -111,7 +111,10 @@ export function setupElements(): void {
     const tagData: Y.Map<tagType> = globalData.get(tag)!;
     for (const element of tagElements) {
       if (elementHandlers.has(getIdForElement(element))) {
-        continue;
+        console.log(
+          `Element ${getIdForElement(element)} already registered. Ignoring.`
+        );
+        return;
       }
       const elementHandler = registerPlayElement(element, tag);
       elementHandlers.set(getIdForElement(element), elementHandler);
@@ -152,6 +155,7 @@ export function setupElements(): void {
 
   globalData.observe((event) => {
     event.changes.keys.forEach((change, key) => {
+      console.log("globalData changing", change, key);
       if (change.action === "add") {
         globalData.set(key, globalData.get(key)!);
         // TODO: need to re-initialize the above handlers here too...?
