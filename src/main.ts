@@ -24,10 +24,9 @@ const doc = new Y.Doc();
 // option 2: room = window.location.href
 // option 3: default to 1 and expose custom option to user.
 const room = window.location.href;
-const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 const yprovider = new YPartyKitProvider(partykitHost, room, doc);
 // @ts-ignore
-// yprovider.connect();
+const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
 export const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
 
@@ -125,8 +124,7 @@ export function setupElements(): void {
   // TODO: need to expose some function to set up new elements that are added after the fact (like when elements are hydrated).
 
   console.log(
-    `
-࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
+    `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
 ࿂࿂࿂࿂ INITIALIZING playhtml ࿂࿂࿂࿂
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
     globalData.toJSON()
