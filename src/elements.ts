@@ -95,7 +95,7 @@ function canGrowCursorHandler(
 
 // TODO: make it a function that takes in element to get result?
 export const TagTypeToElement: Record<TagType, ElementInitializer> = {
-  // [TagType.CanPlay]: {},
+  [TagType.CanPlay]: {},
   [TagType.CanMove]: {
     defaultData: { x: 0, y: 0 },
     defaultLocalData: { startMouseX: 0, startMouseY: 0 },
@@ -185,15 +185,18 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
       setData({ ...data, scale });
     },
     additionalSetup: (eventData) => {
-      eventData.element.addEventListener("mouseenter", (e) =>
-        canGrowCursorHandler(e, eventData)
-      );
-      document.addEventListener("keydown", (e) =>
-        canGrowCursorHandler(e, eventData)
-      );
-      document.addEventListener("keyup", (e) =>
-        canGrowCursorHandler(e, eventData)
-      );
+      eventData.element.addEventListener("mouseenter", (e) => {
+        canGrowCursorHandler(e, eventData);
+        const onKeyDownUp = (e: KeyboardEvent) =>
+          canGrowCursorHandler(e, eventData);
+        document.addEventListener("keydown", onKeyDownUp);
+        document.addEventListener("keyup", onKeyDownUp);
+
+        eventData.element.addEventListener("mouseleave", (e) => {
+          document.removeEventListener("keydown", onKeyDownUp);
+          document.removeEventListener("keyup", onKeyDownUp);
+        });
+      });
     },
   } as ElementInitializer<GrowData>,
   [TagType.CanPost]: {
