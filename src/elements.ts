@@ -31,7 +31,7 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
-interface ElementInitializer<T = any, U = any> {
+export interface ElementInitializer<T = any, U = any> {
   defaultData: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
   updateElement: (data: ElementEventHandlerData<T, U>) => void;
@@ -94,8 +94,10 @@ function canGrowCursorHandler(
 }
 
 // TODO: make it a function that takes in element to get result?
-export const TagTypeToElement: Record<TagType, ElementInitializer> = {
-  [TagType.CanPlay]: {},
+export const TagTypeToElement: Record<
+  Exclude<TagType, "can-play">,
+  ElementInitializer
+> = {
   [TagType.CanMove]: {
     defaultData: { x: 0, y: 0 },
     defaultLocalData: { startMouseX: 0, startMouseY: 0 },
@@ -271,6 +273,8 @@ interface FormData {
   timestamp: number;
 }
 
+// TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
+// on the element itself??
 export class ElementHandler<T = any, U = any> {
   defaultData: T;
   localData: U;
