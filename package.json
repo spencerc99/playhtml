@@ -1,6 +1,6 @@
 {
   "name": "playhtml",
-  "version": "0.1.9",
+  "version": "1.0.0",
   "license": "MIT",
   "type": "module",
   "main": "./dist/playhtml.umd.js",
