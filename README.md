@@ -54,6 +54,8 @@ A full list can be found in `types.ts` under `TagType`.
 
 Here's the simple example included on the playhtml website:
 
+https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3d36b81c572d
+
 ```html
 <img can-play id="customCandle" src="/candle-gif.gif" />
 <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
