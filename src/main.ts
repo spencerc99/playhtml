@@ -135,6 +135,7 @@ function getElementInitializerInfoForElement(
 }
 
 export const elementHandlers = new Map<string, Map<string, ElementHandler>>();
+let firstSetup = true;
 
 function onChangeAwareness() {
   // map of tagType -> elementId -> clientId -> awarenessData
@@ -215,7 +216,12 @@ export function setupElements(): void {
   );
 
   for (const tag of Object.values(TagType)) {
-    const tagElementHandlers = new Map<string, ElementHandler>();
+    let hasBeenInitialized = true;
+    if (!elementHandlers.has(tag)) {
+      elementHandlers.set(tag, new Map<string, ElementHandler>());
+      hasBeenInitialized = false;
+    }
+    const tagElementHandlers = elementHandlers.get(tag)!;
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
@@ -226,7 +232,6 @@ export function setupElements(): void {
     let tagCommonElementInitializerInfo =
       tag !== TagType.CanPlay ? TagTypeToElement[tag] : undefined;
 
-    elementHandlers.set(tag, tagElementHandlers);
     // console.log(`initializing ${tag}`);
     type tagType =
       typeof tagCommonElementInitializerInfo extends ElementInitializer
@@ -264,6 +269,7 @@ export function setupElements(): void {
       }
 
       if (tagElementHandlers.has(elementId)) {
+        console.log("Skipping", elementId, "because it is already registered.");
         continue;
       }
 
@@ -294,6 +300,9 @@ export function setupElements(): void {
       element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
     }
 
+    if (hasBeenInitialized) {
+      continue;
+    }
     tagData.observe((event) => {
       event.changes.keys.forEach((change, key) => {
         if (change.action === "add") {
@@ -330,6 +339,9 @@ export function setupElements(): void {
     });
   }
 
+  if (!firstSetup) {
+    return;
+  }
   globalData.observe((event) => {
     event.changes.keys.forEach((change, key) => {
       if (change.action === "add") {
@@ -340,10 +352,13 @@ export function setupElements(): void {
   });
 
   yprovider.awareness.on("change", () => onChangeAwareness());
+  firstSetup = false;
 }
 
 // TODO: eventually need a way to import this that keeps library small and only imports the requested tags.
 
 // Expose big variables to the window object for debugging purposes.
+// @ts-ignore
+window.setupElements = setupElements;
 // @ts-ignore
 window.globalData = globalData;

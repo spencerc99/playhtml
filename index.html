@@ -102,26 +102,79 @@
           </p>
         </details>
         <h2>existing tags</h2>
-        <!-- candle credit: https://nyknck.itch.io/candle -->
-        <img can-play id="customCandle" src="/candle-gif.gif" can-move />
+        <div id="candleFactory">
+          <button id="makeCandleBtn" can-duplicate="customCandle" can-play>
+            Make candle
+          </button>
+          <!-- candle credit: https://nyknck.itch.io/candle -->
+          <img
+            can-play
+            id="customCandle"
+            src="/candle-gif.gif"
+            can-move
+            class="candle"
+          />
+        </div>
+
         <!-- Set data for custom (can-play) playhtml elements -->
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
         <script>
-          customCandle.defaultData = true;
-          customCandle.onClick = (_e, { data, setData }) => {
-            setData(!data);
+          function enchantCandle(candle) {
+            candle.defaultData = true;
+            candle.onClick = (_e, { data, setData }) => {
+              setData(!data);
+            };
+            // candle.additionalSetup = ({ getData, setData }) => {
+            //   candle.addEventListener("click", (_e) => {
+            //     const data = getData();
+            //     setData(!data);
+            //   });
+            // };
+            candle.updateElement = ({ data }) => {
+              candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+            };
+            candle.resetShortcut = "shiftKey";
+          }
+
+          enchantCandle(customCandle);
+
+          makeCandleBtn.defaultData = [];
+          makeCandleBtn.defaultLocalData = new Set();
+          makeCandleBtn.onClick = (_e, { data, setData }) => {
+            const duplicateElementId =
+              makeCandleBtn.getAttribute("can-duplicate");
+            newCandleId =
+              duplicateElementId +
+              "-" +
+              Math.random().toString(36).substr(2, 9);
+
+            setData([...data, newCandleId]);
           };
-          // customCandle.additionalSetup = ({ getData, setData }) => {
-          //   customCandle.addEventListener("click", (_e) => {
-          //     const data = getData();
-          //     setData(!data);
-          //   });
-          // };
-          customCandle.updateElement = ({ data }) => {
-            customCandle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+          makeCandleBtn.updateElement = ({ data, localData, setLocalData }) => {
+            let numAdded = 0;
+            console.log(localData);
+            for (const candleId of data) {
+              if (localData.has(candleId)) continue;
+              const duplicateElementId =
+                makeCandleBtn.getAttribute("can-duplicate");
+              const elementToDuplicate =
+                document.getElementById(duplicateElementId);
+              const newCandle = elementToDuplicate.cloneNode(true);
+              newCandle.id = candleId;
+              enchantCandle(newCandle);
+              document.getElementById("candleFactory").appendChild(newCandle);
+              localData.add(candleId);
+              numAdded++;
+            }
+            if (numAdded) {
+              console.log("calling setup again");
+              // TODO: this is causing duplicate setup. Need to make it a singleton such that only one instance is running at a time... maybe use the debounce logic?
+              setTimeout(() => setupElements(), 1000);
+              setLocalData(localData);
+            }
           };
-          customCandle.resetShortcut = "shiftKey";
         </script>
+        <script></script>
         <ol>
           <!-- TODO: move this into React to dynamically update -->
           <li>
