@@ -208,6 +208,7 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
         (entry) => !addedEntries.has(entry.id)
       );
 
+      // TODO: add typing indicators for anyone who has it filled out
       const guestbookDiv = getElementFromId("guestbookMessages")!;
       entriesToAdd.forEach((entry) => {
         const newEntry = document.createElement("div");
@@ -215,12 +216,21 @@ export const TagTypeToElement: Record<TagType, ElementInitializer> = {
         const entryDate = new Date(entry.timestamp);
         const time = entryDate.toTimeString().split(" ")[0];
         const isToday = entryDate.toDateString() === new Date().toDateString();
+
+        const dateString = (() => {
+          if (isToday) {
+            return "Today ";
+          } else if (new Date().getDate() - entryDate.getDate() === 1) {
+            return "Yesterday ";
+          } else if (new Date().getDate() - entryDate.getDate() < 7) {
+            return "This week ";
+          } else {
+            return "Sometime before ";
+          }
+        })();
+
         newEntry.innerHTML = `
-        <span class="guestbook-entry-timestamp">${
-          !isToday ? entryDate.toDateString() + " " : ""
-        }${time}</span><span class="guestbook-entry-name">${
-          entry.name
-        }</span> <span class="guestbook-entry-message">${entry.message}</span>`;
+        <span class="guestbook-entry-timestamp">${dateString}${time}</span><span class="guestbook-entry-name">${entry.name}</span> <span class="guestbook-entry-message">${entry.message}</span>`;
         guestbookDiv.prepend(newEntry);
         addedEntries.add(entry.id);
       });
