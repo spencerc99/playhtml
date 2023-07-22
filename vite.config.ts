@@ -11,4 +11,6 @@ export default defineConfig({
       fileName: (format) => `playhtml.${format}.js`,
     },
   },
+  // temp to deal with partykit double init on hot refresh
+  server: { hmr: false },
 });

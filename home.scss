@@ -27,12 +27,14 @@ i {
 footer {
   @media screen and (min-width: 768px) {
     position: fixed;
-    bottom: 40px;
+    bottom: 32px;
   }
 
   margin-top: 20px;
   margin-left: 20px;
   margin-right: 20px;
+  padding: 8px;
+  background: rgba($color-background, 0.7);
 }
 
 #stamp {

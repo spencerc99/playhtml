@@ -124,6 +124,7 @@ export const TagTypeToElement: Record<
     },
     onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
       setLocalData({ startMouseX: e.pageX, startMouseY: e.pageY });
+      // TODO: disable if its going off the page.
       setData({
         x: data.x + e.pageX - localData.startMouseX,
         y: data.y + e.pageY - localData.startMouseY,
