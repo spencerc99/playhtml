@@ -3,21 +3,27 @@
 // TODO: these timings should scale depending on the size of the element?
 // Common classes to every open websites element.
 .__playhtml-element {
-  cursor: pointer;
 }
 .__playhtml-can-move {
+  cursor: pointer;
   transition: transform 150ms;
   will-change: transform;
 }
 .__playhtml-can-spin {
+  cursor: pointer;
   transition: transform 250ms;
   will-change: transform;
 }
 .__playhtml-can-grow {
+  cursor: pointer;
   transition: transform 250ms;
   will-change: transform;
 }
+.__playhtml-can-toggle {
+  cursor: pointer;
+}
 .__playhtml-can-draw {
+  cursor: pointer;
   .__playhtml-draw-container {
     position: relative;
     width: 100%;

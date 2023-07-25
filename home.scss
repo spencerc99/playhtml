@@ -181,12 +181,6 @@ footer {
 
 #guestbookForm {
   gap: 12px;
-  input {
-    border: 1px solid #00000063;
-    border-radius: 4px;
-    padding: 4px;
-    margin: 4px 0;
-  }
 }
 
 #guestbook {
@@ -238,19 +232,33 @@ footer {
   position: relative;
 }
 
-.wordSubmit {
+button {
   background: rgb(80, 75, 69);
   border-radius: 4px;
   cursor: pointer;
 }
 
+.wordSubmit {
+}
+
+input {
+  border: 1px solid #00000063;
+  border-radius: 4px;
+  padding: 4px;
+  margin: 4px 0;
+
+  &.inline {
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    background: none;
+    outline: none;
+    border-radius: 0px;
+  }
+}
+
 #wordInput {
-  border-left: none;
-  border-right: none;
-  border-top: none;
-  background: none;
-  outline: none;
-  cursor: text;
+  @extend .inline;
   width: 110px;
 }
 

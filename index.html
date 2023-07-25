@@ -135,11 +135,22 @@
           <li>communal garden (coming soon)</li>
           <li>puzzle (coming soon)</li>
         </ol>
+        <hr />
         <div id="guestbook">
-          <h2>guestbook</h2>
-          <p>leave something nice for visitors...</p>
           <form id="guestbookForm" can-post>
-            <input type="text" name="name" placeholder="your name" required />
+            <input
+              class="inline"
+              type="text"
+              name="name"
+              placeholder="your name"
+              style="width: 80px"
+              required
+            />,
+            <span
+              >leave something nice for visitors in the guestbook, won't
+              you?</span
+            >
+
             <br />
             <!-- emoji message -->
             <input
@@ -149,7 +160,7 @@
               placeholder="5 chars max, emojis recommended"
               maxlength="5"
             />
-            <button type="submit">submit</button>
+            <button type="submit">🖋️</button>
           </form>
           <div id="guestbookMessages"></div>
         </div>
