@@ -39,10 +39,13 @@ export interface ElementInitializer<T = any, U = any> {
   // Event handlers
   // Abstracts to handle clicking and dragging the element to handle both mouse and touch events.
   // Takes inspiration from https://github.com/react-grid-layout/react-draggable
-  onDrag?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  onDrag?: (
+    e: MouseEvent | DragEvent,
+    eventData: ElementEventHandlerData<T, U>
+  ) => void;
   onClick?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
   onDragStart?: (
-    e: MouseEvent,
+    e: MouseEvent | DragEvent,
     eventData: ElementEventHandlerData<T, U>
   ) => void;
   additionalSetup?: (eventData: ElementSetupData<T, U>) => void;
@@ -105,6 +108,17 @@ function canGrowCursorHandler(
   setLocalData(localData);
 }
 
+function getClientCoordinates(e: MouseEvent | TouchEvent): {
+  clientX: number;
+  clientY: number;
+} {
+  if ("touches" in e) {
+    const { clientX, clientY } = e.touches[0];
+    return { clientX, clientY };
+  }
+  return { clientX: e.clientX, clientY: e.clientY };
+}
+
 // TODO: make it a function that takes in element to get result?
 export const TagTypeToElement: Record<
   Exclude<TagType, "can-play">,
@@ -116,18 +130,23 @@ export const TagTypeToElement: Record<
     updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
     },
-    onDragStart: (e: MouseEvent, { setLocalData }) => {
+    onDragStart: (e: MouseEvent | TouchEvent, { setLocalData }) => {
+      const { clientX, clientY } = getClientCoordinates(e);
       setLocalData({
-        startMouseX: e.clientX,
-        startMouseY: e.clientY,
+        startMouseX: clientX,
+        startMouseY: clientY,
       });
     },
-    onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
-      setLocalData({ startMouseX: e.clientX, startMouseY: e.clientY });
+    onDrag: (
+      e: MouseEvent | TouchEvent,
+      { data, localData, setData, setLocalData }
+    ) => {
+      const { clientX, clientY } = getClientCoordinates(e);
+      setLocalData({ startMouseX: clientX, startMouseY: clientY });
       // TODO: disable if its going off the page.
       setData({
-        x: data.x + e.clientX - localData.startMouseX,
-        y: data.y + e.clientY - localData.startMouseY,
+        x: data.x + clientX - localData.startMouseX,
+        y: data.y + clientY - localData.startMouseY,
       });
     },
     resetShortcut: "shiftKey",
@@ -138,27 +157,32 @@ export const TagTypeToElement: Record<
     updateElement: ({ element, data }) => {
       element.style.transform = `rotate(${data.rotation}deg)`;
     },
-    onDragStart: (e: MouseEvent, { setLocalData }) => {
+    onDragStart: (e: MouseEvent | DragEvent, { setLocalData }) => {
+      const { clientX } = getClientCoordinates(e);
       setLocalData({
-        startMouseX: e.clientX,
+        startMouseX: clientX,
       });
     },
-    onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
+    onDrag: (
+      e: MouseEvent | DragEvent,
+      { data, localData, setData, setLocalData }
+    ) => {
+      const { clientX } = getClientCoordinates(e);
       // Calculate distance mouse has moved from the last known position
       // TODO: scale this according to size
-      let distance = Math.abs(e.clientX - localData.startMouseX) * 2;
+      let distance = Math.abs(clientX - localData.startMouseX) * 2;
       let rotation = data.rotation;
 
-      if (e.clientX > localData.startMouseX) {
+      if (clientX > localData.startMouseX) {
         // Move right
         rotation += distance; // Change rotation proportional to the distance moved
-      } else if (e.clientX < localData.startMouseX) {
+      } else if (clientX < localData.startMouseX) {
         // Move left
         rotation -= distance; // Change rotation proportional to the distance moved
       }
 
       setData({ rotation });
-      setLocalData({ startMouseX: e.clientX });
+      setLocalData({ startMouseX: clientX });
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<SpinData>,
@@ -340,6 +364,23 @@ export class ElementHandler<T = any, U = any> {
     }
 
     if (onDrag) {
+      element.addEventListener("dragstart", (e) => {
+        if (onDragStart) {
+          // Need to be able to not persist everything in the data, causing some lag.
+          onDragStart(e, this.getEventHandlerData());
+        }
+
+        const onMove = (e: DragEvent) => {
+          e.preventDefault();
+          onDrag(e, this.getEventHandlerData());
+        };
+        const onDragStop = (e: DragEvent) => {
+          document.removeEventListener("drag", onMove);
+          document.removeEventListener("dragend", onDragStop);
+        };
+        document.addEventListener("drag", onMove);
+        document.addEventListener("dragend", onDragStop);
+      });
       element.addEventListener("mousedown", (e) => {
         if (onDragStart) {
           // Need to be able to not persist everything in the data, causing some lag.
