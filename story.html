@@ -55,7 +55,8 @@
           <i>last updated <span id="lastUpdatedTime"></span></i>
         </h3>
         <p id="story">
-          <span id="storyContent">Once upon a time,</span>
+          Once upon a time,
+          <span id="storyContent"></span>
           <input
             id="wordInput"
             type="text"
@@ -125,12 +126,14 @@
               });
             };
             input.updateElement = ({ data }) => {
-              const lastDate = new Date(data[data.length - 1].ts);
-              lastUpdatedTime.innerText =
-                lastDate.toLocaleTimeString() +
-                " on " +
-                lastDate.toLocaleDateString();
-              console.log(data);
+              if (data.length > 0) {
+                const lastDate = new Date(data[data.length - 1].ts);
+                lastUpdatedTime.innerText =
+                  lastDate.toLocaleTimeString() +
+                  " on " +
+                  lastDate.toLocaleDateString();
+              }
+
               storyContent.innerHTML = data
                 .map(
                   ({ word, color }) =>
