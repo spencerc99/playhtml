@@ -188,6 +188,7 @@ export function setupElements(): void {
       // Set up the common classes for affected elements.
       element.classList.add(`__playhtml-element`);
       element.classList.add(`__playhtml-${tag}`);
+      // @ts-ignore
       element.style = `--jiggle-delay: ${Math.random() * 1}s;}`;
     }
 
@@ -238,4 +239,7 @@ export function setupElements(): void {
 }
 
 // TODO: eventually need a way to import this that keeps library small and only imports the requested tags.
+
+// Expose big variables to the window object for debugging purposes.
+// @ts-ignore
 window.globalData = globalData;
