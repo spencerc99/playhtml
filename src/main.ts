@@ -188,6 +188,7 @@ export function setupElements(): void {
       // Set up the common classes for affected elements.
       element.classList.add(`__playhtml-element`);
       element.classList.add(`__playhtml-${tag}`);
+      element.style = `--jiggle-delay: ${Math.random() * 1}s;}`;
     }
 
     tagData.observe((event) => {

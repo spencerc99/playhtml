@@ -34,3 +34,47 @@
     }
   }
 }
+
+// iPhone jiggle animation
+// inspo from https://www.kirupa.com/html5/creating_the_ios_icon_jiggle_wobble_effect_in_css.htm
+// Show when in "edit" mode?
+body .__playhtml-element.editing:nth-child(2n) {
+  animation-name: jiggle1;
+  animation-iteration-count: infinite;
+  transform-origin: 50% 10%;
+  animation-duration: 0.25s;
+  animation-delay: var(--jiggle-delay);
+}
+
+body .__playhtml-element.editing:nth-child(2n-1) {
+  animation-name: jiggle2;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  transform-origin: 30% 5%;
+  animation-duration: 0.45s;
+  animation-delay: var(--jiggle-delay);
+}
+
+@keyframes jiggle1 {
+  0% {
+    transform: rotate(-1deg);
+    animation-timing-function: ease-in;
+  }
+
+  50% {
+    transform: rotate(1.5deg);
+    animation-timing-function: ease-out;
+  }
+}
+
+@keyframes jiggle2 {
+  0% {
+    transform: rotate(1deg);
+    animation-timing-function: ease-in;
+  }
+
+  50% {
+    transform: rotate(-1.5deg);
+    animation-timing-function: ease-out;
+  }
+}

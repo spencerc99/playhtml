@@ -213,6 +213,7 @@ export const TagTypeToElement: Record<
         });
       });
     },
+    resetShortcut: "shiftKey",
   } as ElementInitializer<GrowData>,
   [TagType.CanPost]: {
     defaultData: [],
