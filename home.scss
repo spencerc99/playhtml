@@ -243,10 +243,12 @@ button {
 }
 
 input {
-  border: 1px solid #00000063;
-  border-radius: 4px;
-  padding: 4px;
-  margin: 4px 0;
+  &[type="text"] {
+    border: 1px solid #00000063;
+    border-radius: 4px;
+    padding: 4px;
+    margin: 4px 0;
+  }
 
   &.inline {
     border-left: none;
