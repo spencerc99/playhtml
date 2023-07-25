@@ -226,4 +226,33 @@ footer {
 #customCandle {
   width: 80px;
   float: right;
+  z-index: 5;
+  position: relative;
+}
+
+.wordSubmit {
+  background: rgb(80, 75, 69);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#wordInput {
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  background: none;
+  outline: none;
+  cursor: text;
+  width: 110px;
+}
+
+.word {
+  background: rgba(var(--word-color), 0.7);
+}
+
+h3 {
+  i {
+    font-size: initial;
+    font-weight: initial;
+  }
 }
