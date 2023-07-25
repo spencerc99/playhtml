@@ -187,6 +187,7 @@ footer {
   // hack to make the position: fixed relative to this container
   // https://stackoverflow.com/questions/6794000/fixed-position-but-relative-to-container
   -webkit-transform: translateZ(0);
+  padding-bottom: 12px;
 
   #guestbookMessages {
     max-height: 400px;
