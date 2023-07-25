@@ -365,6 +365,9 @@ export class ElementHandler<T = any, U = any> {
 
     if (onDrag) {
       element.addEventListener("touchstart", (e) => {
+        // To prevent scrolling the page while dragging
+        e.preventDefault();
+
         if (onDragStart) {
           // Need to be able to not persist everything in the data, causing some lag.
           onDragStart(e, this.getEventHandlerData());
