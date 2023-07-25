@@ -31,7 +31,10 @@
         <p>let's play a game and make a story together!</p>
         <ol>
           <li>
-            <p>You can add three words every 24 hours.</p>
+            <p>
+              Try to only add a few words every 24 hours to make space for
+              others to "yes and" you.
+            </p>
           </li>
           <li>
             <p>
@@ -98,6 +101,7 @@
             function isValidWord(word) {
               return word.split(/\s+/).length === 1;
             }
+
             input.defaultData = [];
             input.additionalSetup = ({ setData, getData }) => {
               const onSubmit = () => {
@@ -116,6 +120,7 @@
                 setData([...existingStory, newEntry]);
                 input.value = "";
                 submitBtn.disabled = false;
+                handleSubmittedWord();
               };
 
               submitBtn.addEventListener("click", onSubmit);
