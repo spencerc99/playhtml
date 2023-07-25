@@ -238,3 +238,4 @@ export function setupElements(): void {
 }
 
 // TODO: eventually need a way to import this that keeps library small and only imports the requested tags.
+window.globalData = globalData;
