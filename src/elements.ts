@@ -123,11 +123,11 @@ export const TagTypeToElement: Record<
       });
     },
     onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
-      setLocalData({ startMouseX: e.pageX, startMouseY: e.pageY });
+      setLocalData({ startMouseX: e.clientX, startMouseY: e.clientY });
       // TODO: disable if its going off the page.
       setData({
-        x: data.x + e.pageX - localData.startMouseX,
-        y: data.y + e.pageY - localData.startMouseY,
+        x: data.x + e.clientX - localData.startMouseX,
+        y: data.y + e.clientY - localData.startMouseY,
       });
     },
     resetShortcut: "shiftKey",
@@ -146,19 +146,19 @@ export const TagTypeToElement: Record<
     onDrag: (e: MouseEvent, { data, localData, setData, setLocalData }) => {
       // Calculate distance mouse has moved from the last known position
       // TODO: scale this according to size
-      let distance = Math.abs(e.pageX - localData.startMouseX) * 2;
+      let distance = Math.abs(e.clientX - localData.startMouseX) * 2;
       let rotation = data.rotation;
 
-      if (e.pageX > localData.startMouseX) {
+      if (e.clientX > localData.startMouseX) {
         // Move right
         rotation += distance; // Change rotation proportional to the distance moved
-      } else if (e.pageX < localData.startMouseX) {
+      } else if (e.clientX < localData.startMouseX) {
         // Move left
         rotation -= distance; // Change rotation proportional to the distance moved
       }
 
       setData({ rotation });
-      setLocalData({ startMouseX: e.pageX });
+      setLocalData({ startMouseX: e.clientX });
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<SpinData>,
