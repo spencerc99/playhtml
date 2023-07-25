@@ -40,12 +40,12 @@ export interface ElementInitializer<T = any, U = any> {
   // Abstracts to handle clicking and dragging the element to handle both mouse and touch events.
   // Takes inspiration from https://github.com/react-grid-layout/react-draggable
   onDrag?: (
-    e: MouseEvent | DragEvent,
+    e: MouseEvent | TouchEvent,
     eventData: ElementEventHandlerData<T, U>
   ) => void;
   onClick?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
   onDragStart?: (
-    e: MouseEvent | DragEvent,
+    e: MouseEvent | TouchEvent,
     eventData: ElementEventHandlerData<T, U>
   ) => void;
   additionalSetup?: (eventData: ElementSetupData<T, U>) => void;
@@ -157,14 +157,14 @@ export const TagTypeToElement: Record<
     updateElement: ({ element, data }) => {
       element.style.transform = `rotate(${data.rotation}deg)`;
     },
-    onDragStart: (e: MouseEvent | DragEvent, { setLocalData }) => {
+    onDragStart: (e: MouseEvent | TouchEvent, { setLocalData }) => {
       const { clientX } = getClientCoordinates(e);
       setLocalData({
         startMouseX: clientX,
       });
     },
     onDrag: (
-      e: MouseEvent | DragEvent,
+      e: MouseEvent | TouchEvent,
       { data, localData, setData, setLocalData }
     ) => {
       const { clientX } = getClientCoordinates(e);
@@ -364,22 +364,22 @@ export class ElementHandler<T = any, U = any> {
     }
 
     if (onDrag) {
-      element.addEventListener("dragstart", (e) => {
+      element.addEventListener("touchstart", (e) => {
         if (onDragStart) {
           // Need to be able to not persist everything in the data, causing some lag.
           onDragStart(e, this.getEventHandlerData());
         }
 
-        const onMove = (e: DragEvent) => {
+        const onMove = (e: TouchEvent) => {
           e.preventDefault();
           onDrag(e, this.getEventHandlerData());
         };
-        const onDragStop = (e: DragEvent) => {
-          document.removeEventListener("drag", onMove);
-          document.removeEventListener("dragend", onDragStop);
+        const onDragStop = (e: TouchEvent) => {
+          document.removeEventListener("touchmove", onMove);
+          document.removeEventListener("touchend", onDragStop);
         };
-        document.addEventListener("drag", onMove);
-        document.addEventListener("dragend", onDragStop);
+        document.addEventListener("touchmove", onMove);
+        document.addEventListener("touchend", onDragStop);
       });
       element.addEventListener("mousedown", (e) => {
         if (onDragStart) {
