@@ -9,6 +9,6 @@ export default defineConfig({
     rollupOptions: {
       input: path.resolve(__dirname, "index.html"),
     },
-    outDir: "site",
+    outDir: "site-dist",
   },
 });
