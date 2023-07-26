@@ -22,12 +22,8 @@
   <body>
     <div id="app">
       <div class="content">
-        <input
-          id="colorPicker"
-          type="color"
-          onChange="updateUserColor(this.value)"
-        />
         <h1>one word story</h1>
+        <i>a game powered by <a href="/">playhtml</a></i>
         <p>let's play a game and make a story together!</p>
         <ol>
           <li>
@@ -40,6 +36,11 @@
             <p>
               Before you start, choose a color so you can be associated with it
               :)
+              <input
+                id="colorPicker"
+                type="color"
+                onChange="updateUserColor(this.value)"
+              />
             </p>
           </li>
           <li>
@@ -49,7 +50,7 @@
             </p>
           </li>
           <li>
-            <p>Come back to see how it evolves!</p>
+            <p>Come back to see how it evolves.</p>
           </li>
         </ol>
         <br />
@@ -154,7 +155,9 @@
     </div>
     <footer>
       <div>
-        an open-source library created and maintained by <a href="https://www.spencerchang.me/">spencer</a>, powered by <a href="https://partykit.io">partykit</a>
+        an open-source library created and maintained by
+        <a href="https://www.spencerchang.me/">spencer</a>, powered by
+        <a href="https://partykit.io">partykit</a>
       </div>
     </footer>
 

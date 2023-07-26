@@ -118,12 +118,15 @@ footer {
 }
 
 .content {
-  margin-top: 20vh;
+  margin-top: 10vh;
   position: relative;
   max-width: 800px;
+}
 
+.topSpacer {
+  margin-top: 10vh;
   @media screen and (max-width: 768px) {
-    margin-top: 30vh;
+    margin-top: 20vh;
   }
 }
 
