@@ -139,11 +139,18 @@ export const TagTypeToElement: Record<
     },
     onDrag: (
       e: MouseEvent | TouchEvent,
-      { data, localData, setData, setLocalData }
+      { data, localData, setData, setLocalData, element }
     ) => {
       const { clientX, clientY } = getClientCoordinates(e);
       setLocalData({ startMouseX: clientX, startMouseY: clientY });
-      // TODO: disable if its going off the page.
+      const { top, left, bottom, right } = element.getBoundingClientRect();
+      if (
+        (right > window.outerWidth && clientX > localData.startMouseX) ||
+        (bottom > window.innerHeight && clientY > localData.startMouseY) ||
+        (left < 0 && clientX < localData.startMouseX) ||
+        (top < 0 && clientY < localData.startMouseY)
+      )
+        return;
       setData({
         x: data.x + clientX - localData.startMouseX,
         y: data.y + clientY - localData.startMouseY,
