@@ -42,6 +42,12 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 </script>
 ```
 
+To create your own custom element, refer to the [can-play](#can-play) section.
+
+## Examples
+
+Check out the [full gallery of community examples](https://gallery.playhtml.fun/) for more inspiration on what you can do! And [submit your own](https://coda.io/form/playhtml-example_dnUR7xNE7wz) once you've made one.
+
 ## Capabilities
 
 A full list can be found in `types.ts` under `TagType`.
