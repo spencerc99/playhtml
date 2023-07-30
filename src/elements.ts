@@ -142,7 +142,6 @@ export const TagTypeToElement: Record<
       { data, localData, setData, setLocalData, element }
     ) => {
       const { clientX, clientY } = getClientCoordinates(e);
-      setLocalData({ startMouseX: clientX, startMouseY: clientY });
       const { top, left, bottom, right } = element.getBoundingClientRect();
       if (
         (right > window.outerWidth && clientX > localData.startMouseX) ||
@@ -155,6 +154,7 @@ export const TagTypeToElement: Record<
         x: data.x + clientX - localData.startMouseX,
         y: data.y + clientY - localData.startMouseY,
       });
+      setLocalData({ startMouseX: clientX, startMouseY: clientY });
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<MoveData>,
