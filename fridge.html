@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Carter+One&family=Play:wght@400;700&family=Rubik+Pixels&family=Yellowtail&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>playhtml</title>
+    <script
+      defer
+      data-domain="playhtml.fun"
+      data-api="https://sharingan.spencerc99.workers.dev/genjutsu/event"
+      src="https://sharingan.spencerc99.workers.dev/genjutsu/script.js"
+    ></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="content">
+        <h1>fridge poetry</h1>
+        <i>a game powered by <a href="/">playhtml</a></i>
+        <!-- https://codepen.io/yomartin/pen/DQRdMe -->
+        <!-- https://codepen.io/cybermandu/pen/wPoWGw -->
+      </div>
+    </div>
+    <footer>
+      <div>
+        an open-source library created and maintained by
+        <a href="https://www.spencerchang.me/">spencer</a>, powered by
+        <a href="https://partykit.io">partykit</a>
+      </div>
+    </footer>
+
+    <script type="module" src="./website/story.ts"></script>
+    <script type="module" src="./src/main.ts"></script>
+    <!-- import cursor chat -->
+    <!-- TODO: implement custom cursor chat with color select, other settings -->
+    <div id="cursor-chat-layer">
+      <input type="text" id="cursor-chat-box" />
+    </div>
+    <script type="module">
+      import { initCursorChat } from "https://esm.sh/cursor-chat";
+      initCursorChat(window.location.href);
+    </script>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://unpkg.com/cursor-chat/dist/style.css"
+    />
+  </body>
+</html>
