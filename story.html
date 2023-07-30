@@ -67,11 +67,13 @@
             placeholder="your story word..."
             can-play
           />
+          <div id="typingIndicators"></div>
           <button class="wordSubmit">📤</button>
           <script>
             const input = document.getElementById("wordInput");
             const submitBtn = document.querySelector(".wordSubmit");
             const storyContent = document.getElementById("storyContent");
+            const typingIndicators = document.getElementById("typingIndicators");
             function updateUserColor(color) {
               localStorage.setItem("color", JSON.stringify(color));
             }
@@ -104,7 +106,7 @@
             }
 
             input.defaultData = [];
-            input.additionalSetup = ({ setData, getData }) => {
+            input.additionalSetup = ({ setData, getData, setLocalAwareness }) => {
               const onSubmit = () => {
                 submitBtn.disabled = true;
                 if (!isValidWord(input.value)) {
@@ -121,7 +123,7 @@
                 setData([...existingStory, newEntry]);
                 input.value = "";
                 submitBtn.disabled = false;
-                handleSubmittedWord();
+                // handleSubmittedWord();
               };
 
               submitBtn.addEventListener("click", onSubmit);
@@ -130,7 +132,23 @@
                   onSubmit();
                 }
               });
+              input.addEventListener("input", (event) => {
+                if (event.target.value === "") {
+                  console.log('CLEARING')
+                  setLocalAwareness(undefined)
+                } else {
+                  setLocalAwareness(getUserColor());
+                }
+              })
             };
+            input.updateElementAwareness = ({awareness}) => {
+              console.log("AWARE", awareness)
+              const typingUsers = [];
+              for (const color of awareness) {
+                typingUsers.push(`<span  class="typingIndicator" style="--word-color:${getColorVar(color)}">${color}</span>`)
+              }
+              typingIndicators.innerHTML = typingUsers.join("\n");
+            }
             input.updateElement = ({ data }) => {
               if (data.length > 0) {
                 const lastDate = new Date(data[data.length - 1].ts);

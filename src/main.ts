@@ -42,6 +42,12 @@ export function getElementFromId(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
+function getElementAwareness(tagType: TagType, elementId: string) {
+  const awareness = yprovider.awareness.getLocalState();
+  const elementAwareness = awareness?.[tagType] || {};
+  return elementAwareness[elementId];
+}
+
 // TODO: provide some loading state for these elements immediately?
 // some sort of "hydration" state?
 yprovider.on("sync", (connected: boolean) => {
@@ -70,6 +76,11 @@ function registerPlayElement<T extends TagType>(
   const elementData: ElementData = {
     ...tagInfo,
     data: tagData.get(elementId) || tagInfo.defaultData,
+    awareness:
+      getElementAwareness(tag, elementId) ||
+      tagInfo.defaultAwarenessData !== undefined
+        ? [tagInfo.defaultAwarenessData]
+        : undefined,
     element,
     onChange: (newData) => {
       if (tagData.get(elementId) === newData) {
@@ -77,6 +88,18 @@ function registerPlayElement<T extends TagType>(
       }
 
       tagData.set(elementId, newData);
+    },
+    onAwarenessChange: (elementAwarenessData) => {
+      const localAwareness = yprovider.awareness.getLocalState()?.[tag] || {};
+
+      if (localAwareness[elementId] === elementAwarenessData) {
+        return;
+      }
+      console.log("onawarenesschange", elementAwarenessData);
+
+      console.log(yprovider.awareness.getLocalState());
+      localAwareness[elementId] = elementAwarenessData;
+      yprovider.awareness.setLocalStateField(tag, localAwareness);
     },
   };
 
@@ -100,7 +123,9 @@ function getElementInitializerInfoForElement(
     const elementInitializerInfo: Required<ElementInitializer> = {
       defaultData: customElement.defaultData,
       defaultLocalData: customElement.defaultLocalData,
+      defaultAwarenessData: customElement.defaultAwarenessData,
       updateElement: customElement.updateElement,
+      updateElementAwareness: customElement.updateElementAwareness,
       onDrag: customElement.onDrag,
       onDragStart: customElement.onDragStart,
       onClick: customElement.onClick,
@@ -233,6 +258,75 @@ export function setupElements(): void {
       if (change.action === "add") {
         globalData.set(key, globalData.get(key)!);
         // TODO: need to re-initialize the above handlers here too...?
+      }
+    });
+  });
+
+  yprovider.awareness.on("change", () => {
+    // map of tagType -> elementId -> clientId -> awarenessData
+    const awarenessStates = new Map<string, Map<string, any>>();
+
+    function setClientElementAwareness(
+      tag: string,
+      elementId: string,
+      clientId: number,
+      awarenessData: any
+    ) {
+      if (!awarenessStates.has(tag)) {
+        awarenessStates.set(tag, new Map<string, any>());
+      }
+      const tagAwarenessStates = awarenessStates.get(tag)!;
+      if (!tagAwarenessStates.has(elementId)) {
+        tagAwarenessStates.set(elementId, new Map<string, any>());
+      }
+      const elementAwarenessStates = tagAwarenessStates.get(elementId);
+      elementAwarenessStates.set(clientId, awarenessData);
+    }
+
+    console.log("onchange");
+
+    yprovider.awareness.getStates().forEach((state, clientId) => {
+      // TODO: for each tag, update the awareness data?
+      // probably need another function to just update render based on awareness data change
+      // elementHandlers
+
+      console.log("CHANGE AWARENESS", state);
+      for (const [tag, tagData] of Object.entries(state)) {
+        const tagElementHandlers = elementHandlers.get(tag as TagType);
+        if (!tagElementHandlers) {
+          continue;
+        }
+        for (const [elementId, _elementHandler] of tagElementHandlers) {
+          if (!(elementId in tagData)) {
+            continue;
+          }
+          const elementAwarenessData = tagData[elementId];
+          setClientElementAwareness(
+            tag,
+            elementId,
+            clientId,
+            elementAwarenessData
+          );
+        }
+      }
+
+      for (const [tag, tagAwarenessStates] of awarenessStates) {
+        const tagElementHandlers = elementHandlers.get(tag as TagType);
+        if (!tagElementHandlers) {
+          continue;
+        }
+        for (const [elementId, elementHandler] of tagElementHandlers) {
+          const elementAwarenessStates = tagAwarenessStates
+            .get(elementId)
+            ?.values();
+          if (!elementAwarenessStates) {
+            continue;
+          }
+          let presentAwarenessStates = Array.from(
+            elementAwarenessStates
+          ).filter((s) => s !== undefined);
+          elementHandler.__awareness = presentAwarenessStates;
+        }
       }
     });
   });

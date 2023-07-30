@@ -31,51 +31,63 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
-export interface ElementInitializer<T = any, U = any> {
+export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
-  updateElement: (data: ElementEventHandlerData<T, U>) => void;
+  defaultAwarenessData?: V | ((element: HTMLElement) => V);
+  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
+  updateElementAwareness?: (data: ElementEventHandlerData<T, U, V>) => void;
 
   // Event handlers
   // Abstracts to handle clicking and dragging the element to handle both mouse and touch events.
   // Takes inspiration from https://github.com/react-grid-layout/react-draggable
   onDrag?: (
     e: MouseEvent | TouchEvent,
-    eventData: ElementEventHandlerData<T, U>
+    eventData: ElementEventHandlerData<T, U, V>
   ) => void;
-  onClick?: (e: MouseEvent, eventData: ElementEventHandlerData<T, U>) => void;
+  onClick?: (
+    e: MouseEvent,
+    eventData: ElementEventHandlerData<T, U, V>
+  ) => void;
   onDragStart?: (
     e: MouseEvent | TouchEvent,
-    eventData: ElementEventHandlerData<T, U>
+    eventData: ElementEventHandlerData<T, U, V>
   ) => void;
-  additionalSetup?: (eventData: ElementSetupData<T, U>) => void;
+  additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
   debounceMs?: number;
 }
 
-export interface ElementData<T = any, U = any> extends ElementInitializer<T> {
+export interface ElementData<T = any, U = any, V = any>
+  extends ElementInitializer<T> {
   data?: T;
   localData?: U;
+  awareness?: V;
   element: HTMLElement;
   onChange: (data: T) => void;
+  onAwarenessChange: (data: V) => void;
 }
 
-interface ElementEventHandlerData<T = any, U = any> {
+interface ElementEventHandlerData<T = any, U = any, V = any> {
   data: T;
   localData: U;
+  awareness: V[];
   element: HTMLElement;
   setData: (data: T) => void;
   setLocalData: (data: U) => void;
+  setLocalAwareness: (data: V) => void;
 }
 
-interface ElementSetupData<T = any, U = any> {
+interface ElementSetupData<T = any, U = any, V = any> {
   getData: () => T;
   getLocalData: () => U;
+  getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T) => void;
   setLocalData: (data: U) => void;
+  setLocalAwareness: (data: V) => void;
 }
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
@@ -322,23 +334,33 @@ interface FormData {
 
 // TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
 // on the element itself??
-export class ElementHandler<T = any, U = any> {
+export class ElementHandler<T = any, U = any, V = any> {
   defaultData: T;
   localData: U;
+  awareness: V[];
+  selfAwareness: V;
   element: HTMLElement;
   _data: T;
   onChange: (data: T) => void;
+  onAwarenessChange: (data: V) => void;
   debouncedOnChange: (data: T) => void;
   resetShortcut?: ModifierKey;
-  updateElement: (data: ElementEventHandlerData<T, U>) => void;
+  // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
+  // internal state for expressing the delta.
+  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
+  updateElementAwareness?: (data: ElementEventHandlerData<T, U, V>) => void;
 
   constructor({
     element,
     onChange,
+    onAwarenessChange,
     defaultData,
     defaultLocalData,
+    defaultAwarenessData,
     data,
+    awareness: awarenessData,
     updateElement,
+    updateElementAwareness,
     onClick,
     onDrag,
     onDragStart,
@@ -354,10 +376,20 @@ export class ElementHandler<T = any, U = any> {
       defaultLocalData instanceof Function
         ? defaultLocalData(element)
         : defaultLocalData;
+    this.awareness =
+      awarenessData !== undefined
+        ? awarenessData
+        : defaultAwarenessData instanceof Function
+        ? defaultAwarenessData(element)
+        : defaultAwarenessData;
+
+    console.log("AWARENESS DATA INIT", this.awareness);
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
+    this.onAwarenessChange = onAwarenessChange;
     this.updateElement = updateElement;
+    this.updateElementAwareness = updateElementAwareness;
     const initialData = data === undefined ? this.defaultData : data;
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData;
@@ -471,13 +503,23 @@ export class ElementHandler<T = any, U = any> {
     this.updateElement(this.getEventHandlerData());
   }
 
+  set __awareness(data: V[]) {
+    if (!this.updateElementAwareness) {
+      return;
+    }
+    this.awareness = data;
+    this.updateElementAwareness(this.getEventHandlerData());
+  }
+
   getEventHandlerData(): ElementEventHandlerData<T, U> {
     return {
       element: this.element,
       data: this.data,
       localData: this.localData,
+      awareness: this.awareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
+      setLocalAwareness: (newData) => this.setLocalAwareness(newData),
     };
   }
 
@@ -486,8 +528,10 @@ export class ElementHandler<T = any, U = any> {
       getElement: () => this.element,
       getData: () => this.data,
       getLocalData: () => this.localData,
+      getAwareness: () => this.awareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
+      setLocalAwareness: (newData) => this.setLocalAwareness(newData),
     };
   }
 
@@ -497,6 +541,19 @@ export class ElementHandler<T = any, U = any> {
    */
   setData(data: T): void {
     this.onChange(data);
+  }
+
+  setLocalAwareness(data: V): void {
+    this.onAwarenessChange(data);
+    if (data === undefined) {
+      // when we clear ourselves, for some reason the observer isn't called locally, so manually update
+      // the element's awareness without ourselves
+      this.__awareness = this.awareness?.filter(
+        (aw) => aw !== this.selfAwareness
+      );
+      this.updateElementAwareness?.(this.getEventHandlerData());
+    }
+    this.selfAwareness = data;
   }
 
   setDataDebounced(data: T) {
