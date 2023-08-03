@@ -68,6 +68,8 @@ export interface ElementData<T = any, U = any, V = any>
   element: HTMLElement;
   onChange: (data: T) => void;
   onAwarenessChange: (data: V) => void;
+  // Gets the current set of awareness data for the element.
+  triggerAwarenessUpdate: () => void;
 }
 
 interface ElementEventHandlerData<T = any, U = any, V = any> {
@@ -349,6 +351,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   // internal state for expressing the delta.
   updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
   updateElementAwareness?: (data: ElementEventHandlerData<T, U, V>) => void;
+  triggerAwarenessUpdate?: () => void;
 
   constructor({
     element,
@@ -367,6 +370,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     additionalSetup,
     resetShortcut,
     debounceMs,
+    triggerAwarenessUpdate,
   }: ElementData<T>) {
     // console.log("🔨 constructing ", element.id);
     this.element = element;
@@ -376,14 +380,15 @@ export class ElementHandler<T = any, U = any, V = any> {
       defaultLocalData instanceof Function
         ? defaultLocalData(element)
         : defaultLocalData;
+    this.triggerAwarenessUpdate = triggerAwarenessUpdate;
+    // TODO: this is not the same as the default value given in main.ts, resolve.
     this.awareness =
       awarenessData !== undefined
         ? awarenessData
         : defaultAwarenessData instanceof Function
         ? defaultAwarenessData(element)
         : defaultAwarenessData;
-
-    console.log("AWARENESS DATA INIT", this.awareness);
+    this.selfAwareness = defaultAwarenessData;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
@@ -545,14 +550,10 @@ export class ElementHandler<T = any, U = any, V = any> {
 
   setLocalAwareness(data: V): void {
     this.onAwarenessChange(data);
-    if (data === undefined) {
-      // when we clear ourselves, for some reason the observer isn't called locally, so manually update
-      // the element's awareness without ourselves
-      this.__awareness = this.awareness?.filter(
-        (aw) => aw !== this.selfAwareness
-      );
-      this.updateElementAwareness?.(this.getEventHandlerData());
-    }
+    // For some reason unless it's the first time, the localState changing is not called in the `change` observer callback for awareness. So we have to manually update
+    // the element's awareness rendering here.
+    this.triggerAwarenessUpdate?.();
+    this.updateElementAwareness?.(this.getEventHandlerData());
     this.selfAwareness = data;
   }
 

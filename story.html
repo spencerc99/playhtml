@@ -135,16 +135,18 @@
               input.addEventListener("input", (event) => {
                 if (event.target.value === "") {
                   console.log('CLEARING')
-                  setLocalAwareness(undefined)
+                  setLocalAwareness(null)
                 } else {
+                  console.log("SETTING")
                   setLocalAwareness(getUserColor());
                 }
               })
             };
             input.updateElementAwareness = ({awareness}) => {
               console.log("AWARE", awareness)
+              const activeUsers = awareness.filter(c => Boolean(c));
               const typingUsers = [];
-              for (const color of awareness) {
+              for (const color of activeUsers) {
                 typingUsers.push(`<span  class="typingIndicator" style="--word-color:${getColorVar(color)}">${color}</span>`)
               }
               typingIndicators.innerHTML = typingUsers.join("\n");
