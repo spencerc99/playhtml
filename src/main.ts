@@ -42,6 +42,12 @@ export function getElementFromId(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
+function getElementAwareness(tagType: TagType, elementId: string) {
+  const awareness = yprovider.awareness.getLocalState();
+  const elementAwareness = awareness?.[tagType] || {};
+  return elementAwareness[elementId];
+}
+
 // TODO: provide some loading state for these elements immediately?
 // some sort of "hydration" state?
 yprovider.on("sync", (connected: boolean) => {
@@ -61,15 +67,18 @@ function registerPlayElement<T extends TagType>(
   tag: T,
   tagInfo: ElementInitializer<T>,
   elementId: string
-) {
-  // console.log(elementId, tagData.get(elementId));
-
+): ElementHandler<T> {
   type tagType = (typeof tagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
   const elementData: ElementData = {
     ...tagInfo,
     data: tagData.get(elementId) || tagInfo.defaultData,
+    awareness:
+      getElementAwareness(tag, elementId) ||
+      tagInfo.myDefaultAwareness !== undefined
+        ? [tagInfo.myDefaultAwareness]
+        : undefined,
     element,
     onChange: (newData) => {
       if (tagData.get(elementId) === newData) {
@@ -77,6 +86,19 @@ function registerPlayElement<T extends TagType>(
       }
 
       tagData.set(elementId, newData);
+    },
+    onAwarenessChange: (elementAwarenessData) => {
+      const localAwareness = yprovider.awareness.getLocalState()?.[tag] || {};
+
+      if (localAwareness[elementId] === elementAwarenessData) {
+        return;
+      }
+
+      localAwareness[elementId] = elementAwarenessData;
+      yprovider.awareness.setLocalStateField(tag, localAwareness);
+    },
+    triggerAwarenessUpdate: () => {
+      onChangeAwareness();
     },
   };
 
@@ -100,7 +122,9 @@ function getElementInitializerInfoForElement(
     const elementInitializerInfo: Required<ElementInitializer> = {
       defaultData: customElement.defaultData,
       defaultLocalData: customElement.defaultLocalData,
+      myDefaultAwareness: customElement.myDefaultAwareness,
       updateElement: customElement.updateElement,
+      updateElementAwareness: customElement.updateElementAwareness,
       onDrag: customElement.onDrag,
       onDragStart: customElement.onDragStart,
       onClick: customElement.onClick,
@@ -115,6 +139,70 @@ function getElementInitializerInfoForElement(
 }
 
 export const elementHandlers = new Map<string, Map<string, ElementHandler>>();
+
+function onChangeAwareness() {
+  // map of tagType -> elementId -> clientId -> awarenessData
+  const awarenessStates = new Map<string, Map<string, any>>();
+
+  function setClientElementAwareness(
+    tag: string,
+    elementId: string,
+    clientId: number,
+    awarenessData: any
+  ) {
+    if (!awarenessStates.has(tag)) {
+      awarenessStates.set(tag, new Map<string, any>());
+    }
+    const tagAwarenessStates = awarenessStates.get(tag)!;
+    if (!tagAwarenessStates.has(elementId)) {
+      tagAwarenessStates.set(elementId, new Map<string, any>());
+    }
+    const elementAwarenessStates = tagAwarenessStates.get(elementId);
+    elementAwarenessStates.set(clientId, awarenessData);
+  }
+
+  yprovider.awareness.getStates().forEach((state, clientId) => {
+    // TODO: for each tag, update the awareness data?
+    // probably need another function to just update render based on awareness data change
+    // elementHandlers
+
+    for (const [tag, tagData] of Object.entries(state)) {
+      const tagElementHandlers = elementHandlers.get(tag as TagType);
+      if (!tagElementHandlers) {
+        continue;
+      }
+      for (const [elementId, _elementHandler] of tagElementHandlers) {
+        if (!(elementId in tagData)) {
+          continue;
+        }
+        const elementAwarenessData = tagData[elementId];
+        setClientElementAwareness(
+          tag,
+          elementId,
+          clientId,
+          elementAwarenessData
+        );
+      }
+    }
+
+    for (const [tag, tagAwarenessStates] of awarenessStates) {
+      const tagElementHandlers = elementHandlers.get(tag as TagType);
+      if (!tagElementHandlers) {
+        continue;
+      }
+      for (const [elementId, elementHandler] of tagElementHandlers) {
+        const elementAwarenessStates = tagAwarenessStates
+          .get(elementId)
+          ?.values();
+        if (!elementAwarenessStates) {
+          continue;
+        }
+        let presentAwarenessStates = Array.from(elementAwarenessStates);
+        elementHandler.__awareness = presentAwarenessStates;
+      }
+    }
+  });
+}
 
 /**
  * Sets up any playhtml elements that are currently on the page.
@@ -185,6 +273,9 @@ export function setupElements(): void {
         elementId
       );
       tagElementHandlers.set(elementId, elementHandler);
+      // redo this now that we have set it in the mapping.
+      // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
+      elementHandler.triggerAwarenessUpdate?.();
       // Set up the common classes for affected elements.
       element.classList.add(`__playhtml-element`);
       element.classList.add(`__playhtml-${tag}`);
@@ -236,6 +327,8 @@ export function setupElements(): void {
       }
     });
   });
+
+  yprovider.awareness.on("change", () => onChangeAwareness());
 }
 
 // TODO: eventually need a way to import this that keeps library small and only imports the requested tags.
