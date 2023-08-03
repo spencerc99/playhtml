@@ -8,8 +8,6 @@ playhtml is a library for magically creating collaborative interactive HTML elem
 <div id="couch" can-move style="font-size: 80px">🛋</div>
 ```
 
-This is designed as an open library for anyone to add on new interactions and capabilities. To get started, see the [New Capabilities](#new-capabilities).
-
 https://github.com/spencerc99/playhtml/assets/14796580/00e84e15-2c1c-4b4b-8e15-2af22f39db7a
 
 If you enjoy this, please consider [sponsoring the project or sending a small donation](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
@@ -44,9 +42,11 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 
 To create your own custom element, refer to the [can-play](#can-play) section.
 
+If you're trying this out and having trouble, please message me ([email](mailto:spencerc99@gmail.com), [twitter](https://twitter.com/spencerc99)) and I'm happy to help out!
+
 ## Examples
 
-Check out the [full gallery of community examples](https://gallery.playhtml.fun/) for more inspiration on what you can do! And [submit your own](https://coda.io/form/playhtml-example_dnUR7xNE7wz) once you've made one.
+Check out the [full gallery of community examples](https://coda.io/@spencer/playhtml) for more inspiration on what you can do! And [submit your own](https://coda.io/form/playhtml-example_dnUR7xNE7wz) once you've made one.
 
 ## Capabilities
 
@@ -102,6 +102,8 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 ```
 
 The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `additionalSetup` property). See more examples based on the definitions for the included capabilities in `elements.ts`.
+
+If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so I'd love to host your custom elements here as well.
 
 ## Plug-and-play Capabilities
 
