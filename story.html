@@ -57,6 +57,10 @@
         <h3>
           our story<br />
           <i>last updated <span id="lastUpdatedTime"></span></i>
+          <span style="float: right"
+            ><span id="activeOrb"></span>
+            <span id="activeUsersCount">1</span> active users</span
+          >
         </h3>
         <p id="story">
           Once upon a time,
@@ -67,13 +71,15 @@
             placeholder="your story word..."
             can-play
           />
-          <div id="typingIndicators"></div>
           <button class="wordSubmit">📤</button>
+          <br />
+          <span id="typingIndicators"></span>
           <script>
             const input = document.getElementById("wordInput");
             const submitBtn = document.querySelector(".wordSubmit");
             const storyContent = document.getElementById("storyContent");
-            const typingIndicators = document.getElementById("typingIndicators");
+            const typingIndicators =
+              document.getElementById("typingIndicators");
             function updateUserColor(color) {
               localStorage.setItem("color", JSON.stringify(color));
             }
@@ -106,7 +112,12 @@
             }
 
             input.defaultData = [];
-            input.additionalSetup = ({ setData, getData, setLocalAwareness }) => {
+            input.myDefaultAwareness = null;
+            input.additionalSetup = ({
+              setData,
+              getData,
+              setLocalAwareness,
+            }) => {
               const onSubmit = () => {
                 submitBtn.disabled = true;
                 if (!isValidWord(input.value)) {
@@ -123,7 +134,6 @@
                 setData([...existingStory, newEntry]);
                 input.value = "";
                 submitBtn.disabled = false;
-                // handleSubmittedWord();
               };
 
               submitBtn.addEventListener("click", onSubmit);
@@ -134,23 +144,38 @@
               });
               input.addEventListener("input", (event) => {
                 if (event.target.value === "") {
-                  console.log('CLEARING')
-                  setLocalAwareness(null)
+                  setLocalAwareness(null);
                 } else {
-                  console.log("SETTING")
                   setLocalAwareness(getUserColor());
                 }
-              })
+              });
             };
-            input.updateElementAwareness = ({awareness}) => {
-              console.log("AWARE", awareness)
-              const activeUsers = awareness.filter(c => Boolean(c));
+            input.updateElementAwareness = ({ awareness, myAwareness }) => {
+              // people active on the site but not typing will be set to null
+              const activeUsers = awareness.filter((c) => Boolean(c));
+              const otherActiveUsers = [...activeUsers];
+              const myIndex = otherActiveUsers.findIndex(
+                (c) => c === myAwareness
+              );
+
+              // remove first instance of myAwareness to get everyone else and handle duplicates
+              if (myIndex !== -1) {
+                otherActiveUsers.splice(myIndex, 1);
+              }
               const typingUsers = [];
-              for (const color of activeUsers) {
-                typingUsers.push(`<span  class="typingIndicator" style="--word-color:${getColorVar(color)}">${color}</span>`)
+              for (const color of otherActiveUsers) {
+                typingUsers.push(`<div  class="typingIndicator" style="--word-color:${getColorVar(
+                  color
+                )}">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>`);
               }
               typingIndicators.innerHTML = typingUsers.join("\n");
-            }
+
+              activeUsersCount.innerText = awareness.length;
+            };
             input.updateElement = ({ data }) => {
               if (data.length > 0) {
                 const lastDate = new Date(data[data.length - 1].ts);

@@ -273,10 +273,19 @@ input {
 }
 
 h3 {
-  i {
+  i,
+  span {
     font-size: initial;
     font-weight: initial;
   }
+}
+
+#activeOrb {
+  background: rgb(16, 210, 16);
+  border-radius: 50%;
+  height: 10px;
+  width: 10px;
+  display: inline-block;
 }
 
 kbd {
@@ -289,4 +298,42 @@ kbd {
   font-weight: 700;
   padding: 2px 4px;
   white-space: nowrap;
+}
+
+.typingIndicator {
+  background-color: #eef1f2;
+  border-radius: 12px;
+  padding: 0.5rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  box-shadow: 0px 1px 6px 2px rgba(0, 0, 0, 0.1);
+
+  span {
+    height: 8px;
+    width: 8px;
+    float: left;
+    margin: 0 1px;
+    background-color: rgb(var(--word-color));
+    display: block;
+    border-radius: 50%;
+    opacity: 0.4;
+
+    &:nth-child(1) {
+      animation: 1s blink infinite 0.3333s;
+    }
+
+    &:nth-child(2) {
+      animation: 1s blink infinite 0.6666s;
+    }
+
+    &:nth-child(3) {
+      animation: 1s blink infinite 0.9999s;
+    }
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 1;
+  }
 }

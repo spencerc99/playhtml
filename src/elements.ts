@@ -34,9 +34,11 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
-  defaultAwarenessData?: V | ((element: HTMLElement) => V);
+  myDefaultAwareness?: V | ((element: HTMLElement) => V);
   updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
-  updateElementAwareness?: (data: ElementEventHandlerData<T, U, V>) => void;
+  updateElementAwareness?: (
+    data: ElementAwarenessEventHandlerData<T, U, V>
+  ) => void;
 
   // Event handlers
   // Abstracts to handle clicking and dragging the element to handle both mouse and touch events.
@@ -80,6 +82,11 @@ interface ElementEventHandlerData<T = any, U = any, V = any> {
   setData: (data: T) => void;
   setLocalData: (data: U) => void;
   setLocalAwareness: (data: V) => void;
+}
+
+interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
+  extends ElementEventHandlerData<T, U, V> {
+  myAwareness?: V;
 }
 
 interface ElementSetupData<T = any, U = any, V = any> {
@@ -339,8 +346,8 @@ interface FormData {
 export class ElementHandler<T = any, U = any, V = any> {
   defaultData: T;
   localData: U;
-  awareness: V[];
-  selfAwareness: V;
+  awareness: V[] = [];
+  selfAwareness?: V;
   element: HTMLElement;
   _data: T;
   onChange: (data: T) => void;
@@ -350,7 +357,9 @@ export class ElementHandler<T = any, U = any, V = any> {
   // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
   // internal state for expressing the delta.
   updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
-  updateElementAwareness?: (data: ElementEventHandlerData<T, U, V>) => void;
+  updateElementAwareness?: (
+    data: ElementAwarenessEventHandlerData<T, U, V>
+  ) => void;
   triggerAwarenessUpdate?: () => void;
 
   constructor({
@@ -359,7 +368,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     onAwarenessChange,
     defaultData,
     defaultLocalData,
-    defaultAwarenessData,
+    myDefaultAwareness,
     data,
     awareness: awarenessData,
     updateElement,
@@ -381,14 +390,6 @@ export class ElementHandler<T = any, U = any, V = any> {
         ? defaultLocalData(element)
         : defaultLocalData;
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
-    // TODO: this is not the same as the default value given in main.ts, resolve.
-    this.awareness =
-      awarenessData !== undefined
-        ? awarenessData
-        : defaultAwarenessData instanceof Function
-        ? defaultAwarenessData(element)
-        : defaultAwarenessData;
-    this.selfAwareness = defaultAwarenessData;
     this.onChange = onChange;
     this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
@@ -396,6 +397,17 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.updateElement = updateElement;
     this.updateElementAwareness = updateElementAwareness;
     const initialData = data === undefined ? this.defaultData : data;
+
+    if (awarenessData !== undefined) {
+      this.__awareness = awarenessData;
+    }
+    const myInitialAwareness =
+      myDefaultAwareness instanceof Function
+        ? myDefaultAwareness(element)
+        : myDefaultAwareness;
+    if (myInitialAwareness !== undefined) {
+      this.setLocalAwareness(myInitialAwareness);
+    }
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData;
     this.__data = initialData;
@@ -513,10 +525,10 @@ export class ElementHandler<T = any, U = any, V = any> {
       return;
     }
     this.awareness = data;
-    this.updateElementAwareness(this.getEventHandlerData());
+    this.updateElementAwareness(this.getAwarenessEventHandlerData());
   }
 
-  getEventHandlerData(): ElementEventHandlerData<T, U> {
+  getEventHandlerData(): ElementEventHandlerData<T, U, V> {
     return {
       element: this.element,
       data: this.data,
@@ -525,6 +537,13 @@ export class ElementHandler<T = any, U = any, V = any> {
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setLocalAwareness: (newData) => this.setLocalAwareness(newData),
+    };
+  }
+
+  getAwarenessEventHandlerData(): ElementAwarenessEventHandlerData<T, U, V> {
+    return {
+      ...this.getEventHandlerData(),
+      myAwareness: this.selfAwareness,
     };
   }
 
@@ -549,12 +568,16 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   setLocalAwareness(data: V): void {
+    if (data === this.selfAwareness) {
+      // avoid duplicate broadcasts
+      return;
+    }
+
+    this.selfAwareness = data;
     this.onAwarenessChange(data);
     // For some reason unless it's the first time, the localState changing is not called in the `change` observer callback for awareness. So we have to manually update
     // the element's awareness rendering here.
     this.triggerAwarenessUpdate?.();
-    this.updateElementAwareness?.(this.getEventHandlerData());
-    this.selfAwareness = data;
   }
 
   setDataDebounced(data: T) {

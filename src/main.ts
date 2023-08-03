@@ -67,9 +67,7 @@ function registerPlayElement<T extends TagType>(
   tag: T,
   tagInfo: ElementInitializer<T>,
   elementId: string
-) {
-  // console.log(elementId, tagData.get(elementId));
-
+): ElementHandler<T> {
   type tagType = (typeof tagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
@@ -78,8 +76,8 @@ function registerPlayElement<T extends TagType>(
     data: tagData.get(elementId) || tagInfo.defaultData,
     awareness:
       getElementAwareness(tag, elementId) ||
-      tagInfo.defaultAwarenessData !== undefined
-        ? [tagInfo.defaultAwarenessData]
+      tagInfo.myDefaultAwareness !== undefined
+        ? [tagInfo.myDefaultAwareness]
         : undefined,
     element,
     onChange: (newData) => {
@@ -95,6 +93,7 @@ function registerPlayElement<T extends TagType>(
       if (localAwareness[elementId] === elementAwarenessData) {
         return;
       }
+
       localAwareness[elementId] = elementAwarenessData;
       yprovider.awareness.setLocalStateField(tag, localAwareness);
     },
@@ -123,7 +122,7 @@ function getElementInitializerInfoForElement(
     const elementInitializerInfo: Required<ElementInitializer> = {
       defaultData: customElement.defaultData,
       defaultLocalData: customElement.defaultLocalData,
-      defaultAwarenessData: customElement.defaultAwarenessData,
+      myDefaultAwareness: customElement.myDefaultAwareness,
       updateElement: customElement.updateElement,
       updateElementAwareness: customElement.updateElementAwareness,
       onDrag: customElement.onDrag,
@@ -274,6 +273,9 @@ export function setupElements(): void {
         elementId
       );
       tagElementHandlers.set(elementId, elementHandler);
+      // redo this now that we have set it in the mapping.
+      // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
+      elementHandler.triggerAwarenessUpdate?.();
       // Set up the common classes for affected elements.
       element.classList.add(`__playhtml-element`);
       element.classList.add(`__playhtml-${tag}`);
