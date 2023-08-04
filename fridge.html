@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Carter+One&family=Play:wght@400;700&family=Rubik+Pixels&family=Yellowtail&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>playhtml</title>
+    <script
+      defer
+      data-domain="playhtml.fun"
+      data-api="https://sharingan.spencerc99.workers.dev/genjutsu/event"
+      src="https://sharingan.spencerc99.workers.dev/genjutsu/script.js"
+    ></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="content">
+        <h1>fridge poetry</h1>
+        <i>a game powered by <a href="/">playhtml</a></i>
+        <!-- inspo from -->
+        <!-- https://codepen.io/yomartin/pen/DQRdMe -->
+        <!-- https://codepen.io/cybermandu/pen/wPoWGw -->
+        <div id="fridge">
+            <!-- TODO: should make bounds of movement the fridge itself  via `can-move-bounded-by="fridge"`-->
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">lightning</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">surrender</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">dream</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">love</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">!</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">who</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">don't</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">and</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">you</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">if</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">world</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">?</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">s</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">vanish</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">tender</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">with</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">where</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">few</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">I</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">question</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">moon</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">as</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">ing</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">moment</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">its</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">but</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">is</div>
+            </div>
+            <div can-move selector-id="#fridge .fridgeWordHolder" class="fridgeWordHolder">
+                <div class="fridgeWord">sometimes</div>
+            </div>
+      </div>
+    </div>
+    <footer>
+      <div>
+        an open-source library created and maintained by
+        <a href="https://www.spencerchang.me/">spencer</a>, powered by
+        <a href="https://partykit.io">partykit</a>
+      </div>
+    </footer>
+
+    <script type="module" src="./website/story.ts"></script>
+    <script type="module" src="./src/main.ts"></script>
+    <!-- import cursor chat -->
+    <!-- TODO: implement custom cursor chat with color select, other settings -->
+    <div id="cursor-chat-layer">
+      <input type="text" id="cursor-chat-box" />
+    </div>
+    <script type="module">
+      import { initCursorChat } from "https://esm.sh/cursor-chat";
+      initCursorChat(window.location.href);
+    </script>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://unpkg.com/cursor-chat/dist/style.css"
+    />
+  </body>
+</html>

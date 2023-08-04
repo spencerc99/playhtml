@@ -468,6 +468,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       if (!element.title) {
         element.title = `Hold down the ${ModifierKeyToName[resetShortcut]} key while clicking to reset.`;
       }
+      // @ts-ignore
+      element.reset = this.reset;
+
       element.addEventListener("click", (e) => {
         switch (resetShortcut) {
           case "ctrlKey":

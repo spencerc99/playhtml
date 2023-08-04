@@ -31,10 +31,6 @@ const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 export const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
 
 function getIdForElement(ele: HTMLElement): string | undefined {
-  // TODO: need to find a good way to robustly generate a uniqueID for an element
-  // if ID is not provided, and it should degrade gracefully
-  // perhaps could allow people to do custom selectors instead of an ID and just select the first one?
-  // return ele.id || btoa(ele.innerHTML);
   return ele.id;
 }
 
@@ -241,9 +237,25 @@ export function setupElements(): void {
     }
 
     const tagData: Y.Map<tagType> = globalData.get(tag)!;
-    for (const element of tagElements) {
+    const selectorIdsToAvailableIdx = new Map<string, number>();
+    for (let i = 0; i < tagElements.length; i++) {
+      const element = tagElements[i];
+      if (!element.id) {
+        // TODO: need to find a good way to robustly generate a uniqueID for an element
+        // if ID is not provided, and it should degrade gracefully
+        // perhaps could allow people to do custom selectors instead of an ID and just select the first one?
+        const selectorId = element.getAttribute("selector-id");
+        if (selectorId) {
+          const selectorIdx = selectorIdsToAvailableIdx.get(selectorId) || 0;
+          console.log(selectorIdx);
+
+          element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
+          selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
+        }
+      }
       const elementId = getIdForElement(element);
 
+      console.log(elementId);
       if (!elementId) {
         console.error(
           `Element ${element} does not have an acceptable ID. Please add an ID to the element to register it as a playhtml element.`
@@ -279,8 +291,7 @@ export function setupElements(): void {
       // Set up the common classes for affected elements.
       element.classList.add(`__playhtml-element`);
       element.classList.add(`__playhtml-${tag}`);
-      // @ts-ignore
-      element.style = `--jiggle-delay: ${Math.random() * 1}s;}`;
+      element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
     }
 
     tagData.observe((event) => {
