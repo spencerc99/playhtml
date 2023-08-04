@@ -10,6 +10,7 @@ export default defineConfig({
       input: [
         path.resolve(__dirname, "index.html"),
         path.resolve(__dirname, "story.html"),
+        path.resolve(__dirname, "fridge.html"),
       ],
     },
     outDir: "site-dist",
