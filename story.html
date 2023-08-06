@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="og:description" content="one word story powered by playhtml" />
+    <meta name="og:image" content="https://playhtml.fun/playhtml-story.png" />
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -99,6 +101,10 @@
               return { r, g, b };
             }
             function getColorVar(color) {
+              if (!color) {
+                return "transparent";
+              }
+
               const { r, g, b } = convertHexToRGB(color);
               return `${r}, ${g}, ${b}`;
             }
