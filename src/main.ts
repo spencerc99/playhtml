@@ -309,16 +309,47 @@ function maybeSetupTag(tag: TagType): void {
 }
 
 /**
+ * Returns true if the given element is set up properly for the given tag, false otherwise.
+ */
+function isElementValidForTag(element: HTMLElement, tag: TagType): boolean {
+  const tagAttribute = element.getAttribute(tag);
+  switch (tag) {
+    case TagType.CanPlay:
+    case TagType.CanMove:
+    case TagType.CanSpin:
+    case TagType.CanGrow:
+    case TagType.CanToggle:
+    case TagType.CanPost:
+      return true;
+    case TagType.CanDuplicate:
+      if (!tagAttribute) {
+        return false;
+      }
+
+      if (!document.getElementById(tagAttribute)) {
+        console.warn(
+          `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`
+        );
+      }
+
+      return true;
+    default:
+      console.error(`Unhandled tag found in validation: ${tag}`);
+      return false;
+  }
+}
+
+/**
  * Sets up a playhtml element to handle the given tag's capabilities.
- *
- * @param element
- * @param tag
- * @returns
  */
 export function setupPlayElementForTag<T extends TagType>(
   element: HTMLElement,
   tag: T
 ): void {
+  if (!isElementValidForTag(element, tag)) {
+    return;
+  }
+
   if (!element.id) {
     // TODO: better way for unique ID here? but actually having it reversible is a nice property
     const selectorId = element.getAttribute("selector-id");

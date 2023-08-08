@@ -11,6 +11,8 @@ export type GrowData = {
   isHovering: boolean;
 };
 
+export const CanDuplicateTo = "can-duplicate-to";
+
 // Supported Tags
 export enum TagType {
   "CanPlay" = "can-play",
@@ -18,6 +20,7 @@ export enum TagType {
   "CanSpin" = "can-spin",
   "CanGrow" = "can-grow",
   "CanToggle" = "can-toggle",
+  "CanDuplicate" = "can-duplicate",
   "CanPost" = "can-post",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",

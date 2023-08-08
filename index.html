@@ -103,7 +103,7 @@
         </details>
         <h2>existing tags</h2>
         <div id="candleFactory">
-          <button id="makeCandleBtn" can-duplicate="customCandle" can-play>
+          <button id="makeCandleBtn" can-duplicate="customCandle">
             Make candle
           </button>
           <!-- candle credit: https://nyknck.itch.io/candle -->
@@ -123,42 +123,13 @@
             candle.onClick = (_e, { data, setData }) => {
               setData(!data);
             };
-            candle.updateElement = ({ data }) => {
-              candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+            candle.updateElement = ({ element, data }) => {
+              element.src = data ? "/candle-gif.gif" : "/candle-off.png";
             };
             candle.resetShortcut = "shiftKey";
           }
 
           enchantCandle(customCandle);
-
-          makeCandleBtn.defaultData = [];
-          makeCandleBtn.defaultLocalData = new Set();
-          makeCandleBtn.onClick = (_e, { data, setData }) => {
-            const duplicateElementId =
-              makeCandleBtn.getAttribute("can-duplicate");
-            newCandleId =
-              duplicateElementId +
-              "-" +
-              Math.random().toString(36).substr(2, 9);
-
-            setData([...data, newCandleId]);
-          };
-          makeCandleBtn.updateElement = ({ data, localData, setLocalData }) => {
-            for (const candleId of data) {
-              if (localData.has(candleId)) continue;
-              const duplicateElementId =
-                makeCandleBtn.getAttribute("can-duplicate");
-              const elementToDuplicate =
-                document.getElementById(duplicateElementId);
-              const newCandle = elementToDuplicate.cloneNode(true);
-              newCandle.id = candleId;
-              enchantCandle(newCandle);
-              document.getElementById("candleFactory").appendChild(newCandle);
-              localData.add(candleId);
-              playhtml.setupPlayElement(newCandle);
-            }
-            setLocalData(localData);
-          };
         </script>
         <script></script>
         <ol>

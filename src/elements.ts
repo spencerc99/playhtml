@@ -1,6 +1,6 @@
 /// <reference lib="dom"/>
-import { getElementFromId } from "./main";
-import { GrowData, MoveData, SpinData, TagType } from "./types";
+import { getElementFromId, playhtml } from "./main";
+import { CanDuplicateTo, GrowData, MoveData, SpinData, TagType } from "./types";
 
 // @ts-ignore
 const debounce = (fn: Function, ms = 300) => {
@@ -321,6 +321,63 @@ export const TagTypeToElement: Record<
       });
     },
   } as ElementInitializer<FormData[]>,
+  [TagType.CanDuplicate]: {
+    defaultData: [],
+    defaultLocalData: [],
+    updateElement: ({ data, localData, setLocalData, element }) => {
+      const duplicateElementId = element.getAttribute(TagType.CanDuplicate)!;
+      const elementToDuplicate = document.getElementById(duplicateElementId);
+      let lastElement: HTMLElement | null =
+        document.getElementById(localData.slice(-1)?.[0]) ?? null;
+      if (!elementToDuplicate) {
+        console.error(
+          `Element with id ${duplicateElementId} not found. Cannot duplicate.`
+        );
+        return;
+      }
+
+      const canDuplicateTo = element.getAttribute(CanDuplicateTo);
+      function insertDuplicatedElement(newElement: Node) {
+        if (canDuplicateTo) {
+          const duplicateToElement =
+            document.getElementById(canDuplicateTo) ||
+            document.querySelector(canDuplicateTo);
+          if (duplicateToElement) {
+            duplicateToElement.appendChild(newElement);
+            return;
+          }
+        }
+
+        // By default insert after the latest element inserted (or the element to duplicate if none yet)
+        elementToDuplicate!.parentNode!.insertBefore(
+          newElement,
+          (lastElement || elementToDuplicate!).nextSibling
+        );
+      }
+
+      const addedElements = new Set(localData);
+      for (const elementId of data) {
+        if (addedElements.has(elementId)) continue;
+
+        const newElement = elementToDuplicate.cloneNode(true) as HTMLElement;
+        Object.assign(newElement, { ...elementToDuplicate });
+        newElement.id = elementId;
+
+        insertDuplicatedElement(newElement);
+        localData.push(elementId);
+        playhtml.setupPlayElement(newElement);
+        lastElement = newElement;
+      }
+      setLocalData(localData);
+    },
+    onClick: (_e: MouseEvent, { data, element, setData }) => {
+      const duplicateElementId = element.getAttribute(TagType.CanDuplicate)!;
+      const newElementId =
+        duplicateElementId + "-" + Math.random().toString(36).substr(2, 9);
+
+      setData([...data, newElementId]);
+    },
+  } as ElementInitializer<string[]>,
 };
 
 interface FormData {
