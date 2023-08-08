@@ -123,12 +123,6 @@
             candle.onClick = (_e, { data, setData }) => {
               setData(!data);
             };
-            // candle.additionalSetup = ({ getData, setData }) => {
-            //   candle.addEventListener("click", (_e) => {
-            //     const data = getData();
-            //     setData(!data);
-            //   });
-            // };
             candle.updateElement = ({ data }) => {
               candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
             };
@@ -165,9 +159,8 @@
               numAdded++;
             }
             if (numAdded) {
-              // TODO: this is causing duplicate setup. Need to make it a singleton such that only one instance is running at a time... maybe use the debounce logic?
-              // TOOD: this should just target the exact elements that were added
-              setTimeout(() => setupElements(), 1000);
+              // TODO: this should just target the exact elements that were added
+              setTimeout(() => playhtml.setupElements(), 1000);
               setLocalData(localData);
             }
           };
