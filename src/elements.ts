@@ -321,6 +321,9 @@ export const TagTypeToElement: Record<
       });
     },
   } as ElementInitializer<FormData[]>,
+  // TODO: add ability to add max # of duplicates
+  // TODO: add lifespan to automatically prune
+  // TODO: add limit per person / per timeframe.
   [TagType.CanDuplicate]: {
     defaultData: [],
     defaultLocalData: [],
