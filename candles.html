@@ -29,16 +29,20 @@
       <div class="content">
         <h1>candle factory</h1>
         <i>a factory powered by <a href="/">playhtml</a></i>
+        <p>
+          make some candles with friends, see what pictures you can make by
+          lighting them.
+        </p>
         <div id="candleFactory">
           <button id="makeCandleBtn" can-duplicate="customCandle">🕯️</button>
-          <img
-            can-play
-            can-move
-            id="customCandle"
-            src="/candle-gif.gif"
-            class="candle"
-          />
         </div>
+        <img
+          can-play
+          can-move
+          id="customCandle"
+          src="/candle-gif.gif"
+          class="candle"
+        />
 
         <!-- Set data for custom (can-play) playhtml elements -->
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
@@ -64,6 +68,7 @@
     </footer>
 
     <script type="module" src="src/main.ts"></script>
+    <script type="module" src="./index.ts"></script>
     <!-- import cursor chat -->
     <!-- TODO: implement custom cursor chat with color select, other settings -->
     <div id="cursor-chat-layer">

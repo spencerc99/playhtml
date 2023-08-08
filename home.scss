@@ -411,7 +411,7 @@ kbd {
 
 #makeCandleBtn {
   padding: 2px 16px;
-  font-size: 28px;
+  font-size: 36px;
   background: hsl(17deg, 100%, 59%, 85%);
 
   border: none;
@@ -422,4 +422,9 @@ kbd {
     text-shadow: 0px 0px 8px rgb(255 0 0);
     box-shadow: 2px 2px 10px 1px rgba(255 0 0 / 70%);
   }
+}
+
+#candleFactory {
+  display: flex;
+  justify-content: center;
 }

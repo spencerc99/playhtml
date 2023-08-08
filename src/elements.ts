@@ -72,6 +72,7 @@ interface ElementEventHandlerData<T = any, U = any, V = any> {
   awareness: V[];
   element: HTMLElement;
   setData: (data: T) => void;
+  // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U) => void;
   setLocalAwareness: (data: V) => void;
 }
