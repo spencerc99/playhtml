@@ -103,24 +103,38 @@
         </details>
         <h2>existing tags</h2>
         <!-- candle credit: https://nyknck.itch.io/candle -->
-        <img can-play id="customCandle" src="/candle-gif.gif" can-move />
+        <img
+          can-play
+          can-move
+          id="customCandle"
+          src="/candle-gif.gif"
+          class="candle"
+        />
+        <!-- <div id="candleFactory">
+          <button id="makeCandleBtn" can-duplicate="customCandle">
+            Make candle
+          </button>
+          <img
+            can-play
+            can-move
+            id="customCandle"
+            src="/candle-gif.gif"
+            class="candle"
+          />
+        </div> -->
+
         <!-- Set data for custom (can-play) playhtml elements -->
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
         <script>
-          customCandle.defaultData = true;
-          customCandle.onClick = (_e, { data, setData }) => {
+          const candle = document.getElementById("customCandle");
+          candle.defaultData = true;
+          candle.onClick = (_e, { data, setData }) => {
             setData(!data);
           };
-          // customCandle.additionalSetup = ({ getData, setData }) => {
-          //   customCandle.addEventListener("click", (_e) => {
-          //     const data = getData();
-          //     setData(!data);
-          //   });
-          // };
-          customCandle.updateElement = ({ data }) => {
-            customCandle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+          candle.updateElement = ({ element, data }) => {
+            element.src = data ? "/candle-gif.gif" : "/candle-off.png";
           };
-          customCandle.resetShortcut = "shiftKey";
+          candle.resetShortcut = "shiftKey";
         </script>
         <ol>
           <!-- TODO: move this into React to dynamically update -->
@@ -130,10 +144,12 @@
               >with your code</a
             >!)
           </li>
+          <!-- TODO: spotlight elements on the page that match these -->
           <li>can-move</li>
+          <li>can-toggle</li>
+          <li>can-duplicate</li>
           <li>can-spin</li>
           <li>can-grow</li>
-          <li>can-toggle</li>
           <li>can-post</li>
           <li>
             <a href="https://github.com/spencerc99/playhtml/pulls"
@@ -145,6 +161,7 @@
         <ol>
           <li><a href="/story.html">one word story</a></li>
           <li><a href="/fridge.html">fridge poetry</a></li>
+          <li>candle factory (coming soon)</li>
           <li>communal garden (coming soon)</li>
           <li>puzzle (coming soon)</li>
         </ol>

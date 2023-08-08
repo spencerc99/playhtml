@@ -230,10 +230,9 @@ footer {
 }
 
 #customCandle {
-  width: 80px;
   float: right;
-  z-index: 5;
   position: relative;
+  z-index: 5;
 }
 
 /**
@@ -402,4 +401,9 @@ kbd {
     transform: rotate(-1.5deg);
     animation-timing-function: ease-out;
   }
+}
+
+.candle {
+  width: 80px;
+  cursor: pointer;
 }

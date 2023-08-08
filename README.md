@@ -115,26 +115,30 @@ We welcome any contributions if you have custom `can-play` elements that you wou
 
 https://github.com/spencerc99/playhtml/assets/14796580/9c2b9bf6-142c-41e2-8c8f-93a3b121a73e
 
-Creates a movable object using 2D `translate` on the element. Dragging the element around will move it
+Creates a movable element using 2D `translate` on the element. Dragging the element around will move it
 
 **troubleshooting**
 
 - This currently doesn't work on `inline` display elements.
 - This currently doesn't work on touch screens.
 
-### `can-spin`
-
-Creates a rotatable object using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
-
 ### `can-toggle`
 
 <blockquote class="twitter-tweet"><p lang="en" dir="ltr">today i installed some lamps on the demos-and-chill website<br><br>then <a href="https://twitter.com/_jzhao?ref_src=twsrc%5Etfw">@_jzhao</a> and i fought on whether to keep them on or not. <a href="https://t.co/sCspTwmRpS">pic.twitter.com/sCspTwmRpS</a></p>&mdash; spencer chang ☀️ (spencerchang.me @ bsky) (@spencerc99) <a href="https://twitter.com/spencerc99/status/1681048824884895744?ref_src=twsrc%5Etfw">July 17, 2023</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
-Creates an object that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
+Creates an element that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
+
+### `can-duplicate`
+
+Creates an element that duplicates a target element (specified by the value of the `can-duplicate` attribute, which can be an element's ID or custom CSS selector) when clicked. Optionally can specify where the duplicate element is inserted in the DOM via the `can-duplicate-to` setting (default is as a sibling to the original element).
 
 ### `can-grow`
 
-Creates an object that can be resized using a `scale` `transform`. Clicking the object will grow it, clicking with <kbd>ALT</kbd> will shrink it. Currently, the max size is 2x the original size and the min size is 1/2 the original size.
+Creates an element that can be resized using a `scale` `transform`. Clicking the element will grow it, clicking with <kbd>ALT</kbd> will shrink it. Currently, the max size is 2x the original size and the min size is 1/2 the original size.
+
+### `can-spin`
+
+Creates a rotatable element using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
 
 ### `can-post`
 

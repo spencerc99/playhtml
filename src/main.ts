@@ -28,7 +28,10 @@ const yprovider = new YPartyKitProvider(partykitHost, room, doc);
 // @ts-ignore
 const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
-export const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
+const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
+const elementHandlers = new Map<string, Map<string, ElementHandler>>();
+const selectorIdsToAvailableIdx = new Map<string, number>();
+let firstSetup = true;
 
 function getIdForElement(ele: HTMLElement): string | undefined {
   return ele.id;
@@ -40,7 +43,7 @@ export function getElementFromId(id: string): HTMLElement | null {
 
 function getElementAwareness(tagType: TagType, elementId: string) {
   const awareness = yprovider.awareness.getLocalState();
-  const elementAwareness = awareness?.[tagType] || {};
+  const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
 }
 
@@ -67,11 +70,19 @@ function registerPlayElement<T extends TagType>(
   type tagType = (typeof tagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
+  // console.log(
+  //   "registering element",
+  //   elementId,
+  //   tagData.get(elementId) ?? tagInfo.defaultData,
+  //   tagData.get(elementId),
+  //   tagInfo.defaultData
+  // );
+
   const elementData: ElementData = {
     ...tagInfo,
-    data: tagData.get(elementId) || tagInfo.defaultData,
+    data: tagData.get(elementId) ?? tagInfo.defaultData,
     awareness:
-      getElementAwareness(tag, elementId) ||
+      getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
         ? [tagInfo.myDefaultAwareness]
         : undefined,
@@ -114,6 +125,7 @@ function getElementInitializerInfoForElement(
   element: HTMLElement
 ) {
   if (tag === TagType.CanPlay) {
+    // TODO: this needs to handle multiple can-play functionalities?
     const customElement = element as any;
     const elementInitializerInfo: Required<ElementInitializer> = {
       defaultData: customElement.defaultData,
@@ -133,8 +145,6 @@ function getElementInitializerInfoForElement(
 
   return TagTypeToElement[tag];
 }
-
-export const elementHandlers = new Map<string, Map<string, ElementHandler>>();
 
 function onChangeAwareness() {
   // map of tagType -> elementId -> clientId -> awarenessData
@@ -158,10 +168,6 @@ function onChangeAwareness() {
   }
 
   yprovider.awareness.getStates().forEach((state, clientId) => {
-    // TODO: for each tag, update the awareness data?
-    // probably need another function to just update render based on awareness data change
-    // elementHandlers
-
     for (const [tag, tagData] of Object.entries(state)) {
       const tagElementHandlers = elementHandlers.get(tag as TagType);
       if (!tagElementHandlers) {
@@ -202,20 +208,21 @@ function onChangeAwareness() {
 
 /**
  * Sets up any playhtml elements that are currently on the page.
- * Can be repeatedly called to set up new elements without affecting existing ones.
+ *
+ * Should be called only once. If you'd like to set up new elements, use `setupPlayElement`, which is exposed
+ * on the `playhtml` object on `window`.
  */
 export function setupElements(): void {
-  // TODO: need to expose some function to set up new elements that are added after the fact (like when elements are hydrated).
-
   console.log(
-    `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
-࿂࿂࿂࿂ INITIALIZING playhtml ࿂࿂࿂࿂
-࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
-    globalData.toJSON()
+    `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
+࿂࿂࿂࿂  ࿂    ࿂    ࿂    ࿂    ࿂  ࿂࿂࿂࿂
+࿂࿂࿂࿂ booting up playhtml... ࿂࿂࿂࿂
+࿂࿂࿂࿂  https://playhtml.fun  ࿂࿂࿂࿂
+࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
+࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
 
   for (const tag of Object.values(TagType)) {
-    const tagElementHandlers = new Map<string, ElementHandler>();
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
@@ -223,113 +230,15 @@ export function setupElements(): void {
       continue;
     }
 
-    let tagCommonElementInitializerInfo =
-      tag !== TagType.CanPlay ? TagTypeToElement[tag] : undefined;
-
-    elementHandlers.set(tag, tagElementHandlers);
-    // console.log(`initializing ${tag}`);
-    type tagType =
-      typeof tagCommonElementInitializerInfo extends ElementInitializer
-        ? (typeof tagCommonElementInitializerInfo)["defaultData"]
-        : any;
-    if (!globalData.get(tag)) {
-      globalData.set(tag, new Y.Map<tagType>());
-    }
-
-    const tagData: Y.Map<tagType> = globalData.get(tag)!;
-    const selectorIdsToAvailableIdx = new Map<string, number>();
     for (let i = 0; i < tagElements.length; i++) {
       const element = tagElements[i];
-      if (!element.id) {
-        // TODO: need to find a good way to robustly generate a uniqueID for an element
-        // if ID is not provided, and it should degrade gracefully
-        // perhaps could allow people to do custom selectors instead of an ID and just select the first one?
-        const selectorId = element.getAttribute("selector-id");
-        if (selectorId) {
-          const selectorIdx = selectorIdsToAvailableIdx.get(selectorId) || 0;
-          console.log(selectorIdx);
-
-          element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
-          selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
-        }
-      }
-      const elementId = getIdForElement(element);
-
-      console.log(elementId);
-      if (!elementId) {
-        console.error(
-          `Element ${element} does not have an acceptable ID. Please add an ID to the element to register it as a playhtml element.`
-        );
-        continue;
-      }
-
-      if (tagElementHandlers.has(elementId)) {
-        continue;
-      }
-
-      const elementInitializerInfo = getElementInitializerInfoForElement(
-        tag,
-        element
-      );
-      if (!isCorrectElementInitializer(elementInitializerInfo)) {
-        console.error(
-          `Element ${elementId} does not have proper info to initial a playhtml element. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`
-        );
-        continue;
-      }
-
-      const elementHandler = registerPlayElement(
-        element,
-        tag,
-        elementInitializerInfo,
-        elementId
-      );
-      tagElementHandlers.set(elementId, elementHandler);
-      // redo this now that we have set it in the mapping.
-      // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
-      elementHandler.triggerAwarenessUpdate?.();
-      // Set up the common classes for affected elements.
-      element.classList.add(`__playhtml-element`);
-      element.classList.add(`__playhtml-${tag}`);
-      element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+      setupPlayElementForTag(element, tag);
     }
-
-    tagData.observe((event) => {
-      event.changes.keys.forEach((change, key) => {
-        if (change.action === "add") {
-          // TODO: use custom selector here
-          const element = getElementFromId(key)!;
-          if (!isHTMLElement(element)) {
-            console.log(`Element ${key} not an HTML element. Ignoring.`);
-            return;
-          }
-          if (tagElementHandlers.has(key)) {
-            console.log(`Element ${key} already registered. Ignoring.`);
-            return;
-          }
-          const elementInitializerInfo = getElementInitializerInfoForElement(
-            tag,
-            element
-          );
-          const registeredElement = registerPlayElement(
-            element,
-            tag as TagType,
-            elementInitializerInfo,
-            key
-          );
-          tagElementHandlers.set(key, registeredElement);
-        } else if (change.action === "update") {
-          const elementHandler = tagElementHandlers.get(key)!;
-          elementHandler.__data = tagData.get(key)!;
-        } else if (change.action === "delete") {
-          tagElementHandlers.delete(key);
-        } else {
-          console.log(`Unhandled action: ${change.action}`);
-        }
-      });
-    });
   }
 
+  if (!firstSetup) {
+    return;
+  }
   globalData.observe((event) => {
     event.changes.keys.forEach((change, key) => {
       if (change.action === "add") {
@@ -340,10 +249,180 @@ export function setupElements(): void {
   });
 
   yprovider.awareness.on("change", () => onChangeAwareness());
+  firstSetup = false;
 }
 
-// TODO: eventually need a way to import this that keeps library small and only imports the requested tags.
-
 // Expose big variables to the window object for debugging purposes.
+export const playhtml = {
+  setupElements,
+  globalData,
+  elementHandlers,
+  setupPlayElement,
+};
 // @ts-ignore
-window.globalData = globalData;
+window.playhtml = playhtml;
+
+/**
+ * Performs any necessary setup for a playhtml TagType. Safe to call repeatedly.
+ */
+function maybeSetupTag(tag: TagType): void {
+  if (elementHandlers.has(tag)) {
+    return;
+  }
+
+  elementHandlers.set(tag, new Map<string, ElementHandler>());
+  let tagCommonElementInitializerInfo =
+    tag !== TagType.CanPlay ? TagTypeToElement[tag] : undefined;
+
+  type tagType =
+    typeof tagCommonElementInitializerInfo extends ElementInitializer
+      ? (typeof tagCommonElementInitializerInfo)["defaultData"]
+      : any;
+  // check for safety, but this should always be true because of the first check.
+  if (!globalData.get(tag)) {
+    globalData.set(tag, new Y.Map<tagType>());
+  }
+
+  const tagData: Y.Map<tagType> = globalData.get(tag)!;
+
+  tagData.observe((event) => {
+    event.changes.keys.forEach((change, key) => {
+      const tagElementHandlers = elementHandlers.get(tag)!;
+      if (change.action === "add") {
+        const element = getElementFromId(key)!;
+        if (!isHTMLElement(element)) {
+          console.log(`Element ${key} not an HTML element. Ignoring.`);
+          return;
+        }
+
+        setupPlayElementForTag(element, tag);
+      } else if (change.action === "update") {
+        const elementHandler = tagElementHandlers.get(key)!;
+        elementHandler.__data = tagData.get(key)!;
+      } else if (change.action === "delete") {
+        tagElementHandlers.delete(key);
+      } else {
+        console.log(`Unhandled action: ${change.action}`);
+      }
+    });
+  });
+}
+
+/**
+ * Returns true if the given element is set up properly for the given tag, false otherwise.
+ */
+function isElementValidForTag(element: HTMLElement, tag: TagType): boolean {
+  const tagAttribute = element.getAttribute(tag);
+  switch (tag) {
+    case TagType.CanPlay:
+    case TagType.CanMove:
+    case TagType.CanSpin:
+    case TagType.CanGrow:
+    case TagType.CanToggle:
+    case TagType.CanPost:
+      return true;
+    case TagType.CanDuplicate:
+      if (!tagAttribute) {
+        return false;
+      }
+
+      if (!document.getElementById(tagAttribute)) {
+        console.warn(
+          `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`
+        );
+      }
+
+      return true;
+    default:
+      console.error(`Unhandled tag found in validation: ${tag}`);
+      return false;
+  }
+}
+
+/**
+ * Sets up a playhtml element to handle the given tag's capabilities.
+ */
+export function setupPlayElementForTag<T extends TagType>(
+  element: HTMLElement,
+  tag: T
+): void {
+  if (!isElementValidForTag(element, tag)) {
+    return;
+  }
+
+  if (!element.id) {
+    // TODO: better way for unique ID here? but actually having it reversible is a nice property
+    const selectorId = element.getAttribute("selector-id");
+    if (selectorId) {
+      const selectorIdx = selectorIdsToAvailableIdx.get(selectorId) ?? 0;
+
+      element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
+      selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
+    }
+  }
+  const elementId = getIdForElement(element);
+
+  if (!elementId) {
+    console.error(
+      `Element ${element} does not have an acceptable ID. Please add an ID to the element to register it as a playhtml element.`
+    );
+    return;
+  }
+
+  maybeSetupTag(tag);
+  const tagElementHandlers = elementHandlers.get(tag)!;
+
+  if (tagElementHandlers.has(elementId)) {
+    return;
+  }
+
+  const elementInitializerInfo = getElementInitializerInfoForElement(
+    tag,
+    element
+  );
+  if (!isCorrectElementInitializer(elementInitializerInfo)) {
+    console.error(
+      `Element ${elementId} does not have proper info to initial a playhtml element. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`
+    );
+    return;
+  }
+
+  type tagType = (typeof elementInitializerInfo)["defaultData"];
+  const tagData: Y.Map<tagType> = globalData.get(tag)!;
+
+  const elementHandler = registerPlayElement(
+    element,
+    tag,
+    elementInitializerInfo,
+    elementId
+  );
+  tagElementHandlers.set(elementId, elementHandler);
+  // if there is nothing stored in the synced data, set it to the default data if the element gets successfully created
+  if (
+    tagData.get(elementId) === undefined &&
+    elementInitializerInfo.defaultData !== undefined
+  ) {
+    tagData.set(elementId, elementInitializerInfo.defaultData);
+  }
+
+  // redo this now that we have set it in the mapping.
+  // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
+  elementHandler.triggerAwarenessUpdate?.();
+  // Set up the common classes for affected elements.
+  element.classList.add(`__playhtml-element`);
+  element.classList.add(`__playhtml-${tag}`);
+  element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+}
+
+export function setupPlayElement(element: Element) {
+  if (!isHTMLElement(element)) {
+    console.log(`Element ${element.id} not an HTML element. Ignoring.`);
+    return;
+  }
+
+  for (const tag of Object.values(TagType)) {
+    if (element.hasAttribute(tag)) {
+      setupPlayElementForTag(element, tag);
+    }
+  }
+}
