@@ -125,6 +125,7 @@ function getElementInitializerInfoForElement(
   element: HTMLElement
 ) {
   if (tag === TagType.CanPlay) {
+    // TODO: this needs to handle multiple can-play functionalities?
     const customElement = element as any;
     const elementInitializerInfo: Required<ElementInitializer> = {
       defaultData: customElement.defaultData,
@@ -220,12 +221,6 @@ export function setupElements(): void {
   );
 
   for (const tag of Object.values(TagType)) {
-    let hasBeenInitialized = true;
-    if (!elementHandlers.has(tag)) {
-      elementHandlers.set(tag, new Map<string, ElementHandler>());
-      hasBeenInitialized = false;
-    }
-    const tagElementHandlers = elementHandlers.get(tag)!;
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
@@ -233,60 +228,10 @@ export function setupElements(): void {
       continue;
     }
 
-    let tagCommonElementInitializerInfo =
-      tag !== TagType.CanPlay ? TagTypeToElement[tag] : undefined;
-
-    // console.log(`initializing ${tag}`);
-    type tagType =
-      typeof tagCommonElementInitializerInfo extends ElementInitializer
-        ? (typeof tagCommonElementInitializerInfo)["defaultData"]
-        : any;
-    if (!globalData.get(tag)) {
-      globalData.set(tag, new Y.Map<tagType>());
-    }
-
-    const tagData: Y.Map<tagType> = globalData.get(tag)!;
     for (let i = 0; i < tagElements.length; i++) {
       const element = tagElements[i];
       setupPlayElementForTag(element, tag);
     }
-
-    if (hasBeenInitialized) {
-      continue;
-    }
-    tagData.observe((event) => {
-      event.changes.keys.forEach((change, key) => {
-        if (change.action === "add") {
-          const element = getElementFromId(key)!;
-          if (!isHTMLElement(element)) {
-            console.log(`Element ${key} not an HTML element. Ignoring.`);
-            return;
-          }
-          if (tagElementHandlers.has(key)) {
-            console.log(`Element ${key} already registered. Ignoring.`);
-            return;
-          }
-          const elementInitializerInfo = getElementInitializerInfoForElement(
-            tag,
-            element
-          );
-          const registeredElement = registerPlayElement(
-            element,
-            tag as TagType,
-            elementInitializerInfo,
-            key
-          );
-          tagElementHandlers.set(key, registeredElement);
-        } else if (change.action === "update") {
-          const elementHandler = tagElementHandlers.get(key)!;
-          elementHandler.__data = tagData.get(key)!;
-        } else if (change.action === "delete") {
-          tagElementHandlers.delete(key);
-        } else {
-          console.log(`Unhandled action: ${change.action}`);
-        }
-      });
-    });
   }
 
   if (!firstSetup) {
@@ -315,6 +260,59 @@ export const playhtml = {
 // @ts-ignore
 window.playhtml = playhtml;
 
+/**
+ * Performs any necessary setup for a playhtml TagType. Safe to call repeatedly.
+ */
+function maybeSetupTag(tag: TagType): void {
+  if (elementHandlers.has(tag)) {
+    return;
+  }
+
+  elementHandlers.set(tag, new Map<string, ElementHandler>());
+  let tagCommonElementInitializerInfo =
+    tag !== TagType.CanPlay ? TagTypeToElement[tag] : undefined;
+
+  type tagType =
+    typeof tagCommonElementInitializerInfo extends ElementInitializer
+      ? (typeof tagCommonElementInitializerInfo)["defaultData"]
+      : any;
+  // check for safety, but this should always be true because of the first check.
+  if (!globalData.get(tag)) {
+    globalData.set(tag, new Y.Map<tagType>());
+  }
+
+  const tagData: Y.Map<tagType> = globalData.get(tag)!;
+
+  tagData.observe((event) => {
+    event.changes.keys.forEach((change, key) => {
+      const tagElementHandlers = elementHandlers.get(tag)!;
+      if (change.action === "add") {
+        const element = getElementFromId(key)!;
+        if (!isHTMLElement(element)) {
+          console.log(`Element ${key} not an HTML element. Ignoring.`);
+          return;
+        }
+
+        setupPlayElementForTag(element, tag);
+      } else if (change.action === "update") {
+        const elementHandler = tagElementHandlers.get(key)!;
+        elementHandler.__data = tagData.get(key)!;
+      } else if (change.action === "delete") {
+        tagElementHandlers.delete(key);
+      } else {
+        console.log(`Unhandled action: ${change.action}`);
+      }
+    });
+  });
+}
+
+/**
+ * Sets up a playhtml element to handle the given tag's capabilities.
+ *
+ * @param element
+ * @param tag
+ * @returns
+ */
 export function setupPlayElementForTag<T extends TagType>(
   element: HTMLElement,
   tag: T
@@ -338,7 +336,8 @@ export function setupPlayElementForTag<T extends TagType>(
     return;
   }
 
-  const tagElementHandlers = playhtml.elementHandlers.get(tag)!;
+  maybeSetupTag(tag);
+  const tagElementHandlers = elementHandlers.get(tag)!;
 
   if (tagElementHandlers.has(elementId)) {
     return;
@@ -382,7 +381,12 @@ export function setupPlayElementForTag<T extends TagType>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 }
 
-export function setupPlayElement(element: HTMLElement) {
+export function setupPlayElement(element: Element) {
+  if (!isHTMLElement(element)) {
+    console.log(`Element ${element.id} not an HTML element. Ignoring.`);
+    return;
+  }
+
   for (const tag of Object.values(TagType)) {
     if (element.hasAttribute(tag)) {
       setupPlayElementForTag(element, tag);

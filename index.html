@@ -144,7 +144,6 @@
             setData([...data, newCandleId]);
           };
           makeCandleBtn.updateElement = ({ data, localData, setLocalData }) => {
-            let numAdded = 0;
             for (const candleId of data) {
               if (localData.has(candleId)) continue;
               const duplicateElementId =
@@ -156,13 +155,9 @@
               enchantCandle(newCandle);
               document.getElementById("candleFactory").appendChild(newCandle);
               localData.add(candleId);
-              numAdded++;
+              playhtml.setupPlayElement(newCandle);
             }
-            if (numAdded) {
-              // TODO: this should just target the exact elements that were added
-              setTimeout(() => playhtml.setupElements(), 1000);
-              setLocalData(localData);
-            }
+            setLocalData(localData);
           };
         </script>
         <script></script>

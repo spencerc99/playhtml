@@ -19,14 +19,6 @@ const ModifierKeyToName: Record<ModifierKey, string> = {
   metaKey: "Meta",
 };
 
-// TODO: Expose these to the user to simplify accessing data in `globalData`
-// function retrieveElementData(element: HTMLElement, key: string): any {
-//   return JSON.parse(element.dataset[key] || "null");
-// }
-// function setElementData(element: HTMLElement, key: string, value: any): void {
-//   element.dataset[key] = JSON.stringify(value);
-// }
-
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
@@ -140,7 +132,6 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
   return { clientX: e.clientX, clientY: e.clientY };
 }
 
-// TODO: make it a function that takes in element to get result?
 export const TagTypeToElement: Record<
   Exclude<TagType, "can-play">,
   ElementInitializer
@@ -225,7 +216,6 @@ export const TagTypeToElement: Record<
     resetShortcut: "shiftKey",
   },
   [TagType.CanGrow]: {
-    // TODO: turn this into a function so you can accept arbitrary user input?
     defaultData: { scale: 1 },
     defaultLocalData: { maxScale: 2, isHovering: false },
     updateElement: ({ element, data }) => {
@@ -279,7 +269,6 @@ export const TagTypeToElement: Record<
         (entry) => !addedEntries.has(entry.id)
       );
 
-      // TODO: add typing indicators for anyone who has it filled out
       const guestbookDiv = getElementFromId("guestbookMessages")!;
       entriesToAdd.forEach((entry) => {
         const newEntry = document.createElement("div");
@@ -562,7 +551,6 @@ export class ElementHandler<T = any, U = any, V = any> {
     };
   }
 
-  // TODO: turn from setter into a method to allow for debouncing
   /**
    * Public-use setter for data that makes the change to all clients.
    */
