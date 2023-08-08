@@ -40,7 +40,7 @@ export function getElementFromId(id: string): HTMLElement | null {
 
 function getElementAwareness(tagType: TagType, elementId: string) {
   const awareness = yprovider.awareness.getLocalState();
-  const elementAwareness = awareness?.[tagType] || {};
+  const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
 }
 
@@ -67,11 +67,19 @@ function registerPlayElement<T extends TagType>(
   type tagType = (typeof tagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
+  // console.log(
+  //   "registering element",
+  //   elementId,
+  //   tagData.get(elementId) ?? tagInfo.defaultData,
+  //   tagData.get(elementId),
+  //   tagInfo.defaultData
+  // );
+
   const elementData: ElementData = {
     ...tagInfo,
-    data: tagData.get(elementId) || tagInfo.defaultData,
+    data: tagData.get(elementId) ?? tagInfo.defaultData,
     awareness:
-      getElementAwareness(tag, elementId) ||
+      getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
         ? [tagInfo.myDefaultAwareness]
         : undefined,
@@ -251,8 +259,7 @@ export function setupElements(): void {
         // perhaps could allow people to do custom selectors instead of an ID and just select the first one?
         const selectorId = element.getAttribute("selector-id");
         if (selectorId) {
-          const selectorIdx = selectorIdsToAvailableIdx.get(selectorId) || 0;
-          console.log(selectorIdx);
+          const selectorIdx = selectorIdsToAvailableIdx.get(selectorId) ?? 0;
 
           element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
           selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
@@ -260,7 +267,6 @@ export function setupElements(): void {
       }
       const elementId = getIdForElement(element);
 
-      console.log(elementId);
       if (!elementId) {
         console.error(
           `Element ${element} does not have an acceptable ID. Please add an ID to the element to register it as a playhtml element.`
@@ -269,7 +275,6 @@ export function setupElements(): void {
       }
 
       if (tagElementHandlers.has(elementId)) {
-        console.log("Skipping", elementId, "because it is already registered.");
         continue;
       }
 
@@ -291,6 +296,14 @@ export function setupElements(): void {
         elementId
       );
       tagElementHandlers.set(elementId, elementHandler);
+      // if there is nothing stored in the synced data, set it to the default data if the element gets successfully created
+      if (
+        tagData.get(elementId) === undefined &&
+        elementInitializerInfo.defaultData !== undefined
+      ) {
+        tagData.set(elementId, elementInitializerInfo.defaultData);
+      }
+
       // redo this now that we have set it in the mapping.
       // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
       elementHandler.triggerAwarenessUpdate?.();

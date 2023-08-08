@@ -111,7 +111,6 @@
             can-play
             id="customCandle"
             src="/candle-gif.gif"
-            can-move
             class="candle"
           />
         </div>
@@ -152,7 +151,6 @@
           };
           makeCandleBtn.updateElement = ({ data, localData, setLocalData }) => {
             let numAdded = 0;
-            console.log(localData);
             for (const candleId of data) {
               if (localData.has(candleId)) continue;
               const duplicateElementId =
@@ -167,7 +165,6 @@
               numAdded++;
             }
             if (numAdded) {
-              console.log("calling setup again");
               // TODO: this is causing duplicate setup. Need to make it a singleton such that only one instance is running at a time... maybe use the debounce logic?
               // TOOD: this should just target the exact elements that were added
               setTimeout(() => setupElements(), 1000);
