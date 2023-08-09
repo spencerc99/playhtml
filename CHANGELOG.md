@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 1.3.1 - 2023-08-09
+
+- Removed unused code and consolidated types in `types.ts`
+
 ## 1.3.0 - 2023-08-07
 
 - Added support for `can-duplicate` capability to duplicate elements. Make factories for playhtml elements!!
