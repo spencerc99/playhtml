@@ -358,6 +358,9 @@ export function setupPlayElementForTag<T extends TagType>(
 
       element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
+    } else {
+      // TODO: use a hash function that compresses here
+      element.id = btoa(`${tag}-${element.innerHTML}}`);
     }
   }
   const elementId = getIdForElement(element);
