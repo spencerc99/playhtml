@@ -192,6 +192,19 @@
       </div>
     </footer>
 
+    <script>
+      // TODO: convert the guestbook to react and make the hook to make that possible
+      function saveName(e) {
+        localStorage.setItem("name", JSON.stringify(e.currentTarget.value));
+      }
+
+      const nameInput = document.getElementsByName("name")[0];
+      nameInput.value = localStorage.getItem("name")
+        ? JSON.parse(localStorage.getItem("name"))
+        : "";
+      nameInput.addEventListener("change", saveName);
+    </script>
+
     <script type="module" src="./index.ts"></script>
     <script type="module" src="src/main.ts"></script>
     <!-- import cursor chat -->
