@@ -3,14 +3,9 @@
 import YPartyKitProvider from "y-partykit/provider";
 import { IndexeddbPersistence } from "y-indexeddb";
 import "./style.scss";
-import { TagType } from "./types";
+import { ElementData, ElementInitializer, TagType } from "./types";
 import * as Y from "yjs";
-import {
-  TagTypeToElement,
-  ElementData,
-  ElementHandler,
-  ElementInitializer,
-} from "./elements";
+import { TagTypeToElement, ElementHandler } from "./elements";
 
 // TODO: there's a typescript error here but it all seems to work...
 // @ts-ignore

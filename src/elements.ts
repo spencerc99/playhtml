@@ -1,6 +1,19 @@
 /// <reference lib="dom"/>
 import { getElementFromId, playhtml } from "./main";
-import { CanDuplicateTo, GrowData, MoveData, SpinData, TagType } from "./types";
+import {
+  CanDuplicateTo,
+  ElementAwarenessEventHandlerData,
+  ElementData,
+  ElementEventHandlerData,
+  ElementInitializer,
+  ElementSetupData,
+  GrowData,
+  ModifierKey,
+  ModifierKeyToName,
+  MoveData,
+  SpinData,
+  TagType,
+} from "./types";
 
 // @ts-ignore
 const debounce = (fn: Function, ms = 300) => {
@@ -10,87 +23,6 @@ const debounce = (fn: Function, ms = 300) => {
     timeoutId = setTimeout(() => fn.apply(this, args), ms);
   };
 };
-
-type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
-const ModifierKeyToName: Record<ModifierKey, string> = {
-  ctrlKey: "Control",
-  altKey: "Alt",
-  shiftKey: "Shift",
-  metaKey: "Meta",
-};
-
-// TODO: should be able to have set of allowable elements
-// TODO: should be able to accept arbitrary input? (like max/min)
-// TODO: should be able to add permission conditions?
-// TODO: add new method for preventing updates while someone else is moving it?
-export interface ElementInitializer<T = any, U = any, V = any> {
-  defaultData: T | ((element: HTMLElement) => T);
-  defaultLocalData?: U | ((element: HTMLElement) => U);
-  myDefaultAwareness?: V | ((element: HTMLElement) => V);
-  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
-  updateElementAwareness?: (
-    data: ElementAwarenessEventHandlerData<T, U, V>
-  ) => void;
-
-  // Event handlers
-  // Abstracts to handle clicking and dragging the element to handle both mouse and touch events.
-  // Takes inspiration from https://github.com/react-grid-layout/react-draggable
-  onDrag?: (
-    e: MouseEvent | TouchEvent,
-    eventData: ElementEventHandlerData<T, U, V>
-  ) => void;
-  onClick?: (
-    e: MouseEvent,
-    eventData: ElementEventHandlerData<T, U, V>
-  ) => void;
-  onDragStart?: (
-    e: MouseEvent | TouchEvent,
-    eventData: ElementEventHandlerData<T, U, V>
-  ) => void;
-  additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
-
-  // Advanced settings
-  resetShortcut?: ModifierKey;
-  debounceMs?: number;
-}
-
-export interface ElementData<T = any, U = any, V = any>
-  extends ElementInitializer<T> {
-  data?: T;
-  localData?: U;
-  awareness?: V;
-  element: HTMLElement;
-  onChange: (data: T) => void;
-  onAwarenessChange: (data: V) => void;
-  // Gets the current set of awareness data for the element.
-  triggerAwarenessUpdate: () => void;
-}
-
-interface ElementEventHandlerData<T = any, U = any, V = any> {
-  data: T;
-  localData: U;
-  awareness: V[];
-  element: HTMLElement;
-  setData: (data: T) => void;
-  // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
-  setLocalData: (data: U) => void;
-  setLocalAwareness: (data: V) => void;
-}
-
-interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
-  extends ElementEventHandlerData<T, U, V> {
-  myAwareness?: V;
-}
-
-interface ElementSetupData<T = any, U = any, V = any> {
-  getData: () => T;
-  getLocalData: () => U;
-  getAwareness: () => V[];
-  getElement: () => HTMLElement;
-  setData: (data: T) => void;
-  setLocalData: (data: U) => void;
-  setLocalAwareness: (data: V) => void;
-}
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
       16 0,

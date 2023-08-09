@@ -66,8 +66,15 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 <img can-play id="customCandle" src="/candle-gif.gif" />
 <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
 <script>
-  // Every HTML element with an ID has a variable corresponding to that ID name in the global context (see https://stackoverflow.com/questions/3434278/do-dom-tree-elements-with-ids-become-global-properties/3434388#3434388)
-  // This is fun, magical, and readable for small projects, but if you have a larger, complex project, I would advise using `document.getElementById` or `document.querySelector`...
+  let candle = document.getElementById("customCandle");
+  candle.defaultData = true;
+  candle.onClick = (_e, { data, setData }) => {
+    setData(!data);
+  };
+  candle.updateElement = ({ data }) => {
+    candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+  };
+  candle.resetShortcut = "shiftKey";
   customCandle.defaultData = true;
   customCandle.onClick = (_e, { data, setData }) => {
     setData(!data);
@@ -80,20 +87,6 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
   //     setData(!data);
   //   });
   // };
-  customCandle.updateElement = ({ data }) => {
-    customCandle.src = data ? "/candle-gif.gif" : "/candle-off.png";
-  };
-
-  // Alternatively
-  // let candle = document.getElementById('customCandle');
-  // candle.defaultData = true;
-  // candle.onClick = (_e, { data, setData }) => {
-  //   setData(!data);
-  // };
-  // candle.updateElement = ({ data }) => {
-  //   candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
-  // };
-  // candle.resetShortcut = "shiftKey";
 </script>
 
 <!-- Import playhtml -->
@@ -101,15 +94,15 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 <link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
 ```
 
-The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `additionalSetup` property). See more examples based on the definitions for the included capabilities in `elements.ts`.
+See all supported properties in the `ElementInitializer` [object in `types.ts`](https://github.com/spencerc99/playhtml/blob/main/src/types.ts#L13).
 
-If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so I'd love to host your custom elements here as well.
+The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `additionalSetup` property). See more examples based on the definitions for the included capabilities in [`elements.ts`](https://github.com/spencerc99/playhtml/blob/main/src/elements.ts#L72).
+
+If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so we [welcome contributions](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md) for new built-in capabilities.
 
 ## Plug-and-play Capabilities
 
 These capabilities are common ones that have been designed and created by the community. You should expect that they are relatively well-tested, and they simply build on top of the same API and constructs that `can-play` uses.
-
-We welcome any contributions if you have custom `can-play` elements that you would like to add to the library! Please make a PR.
 
 ### `can-move`
 
@@ -146,21 +139,9 @@ Creates a rotatable element using a `rotate` `transform` on the element. Draggin
 
 Creates a communal forum from a `form` element. The form will sync any new submissions including all the `input` elements in the form, using their `name` property as the key and their value as the value. New messages will be currently prepended to the element with the `guestbookMessages` ID. TODO: make this generic and take user input
 
----
-
-To add new ones, please find contributor guidelines in [New Capabilities](#new-capabilities).
-
 ## Contributing
 
-### New Capabilities
-
-`playhtml` is designed to be a collective library of magical capabilities that anyone can attach to arbitrary HTML elements. If you have an idea for a new capability, please first ensure that there is not a duplicate existing one in the current library (see `TagType` in `types.ts`). Please make a proposal for the capability you would like to add by opening an issue with the `new-capability` label.
-
-To contribute your capability, see sample PR (TODO: LINK).
-
----
-
-Outside of contributing new capabilities, feel free to submit any issues or PRs for bugs or improvements to the core of the library.
+See [CONTRIBUTING.md](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md).
 
 ## Support & Maintenance
 
