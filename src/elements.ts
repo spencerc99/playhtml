@@ -241,6 +241,9 @@ export const TagTypeToElement: Record<
         // massage formData into new object
         // @ts-ignore
         const inputData = Object.fromEntries(formData.entries());
+        if (inputData.message?.length > 5) {
+          return false;
+        }
         const timestamp = Date.now();
         const newEntry: FormData = {
           name: "someone",
