@@ -212,11 +212,18 @@ export const TagTypeToElement: Record<
         const isToday = entryDate.toDateString() === new Date().toDateString();
 
         const dateString = (() => {
-          if (isToday) {
+          // TODO: this is naive and incorrect but works most of the time lol
+          const now = new Date();
+          if (
+            now.getFullYear() !== entryDate.getFullYear() ||
+            now.getMonth() !== entryDate.getMonth()
+          ) {
+            return "Sometime before ";
+          } else if (isToday) {
             return "Today ";
-          } else if (new Date().getDate() - entryDate.getDate() === 1) {
+          } else if (now.getDate() - entryDate.getDate() === 1) {
             return "Yesterday ";
-          } else if (new Date().getDate() - entryDate.getDate() < 7) {
+          } else if (now.getDate() - entryDate.getDate() < 7) {
             return "This week ";
           } else {
             return "Sometime before ";
