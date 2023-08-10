@@ -1445,6 +1445,11 @@ printable-characters@^1.0.42:
   resolved "https://registry.yarnpkg.com/printable-characters/-/printable-characters-1.0.42.tgz#3f18e977a9bd8eb37fcc4ff5659d7be90868b3d8"
   integrity sha512-dKp+C4iXWK4vVYZmYSd0KBH5F/h1HoZRsbJ82AVKRO3PEo8L4lBS/vLwhVtpwwuYcoIsVY+1JYKR268yn480uQ==
 
+profane-words@^1.5.10:
+  version "1.5.10"
+  resolved "https://registry.yarnpkg.com/profane-words/-/profane-words-1.5.10.tgz#9c23a92f6cc93806dc051fde932ffa77e2ca2e1f"
+  integrity sha512-b4cK56EkxQROovwvEgcEBOsFDLiJoVZsLafwZBgvklLV7/WasXYYfFvtNKZEoE24qSKetJ0jOAxYCeykh91IXw==
+
 prompts@^2.4.2:
   version "2.4.2"
   resolved "https://registry.yarnpkg.com/prompts/-/prompts-2.4.2.tgz#7b57e73b3a48029ad10ebd44f74b01722a4cb069"

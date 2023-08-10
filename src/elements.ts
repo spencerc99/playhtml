@@ -14,6 +14,7 @@ import {
   SpinData,
   TagType,
 } from "./types";
+import words from "profane-words";
 
 // @ts-ignore
 const debounce = (fn: Function, ms = 300) => {
@@ -244,9 +245,25 @@ export const TagTypeToElement: Record<
         // massage formData into new object
         // @ts-ignore
         const inputData = Object.fromEntries(formData.entries());
-        if (inputData.message?.length > 5) {
+
+        if (!inputData.name ?? !inputData.message) {
           return false;
         }
+
+        if (
+          words.some(
+            (word) =>
+              inputData.message.includes(word) || inputData.name.includes(word)
+          )
+        ) {
+          alert("now why would you try to do something like that?");
+          return false;
+        }
+
+        if (inputData.message.length > 5) {
+          return false;
+        }
+
         const timestamp = Date.now();
         const newEntry: FormData = {
           name: "someone",
