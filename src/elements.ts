@@ -225,7 +225,8 @@ export const TagTypeToElement: Record<
 
         newEntry.innerHTML = `
         <span class="guestbook-entry-timestamp">${dateString}${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
-        guestbookDiv.prepend(newEntry);
+        // TODO: add option to change order?
+        guestbookDiv.appendChild(newEntry);
         newEntry.querySelector(".guestbook-entry-name").innerText = entry.name;
         newEntry.querySelector(".guestbook-entry-message").innerText =
           entry.message;
