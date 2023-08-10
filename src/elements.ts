@@ -257,6 +257,7 @@ export const TagTypeToElement: Record<
           if (!messageEle) {
             return;
           }
+          // @ts-ignore
           messageEle.value = "";
         }
         // @ts-ignore
@@ -278,10 +279,7 @@ export const TagTypeToElement: Record<
           return false;
         }
 
-        if (inputData.message.length > 5) {
-          clearMessage();
-          return false;
-        }
+        // TODO: add length validation here
 
         const timestamp = Date.now();
         const newEntry: FormData = {
