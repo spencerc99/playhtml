@@ -251,10 +251,19 @@ export const TagTypeToElement: Record<
 
         const formData = new FormData(e.target as HTMLFormElement);
         // massage formData into new object
+
+        function clearMessage() {
+          const messageEle = element.querySelector('input[name="message"]');
+          if (!messageEle) {
+            return;
+          }
+          messageEle.value = "";
+        }
         // @ts-ignore
         const inputData = Object.fromEntries(formData.entries());
 
         if (!inputData.name ?? !inputData.message) {
+          clearMessage();
           return false;
         }
 
@@ -265,10 +274,12 @@ export const TagTypeToElement: Record<
           )
         ) {
           alert("now why would you try to do something like that?");
+          clearMessage();
           return false;
         }
 
         if (inputData.message.length > 5) {
+          clearMessage();
           return false;
         }
 
@@ -281,6 +292,7 @@ export const TagTypeToElement: Record<
           id: `${timestamp}-${inputData.name}`,
         };
         setData([...entries, newEntry]);
+        clearMessage();
         return false;
       });
     },
