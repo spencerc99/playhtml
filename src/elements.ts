@@ -269,10 +269,10 @@ export const TagTypeToElement: Record<
         }
 
         if (
-          words.some(
-            (word) =>
-              inputData.message.includes(word) || inputData.name.includes(word)
-          )
+          words.some((word) => {
+            const regex = new RegExp(`\\b${word}\\b`, "gi");
+            return regex.test(inputData.message) || regex.test(inputData.name);
+          })
         ) {
           alert("now why would you try to do something like that?");
           clearMessage();
