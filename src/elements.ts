@@ -218,20 +218,20 @@ export const TagTypeToElement: Record<
             now.getFullYear() !== entryDate.getFullYear() ||
             now.getMonth() !== entryDate.getMonth()
           ) {
-            return "Sometime before ";
+            return "Sometime before";
           } else if (isToday) {
-            return "Today ";
+            return "Today";
           } else if (now.getDate() - entryDate.getDate() === 1) {
-            return "Yesterday ";
+            return "Yesterday";
           } else if (now.getDate() - entryDate.getDate() < 7) {
-            return "This week ";
+            return "This week";
           } else {
-            return "Sometime before ";
+            return "Sometime before";
           }
         })();
 
         newEntry.innerHTML = `
-        <span class="guestbook-entry-timestamp">${dateString}${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
+        <span class="guestbook-entry-timestamp">${dateString} at ${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
         // TODO: add option to change order?
         guestbookDiv.appendChild(newEntry);
         newEntry.querySelector(".guestbook-entry-name").innerText = entry.name;
