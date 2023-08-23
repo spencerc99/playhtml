@@ -1,11 +1,33 @@
 {
   "name": "playhtml",
+  "title": "playhtml",
+  "description": "Create interactive, collaborative html elements with a single attribute",
   "version": "1.3.1",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "html",
+    "collaboration",
+    "fun",
+    "real-time",
+    "persistence",
+    "html energy"
+  ],
+  "author": {
+    "name": "Spencer Chang",
+    "email": "spencerc99@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:spencerc99/playhtml"
+  },
+  "bugs": {
+    "url": "https://github.com/spencerc99/playhtml/issues"
+  },
   "main": "./dist/playhtml.umd.js",
   "types": "./dist/main.d.ts",
   "module": "./dist/playhtml.es.js",
+  "homepage": "https://playhtml.fun",
   "files": [
     "dist"
   ],
@@ -16,7 +38,7 @@
     }
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --config vite.config.site.ts",
     "build": "tsc && vite build",
     "build-site": "vite build --config vite.config.site.ts",
     "preview": "vite preview",
@@ -32,7 +54,6 @@
   },
   "dependencies": {
     "partykit": "^0.0.0-39cf5ce",
-    "partysocket": "^0.0.0-e7aa4cd",
     "profane-words": "^1.5.10",
     "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.0-39cf5ce",

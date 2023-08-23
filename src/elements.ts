@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { getElementFromId, playhtml } from "./main";
+import { getElementFromId } from "./utils";
 import {
   CanDuplicateTo,
   ElementAwarenessEventHandlerData,
@@ -234,9 +234,16 @@ export const TagTypeToElement: Record<
         <span class="guestbook-entry-timestamp">${dateString} at ${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
         // TODO: add option to change order?
         guestbookDiv.prepend(newEntry);
-        newEntry.querySelector(".guestbook-entry-name").innerText = entry.name;
-        newEntry.querySelector(".guestbook-entry-message").innerText =
-          entry.message;
+        if (newEntry.querySelector(".guestbook-entry-name")) {
+          // @ts-ignore
+          newEntry.querySelector(".guestbook-entry-name")!.innerText =
+            entry.name;
+        }
+        if (newEntry.querySelector(".guestbook-entry-message")) {
+          // @ts-ignore
+          newEntry.querySelector(".guestbook-entry-message")!.innerText =
+            entry.message;
+        }
         addedEntries.add(entry.id);
       });
 
@@ -342,7 +349,9 @@ export const TagTypeToElement: Record<
 
         insertDuplicatedElement(newElement);
         localData.push(elementId);
-        playhtml.setupPlayElement(newElement);
+        // TODO: import this to make it work not in browser
+        // @ts-ignore
+        window.playhtml.setupPlayElement(newElement);
         lastElement = newElement;
       }
       setLocalData(localData);

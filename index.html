@@ -205,7 +205,14 @@
     </footer>
 
     <script type="module" src="./index.ts"></script>
-    <!-- <script type="module" src="src/main.ts"></script> -->
+    <!-- TODO: TEMP while sunil works on main -->
+    <script type="module">
+      import "./src/main.ts";
+
+      playhtml.init({
+        host: "playhtml2.spencerc99.partykit.dev",
+      });
+    </script>
     <!-- import cursor chat -->
     <!-- TODO: implement custom cursor chat with color select, other settings -->
     <div id="cursor-chat-layer">

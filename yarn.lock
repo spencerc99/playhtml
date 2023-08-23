@@ -1378,11 +1378,6 @@ partykit@^0.0.0-39cf5ce:
     ws "^8.13.0"
     zod "^3.21.4"
 
-partysocket@^0.0.0-e7aa4cd:
-  version "0.0.0"
-  resolved "https://registry.yarnpkg.com/partysocket/-/partysocket-0.0.0.tgz#a201fff1b3d0919c75820f0e7ace13da732b7634"
-  integrity sha512-/Gm8TXQdMIT93AhQBbD2ooBukYMQHvpkXDpD10AhKsMt74db4vLoQ+DIwQ2lZI88qaHvpDJ1TVsQWgMpjaA3LA==
-
 patch-console@^2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/patch-console/-/patch-console-2.0.0.tgz#9023f4665840e66f40e9ce774f904a63167433bb"

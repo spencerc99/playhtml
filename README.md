@@ -27,7 +27,15 @@ To use this library, you can import the library and the associated styles from a
   id="openSign"
   <!-- INVALID EXAMPLE <img src="https://media2.giphy.com/media/lL7A3Li0YtFHq/giphy.gif?cid=ecf05e47ah89o71gzz7ke7inrgb1ai1xcbrjnqdf7o890118&ep=v1_stickers_search&rid=giphy.gif" can-move /> -->
   <!-- import the script -->
-  <script type="module" src="https://unpkg.com/playhtml"></script>
+  <script type="module">
+    import "https://unpkg.com/playhtml";
+    playhtml.init();
+    // Optionally you could customize the room and host, like so:
+    // playhtml.init({
+    //  room: window.location.pathname,
+    //  host: "mypartykit.user.partykit.dev"
+    // })
+  </script>
   <link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
 </body>
 ```
@@ -90,7 +98,10 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 </script>
 
 <!-- Import playhtml -->
-<script type="module" src="https://unpkg.com/playhtml"></script>
+<script type="module">
+  import "https://unpkg.com/playhtml";
+  playhtml.init();
+</script>
 <link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
 ```
 

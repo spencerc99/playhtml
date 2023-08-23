@@ -6,34 +6,69 @@ import "./style.scss";
 import { ElementData, ElementInitializer, TagType } from "./types";
 import * as Y from "yjs";
 import { TagTypeToElement, ElementHandler } from "./elements";
+import { getElementFromId, getIdForElement } from "./utils";
 
-// TODO: there's a typescript error here but it all seems to work...
-// @ts-ignore
-const partykitHost = import.meta.env.DEV
-  ? "localhost:1999"
-  : "playhtml.spencerc99.partykit.dev";
+const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
 const doc = new Y.Doc();
 // TODO: should the room include search?
 // option 1: room = window.location.hostname + window.location.pathname
 // option 2: room = window.location.href
 // option 3: default to 1 and expose custom option to user.
-const room = window.location.href;
-const yprovider = new YPartyKitProvider(partykitHost, room, doc);
-// @ts-ignore
-const _indexedDBProvider = new IndexeddbPersistence(room, doc);
-
-const globalData = doc.getMap<Y.Map<any>>("playhtml-global");
-const elementHandlers = new Map<string, Map<string, ElementHandler>>();
+const DefaultRoom = window.location.href;
+let yprovider: YPartyKitProvider;
+let globalData: Y.Map<any>;
+let elementHandlers: Map<string, Map<string, ElementHandler>>;
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let firstSetup = true;
 
-function getIdForElement(ele: HTMLElement): string | undefined {
-  return ele.id;
+interface InitOptions {
+  // The room to connect users to (this should be a string that matches the other users
+  // that you want a given user to connect with).
+  //
+  // Defaults to `window.location.href`
+  room?: string;
+  host?: string;
 }
 
-export function getElementFromId(id: string): HTMLElement | null {
-  return document.getElementById(id);
+export function initPlayHTML({
+  room = DefaultRoom,
+  host = DefaultPartykitHost,
+}: InitOptions = {}) {
+  if (!firstSetup) {
+    console.error("playhtml already set up!");
+    return;
+  }
+
+  // TODO: there's a typescript error here but it all seems to work...
+  // @ts-ignore
+  const partykitHost = import.meta.env.DEV ? "localhost:1999" : host;
+
+  console.log(
+    `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
+࿂࿂࿂࿂  ࿂    ࿂    ࿂    ࿂    ࿂  ࿂࿂࿂࿂
+࿂࿂࿂࿂ booting up playhtml... ࿂࿂࿂࿂
+࿂࿂࿂࿂  https://playhtml.fun  ࿂࿂࿂࿂
+࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
+࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
+  );
+  yprovider = new YPartyKitProvider(partykitHost, room, doc);
+  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
+  elementHandlers = new Map<string, Map<string, ElementHandler>>();
+  // @ts-ignore
+  const _indexedDBProvider = new IndexeddbPersistence(room, doc);
+  playhtml.globalData = globalData;
+  playhtml.elementHandlers = elementHandlers;
+
+  // TODO: provide some loading state for these elements immediately?
+  // some sort of "hydration" state?
+  yprovider.on("sync", (connected: boolean) => {
+    if (!connected) {
+      console.error("Issue connecting to yjs...");
+    }
+
+    setupElements();
+  });
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
@@ -41,16 +76,6 @@ function getElementAwareness(tagType: TagType, elementId: string) {
   const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
 }
-
-// TODO: provide some loading state for these elements immediately?
-// some sort of "hydration" state?
-yprovider.on("sync", (connected: boolean) => {
-  if (!connected) {
-    console.error("Issue connecting to yjs...");
-  }
-
-  setupElements();
-});
 
 function isHTMLElement(ele: any): ele is HTMLElement {
   return ele instanceof HTMLElement;
@@ -208,14 +233,7 @@ function onChangeAwareness() {
  * on the `playhtml` object on `window`.
  */
 export function setupElements(): void {
-  console.log(
-    `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
-࿂࿂࿂࿂  ࿂    ࿂    ࿂    ࿂    ࿂  ࿂࿂࿂࿂
-࿂࿂࿂࿂ booting up playhtml... ࿂࿂࿂࿂
-࿂࿂࿂࿂  https://playhtml.fun  ࿂࿂࿂࿂
-࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
-࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
-  );
+  console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
   for (const tag of Object.values(TagType)) {
     const tagElements: HTMLElement[] = Array.from(
@@ -247,12 +265,21 @@ export function setupElements(): void {
   firstSetup = false;
 }
 
+interface PlayHTMLComponents {
+  init: typeof initPlayHTML;
+  setupElements: typeof setupElements;
+  setupPlayElement: typeof setupPlayElement;
+  globalData: Y.Map<any> | undefined;
+  elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
+}
+
 // Expose big variables to the window object for debugging purposes.
-export const playhtml = {
+export const playhtml: PlayHTMLComponents = {
+  init: initPlayHTML,
   setupElements,
-  globalData,
-  elementHandlers,
   setupPlayElement,
+  globalData: undefined,
+  elementHandlers: undefined,
 };
 // @ts-ignore
 window.playhtml = playhtml;
