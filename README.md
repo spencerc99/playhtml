@@ -40,11 +40,14 @@ To use this library, you can import the library and the associated styles from a
 </body>
 ```
 
-If you have dynamic elements that are hydrated after the initial load, you can call `playhtml.setupElements()` whenever needed to have the library look for elements that haven't been marked.
+If you have dynamic elements that are hydrated after the initial load, you can call `playhtml.setupPlayElement(element)` to imbue the element with playhtml properties.
 
-```js
+```html
 <script type="module">
-  import {setupElements} from "https://unpkg.com/playhtml"; setupElements();
+  import { playhtml } from "https://unpkg.com/playhtml";
+  const newPlayElement = document.createElement("div");
+  newPlayElement.id = "newPlayElement";
+  playhtml.setupPlayElement(newPlayElement);
 </script>
 ```
 

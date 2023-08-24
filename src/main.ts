@@ -71,6 +71,16 @@ export function initPlayHTML({
   });
 }
 
+// NOTE: this is to handle the deprecation of importing the file without explicitly calling `init()`. Remove this in the future.
+setTimeout(() => {
+  if (!yprovider) {
+    console.log(
+      "You are using a deprecated version of playhtml. Please call `playhtml.init()` explicitly rather than just importing the library. Refer to https://github.com/spencerc99/playhtml#usage for reference."
+    );
+    initPlayHTML();
+  }
+}, 3000);
+
 function getElementAwareness(tagType: TagType, elementId: string) {
   const awareness = yprovider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
@@ -232,7 +242,7 @@ function onChangeAwareness() {
  * Should be called only once. If you'd like to set up new elements, use `setupPlayElement`, which is exposed
  * on the `playhtml` object on `window`.
  */
-export function setupElements(): void {
+function setupElements(): void {
   console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
   for (const tag of Object.values(TagType)) {
@@ -267,7 +277,6 @@ export function setupElements(): void {
 
 interface PlayHTMLComponents {
   init: typeof initPlayHTML;
-  setupElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
@@ -276,7 +285,6 @@ interface PlayHTMLComponents {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
-  setupElements,
   setupPlayElement,
   globalData: undefined,
   elementHandlers: undefined,
