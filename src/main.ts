@@ -74,7 +74,7 @@ export function initPlayHTML({
 // NOTE: this is to handle the deprecation of importing the file without explicitly calling `init()`. Remove this in the future.
 setTimeout(() => {
   if (!yprovider) {
-    console.log(
+    console.error(
       "You are using a deprecated version of playhtml. Please call `playhtml.init()` explicitly rather than just importing the library. Refer to https://github.com/spencerc99/playhtml#usage for reference."
     );
     initPlayHTML();

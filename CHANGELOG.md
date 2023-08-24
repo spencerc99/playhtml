@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.0.2 - 2023-08-23
+
+- handle deprecated import version by using a timeout. This adds a significant delay to the initialization of any client using the old method and logs a warning.
+
 ## 2.0.0 - 2023-08-23
 
 - **BREAKING CHANGE**: Changed the initializing of playhtml to be an explicit call of `playhtml.init()` from just a normal import. You can still use the old code if you pin the import to any version 1.3.1 (e.g. use `https://unpkg.com/playhtml@1.3.1` as the import source).
