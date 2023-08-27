@@ -33,8 +33,13 @@
   ],
   "exports": {
     ".": {
+      "types": "./dist/main.d.ts",
       "import": "./dist/playhtml.es.js",
       "require": "./dist/playhtml.umd.js"
+    },
+    "./dist/style.css": {
+      "import": "./dist/style.css",
+      "require": "./dist/style.css"
     }
   },
   "scripts": {

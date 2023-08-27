@@ -114,6 +114,10 @@ The only required properties are `defaultData`, `updateElement` and some kind of
 
 If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so we [welcome contributions](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md) for new built-in capabilities.
 
+### Advanced
+
+IDs are recommended on all elements to uniquely identify them. If you are applying the same capability to several elements, you can also use the `selector-id` attribute to specify a selector to the elements that distinguishes them. The ID will be the index of the element in that selector query.
+
 ## Plug-and-play Capabilities
 
 These capabilities are common ones that have been designed and created by the community. You should expect that they are relatively well-tested, and they simply build on top of the same API and constructs that `can-play` uses.
