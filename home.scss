@@ -122,6 +122,7 @@ footer {
   margin-top: 10vh;
   position: relative;
   max-width: 800px;
+  width: 100%;
 }
 
 .topSpacer {
@@ -428,4 +429,36 @@ kbd {
 #candleFactory {
   display: flex;
   justify-content: center;
+}
+
+.capabilities {
+  position: relative;
+  li:not(:last-child) {
+    width: fit-content;
+    cursor: zoom-in;
+    &:hover {
+      text-shadow: 0px 0px 4px rgb(245, 169, 15);
+      .code {
+        display: block;
+        position: absolute;
+        right: 0;
+        top: 0;
+      }
+    }
+
+    .code {
+      display: none;
+      max-width: 400px;
+    }
+  }
+}
+
+.highlighted {
+  position: relative;
+  box-shadow: 0px 0px 30px 10px rgb(245, 169, 15) !important;
+  background: rgb(245 169 15 / 80%);
+
+  &::after {
+    opacity: 1;
+  }
 }

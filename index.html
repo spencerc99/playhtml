@@ -25,6 +25,7 @@
     ></script>
   </head>
   <body>
+    <script type="module" src="./index.ts"></script>
     <div id="app">
       <div can-move id="sign">in beta</div>
 
@@ -33,6 +34,7 @@
         can-spin
         id="stamp"
       />
+
       <div id="plantContainer" can-move>
         <div id="plant" can-grow></div>
         <div class="pot"></div>
@@ -124,21 +126,66 @@
           };
           candle.resetShortcut = "shiftKey";
         </script>
-        <ol>
+
+        <script>
+          function highlightElements(capability) {
+            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
+              ele.classList.add("highlighted");
+            });
+          }
+
+          function unhighlightElements(capability) {
+            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
+              ele.classList.remove("highlighted");
+            });
+          }
+        </script>
+
+        <ol class="capabilities">
           <!-- TODO: move this into React to dynamically update -->
-          <li>
+          <li
+            onmouseenter="highlightElements('can-play')"
+            onmouseleave="unhighlightElements('can-play')"
+          >
             can-play (custom capabilities
             <a href="https://github.com/spencerc99/playhtml#can-play"
               >with your code</a
             >!)
+            <img class="code" src="/playhtml-can-play.png" />
           </li>
           <!-- TODO: spotlight elements on the page that match these on hover -->
-          <li>can-move</li>
-          <li>can-toggle</li>
+          <li
+            onmouseenter="highlightElements('can-move')"
+            onmouseleave="unhighlightElements('can-move')"
+          >
+            can-move
+            <img class="code" src="/playhtml-sign.png" />
+          </li>
+          <li
+            onmouseenter="highlightElements('can-toggle')"
+            onmouseleave="unhighlightElements('can-toggle')"
+          >
+            can-toggle <img class="code" src="/playhtml-can-toggle.png" />
+          </li>
           <li>can-duplicate</li>
-          <li>can-spin</li>
-          <li>can-grow</li>
-          <li>can-post</li>
+          <li
+            onmouseenter="highlightElements('can-spin')"
+            onmouseleave="unhighlightElements('can-spin')"
+          >
+            can-spin <img class="code" src="/playhtml-can-spin.png" />
+          </li>
+          <li
+            onmouseenter="highlightElements('can-grow')"
+            onmouseleave="unhighlightElements('can-grow')"
+          >
+            can-grow
+          </li>
+          <li
+            onmouseenter="highlightElements('can-post')"
+            onmouseleave="unhighlightElements('can-post')"
+          >
+            can-post
+          </li>
           <li>
             <a href="https://github.com/spencerc99/playhtml/pulls"
               >yours-here</a
@@ -204,7 +251,6 @@
       </div>
     </footer>
 
-    <script type="module" src="./index.ts"></script>
     <!-- TODO: TEMP while sunil works on main -->
     <script type="module">
       import "./src/main.ts";
