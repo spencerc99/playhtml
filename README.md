@@ -123,8 +123,7 @@ IDs are recommended on all elements to uniquely identify them. If you are applyi
 These capabilities are common ones that have been designed and created by the community. You should expect that they are relatively well-tested, and they simply build on top of the same API and constructs that `can-play` uses.
 
 ### `can-move`
-
-https://github.com/spencerc99/playhtml/assets/14796580/9c2b9bf6-142c-41e2-8c8f-93a3b121a73e
+https://github.com/spencerc99/playhtml/assets/14796580/215c7631-d71f-40e6-bdda-bd8146a88006
 
 Creates a movable element using 2D `translate` on the element. Dragging the element around will move it
 
@@ -134,12 +133,16 @@ Creates a movable element using 2D `translate` on the element. Dragging the elem
 - This currently doesn't work on touch screens.
 
 ### `can-toggle`
+https://github.com/spencerc99/playhtml/assets/14796580/7e667c06-c32e-4369-b250-c9ca321de163
 
-<blockquote class="twitter-tweet"><p lang="en" dir="ltr">today i installed some lamps on the demos-and-chill website<br><br>then <a href="https://twitter.com/_jzhao?ref_src=twsrc%5Etfw">@_jzhao</a> and i fought on whether to keep them on or not. <a href="https://t.co/sCspTwmRpS">pic.twitter.com/sCspTwmRpS</a></p>&mdash; spencer chang ☀️ (spencerchang.me @ bsky) (@spencerc99) <a href="https://twitter.com/spencerc99/status/1681048824884895744?ref_src=twsrc%5Etfw">July 17, 2023</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+_from https://twitter.com/spencerc99/status/1681048824884895744_
 
 Creates an element that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
 
 ### `can-duplicate`
+https://github.com/spencerc99/playhtml/assets/14796580/6d9f1228-08cf-45a7-987a-8bebfaaefd83
+
+_used to programmatically and dynamically create new playhtml elements that aren't included in the initial HTML_
 
 Creates an element that duplicates a target element (specified by the value of the `can-duplicate` attribute, which can be an element's ID or custom CSS selector) when clicked. Optionally can specify where the duplicate element is inserted in the DOM via the `can-duplicate-to` setting (default is as a sibling to the original element).
 
