@@ -16,12 +16,18 @@
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "playhtml": ["packages/playhtml/src"],
+      "@playhtml/react": ["packages/react/src"]
+    }
   },
-  "include": ["src", "website"],
+  "include": ["partykit", "website"],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",
-    "node_modules/@cloudflare/workers-types/index.ts"
+    "node_modules/@cloudflare/workers-types/index.ts",
+    "**/dist"
   ]
 }

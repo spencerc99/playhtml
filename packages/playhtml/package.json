@@ -1,0 +1,67 @@
+{
+  "name": "playhtml",
+  "title": "playhtml",
+  "description": "Create interactive, collaborative html elements with a single attribute",
+  "version": "2.0.3",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "html",
+    "collaboration",
+    "fun",
+    "real-time",
+    "persistence",
+    "html energy"
+  ],
+  "author": {
+    "name": "Spencer Chang",
+    "email": "spencerc99@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:spencerc99/playhtml"
+  },
+  "bugs": {
+    "url": "https://github.com/spencerc99/playhtml/issues"
+  },
+  "main": "./dist/playhtml.umd.js",
+  "types": "./dist/main.d.ts",
+  "module": "./dist/playhtml.es.js",
+  "homepage": "https://playhtml.fun",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/playhtml.es.js",
+      "require": "./dist/playhtml.umd.js"
+    },
+    "./dist/style.css": {
+      "import": "./dist/style.css",
+      "require": "./dist/style.css"
+    }
+  },
+  "scripts": {
+    "dev": "vite --config vite.config.site.ts",
+    "build": "tsc && vite build",
+    "build-site": "vite build --config vite.config.site.ts",
+    "preview": "vite preview",
+    "publish-npm": "yarn run build && yarn publish"
+  },
+  "devDependencies": {
+    "sass": "^1.62.1",
+    "typescript": "^5.0.2",
+    "vite": "^4.3.9",
+    "vite-plugin-dts": "^3.0.3"
+  },
+  "dependencies": {
+    "profane-words": "^1.5.10",
+    "y-indexeddb": "^9.0.11",
+    "y-partykit": "^0.0.0-39cf5ce",
+    "yjs": "^13.5.44"
+  },
+  "peerDependencies": {
+    "@playhtml/common": "*"
+  }
+}

@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { getElementFromId } from "./utils";
+import { getElementFromId } from "../../common/utils";
 import {
   CanDuplicateTo,
   ElementAwarenessEventHandlerData,
@@ -13,7 +13,7 @@ import {
   MoveData,
   SpinData,
   TagType,
-} from "./types";
+} from "../../common/types";
 import words from "profane-words";
 
 // @ts-ignore
