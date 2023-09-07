@@ -20,7 +20,6 @@ let yprovider: YPartyKitProvider;
 let globalData: Y.Map<any>;
 let elementHandlers: Map<string, Map<string, ElementHandler>>;
 const selectorIdsToAvailableIdx = new Map<string, number>();
-let firstSetup = true;
 
 interface InitOptions {
   // The room to connect users to (this should be a string that matches the other users
@@ -35,7 +34,7 @@ export function initPlayHTML({
   room = DefaultRoom,
   host = DefaultPartykitHost,
 }: InitOptions = {}) {
-  if (!firstSetup) {
+  if (!playhtml.firstSetup) {
     console.error("playhtml already set up!");
     return;
   }
@@ -69,6 +68,8 @@ export function initPlayHTML({
 
     setupElements();
   });
+
+  return yprovider;
 }
 
 // NOTE: this is to handle the deprecation of importing the file without explicitly calling `init()`. Remove this in the future.
@@ -259,7 +260,7 @@ function setupElements(): void {
     }
   }
 
-  if (!firstSetup) {
+  if (!playhtml.firstSetup) {
     return;
   }
   globalData.observe((event) => {
@@ -272,7 +273,7 @@ function setupElements(): void {
   });
 
   yprovider.awareness.on("change", () => onChangeAwareness());
-  firstSetup = false;
+  playhtml.firstSetup = false;
 }
 
 interface PlayHTMLComponents {
@@ -280,6 +281,7 @@ interface PlayHTMLComponents {
   setupPlayElement: typeof setupPlayElement;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
+  firstSetup: boolean;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -288,6 +290,7 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   globalData: undefined,
   elementHandlers: undefined,
+  firstSetup: true,
 };
 // @ts-ignore
 window.playhtml = playhtml;

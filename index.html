@@ -224,9 +224,12 @@
               required
             />,
             <span
-              >leave something nice for visitors in the guestbook, won't
-              you?</span
+              ><s>
+                leave something nice for visitors in the guestbook, won't
+                you?
+              </s> we're out of space on the wall right now and undergoing rennovations to bring it back!</span
             >
+             <img src="public/under-construction-website.gif"/>
 
             <br />
             <!-- emoji message -->
@@ -237,7 +240,7 @@
               placeholder="5 chars max, emojis recommended"
               maxlength="5"
             />
-            <button type="submit">🖋️</button>
+            <button type="submit" disabled="true">🖋️</button>
           </form>
           <div id="guestbookMessages"></div>
         </div>
@@ -268,7 +271,7 @@
       import "./src/main.ts";
 
       playhtml.init({
-        host: "playhtml2.spencerc99.partykit.dev",
+        host: "playhtml3.spencerc99.partykit.dev",
       });
     </script>
     <!-- import cursor chat -->

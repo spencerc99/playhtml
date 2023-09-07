@@ -18,7 +18,7 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "website/main2.ts"],
+  "include": ["src", "website"],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",
