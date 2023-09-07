@@ -12,15 +12,11 @@ export function Candle() {
       }}
       updateElement={({ element, data }) => {
         (element as HTMLImageElement).src = data.on
-          ? "/public/candle-gif.gif"
-          : "/public/candle-off.png";
+          ? "/candle-gif.gif"
+          : "/candle-off.png";
       }}
     >
-      <img
-        src="/public/candle-gif.gif"
-        selector-id=".candle"
-        className="candle"
-      />
+      <img src="/candle-gif.gif" selector-id=".candle" className="candle" />
     </Playable>
   );
 }
