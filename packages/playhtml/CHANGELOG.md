@@ -2,7 +2,7 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## 2.0.3 - 2023-09-07
+## 2.0.4 - 2023-09-07
 
 - added @playhtml/react library
 - added `firstSetup` export from playhtml for raising error if it hasn't been initialized.
