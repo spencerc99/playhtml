@@ -1,0 +1,57 @@
+{
+  "name": "@playhtml/react",
+  "description": "Create interactive, collaborative html elements in React",
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "react",
+    "collaboration",
+    "fun",
+    "real-time",
+    "persistence",
+    "html energy"
+  ],
+  "author": "Spencer Chang <spencerc99@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spencerc99/playhtml/packages/react.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spencerc99/playhtml/issues"
+  },
+  "main": "./dist/react-playhtml.umd.js",
+  "types": "./dist/main.d.ts",
+  "module": "./dist/react-playhtml.es.js",
+  "homepage": "https://react-playhtml.fun",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/react-playhtml.es.js",
+      "require": "./dist/react-playhtml.umd.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "publish-npm": "yarn run build && yarn publish"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.21",
+    "typescript": "^5.0.2",
+    "vite": "^4.3.9",
+    "vite-plugin-dts": "^3.0.3"
+  },
+  "dependencies": {
+    "playhtml": "^2.0.3",
+    "react": "^18.2.0"
+  },
+  "peerDependencies": {
+    "playhtml": "*"
+  }
+}

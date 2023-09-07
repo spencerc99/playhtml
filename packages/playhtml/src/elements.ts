@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { getElementFromId } from "./utils";
+import { getElementFromId } from "../../common/utils";
 import {
   CanDuplicateTo,
   ElementAwarenessEventHandlerData,
@@ -13,7 +13,7 @@ import {
   MoveData,
   SpinData,
   TagType,
-} from "./types";
+} from "../../common/types";
 import words from "profane-words";
 
 // @ts-ignore
@@ -191,6 +191,7 @@ export const TagTypeToElement: Record<
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<GrowData>,
+  // TODO: remove this and make it a can-play element. this has too many dependencies to be a part of the core
   [TagType.CanPost]: {
     defaultData: [],
     defaultLocalData: { addedEntries: new Set() },

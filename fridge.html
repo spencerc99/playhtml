@@ -134,10 +134,13 @@
 
     <script type="module" src="./website/story.ts"></script>
     <script type="module">
-        import "./src/main.ts";
-        playhtml.init();
+      import "https://unpkg.com/playhtml@latest";
+      playhtml.init();
     </script>
-    <link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/playhtml@latest/dist/style.css"
+    />
     <!-- import cursor chat -->
     <!-- TODO: implement custom cursor chat with color select, other settings -->
     <div id="cursor-chat-layer">

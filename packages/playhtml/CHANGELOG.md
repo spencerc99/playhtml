@@ -2,6 +2,12 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.0.3 - 2023-09-07
+
+- added @playhtml/react library
+- added `firstSetup` export from playhtml for raising error if it hasn't been initialized.
+- cleaned up exports
+
 ## 2.0.2 - 2023-08-23
 
 - handle deprecated import version by using a timeout. This adds a significant delay to the initialization of any client using the old method and logs a warning.
