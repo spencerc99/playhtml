@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "partykit": "^0.0.0-39cf5ce",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "y-partykit": "^0.0.0-39cf5ce"
   }
 }

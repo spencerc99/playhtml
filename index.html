@@ -25,7 +25,7 @@
     ></script>
   </head>
   <body>
-    <script type="module" src="./index.ts"></script>
+    <!-- <script type="module" src="./index.ts"></script> -->
     <div id="app">
       <div can-move id="sign">in beta</div>
 
@@ -213,6 +213,7 @@
           </p>
         </details>
         <hr />
+        <div id="reactContent"/>
         <div id="guestbook">
           <form id="guestbookForm" can-post>
             <input
@@ -266,14 +267,17 @@
       </div>
     </footer>
 
-    <!-- TODO: TEMP while sunil works on main -->
     <script type="module">
-      import "./src/main.ts";
-
-      playhtml.init({
-        host: "playhtml3.spencerc99.partykit.dev",
-      });
+      import "https://unpkg.com/playhtml@latest";
+      playhtml.init({host: "playhtml3.spencerc99.partykit.dev"});
     </script>
+
+    <script type="module" src="./index.tsx">
+    </script>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/playhtml@latest/dist/style.css"
+    />
     <!-- import cursor chat -->
     <!-- TODO: implement custom cursor chat with color select, other settings -->
     <div id="cursor-chat-layer">

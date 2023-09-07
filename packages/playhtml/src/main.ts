@@ -30,7 +30,7 @@ interface InitOptions {
   host?: string;
 }
 
-export function initPlayHTML({
+function initPlayHTML({
   room = DefaultRoom,
   host = DefaultPartykitHost,
 }: InitOptions = {}) {
@@ -279,6 +279,7 @@ function setupElements(): void {
 interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElement: typeof setupPlayElement;
+  setupPlayElementForTag: typeof setupPlayElementForTag;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
   firstSetup: boolean;
@@ -288,6 +289,7 @@ interface PlayHTMLComponents {
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
   setupPlayElement,
+  setupPlayElementForTag,
   globalData: undefined,
   elementHandlers: undefined,
   firstSetup: true,
@@ -375,7 +377,7 @@ function isElementValidForTag(element: HTMLElement, tag: TagType): boolean {
 /**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
-export function setupPlayElementForTag<T extends TagType>(
+function setupPlayElementForTag<T extends TagType>(
   element: HTMLElement,
   tag: T
 ): void {
@@ -450,7 +452,7 @@ export function setupPlayElementForTag<T extends TagType>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 }
 
-export function setupPlayElement(element: Element) {
+function setupPlayElement(element: Element) {
   if (!isHTMLElement(element)) {
     console.log(`Element ${element.id} not an HTML element. Ignoring.`);
     return;
