@@ -1,6 +1,5 @@
 {
-  "name": "react-playhtml",
-  "title": "react-playhtml",
+  "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
   "version": "0.0.1",
   "license": "MIT",
@@ -13,56 +12,44 @@
     "persistence",
     "html energy"
   ],
-  "author": {
-    "name": "Spencer Chang",
-    "email": "spencerc99@gmail.com"
-  },
+  "author": "Spencer Chang <spencerc99@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "github:spencerc99/playhtml/packages/react"
+    "url": "git+https://github.com/spencerc99/playhtml/packages/react.git"
   },
   "bugs": {
     "url": "https://github.com/spencerc99/playhtml/issues"
   },
-  "main": "./react-dist/playhtml.umd.js",
-  "types": "./react-dist/main.d.ts",
-  "module": "./react-dist/playhtml.es.js",
-  "homepage": "https://playhtml.fun",
+  "main": "./dist/react-playhtml.umd.js",
+  "types": "./dist/main.d.ts",
+  "module": "./dist/react-playhtml.es.js",
+  "homepage": "https://react-playhtml.fun",
   "files": [
-    "react-dist"
+    "dist"
   ],
   "exports": {
     ".": {
-      "types": "./react-dist/main.d.ts",
-      "import": "./react-dist/playhtml.es.js",
-      "require": "./react-dist/playhtml.umd.js"
-    },
-    "./dist/style.css": {
-      "import": "./dist/style.css",
-      "require": "./dist/style.css"
+      "types": "./dist/main.d.ts",
+      "import": "./dist/react-playhtml.es.js",
+      "require": "./dist/react-playhtml.umd.js"
     }
   },
   "scripts": {
     "build": "tsc && vite build",
     "publish-npm": "yarn run build && yarn publish"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20230518.0",
-    "@syncedstore/core": "^0.6.0-alpha.0",
-    "@types/node": "^20.3.3",
     "@types/react": "^18.2.21",
-    "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@syncedstore/react": "^0.6.0-alpha.0",
     "playhtml": "^2.0.3",
-    "react": "^18.2.0",
-    "y-indexeddb": "^9.0.11",
-    "y-partykit": "^0.0.0-39cf5ce",
-    "yjs": "^13.5.44"
+    "react": "^18.2.0"
   },
   "peerDependencies": {
     "playhtml": "*"

@@ -6,11 +6,10 @@ export default defineConfig({
   plugins: [dts({ rollupTypes: true })],
   build: {
     lib: {
-      entry: path.resolve(__dirname, "react.tsx"),
+      entry: path.resolve(__dirname, "src/index.tsx"),
       name: "react-playhtml",
-      fileName: (format) => `playhtml.${format}.js`,
+      fileName: (format) => `react-playhtml.${format}.js`,
     },
-    outDir: "react-dist",
   },
   // temp to deal with partykit double init on hot refresh
   server: { hmr: false },
