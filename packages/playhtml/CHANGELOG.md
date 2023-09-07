@@ -6,7 +6,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - added @playhtml/react library
 - added `firstSetup` export from playhtml for raising error if it hasn't been initialized.
--
+- cleaned up exports
 
 ## 2.0.2 - 2023-08-23
 

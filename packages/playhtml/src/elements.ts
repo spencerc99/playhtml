@@ -191,6 +191,7 @@ export const TagTypeToElement: Record<
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<GrowData>,
+  // TODO: remove this and make it a can-play element. this has too many dependencies to be a part of the core
   [TagType.CanPost]: {
     defaultData: [],
     defaultLocalData: { addedEntries: new Set() },

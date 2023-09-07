@@ -43,10 +43,7 @@
     }
   },
   "scripts": {
-    "dev": "vite --config vite.config.site.ts",
     "build": "tsc && vite build",
-    "build-site": "vite build --config vite.config.site.ts",
-    "preview": "vite preview",
     "publish-npm": "yarn run build && yarn publish"
   },
   "devDependencies": {
