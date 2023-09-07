@@ -3,10 +3,15 @@
 import YPartyKitProvider from "y-partykit/provider";
 import { IndexeddbPersistence } from "y-indexeddb";
 import "./style.scss";
-import { ElementData, ElementInitializer, TagType } from "../../common/types";
+import {
+  ElementData,
+  ElementInitializer,
+  TagType,
+  getElementFromId,
+  getIdForElement,
+} from "@playhtml/common";
 import * as Y from "yjs";
 import { TagTypeToElement, ElementHandler } from "./elements";
-import { getElementFromId, getIdForElement } from "../../common/utils";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 

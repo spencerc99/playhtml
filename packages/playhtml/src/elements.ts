@@ -1,5 +1,5 @@
 /// <reference lib="dom"/>
-import { getElementFromId } from "../../common/utils";
+import { getElementFromId } from "@playhtml/common";
 import {
   CanDuplicateTo,
   ElementAwarenessEventHandlerData,
@@ -13,7 +13,7 @@ import {
   MoveData,
   SpinData,
   TagType,
-} from "../../common/types";
+} from "../../common/src";
 import words from "profane-words";
 
 // @ts-ignore

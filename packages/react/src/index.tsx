@@ -1,5 +1,6 @@
 import React, { PropsWithChildren, useEffect, useRef } from "react";
-import { ElementInitializer, TagType } from "../../common/types";
+import { ElementInitializer, TagType } from "@playhtml/common";
+// TODO: this probably doesn't work as it stands lol
 import { TagTypeToElement } from "../../playhtml/src/elements";
 import { playhtml } from "playhtml";
 
