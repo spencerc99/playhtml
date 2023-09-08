@@ -4,7 +4,7 @@ import dts from "vite-plugin-dts";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  plugins: [react(), dts({ insertTypesEntry: true })],
+  plugins: [react(), dts({ rollupTypes: true })],
   build: {
     lib: {
       entry: path.resolve(__dirname, "src/index.tsx"),
