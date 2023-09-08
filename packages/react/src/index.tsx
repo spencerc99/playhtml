@@ -5,18 +5,15 @@ import { ElementInitializer, TagType } from "@playhtml/common";
 // import { TagTypeToElement } from "../../playhtml/src/elements";
 import { playhtml } from "playhtml";
 
+// NOTE: localData is not included because you can handle that purely within your parent React component since it doesn't need to handle any
+// syncing logic.
 type ReactElementInitializer<T, U, V> = Omit<
   ElementInitializer<T, U, V>,
   "updateElement" | "defaultData" | "defaultLocalData" | "myDefaultAwareness"
 > & {
   defaultData: T;
-  defaultLocalData?: U;
   myDefaultAwareness?: V;
-  children: (
-    defaultData: T,
-    defaultLocalData: U,
-    awareness: V
-  ) => React.ReactNode;
+  children: (defaultData: T, awareness: V) => React.ReactNode;
 };
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
@@ -31,20 +28,16 @@ export function Playable<T, U, V>({
 }) {
   const computedTagInfo = tagInfo || { "can-play": "" };
   const ref = useRef<HTMLElement>(null);
-  const { defaultData, defaultLocalData, myDefaultAwareness } = elementProps;
+  const { defaultData, myDefaultAwareness } = elementProps;
   const [data, setData] = useState<T>(defaultData);
-  // TODO: this needs to handle if its a function and requires the element itself?
-  const [localData, setLocalData] = useState<any>(defaultLocalData);
   const [awareness, setAwareness] = useState<any>(myDefaultAwareness);
 
   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
   const updateElement: ElementInitializer["updateElement"] = ({
     data: newData,
-    localData: newLocalData,
     awareness: newAwareness,
   }) => {
     setData(newData);
-    setLocalData(newLocalData);
     setAwareness(newAwareness);
   };
 
@@ -71,7 +64,7 @@ export function Playable<T, U, V>({
   // Pass data to children to render.. or what's the most reactive way to do this?
   // should user give a function to render children with the data + set data operations?
   return React.cloneElement(
-    React.Children.only(children(data, localData, awareness)) as any,
+    React.Children.only(children(data, awareness)) as any,
     {
       ref,
       ...computedTagInfo,
