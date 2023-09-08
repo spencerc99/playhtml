@@ -1,4 +1,3 @@
-import React from "react";
 import { useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 // TODO: this probably doesn't work as it stands lol
@@ -42,9 +41,6 @@ export function Playable<T, V>({
   };
 
   useEffect(() => {
-    if (playhtml.firstSetup) {
-      throw Error("playhtml not setup. Please call playhtml.init() first.");
-    }
     if (ref.current) {
       for (const [key, value] of Object.entries(elementProps)) {
         // @ts-ignore
