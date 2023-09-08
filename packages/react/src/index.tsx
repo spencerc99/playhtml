@@ -1,3 +1,5 @@
+// TODO: idk why but this is not getting registered otherwise??
+import React from "react";
 import { useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 // TODO: this probably doesn't work as it stands lol
