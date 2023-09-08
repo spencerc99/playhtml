@@ -1,8 +1,8 @@
 import React from "react";
-import { PropsWithChildren, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 // TODO: this probably doesn't work as it stands lol
-import { TagTypeToElement } from "../../playhtml/src/elements";
+// import { TagTypeToElement } from "../../playhtml/src/elements";
 import { playhtml } from "playhtml";
 
 type ReactElementInitializer<T, U, V> = Omit<

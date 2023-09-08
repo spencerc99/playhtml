@@ -44,7 +44,8 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "publish-npm": "yarn run build && yarn publish"
+    "publish-npm": "(yarn run build && rm README.md && cp ../../README.md . && yarn publish && yarn run cleanup) || (yarn run cleanup)",
+    "cleanup": "rm README.md && ln -s ../../README.md ."
   },
   "devDependencies": {
     "sass": "^1.62.1",
