@@ -10,13 +10,14 @@ export function Candle() {
       onClick={(_e, { data, setData }) => {
         setData({ on: !data.on });
       }}
-      updateElement={({ element, data }) => {
-        (element as HTMLImageElement).src = data.on
-          ? "/candle-gif.gif"
-          : "/candle-off.png";
-      }}
     >
-      <img src="/candle-gif.gif" selector-id=".candle" className="candle" />
+      {(data) => (
+        <img
+          src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+          selector-id=".candle"
+          className="candle"
+        />
+      )}
     </Playable>
   );
 }
