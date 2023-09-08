@@ -7,30 +7,30 @@ import { playhtml } from "playhtml";
 
 // NOTE: localData is not included because you can handle that purely within your parent React component since it doesn't need to handle any
 // syncing logic.
-type ReactElementInitializer<T, U, V> = Omit<
-  ElementInitializer<T, U, V>,
+type ReactElementInitializer<T = any, V = any> = Omit<
+  ElementInitializer<T, any, V>,
   "updateElement" | "defaultData" | "defaultLocalData" | "myDefaultAwareness"
 > & {
   defaultData: T;
   myDefaultAwareness?: V;
-  children: (defaultData: T, awareness: V) => React.ReactNode;
+  children: (defaultData: T, awareness: V[] | undefined) => React.ReactNode;
 };
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
-
-// Get the Yjs document and sync automatically using y-webrtc
-export function Playable<T, U, V>({
+export function Playable<T, V>({
   tagInfo,
   children,
   ...elementProps
-}: ReactElementInitializer<T, U, V> & {
+}: ReactElementInitializer<T, V> & {
   tagInfo?: { [k in TagType]: string };
 }) {
   const computedTagInfo = tagInfo || { "can-play": "" };
   const ref = useRef<HTMLElement>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
   const [data, setData] = useState<T>(defaultData);
-  const [awareness, setAwareness] = useState<any>(myDefaultAwareness);
+  const [awareness, setAwareness] = useState<V[]>(
+    myDefaultAwareness ? [myDefaultAwareness] : []
+  );
 
   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
   const updateElement: ElementInitializer["updateElement"] = ({

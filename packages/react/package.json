@@ -45,13 +45,16 @@
     "@types/react": "^18.2.21",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
-    "vite-plugin-dts": "^3.0.3"
+    "vite-plugin-dts": "^3.0.3",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
   },
   "dependencies": {
     "@playhtml/common": "^0.0.1",
     "playhtml": "^2.0.4"
   },
   "peerDependencies": {
-    "react": ">=18.0.0"
+    "react": "^16.8.0  || ^17.0.0 || ^18.0.0",
+    "react-dom": "^16.8.0  || ^17.0.0 || ^18.0.0"
   }
 }
