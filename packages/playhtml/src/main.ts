@@ -36,6 +36,7 @@ interface InitOptions {
 }
 
 function initPlayHTML({
+  // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   room = DefaultRoom,
   host = DefaultPartykitHost,
 }: InitOptions = {}) {

@@ -57,7 +57,7 @@
     "@playhtml/common": "^0.0.1",
     "profane-words": "^1.5.10",
     "y-indexeddb": "^9.0.11",
-    "y-partykit": "^0.0.0-39cf5ce",
+    "y-partykit": "^0.0.3",
     "yjs": "^13.5.44"
   }
 }
