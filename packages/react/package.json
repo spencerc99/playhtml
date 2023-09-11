@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@playhtml/common": "^0.0.1",
-    "playhtml": "^2.0.5",
+    "playhtml": "^2.0.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
