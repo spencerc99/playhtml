@@ -393,7 +393,6 @@ function setupPlayElementForTag<T extends TagType>(
   element: HTMLElement,
   tag: T
 ): void {
-  console.log("setup");
   if (!isElementValidForTag(element, tag)) {
     return;
   }
@@ -448,7 +447,6 @@ function setupPlayElementForTag<T extends TagType>(
     elementId
   );
   if (tagElementHandlers.has(elementId)) {
-    console.log("reinitializing");
     // Try to update the elements info
     tagElementHandlers.get(elementId)!.reinitializeElementData(elementData);
     return;
