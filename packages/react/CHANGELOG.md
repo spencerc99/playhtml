@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 0.0.12 - 2023-09-11
+
+- works when changing props
+
 ## 0.0.11 - 2023-09-11
 
 - ok confirmed working now and handles unmount

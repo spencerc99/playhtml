@@ -100,12 +100,12 @@ function isHTMLElement(ele: any): ele is HTMLElement {
   return ele instanceof HTMLElement;
 }
 
-function registerPlayElement<T extends TagType>(
+function createPlayElementData<T extends TagType>(
   element: HTMLElement,
   tag: T,
   tagInfo: ElementInitializer<T>,
   elementId: string
-): ElementHandler<T> {
+): ElementData<T> {
   type tagType = (typeof tagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
@@ -148,7 +148,7 @@ function registerPlayElement<T extends TagType>(
     },
   };
 
-  return new ElementHandler(elementData);
+  return elementData;
 }
 
 function isCorrectElementInitializer(
@@ -426,10 +426,6 @@ function setupPlayElementForTag<T extends TagType>(
   maybeSetupTag(tag);
   const tagElementHandlers = elementHandlers.get(tag)!;
 
-  if (tagElementHandlers.has(elementId)) {
-    return;
-  }
-
   const elementInitializerInfo = getElementInitializerInfoForElement(
     tag,
     element
@@ -444,13 +440,19 @@ function setupPlayElementForTag<T extends TagType>(
   type tagType = (typeof elementInitializerInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
-  const elementHandler = registerPlayElement(
+  const elementData = createPlayElementData(
     element,
     tag,
     elementInitializerInfo,
     elementId
   );
-  tagElementHandlers.set(elementId, elementHandler);
+  if (tagElementHandlers.has(elementId)) {
+    // Try to update the elements info
+    tagElementHandlers.get(elementId)!.reinitializeElementData(elementData);
+    return;
+  } else {
+    tagElementHandlers.set(elementId, new ElementHandler(elementData));
+  }
   // if there is nothing stored in the synced data, set it to the default data if the element gets successfully created
   if (
     tagData.get(elementId) === undefined &&
@@ -461,7 +463,7 @@ function setupPlayElementForTag<T extends TagType>(
 
   // redo this now that we have set it in the mapping.
   // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
-  elementHandler.triggerAwarenessUpdate?.();
+  elementData.triggerAwarenessUpdate?.();
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
   element.classList.add(`__playhtml-${tag}`);
@@ -481,7 +483,7 @@ function setupPlayElement(element: Element) {
   }
 }
 
-function removePlayElement(element: Element) {
+function removePlayElement(element: Element | null) {
   if (!element || !element.id) {
     return;
   }

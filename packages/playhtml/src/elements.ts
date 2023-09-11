@@ -395,25 +395,36 @@ export class ElementHandler<T = any, U = any, V = any> {
   ) => void;
   triggerAwarenessUpdate?: () => void;
 
-  constructor({
-    element,
-    onChange,
-    onAwarenessChange,
-    defaultData,
-    defaultLocalData,
-    myDefaultAwareness,
-    data,
-    awareness: awarenessData,
-    updateElement,
-    updateElementAwareness,
-    onClick,
-    onDrag,
-    onDragStart,
-    additionalSetup,
-    resetShortcut,
-    debounceMs,
-    triggerAwarenessUpdate,
-  }: ElementData<T>) {
+  // event handlers
+  onClick?: (
+    e: MouseEvent,
+    eventData: ElementEventHandlerData<T, U, V>
+  ) => void;
+  onDrag?: (
+    e: MouseEvent | TouchEvent,
+    eventData: ElementEventHandlerData<T, U, V>
+  ) => void;
+  onDragStart?: (
+    e: MouseEvent | TouchEvent,
+    eventData: ElementEventHandlerData<T, U, V>
+  ) => void;
+
+  constructor(elementData: ElementData<T>) {
+    const {
+      element,
+      onChange,
+      onAwarenessChange,
+      defaultData,
+      defaultLocalData,
+      myDefaultAwareness,
+      data,
+      awareness: awarenessData,
+      updateElement,
+      updateElementAwareness,
+      additionalSetup,
+      debounceMs,
+      triggerAwarenessUpdate,
+    } = elementData;
     // console.log("🔨 constructing ", element.id);
     this.element = element;
     this.defaultData =
@@ -424,7 +435,6 @@ export class ElementHandler<T = any, U = any, V = any> {
         : defaultLocalData;
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.updateElement = updateElement;
@@ -445,26 +455,52 @@ export class ElementHandler<T = any, U = any, V = any> {
     this._data = initialData;
     this.__data = initialData;
 
+    this.reinitializeElementData(elementData);
+
+    if (additionalSetup) {
+      additionalSetup(this.getSetupData());
+    }
+  }
+
+  reinitializeElementData({
+    element,
+    onChange,
+    onAwarenessChange,
+    updateElement,
+    updateElementAwareness,
+    onClick,
+    onDrag,
+    onDragStart,
+    resetShortcut,
+    debounceMs,
+    triggerAwarenessUpdate,
+  }: ElementData<T>) {
+    this.triggerAwarenessUpdate = triggerAwarenessUpdate;
+    this.onChange = onChange;
+    this.resetShortcut = resetShortcut;
+    this.debouncedOnChange = debounce(this.onChange, debounceMs);
+    this.onAwarenessChange = onAwarenessChange;
+    this.updateElement = updateElement;
+    this.updateElementAwareness = updateElementAwareness;
+
     // Handle all the event handlers
-    if (onClick) {
+    if (onClick && !this.onClick) {
       element.addEventListener("click", (e) => {
-        onClick(e, this.getEventHandlerData());
+        this.onClick?.(e, this.getEventHandlerData());
       });
     }
-
-    if (onDrag) {
+    this.onClick = onClick;
+    if (onDrag && !this.onDrag) {
       element.addEventListener("touchstart", (e) => {
         // To prevent scrolling the page while dragging
         e.preventDefault();
 
-        if (onDragStart) {
-          // Need to be able to not persist everything in the data, causing some lag.
-          onDragStart(e, this.getEventHandlerData());
-        }
+        // Need to be able to not persist everything in the data, causing some lag.
+        this.onDragStart?.(e, this.getEventHandlerData());
 
         const onMove = (e: TouchEvent) => {
           e.preventDefault();
-          onDrag(e, this.getEventHandlerData());
+          this.onDrag?.(e, this.getEventHandlerData());
         };
         const onDragStop = (e: TouchEvent) => {
           document.removeEventListener("touchmove", onMove);
@@ -474,14 +510,12 @@ export class ElementHandler<T = any, U = any, V = any> {
         document.addEventListener("touchend", onDragStop);
       });
       element.addEventListener("mousedown", (e) => {
-        if (onDragStart) {
-          // Need to be able to not persist everything in the data, causing some lag.
-          onDragStart(e, this.getEventHandlerData());
-        }
+        // Need to be able to not persist everything in the data, causing some lag.
+        this.onDragStart?.(e, this.getEventHandlerData());
 
         const onMouseMove = (e: MouseEvent) => {
           e.preventDefault();
-          onDrag(e, this.getEventHandlerData());
+          this.onDrag?.(e, this.getEventHandlerData());
         };
         const onMouseUp = (e: MouseEvent) => {
           document.removeEventListener("mousemove", onMouseMove);
@@ -491,13 +525,11 @@ export class ElementHandler<T = any, U = any, V = any> {
         document.addEventListener("mouseup", onMouseUp);
       });
     }
-
-    if (additionalSetup) {
-      additionalSetup(this.getSetupData());
-    }
+    this.onDrag = onDrag;
+    this.onDragStart = onDragStart;
 
     // Handle advanced settings
-    if (resetShortcut) {
+    if (resetShortcut && !this.resetShortcut) {
       if (!element.title) {
         element.title = `Hold down the ${ModifierKeyToName[resetShortcut]} key while clicking to reset.`;
       }
@@ -505,7 +537,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       element.reset = this.reset;
 
       element.addEventListener("click", (e) => {
-        switch (resetShortcut) {
+        switch (this.resetShortcut) {
           case "ctrlKey":
             if (!e.ctrlKey) {
               return;
@@ -534,6 +566,7 @@ export class ElementHandler<T = any, U = any, V = any> {
         e.stopPropagation();
       });
     }
+    this.resetShortcut = resetShortcut;
   }
 
   get data(): T {

@@ -57,7 +57,8 @@ export function Playable<T, V>({
     }
 
     // TODO: remove play element when unmounted
-  }, []);
+    return () => playhtml.removePlayElement(ref.current);
+  }, [elementProps]);
 
   // Pass data to children to render.. or what's the most reactive way to do this?
   // should user give a function to render children with the data + set data operations?
