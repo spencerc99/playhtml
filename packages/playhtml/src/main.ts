@@ -287,6 +287,7 @@ function setupElements(): void {
 interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElement: typeof setupPlayElement;
+  removePlayElement: typeof removePlayElement;
   setupPlayElementForTag: typeof setupPlayElementForTag;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
@@ -296,6 +297,7 @@ interface PlayHTMLComponents {
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
   setupPlayElement,
+  removePlayElement,
   setupPlayElementForTag,
   globalData: undefined,
   elementHandlers: undefined,
@@ -475,6 +477,19 @@ function setupPlayElement(element: Element) {
   for (const tag of Object.values(TagType)) {
     if (element.hasAttribute(tag)) {
       setupPlayElementForTag(element, tag);
+    }
+  }
+}
+
+function removePlayElement(element: Element) {
+  if (!element || !element.id) {
+    return;
+  }
+
+  for (const tag of Object.keys(elementHandlers)) {
+    const tagElementHandler = elementHandlers.get(tag)!;
+    if (tagElementHandler.has(element.id)) {
+      tagElementHandler.delete(element.id);
     }
   }
 }

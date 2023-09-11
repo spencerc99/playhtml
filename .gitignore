@@ -27,3 +27,5 @@ dist-ssr
 
 # dev persisted state
 .partykit
+
+test

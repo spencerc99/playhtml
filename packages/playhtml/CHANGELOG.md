@@ -6,6 +6,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - fixed an error with setting up elements before the provider was synced which lead to incorrect initial element states that didn't sync.
 - Removed the `firstSetup` export accordingly to allow for optimistically setting up elements even before `playhtml` is initialized.
+- Added `removePlayElement` to handle removing upon unmounting or removal of an element from the DOM to clear up the state.
 
 ## 2.0.4 - 2023-09-07
 
