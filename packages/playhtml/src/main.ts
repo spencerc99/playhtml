@@ -35,12 +35,14 @@ interface InitOptions {
   host?: string;
 }
 
+let hasSynced = false;
+let firstSetup = true;
 function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   room = DefaultRoom,
   host = DefaultPartykitHost,
 }: InitOptions = {}) {
-  if (!playhtml.firstSetup) {
+  if (!firstSetup) {
     console.error("playhtml already set up!");
     return;
   }
@@ -71,7 +73,7 @@ function initPlayHTML({
     if (!connected) {
       console.error("Issue connecting to yjs...");
     }
-
+    hasSynced = true;
     setupElements();
   });
 
@@ -266,7 +268,7 @@ function setupElements(): void {
     }
   }
 
-  if (!playhtml.firstSetup) {
+  if (!firstSetup) {
     return;
   }
   globalData.observe((event) => {
@@ -279,7 +281,7 @@ function setupElements(): void {
   });
 
   yprovider.awareness.on("change", () => onChangeAwareness());
-  playhtml.firstSetup = false;
+  firstSetup = false;
 }
 
 interface PlayHTMLComponents {
@@ -288,7 +290,6 @@ interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
-  firstSetup: boolean;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -298,7 +299,6 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElementForTag,
   globalData: undefined,
   elementHandlers: undefined,
-  firstSetup: true,
 };
 // @ts-ignore
 window.playhtml = playhtml;
@@ -308,6 +308,10 @@ window.playhtml = playhtml;
  */
 function maybeSetupTag(tag: TagType): void {
   if (elementHandlers.has(tag)) {
+    return;
+  }
+
+  if (!hasSynced) {
     return;
   }
 
@@ -388,6 +392,10 @@ function setupPlayElementForTag<T extends TagType>(
   tag: T
 ): void {
   if (!isElementValidForTag(element, tag)) {
+    return;
+  }
+
+  if (!hasSynced) {
     return;
   }
 

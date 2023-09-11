@@ -2,6 +2,11 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.0.5 - 2023-09-11
+
+- fixed an error with setting up elements before the provider was synced which lead to incorrect initial element states that didn't sync.
+- Removed the `firstSetup` export accordingly to allow for optimistically setting up elements even before `playhtml` is initialized.
+
 ## 2.0.4 - 2023-09-07
 
 - added @playhtml/react library
