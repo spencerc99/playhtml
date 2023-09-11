@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Playable, playhtml } from "./src/index";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 playhtml.init();
 
