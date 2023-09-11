@@ -7,7 +7,8 @@
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.ts",
-    "build-site": "vite build --config vite.config.site.ts"
+    "build-site": "vite build --config vite.config.site.ts",
+    "build-packages": "for dir in packages/*; do (cd \"$dir\" && yarn run build); done"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
