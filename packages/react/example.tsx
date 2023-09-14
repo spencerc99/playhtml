@@ -1,12 +1,17 @@
 import * as React from "react";
-import { Playable, playhtml } from "./src/index";
+import {
+  CanDuplicateElement,
+  CanPlayElement,
+  CanToggleElement,
+  playhtml,
+} from "./src/index";
 import { useState } from "react";
 
 playhtml.init();
 
 export function Candle() {
   return (
-    <Playable
+    <CanPlayElement
       defaultData={{ on: false }}
       onClick={(_e, { data, setData }) => {
         setData({ on: !data.on });
@@ -19,7 +24,7 @@ export function Candle() {
           className="candle"
         />
       )}
-    </Playable>
+    </CanPlayElement>
   );
 }
 
@@ -32,7 +37,7 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
   const [hasReacted, setHasReacted] = useState(false);
 
   return (
-    <Playable
+    <CanPlayElement
       defaultData={reaction.count}
       onClick={(_e, { setData, data, element }) => {
         if (hasReacted) {
@@ -59,6 +64,19 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
           </button>
         );
       }}
-    </Playable>
+    </CanPlayElement>
+  );
+}
+
+export function Lamp() {
+  return (
+    <CanToggleElement>
+      <img
+        src="/noguchi-akari-a1.png"
+        selector-id=".lamp"
+        className="lamp"
+        id="lamp"
+      />
+    </CanToggleElement>
   );
 }

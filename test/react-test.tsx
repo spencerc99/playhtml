@@ -1,7 +1,7 @@
 import "../home.scss";
-import React, { useEffect } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
-import { Candle, ReactionView } from "../packages/react/example";
+import { Candle, Lamp, ReactionView } from "../packages/react/example";
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
@@ -9,5 +9,6 @@ ReactDOM.createRoot(
   <React.StrictMode>
     <Candle />
     <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
+    <Lamp />
   </React.StrictMode>
 );

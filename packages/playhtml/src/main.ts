@@ -9,9 +9,10 @@ import {
   TagType,
   getElementFromId,
   getIdForElement,
+  TagTypeToElement,
 } from "@playhtml/common";
 import * as Y from "yjs";
-import { TagTypeToElement, ElementHandler } from "./elements";
+import { ElementHandler } from "./elements";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 

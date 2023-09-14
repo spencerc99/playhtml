@@ -1,10 +1,17 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType } from "@playhtml/common";
-// TODO: this probably doesn't work as it stands lol
-// import { TagTypeToElement } from "../../playhtml/src/elements";
+import {
+  ElementInitializer,
+  TagType,
+  TagTypeToElement,
+} from "@playhtml/common";
 import { playhtml } from "playhtml";
+import classNames from "classnames";
+
+interface PlayableChildren<T = any, V = any> {
+  children: (defaultData: T, awareness: V[] | undefined) => React.ReactNode;
+}
 
 // NOTE: localData is not included because you can handle that purely within your parent React component since it doesn't need to handle any
 // syncing logic.
@@ -14,11 +21,10 @@ type ReactElementInitializer<T = any, V = any> = Omit<
 > & {
   defaultData: T;
   myDefaultAwareness?: V;
-  children: (defaultData: T, awareness: V[] | undefined) => React.ReactNode;
-};
+} & PlayableChildren<T, V>;
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
-export function Playable<T, V>({
+export function CanPlayElement<T, V>({
   tagInfo,
   children,
   ...elementProps
@@ -70,15 +76,130 @@ export function Playable<T, V>({
     }
   );
 }
+/**
+ * @deprecated use CanPlayElement instead
+ */
+export const Playable = CanPlayElement;
 
-// export function Movable(props: PropsWithChildren<{}>) {
-//   return (
-//     <Playable
-//       {...TagTypeToElement[TagType.CanMove]}
-//       children={props.children}
-//     />
-//   );
-// }
-//TODO: export an equivalent element for each of the things in elements.ts?
+export function CanMoveElement({ children }: { children: React.ReactElement }) {
+  return (
+    <CanPlayElement
+      {...TagTypeToElement[TagType.CanMove]}
+      children={(data) => {
+        return React.cloneElement(React.Children.only(children) as any, {
+          style: { transform: `translate(${data.x}px, ${data.y}px)` },
+        });
+      }}
+    />
+  );
+}
+
+export function CanToggleElement({
+  children,
+}: {
+  children: React.ReactElement;
+}) {
+  return (
+    <CanPlayElement
+      {...TagTypeToElement[TagType.CanToggle]}
+      children={(data) => {
+        return React.cloneElement(React.Children.only(children) as any, {
+          className: classNames(
+            children.props?.className,
+            data ? "clicked" : ""
+          ),
+        });
+      }}
+    />
+  );
+}
+
+export function CanSpinElement({ children }: { children: React.ReactElement }) {
+  return (
+    <CanPlayElement
+      {...TagTypeToElement[TagType.CanSpin]}
+      children={(data) => {
+        return React.cloneElement(React.Children.only(children) as any, {
+          style: { transform: `rotate(${data.rotation}deg)` },
+        });
+      }}
+    />
+  );
+}
+
+export function CanGrowElement({ children }: { children: React.ReactElement }) {
+  return (
+    <CanPlayElement
+      {...TagTypeToElement[TagType.CanSpin]}
+      children={(data) => {
+        return React.cloneElement(React.Children.only(children) as any, {
+          style: { transform: `scale(${data.scale}deg)` },
+        });
+      }}
+    />
+  );
+}
+
+export function CanDuplicateElement({
+  children,
+  elementToDuplicate,
+  canDuplicateTo,
+}: {
+  children: React.ReactElement;
+  elementToDuplicate: React.RefObject<HTMLElement>;
+  canDuplicateTo?: React.RefObject<HTMLElement>;
+}) {
+  const [addedElements, setAddedElements] = useState<string[]>([]);
+
+  return (
+    <CanPlayElement {...TagTypeToElement[TagType.CanDuplicate]}>
+      {({ data, element }) => {
+        let lastElement: HTMLElement | null =
+          document.getElementById(addedElements.slice(-1)?.[0]) ?? null;
+        if (!elementToDuplicate?.current) {
+          console.error(
+            `Element ${elementToDuplicate} not found. Cannot duplicate.`
+          );
+          return;
+        }
+
+        const eleToDuplicate = elementToDuplicate.current;
+
+        function insertDuplicatedElement(newElement: Node) {
+          if (canDuplicateTo?.current) {
+            const duplicateToElement = canDuplicateTo.current;
+            if (duplicateToElement) {
+              duplicateToElement.appendChild(newElement);
+              return;
+            }
+          }
+
+          // By default insert after the latest element inserted (or the element to duplicate if none yet)
+          eleToDuplicate!.parentNode!.insertBefore(
+            newElement,
+            (lastElement || eleToDuplicate!).nextSibling
+          );
+        }
+
+        const addedElementsSet = new Set(addedElements);
+        for (const elementId of data) {
+          if (addedElementsSet.has(elementId)) continue;
+
+          const newElement = eleToDuplicate.cloneNode(true) as HTMLElement;
+          Object.assign(newElement, { ...elementToDuplicate });
+          newElement.id = elementId;
+
+          insertDuplicatedElement(newElement);
+          addedElements.push(elementId);
+          playhtml.setupPlayElement(newElement);
+          lastElement = newElement;
+        }
+        setAddedElements(addedElements);
+
+        return children;
+      }}
+    </CanPlayElement>
+  );
+}
 
 export { playhtml };
