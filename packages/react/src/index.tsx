@@ -10,7 +10,7 @@ import { playhtml } from "playhtml";
 import classNames from "classnames";
 
 interface PlayableChildren<T = any, V = any> {
-  children: (defaultData: T, awareness: V[] | undefined) => React.ReactNode;
+  children: (data: T, awareness: V[] | undefined) => React.ReactElement;
 }
 
 // NOTE: localData is not included because you can handle that purely within your parent React component since it doesn't need to handle any
@@ -29,7 +29,7 @@ export function CanPlayElement<T, V>({
   children,
   ...elementProps
 }: ReactElementInitializer<T, V> & {
-  tagInfo?: { [k in TagType]: string };
+  tagInfo?: Partial<{ [k in TagType]: string }>;
 }) {
   const computedTagInfo = tagInfo || { "can-play": "" };
   const ref = useRef<HTMLElement>(null);
@@ -81,14 +81,39 @@ export function CanPlayElement<T, V>({
  */
 export const Playable = CanPlayElement;
 
-export function CanMoveElement({ children }: { children: React.ReactElement }) {
+type SingleChildOrPlayable<T = any, V = any> =
+  | React.ReactElement
+  | PlayableChildren<T, V>["children"];
+
+function renderSingleChildOrPlayable<T, V>(
+  children: SingleChildOrPlayable<T, V>,
+  data: T,
+  awareness?: V[]
+): React.ReactElement {
+  if (typeof children === "function") {
+    return children(data, awareness);
+  } else {
+    return children;
+  }
+}
+
+export function CanMoveElement({
+  children,
+}: {
+  children: SingleChildOrPlayable;
+}) {
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanMove]}
+      // tagInfo={{ [TagType.CanMove]: "" }}
       children={(data) => {
-        return React.cloneElement(React.Children.only(children) as any, {
-          style: { transform: `translate(${data.x}px, ${data.y}px)` },
-        });
+        const renderedChildren = renderSingleChildOrPlayable(children, data);
+        return React.cloneElement(
+          React.Children.only(renderedChildren) as any,
+          {
+            style: { transform: `translate(${data.x}px, ${data.y}px)` },
+          }
+        );
       }}
     />
   );
@@ -97,44 +122,66 @@ export function CanMoveElement({ children }: { children: React.ReactElement }) {
 export function CanToggleElement({
   children,
 }: {
-  children: React.ReactElement;
+  children: SingleChildOrPlayable;
 }) {
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanToggle]}
+      // TODO: decide whether to use existing html render logic or convert fully to react.
+      // tagInfo={{ [TagType.CanToggle]: "" }}
       children={(data) => {
-        return React.cloneElement(React.Children.only(children) as any, {
-          className: classNames(
-            children.props?.className,
-            data ? "clicked" : ""
-          ),
-        });
+        const renderedChildren = renderSingleChildOrPlayable(children, data);
+        return React.cloneElement(
+          React.Children.only(renderedChildren) as any,
+          {
+            className: classNames(
+              renderedChildren?.props?.className,
+              data ? "clicked" : ""
+            ),
+          }
+        );
       }}
     />
   );
 }
 
-export function CanSpinElement({ children }: { children: React.ReactElement }) {
+export function CanSpinElement({
+  children,
+}: {
+  children: SingleChildOrPlayable;
+}) {
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanSpin]}
       children={(data) => {
-        return React.cloneElement(React.Children.only(children) as any, {
-          style: { transform: `rotate(${data.rotation}deg)` },
-        });
+        const renderedChildren = renderSingleChildOrPlayable(children, data);
+        return React.cloneElement(
+          React.Children.only(renderedChildren) as any,
+          {
+            style: { transform: `rotate(${data.rotation}deg)` },
+          }
+        );
       }}
     />
   );
 }
 
-export function CanGrowElement({ children }: { children: React.ReactElement }) {
+export function CanGrowElement({
+  children,
+}: {
+  children: SingleChildOrPlayable;
+}) {
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanSpin]}
       children={(data) => {
-        return React.cloneElement(React.Children.only(children) as any, {
-          style: { transform: `scale(${data.scale}deg)` },
-        });
+        const renderedChildren = renderSingleChildOrPlayable(children, data);
+        return React.cloneElement(
+          React.Children.only(renderedChildren) as any,
+          {
+            style: { transform: `scale(${data.scale}deg)` },
+          }
+        );
       }}
     />
   );
@@ -145,22 +192,23 @@ export function CanDuplicateElement({
   elementToDuplicate,
   canDuplicateTo,
 }: {
-  children: React.ReactElement;
+  children: SingleChildOrPlayable;
   elementToDuplicate: React.RefObject<HTMLElement>;
   canDuplicateTo?: React.RefObject<HTMLElement>;
 }) {
   const [addedElements, setAddedElements] = useState<string[]>([]);
 
   return (
-    <CanPlayElement {...TagTypeToElement[TagType.CanDuplicate]}>
-      {({ data, element }) => {
+    <CanPlayElement
+      {...TagTypeToElement[TagType.CanDuplicate]}
+      children={({ data }) => {
         let lastElement: HTMLElement | null =
           document.getElementById(addedElements.slice(-1)?.[0]) ?? null;
         if (!elementToDuplicate?.current) {
           console.error(
             `Element ${elementToDuplicate} not found. Cannot duplicate.`
           );
-          return;
+          return renderSingleChildOrPlayable(children, data);
         }
 
         const eleToDuplicate = elementToDuplicate.current;
@@ -196,9 +244,9 @@ export function CanDuplicateElement({
         }
         setAddedElements(addedElements);
 
-        return children;
+        return renderSingleChildOrPlayable(children, data);
       }}
-    </CanPlayElement>
+    />
   );
 }
 
