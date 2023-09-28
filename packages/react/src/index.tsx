@@ -1,27 +1,60 @@
 // TODO: idk why but this is not getting registered otherwise??
-import React from "react";
+import React, { PropsWithChildren } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   ElementInitializer,
   TagType,
   TagTypeToElement,
+  ElementAwarenessEventHandlerData,
 } from "@playhtml/common";
 import { playhtml } from "playhtml";
 import classNames from "classnames";
+import * as ReactIs from "react-is";
+
+type ReactElementEventHandlerData<T, V> = Omit<
+  ElementAwarenessEventHandlerData<T, any, V>,
+  "localData" | "setLocalData" | "element"
+>;
 
 interface PlayableChildren<T = any, V = any> {
-  children: (data: T, awareness: V[] | undefined) => React.ReactElement;
+  children: (data: ReactElementEventHandlerData<T, V>) => React.ReactElement;
 }
 
 // NOTE: localData is not included because you can handle that purely within your parent React component since it doesn't need to handle any
 // syncing logic.
 type ReactElementInitializer<T = any, V = any> = Omit<
   ElementInitializer<T, any, V>,
-  "updateElement" | "defaultData" | "defaultLocalData" | "myDefaultAwareness"
+  | "updateElement"
+  | "defaultData"
+  | "defaultLocalData"
+  | "myDefaultAwareness"
+  | "updateElementAwareness"
 > & {
   defaultData: T;
   myDefaultAwareness?: V;
 } & PlayableChildren<T, V>;
+
+function getCurrentElementHandler(tag: TagType, id: string) {
+  return playhtml.elementHandlers?.get(tag)?.get(id);
+}
+
+function cloneThroughFragments<P = any>(
+  element: React.ReactElement<P>,
+  props: PropsWithChildren<P>
+): React.ReactNode {
+  if (ReactIs.isFragment(element)) {
+    return [
+      // if given fragment render an empty div to be our "play info" holder.
+      <div {...props}></div>,
+      React.Children.toArray(
+        // @ts-ignore
+        element.props["children"] || []
+      ),
+    ];
+  }
+
+  return element;
+}
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 export function CanPlayElement<T, V>({
@@ -38,14 +71,20 @@ export function CanPlayElement<T, V>({
   const [awareness, setAwareness] = useState<V[]>(
     myDefaultAwareness ? [myDefaultAwareness] : []
   );
+  const [myAwareness, setMyAwareness] = useState<V | undefined>(
+    myDefaultAwareness
+  );
 
   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
-  const updateElement: ElementInitializer["updateElement"] = ({
+  const updateElement: ElementInitializer["updateElementAwareness"] = ({
     data: newData,
     awareness: newAwareness,
+    myAwareness,
   }) => {
+    console.log("mywareness", myAwareness);
     setData(newData);
     setAwareness(newAwareness);
+    setMyAwareness(myAwareness);
   };
 
   useEffect(() => {
@@ -68,8 +107,26 @@ export function CanPlayElement<T, V>({
 
   // Pass data to children to render.. or what's the most reactive way to do this?
   // should user give a function to render children with the data + set data operations?
-  return React.cloneElement(
-    React.Children.only(children(data, awareness)) as any,
+  return cloneThroughFragments(
+    React.Children.only(
+      children({
+        data,
+        awareness,
+        setData: (newData) => {
+          getCurrentElementHandler(
+            TagType.CanPlay,
+            ref.current?.id || ""
+          )?.setData(newData);
+        },
+        setLocalAwareness: (newLocalAwareness) => {
+          getCurrentElementHandler(
+            TagType.CanPlay,
+            ref.current?.id || ""
+          )?.setLocalAwareness(newLocalAwareness);
+        },
+        myAwareness,
+      })
+    ),
     {
       ref,
       ...computedTagInfo,
@@ -81,17 +138,17 @@ export function CanPlayElement<T, V>({
  */
 export const Playable = CanPlayElement;
 
+// TODO: disallow React.Fragment because it can't be given an id or figure out way to pass it on to the first child?
 type SingleChildOrPlayable<T = any, V = any> =
   | React.ReactElement
   | PlayableChildren<T, V>["children"];
 
 function renderSingleChildOrPlayable<T, V>(
   children: SingleChildOrPlayable<T, V>,
-  data: T,
-  awareness?: V[]
+  data: ReactElementEventHandlerData<T, V>
 ): React.ReactElement {
   if (typeof children === "function") {
-    return children(data, awareness);
+    return children(data);
   } else {
     return children;
   }
@@ -106,7 +163,7 @@ export function CanMoveElement({
     <CanPlayElement
       {...TagTypeToElement[TagType.CanMove]}
       // tagInfo={{ [TagType.CanMove]: "" }}
-      children={(data) => {
+      children={({ data }) => {
         const renderedChildren = renderSingleChildOrPlayable(children, data);
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
@@ -129,7 +186,7 @@ export function CanToggleElement({
       {...TagTypeToElement[TagType.CanToggle]}
       // TODO: decide whether to use existing html render logic or convert fully to react.
       // tagInfo={{ [TagType.CanToggle]: "" }}
-      children={(data) => {
+      children={({ data }) => {
         const renderedChildren = renderSingleChildOrPlayable(children, data);
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
@@ -153,7 +210,7 @@ export function CanSpinElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanSpin]}
-      children={(data) => {
+      children={({ data }) => {
         const renderedChildren = renderSingleChildOrPlayable(children, data);
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
@@ -174,7 +231,7 @@ export function CanGrowElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanSpin]}
-      children={(data) => {
+      children={({ data }) => {
         const renderedChildren = renderSingleChildOrPlayable(children, data);
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,

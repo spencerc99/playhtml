@@ -233,9 +233,11 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   set __awareness(data: V[]) {
+    console.log("updating awareness");
     if (!this.updateElementAwareness) {
       return;
     }
+    console.log("updating awareness [2]");
     this.awareness = data;
     this.updateElementAwareness(this.getAwarenessEventHandlerData());
   }

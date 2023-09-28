@@ -1,10 +1,5 @@
 import * as React from "react";
-import {
-  CanDuplicateElement,
-  CanPlayElement,
-  CanToggleElement,
-  playhtml,
-} from "./src/index";
+import { CanPlayElement, CanToggleElement, playhtml } from "./src/index";
 import { useState } from "react";
 
 playhtml.init();
@@ -17,7 +12,7 @@ export function Candle() {
         setData({ on: !data.on });
       }}
     >
-      {(data) => (
+      {({ data }) => (
         <img
           src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
           selector-id=".candle"
@@ -54,7 +49,7 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
         setHasReacted(Boolean(localStorage.getItem(getElement().id)));
       }}
     >
-      {(data) => {
+      {({ data }) => {
         return (
           <button
             className={`reaction ${hasReacted ? "reacted" : ""}`}
@@ -71,7 +66,7 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
 export function Lamp() {
   return (
     <CanToggleElement>
-      {(data) => (
+      {({ data }) => (
         <img
           src="/noguchi-akari-a1.png"
           selector-id=".lamp"
@@ -81,5 +76,33 @@ export function Lamp() {
         />
       )}
     </CanToggleElement>
+  );
+}
+
+export function OnlineIndicator() {
+  return (
+    <CanPlayElement defaultData={{}} myDefaultAwareness={"#008000"}>
+      {({ myAwareness, setLocalAwareness, awareness }) => {
+        return (
+          <>
+            {awareness.map((val) => (
+              <div
+                style={{
+                  width: "50px",
+                  height: "50px",
+                  borderRadius: "50%",
+                  background: val,
+                }}
+              ></div>
+            ))}
+            <input
+              type="color"
+              onChange={(e) => setLocalAwareness(e.target.value)}
+              value={myAwareness}
+            />
+          </>
+        );
+      }}
+    </CanPlayElement>
   );
 }
