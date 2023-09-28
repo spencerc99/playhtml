@@ -41,16 +41,20 @@ function getCurrentElementHandler(tag: TagType, id: string) {
 function cloneThroughFragments<P = any>(
   element: React.ReactElement<P>,
   props: PropsWithChildren<P>
-): React.ReactNode {
+): React.ReactElement {
   if (ReactIs.isFragment(element)) {
-    return [
-      // if given fragment render an empty div to be our "play info" holder.
-      <div {...props}></div>,
-      React.Children.toArray(
-        // @ts-ignore
-        element.props["children"] || []
-      ),
-    ];
+    return (
+      <>
+        {[
+          // if given fragment render an empty div to be our "play info" holder.
+          <div {...props}></div>,
+          React.Children.toArray(
+            // @ts-ignore
+            element.props["children"] || []
+          ),
+        ]}
+      </>
+    );
   }
 
   return element;
