@@ -85,8 +85,9 @@ export function OnlineIndicator() {
       {({ myAwareness, setLocalAwareness, awareness }) => {
         return (
           <>
-            {awareness.map((val) => (
+            {awareness.map((val, idx) => (
               <div
+                key={idx}
                 style={{
                   width: "50px",
                   height: "50px",
@@ -101,6 +102,46 @@ export function OnlineIndicator() {
               value={myAwareness}
             />
           </>
+        );
+      }}
+    </CanPlayElement>
+  );
+}
+
+export function SharedSound({ soundUrl }: { soundUrl: string }) {
+  return (
+    <CanPlayElement
+      defaultData={{ isPlaying: false }}
+      additionalSetup={({ getData, getElement }) => {
+        // This is only needed because of chrome's disabling of autoplay until you have interacted with the page.
+        document.addEventListener("click", () => {
+          const { isPlaying } = getData();
+
+          if (isPlaying) {
+            (getElement() as HTMLAudioElement)?.play();
+          } else if (!isPlaying) {
+            (getElement() as HTMLAudioElement)?.pause();
+          }
+        });
+      }}
+    >
+      {({ data: { isPlaying }, setData, ref }) => {
+        if (isPlaying) {
+          (ref.current as HTMLAudioElement)?.play();
+        } else if (!isPlaying) {
+          (ref.current as HTMLAudioElement)?.pause();
+        }
+        return (
+          <audio
+            className="sound-file"
+            id="sound"
+            controls
+            src={soundUrl}
+            loop
+            autoPlay={isPlaying}
+            muted
+            onPlay={() => setData({ isPlaying: true })}
+          />
         );
       }}
     </CanPlayElement>

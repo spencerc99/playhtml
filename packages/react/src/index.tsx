@@ -14,7 +14,7 @@ import * as ReactIs from "react-is";
 type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
   "localData" | "setLocalData" | "element"
->;
+> & { ref: React.RefObject<HTMLElement> };
 
 interface PlayableChildren<T = any, V = any> {
   children: (data: ReactElementEventHandlerData<T, V>) => React.ReactElement;
@@ -41,7 +41,7 @@ function getCurrentElementHandler(tag: TagType, id: string) {
 function cloneThroughFragments<P = any>(
   element: React.ReactElement<P>,
   props: PropsWithChildren<P>
-): React.ReactElement {
+): React.ReactElement<P> {
   if (ReactIs.isFragment(element)) {
     return (
       <>
@@ -57,7 +57,7 @@ function cloneThroughFragments<P = any>(
     );
   }
 
-  return element;
+  return React.cloneElement(element, props);
 }
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
@@ -117,6 +117,10 @@ export function CanPlayElement<T, V>({
         data,
         awareness,
         setData: (newData) => {
+          console.log("settingdata", newData);
+          console.log(
+            getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
+          );
           getCurrentElementHandler(
             TagType.CanPlay,
             ref.current?.id || ""
@@ -129,6 +133,7 @@ export function CanPlayElement<T, V>({
           )?.setLocalAwareness(newLocalAwareness);
         },
         myAwareness,
+        ref,
       })
     ),
     {

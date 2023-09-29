@@ -14,6 +14,8 @@ If you enjoy this, please consider [sponsoring the project or sending a small do
 
 ## Usage
 
+### vanilla html / simple browser usage
+
 To use this library, you can import the library and the associated styles from a CDN (in this case we will use [unpkg.com](https://unpkg.com)). Please make sure to do this after all the HTML elements on the page and ensure that the HTML elements you are "magic-ifying" have an `id` set.
 
 ```html
@@ -50,6 +52,77 @@ If you have dynamic elements that are hydrated after the initial load, you can c
   playhtml.setupPlayElement(newPlayElement);
 </script>
 ```
+
+### react / next.js / other frameworks
+
+**react**
+`@playhtml/react` provides components out of the box corresponding to each of the capabilities. It manages all the state syncing for you, so you can reactively render your component based on whatever data is coming in.
+
+Install by using your preferred package manager
+
+```bash
+npm install @playhtml/react # or
+# yarn add @playhtml/react
+```
+
+The callback handlers are slightly different to match the reactive patterns of React. For example, instead of `updateElement`, which is a vanilla javascript recreation of a reactive state management system, you can simply use your own state hooks or call `setData` to modify the shared state.
+
+You must import `playhtml` from the package and call `playhtml.init` somewhere before your components are rendered. This can be done anywhere in the code (unless you are using a framework with Server-Side Rendering, SSR, like with Next.JS, see below for how to handle this).
+
+```tsx
+// candle
+playhtml.init();
+export function Candle() {
+  return (
+    <CanPlayElement
+      defaultData={{ on: false }}
+      onClick={(_e, { data, setData }) => {
+        setData({ on: !data.on });
+      }}
+    >
+      {({ data }) => (
+        <img
+          src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+          selector-id=".candle"
+          className="candle"
+        />
+      )}
+    </CanPlayElement>
+  );
+}
+```
+
+Refer to `packages/react/example.tsx` for a full list of examples.
+
+**next.js**
+Handling Next is more difficult due to the browser-first nature of `playhtml` and how you have to handle the same code running server-side with Next.
+
+To initialize `playhtml`, you'll need to dynamically import `playhtml` and call init in a `useEffect` in the top-level component.
+
+```tsx
+async function initPlayhtml() {
+  const playhtml = (await import("@playhtml/react")).playhtml;
+
+  playhtml.init();
+}
+// ... my component
+useEffect(() => {
+  void initPlayhtml();
+});
+```
+
+Then, in your components, you'll need to turn off `ssr` for dynamically importing the `playhtml` elements.
+
+```tsx
+import type { CanPlayElement as CanPlayElementType } from "@playhtml/react";
+import dynamic from "next/dynamic";
+const CanPlayElement = dynamic(
+  () => import("@playhtml/react").then((c) => c.CanPlayElement),
+  { ssr: false }
+) as typeof CanPlayElementType;
+```
+
+---
 
 To create your own custom element, refer to the [can-play](#can-play) section.
 
@@ -123,6 +196,7 @@ IDs are recommended on all elements to uniquely identify them. If you are applyi
 These capabilities are common ones that have been designed and created by the community. You should expect that they are relatively well-tested, and they simply build on top of the same API and constructs that `can-play` uses.
 
 ### `can-move`
+
 https://github.com/spencerc99/playhtml/assets/14796580/215c7631-d71f-40e6-bdda-bd8146a88006
 
 Creates a movable element using 2D `translate` on the element. Dragging the element around will move it
@@ -133,6 +207,7 @@ Creates a movable element using 2D `translate` on the element. Dragging the elem
 - This currently doesn't work on touch screens.
 
 ### `can-toggle`
+
 https://github.com/spencerc99/playhtml/assets/14796580/7e667c06-c32e-4369-b250-c9ca321de163
 
 _from https://twitter.com/spencerc99/status/1681048824884895744_
@@ -140,6 +215,7 @@ _from https://twitter.com/spencerc99/status/1681048824884895744_
 Creates an element that can be switched on and off. Clicking the element will toggle the `clicked` class on the element.
 
 ### `can-duplicate`
+
 https://github.com/spencerc99/playhtml/assets/14796580/6d9f1228-08cf-45a7-987a-8bebfaaefd83
 
 _used to programmatically and dynamically create new playhtml elements that aren't included in the initial HTML_

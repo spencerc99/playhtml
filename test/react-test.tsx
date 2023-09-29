@@ -6,6 +6,7 @@ import {
   Lamp,
   OnlineIndicator,
   ReactionView,
+  SharedSound,
 } from "../packages/react/example";
 
 ReactDOM.createRoot(
@@ -16,5 +17,6 @@ ReactDOM.createRoot(
     <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
     <Lamp />
     <OnlineIndicator />
+    <SharedSound soundUrl={"/lamp-on.m4a"} />
   </React.StrictMode>
 );
