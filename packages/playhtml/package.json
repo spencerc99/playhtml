@@ -19,7 +19,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "github:spencerc99/playhtml"
+    "url": "github:spencerc99/playhtml",
+    "directory": "packages/playhtml"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/spencerc99"
   },
   "bugs": {
     "url": "https://github.com/spencerc99/playhtml/issues"

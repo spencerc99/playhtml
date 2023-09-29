@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "0.0.16",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -15,7 +15,12 @@
   "author": "Spencer Chang <spencerc99@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/spencerc99/playhtml/packages/react.git"
+    "url": "https://github.com/spencerc99/playhtml.git",
+    "directory": "packages/react"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/spencerc99"
   },
   "bugs": {
     "url": "https://github.com/spencerc99/playhtml/issues"
