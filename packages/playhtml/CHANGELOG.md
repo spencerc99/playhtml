@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.0.7 - 2023-10-02
+
+- upgrading y-partykit and yjs to latest for improved performance
+
 ## 2.0.5 - 2023-09-11
 
 - fixed an error with setting up elements before the provider was synced which lead to incorrect initial element states that didn't sync.
