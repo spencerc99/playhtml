@@ -18,9 +18,9 @@
     "vite": "^4.3.9"
   },
   "dependencies": {
-    "partykit": "^0.0.9",
+    "partykit": "^0.0.26",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "y-partykit": "^0.0.3"
+    "y-partykit": "^0.0.7"
   }
 }
