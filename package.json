@@ -21,6 +21,6 @@
     "partykit": "^0.0.26",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "y-partykit": "^0.0.7"
+    "y-partykit": "^0.0.10"
   }
 }

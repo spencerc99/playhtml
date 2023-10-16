@@ -1728,10 +1728,10 @@ y-indexeddb@^9.0.11:
   dependencies:
     lib0 "^0.2.74"
 
-y-partykit@^0.0.7:
-  version "0.0.7"
-  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.7.tgz#168eb19d9dd7b61b201a2a857cbb22deb7981fbe"
-  integrity sha512-v9dFy0or95xHyXnOp5twZWjgvpeGkon1SbrVC7DiE3t80qk6fqi8alGWtJAWsV/n34p22FHuvpmC7tcwAgxcYA==
+y-partykit@^0.0.10:
+  version "0.0.10"
+  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.10.tgz#7680dc43b287071e556af7d8681299c5d0723623"
+  integrity sha512-DFzaQbbgUm4jZx8oj3uHigRUKw0sYvq7QQlw/Kq+yOrci+AD0b38cgyWEs5TWYQDCC2a7Wqs33oiJ5YgOCDqVg==
   dependencies:
     lib0 "^0.2.86"
     lodash.debounce "^4.0.8"
