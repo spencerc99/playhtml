@@ -204,7 +204,6 @@ Creates a movable element using 2D `translate` on the element. Dragging the elem
 **troubleshooting**
 
 - This currently doesn't work on `inline` display elements.
-- This currently doesn't work on touch screens.
 
 ### `can-toggle`
 
@@ -229,12 +228,6 @@ Creates an element that can be resized using a `scale` `transform`. Clicking the
 ### `can-spin`
 
 Creates a rotatable element using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
-
-### `can-post`
-
-![image](https://github.com/spencerc99/playhtml/assets/14796580/6de3fcab-2372-4080-b46f-cd768f1ed44e)
-
-Creates a communal forum from a `form` element. The form will sync any new submissions including all the `input` elements in the form, using their `name` property as the key and their value as the value. New messages will be currently prepended to the element with the `guestbookMessages` ID. TODO: make this generic and take user input
 
 ## Contributing
 
