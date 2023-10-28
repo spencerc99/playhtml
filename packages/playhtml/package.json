@@ -2,7 +2,7 @@
   "name": "playhtml",
   "title": "playhtml",
   "description": "Create interactive, collaborative html elements with a single attribute",
-  "version": "2.0.7",
+  "version": "2.0.9",
   "license": "MIT",
   "type": "module",
   "keywords": [
