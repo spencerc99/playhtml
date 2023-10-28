@@ -17,11 +17,9 @@ import { ElementHandler } from "./elements";
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
 const doc = new Y.Doc();
-// TODO: should the room include search?
-// option 1: room = window.location.hostname + window.location.pathname
-// option 2: room = window.location.href
-// option 3: default to 1 and expose custom option to user.
-const DefaultRoom = window.location.href;
+function getDefaultRoom(): string {
+  return window.location.pathname + window.location.search;
+}
 let yprovider: YPartyKitProvider;
 let globalData: Y.Map<any>;
 let elementHandlers: Map<string, Map<string, ElementHandler>>;
@@ -31,8 +29,11 @@ interface InitOptions {
   // The room to connect users to (this should be a string that matches the other users
   // that you want a given user to connect with).
   //
-  // Defaults to `window.location.href`
+  // All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent conflicting with other people's sites.
+  // Defaults to `window.location.pathname + window.location.search. You can customize this by passing in your own room dynamically
   room?: string;
+
+  // Provide your own partykit host if you'd like to run your own server and customize the logic.
   host?: string;
 }
 
@@ -40,13 +41,16 @@ let hasSynced = false;
 let firstSetup = true;
 function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
-  room = DefaultRoom,
+  room: inputRoom = getDefaultRoom(),
   host = DefaultPartykitHost,
 }: InitOptions = {}) {
   if (!firstSetup) {
     console.error("playhtml already set up!");
     return;
   }
+
+  // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
+  const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
 
   // TODO: there's a typescript error here but it all seems to work...
   // @ts-ignore
