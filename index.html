@@ -223,13 +223,10 @@
               style="width: 80px"
               required
             />,
-            <span
-              ><s>
+            <span>
                 leave something nice for visitors in the guestbook, won't
-                you?
-              </s> we're out of space on the wall right now and undergoing rennovations to bring it back!</span
+                you?</span
             >
-             <img src="under-construction-website.gif"/>
 
             <br />
             <!-- emoji message -->
@@ -240,7 +237,7 @@
               placeholder="5 chars max, emojis recommended"
               maxlength="5"
             />
-            <button type="submit" disabled="true">🖋️</button>
+            <button type="submit" >🖋️</button>
           </form>
           <div id="guestbookMessages"></div>
         </div>
@@ -265,12 +262,6 @@
         <a href="https://partykit.io">partykit</a>
       </div>
     </footer>
-
-    <script type="module">
-      // NOTE: this pins it to the working code so we can test out new library changes through this home page.
-      import {playhtml} from "./packages/playhtml/src/main.ts";
-      playhtml.init();
-    </script>
 
     <script type="module" src="./index.tsx">
     </script>

@@ -1,5 +1,3 @@
-import words from "profane-words";
-
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 export const ModifierKeyToName: Record<ModifierKey, string> = {
   ctrlKey: "Control",
@@ -41,6 +39,7 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   // Advanced settings
   resetShortcut?: ModifierKey;
   debounceMs?: number;
+  isValidElementForTag?: (element: HTMLElement) => boolean;
 }
 
 export interface ElementData<T = any, U = any, V = any>
@@ -106,7 +105,6 @@ export enum TagType {
   "CanGrow" = "can-grow",
   "CanToggle" = "can-toggle",
   "CanDuplicate" = "can-duplicate",
-  "CanPost" = "can-post",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
   // "CanHover" = "can-hover",
@@ -145,10 +143,6 @@ export enum TagType {
 
 export function getIdForElement(ele: HTMLElement): string | undefined {
   return ele.id;
-}
-
-export function getElementFromId(id: string): HTMLElement | null {
-  return document.getElementById(id);
 }
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
@@ -190,13 +184,6 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
     return { clientX, clientY };
   }
   return { clientX: e.clientX, clientY: e.clientY };
-}
-
-interface FormData {
-  id: string;
-  name: string;
-  message: string;
-  timestamp: number;
 }
 
 export const TagTypeToElement: Record<
@@ -324,118 +311,6 @@ export const TagTypeToElement: Record<
     },
     resetShortcut: "shiftKey",
   } as ElementInitializer<GrowData>,
-  // TODO: remove this and make it a can-play element. this has too many dependencies to be a part of the core
-  [TagType.CanPost]: {
-    defaultData: [],
-    defaultLocalData: { addedEntries: new Set() },
-    updateElement: ({
-      data: entries,
-      localData: { addedEntries },
-      setLocalData,
-    }) => {
-      const entriesToAdd = entries.filter(
-        (entry) => !addedEntries.has(entry.id)
-      );
-
-      const guestbookDiv = getElementFromId("guestbookMessages")!;
-      entriesToAdd.forEach((entry) => {
-        const newEntry = document.createElement("div");
-        newEntry.classList.add("guestbook-entry");
-        const entryDate = new Date(entry.timestamp);
-        const time = entryDate.toTimeString().split(" ")[0];
-        const isToday = entryDate.toDateString() === new Date().toDateString();
-
-        const dateString = (() => {
-          // TODO: this is naive and incorrect but works most of the time lol
-          const now = new Date();
-          if (
-            now.getFullYear() !== entryDate.getFullYear() ||
-            now.getMonth() !== entryDate.getMonth()
-          ) {
-            return "Sometime before";
-          } else if (isToday) {
-            return "Today";
-          } else if (now.getDate() - entryDate.getDate() === 1) {
-            return "Yesterday";
-          } else if (now.getDate() - entryDate.getDate() < 7) {
-            return "This week";
-          } else {
-            return "Sometime before";
-          }
-        })();
-
-        newEntry.innerHTML = `
-        <span class="guestbook-entry-timestamp">${dateString} at ${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
-        // TODO: add option to change order?
-        guestbookDiv.prepend(newEntry);
-        if (newEntry.querySelector(".guestbook-entry-name")) {
-          // @ts-ignore
-          newEntry.querySelector(".guestbook-entry-name")!.innerText =
-            entry.name;
-        }
-        if (newEntry.querySelector(".guestbook-entry-message")) {
-          // @ts-ignore
-          newEntry.querySelector(".guestbook-entry-message")!.innerText =
-            entry.message;
-        }
-        addedEntries.add(entry.id);
-      });
-
-      setLocalData({ addedEntries });
-    },
-    additionalSetup: ({ getElement, getData, setData }) => {
-      const element = getElement();
-      element.addEventListener("submit", (e: SubmitEvent) => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        const entries = getData();
-
-        const formData = new FormData(e.target as HTMLFormElement);
-        // massage formData into new object
-
-        function clearMessage() {
-          const messageEle = element.querySelector('input[name="message"]');
-          if (!messageEle) {
-            return;
-          }
-          // @ts-ignore
-          messageEle.value = "";
-        }
-        // @ts-ignore
-        const inputData = Object.fromEntries(formData.entries());
-
-        if (!inputData.name ?? !inputData.message) {
-          clearMessage();
-          return false;
-        }
-
-        if (
-          words.some((word) => {
-            const regex = new RegExp(`\\b${word}\\b`, "gi");
-            return regex.test(inputData.message) || regex.test(inputData.name);
-          })
-        ) {
-          alert("now why would you try to do something like that?");
-          clearMessage();
-          return false;
-        }
-
-        // TODO: add length validation here
-
-        const timestamp = Date.now();
-        const newEntry: FormData = {
-          name: "someone",
-          message: "something",
-          ...inputData,
-          timestamp,
-          id: `${timestamp}-${inputData.name}`,
-        };
-        setData([...entries, newEntry]);
-        clearMessage();
-        return false;
-      });
-    },
-  } as ElementInitializer<FormData[]>,
   // TODO: add ability to add max # of duplicates
   // TODO: add lifespan to automatically prune
   // TODO: add limit per person / per timeframe.
@@ -496,6 +371,20 @@ export const TagTypeToElement: Record<
         duplicateElementId + "-" + Math.random().toString(36).substr(2, 9);
 
       setData([...data, newElementId]);
+    },
+    isValidElementForTag: (element) => {
+      const tagAttribute = element.getAttribute(TagType.CanDuplicate);
+      if (!tagAttribute) {
+        return false;
+      }
+
+      if (!document.getElementById(tagAttribute)) {
+        console.warn(
+          `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`
+        );
+      }
+
+      return true;
     },
   } as ElementInitializer<string[]>,
 };

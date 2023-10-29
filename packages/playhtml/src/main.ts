@@ -7,7 +7,6 @@ import {
   ElementData,
   ElementInitializer,
   TagType,
-  getElementFromId,
   getIdForElement,
   TagTypeToElement,
 } from "@playhtml/common";
@@ -35,6 +34,16 @@ interface InitOptions {
 
   // Provide your own partykit host if you'd like to run your own server and customize the logic.
   host?: string;
+
+  // Optionally provide your own map of capabilities
+  extraCapabilities?: Record<string, ElementInitializer>;
+}
+
+let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
+  TagTypeToElement;
+
+function getTagTypes(): (TagType | string)[] {
+  return Object.keys(capabilitiesToInitializer);
 }
 
 let hasSynced = false;
@@ -43,6 +52,7 @@ function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   room: inputRoom = getDefaultRoom(),
   host = DefaultPartykitHost,
+  extraCapabilities,
 }: InitOptions = {}) {
   if (!firstSetup) {
     console.error("playhtml already set up!");
@@ -71,6 +81,12 @@ function initPlayHTML({
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
   playhtml.globalData = globalData;
   playhtml.elementHandlers = elementHandlers;
+
+  if (extraCapabilities) {
+    for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
+      capabilitiesToInitializer[tag] = tagInfo;
+    }
+  }
 
   // TODO: provide some loading state for these elements immediately?
   // some sort of "hydration" state?
@@ -165,7 +181,7 @@ function isCorrectElementInitializer(
 }
 
 function getElementInitializerInfoForElement(
-  tag: TagType,
+  tag: TagType | string,
   element: HTMLElement
 ) {
   if (tag === TagType.CanPlay) {
@@ -183,11 +199,12 @@ function getElementInitializerInfoForElement(
       additionalSetup: customElement.additionalSetup,
       resetShortcut: customElement.resetShortcut,
       debounceMs: customElement.debounceMs,
+      isValidElementForTag: customElement.isValidElementForTag,
     };
     return elementInitializerInfo;
   }
 
-  return TagTypeToElement[tag];
+  return capabilitiesToInitializer[tag];
 }
 
 function onChangeAwareness() {
@@ -259,7 +276,8 @@ function onChangeAwareness() {
 function setupElements(): void {
   console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
-  for (const tag of Object.values(TagType)) {
+  console.log(getTagTypes());
+  for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
@@ -313,7 +331,7 @@ window.playhtml = playhtml;
 /**
  * Performs any necessary setup for a playhtml TagType. Safe to call repeatedly.
  */
-function maybeSetupTag(tag: TagType): void {
+function maybeSetupTag(tag: TagType | string): void {
   if (elementHandlers.has(tag)) {
     return;
   }
@@ -324,7 +342,7 @@ function maybeSetupTag(tag: TagType): void {
 
   elementHandlers.set(tag, new Map<string, ElementHandler>());
   let tagCommonElementInitializerInfo =
-    tag !== TagType.CanPlay ? TagTypeToElement[tag] : undefined;
+    tag !== TagType.CanPlay ? capabilitiesToInitializer[tag] : undefined;
 
   type tagType =
     typeof tagCommonElementInitializerInfo extends ElementInitializer
@@ -341,7 +359,7 @@ function maybeSetupTag(tag: TagType): void {
     event.changes.keys.forEach((change, key) => {
       const tagElementHandlers = elementHandlers.get(tag)!;
       if (change.action === "add") {
-        const element = getElementFromId(key)!;
+        const element = document.getElementById(key)!;
         if (!isHTMLElement(element)) {
           console.log(`Element ${key} not an HTML element. Ignoring.`);
           return;
@@ -363,38 +381,19 @@ function maybeSetupTag(tag: TagType): void {
 /**
  * Returns true if the given element is set up properly for the given tag, false otherwise.
  */
-function isElementValidForTag(element: HTMLElement, tag: TagType): boolean {
-  const tagAttribute = element.getAttribute(tag);
-  switch (tag) {
-    case TagType.CanPlay:
-    case TagType.CanMove:
-    case TagType.CanSpin:
-    case TagType.CanGrow:
-    case TagType.CanToggle:
-    case TagType.CanPost:
-      return true;
-    case TagType.CanDuplicate:
-      if (!tagAttribute) {
-        return false;
-      }
-
-      if (!document.getElementById(tagAttribute)) {
-        console.warn(
-          `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`
-        );
-      }
-
-      return true;
-    default:
-      console.error(`Unhandled tag found in validation: ${tag}`);
-      return false;
-  }
+function isElementValidForTag(
+  element: HTMLElement,
+  tag: TagType | string
+): boolean {
+  return (
+    capabilitiesToInitializer[tag]?.isValidElementForTag?.(element) ?? true
+  );
 }
 
 /**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
-function setupPlayElementForTag<T extends TagType>(
+function setupPlayElementForTag<T extends TagType | string>(
   element: HTMLElement,
   tag: T
 ): void {
@@ -481,7 +480,7 @@ function setupPlayElement(element: Element) {
     return;
   }
 
-  for (const tag of Object.values(TagType)) {
+  for (const tag of getTagTypes()) {
     if (element.hasAttribute(tag)) {
       setupPlayElementForTag(element, tag);
     }
