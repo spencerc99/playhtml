@@ -120,7 +120,6 @@ export class ElementHandler<T = any, U = any, V = any> {
   }: ElementData<T>) {
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.resetShortcut = resetShortcut;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.updateElement = updateElement;
@@ -233,11 +232,9 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   set __awareness(data: V[]) {
-    console.log("updating awareness");
     if (!this.updateElementAwareness) {
       return;
     }
-    console.log("updating awareness [2]");
     this.awareness = data;
     this.updateElementAwareness(this.getAwarenessEventHandlerData());
   }
