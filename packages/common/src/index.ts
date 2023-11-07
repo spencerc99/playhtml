@@ -105,12 +105,16 @@ export enum TagType {
   "CanGrow" = "can-grow",
   "CanToggle" = "can-toggle",
   "CanDuplicate" = "can-duplicate",
+  // "CanRearrange" = "can-rearrange",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
   // "CanHover" = "can-hover",
   // "CanDrive" = "can-drive",
   // "CanHighlight" = "can-highlight",
   // "CanStamp" = "can-stamp",
+  // "CanResize" = "can-resize",
+  // canZoom
+  // canScroll
 
   // "CanFall" = "can-fall", See https://mrdoob.com/projects/chromeexperiments/google-space/
   // "CanAge" = "can-age",
