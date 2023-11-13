@@ -105,12 +105,12 @@
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
         <script>
           const candle = document.getElementById("customCandle");
-          candle.defaultData = true;
+          candle.defaultData = {on: true};
           candle.onClick = (_e, { data, setData }) => {
-            setData(!data);
+            setData({on: !data.on});
           };
           candle.updateElement = ({ element, data }) => {
-            element.src = data ? "/candle-gif.gif" : "/candle-off.png";
+            element.src = data.on ? "/candle-gif.gif" : "/candle-off.png";
           };
           candle.resetShortcut = "shiftKey";
         </script>
@@ -167,12 +167,6 @@
             onmouseleave="unhighlightElements('can-grow')"
           >
             can-grow
-          </li>
-          <li
-            onmouseenter="highlightElements('can-post')"
-            onmouseleave="unhighlightElements('can-post')"
-          >
-            can-post
           </li>
           <li>
             <a href="https://github.com/spencerc99/playhtml/pulls"
