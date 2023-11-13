@@ -43,7 +43,7 @@ let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
 
 function getTagTypes(): (TagType | string)[] {
-  return Object.keys(capabilitiesToInitializer);
+  return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
 }
 
 let hasSynced = false;
