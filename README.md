@@ -30,7 +30,7 @@ To use this library, you can import the library and the associated styles from a
   <!-- INVALID EXAMPLE <img src="https://media2.giphy.com/media/lL7A3Li0YtFHq/giphy.gif?cid=ecf05e47ah89o71gzz7ke7inrgb1ai1xcbrjnqdf7o890118&ep=v1_stickers_search&rid=giphy.gif" can-move /> -->
   <!-- import the script -->
   <script type="module">
-    import "https://unpkg.com/playhtml";
+    import "https://unpkg.com/playhtml@latest";
     playhtml.init();
     // Optionally you could customize the room and host, like so:
     // playhtml.init({
@@ -38,7 +38,10 @@ To use this library, you can import the library and the associated styles from a
     //  host: "mypartykit.user.partykit.dev"
     // })
   </script>
-  <link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/playhtml@latest/dist/style.css"
+  />
 </body>
 ```
 
@@ -46,7 +49,7 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 
 ```html
 <script type="module">
-  import { playhtml } from "https://unpkg.com/playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
   const newPlayElement = document.createElement("div");
   newPlayElement.id = "newPlayElement";
   playhtml.setupPlayElement(newPlayElement);
@@ -175,10 +178,13 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 
 <!-- Import playhtml -->
 <script type="module">
-  import "https://unpkg.com/playhtml";
+  import "https://unpkg.com/playhtml@latest";
   playhtml.init();
 </script>
-<link rel="stylesheet" href="https://unpkg.com/playhtml/dist/style.css" />
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/playhtml@latest/dist/style.css"
+/>
 ```
 
 See all supported properties in the `ElementInitializer` [object in `types.ts`](https://github.com/spencerc99/playhtml/blob/main/src/types.ts#L13).
