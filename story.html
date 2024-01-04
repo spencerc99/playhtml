@@ -223,20 +223,6 @@
       href="https://unpkg.com/playhtml@latest/dist/style.css"
     />
     <!-- import cursor chat -->
-    <!-- TODO: implement custom cursor chat with color select, other settings -->
-    <div id="cursor-chat-layer">
-      <input type="text" id="cursor-chat-box" />
-    </div>
-    <script type="module">
-      import { initCursorChat } from "https://esm.sh/cursor-chat";
-      initCursorChat(window.location.href, {
-        color: getUserColor(),
-      });
-    </script>
-    <link
-      rel="stylesheet"
-      type="text/css"
-      href="https://unpkg.com/cursor-chat/dist/style.css"
-    />
+    <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
   </body>
 </html>
