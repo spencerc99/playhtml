@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.0.8 - 2024-01-05
+
+- deprecating using non-object values as `defaultData` for elements. If you were using a single value before, instead, use an object with a `value` key. e.g. `defaultData: { value: "my value" }`. This allows for easier extension of the data in the future.
+
 ## 2.0.7 - 2023-10-02
 
 - upgrading y-partykit and yjs to latest for improved performance

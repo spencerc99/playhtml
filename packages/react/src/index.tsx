@@ -171,7 +171,6 @@ export function CanMoveElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanMove]}
-      // tagInfo={{ [TagType.CanMove]: "" }}
       children={({ data }) => {
         const renderedChildren = renderSingleChildOrPlayable(children, data);
         return React.cloneElement(
@@ -197,12 +196,13 @@ export function CanToggleElement({
       // tagInfo={{ [TagType.CanToggle]: "" }}
       children={({ data }) => {
         const renderedChildren = renderSingleChildOrPlayable(children, data);
+        const on = typeof data === "boolean" ? data : data.on;
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
           {
             className: classNames(
               renderedChildren?.props?.className,
-              data ? "clicked" : ""
+              on ? "clicked" : ""
             ),
           }
         );

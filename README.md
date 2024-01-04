@@ -14,6 +14,11 @@ If you enjoy this, please consider [sponsoring the project or sending a small do
 
 ## Usage
 
+Head to the proper section depending on your technology preference:
+
+- [vanilla html / simple browser usage](#vanilla-html--simple-browser-usage)
+- [react / next.js / other frameworks](#react--nextjs--other-frameworks)
+
 ### vanilla html / simple browser usage
 
 To use this library, you can import the library and the associated styles from a CDN (in this case we will use [unpkg.com](https://unpkg.com)). Please make sure to do this after all the HTML elements on the page and ensure that the HTML elements you are "magic-ifying" have an `id` set.
@@ -234,6 +239,10 @@ Creates an element that can be resized using a `scale` `transform`. Clicking the
 ### `can-spin`
 
 Creates a rotatable element using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
+
+## Data Policy
+
+Currently all data is stored by a [Partykit](https://partykit.dev) instance under my account and is not encrypted. This means that anyone with the room name can access the data. In the future, I'd like to enable providing your own custom persistence options via object storage providers (or any generic service that can accept a POST endpoint with a dump of the data).
 
 ## Contributing
 

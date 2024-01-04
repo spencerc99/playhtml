@@ -264,12 +264,16 @@ export const TagTypeToElement: Record<
     resetShortcut: "shiftKey",
   } as ElementInitializer<SpinData>,
   [TagType.CanToggle]: {
-    defaultData: false,
+    defaultData: { on: false },
     updateElement: ({ element, data }) => {
-      element.classList.toggle("clicked", data);
+      // handling migration from "boolean" to "{on: boolean}" type
+      const on = typeof data === "boolean" ? data : data.on;
+      element.classList.toggle("clicked", on);
     },
     onClick: (e: MouseEvent, { data, setData }) => {
-      setData(!data);
+      // handling migration from "boolean" to "{on: boolean}" type
+      const on = typeof data === "boolean" ? data : data.on;
+      setData({ on: !on });
     },
     resetShortcut: "shiftKey",
   },
