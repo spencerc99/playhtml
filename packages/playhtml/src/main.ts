@@ -267,6 +267,10 @@ function onChangeAwareness() {
  * on the `playhtml` object on `window`.
  */
 function setupElements(): void {
+  if (!hasSynced) {
+    return;
+  }
+
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
