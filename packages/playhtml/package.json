@@ -2,7 +2,7 @@
   "name": "playhtml",
   "title": "playhtml",
   "description": "Create interactive, collaborative html elements with a single attribute",
-  "version": "2.0.16",
+  "version": "2.0.17",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -29,7 +29,7 @@
   "bugs": {
     "url": "https://github.com/spencerc99/playhtml/issues"
   },
-  "main": "./dist/playhtml.cjs.js",
+  "main": "./dist/playhtml.es.js",
   "types": "./dist/main.d.ts",
   "module": "./dist/playhtml.es.js",
   "homepage": "https://playhtml.fun",
@@ -39,8 +39,7 @@
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
-      "import": "./dist/playhtml.es.js",
-      "require": "./dist/playhtml.cjs.js"
+      "import": "./dist/playhtml.es.js"
     },
     "./dist/style.css": {
       "import": "./dist/style.css",
