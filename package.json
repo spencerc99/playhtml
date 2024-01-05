@@ -3,7 +3,9 @@
   "private": true,
   "license": "MIT",
   "workspaces": [
-    "packages/*"
+    "packages/playhtml",
+    "packages/react",
+    "packages/common"
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.ts",

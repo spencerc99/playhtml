@@ -30,7 +30,8 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "publish-npm": "yarn run build && yarn publish"
+    "set-publishing-config": "yarn config set version-tag-prefix '@playhtml/common-v' && yarn config set version-git-message '@playhtml/common-v%s'",
+    "publish-npm": "yarn run build && npm run set-publishing-config && yarn publish"
   },
   "devDependencies": {
     "typescript": "^5.0.2",

@@ -49,7 +49,8 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "publish-npm": "(yarn run build && rm README.md && cp ../../README.md . && yarn publish && yarn run cleanup) || (yarn run cleanup)",
+    "set-publishing-config": "yarn config set version-tag-prefix 'playhtml-v' && yarn config set version-git-message 'playhtml-v%s'",
+    "publish-npm": "(yarn run build && npm run set-publishing-config && rm README.md && cp ../../README.md . && yarn publish && yarn run cleanup) || (yarn run cleanup)",
     "cleanup": "rm README.md && ln -s ../../README.md ."
   },
   "devDependencies": {
@@ -59,7 +60,7 @@
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@playhtml/common": "^0.0.3",
+    "@playhtml/common": "^0.0.5",
     "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.10",
     "yjs": "^13.6.8"

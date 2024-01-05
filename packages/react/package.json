@@ -41,7 +41,8 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "publish-npm": "yarn run build && yarn publish"
+    "set-publishing-config": "yarn config set version-tag-prefix '@playhtml/react-v' && yarn config set version-git-message '@playhtml/react-v%s'",
+    "publish-npm": "yarn run build && npm run set-publishing-config && yarn publish"
   },
   "publishConfig": {
     "access": "public"
@@ -55,13 +56,12 @@
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@playhtml/common": "^0.0.2",
+    "@playhtml/common": "^0.0.5",
     "classnames": "^2.3.2",
-    "playhtml": "^2.0.6",
+    "playhtml": "^2.0.13",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-is": "^18.2.0",
-    "react-router-dom": "^6.21.1"
+    "react-is": "^18.2.0"
   },
   "peerDependencies": {
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0",
