@@ -25,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/spencerc99/playhtml/issues"
   },
-  "main": "./dist/react-playhtml.umd.js",
+  "main": "./dist/react-playhtml.es.js",
   "types": "./dist/main.d.ts",
   "module": "./dist/react-playhtml.es.js",
   "homepage": "https://react-playhtml.fun",
