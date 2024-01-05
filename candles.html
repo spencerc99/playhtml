@@ -45,12 +45,14 @@
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
         <script>
           const candle = document.getElementById("customCandle");
-          candle.defaultData = true;
+          candle.defaultData = { on: true };
           candle.onClick = (_e, { data, setData }) => {
-            setData(!data);
+            const on = typeof data === "object" ? data.on : data;
+            setData(!on);
           };
           candle.updateElement = ({ element, data }) => {
-            element.src = data ? "/candle-gif.gif" : "/candle-off.png";
+            const on = typeof data === "object" ? data.on : data;
+            element.src = on ? "/candle-gif.gif" : "/candle-off.png";
           };
           candle.resetShortcut = "shiftKey";
         </script>
@@ -65,15 +67,11 @@
     </footer>
 
     <script type="module" src="./website/story.ts"></script>
-    <!-- TODO: TEMP while sunil works on main -->
     <script type="module">
       import "https://unpkg.com/playhtml@latest";
       playhtml.init({ host: "playhtml.spencerc99.partykit.dev" });
     </script>
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/playhtml@latest/dist/style.css"
-    />
+
     <!-- import cursor chat -->
     <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
   </body>

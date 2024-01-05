@@ -88,6 +88,12 @@ function initPlayHTML({
     }
   }
 
+  // Import default styles
+  const playStyles = document.createElement("link");
+  playStyles.rel = "stylesheet";
+  playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
+  document.head.appendChild(playStyles);
+
   // TODO: provide some loading state for these elements immediately?
   // some sort of "hydration" state?
   yprovider.on("sync", (connected: boolean) => {

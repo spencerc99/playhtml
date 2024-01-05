@@ -34,19 +34,21 @@ To use this library, you can import the library and the associated styles from a
   id="openSign"
   <!-- INVALID EXAMPLE <img src="https://media2.giphy.com/media/lL7A3Li0YtFHq/giphy.gif?cid=ecf05e47ah89o71gzz7ke7inrgb1ai1xcbrjnqdf7o890118&ep=v1_stickers_search&rid=giphy.gif" can-move /> -->
   <!-- import the script -->
+
+  <!-- Option 1 (simplest, no customization) -->
+  <script
+    type="module"
+    src="https://unpkg.com/playhtml@latest/dist/init.es.js"
+  ></script>
+
+  <!-- Option 2 (customize options to use your own partykit provider or specify the room) -->
   <script type="module">
     import "https://unpkg.com/playhtml@latest";
-    playhtml.init();
-    // Optionally you could customize the room and host, like so:
-    // playhtml.init({
-    //  room: window.location.pathname,
-    //  host: "mypartykit.user.partykit.dev"
-    // })
+    playhtml.init({
+      room: "my-room",
+      host: "mypartykit.user.partykit.dev",
+    });
   </script>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/playhtml@latest/dist/style.css"
-  />
 </body>
 ```
 
@@ -159,24 +161,21 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
 <script>
   let candle = document.getElementById("customCandle");
-  candle.defaultData = true;
+  candle.defaultData = { on: true };
   candle.onClick = (_e, { data, setData }) => {
-    setData(!data);
+    setData({ on: !data.on });
   };
-  candle.updateElement = ({ data }) => {
-    candle.src = data ? "/candle-gif.gif" : "/candle-off.png";
+  candle.updateElement = ({ element, data }) => {
+    element.src = data.on ? "/candle-gif.gif" : "/candle-off.png";
   };
   candle.resetShortcut = "shiftKey";
-  customCandle.defaultData = true;
-  customCandle.onClick = (_e, { data, setData }) => {
-    setData(!data);
-  };
-  // The above statement could also be done using the `additionalSetup`
+
+  // If you wanted to trigger this on hover, you could use `additionalSetup`
   // which can initialize several different event listeners and custom logic.
   // customCandle.additionalSetup = ({ getData, setData }) => {
-  //   customCandle.addEventListener("click", (_e) => {
+  //   customCandle.addEventListener("mouseover", (_e) => {
   //     const data = getData();
-  //     setData(!data);
+  //     setData({on: !data.on}});
   //   });
   // };
 </script>
@@ -186,10 +185,6 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
   import "https://unpkg.com/playhtml@latest";
   playhtml.init();
 </script>
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/playhtml@latest/dist/style.css"
-/>
 ```
 
 See all supported properties in the `ElementInitializer` [object in `types.ts`](https://github.com/spencerc99/playhtml/blob/main/src/types.ts#L13).
