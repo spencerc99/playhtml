@@ -7,9 +7,10 @@ import {
   TagTypeToElement,
   ElementAwarenessEventHandlerData,
 } from "@playhtml/common";
-import { playhtml } from "playhtml";
+import playhtml from "./playhtml-singleton";
 import classNames from "classnames";
 import * as ReactIs from "react-is";
+import { PlayProvider } from "./PlayProvider";
 
 type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
@@ -105,12 +106,9 @@ export function CanPlayElement<T, V>({
       playhtml.setupPlayElement(ref.current);
     }
 
-    // TODO: remove play element when unmounted
     return () => playhtml.removePlayElement(ref.current);
   }, [elementProps]);
 
-  // Pass data to children to render.. or what's the most reactive way to do this?
-  // should user give a function to render children with the data + set data operations?
   return cloneThroughFragments(
     React.Children.only(
       children({
@@ -147,7 +145,6 @@ export function CanPlayElement<T, V>({
  */
 export const Playable = CanPlayElement;
 
-// TODO: disallow React.Fragment because it can't be given an id or figure out way to pass it on to the first child?
 type SingleChildOrPlayable<T = any, V = any> =
   | React.ReactElement
   | PlayableChildren<T, V>["children"];
@@ -316,4 +313,4 @@ export function CanDuplicateElement({
   );
 }
 
-export { playhtml };
+export { playhtml, PlayProvider };
