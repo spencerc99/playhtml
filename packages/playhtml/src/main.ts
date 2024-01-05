@@ -95,6 +95,7 @@ function initPlayHTML({
       console.error("Issue connecting to yjs...");
     }
     hasSynced = true;
+    console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
     setupElements();
   });
 
@@ -266,9 +267,6 @@ function onChangeAwareness() {
  * on the `playhtml` object on `window`.
  */
 function setupElements(): void {
-  console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
-
-  console.log(getTagTypes());
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
@@ -334,7 +332,9 @@ function maybeSetupTag(tag: TagType | string): void {
     return;
   }
 
-  elementHandlers.set(tag, new Map<string, ElementHandler>());
+  if (!elementHandlers.has(tag)) {
+    elementHandlers.set(tag, new Map<string, ElementHandler>());
+  }
   let tagCommonElementInitializerInfo =
     tag !== TagType.CanPlay ? capabilitiesToInitializer[tag] : undefined;
 

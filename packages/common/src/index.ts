@@ -267,12 +267,12 @@ export const TagTypeToElement: Record<
     defaultData: { on: false },
     updateElement: ({ element, data }) => {
       // handling migration from "boolean" to "{on: boolean}" type
-      const on = typeof data === "boolean" ? data : data.on;
+      const on = typeof data === "object" ? data.on : data;
       element.classList.toggle("clicked", on);
     },
     onClick: (e: MouseEvent, { data, setData }) => {
       // handling migration from "boolean" to "{on: boolean}" type
-      const on = typeof data === "boolean" ? data : data.on;
+      const on = typeof data === "object" ? data.on : data;
       setData({ on: !on });
     },
     resetShortcut: "shiftKey",
