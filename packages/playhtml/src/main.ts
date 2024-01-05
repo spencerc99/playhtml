@@ -12,6 +12,7 @@ import {
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { ElementHandler } from "./elements";
+import { hashElement } from "./utils";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
@@ -158,6 +159,8 @@ function createPlayElementData<T extends TagType>(
         return;
       }
 
+      console.log("setting awareness", localAwareness, elementAwarenessData);
+
       localAwareness[elementId] = elementAwarenessData;
       yprovider.awareness.setLocalStateField(tag, localAwareness);
     },
@@ -285,10 +288,9 @@ function setupElements(): void {
       continue;
     }
 
-    for (let i = 0; i < tagElements.length; i++) {
-      const element = tagElements[i];
-      setupPlayElementForTag(element, tag);
-    }
+    void Promise.all(
+      tagElements.map((element) => setupPlayElementForTag(element, tag))
+    );
   }
 
   if (!firstSetup) {
@@ -397,10 +399,10 @@ function isElementValidForTag(
 /**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
-function setupPlayElementForTag<T extends TagType | string>(
+async function setupPlayElementForTag<T extends TagType | string>(
   element: HTMLElement,
   tag: T
-): void {
+): Promise<void> {
   if (!isElementValidForTag(element, tag)) {
     return;
   }
@@ -419,7 +421,7 @@ function setupPlayElementForTag<T extends TagType | string>(
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
       // TODO: use a hash function that compresses here
-      element.id = btoa(`${tag}-${element.innerHTML}}`);
+      element.id = await hashElement(tag, element);
     }
   }
   const elementId = getIdForElement(element);
@@ -496,11 +498,11 @@ function setupPlayElement(
     return;
   }
 
-  for (const tag of getTagTypes()) {
-    if (element.hasAttribute(tag)) {
-      setupPlayElementForTag(element, tag);
-    }
-  }
+  void Promise.all(
+    getTagTypes()
+      .filter((tag) => element.hasAttribute(tag))
+      .map((tag) => setupPlayElementForTag(element, tag))
+  );
 }
 
 function removePlayElement(element: Element | null) {

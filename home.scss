@@ -470,3 +470,12 @@ kbd {
 code {
   background: rgb(205, 205, 205);
 }
+
+// For react examples
+
+.hoverBox {
+  &.hovering {
+    box-shadow: 0px 0px 30px 10px rgb(245, 169, 15) !important;
+    background: rgb(245 169 15 / 80%);
+  }
+}

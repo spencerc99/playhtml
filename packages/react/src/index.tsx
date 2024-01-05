@@ -92,6 +92,7 @@ export function CanPlayElement<T, V>({
 
   useEffect(() => {
     if (ref.current) {
+      console.log(elementProps);
       for (const [key, value] of Object.entries(elementProps)) {
         // @ts-ignore
         ref.current[key] = value;
@@ -331,6 +332,47 @@ export function CanDuplicateElement({
         setAddedElements(addedElements);
 
         return renderSingleChildOrPlayable(children, renderData);
+      }}
+    />
+  );
+}
+
+export function CanHoverElement({
+  children,
+}: {
+  children: SingleChildOrPlayable;
+}) {
+  return (
+    <CanPlayElement
+      {...{
+        defaultData: {},
+        myDefaultAwareness: { isHovering: false },
+        additionalSetup: ({ setLocalAwareness, getElement }) => {
+          const element = getElement();
+          element.addEventListener("mouseover", () => {
+            setLocalAwareness({ isHovering: true });
+          });
+          element.addEventListener("mouseout", () => {
+            setLocalAwareness({ isHovering: false });
+          });
+        },
+      }}
+      children={(renderData) => {
+        const { awareness } = renderData;
+        const renderedChildren = renderSingleChildOrPlayable(
+          children,
+          renderData
+        );
+
+        return React.cloneElement(
+          React.Children.only(renderedChildren) as any,
+          {
+            className: classNames(
+              renderedChildren?.props?.className,
+              awareness.some((ele) => ele.isHovering) ? "hovering" : ""
+            ),
+          }
+        );
       }}
     />
   );

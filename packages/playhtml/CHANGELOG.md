@@ -2,12 +2,14 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## 2.0.14 - 2024-01-04
+## [Unreleased]
 
-**BREAKING CHANGES**
+- **BREAKING CHANGE**Changed the hash function used to generate element ids. This will cause all elements without an `id` to be re-created to lose any persistent historical data. This was done to avoid duplicates and to swap to using a standard-length hash function (SHA-1). We still recommend you setting a unique `id` for each element to avoid any potential duplicates in the future, and using `selectorId` will not be affected by this change.
 
-- deprecated using non-object values as `defaultData` for elements. If you were using a single value before, instead, use an object with a `value` key. e.g. `defaultData: { value: "my value" }`. This allows for easier extension of the data in the future.
-- deprecated `playhtml.init()` automatically being called to avoid side-effects upon import. This has been replaced with a new `init` file that you can directly import if you'd like to auto-initialize without any settings.
+## 2.0.16 - 2024-01-04
+
+- **BREAKING CHANGE** deprecated using non-object values as `defaultData` for elements. If you were using a single value before, instead, use an object with a `value` key. e.g. `defaultData: { value: "my value" }`. This allows for easier extension of the data in the future.
+- **BREAKING CHANGE** deprecated `playhtml.init()` automatically being called to avoid side-effects upon import. This has been replaced with a new `init` file that you can directly import if you'd like to auto-initialize without any settings. See the README for more details.
 - exported `setupPlayElements` to call to look for any new elements to initialize
 
 ## 2.0.7 - 2023-10-02

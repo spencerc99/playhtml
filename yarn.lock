@@ -1202,7 +1202,7 @@ picomatch@^2.0.4, picomatch@^2.2.1, picomatch@^2.3.1:
   integrity sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA==
 
 playhtml@^2.0.15:
-  version "2.0.15"
+  version "2.0.17"
   resolved "file:packages/playhtml"
   dependencies:
     "@playhtml/common" "^0.0.5"
@@ -1211,7 +1211,7 @@ playhtml@^2.0.15:
     yjs "^13.6.8"
 
 "playhtml@file:/Users/spencerchang/Projects/playhtml/packages/playhtml":
-  version "2.0.15"
+  version "2.0.17"
   resolved "file:packages/playhtml"
   dependencies:
     "@playhtml/common" "^0.0.5"

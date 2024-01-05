@@ -277,6 +277,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.onChange(data);
   }
 
+  // TODO: this should be keyed on the element to avoid conflicts
   setLocalAwareness(data: V): void {
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
