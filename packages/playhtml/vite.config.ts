@@ -6,9 +6,17 @@ export default defineConfig({
   plugins: [dts({ rollupTypes: true })],
   build: {
     lib: {
-      entry: path.resolve(__dirname, "src/main.ts"),
+      entry: [
+        path.resolve(__dirname, "src/main.ts"),
+        path.resolve(__dirname, "src/init.ts"),
+      ],
       name: "playhtml",
-      fileName: (format) => `playhtml.${format}.js`,
+      fileName: (format, entryName) => {
+        console.log(entryName);
+        if (entryName === "init") return `init.${format}.js`;
+
+        return `playhtml.${format}.js`;
+      },
     },
   },
 });

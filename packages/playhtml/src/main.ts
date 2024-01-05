@@ -24,7 +24,7 @@ let globalData: Y.Map<any>;
 let elementHandlers: Map<string, Map<string, ElementHandler>>;
 const selectorIdsToAvailableIdx = new Map<string, number>();
 
-interface InitOptions {
+export interface InitOptions {
   // The room to connect users to (this should be a string that matches the other users
   // that you want a given user to connect with).
   //
@@ -101,16 +101,6 @@ function initPlayHTML({
   return yprovider;
 }
 
-// NOTE: this is to handle the deprecation of importing the file without explicitly calling `init()`. Remove this in the future.
-setTimeout(() => {
-  if (!yprovider) {
-    console.error(
-      "You are using a deprecated version of playhtml. Please call `playhtml.init()` explicitly rather than just importing the library. Refer to https://github.com/spencerc99/playhtml#usage for reference."
-    );
-    initPlayHTML();
-  }
-}, 3000);
-
 function getElementAwareness(tagType: TagType, elementId: string) {
   const awareness = yprovider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
@@ -176,7 +166,9 @@ function isCorrectElementInitializer(
   tagInfo: ElementInitializer
 ): tagInfo is ElementInitializer {
   return (
-    tagInfo.defaultData !== undefined && tagInfo.updateElement !== undefined
+    tagInfo.defaultData !== undefined &&
+    typeof tagInfo.defaultData === "object" &&
+    tagInfo.updateElement !== undefined
   );
 }
 
@@ -309,6 +301,7 @@ function setupElements(): void {
 
 interface PlayHTMLComponents {
   init: typeof initPlayHTML;
+  setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
   setupPlayElementForTag: typeof setupPlayElementForTag;
@@ -319,6 +312,7 @@ interface PlayHTMLComponents {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  setupPlayElements: setupElements,
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,

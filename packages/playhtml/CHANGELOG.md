@@ -2,9 +2,12 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## 2.0.8 - 2024-01-05
+## [Unreleased]
 
-- deprecating using non-object values as `defaultData` for elements. If you were using a single value before, instead, use an object with a `value` key. e.g. `defaultData: { value: "my value" }`. This allows for easier extension of the data in the future.
+**BREAKING CHANGES**
+
+- deprecated using non-object values as `defaultData` for elements. If you were using a single value before, instead, use an object with a `value` key. e.g. `defaultData: { value: "my value" }`. This allows for easier extension of the data in the future.
+- deprecated `playhtml.init()` automatically being called to avoid side-effects upon import. This has been replaced with a new `init` file that you can directly import if you'd like to auto-initialize without any settings.
 
 ## 2.0.7 - 2023-10-02
 
