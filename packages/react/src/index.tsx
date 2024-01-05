@@ -10,7 +10,6 @@ import {
 import playhtml from "./playhtml-singleton";
 import classNames from "classnames";
 import * as ReactIs from "react-is";
-import { PlayProvider } from "./PlayProvider";
 
 type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
@@ -313,4 +312,5 @@ export function CanDuplicateElement({
   );
 }
 
-export { playhtml, PlayProvider };
+export { playhtml };
+export { PlayProvider } from "./PlayProvider";

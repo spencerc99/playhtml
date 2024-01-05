@@ -66,15 +66,18 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
 export function Lamp() {
   return (
     <CanToggleElement>
-      {({ data }) => (
-        <img
-          src="/noguchi-akari-a1.png"
-          selector-id=".lamp"
-          className="lamp"
-          id="lamp"
-          style={{ opacity: data ? 1 : 0.5 }}
-        />
-      )}
+      {({ data }) => {
+        const on = typeof data === "object" ? data.on : data;
+        return (
+          <img
+            src="/noguchi-akari-a1.png"
+            selector-id=".lamp"
+            className="lamp"
+            id="lamp"
+            style={{ opacity: on ? 1 : 0.5 }}
+          />
+        );
+      }}
     </CanToggleElement>
   );
 }
