@@ -85,7 +85,6 @@ export function CanPlayElement<T, V>({
     awareness: newAwareness,
     myAwareness,
   }) => {
-    console.log("mywareness", myAwareness);
     setData(newData);
     setAwareness(newAwareness);
     setMyAwareness(myAwareness);
@@ -102,7 +101,13 @@ export function CanPlayElement<T, V>({
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
       // TODO: how to handle if you are importing from unpkg too?
-      playhtml.setupPlayElement(ref.current);
+      playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+      const existingData = playhtml.globalData
+        ?.get("can-play")
+        ?.get(ref.current.id);
+      if (existingData) {
+        setData(existingData);
+      }
     }
 
     return () => playhtml.removePlayElement(ref.current);
@@ -114,10 +119,10 @@ export function CanPlayElement<T, V>({
         data,
         awareness,
         setData: (newData) => {
-          console.log("settingdata", newData);
-          console.log(
-            getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
-          );
+          // console.log("settingdata", newData);
+          // console.log(
+          //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
+          // );
           getCurrentElementHandler(
             TagType.CanPlay,
             ref.current?.id || ""
@@ -167,8 +172,12 @@ export function CanMoveElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanMove]}
-      children={({ data }) => {
-        const renderedChildren = renderSingleChildOrPlayable(children, data);
+      children={(renderData) => {
+        const { data } = renderData;
+        const renderedChildren = renderSingleChildOrPlayable(
+          children,
+          renderData
+        );
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
           {
@@ -190,9 +199,15 @@ export function CanToggleElement({
       {...TagTypeToElement[TagType.CanToggle]}
       // TODO: decide whether to use existing html render logic or convert fully to react.
       // tagInfo={{ [TagType.CanToggle]: "" }}
-      children={({ data }) => {
-        const renderedChildren = renderSingleChildOrPlayable(children, data);
-        const on = typeof data === "boolean" ? data : data.on;
+      children={(renderData) => {
+        const renderedChildren = renderSingleChildOrPlayable(
+          children,
+          renderData
+        );
+        const on =
+          typeof renderData.data === "boolean"
+            ? renderData.data
+            : renderData.data.on;
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
           {
@@ -215,8 +230,12 @@ export function CanSpinElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanSpin]}
-      children={({ data }) => {
-        const renderedChildren = renderSingleChildOrPlayable(children, data);
+      children={(renderData) => {
+        const { data } = renderData;
+        const renderedChildren = renderSingleChildOrPlayable(
+          children,
+          renderData
+        );
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
           {
@@ -236,8 +255,12 @@ export function CanGrowElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanSpin]}
-      children={({ data }) => {
-        const renderedChildren = renderSingleChildOrPlayable(children, data);
+      children={(renderData) => {
+        const { data } = renderData;
+        const renderedChildren = renderSingleChildOrPlayable(
+          children,
+          renderData
+        );
         return React.cloneElement(
           React.Children.only(renderedChildren) as any,
           {
@@ -263,14 +286,15 @@ export function CanDuplicateElement({
   return (
     <CanPlayElement
       {...TagTypeToElement[TagType.CanDuplicate]}
-      children={({ data }) => {
+      children={(renderData) => {
+        const { data } = renderData;
         let lastElement: HTMLElement | null =
           document.getElementById(addedElements.slice(-1)?.[0]) ?? null;
         if (!elementToDuplicate?.current) {
           console.error(
             `Element ${elementToDuplicate} not found. Cannot duplicate.`
           );
-          return renderSingleChildOrPlayable(children, data);
+          return renderSingleChildOrPlayable(children, renderData);
         }
 
         const eleToDuplicate = elementToDuplicate.current;
@@ -306,7 +330,7 @@ export function CanDuplicateElement({
         }
         setAddedElements(addedElements);
 
-        return renderSingleChildOrPlayable(children, data);
+        return renderSingleChildOrPlayable(children, renderData);
       }}
     />
   );

@@ -472,7 +472,19 @@ function setupPlayElementForTag<T extends TagType | string>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 }
 
-function setupPlayElement(element: Element) {
+function setupPlayElement(
+  element: Element,
+  { ignoreIfAlreadySetup }: { ignoreIfAlreadySetup?: boolean } = {}
+) {
+  if (
+    ignoreIfAlreadySetup &&
+    Object.keys(elementHandlers || {}).some((tag) =>
+      elementHandlers.get(tag)?.has(element.id)
+    )
+  ) {
+    return;
+  }
+
   if (!isHTMLElement(element)) {
     console.log(`Element ${element.id} not an HTML element. Ignoring.`);
     return;

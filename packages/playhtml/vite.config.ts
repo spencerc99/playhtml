@@ -12,7 +12,6 @@ export default defineConfig({
       ],
       name: "playhtml",
       fileName: (format, entryName) => {
-        console.log(entryName);
         if (entryName === "init") return `init.${format}.js`;
 
         return `playhtml.${format}.js`;

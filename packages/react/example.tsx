@@ -33,14 +33,15 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
 
   return (
     <CanPlayElement
-      defaultData={reaction.count}
+      defaultData={{ count: reaction.count }}
       onClick={(_e, { setData, data, element }) => {
+        const { count } = data;
         if (hasReacted) {
-          setData(data - 1);
+          setData({ count: count - 1 });
           localStorage.removeItem(element.id);
           setHasReacted(false);
         } else {
-          setData(data + 1);
+          setData({ count: count + 1 });
           localStorage.setItem(element.id, "true");
           setHasReacted(true);
         }
@@ -55,7 +56,7 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
             className={`reaction ${hasReacted ? "reacted" : ""}`}
             selector-id=".reactions reaction"
           >
-            {reaction.emoji} <span className="count">{data}</span>
+            {reaction.emoji} <span className="count">{data.count}</span>
           </button>
         );
       }}
