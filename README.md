@@ -12,6 +12,8 @@ https://github.com/spencerc99/playhtml/assets/14796580/00e84e15-2c1c-4b4b-8e15-2
 
 If you enjoy this, please consider [sponsoring the project or sending a small donation](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
 
+Join our [Discord community](https://discord.gg/h7sABTv8) to get help and show off what you've built!
+
 ## Usage
 
 Head to the proper section depending on your technology preference:
@@ -234,6 +236,10 @@ Creates an element that can be resized using a `scale` `transform`. Clicking the
 ### `can-spin`
 
 Creates a rotatable element using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
+
+## Help & Community
+
+Join our [Discord community](https://discord.gg/h7sABTv8) to get help and show off what you've built!
 
 ## Data Policy
 
