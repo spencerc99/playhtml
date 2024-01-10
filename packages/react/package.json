@@ -50,6 +50,7 @@
   "devDependencies": {
     "@types/react": "^18.2.21",
     "@types/react-is": "^18.2.2",
+    "@types/react-resizable": "^3.0.7",
     "@vitejs/plugin-react": "^4.0.4",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
@@ -59,9 +60,10 @@
     "@playhtml/common": "^0.0.5",
     "classnames": "^2.3.2",
     "playhtml": "^2.0.15",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-is": "^18.2.0"
+    "react": "^16.8.0  || ^17.0.0 || ^18.2.0",
+    "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0",
+    "react-is": "^18.2.0",
+    "react-resizable": "^3.0.5"
   },
   "peerDependencies": {
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0",

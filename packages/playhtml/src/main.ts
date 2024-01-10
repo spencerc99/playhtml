@@ -159,8 +159,6 @@ function createPlayElementData<T extends TagType>(
         return;
       }
 
-      console.log("setting awareness", localAwareness, elementAwarenessData);
-
       localAwareness[elementId] = elementAwarenessData;
       yprovider.awareness.setLocalStateField(tag, localAwareness);
     },

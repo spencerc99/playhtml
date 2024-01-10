@@ -9,11 +9,12 @@ import {
   SharedSound,
 } from "../packages/react/example";
 import { CanGrowElement, CanHoverElement } from "../packages/react/src";
+import { CanResizeElement } from "../packages/react/src/elements";
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <React.StrictMode>
+  <>
     <Candle />
     <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
     <Lamp />
@@ -31,6 +32,15 @@ ReactDOM.createRoot(
         className="hoverBox"
       ></div>
     </CanHoverElement>
-    <SharedSound soundUrl={"/lamp-on.m4a"} />
-  </React.StrictMode>
+    <CanResizeElement initialHeight={150} initialWidth={150}>
+      <div
+        style={{
+          background: "orange",
+          border: "1px solid black",
+        }}
+      ></div>
+    </CanResizeElement>
+
+    {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
+  </>
 );

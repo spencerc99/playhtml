@@ -85,7 +85,11 @@ export function Lamp() {
 
 export function OnlineIndicator() {
   return (
-    <CanPlayElement defaultData={{}} myDefaultAwareness={"#008000"}>
+    <CanPlayElement
+      defaultData={{}}
+      myDefaultAwareness={"#008000"}
+      id="online-indicator"
+    >
       {({ myAwareness, setLocalAwareness, awareness }) => {
         return (
           <>
