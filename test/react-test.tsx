@@ -10,7 +10,7 @@ import {
   SharedSound,
 } from "../packages/react/example";
 import { CanGrowElement, CanHoverElement } from "../packages/react/src";
-import { CanResizeElement } from "../packages/react/src/elements";
+// import { CanResizeElement } from "../packages/react/src/elements";
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
@@ -33,14 +33,14 @@ ReactDOM.createRoot(
         className="hoverBox"
       ></div>
     </CanHoverElement>
-    <CanResizeElement initialHeight={150} initialWidth={150}>
+    {/* <CanResizeElement initialHeight={150} initialWidth={150}>
       <div
         style={{
           background: "orange",
           border: "1px solid black",
         }}
       ></div>
-    </CanResizeElement>
+    </CanResizeElement> */}
 
     {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
     <MirrorableElement></MirrorableElement>
