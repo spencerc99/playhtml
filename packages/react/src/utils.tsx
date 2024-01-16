@@ -106,6 +106,7 @@ function domProps(
 
   const clonedElement = React.cloneElement(element, {
     ...(propsPassed ? {} : propsToPass),
+    // @ts-ignore
     children: clonedChildren?.length === 1 ? clonedChildren[0] : clonedChildren,
   });
 

@@ -1,11 +1,9 @@
 import { TagTypeToElement, TagType } from "@playhtml/common";
-import { Resizable } from "react-resizable";
 import classNames from "classnames";
 import React, { useState } from "react";
 import { CanPlayElement } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
-import "../../../node_modules/react-resizable/css/styles.css";
 
 export function CanMoveElement({
   children,
@@ -211,60 +209,10 @@ export function CanHoverElement({
           {
             className: classNames(
               renderedChildren?.props?.className,
+              // @ts-ignore
               awareness.some((ele) => ele.isHovering) ? "hovering" : ""
             ),
           }
-        );
-      }}
-    />
-  );
-}
-
-export function CanResizeElement({
-  children,
-  initialWidth,
-  initialHeight,
-}: {
-  children: SingleChildOrPlayable;
-  initialWidth?: number;
-  initialHeight?: number;
-}) {
-  return (
-    <CanPlayElement
-      defaultData={{
-        width: initialWidth,
-        height: initialHeight,
-      }}
-      children={(renderData) => {
-        const { data, setData } = renderData;
-        const { width, height } = data;
-        const renderedChildren = renderSingleChildOrPlayable(
-          children,
-          renderData
-        );
-
-        return (
-          <Resizable
-            width={width || initialWidth || undefined}
-            height={height || initialHeight || undefined}
-            lockAspectRatio
-            onResize={(e, d) => {
-              setData({
-                width: d.size.width,
-                height: d.size.height,
-              });
-            }}
-            children={React.cloneElement(
-              React.Children.only(renderedChildren) as any,
-              {
-                style: {
-                  ...renderedChildren?.props.style,
-                  width: `${width}px`,
-                  height: `${height}px`,
-                },
-              }
-            )}
-          ></Resizable>
         );
       }}
     />
