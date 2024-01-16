@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="interactive, collaborative html elements with a single attribute"
+    />
+    <meta name="og:image" content="https://playhtml.fun/playhtml.png" />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Carter+One&family=Play:wght@400;700&family=Rubik+Pixels&family=Yellowtail&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>playhtml</title>
+    <script
+      defer
+      data-domain="playhtml.fun"
+      data-api="https://sharingan.spencerc99.workers.dev/genjutsu/event"
+      src="https://sharingan.spencerc99.workers.dev/genjutsu/script.js"
+    ></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="example">
+        <p id="helloDescription"></p>
+        <input can-mirror id="hello" />
+      </div>
+      <p id="tasksDescription"></p>
+      <h1>Tasks</h1>
+      <div can-mirror id="tasks" style="display: flex; flex-direction: column">
+        <button onclick="addTask()">Add</button>
+      </div>
+      <script>
+        helloDescription.innerText = hello.outerHTML;
+        function addTask() {
+          console.log("adding");
+          const task = document.createElement("div");
+          task.innerText = `New Task ${tasks.children.length + 1}`;
+          tasks.appendChild(task);
+        }
+        tasksDescription.innerText = tasks.outerHTML;
+      </script>
+    </div>
+    <footer>
+      <div>
+        an open-source library created and maintained by
+        <a href="https://www.spencerchang.me/">spencer</a>, powered by
+        <a href="https://partykit.io">partykit</a>
+      </div>
+    </footer>
+
+    <script type="module" src="./index.tsx"></script>
+    <!-- import cursor chat -->
+    <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
+  </body>
+</html>
