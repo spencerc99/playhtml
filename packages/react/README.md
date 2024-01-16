@@ -54,6 +54,8 @@ export function Candle() {
 }
 ```
 
+https://github.com/spencerc99/playhtml/assets/14796580/beff368e-b659-4db0-b314-16d10b09c31f
+
 A more complex example uses `awareness` to show the number of people on the page and their associated color:
 
 ```tsx
@@ -97,6 +99,8 @@ export function OnlineIndicator() {
   );
 }
 ```
+
+![image](https://github.com/spencerc99/playhtml/assets/14796580/37b75f82-7a09-4a35-8794-3003425726f5)
 
 For full configuration, see the interface below.
 
