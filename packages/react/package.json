@@ -57,9 +57,9 @@
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@playhtml/common": "^0.0.5",
+    "@playhtml/common": "^0.0.6",
     "classnames": "^2.3.2",
-    "playhtml": "^2.0.15",
+    "playhtml": "^2.0.18",
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0",
     "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0",
     "react-is": "^18.2.0",
