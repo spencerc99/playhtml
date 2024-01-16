@@ -406,18 +406,18 @@ export const TagTypeToElement: Record<
     defaultData: (element: HTMLElement) => constructInitialState(element),
     onMount: ({ getElement, setData, getData }) => {
       const element = getElement();
-      console.log("mirroring", element);
+      // console.log("mirroring", element);
 
       observeElementChanges(element, (mutations) => {
         const currentState = getData();
-        console.log("STATE UPDATING", currentState);
+        // console.log("STATE UPDATING", currentState);
         const newState = updateStateWithMutation(currentState, mutations);
-        console.log("STATE UPDATED", newState);
+        // console.log("STATE UPDATED", newState);
         setData(newState);
       });
     },
     updateElement: ({ element, data }) => {
-      console.log("new data", data);
+      // console.log("new data", data);
       const currentState = constructInitialState(element);
       if (areStatesEqual(currentState, data)) {
         return;
