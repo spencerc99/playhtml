@@ -34,7 +34,10 @@ export interface ElementInitializer<T = any, U = any, V = any> {
     e: MouseEvent | TouchEvent,
     eventData: ElementEventHandlerData<T, U, V>
   ) => void;
+  // @deprecated use onMount instead
   additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
+  // Used to set up any additional event handlers
+  onMount?: (eventData: ElementSetupData<T, U, V>) => void;
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -105,14 +108,16 @@ export enum TagType {
   "CanGrow" = "can-grow",
   "CanToggle" = "can-toggle",
   "CanDuplicate" = "can-duplicate",
+  "CanHover" = "can-hover",
+  "CanResize" = "can-resize",
+  "CanMirror" = "can-mirror",
   // "CanRearrange" = "can-rearrange",
+  // "CanDrag" = "can-drag",
   // "CanDraw" = "can-draw",
   // "CanBounce" = "can-bounce",
-  // "CanHover" = "can-hover",
   // "CanDrive" = "can-drive",
   // "CanHighlight" = "can-highlight",
   // "CanStamp" = "can-stamp",
-  // "CanResize" = "can-resize",
   // canZoom
   // canScroll
 
@@ -190,6 +195,7 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
   return { clientX: e.clientX, clientY: e.clientY };
 }
 
+// @ts-ignore
 export const TagTypeToElement: Record<
   Exclude<TagType, "can-play">,
   ElementInitializer
@@ -304,7 +310,7 @@ export const TagTypeToElement: Record<
       }
       setData({ ...data, scale });
     },
-    additionalSetup: (eventData) => {
+    onMount: (eventData) => {
       eventData.getElement().addEventListener("mouseenter", (e) => {
         canGrowCursorHandler(e, eventData);
         const onKeyDownUp = (e: KeyboardEvent) =>
@@ -396,4 +402,291 @@ export const TagTypeToElement: Record<
       return true;
     },
   } as ElementInitializer<string[]>,
+  [TagType.CanMirror]: {
+    defaultData: (element: HTMLElement) => constructInitialState(element),
+    onMount: ({ getElement, setData, getData }) => {
+      const element = getElement();
+      console.log("mirroring", element);
+
+      observeElementChanges(element, (mutations) => {
+        const currentState = getData();
+        console.log("STATE UPDATING", currentState);
+        const newState = updateStateWithMutation(currentState, mutations);
+        console.log("STATE UPDATED", newState);
+        setData(newState);
+      });
+    },
+    updateElement: ({ element, data }) => {
+      console.log("new data", data);
+      const currentState = constructInitialState(element);
+      if (areStatesEqual(currentState, data)) {
+        return;
+      }
+      updateElementFromState(element, data);
+    },
+  },
 };
+
+function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
+  if (state1.tagName !== state2.tagName) {
+    return false;
+  }
+
+  if (state1.textContent !== state2.textContent) {
+    return false;
+  }
+
+  if (
+    Object.keys(state1.attributes).length !==
+    Object.keys(state2.attributes).length
+  ) {
+    return false;
+  }
+
+  for (const [key, value] of Object.entries(state1.attributes)) {
+    if (state2.attributes[key] !== value) {
+      return false;
+    }
+  }
+
+  if (state1.children.length !== state2.children.length) {
+    return false;
+  }
+
+  for (let i = 0; i < state1.children.length; i++) {
+    if (!areStatesEqual(state1.children[i], state2.children[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function observeElementChanges(
+  element: HTMLElement,
+  callback: (mutations: MutationRecord[]) => void,
+  options?: {
+    childList?: boolean;
+    attributes?: boolean;
+    subtree?: boolean;
+    characterData?: boolean;
+    attributeFilter?: string[];
+  }
+): MutationObserver {
+  // Options for the observer (which mutations to observe)
+  const defaultOptions = {
+    childList: true,
+    attributes: true,
+    subtree: true,
+    characterData: true,
+  };
+
+  // Merge default options with provided options
+  const config = { ...defaultOptions, ...options };
+
+  // Callback function to execute when mutations are observed
+  const mutationCallback = (mutationsList: MutationRecord[]) => {
+    const filteredMutations = mutationsList.filter((mutation) => {
+      if (config.childList && mutation.type === "childList") {
+        return true;
+      }
+
+      if (config.attributes && mutation.type === "attributes") {
+        if (config.attributeFilter) {
+          if (config.attributeFilter.includes(mutation.attributeName || "")) {
+            return true;
+          }
+        } else {
+          return true;
+        }
+      }
+
+      if (config.characterData && mutation.type === "characterData") {
+        return true;
+      }
+
+      if (config.subtree && mutation.type === "childList") {
+        return true;
+      }
+
+      return false;
+    });
+
+    callback(filteredMutations);
+  };
+  // Create an observer instance linked to the callback function
+  const observer = new MutationObserver(mutationCallback);
+
+  // Start observing the target element with the configured options
+  observer.observe(element, config);
+
+  // Return the observer instance in case you need to stop observing later
+  return observer;
+}
+
+interface ElementState {
+  tagName: string;
+  attributes: { [key: string]: string };
+  children: ElementState[];
+  textContent: string | null;
+}
+
+function deepClone<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function updateStateWithMutation(
+  state: ElementState,
+  mutations: MutationRecord[]
+): ElementState {
+  let newState = deepClone(state);
+  mutations.forEach((mutation) => {
+    switch (mutation.type) {
+      case "attributes":
+        updateAttributes(newState, mutation);
+        break;
+      case "childList":
+        updateChildList(newState, mutation);
+        break;
+      case "characterData":
+        updateCharacterData(newState, mutation);
+        break;
+    }
+  });
+  return newState;
+}
+
+function updateAttributes(state: ElementState, mutation: MutationRecord) {
+  if (mutation.target instanceof HTMLElement) {
+    const attributeName = mutation.attributeName!;
+    const attributeValue = mutation.target.getAttribute(attributeName);
+    if (attributeValue !== null) {
+      state.attributes[attributeName] = attributeValue;
+    } else {
+      delete state.attributes[attributeName];
+    }
+  }
+}
+
+function updateChildList(state: ElementState, mutation: MutationRecord) {
+  if (mutation.addedNodes.length) {
+    mutation.addedNodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) {
+        return;
+      }
+      // check to make sure this node is not already added.
+      const nodeState = constructInitialState(node);
+      if (state.children.find((child) => areStatesEqual(child, nodeState))) {
+        return;
+      }
+
+      state.children.push(nodeState);
+    });
+  }
+
+  if (mutation.removedNodes.length) {
+    mutation.removedNodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) {
+        return;
+      }
+      const nodeState = constructInitialState(node);
+      const indexToRemove = state.children.findIndex((child) =>
+        areStatesEqual(child, nodeState)
+      );
+      if (indexToRemove === -1) {
+        return;
+      }
+
+      state.children.splice(indexToRemove, 1);
+    });
+  }
+}
+
+function updateCharacterData(state: ElementState, mutation: MutationRecord) {
+  // @ts-ignore
+  if (mutation.target === state) {
+    // @ts-ignore
+    state.textContent = mutation.target.textContent;
+  }
+}
+
+function constructInitialState(element: HTMLElement): ElementState {
+  const state: ElementState = {
+    tagName: element.tagName.toLowerCase(),
+    attributes: {},
+    children: [],
+    textContent: element.textContent,
+  };
+
+  // @ts-ignore
+  for (const attr of element.attributes) {
+    state.attributes[attr.name] = attr.value;
+  }
+
+  element.childNodes.forEach((child) => {
+    if (child instanceof HTMLElement) {
+      state.children.push(constructInitialState(child));
+    }
+  });
+
+  console.log("initial state", state);
+
+  return state;
+}
+
+function updateElementFromState(element: HTMLElement, newState: ElementState) {
+  updateAttributesFromState(element, newState);
+
+  if (
+    newState.children.length === 0 &&
+    element.textContent !== newState.textContent
+  ) {
+    element.textContent = newState.textContent;
+  } else if (newState.children.length > 0) {
+    updateChildrenFromState(element, newState);
+  }
+}
+
+function updateAttributesFromState(element: HTMLElement, state: ElementState) {
+  if (!state) {
+    return;
+  }
+  // Set new attributes from state
+  for (const [key, value] of Object.entries(state.attributes)) {
+    if (element.getAttribute(key) !== value) element.setAttribute(key, value);
+  }
+
+  Array.from(element.attributes).forEach((attr) => {
+    if (!state.attributes[attr.name]) element.removeAttribute(attr.name);
+  });
+}
+
+function updateChildrenFromState(element: HTMLElement, state: ElementState) {
+  // Mapping to track the processed state children
+  const processedChildren = new Set<Element>();
+
+  // Update or create elements as necessary
+  state.children.forEach((childState) => {
+    let childElement = Array.from(element.children).find(
+      (el) =>
+        el.tagName.toLowerCase() === childState.tagName &&
+        !processedChildren.has(el)
+    );
+
+    if (!childElement) {
+      // Create a new child element if not found
+      childElement = document.createElement(childState.tagName);
+      element.appendChild(childElement);
+    }
+
+    processedChildren.add(childElement);
+    updateElementFromState(childElement as HTMLElement, childState);
+  });
+
+  // Remove any remaining unused elements
+  Array.from(element.children).forEach((child) => {
+    if (!processedChildren.has(child)) {
+      element.removeChild(child);
+    }
+  });
+}
