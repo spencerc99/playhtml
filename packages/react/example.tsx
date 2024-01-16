@@ -91,6 +91,9 @@ export function OnlineIndicator() {
       id="online-indicator"
     >
       {({ myAwareness, setMyAwareness, awareness }) => {
+        const myAwarenessIdx = myAwareness
+          ? awareness.indexOf(myAwareness)
+          : -1;
         return (
           <>
             {awareness.map((val, idx) => (
@@ -101,6 +104,10 @@ export function OnlineIndicator() {
                   height: "50px",
                   borderRadius: "50%",
                   background: val,
+                  boxShadow:
+                    idx === myAwarenessIdx
+                      ? "0px 0px 30px 10px rgb(245, 169, 15)"
+                      : undefined,
                 }}
               ></div>
             ))}

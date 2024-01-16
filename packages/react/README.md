@@ -2,7 +2,7 @@
 
 A react provider for [`playhtml`](https://github.com/spencerc99/playhtml).
 
-`@playhtml/react` gives you a hooks-like interface for . It manages all the state syncing for you, so you can reactively render your component based on whatever data is coming in.
+`@playhtml/react` gives you a hooks-like interface for creating realt-ime interactive and persistent elements. It manages all the state syncing for you, so you can reactively render your component based on whatever data is coming in.
 
 Install by using your preferred package manager
 
@@ -54,6 +54,50 @@ export function Candle() {
 }
 ```
 
+A more complex example uses `awareness` to show the number of people on the page and their associated color:
+
+```tsx
+export function OnlineIndicator() {
+  return (
+    <CanPlayElement
+      defaultData={{}}
+      myDefaultAwareness={"#008000"}
+      id="online-indicator"
+    >
+      {({ myAwareness, setMyAwareness, awareness }) => {
+        const myAwarenessIdx = myAwareness
+          ? awareness.indexOf(myAwareness)
+          : -1;
+        return (
+          <>
+            {awareness.map((val, idx) => (
+              <div
+                key={idx}
+                style={{
+                  width: "50px",
+                  height: "50px",
+                  borderRadius: "50%",
+                  background: val,
+                  boxShadow:
+                    idx === myAwarenessIdx
+                      ? "0px 0px 30px 10px rgb(245, 169, 15)"
+                      : undefined,
+                }}
+              ></div>
+            ))}
+            <input
+              type="color"
+              onChange={(e) => setMyAwareness(e.target.value)}
+              value={myAwareness}
+            />
+          </>
+        );
+      }}
+    </CanPlayElement>
+  );
+}
+```
+
 For full configuration, see the interface below.
 
 ```tsx
@@ -81,4 +125,5 @@ Refer to `packages/react/example.tsx` for a full list of examples.
 - how to best handle configuring how persistence works? (e.g. none vs. locally vs. globally)?
   - Currently the separate configurations are managed by housing the data in completely separate stores and function abstractions. `setAwareness` is used for no persistence, there is no configuration for only local persistence, and `setData` persists the data globally.
   - Maybe this would be better if it was a per-data-key configuration option? Likely a `persistenceOptions` object with an enum value for `none`, `local`, and `global` for each key. It wouldn't allow for nested configuration.
-- how to handle
+- `awareness` should probably be separated into `myAwareness` and `othersAwareness`.
+- is it more ergonomic to make a hooks-esque interface and use some sort of callback from `PlayProvider` to get/set data? Hard to do this without requiring the user to specify some "id" for the data though.
