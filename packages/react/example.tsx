@@ -215,3 +215,8 @@ youtube video with playback time and playing status.
 - on video play, do you broadcast the new playback time? a lot of unnecessary events.. Ideally, you only want to see playback when you join the room.
 - when new client connects, sync with playback time and playback status,
 */
+
+export function MirrorableElement() {
+  const testRef = React.useRef<HTMLDivElement>(null);
+  return <input can-mirror="true"></input>;
+}

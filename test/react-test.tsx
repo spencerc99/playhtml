@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import {
   Candle,
   Lamp,
+  MirrorableElement,
   OnlineIndicator,
   ReactionView,
   SharedSound,
@@ -42,5 +43,6 @@ ReactDOM.createRoot(
     </CanResizeElement>
 
     {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
+    <MirrorableElement></MirrorableElement>
   </>
 );
