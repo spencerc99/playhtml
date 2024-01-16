@@ -172,9 +172,9 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
   };
   candle.resetShortcut = "shiftKey";
 
-  // If you wanted to trigger this on hover, you could use `additionalSetup`
+  // If you wanted to trigger this on hover, you could use `onMount`
   // which can initialize several different event listeners and custom logic.
-  // customCandle.additionalSetup = ({ getData, setData }) => {
+  // customCandle.onMount = ({ getData, setData }) => {
   //   customCandle.addEventListener("mouseover", (_e) => {
   //     const data = getData();
   //     setData({on: !data.on}});
@@ -191,7 +191,7 @@ https://github.com/spencerc99/playhtml/assets/14796580/fae669b1-b3e2-404e-bd7a-3
 
 See all supported properties in the `ElementInitializer` [object in `types.ts`](https://github.com/spencerc99/playhtml/blob/main/src/types.ts#L13).
 
-The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `additionalSetup` property). See more examples based on the definitions for the included capabilities in [`elements.ts`](https://github.com/spencerc99/playhtml/blob/main/src/elements.ts#L72).
+The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `onMount` property). See more examples based on the definitions for the included capabilities in [`elements.ts`](https://github.com/spencerc99/playhtml/blob/main/src/elements.ts#L72).
 
 If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so we [welcome contributions](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md) for new built-in capabilities.
 

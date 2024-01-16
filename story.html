@@ -119,7 +119,7 @@
 
             input.defaultData = [];
             input.myDefaultAwareness = null;
-            input.additionalSetup = ({ setData, getData, setMyAwareness }) => {
+            input.onMount = ({ setData, getData, setMyAwareness }) => {
               const onSubmit = () => {
                 submitBtn.disabled = true;
                 if (!isValidWord(input.value)) {

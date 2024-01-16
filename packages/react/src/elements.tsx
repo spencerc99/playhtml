@@ -187,7 +187,7 @@ export function CanHoverElement({
       {...{
         defaultData: {},
         myDefaultAwareness: { isHovering: false },
-        additionalSetup: ({ setMyAwareness, getElement }) => {
+        onMount: ({ setMyAwareness, getElement }) => {
           const element = getElement();
           element.addEventListener("mouseover", () => {
             setMyAwareness({ isHovering: true });

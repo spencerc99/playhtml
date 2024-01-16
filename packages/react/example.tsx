@@ -46,7 +46,7 @@ export function ReactionView({ reaction }: { reaction: Reaction }) {
           setHasReacted(true);
         }
       }}
-      additionalSetup={({ getElement }) => {
+      onMount={({ getElement }) => {
         setHasReacted(Boolean(localStorage.getItem(getElement().id)));
       }}
     >
@@ -127,7 +127,7 @@ export function SharedSound({ soundUrl }: { soundUrl: string }) {
   return (
     <CanPlayElement
       defaultData={{ isPlaying: false }}
-      additionalSetup={({ getData, getElement }) => {
+      onMount={({ getData, getElement }) => {
         // This is only needed because of chrome's disabling of autoplay until you have interacted with the page.
         document.addEventListener("click", () => {
           const { isPlaying } = getData();

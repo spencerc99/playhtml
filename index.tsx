@@ -71,7 +71,7 @@ playhtml.init({
 
         setLocalData({ addedEntries });
       },
-      additionalSetup: ({ getElement, getData, setData }) => {
+      onMount: ({ getElement, getData, setData }) => {
         const element = getElement();
         element.addEventListener("submit", (e: SubmitEvent) => {
           e.preventDefault();
