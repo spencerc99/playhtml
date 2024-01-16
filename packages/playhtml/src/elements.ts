@@ -92,7 +92,7 @@ export class ElementHandler<T = any, U = any, V = any> {
         ? myDefaultAwareness(element)
         : myDefaultAwareness;
     if (myInitialAwareness !== undefined) {
-      this.setLocalAwareness(myInitialAwareness);
+      this.setMyAwareness(myInitialAwareness);
     }
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData;
@@ -247,7 +247,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       awareness: this.awareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setLocalAwareness: (newData) => this.setLocalAwareness(newData),
+      setMyAwareness: (newData) => this.setMyAwareness(newData),
     };
   }
 
@@ -266,7 +266,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       getAwareness: () => this.awareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setLocalAwareness: (newData) => this.setLocalAwareness(newData),
+      setMyAwareness: (newData) => this.setMyAwareness(newData),
     };
   }
 
@@ -278,7 +278,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   // TODO: this should be keyed on the element to avoid conflicts
-  setLocalAwareness(data: V): void {
+  setMyAwareness(data: V): void {
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
       return;

@@ -189,13 +189,13 @@ export function CanHoverElement({
       {...{
         defaultData: {},
         myDefaultAwareness: { isHovering: false },
-        additionalSetup: ({ setLocalAwareness, getElement }) => {
+        additionalSetup: ({ setMyAwareness, getElement }) => {
           const element = getElement();
           element.addEventListener("mouseover", () => {
-            setLocalAwareness({ isHovering: true });
+            setMyAwareness({ isHovering: true });
           });
           element.addEventListener("mouseout", () => {
-            setLocalAwareness({ isHovering: false });
+            setMyAwareness({ isHovering: false });
           });
         },
       }}

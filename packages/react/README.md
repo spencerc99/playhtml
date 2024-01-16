@@ -70,7 +70,7 @@ interface ReactElementEventHandlerData<T extends object, V extends object> {
   setData: (data: T) => void; // sets the data for this element
   awareness: V[]; // the awareness values of all clients (including self)
   myAwareness?: V; // the specific awareness of this client
-  setLocalAwareness: (data: V) => void; // sets "myAwareness" to the given value and syncs it to other clients
+  setMyAwareness: (data: V) => void; // sets "myAwareness" to the given value and syncs it to other clients
 }
 ```
 

@@ -76,11 +76,11 @@ export function CanPlayElement<T, V>({
         newData
       );
     },
-    setLocalAwareness: (newLocalAwareness) => {
+    setMyAwareness: (newLocalAwareness) => {
       getCurrentElementHandler(
         TagType.CanPlay,
         ref.current?.id || ""
-      )?.setLocalAwareness(newLocalAwareness);
+      )?.setMyAwareness(newLocalAwareness);
     },
     myAwareness,
     ref,

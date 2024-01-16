@@ -119,11 +119,7 @@
 
             input.defaultData = [];
             input.myDefaultAwareness = null;
-            input.additionalSetup = ({
-              setData,
-              getData,
-              setLocalAwareness,
-            }) => {
+            input.additionalSetup = ({ setData, getData, setMyAwareness }) => {
               const onSubmit = () => {
                 submitBtn.disabled = true;
                 if (!isValidWord(input.value)) {
@@ -139,7 +135,7 @@
                 };
                 setData([...existingStory, newEntry]);
                 input.value = "";
-                setLocalAwareness(null);
+                setMyAwareness(null);
                 submitBtn.disabled = false;
               };
 
@@ -151,9 +147,9 @@
               });
               input.addEventListener("input", (event) => {
                 if (event.target.value === "") {
-                  setLocalAwareness(null);
+                  setMyAwareness(null);
                 } else {
-                  setLocalAwareness(getUserColor());
+                  setMyAwareness(getUserColor());
                 }
               });
             };

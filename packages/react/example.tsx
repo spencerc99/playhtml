@@ -90,7 +90,7 @@ export function OnlineIndicator() {
       myDefaultAwareness={"#008000"}
       id="online-indicator"
     >
-      {({ myAwareness, setLocalAwareness, awareness }) => {
+      {({ myAwareness, setMyAwareness, awareness }) => {
         return (
           <>
             {awareness.map((val, idx) => (
@@ -106,7 +106,7 @@ export function OnlineIndicator() {
             ))}
             <input
               type="color"
-              onChange={(e) => setLocalAwareness(e.target.value)}
+              onChange={(e) => setMyAwareness(e.target.value)}
               value={myAwareness}
             />
           </>
