@@ -9,7 +9,7 @@ import {
   TagType,
   getIdForElement,
   TagTypeToElement,
-} from "@playhtml/common";
+} from "../../common/src/index";
 import * as Y from "yjs";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
@@ -119,6 +119,30 @@ function isHTMLElement(ele: any): ele is HTMLElement {
   return ele instanceof HTMLElement;
 }
 
+function deepEquals(a: any, b: any): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (a instanceof Object && b instanceof Object) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) {
+      return false;
+    }
+
+    for (const key of aKeys) {
+      if (!deepEquals(a[key], b[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
 function createPlayElementData<T extends TagType>(
   element: HTMLElement,
   tag: T,
@@ -138,7 +162,12 @@ function createPlayElementData<T extends TagType>(
 
   const elementData: ElementData = {
     ...tagInfo,
-    data: tagData.get(elementId) ?? tagInfo.defaultData,
+    // TODO: when adding save-state if no save state, then just use defaultData
+    data:
+      tagData.get(elementId) ??
+      (tagInfo.defaultData instanceof Function
+        ? tagInfo.defaultData(element)
+        : tagInfo.defaultData),
     awareness:
       getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
@@ -146,7 +175,8 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
-      if (tagData.get(elementId) === newData) {
+      if (deepEquals(tagData.get(elementId), newData)) {
+        // if (tagData.get(elementId) === newData) {
         return;
       }
 
@@ -175,7 +205,8 @@ function isCorrectElementInitializer(
 ): tagInfo is ElementInitializer {
   return (
     tagInfo.defaultData !== undefined &&
-    typeof tagInfo.defaultData === "object" &&
+    (typeof tagInfo.defaultData === "object" ||
+      typeof tagInfo.defaultData === "function") &&
     tagInfo.updateElement !== undefined
   );
 }
@@ -187,7 +218,9 @@ function getElementInitializerInfoForElement(
   if (tag === TagType.CanPlay) {
     // TODO: this needs to handle multiple can-play functionalities?
     const customElement = element as any;
-    const elementInitializerInfo: Required<ElementInitializer> = {
+    const elementInitializerInfo: Required<
+      Omit<ElementInitializer, "additionalSetup">
+    > = {
       defaultData: customElement.defaultData,
       defaultLocalData: customElement.defaultLocalData,
       myDefaultAwareness: customElement.myDefaultAwareness,
@@ -196,7 +229,7 @@ function getElementInitializerInfoForElement(
       onDrag: customElement.onDrag,
       onDragStart: customElement.onDragStart,
       onClick: customElement.onClick,
-      additionalSetup: customElement.additionalSetup,
+      onMount: customElement.onMount || customElement.additionalSetup,
       resetShortcut: customElement.resetShortcut,
       debounceMs: customElement.debounceMs,
       isValidElementForTag: customElement.isValidElementForTag,
@@ -466,7 +499,12 @@ async function setupPlayElementForTag<T extends TagType | string>(
     tagData.get(elementId) === undefined &&
     elementInitializerInfo.defaultData !== undefined
   ) {
-    tagData.set(elementId, elementInitializerInfo.defaultData);
+    tagData.set(
+      elementId,
+      elementInitializerInfo.defaultData instanceof Function
+        ? elementInitializerInfo.defaultData(element)
+        : elementInitializerInfo.defaultData
+    );
   }
 
   // redo this now that we have set it in the mapping.

@@ -64,7 +64,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       awareness: awarenessData,
       updateElement,
       updateElementAwareness,
-      additionalSetup,
+      onMount,
       debounceMs,
       triggerAwarenessUpdate,
     } = elementData;
@@ -100,8 +100,8 @@ export class ElementHandler<T = any, U = any, V = any> {
 
     this.reinitializeElementData(elementData);
 
-    if (additionalSetup) {
-      additionalSetup(this.getSetupData());
+    if (onMount) {
+      onMount(this.getSetupData());
     }
   }
 
