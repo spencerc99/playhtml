@@ -279,7 +279,6 @@ export const TagTypeToElement: Record<
     onClick: (e: MouseEvent, { data, setData }) => {
       // handling migration from "boolean" to "{on: boolean}" type
       const on = typeof data === "object" ? data.on : data;
-      console.log("clicked!", data, on);
       setData({ on: !on });
     },
     resetShortcut: "shiftKey",
@@ -629,7 +628,7 @@ function constructInitialState(element: HTMLElement): ElementState {
     }
   });
 
-  console.log("initial state", state);
+  // console.log("initial state", state);
 
   return state;
 }
