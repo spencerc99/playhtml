@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
+  ReactElementEventHandlerData,
   ReactElementInitializer,
   cloneThroughFragments,
   getCurrentElementHandler,
@@ -12,6 +13,7 @@ import {
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
+// @deprecated use `withPlay` instead
 export function CanPlayElement<T, V>({
   tagInfo,
   children,
@@ -102,10 +104,65 @@ export function CanPlayElement<T, V>({
     { fragmentId: id }
   );
 }
-/**
- * @deprecated use CanPlayElement instead
- */
-export const Playable = CanPlayElement;
+
+export const withPlay =
+  <P extends object = {}>() =>
+  <T extends object = object, V = any>(
+    playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
+    component: (
+      props: ReactElementEventHandlerData<T, V> & { props: P }
+    ) => React.ReactElement
+  ) =>
+    withPlayBase<P, T, V>(playConfig, component);
+
+// TODO: This is the ideal API but won't work until typescript supports
+// partial inference of generics. See https://github.com/microsoft/TypeScript/pull/26349
+// export function withPlay<
+//   P extends object = {},
+//   T extends object = {},
+//   V extends object = {}
+// >(
+//   {
+//     tagInfo,
+//     id,
+//     ...elementProps
+//   }: Omit<
+//     ReactElementInitializer<T, V> & {
+//       tagInfo?: Partial<{ [k in TagType]: string }>;
+//     },
+//     "children"
+//   >,
+//   component: (
+//     props: ReactElementEventHandlerData<T, V> & P
+//   ) => React.ReactElement
+// ): (props: P) => React.ReactElement {
+
+type WithPlayProps<T, V> = Omit<
+  ReactElementInitializer<T, V> & {
+    tagInfo?: Partial<{ [k in TagType]: string }>;
+  },
+  "children"
+>;
+
+export function withPlayBase<P = {}, T extends object = object, V = any>(
+  playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
+  component: (
+    props: ReactElementEventHandlerData<T, V> & { props: P }
+  ) => React.ReactElement
+): (props: P) => React.ReactElement {
+  const renderChildren = (props: P) => {
+    return (
+      <CanPlayElement
+        {...(typeof playConfig === "function" ? playConfig(props) : playConfig)}
+      >
+        {(playData) => component({ props, ...playData })}
+      </CanPlayElement>
+    );
+  };
+
+  // console.log("rendering", ref.current?.id, data, awareness, myAwareness);
+  return (props) => renderChildren(props);
+}
 
 export { playhtml };
 export { PlayProvider } from "./PlayProvider";

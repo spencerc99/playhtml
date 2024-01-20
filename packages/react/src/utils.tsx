@@ -12,14 +12,14 @@ export type ReactElementEventHandlerData<T, V> = Omit<
   "localData" | "setLocalData" | "element"
 > & { ref: React.RefObject<HTMLElement> };
 
-export interface PlayableChildren<T = any, V = any> {
+export interface PlayableChildren<T = object, V = any> {
   // TODO: force this to return a single child?
   children: (data: ReactElementEventHandlerData<T, V>) => React.ReactElement;
 }
 
 // NOTE: localData is not included because you can handle that purely within your parent React component since it doesn't need to handle any
 // syncing logic.
-export type ReactElementInitializer<T = any, V = any> = Omit<
+export type ReactElementInitializer<T = object, V = any> = Omit<
   ElementInitializer<T, any, V>,
   | "updateElement"
   | "defaultData"

@@ -1,68 +1,79 @@
 import * as React from "react";
-import { CanPlayElement, CanToggleElement, playhtml } from "./src/index";
+import {
+  CanPlayElement,
+  CanToggleElement,
+  playhtml,
+  withPlay,
+} from "./src/index";
 import { useState } from "react";
 
 playhtml.init();
 
-export function Candle() {
-  return (
-    <CanPlayElement
-      defaultData={{ on: false }}
-      onClick={(_e, { data, setData }) => {
-        setData({ on: !data.on });
-      }}
-    >
-      {({ data }) => (
-        <img
-          src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
-          selector-id=".candle"
-          className="candle"
-        />
-      )}
-    </CanPlayElement>
-  );
-}
-
+export const Candle = withPlay()(
+  { defaultData: { on: false } },
+  ({ data, setData }) => {
+    return (
+      <img
+        src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+        selector-id=".candle"
+        className="candle"
+        onClick={() => setData({ on: !data.on })}
+      />
+    );
+  }
+);
 interface Reaction {
   emoji: string;
   count: number;
 }
 
-export function ReactionView({ reaction }: { reaction: Reaction }) {
-  const [hasReacted, setHasReacted] = useState(false);
+// something like.. "userData" ?
+export const ReactionView = withPlay<{ reaction: Reaction }>()(
+  ({ reaction: { count } }) => ({
+    defaultData: { count },
+  }),
+  ({ props, data, setData, ref }) => {
+    const {
+      reaction: { emoji },
+    } = props;
+    const [hasReacted, setHasReacted] = useState(false);
 
-  return (
-    <CanPlayElement
-      defaultData={{ count: reaction.count }}
-      onClick={(_e, { setData, data, element }) => {
-        const { count } = data;
-        if (hasReacted) {
-          setData({ count: count - 1 });
-          localStorage.removeItem(element.id);
-          setHasReacted(false);
-        } else {
-          setData({ count: count + 1 });
-          localStorage.setItem(element.id, "true");
-          setHasReacted(true);
-        }
-      }}
-      onMount={({ getElement }) => {
-        setHasReacted(Boolean(localStorage.getItem(getElement().id)));
-      }}
-    >
-      {({ data }) => {
-        return (
-          <button
-            className={`reaction ${hasReacted ? "reacted" : ""}`}
-            selector-id=".reactions reaction"
-          >
-            {reaction.emoji} <span className="count">{data.count}</span>
-          </button>
-        );
-      }}
-    </CanPlayElement>
-  );
-}
+    React.useEffect(() => {
+      if (ref.current) {
+        console.log("effect", ref.current.id);
+        // This should be managed by playhtml.. it should be stored in some sort of
+        // locally-persisted storage.
+        setHasReacted(Boolean(localStorage.getItem(ref.current.id)));
+      }
+    }, [ref.current?.id]);
+
+    return (
+      <button
+        onClick={(_e) => {
+          const { count } = data;
+          console.log("onclick", ref.current?.id);
+          if (hasReacted) {
+            setData({ count: count - 1 });
+            if (ref.current) {
+              localStorage.removeItem(ref.current.id);
+            }
+            setHasReacted(false);
+          } else {
+            setData({ count: count + 1 });
+            if (ref.current) {
+              localStorage.setItem(ref.current.id, "true");
+            }
+            setHasReacted(true);
+          }
+        }}
+        className={`reaction ${hasReacted ? "reacted" : ""}`}
+        selector-id=".reactions reaction"
+      >
+        {emoji} <span className="count">{data.count}</span>
+      </button>
+    );
+  }
+);
 
 export function Lamp() {
   return (
@@ -83,85 +94,70 @@ export function Lamp() {
   );
 }
 
-export function OnlineIndicator() {
-  return (
-    <CanPlayElement
-      defaultData={{}}
-      myDefaultAwareness={"#008000"}
-      id="online-indicator"
-    >
-      {({ myAwareness, setMyAwareness, awareness }) => {
-        const myAwarenessIdx = myAwareness
-          ? awareness.indexOf(myAwareness)
-          : -1;
-        return (
-          <>
-            {awareness.map((val, idx) => (
-              <div
-                key={idx}
-                style={{
-                  width: "50px",
-                  height: "50px",
-                  borderRadius: "50%",
-                  background: val,
-                  boxShadow:
-                    idx === myAwarenessIdx
-                      ? "0px 0px 30px 10px rgb(245, 169, 15)"
-                      : undefined,
-                }}
-              ></div>
-            ))}
-            <input
-              type="color"
-              onChange={(e) => setMyAwareness(e.target.value)}
-              value={myAwareness}
-            />
-          </>
-        );
-      }}
-    </CanPlayElement>
-  );
-}
+export const OnlineIndicator = withPlay()(
+  { defaultData: {}, myDefaultAwareness: "#008000", id: "online-indicator" },
+  ({ myAwareness, setMyAwareness, awareness }) => {
+    const myAwarenessIdx = myAwareness ? awareness.indexOf(myAwareness) : -1;
+    return (
+      <>
+        {awareness.map((val, idx) => (
+          <div
+            key={idx}
+            style={{
+              width: "50px",
+              height: "50px",
+              borderRadius: "50%",
+              background: val,
+              boxShadow:
+                idx === myAwarenessIdx
+                  ? "0px 0px 30px 10px rgb(245, 169, 15)"
+                  : undefined,
+            }}
+          ></div>
+        ))}
+        <input
+          type="color"
+          onChange={(e) => setMyAwareness(e.target.value)}
+          value={myAwareness}
+        />
+      </>
+    );
+  }
+);
 
-export function SharedSound({ soundUrl }: { soundUrl: string }) {
-  return (
-    <CanPlayElement
-      defaultData={{ isPlaying: false }}
-      onMount={({ getData, getElement }) => {
-        // This is only needed because of chrome's disabling of autoplay until you have interacted with the page.
-        document.addEventListener("click", () => {
-          const { isPlaying } = getData();
-
-          if (isPlaying) {
-            (getElement() as HTMLAudioElement)?.play();
-          } else if (!isPlaying) {
-            (getElement() as HTMLAudioElement)?.pause();
-          }
-        });
-      }}
-    >
-      {({ data: { isPlaying }, setData, ref }) => {
+export const SharedSound = withPlay<{ soundUrl: string }>()(
+  { defaultData: { isPlaying: false } },
+  ({ data, setData, props, ref }) => {
+    const { soundUrl } = props;
+    const { isPlaying } = data;
+    React.useEffect(() => {
+      // This is only needed because of chrome's disabling of autoplay until you have interacted with the page.
+      const listener = () => {
         if (isPlaying) {
           (ref.current as HTMLAudioElement)?.play();
         } else if (!isPlaying) {
           (ref.current as HTMLAudioElement)?.pause();
         }
-        return (
-          <audio
-            className="sound-file"
-            id="sound"
-            controls
-            src={soundUrl}
-            loop
-            autoPlay={isPlaying}
-            muted
-            onPlay={() => setData({ isPlaying: true })}
-          />
-        );
-      }}
-    </CanPlayElement>
-  );
-}
+      };
+      document.addEventListener("click", listener);
+
+      () => document.removeEventListener("click", listener);
+    }, []);
+
+    return (
+      <audio
+        className="sound-file"
+        id="sound"
+        controls
+        src={soundUrl}
+        loop
+        autoPlay={isPlaying}
+        muted
+        onPlay={() => setData({ isPlaying: true })}
+      />
+    );
+  }
+);
 
 export function SharedYoutube(video: string) {
   // TODO: extract url

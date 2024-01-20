@@ -32,26 +32,29 @@ export default function App() {
 }
 ```
 
-Then, use the `CanPlayElement` component to render a component with real-time data syncing and persistence capabilities. `CanPlayElement` takes a `defaultData` prop that is used to initialize the data for the element, and accepts a callback for its `children` with the syncing data.
+Then, use `withPlay` to wrap your components to enhance them with live data. `withPlay` takes in a `defaultData` along with other configuration and a norma functional component definition, to which it will pass through the data and a callback to change that data `setData`.
+
+Note that `withPlay` returns a function that returns a function. This weirdness is unfortunately due to a known limitation in Typescript around generics (which hopefully will be [solved soon](https://github.com/microsoft/TypeScript/pull/26349))
 
 For example, to create a candle that switches between on and off states (designated by separate images), you can use the following code:
 
 ```tsx
 // candle
-export function Candle() {
-  return (
-    <CanPlayElement defaultData={{ on: false }}>
-      {({ data, setData }) => (
-        <img
-          src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
-          selector-id=".candle"
-          className="candle"
-          onClick={() => setData(!data.on)}
-        />
-      )}
-    </CanPlayElement>
-  );
-}
+interface Props {}
+
+export const Candle = withPlay<Props>()(
+  { defaultData: { on: false } },
+  ({ data, setData, ...props }) => {
+    return (
+      <img
+        src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+        selector-id=".candle"
+        className="candle"
+        onClick={() => setData({ on: !data.on })}
+      />
+    );
+  }
+);
 ```
 
 https://github.com/spencerc99/playhtml/assets/14796580/beff368e-b659-4db0-b314-16d10b09c31f
@@ -59,45 +62,36 @@ https://github.com/spencerc99/playhtml/assets/14796580/beff368e-b659-4db0-b314-1
 A more complex example uses `awareness` to show the number of people on the page and their associated color:
 
 ```tsx
-export function OnlineIndicator() {
-  return (
-    <CanPlayElement
-      defaultData={{}}
-      myDefaultAwareness={"#008000"}
-      id="online-indicator"
-    >
-      {({ myAwareness, setMyAwareness, awareness }) => {
-        const myAwarenessIdx = myAwareness
-          ? awareness.indexOf(myAwareness)
-          : -1;
-        return (
-          <>
-            {awareness.map((val, idx) => (
-              <div
-                key={idx}
-                style={{
-                  width: "50px",
-                  height: "50px",
-                  borderRadius: "50%",
-                  background: val,
-                  boxShadow:
-                    idx === myAwarenessIdx
-                      ? "0px 0px 30px 10px rgb(245, 169, 15)"
-                      : undefined,
-                }}
-              ></div>
-            ))}
-            <input
-              type="color"
-              onChange={(e) => setMyAwareness(e.target.value)}
-              value={myAwareness}
-            />
-          </>
-        );
-      }}
-    </CanPlayElement>
-  );
-}
+export const OnlineIndicator = withPlay()(
+  { defaultData: {}, myDefaultAwareness: "#008000", id: "online-indicator" },
+  ({ myAwareness, setMyAwareness, awareness }) => {
+    const myAwarenessIdx = myAwareness ? awareness.indexOf(myAwareness) : -1;
+    return (
+      <>
+        {awareness.map((val, idx) => (
+          <div
+            key={idx}
+            style={{
+              width: "50px",
+              height: "50px",
+              borderRadius: "50%",
+              background: val,
+              boxShadow:
+                idx === myAwarenessIdx
+                  ? "0px 0px 30px 10px rgb(245, 169, 15)"
+                  : undefined,
+            }}
+          ></div>
+        ))}
+        <input
+          type="color"
+          onChange={(e) => setMyAwareness(e.target.value)}
+          value={myAwareness}
+        />
+      </>
+    );
+  }
+);
 ```
 
 ![image](https://github.com/spencerc99/playhtml/assets/14796580/37b75f82-7a09-4a35-8794-3003425726f5)
