@@ -21,10 +21,12 @@ import { PlayProvider } from "@playhtml/react";
 export default function App() {
   return (
     <PlayProvider
-      initOptions={{
-        room: "my-room", // the namespace for syncing and storage set to `window.location.pathname + window.location.search`` by default
-        host: "mypartykit.user.partykit.dev", // if you want to self-host your own partykit server for extra server-side configuration and security guarantees.
-      }}
+      initOptions={
+        {
+          // room: "my-room", // the namespace for syncing and storage set to `window.location.pathname + window.location.search`` by default
+          // host: "mypartykit.user.partykit.dev", // if you want to self-host your own partykit server for extra server-side configuration and security guarantees.
+        }
+      }
     >
       {/* rest of your app... */}
     </PlayProvider>
@@ -36,20 +38,22 @@ Then, use `withPlay` to wrap your components to enhance them with live data. `wi
 
 Note that `withPlay` returns a function that returns a function. This weirdness is unfortunately due to a known limitation in Typescript around generics (which hopefully will be [solved soon](https://github.com/microsoft/TypeScript/pull/26349))
 
-For example, to create a candle that switches between on and off states (designated by separate images), you can use the following code:
+For example, to create a rectangle that switches between on and off states (designated by the background), you can use the following code:
 
 ```tsx
-// candle
+import { withPlay } from "@playhtml/react";
 interface Props {}
 
-export const Candle = withPlay<Props>()(
+export const ToggleSquare = withPlay<Props>()(
   { defaultData: { on: false } },
   ({ data, setData, ...props }) => {
     return (
-      <img
-        src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
-        selector-id=".candle"
-        className="candle"
+      <div
+        style={{
+          width: "200px",
+          height: "200px",
+          ...(data.on ? { background: "green" } : { background: "red" }),
+        }}
         onClick={() => setData({ on: !data.on })}
       />
     );
