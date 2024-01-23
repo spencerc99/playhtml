@@ -4,11 +4,10 @@ import ReactIs from "react-is";
 import { useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
-import {
-  ReactElementEventHandlerData,
+import { cloneThroughFragments, getCurrentElementHandler } from "./utils";
+import type {
   ReactElementInitializer,
-  cloneThroughFragments,
-  getCurrentElementHandler,
+  ReactElementEventHandlerData,
 } from "./utils";
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
@@ -71,12 +70,22 @@ export function CanPlayElement<T, V>({
     awareness,
     setData: (newData) => {
       // console.log("settingdata", newData);
+      // console.log(ref.current?.id);
       // console.log(
       //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
       // );
-      getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")?.setData(
-        newData
-      );
+      if (!ref.current?.id) {
+        console.warn(`[@playhtml/react] No id set for element ${ref.current}`);
+        return;
+      }
+      const handler = getCurrentElementHandler(TagType.CanPlay, ref.current.id);
+      if (!handler) {
+        console.warn(
+          `[@playhtml/react] No handler found for element ${ref.current?.id}`
+        );
+        return;
+      }
+      handler.setData(newData);
     },
     setMyAwareness: (newLocalAwareness) => {
       getCurrentElementHandler(
@@ -107,7 +116,7 @@ export function CanPlayElement<T, V>({
 
 export const withPlay =
   <P extends object = {}>() =>
-  <T extends object = object, V = any>(
+  <T extends object, V = any>(
     playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
     component: (
       props: ReactElementEventHandlerData<T, V> & { props: P }
@@ -137,14 +146,14 @@ export const withPlay =
 //   ) => React.ReactElement
 // ): (props: P) => React.ReactElement {
 
-type WithPlayProps<T, V> = Omit<
+export type WithPlayProps<T, V> = Omit<
   ReactElementInitializer<T, V> & {
     tagInfo?: Partial<{ [k in TagType]: string }>;
   },
   "children"
 >;
 
-export function withPlayBase<P = {}, T extends object = object, V = any>(
+export function withPlayBase<P, T extends object, V = any>(
   playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
   component: (
     props: ReactElementEventHandlerData<T, V> & { props: P }
@@ -163,6 +172,24 @@ export function withPlayBase<P = {}, T extends object = object, V = any>(
   // console.log("rendering", ref.current?.id, data, awareness, myAwareness);
   return (props) => renderChildren(props);
 }
+
+interface Props {}
+
+export const ToggleSquare = withPlay<Props>()(
+  { defaultData: { on: false } },
+  ({ data, setData, props }) => {
+    return (
+      <div
+        style={{
+          width: "200px",
+          height: "200px",
+          ...(data.on ? { background: "green" } : { background: "red" }),
+        }}
+        onClick={() => setData({ on: !data.on })}
+      />
+    );
+  }
+);
 
 export { playhtml };
 export { PlayProvider } from "./PlayProvider";

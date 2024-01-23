@@ -1,0 +1,15 @@
+{
+  "name": "playhtml-react-examples",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "sass": "^1.62.1",
+    "typescript": "^5.0.2",
+    "vite": "^4.3.9"
+  },
+  "dependencies": {
+    "playhtml-react": "^0.1.3"
+  }
+}

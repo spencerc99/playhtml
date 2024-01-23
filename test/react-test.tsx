@@ -2,20 +2,35 @@ import "../home.scss";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
-  Candle,
-  Lamp,
-  MirrorableElement,
-  OnlineIndicator,
-  ReactionView,
-  SharedSound,
-} from "../packages/react/example";
-import { CanGrowElement, CanHoverElement } from "../packages/react/src";
-// import { CanResizeElement } from "../packages/react/src/elements";
+  CanGrowElement,
+  CanHoverElement,
+  withPlay,
+} from "../packages/react/src";
+import { ReactionView } from "../packages/react/examples/Reaction";
+import { Lamp } from "../packages/react/examples/SharedLamp";
+import { OnlineIndicator } from "../packages/react/examples/OnlineIndicator";
+import { PlayProvider } from "@playhtml/react";
+
+const Candle = withPlay()(
+  { defaultData: { on: false } },
+  ({ data, setData }) => {
+    return (
+      <img
+        src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+        className="candle"
+        onClick={() => {
+          console.log("clicked!", data, { on: !data.on });
+          setData({ on: !data.on });
+        }}
+      />
+    );
+  }
+);
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <>
+  <PlayProvider>
     <Candle />
     <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
     <Lamp />
@@ -43,6 +58,6 @@ ReactDOM.createRoot(
     </CanResizeElement> */}
 
     {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
-    <MirrorableElement></MirrorableElement>
-  </>
+    {/* <MirrorableElement></MirrorableElement> */}
+  </PlayProvider>
 );
