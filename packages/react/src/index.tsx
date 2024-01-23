@@ -63,7 +63,10 @@ export function CanPlayElement<T, V>({
     }
     // console.log("setting up", elementProps.defaultData, ref.current);
 
-    return () => playhtml.removePlayElement(ref.current);
+    return () => {
+      if (!ref.current) return;
+      playhtml.removePlayElement(ref.current);
+    };
   }, [elementProps, ref.current]);
   const renderedChildren = children({
     data,
