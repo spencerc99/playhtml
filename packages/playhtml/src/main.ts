@@ -175,6 +175,7 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
+      // console.log("changing!", tagData.get(elementId), newData);
       if (deepEquals(tagData.get(elementId), newData)) {
         // if (tagData.get(elementId) === newData) {
         return;

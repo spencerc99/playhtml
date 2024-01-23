@@ -26,24 +26,25 @@
   </head>
   <body>
     <div id="app">
-      <div class="example">
+      <!-- <div class="example">
         <p id="helloDescription"></p>
         <input can-mirror id="hello" />
-      </div>
-      <p id="tasksDescription"></p>
+      </div> -->
       <h1>Tasks</h1>
       <div can-mirror id="tasks" style="display: flex; flex-direction: column">
         <button onclick="addTask()">Add</button>
+        <button onclick="removeTask()">Delete</button>
       </div>
       <script>
-        helloDescription.innerText = hello.outerHTML;
         function addTask() {
-          console.log("adding");
           const task = document.createElement("div");
           task.innerText = `New Task ${tasks.children.length + 1}`;
           tasks.appendChild(task);
         }
-        tasksDescription.innerText = tasks.outerHTML;
+
+        function removeTask() {
+          tasks.removeChild(tasks.lastChild);
+        }
       </script>
     </div>
     <footer>
@@ -55,6 +56,13 @@
     </footer>
 
     <script type="module" src="./index.tsx"></script>
+    <style>
+      #tasks button {
+        width: 120px;
+        background: burlywood;
+        font-size: 16px;
+      }
+    </style>
     <!-- import cursor chat -->
     <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
   </body>

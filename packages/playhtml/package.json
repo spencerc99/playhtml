@@ -59,7 +59,7 @@
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@playhtml/common": "^0.0.6",
+    "@playhtml/common": "^0.0.7",
     "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.10",
     "yjs": "^13.6.8"
