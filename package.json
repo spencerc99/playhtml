@@ -15,11 +15,13 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
     "@types/node": "^20.3.3",
+    "@types/react": "^18.2.48",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^4.3.9"
   },
   "dependencies": {
+    "@playhtml/react": "^0.1.4",
     "partykit": "^0.0.32",
     "profane-words": "^1.5.11",
     "react": "^18.2.0",

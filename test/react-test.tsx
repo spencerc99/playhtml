@@ -17,6 +17,7 @@ const Candle = withPlay()(
     return (
       <img
         src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+        selector-id=".candle"
         className="candle"
         onClick={() => {
           console.log("clicked!", data, { on: !data.on });

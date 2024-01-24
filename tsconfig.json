@@ -24,7 +24,7 @@
       "@playhtml/common": ["packages/common/src"]
     }
   },
-  "include": ["partykit", "website"],
+  "include": ["partykit"],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",

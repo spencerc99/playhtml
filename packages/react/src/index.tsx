@@ -18,13 +18,20 @@ export function CanPlayElement<T, V>({
   children,
   id,
   ...elementProps
-}: ReactElementInitializer<T, V> & {
-  tagInfo?: Partial<{ [k in TagType]: string }>;
-}) {
-  const computedTagInfo = tagInfo || { "can-play": "" };
+}:
+  | ReactElementInitializer<T, V>
+  | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
+      defaultData: undefined;
+      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
+    })) {
+  const computedTagInfo = tagInfo
+    ? Array.isArray(tagInfo)
+      ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
+      : tagInfo
+    : { "can-play": "" };
   const ref = useRef<HTMLElement>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
-  const [data, setData] = useState<T>(defaultData);
+  const [data, setData] = useState<T | undefined>(defaultData);
   const [awareness, setAwareness] = useState<V[]>(
     myDefaultAwareness ? [myDefaultAwareness] : []
   );
@@ -64,7 +71,7 @@ export function CanPlayElement<T, V>({
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!ref.current) return;
+      if (!ref.current || !playhtml.elementHandlers) return;
       playhtml.removePlayElement(ref.current);
     };
   }, [elementProps, ref.current]);
@@ -149,12 +156,11 @@ export const withPlay =
 //   ) => React.ReactElement
 // ): (props: P) => React.ReactElement {
 
-export type WithPlayProps<T, V> = Omit<
-  ReactElementInitializer<T, V> & {
-    tagInfo?: Partial<{ [k in TagType]: string }>;
-  },
-  "children"
->;
+export type WithPlayProps<T, V> =
+  | Omit<ReactElementInitializer<T, V>, "children">
+  | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
+      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
+    });
 
 export function withPlayBase<P, T extends object, V = any>(
   playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
