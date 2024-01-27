@@ -84,12 +84,10 @@ export interface ElementSetupData<T = any, U = any, V = any> {
 }
 
 interface EventData<T = any> {
-  data: T;
+  eventPayload: T;
 }
 
-export interface EventMessage<T = any> extends Pick<PlayEvent<T>, "type"> {
-  eventPayload: EventData<T>;
-}
+export type EventMessage<T = any> = Pick<PlayEvent<T>, "type"> & EventData<T>;
 
 export interface PlayEvent<T = any> {
   type: string;

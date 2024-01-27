@@ -1,4 +1,5 @@
-import { PlayContext } from "@playhtml/react/src/PlayProvider";
+import React from "react";
+import { PlayContext } from "@playhtml/react";
 import { useContext, useEffect } from "react";
 
 const ConfettiEventType = "confetti";
@@ -23,11 +24,13 @@ export function Confetti() {
 
     return () => removePlayEventListener(ConfettiEventType, id);
   }, []);
+
+  return <div></div>;
 }
 
 export function triggerConfetti() {
   const { dispatchPlayEvent } = useContext(PlayContext);
-  dispatchPlayEvent(ConfettiEventType);
+  dispatchPlayEvent({ type: ConfettiEventType });
 }
 
 // interface ReactionEvent {

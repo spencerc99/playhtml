@@ -13,7 +13,7 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
-} from "../../common/src/index";
+} from "@playhtml/common";
 import * as Y from "yjs";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
@@ -26,9 +26,15 @@ function getDefaultRoom(): string {
 }
 let yprovider: YPartyKitProvider;
 let ws: PartySocket;
-let globalData: Y.Map<any>;
-let elementHandlers: Map<string, Map<string, ElementHandler>>;
-let eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
+let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
+let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
+  string,
+  Map<string, ElementHandler>
+>();
+let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
+  string,
+  Array<RegisteredPlayEvent>
+>();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
 export interface InitOptions<T = any> {
@@ -72,6 +78,21 @@ function sendPlayEvent(eventMessage: EventMessage) {
   ws.send(JSON.stringify(eventMessage));
 }
 
+// TODO: this is a hacky way to wait for the provider to sync, but it works for now.
+// Waits until the yprovider is synced before returning
+// async function untilInitialized(): Promise<void> {
+//   return new Promise((resolve) => {
+//     const checkSync = () => {
+//       if (yprovider.synced) {
+//         resolve();
+//       } else {
+//         setTimeout(checkSync, 100); // Check again in 100ms
+//       }
+//     };
+//     checkSync();
+//   });
+// }
+
 let hasSynced = false;
 let firstSetup = true;
 function initPlayHTML({
@@ -111,13 +132,8 @@ function initPlayHTML({
     //   token: await getAuthToken(),
     // }),
   });
-  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
-  elementHandlers = new Map<string, Map<string, ElementHandler>>();
-  eventHandlers = new Map<string, Array<RegisteredPlayEvent>>();
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
-  playhtml.globalData = globalData;
-  playhtml.elementHandlers = elementHandlers;
 
   if (extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
@@ -426,9 +442,9 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,
-  globalData: undefined,
-  elementHandlers: undefined,
-  eventHandlers: undefined,
+  globalData,
+  elementHandlers,
+  eventHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
@@ -589,6 +605,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 }
 
+// TODO: make async and run it after synced
 function setupPlayElement(
   element: Element,
   { ignoreIfAlreadySetup }: { ignoreIfAlreadySetup?: boolean } = {}
@@ -648,6 +665,7 @@ function registerPlayEventListener(
   type: string,
   event: Omit<PlayEvent, "type">
 ): string {
+  console.log("registering", type, event);
   const id = String(eventCount++);
 
   eventHandlers.set(type, [
@@ -659,7 +677,7 @@ function registerPlayEventListener(
     const payload: EventMessage = {
       type,
       // @ts-ignore
-      eventPayload: { data: evt.detail },
+      eventPayload: evt.detail,
       // @ts-ignore
       // element: evt.target,
     };

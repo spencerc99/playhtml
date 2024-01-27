@@ -60,3 +60,38 @@ youtube video with playback time and playing status.
 - on video play, do you broadcast the new playback time? a lot of unnecessary events.. Ideally, you only want to see playback when you join the room.
 - when new client connects, sync with playback time and playback status,
 */
+
+import { PlayContext } from "@playhtml/react";
+import { useContext, useEffect } from "react";
+
+const ConfettiEventType = "confetti";
+
+export function useConfetti() {
+  const {
+    registerPlayEventListener,
+    removePlayEventListener,
+    dispatchPlayEvent,
+  } = useContext(PlayContext);
+
+  useEffect(() => {
+    const id = registerPlayEventListener(ConfettiEventType, {
+      onEvent: () => {
+        console.log("confetti");
+        window.confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      },
+    });
+    console.log("registering confetti event listener", id);
+
+    return () => removePlayEventListener(ConfettiEventType, id);
+  }, []);
+
+  return () => {
+    debugger;
+
+    dispatchPlayEvent({ type: ConfettiEventType });
+  };
+}
