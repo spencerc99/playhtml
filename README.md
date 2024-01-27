@@ -2,17 +2,29 @@
 
 _interactive, collaborative html elements with a single data attribute_
 
-playhtml is a fast, small (~300KB), and expressive library for magically creating collaborative interactive HTML elements that persist their state across sessions. For example, you can create a movable piece of HTML "furniture" by adding the `can-move` attribute:
+playhtml is a fast, small (~300KB), library-agnostic, and expressive library for magically creating collaborative interactive HTML elements that persist their state across sessions.
+
+The simplest example is creating a shared, movable piece of HTML "furniture":
 
 ```html
 <div id="couch" can-move style="font-size: 80px">🛋</div>
 ```
 
+At a glance, playhtml supports:
+
+- reactive data scoped at a per-element level
+- sync and data persistence behavior customization (locally persisted, real-time synced, or globally persisted)
+- custom events for imperative logic
+- a range of magical plug-and-play and full customization
+- _(coming soon)_ a web component library for "plug-and-play" collaborative elements
+- _(coming soon)_ sharing state across domains
+- _(coming soon)_ permissioning for behaviors
+- _(coming soon)_ triggering behavior on a schedule (think cron)
+- _(coming soon)_ custom data sources for long-term persistence
+
 https://github.com/spencerc99/playhtml/assets/14796580/00e84e15-2c1c-4b4b-8e15-2af22f39db7a
 
-If you enjoy this, please consider [sponsoring the project or sending a small donation](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
-
-Join our [Discord community](https://discord.gg/h7sABTv8) to get help and show off what you've built!
+playhtml is still in beta and active development. Join our [Discord community](https://discord.gg/h7sABTv8) to get help and show off what you've built!
 
 ## Usage
 
@@ -142,11 +154,11 @@ If you're trying this out and having trouble, please message me ([email](mailto:
 
 ## Examples
 
-Check out the [full gallery of community examples](https://coda.io/@spencer/playhtml) for more inspiration on what you can do! And [submit your own](https://coda.io/form/playhtml-example_dnUR7xNE7wz) once you've made one.
+To get started, you can find examples under the `example` folder or React examples under `packages/react/examples`.
 
-## Capabilities
+For full-fledged examples, check out our [community gallery](https://coda.io/@spencer/playhtml) for more inspiration on what you can do! And [submit your own](https://coda.io/form/playhtml-example_dnUR7xNE7wz) once you've made one.
 
-A full list can be found in `types.ts` under `TagType`.
+##
 
 ## Custom Capabilities
 
