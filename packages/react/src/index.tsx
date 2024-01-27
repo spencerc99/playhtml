@@ -14,16 +14,19 @@ import type {
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
 // @deprecated use `withPlay` instead
 export function CanPlayElement<T, V>({
-  tagInfo,
   children,
   id,
-  ...elementProps
+  ...restProps
 }:
   | ReactElementInitializer<T, V>
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
       defaultData: undefined;
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
     })) {
+  const { tagInfo = { "can-play": "" }, ...elementProps } = {
+    tagInfo: undefined,
+    ...restProps,
+  };
   const computedTagInfo = tagInfo
     ? Array.isArray(tagInfo)
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
@@ -76,6 +79,7 @@ export function CanPlayElement<T, V>({
     };
   }, [elementProps, ref.current]);
   const renderedChildren = children({
+    // @ts-ignore
     data,
     awareness,
     setData: (newData) => {
@@ -170,7 +174,9 @@ export function withPlayBase<P, T extends object, V = any>(
 ): (props: P) => React.ReactElement {
   const renderChildren = (props: P) => {
     return (
+      // @ts-ignore
       <CanPlayElement
+        tagInfo={undefined}
         {...(typeof playConfig === "function" ? playConfig(props) : playConfig)}
       >
         {(playData) => component({ props, ...playData })}
