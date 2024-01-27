@@ -665,7 +665,6 @@ function registerPlayEventListener(
   type: string,
   event: Omit<PlayEvent, "type">
 ): string {
-  console.log("registering", type, event);
   const id = String(eventCount++);
 
   eventHandlers.set(type, [

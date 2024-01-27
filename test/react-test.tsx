@@ -10,7 +10,7 @@ import { ReactionView } from "../packages/react/examples/Reaction";
 import { Lamp } from "../packages/react/examples/SharedLamp";
 import { OnlineIndicator } from "../packages/react/examples/OnlineIndicator";
 import { PlayProvider } from "@playhtml/react";
-import { useConfetti } from "../packages/react/example";
+import { ConfettiZone } from "../packages/react/examples/Confetti";
 
 const Candle = withPlay()(
   { defaultData: { on: false } },
@@ -63,17 +63,3 @@ ReactDOM.createRoot(
     {/* <MirrorableElement></MirrorableElement> */}
   </PlayProvider>
 );
-
-function ConfettiZone() {
-  const triggerConfetti = useConfetti();
-
-  return (
-    <div
-      style={{ width: "400px", height: "400px", border: "1px red solid" }}
-      id="confettiZone"
-      onClick={() => triggerConfetti()}
-    >
-      <h1>CONFETTI ZONE</h1>
-    </div>
-  );
-}
