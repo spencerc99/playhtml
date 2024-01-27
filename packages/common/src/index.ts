@@ -85,7 +85,6 @@ export interface ElementSetupData<T = any, U = any, V = any> {
 
 interface EventData<T = any> {
   data: T;
-  // element?: HTMLElement; TODO: this needs to be a compressible thing. what can you even do with this? idk
 }
 
 export interface EventMessage<T = any> extends Pick<PlayEvent<T>, "type"> {
@@ -95,6 +94,10 @@ export interface EventMessage<T = any> extends Pick<PlayEvent<T>, "type"> {
 export interface PlayEvent<T = any> {
   type: string;
   onEvent: (eventPayload: EventData<T>) => void;
+}
+
+export interface RegisteredPlayEvent<T = any> extends PlayEvent<T> {
+  id: string;
 }
 
 /**

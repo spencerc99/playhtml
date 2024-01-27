@@ -1,16 +1,42 @@
-const ConfettiEvent = new Event('confetti')
+import { PlayContext } from "@playhtml/react/src/PlayProvider";
+import { useContext, useEffect } from "react";
+
+const ConfettiEventType = "confetti";
 
 export function Confetti() {
-    window.dispatchEvent(ConfettiEvent)
+  const {
+    registerPlayEventListener,
+    removePlayEventListener,
+    dispatchPlayEvent,
+  } = useContext(PlayContext);
+
+  useEffect(() => {
+    const id = registerPlayEventListener(ConfettiEventType, {
+      onEvent: () => {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      },
+    });
+
+    return () => removePlayEventListener(ConfettiEventType, id);
+  }, []);
 }
 
-interface ReactionEvent {
-    type: 'reaction';
-    emoji: string;
-    size?: number;
+export function triggerConfetti() {
+  const { dispatchPlayEvent } = useContext(PlayContext);
+  dispatchPlayEvent(ConfettiEventType);
 }
-export function LiveReaction() {
-    window.dispatchEvent({
-        type: 
-    })
-}
+
+// interface ReactionEvent {
+//     type: 'reaction';
+//     emoji: string;
+//     size?: number;
+// }
+// export function LiveReaction() {
+//     window.dispatchEvent({
+//         type:
+//     })
+// }

@@ -12,6 +12,7 @@ import {
   TagTypeToElement,
   PlayEvent,
   EventMessage,
+  RegisteredPlayEvent,
 } from "../../common/src/index";
 import * as Y from "yjs";
 import { ElementHandler } from "./elements";
@@ -27,9 +28,9 @@ let yprovider: YPartyKitProvider;
 let ws: PartySocket;
 let globalData: Y.Map<any>;
 let elementHandlers: Map<string, Map<string, ElementHandler>>;
-let eventHandlers: Map<string, PlayEvent>;
+let eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
 const selectorIdsToAvailableIdx = new Map<string, number>();
-
+let eventCount = 0;
 export interface InitOptions<T = any> {
   /**
    * The room to connect users to (this should be a string that matches the other users
@@ -65,6 +66,10 @@ let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
+}
+
+function sendPlayEvent(eventMessage: EventMessage) {
+  ws.send(JSON.stringify(eventMessage));
 }
 
 let hasSynced = false;
@@ -108,7 +113,7 @@ function initPlayHTML({
   });
   globalData = doc.getMap<Y.Map<any>>("playhtml-global");
   elementHandlers = new Map<string, Map<string, ElementHandler>>();
-  eventHandlers = new Map<string, PlayEvent>();
+  eventHandlers = new Map<string, Array<RegisteredPlayEvent>>();
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
   playhtml.globalData = globalData;
@@ -122,17 +127,7 @@ function initPlayHTML({
 
   if (events) {
     for (const [eventType, event] of Object.entries(events)) {
-      eventHandlers.set(eventType, event);
-      document.addEventListener(eventType, (evt) => {
-        const payload: EventMessage = {
-          type: eventType,
-          // @ts-ignore
-          eventPayload: { data: evt.detail },
-          // @ts-ignore
-          // element: evt.target,
-        };
-        ws.send(JSON.stringify(payload));
-      });
+      registerPlayEventListener(eventType, event);
     }
   }
   ws.onmessage = (evt) => {
@@ -148,12 +143,14 @@ function initPlayHTML({
     }
     const { type, eventPayload } = message;
 
-    const maybeHandler = eventHandlers.get(type);
-    if (!maybeHandler) {
+    const maybeHandlers = eventHandlers.get(type);
+    if (!maybeHandlers) {
       return;
     }
 
-    maybeHandler.onEvent(eventPayload);
+    for (const handler of maybeHandlers) {
+      handler.onEvent(eventPayload);
+    }
   };
 
   // Import default styles
@@ -416,7 +413,10 @@ interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
-  eventHandlers: Map<string, PlayEvent> | undefined;
+  eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
+  dispatchPlayEvent: typeof dispatchPlayEvent;
+  registerPlayEventListener: typeof registerPlayEventListener;
+  removePlayEventListener: typeof removePlayEventListener;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -429,6 +429,9 @@ export const playhtml: PlayHTMLComponents = {
   globalData: undefined,
   elementHandlers: undefined,
   eventHandlers: undefined,
+  dispatchPlayEvent,
+  registerPlayEventListener,
+  removePlayEventListener,
 };
 // @ts-ignore
 window.playhtml = playhtml;
@@ -621,5 +624,66 @@ function removePlayElement(element: Element | null) {
     if (tagElementHandler.has(element.id)) {
       tagElementHandler.delete(element.id);
     }
+  }
+}
+
+function dispatchPlayEvent(message: EventMessage) {
+  const { type } = message;
+  if (!eventHandlers.has(type)) {
+    console.error(`[playhtml] event "${type}" not registered.`);
+    return;
+  }
+
+  sendPlayEvent(message);
+}
+
+/**
+ * registers the given event listener under `eventHandlers`. Should return a unique ID corresponding to the listener
+ */
+// TODO: allow duplicates or not..
+// duplicates are good for registering a lot of logic.. but why wouldn't you just put it all in one call?
+// duplicates bad when you want to handle deduping the same logic, so this would be useful to expose one helper function in the react context
+// to register a listener for a type and provide a callback and it returns you a function that triggers that event.
+function registerPlayEventListener(
+  type: string,
+  event: Omit<PlayEvent, "type">
+): string {
+  const id = String(eventCount++);
+
+  eventHandlers.set(type, [
+    ...(eventHandlers.get(type) ?? []),
+    { type, ...event, id },
+  ]);
+
+  document.addEventListener(type, (evt) => {
+    const payload: EventMessage = {
+      type,
+      // @ts-ignore
+      eventPayload: { data: evt.detail },
+      // @ts-ignore
+      // element: evt.target,
+    };
+    sendPlayEvent(payload);
+  });
+  return id;
+}
+
+/**
+ * removes the event listener with the given type and id from `eventHandlers`
+ */
+function removePlayEventListener(type: string, id: string) {
+  const handlers = eventHandlers.get(type);
+  if (!handlers) {
+    return;
+  }
+
+  const index = handlers.findIndex((handler) => handler.id === id);
+  if (index === -1) {
+    return;
+  }
+
+  handlers.splice(index, 1);
+  if (handlers.length === 0) {
+    eventHandlers.delete(type);
   }
 }
