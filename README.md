@@ -35,7 +35,7 @@ Head to the proper section depending on your technology preference:
 
 ### vanilla html / simple browser usage
 
-To use this library, you can import the library and the associated styles from a CDN (in this case we will use [unpkg.com](https://unpkg.com)). Please make sure to do this after all the HTML elements on the page and ensure that the HTML elements you are "magic-ifying" have an `id` set.
+To use this library, you can import the library from a CDN (in this case we will use [unpkg.com](https://unpkg.com)). Please make sure to do this after all the HTML elements on the page and ensure that the HTML elements you are "magic-ifying" have an `id` set.
 
 ```html
 <body>

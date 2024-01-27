@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 import YPartyKitProvider from "y-partykit/provider";
 import { IndexeddbPersistence } from "y-indexeddb";
+import PartySocket from "partysocket";
 import "./style.scss";
 import {
   ElementData,
@@ -9,6 +10,8 @@ import {
   TagType,
   getIdForElement,
   TagTypeToElement,
+  PlayEvent,
+  EventMessage,
 } from "../../common/src/index";
 import * as Y from "yjs";
 import { ElementHandler } from "./elements";
@@ -21,23 +24,40 @@ function getDefaultRoom(): string {
   return window.location.pathname + window.location.search;
 }
 let yprovider: YPartyKitProvider;
+let ws: PartySocket;
 let globalData: Y.Map<any>;
 let elementHandlers: Map<string, Map<string, ElementHandler>>;
+let eventHandlers: Map<string, PlayEvent>;
 const selectorIdsToAvailableIdx = new Map<string, number>();
 
-export interface InitOptions {
-  // The room to connect users to (this should be a string that matches the other users
-  // that you want a given user to connect with).
-  //
-  // All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent conflicting with other people's sites.
-  // Defaults to `window.location.pathname + window.location.search. You can customize this by passing in your own room dynamically
+export interface InitOptions<T = any> {
+  /**
+   * The room to connect users to (this should be a string that matches the other users
+   * that you want a given user to connect with).
+   *
+   * All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent
+   * conflicting with other people's sites.
+   * Defaults to `window.location.pathname + window.location.search. You can customize this by
+   * passing in your own room dynamically
+   */
   room?: string;
 
-  // Provide your own partykit host if you'd like to run your own server and customize the logic.
+  /**
+   * Provide your own partykit host if you'd like to run your own server and customize the logic.
+   */
   host?: string;
 
-  // Optionally provide your own map of capabilities
+  /**
+   * Optionally provide your own map of capabilities
+   */
   extraCapabilities?: Record<string, ElementInitializer>;
+
+  /**
+   * A mapping of event types to PlayEvents. Allows specifying of imperative logic to trigger when a
+   * client triggers some event. Automatically listens to native DOM events to trigger these.
+   *
+   */
+  events?: Record<string, PlayEvent<T>>;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -54,6 +74,7 @@ function initPlayHTML({
   room: inputRoom = getDefaultRoom(),
   host = DefaultPartykitHost,
   extraCapabilities,
+  events,
 }: InitOptions = {}) {
   if (!firstSetup) {
     console.error("playhtml already set up!");
@@ -76,8 +97,18 @@ function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
   yprovider = new YPartyKitProvider(partykitHost, room, doc);
+  ws = new PartySocket({
+    host: partykitHost, // or localhost:1999 in dev
+    room,
+
+    // optionally, pass an object of query string parameters to add to the request
+    // query: async () => ({
+    //   token: await getAuthToken(),
+    // }),
+  });
   globalData = doc.getMap<Y.Map<any>>("playhtml-global");
   elementHandlers = new Map<string, Map<string, ElementHandler>>();
+  eventHandlers = new Map<string, PlayEvent>();
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
   playhtml.globalData = globalData;
@@ -88,6 +119,42 @@ function initPlayHTML({
       capabilitiesToInitializer[tag] = tagInfo;
     }
   }
+
+  if (events) {
+    for (const [eventType, event] of Object.entries(events)) {
+      eventHandlers.set(eventType, event);
+      document.addEventListener(eventType, (evt) => {
+        const payload: EventMessage = {
+          type: eventType,
+          // @ts-ignore
+          eventPayload: { data: evt.detail },
+          // @ts-ignore
+          // element: evt.target,
+        };
+        ws.send(JSON.stringify(payload));
+      });
+    }
+  }
+  ws.onmessage = (evt) => {
+    // ignore non-relevant events
+    if (evt.data instanceof Blob) {
+      return;
+    }
+    let message: EventMessage;
+    try {
+      message = JSON.parse(evt.data) as EventMessage;
+    } catch (err) {
+      return;
+    }
+    const { type, eventPayload } = message;
+
+    const maybeHandler = eventHandlers.get(type);
+    if (!maybeHandler) {
+      return;
+    }
+
+    maybeHandler.onEvent(eventPayload);
+  };
 
   // Import default styles
   const playStyles = document.createElement("link");
@@ -349,6 +416,7 @@ interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
+  eventHandlers: Map<string, PlayEvent> | undefined;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -360,6 +428,7 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElementForTag,
   globalData: undefined,
   elementHandlers: undefined,
+  eventHandlers: undefined,
 };
 // @ts-ignore
 window.playhtml = playhtml;

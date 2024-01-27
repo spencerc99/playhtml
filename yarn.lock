@@ -1030,6 +1030,11 @@ estree-walker@^2.0.2:
   resolved "https://registry.npmjs.org/estree-walker/-/estree-walker-2.0.2.tgz"
   integrity sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w==
 
+event-target-shim@^6.0.2:
+  version "6.0.2"
+  resolved "https://registry.yarnpkg.com/event-target-shim/-/event-target-shim-6.0.2.tgz#ea5348c3618ee8b62ff1d344f01908ee2b8a2b71"
+  integrity sha512-8q3LsZjRezbFZ2PN+uP+Q7pnHUMmAOziU2vA2OwoFaKIXxlxl38IylhSSgUorWu/rf4er67w0ikBqjBFk/pomA==
+
 execa@^5.1.1:
   version "5.1.1"
   resolved "https://registry.npmjs.org/execa/-/execa-5.1.1.tgz"
@@ -1415,6 +1420,13 @@ partykit@^0.0.32:
     yoga-wasm-web "0.3.3"
   optionalDependencies:
     fsevents "2.3.3"
+
+partysocket@^0.0.25:
+  version "0.0.25"
+  resolved "https://registry.yarnpkg.com/partysocket/-/partysocket-0.0.25.tgz#f35fd89d9e4202ff6115ccdc8a4ebcc6acaf0bb1"
+  integrity sha512-1oCGA65fydX/FgdnsiBh68buOvfxuteoZVSb3Paci2kRp/7lhF0HyA8EDb5X/O6FxId1e+usPTQNRuzFEvkJbQ==
+  dependencies:
+    event-target-shim "^6.0.2"
 
 path-key@^3.0.0, path-key@^3.1.0:
   version "3.1.1"

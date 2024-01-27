@@ -11,6 +11,18 @@ interface FormData {
   timestamp: number;
 }
 playhtml.init({
+  events: {
+    confetti: {
+      type: "confetti",
+      onEvent: ({ data }) => {
+        window.confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      },
+    },
+  },
   extraCapabilities: {
     "can-post": {
       defaultData: [],
