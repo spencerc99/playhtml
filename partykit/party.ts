@@ -22,6 +22,9 @@ export default {
     return new Response("Not found");
   },
   async onMessage(message, _conn, room) {
+    if (typeof message === "string") {
+      console.log("message", message);
+    }
     room.broadcast(message);
   },
   async onConnect(ws, room) {

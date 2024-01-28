@@ -2003,10 +2003,10 @@ y-partykit@^0.0.10:
     y-protocols "^1.0.6"
     yjs "^13.6.8"
 
-y-partykit@^0.0.20:
-  version "0.0.20"
-  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.20.tgz#2f14bfe2e96db51540811578d8781adcf134df2f"
-  integrity sha512-wE4dcCCr0cBHBIB9cuButBtma6zoeeqmzuajF01pDoZrFpE2MvSA/tYUhfjC5xI5iTzVcowhbTRl5wKaSEvMxw==
+y-partykit@^0.0.21:
+  version "0.0.21"
+  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.21.tgz#92e465b1a56b29b99b38503871337182569a257c"
+  integrity sha512-l1SRJL3GV2AZgnOunIdFqDaOHhjX+9tXP9at+tPCpyBJmNFt5Rhnux2sJcRe0Y46ECg9TKJwZf4YCARochrZRg==
   dependencies:
     lib0 "^0.2.88"
     lodash.debounce "^4.0.8"

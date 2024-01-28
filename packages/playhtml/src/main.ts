@@ -75,7 +75,8 @@ function getTagTypes(): (TagType | string)[] {
 }
 
 function sendPlayEvent(eventMessage: EventMessage) {
-  ws.send(JSON.stringify(eventMessage));
+  console.log("message");
+  yprovider.ws!.send(JSON.stringify(eventMessage));
 }
 
 let hasSynced = false;
@@ -108,15 +109,10 @@ function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
   yprovider = new YPartyKitProvider(partykitHost, room, doc);
-  ws = new PartySocket({
-    host: partykitHost, // or localhost:1999 in dev
-    room,
-
-    // optionally, pass an object of query string parameters to add to the request
-    // query: async () => ({
-    //   token: await getAuthToken(),
-    // }),
-  });
+  // ws = new PartySocket({
+  //   host: partykitHost, // or localhost:1999 in dev
+  //   room,
+  // });
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
@@ -131,28 +127,28 @@ function initPlayHTML({
       registerPlayEventListener(eventType, event);
     }
   }
-  ws.onmessage = (evt) => {
-    // ignore non-relevant events
-    if (evt.data instanceof Blob) {
-      return;
-    }
-    let message: EventMessage;
-    try {
-      message = JSON.parse(evt.data) as EventMessage;
-    } catch (err) {
-      return;
-    }
-    const { type, eventPayload } = message;
+  // ws.onmessage = (evt) => {
+  //   // ignore non-relevant events
+  //   if (evt.data instanceof Blob) {
+  //     return;
+  //   }
+  //   let message: EventMessage;
+  //   try {
+  //     message = JSON.parse(evt.data) as EventMessage;
+  //   } catch (err) {
+  //     return;
+  //   }
+  //   const { type, eventPayload } = message;
 
-    const maybeHandlers = eventHandlers.get(type);
-    if (!maybeHandlers) {
-      return;
-    }
+  //   const maybeHandlers = eventHandlers.get(type);
+  //   if (!maybeHandlers) {
+  //     return;
+  //   }
 
-    for (const handler of maybeHandlers) {
-      handler.onEvent(eventPayload);
-    }
-  };
+  //   for (const handler of maybeHandlers) {
+  //     handler.onEvent(eventPayload);
+  //   }
+  // };
 
   // Import default styles
   const playStyles = document.createElement("link");
@@ -160,16 +156,45 @@ function initPlayHTML({
   playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
   document.head.appendChild(playStyles);
 
-  // TODO: provide some loading state for these elements immediately?
-  // some sort of "hydration" state?
-  yprovider.on("sync", (connected: boolean) => {
+  const onConnect = (connected: boolean) => {
     if (!connected) {
       console.error("Issue connecting to yjs...");
+      return;
     }
+
+    yprovider.ws!.send("test");
+    // ws.send("ok");
+    yprovider.ws!.addEventListener("message", (evt) => {
+      console.log("hello?");
+      // ignore non-relevant events
+      if (evt.data instanceof Blob) {
+        return;
+      }
+      let message: EventMessage;
+      try {
+        message = JSON.parse(evt.data) as EventMessage;
+      } catch (err) {
+        return;
+      }
+      const { type, eventPayload } = message;
+
+      const maybeHandlers = eventHandlers.get(type);
+      if (!maybeHandlers) {
+        return;
+      }
+
+      for (const handler of maybeHandlers) {
+        handler.onEvent(eventPayload);
+      }
+    });
+
     hasSynced = true;
     console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
     setupElements();
-  });
+  };
+  // TODO: provide some loading state for these elements immediately?
+  // some sort of "hydration" state?
+  yprovider.on("sync", onConnect);
 
   return yprovider;
 }
