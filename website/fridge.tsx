@@ -1,4 +1,4 @@
-import "../home.scss";
+import "./home.scss";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
 import { withPlay } from "../packages/react/src";

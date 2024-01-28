@@ -1,17 +1,14 @@
 import path from "path";
+import { glob } from "glob";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  root: path.join(__dirname, "website"),
   build: {
     rollupOptions: {
-      input: [
-        path.resolve(__dirname, "index.html"),
-        path.resolve(__dirname, "story.html"),
-        path.resolve(__dirname, "fridge.html"),
-        path.resolve(__dirname, "candles.html"),
-        path.resolve(__dirname, "playground.html"),
-      ],
+      input: glob.sync(path.resolve(__dirname, "website", "*.html")),
     },
-    outDir: "site-dist",
+    outDir: path.join(__dirname, "site-dist"),
+    emptyOutDir: true,
   },
 });

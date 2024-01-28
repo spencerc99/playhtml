@@ -5,12 +5,12 @@ import {
   CanGrowElement,
   CanHoverElement,
   withPlay,
-} from "../packages/react/src";
-import { ReactionView } from "../packages/react/examples/Reaction";
-import { Lamp } from "../packages/react/examples/SharedLamp";
-import { OnlineIndicator } from "../packages/react/examples/OnlineIndicator";
-import { PlayProvider } from "@playhtml/react";
-import { ConfettiZone } from "../packages/react/examples/Confetti";
+} from "../../packages/react/src";
+import { ReactionView } from "../../packages/react/examples/Reaction";
+import { Lamp } from "../../packages/react/examples/SharedLamp";
+import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
+import { PlayProvider } from "../../packages/react/";
+import { ConfettiZone } from "../../packages/react/examples/Confetti";
 
 const Candle = withPlay()(
   { defaultData: { on: false } },
