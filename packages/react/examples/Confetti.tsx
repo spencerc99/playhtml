@@ -28,8 +28,6 @@ export function useConfetti() {
   }, []);
 
   return () => {
-    debugger;
-
     dispatchPlayEvent({ type: ConfettiEventType });
   };
 }

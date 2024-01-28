@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 0.2.0 - 2024-01-27
+
+- **NEW FEATURE** Added eventing support for imperative logic like showing confetti whenever someone clicks a button which don't depend on a reacting to a data value changing. See the README under "eventing" for more details on how to set this up.`
+
 ## 0.1.0
 
 - works with more complex state

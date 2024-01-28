@@ -152,6 +152,65 @@ export const ReactionView = withPlay<{ reaction: Reaction }>()(
 );
 ```
 
+### Eventing
+
+You can set up imperative logic that doesn't depend on a data value changing (like triggering confetti when someone clicks in an area) by registering events with playhtml. You can either pass in a list of events to `PlayProvider` or you can call `playhtml.registerPlayEventListener` to register an event at any time.
+
+An example on a hook that returns a callback to trigger shared confetti (from `packages/react/examples/Confetti.tsx`):
+
+```tsx
+import React from "react";
+import { PlayContext } from "@playhtml/react";
+import { useContext, useEffect } from "react";
+
+const ConfettiEventType = "confetti";
+
+export function useConfetti() {
+  const {
+    registerPlayEventListener,
+    removePlayEventListener,
+    dispatchPlayEvent,
+  } = useContext(PlayContext);
+
+  useEffect(() => {
+    const id = registerPlayEventListener(ConfettiEventType, {
+      onEvent: () => {
+        // requires importing <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+        // somewhere in your app
+        window.confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      },
+    });
+
+    return () => removePlayEventListener(ConfettiEventType, id);
+  }, []);
+
+  return () => {
+    dispatchPlayEvent({ type: ConfettiEventType });
+  };
+}
+
+// Usage
+export function ConfettiZone() {
+  const triggerConfetti = useConfetti();
+
+  return (
+    <div
+      style={{ width: "400px", height: "400px", border: "1px red solid" }}
+      id="confettiZone"
+      onClick={() => triggerConfetti()}
+    >
+      <h1>CONFETTI ZONE</h1>
+    </div>
+  );
+}
+```
+
+https://github.com/spencerc99/playhtml/assets/14796580/bd8ecfaf-73ab-4aa2-9312-8917809f52a2
+
 For full configuration, see the interface below.
 
 ```tsx

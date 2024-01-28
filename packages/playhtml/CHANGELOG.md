@@ -2,9 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## [Unreleased]
+## 2.1.0 - 2024-01-27
 
-- **BREAKING CHANGE**Changed the hash function used to generate element ids. This will cause all elements without an `id` to be re-created to lose any persistent historical data. This was done to avoid duplicates and to swap to using a standard-length hash function (SHA-1). We still recommend you setting a unique `id` for each element to avoid any potential duplicates in the future, and using `selectorId` will not be affected by this change.
+- **NEW FEATURE** Added eventing support for imperative logic like showing confetti whenever someone clicks a button which don't depend on a reacting to a data value changing. See the README under "eventing" for more details on how to set this up.
+- **BREAKING CHANGE** Changed the hash function used to generate element ids to be a stable length for long-term scalability. This will cause all elements without an `id` to be re-created to lose any persistent historical data. This was done to avoid duplicates and to swap to using a standard-length hash function (SHA-1). We still recommend you setting a unique `id` for each element to avoid any potential duplicates in the future, and using `selectorId` will not be affected by this change.
 
 ## 2.0.16 - 2024-01-04
 
