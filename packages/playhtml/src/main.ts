@@ -78,21 +78,6 @@ function sendPlayEvent(eventMessage: EventMessage) {
   ws.send(JSON.stringify(eventMessage));
 }
 
-// TODO: this is a hacky way to wait for the provider to sync, but it works for now.
-// Waits until the yprovider is synced before returning
-// async function untilInitialized(): Promise<void> {
-//   return new Promise((resolve) => {
-//     const checkSync = () => {
-//       if (yprovider.synced) {
-//         resolve();
-//       } else {
-//         setTimeout(checkSync, 100); // Check again in 100ms
-//       }
-//     };
-//     checkSync();
-//   });
-// }
-
 let hasSynced = false;
 let firstSetup = true;
 function initPlayHTML({
@@ -655,7 +640,8 @@ function dispatchPlayEvent(message: EventMessage) {
 }
 
 /**
- * registers the given event listener under `eventHandlers`. Should return a unique ID corresponding to the listener
+ * Registers the given event listener.
+ * Returns a unique ID corresponding to the listener.
  */
 // TODO: allow duplicates or not..
 // duplicates are good for registering a lot of logic.. but why wouldn't you just put it all in one call?
@@ -672,21 +658,22 @@ function registerPlayEventListener(
     { type, ...event, id },
   ]);
 
-  document.addEventListener(type, (evt) => {
-    const payload: EventMessage = {
-      type,
-      // @ts-ignore
-      eventPayload: evt.detail,
-      // @ts-ignore
-      // element: evt.target,
-    };
-    sendPlayEvent(payload);
-  });
+  // NOTE: bring this back if desired to automatically listen to native DOM events of the same type
+  // document.addEventListener(type, (evt) => {
+  //   const payload: EventMessage = {
+  //     type,
+  //     // @ts-ignore
+  //     eventPayload: evt.detail,
+  //     // @ts-ignore
+  //     // element: evt.target,
+  //   };
+  //   sendPlayEvent(payload);
+  // });
   return id;
 }
 
 /**
- * removes the event listener with the given type and id from `eventHandlers`
+ * Removes the event listener with the given type and id.
  */
 function removePlayEventListener(type: string, id: string) {
   const handlers = eventHandlers.get(type);

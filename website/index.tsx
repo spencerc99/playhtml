@@ -14,7 +14,7 @@ playhtml.init({
   events: {
     confetti: {
       type: "confetti",
-      onEvent: ({ data }) => {
+      onEvent: (data) => {
         window.confetti({
           particleCount: 100,
           spread: 70,
