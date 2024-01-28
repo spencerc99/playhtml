@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -56,9 +56,9 @@
     "vite-plugin-dts": "^3.0.3"
   },
   "dependencies": {
-    "@playhtml/common": "^0.0.7",
+    "@playhtml/common": "^0.0.8",
     "classnames": "^2.3.2",
-    "playhtml": "^2.0.18",
+    "playhtml": "^2.1.0",
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0",
     "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0",
     "react-is": "^18.2.0"
