@@ -30,6 +30,24 @@
         <p id="helloDescription"></p>
         <input can-mirror id="hello" />
       </div> -->
+      <div
+        style="width: 400px; height: 400px; border: 1px red solid"
+        id="confettiZone"
+      >
+        <h1>CONFETTI ZONE</h1>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+      <script>
+        confettiZone.addEventListener("click", onClickConfettiZone);
+        function onClickConfettiZone(e) {
+          document.dispatchEvent(
+            new CustomEvent("confetti", {
+              detail: {},
+              bubbles: true,
+            })
+          );
+        }
+      </script>
       <h1>Tasks</h1>
       <div can-mirror id="tasks" style="display: flex; flex-direction: column">
         <button onclick="addTask()">Add</button>

@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 import YPartyKitProvider from "y-partykit/provider";
 import { IndexeddbPersistence } from "y-indexeddb";
+import PartySocket from "partysocket";
 import "./style.scss";
 import {
   ElementData,
@@ -9,7 +10,10 @@ import {
   TagType,
   getIdForElement,
   TagTypeToElement,
-} from "../../common/src/index";
+  PlayEvent,
+  EventMessage,
+  RegisteredPlayEvent,
+} from "@playhtml/common";
 import * as Y from "yjs";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
@@ -21,23 +25,46 @@ function getDefaultRoom(): string {
   return window.location.pathname + window.location.search;
 }
 let yprovider: YPartyKitProvider;
-let globalData: Y.Map<any>;
-let elementHandlers: Map<string, Map<string, ElementHandler>>;
+let ws: PartySocket;
+let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
+let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
+  string,
+  Map<string, ElementHandler>
+>();
+let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
+  string,
+  Array<RegisteredPlayEvent>
+>();
 const selectorIdsToAvailableIdx = new Map<string, number>();
-
-export interface InitOptions {
-  // The room to connect users to (this should be a string that matches the other users
-  // that you want a given user to connect with).
-  //
-  // All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent conflicting with other people's sites.
-  // Defaults to `window.location.pathname + window.location.search. You can customize this by passing in your own room dynamically
+let eventCount = 0;
+export interface InitOptions<T = any> {
+  /**
+   * The room to connect users to (this should be a string that matches the other users
+   * that you want a given user to connect with).
+   *
+   * All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent
+   * conflicting with other people's sites.
+   * Defaults to `window.location.pathname + window.location.search. You can customize this by
+   * passing in your own room dynamically
+   */
   room?: string;
 
-  // Provide your own partykit host if you'd like to run your own server and customize the logic.
+  /**
+   * Provide your own partykit host if you'd like to run your own server and customize the logic.
+   */
   host?: string;
 
-  // Optionally provide your own map of capabilities
+  /**
+   * Optionally provide your own map of capabilities
+   */
   extraCapabilities?: Record<string, ElementInitializer>;
+
+  /**
+   * A mapping of event types to PlayEvents. Allows specifying of imperative logic to trigger when a
+   * client triggers some event. Automatically listens to native DOM events to trigger these.
+   *
+   */
+  events?: Record<string, PlayEvent<T>>;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -47,6 +74,25 @@ function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
 }
 
+function sendPlayEvent(eventMessage: EventMessage) {
+  ws.send(JSON.stringify(eventMessage));
+}
+
+// TODO: this is a hacky way to wait for the provider to sync, but it works for now.
+// Waits until the yprovider is synced before returning
+// async function untilInitialized(): Promise<void> {
+//   return new Promise((resolve) => {
+//     const checkSync = () => {
+//       if (yprovider.synced) {
+//         resolve();
+//       } else {
+//         setTimeout(checkSync, 100); // Check again in 100ms
+//       }
+//     };
+//     checkSync();
+//   });
+// }
+
 let hasSynced = false;
 let firstSetup = true;
 function initPlayHTML({
@@ -54,6 +100,7 @@ function initPlayHTML({
   room: inputRoom = getDefaultRoom(),
   host = DefaultPartykitHost,
   extraCapabilities,
+  events,
 }: InitOptions = {}) {
   if (!firstSetup) {
     console.error("playhtml already set up!");
@@ -76,18 +123,51 @@ function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
   yprovider = new YPartyKitProvider(partykitHost, room, doc);
-  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
-  elementHandlers = new Map<string, Map<string, ElementHandler>>();
+  ws = new PartySocket({
+    host: partykitHost, // or localhost:1999 in dev
+    room,
+
+    // optionally, pass an object of query string parameters to add to the request
+    // query: async () => ({
+    //   token: await getAuthToken(),
+    // }),
+  });
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
-  playhtml.globalData = globalData;
-  playhtml.elementHandlers = elementHandlers;
 
   if (extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
       capabilitiesToInitializer[tag] = tagInfo;
     }
   }
+
+  if (events) {
+    for (const [eventType, event] of Object.entries(events)) {
+      registerPlayEventListener(eventType, event);
+    }
+  }
+  ws.onmessage = (evt) => {
+    // ignore non-relevant events
+    if (evt.data instanceof Blob) {
+      return;
+    }
+    let message: EventMessage;
+    try {
+      message = JSON.parse(evt.data) as EventMessage;
+    } catch (err) {
+      return;
+    }
+    const { type, eventPayload } = message;
+
+    const maybeHandlers = eventHandlers.get(type);
+    if (!maybeHandlers) {
+      return;
+    }
+
+    for (const handler of maybeHandlers) {
+      handler.onEvent(eventPayload);
+    }
+  };
 
   // Import default styles
   const playStyles = document.createElement("link");
@@ -349,6 +429,10 @@ interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   globalData: Y.Map<any> | undefined;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
+  eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
+  dispatchPlayEvent: typeof dispatchPlayEvent;
+  registerPlayEventListener: typeof registerPlayEventListener;
+  removePlayEventListener: typeof removePlayEventListener;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -358,8 +442,12 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,
-  globalData: undefined,
-  elementHandlers: undefined,
+  globalData,
+  elementHandlers,
+  eventHandlers,
+  dispatchPlayEvent,
+  registerPlayEventListener,
+  removePlayEventListener,
 };
 // @ts-ignore
 window.playhtml = playhtml;
@@ -517,6 +605,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 }
 
+// TODO: make async and run it after synced
 function setupPlayElement(
   element: Element,
   { ignoreIfAlreadySetup }: { ignoreIfAlreadySetup?: boolean } = {}
@@ -552,5 +641,66 @@ function removePlayElement(element: Element | null) {
     if (tagElementHandler.has(element.id)) {
       tagElementHandler.delete(element.id);
     }
+  }
+}
+
+function dispatchPlayEvent(message: EventMessage) {
+  const { type } = message;
+  if (!eventHandlers.has(type)) {
+    console.error(`[playhtml] event "${type}" not registered.`);
+    return;
+  }
+
+  sendPlayEvent(message);
+}
+
+/**
+ * registers the given event listener under `eventHandlers`. Should return a unique ID corresponding to the listener
+ */
+// TODO: allow duplicates or not..
+// duplicates are good for registering a lot of logic.. but why wouldn't you just put it all in one call?
+// duplicates bad when you want to handle deduping the same logic, so this would be useful to expose one helper function in the react context
+// to register a listener for a type and provide a callback and it returns you a function that triggers that event.
+function registerPlayEventListener(
+  type: string,
+  event: Omit<PlayEvent, "type">
+): string {
+  const id = String(eventCount++);
+
+  eventHandlers.set(type, [
+    ...(eventHandlers.get(type) ?? []),
+    { type, ...event, id },
+  ]);
+
+  document.addEventListener(type, (evt) => {
+    const payload: EventMessage = {
+      type,
+      // @ts-ignore
+      eventPayload: evt.detail,
+      // @ts-ignore
+      // element: evt.target,
+    };
+    sendPlayEvent(payload);
+  });
+  return id;
+}
+
+/**
+ * removes the event listener with the given type and id from `eventHandlers`
+ */
+function removePlayEventListener(type: string, id: string) {
+  const handlers = eventHandlers.get(type);
+  if (!handlers) {
+    return;
+  }
+
+  const index = handlers.findIndex((handler) => handler.id === id);
+  if (index === -1) {
+    return;
+  }
+
+  handlers.splice(index, 1);
+  if (handlers.length === 0) {
+    eventHandlers.delete(type);
   }
 }

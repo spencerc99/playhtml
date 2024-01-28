@@ -83,6 +83,21 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   setMyAwareness: (data: V) => void;
 }
 
+interface EventData<T = any> {
+  eventPayload: T;
+}
+
+export type EventMessage<T = any> = Pick<PlayEvent<T>, "type"> & EventData<T>;
+
+export interface PlayEvent<T = any> {
+  type: string;
+  onEvent: (eventPayload: EventData<T>) => void;
+}
+
+export interface RegisteredPlayEvent<T = any> extends PlayEvent<T> {
+  id: string;
+}
+
 /**
  * Custom Capabilities data types
  */

@@ -207,7 +207,7 @@ export const ToggleSquare = withPlay<Props>()(
 );
 
 export { playhtml };
-export { PlayProvider } from "./PlayProvider";
+export { PlayProvider, PlayContext } from "./PlayProvider";
 export {
   CanMoveElement,
   CanSpinElement,

@@ -10,6 +10,7 @@ import { ReactionView } from "../packages/react/examples/Reaction";
 import { Lamp } from "../packages/react/examples/SharedLamp";
 import { OnlineIndicator } from "../packages/react/examples/OnlineIndicator";
 import { PlayProvider } from "@playhtml/react";
+import { ConfettiZone } from "../packages/react/examples/Confetti";
 
 const Candle = withPlay()(
   { defaultData: { on: false } },
@@ -57,7 +58,7 @@ ReactDOM.createRoot(
         }}
       ></div>
     </CanResizeElement> */}
-
+    <ConfettiZone />
     {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
     {/* <MirrorableElement></MirrorableElement> */}
   </PlayProvider>
