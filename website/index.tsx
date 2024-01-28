@@ -2,7 +2,7 @@ import { ElementInitializer } from "@playhtml/common";
 import words from "profane-words";
 import "./home.scss";
 // NOTE: this pins it to the working code so we can test out new library changes through this home page.
-import { playhtml } from "./packages/playhtml/src/main";
+import { playhtml } from "../packages/playhtml/src/main";
 
 interface FormData {
   id: string;
@@ -14,7 +14,7 @@ playhtml.init({
   events: {
     confetti: {
       type: "confetti",
-      onEvent: ({ data }) => {
+      onEvent: (data) => {
         window.confetti({
           particleCount: 100,
           spread: 70,

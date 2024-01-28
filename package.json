@@ -9,13 +9,14 @@
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.ts",
-    "build-site": "vite build --config vite.config.site.ts",
+    "build-site": "vite build website --config vite.config.site.ts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && yarn run build); done"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
     "@types/node": "^20.3.3",
     "@types/react": "^18.2.48",
+    "glob": "^10.3.10",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^4.3.9"

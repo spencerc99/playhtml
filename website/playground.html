@@ -40,12 +40,7 @@
       <script>
         confettiZone.addEventListener("click", onClickConfettiZone);
         function onClickConfettiZone(e) {
-          document.dispatchEvent(
-            new CustomEvent("confetti", {
-              detail: {},
-              bubbles: true,
-            })
-          );
+          playhtml.dispatchPlayEvent({ type: "confetti" });
         }
       </script>
       <h1>Tasks</h1>
