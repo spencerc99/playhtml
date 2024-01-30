@@ -1,13 +1,18 @@
+$color-text-light: hsl(140, 5%, 12%);
 :root {
   color-scheme: light dark;
   --background: hsl(139, 22%, 85%, 1);
   --color-text: hsl(140, 5%, 12%);
   --color-text-accent: hsl(33, 7%, 29%);
+  --color-text-translucent: hsla(140, 5%, 12%, 0.3);
+  --color-background-neutral: hsl(120, 4%, 95%);
 
   @media (prefers-color-scheme: dark) {
     --background: hsl(139, 14%, 18%, 1);
     --color-text: hsl(140, 5%, 85%);
     --color-text-accent: hsl(33, 7%, 81%);
+    --color-text-translucent: hsla(140, 5%, 85%, 0.3);
+    --color-background-neutral: hsl(120, 4%, 15%);
   }
 }
 
@@ -239,7 +244,7 @@ footer {
   }
 
   .guestbook-entry-timestamp {
-    color: #00000063;
+    color: var(--color-text-translucent);
   }
 }
 
@@ -331,6 +336,7 @@ h3 {
 
 kbd {
   background-color: #eee;
+  color: $color-text-light;
   border-radius: 3px;
   border: 1px solid #b4b4b4;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2),
@@ -342,7 +348,7 @@ kbd {
 }
 
 .typingIndicator {
-  background-color: #eef1f2;
+  background-color: var(--color-background-neutral);
   border-radius: 12px;
   padding: 0.5rem 0.5rem;
   display: inline-flex;
@@ -390,6 +396,7 @@ kbd {
   line-height: 1;
   margin: 4px;
   background-color: #efefef;
+  color: $color-text-light;
   padding: 0.4em;
   box-shadow: 3px 3px 0px 0px rgba(50, 50, 50, 1);
   cursor: pointer;
