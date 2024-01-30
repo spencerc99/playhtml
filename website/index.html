@@ -23,6 +23,8 @@
       data-api="https://sharingan.spencerc99.workers.dev/genjutsu/event"
       src="https://sharingan.spencerc99.workers.dev/genjutsu/script.js"
     ></script>
+    <!-- Place this tag in your head or just before your close body tag. -->
+    <script async defer src="https://buttons.github.io/buttons.js"></script>
   </head>
   <body>
     <div id="app">
@@ -46,6 +48,17 @@
           ><span class="letter" id="t" can-toggle>t</span
           ><span class="letter" id="m" can-toggle>m</span
           ><span class="letter" id="l" can-toggle>l</span>
+          <!-- Place this tag where you want the button to render. -->
+          <!-- Place this tag where you want the button to render. -->
+          <a
+            class="github-button"
+            href="https://github.com/spencerc99/playhtml"
+            data-icon="octicon-star"
+            data-size="large"
+            data-show-count="true"
+            aria-label="Star spencerc99/playhtml on GitHub"
+            >Star</a
+          >
         </h1>
         <div id="lampContainer">
           <img
@@ -61,37 +74,53 @@
           src="/noguchi-akari-a1.png"
           can-toggle
         />
-        <i>interactive, collaborative html elements with a single attribute.</i>
+        <i
+          >library-agnostic (<a href="https://github.com/spencerc99/playhtml/"
+            >html</a
+          >,
+          <a
+            href="https://github.com/spencerc99/playhtml/tree/main/packages/react"
+            >react</a
+          >), fast, and expressive</i
+        >
         <p>
           <b>playhtml</b> is an
           <a href="https://github.com/spencerc99/playhtml"
             >open-source library</a
           >
-          that enables interactive capabilities with minimal code and maximal
-          expressiveness by handling real-time syncing, persistence, and
-          reactivity.
+          for designing communal web experiences by enhancing web elements with
+          real-time, collaborative interactivity. Let's make more shared spaces
+          on the internet, where we can play and express ourselves
         </p>
         <p>
-          Check out some examples from the community in the
-          <a href="https://coda.io/@spencer/playhtml">gallery</a> and
-          <a href="https://coda.io/form/playhtml-example_dnUR7xNE7wz"
-            >submit your own</a
-          >!
+          Why do websites feel lonely even though so much humanity is woven
+          through the internet these days? I think it's largely because most of
+          the internet is designed around a personal experience. This library
+          aims to provides infrastructure for designing communal experiences
+          that make the
+          <a href="https://spencerchang.substack.com/p/ti-08-aliving-the-web"
+            >web feel alive</a
+          >. From
+          <a href="https://twitter.com/spencerc99/status/1630026043221479424"
+            >shared fingerprints on a letter</a
+          >
+          to <a href="https://campfire.we-b.site/">live reactions</a> to live
+          confetti with every click, I think we can reimagine the shape of
+          websites and how we can interact with each other on them.
         </p>
         <p>
-          most of the HTML elements on this page are collaboratively
-          interactive! Trying clicking, dragging, and playing around with them.
-          If anyone else is on the site, you'll see their cursors and how
-          they're playing with the elements too.
+          Most of the elements on this page are live examples! Trying clicking,
+          dragging, and playing around with them. If anyone else is on the site,
+          you'll see their cursors and how they're playing with the elements
+          too.
           <!-- TODO: add a button that actives an AI cursor??? -->
         </p>
+        <h2>plug-and-play capabilities</h2>
         <p>
-          Get started by adding the preset tags to any HTML element on your
-          website. This is how easy it is to get a movable couch:
-          <code>&lt;div id=&quot;couch&quot; can-move&gt;🛋&lt;/div&gt; </code>.
-          <div id="couch" can-move style="font-size: 80px; position: absolute; right: -80px; z-index: 1;">🛋</div>
+          If you want to write the least code, you can use our available
+          templated capabilities to create shared elements with a single
+          attribute on HTML.
         </p>
-        <h2>existing tags</h2>
         <!-- candle credit: https://nyknck.itch.io/candle -->
         <img
           can-play
@@ -105,9 +134,9 @@
         <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
         <script>
           const candle = document.getElementById("customCandle");
-          candle.defaultData = {on: true};
+          candle.defaultData = { on: true };
           candle.onClick = (_e, { data, setData }) => {
-            setData({on: !data.on});
+            setData({ on: !data.on });
           };
           candle.updateElement = ({ element, data }) => {
             element.src = data.on ? "/candle-gif.gif" : "/candle-off.png";
@@ -188,6 +217,11 @@
           physical spaces do. If you do make something,
           <a href="mailto:spencerc99@gmail.com">message me</a>!
         </p>
+        <div class="startContainer">
+          <a href="https://github.com/spencerc99/playhtml" target="_blank"
+            ><button id="start">Get Started</button></a
+          >
+        </div>
         <details>
           <summary><h3 style="display: inline">the lore</h3></summary>
           <p>
@@ -218,8 +252,8 @@
               required
             />,
             <span>
-                leave something nice for visitors in the guestbook, won't
-                you?</span
+              leave something nice for visitors in the guestbook, won't
+              you?</span
             >
 
             <br />
@@ -231,7 +265,7 @@
               placeholder="5 chars max, emojis recommended"
               maxlength="5"
             />
-            <button type="submit" >🖋️</button>
+            <button type="submit">🖋️</button>
           </form>
           <div id="guestbookMessages"></div>
         </div>
@@ -257,9 +291,8 @@
       </div>
     </footer>
 
-    <script type="module" src="./index.tsx">
-    </script>
+    <script type="module" src="./index.tsx"></script>
     <!-- import cursor chat -->
-   <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
+    <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
   </body>
 </html>

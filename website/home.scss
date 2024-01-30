@@ -237,6 +237,29 @@ footer {
   z-index: 5;
 }
 
+.startContainer {
+  display: flex;
+  justify-content: center;
+}
+
+#startLink {
+}
+#start {
+  transition: box-shadow 0.2s ease-in-out;
+  font-weight: bold;
+  font-size: 1.2em;
+  padding: 1em 4em;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 24px;
+  background: rgba(13, 119, 29, 1);
+  box-shadow: rgba(13, 119, 29, 0.3) 0px 0px 12px 4px;
+  &:hover,
+  &.hovering {
+    box-shadow: rgba(13, 119, 29, 0.3) 0px 0px 20px 8px;
+  }
+}
+
 /**
 ** story.html
 **/
