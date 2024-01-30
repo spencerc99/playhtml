@@ -1,14 +1,26 @@
-// Demo Styles
-$color-background: hsl(139 22% 85% / 1);
+:root {
+  color-scheme: light dark;
+  --background: hsl(139, 22%, 85%, 1);
+  --color-text: hsl(140, 5%, 12%);
+  --color-text-accent: hsl(33, 7%, 29%);
+
+  @media (prefers-color-scheme: dark) {
+    --background: hsl(139, 14%, 18%, 1);
+    --color-text: hsl(140, 5%, 85%);
+    --color-text-accent: hsl(33, 7%, 81%);
+  }
+}
+
 body {
-  background: $color-background;
+  background: var(--background);
   font-family: "Play";
   margin-bottom: 80px;
+  color: var(--color-text);
 }
 
 h1 {
   font-family: "Carter One";
-  color: rgb(80, 75, 69);
+  color: var(--color-text-accent);
 }
 
 i {
@@ -37,7 +49,7 @@ footer {
 
   div {
     padding: 8px 0;
-    background: rgba($color-background, 0.7);
+    background: rgba(var(--background), 0.7);
     text-align: center;
     backdrop-filter: blur(2px);
     border-radius: 8px;
@@ -201,7 +213,7 @@ footer {
 
     &::after {
       content: "";
-      background: linear-gradient(transparent, $color-background);
+      background: linear-gradient(transparent, var(--background));
       width: 100%;
       // Keep this aligned with the padding above
       height: 22px;
