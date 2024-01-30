@@ -579,23 +579,6 @@
   resolved "https://registry.yarnpkg.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz#a77ea742fab25775145434eb1d2328cf5013ac33"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
 
-"@playhtml/common@^0.0.7":
-  version "0.0.7"
-  resolved "https://registry.yarnpkg.com/@playhtml/common/-/common-0.0.7.tgz#08808263f03a323e7b37ed24de651886dc467cf2"
-  integrity sha512-J1+FerqIy16mudwduuZJPw3h0X9DUhPNX8yhbcYsCo4YOICMFxOVItZZkOJQUbcqDgF11x+bX2Ryv6yKX9YkoQ==
-
-"@playhtml/react@^0.1.4":
-  version "0.1.4"
-  resolved "https://registry.yarnpkg.com/@playhtml/react/-/react-0.1.4.tgz#1d0afb58c36969935682e17c3acff88031e1a533"
-  integrity sha512-OizxrlQvVUCkuFOG4TjIW3uucVZMm1MpCWX3gs3ah1+WBtS733loL877AZCkWCH9GQWKZdoRbvWJ3VQuXfWFOA==
-  dependencies:
-    "@playhtml/common" "^0.0.7"
-    classnames "^2.3.2"
-    playhtml "^2.0.18"
-    react "^16.8.0  || ^17.0.0 || ^18.2.0"
-    react-dom "^16.8.0  || ^17.0.0 || ^18.2.0"
-    react-is "^18.2.0"
-
 "@rollup/pluginutils@^5.0.2":
   version "5.0.2"
   resolved "https://registry.npmjs.org/@rollup/pluginutils/-/pluginutils-5.0.2.tgz"

@@ -87,7 +87,8 @@ interface EventData<T = any> {
   eventPayload: T;
 }
 
-export type EventMessage<T = any> = Pick<PlayEvent<T>, "type"> & EventData<T>;
+export type EventMessage<T = any> = Pick<PlayEvent<T>, "type"> &
+  Partial<EventData<T>>;
 
 export interface PlayEvent<T = any> {
   type: string;
