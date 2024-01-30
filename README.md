@@ -55,12 +55,12 @@ To use this library, you can import the library from a CDN (in this case we will
     src="https://unpkg.com/playhtml@latest/dist/init.es.js"
   ></script>
 
-  <!-- Option 2 (customize options to use your own partykit provider or specify the room) -->
+  <!-- Option 2 (customize options to specify the room everyone connects to (a unique ID) or use your own partykit provider) -->
   <script type="module">
     import "https://unpkg.com/playhtml@latest";
     playhtml.init({
       room: "my-room",
-      host: "mypartykit.user.partykit.dev",
+      host: `${myPartykitUser}.partykit.dev`,
     });
   </script>
 </body>
