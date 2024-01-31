@@ -1774,6 +1774,7 @@ string-argv@~0.3.1:
   integrity sha512-aqD2Q0144Z+/RqG52NeHEkZauTAUWJO8c6yTftGJKO3Tja5tUgIfmIl6kExvhtxSDP7fXB6DvzkfMpCd/F3G+Q==
 
 "string-width-cjs@npm:string-width@^4.2.0", string-width@^4.1.0:
+  name string-width-cjs
   version "4.2.3"
   resolved "https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz"
   integrity sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==
@@ -1792,6 +1793,7 @@ string-width@^5.0.1, string-width@^5.1.2:
     strip-ansi "^7.0.1"
 
 "strip-ansi-cjs@npm:strip-ansi@^6.0.1", strip-ansi@^6.0.0, strip-ansi@^6.0.1:
+  name strip-ansi-cjs
   version "6.0.1"
   resolved "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.1.tgz"
   integrity sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==
@@ -1907,7 +1909,7 @@ vite-plugin-dts@^3.0.3:
     rollup "*"
     vite "^4.3.9"
 
-vite@*, vite@^4.3.9:
+vite@^4.3.9:
   version "4.3.9"
   resolved "https://registry.npmjs.org/vite/-/vite-4.3.9.tgz"
   integrity sha512-qsTNZjO9NoJNW7KnOrgYwczm0WctJ8m/yqYAMAK9Lxt4SoySUfS5S8ia9K7JHpa3KEeMfyF8LoJ3c5NeBJy6pg==
@@ -1983,17 +1985,6 @@ y-indexeddb@^9.0.11:
   dependencies:
     lib0 "^0.2.74"
 
-y-partykit@^0.0.10:
-  version "0.0.10"
-  resolved "https://registry.npmjs.org/y-partykit/-/y-partykit-0.0.10.tgz"
-  integrity sha512-DFzaQbbgUm4jZx8oj3uHigRUKw0sYvq7QQlw/Kq+yOrci+AD0b38cgyWEs5TWYQDCC2a7Wqs33oiJ5YgOCDqVg==
-  dependencies:
-    lib0 "^0.2.86"
-    lodash.debounce "^4.0.8"
-    react "^18.2.0"
-    y-protocols "^1.0.6"
-    yjs "^13.6.8"
-
 y-partykit@^0.0.20:
   version "0.0.20"
   resolved "https://registry.npmjs.org/y-partykit/-/y-partykit-0.0.20.tgz"
@@ -2028,13 +2019,6 @@ yjs@^13.6.10:
   integrity sha512-FvRRJKX9u270dOLkllGF/UDCWwmIv2Z+ucM4v1QO1TuxdmoiMnSUXH1HAcOKOrkBEhQtPTkxep7tD2DrQB+l0g==
   dependencies:
     lib0 "^0.2.86"
-
-yjs@^13.6.8:
-  version "13.6.8"
-  resolved "https://registry.npmjs.org/yjs/-/yjs-13.6.8.tgz"
-  integrity sha512-ZPq0hpJQb6f59B++Ngg4cKexDJTvfOgeiv0sBc4sUm8CaBWH7OQC4kcCgrqbjJ/B2+6vO49exvTmYfdlPtcjbg==
-  dependencies:
-    lib0 "^0.2.74"
 
 yoga-wasm-web@0.3.3:
   version "0.3.3"

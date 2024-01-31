@@ -2,6 +2,10 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.1.2 - 2024-01-30
+
+- align dependencies
+
 ## 2.1.1 - 2024-01-30
 
 - added an `init.js` file export which can be imported to auto-initialize with default settings. Designed to be simplest way to get started with playhtml.
