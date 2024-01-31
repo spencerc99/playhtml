@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
+    "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^20.3.3",
     "@types/react": "^18.2.48",
     "glob": "^10.3.10",
@@ -23,6 +24,7 @@
   },
   "dependencies": {
     "@playhtml/react": "^0.2.0",
+    "canvas-confetti": "^1.9.2",
     "partykit": "^0.0.79",
     "profane-words": "^1.5.11",
     "react": "^18.2.0",

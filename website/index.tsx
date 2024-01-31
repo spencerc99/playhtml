@@ -3,6 +3,7 @@ import words from "profane-words";
 import "./home.scss";
 // NOTE: this pins it to the working code so we can test out new library changes through this home page.
 import { playhtml } from "../packages/playhtml/src/main";
+import confetti from "canvas-confetti";
 
 interface FormData {
   id: string;
@@ -15,10 +16,13 @@ playhtml.init({
     confetti: {
       type: "confetti",
       onEvent: (data) => {
-        window.confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
+        confetti({
+          ...(data || {}),
+          shapes:
+            // NOTE: this serialization is needed because `slide` doesn't serialize to JSON properly.
+            "shapes" in data
+              ? data.shapes.map((shape) => (shape === "slide" ? slide : shape))
+              : undefined,
         });
       },
     },
@@ -139,4 +143,23 @@ playhtml.init({
       },
     } as ElementInitializer<FormData[]>,
   },
+});
+
+const slide = confetti.shapeFromText({ text: "🛝" });
+
+document.querySelector("body").addEventListener("click", (e) => {
+  playhtml.dispatchPlayEvent({
+    type: "confetti",
+    eventPayload: {
+      origin: {
+        x: e.clientX / window.innerWidth,
+        y: e.clientY / window.innerHeight,
+      },
+      particleCount: 7,
+      startVelocity: 10,
+      spread: 70,
+      decay: 0.9,
+      shapes: ["slide", "circle"],
+    },
+  });
 });

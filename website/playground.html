@@ -40,7 +40,14 @@
       <script>
         confettiZone.addEventListener("click", onClickConfettiZone);
         function onClickConfettiZone(e) {
-          playhtml.dispatchPlayEvent({ type: "confetti" });
+          playhtml.dispatchPlayEvent({
+            type: "confetti",
+            eventPayload: {
+              particleCount: 100,
+              spread: 70,
+              origin: { y: 0.6 },
+            },
+          });
         }
       </script>
       <h1>Tasks</h1>
