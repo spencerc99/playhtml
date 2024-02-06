@@ -60,7 +60,6 @@
   },
   "dependencies": {
     "@playhtml/common": "^0.0.9",
-    "partysocket": "^0.0.25",
     "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.20",
     "yjs": "^13.6.10"

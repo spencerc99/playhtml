@@ -2,7 +2,6 @@
 /// <reference types="vite/client" />
 import YPartyKitProvider from "y-partykit/provider";
 import { IndexeddbPersistence } from "y-indexeddb";
-import PartySocket from "partysocket";
 import "./style.scss";
 import {
   ElementData,
@@ -20,12 +19,13 @@ import { hashElement } from "./utils";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
+const VERBOSE = 0;
+
 const doc = new Y.Doc();
 function getDefaultRoom(): string {
   return window.location.pathname + window.location.search;
 }
 let yprovider: YPartyKitProvider;
-let ws: PartySocket;
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
@@ -75,7 +75,10 @@ function getTagTypes(): (TagType | string)[] {
 }
 
 function sendPlayEvent(eventMessage: EventMessage) {
-  ws.send(JSON.stringify(eventMessage));
+  if (!yprovider.ws) {
+    return;
+  }
+  yprovider.ws.send(JSON.stringify(eventMessage));
 }
 
 let hasSynced = false;
@@ -108,15 +111,6 @@ function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
   yprovider = new YPartyKitProvider(partykitHost, room, doc);
-  ws = new PartySocket({
-    host: partykitHost, // or localhost:1999 in dev
-    room,
-
-    // optionally, pass an object of query string parameters to add to the request
-    // query: async () => ({
-    //   token: await getAuthToken(),
-    // }),
-  });
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
@@ -131,29 +125,6 @@ function initPlayHTML({
       registerPlayEventListener(eventType, event);
     }
   }
-  ws.onmessage = (evt) => {
-    // ignore non-relevant events
-    if (evt.data instanceof Blob) {
-      return;
-    }
-    let message: EventMessage;
-    try {
-      message = JSON.parse(evt.data) as EventMessage;
-    } catch (err) {
-      return;
-    }
-    const { type, eventPayload } = message;
-
-    const maybeHandlers = eventHandlers.get(type);
-    if (!maybeHandlers) {
-      return;
-    }
-
-    for (const handler of maybeHandlers) {
-      handler.onEvent(eventPayload);
-    }
-  };
-
   // Import default styles
   const playStyles = document.createElement("link");
   playStyles.rel = "stylesheet";
@@ -163,6 +134,29 @@ function initPlayHTML({
   // TODO: provide some loading state for these elements immediately?
   // some sort of "hydration" state?
   yprovider.on("sync", (connected: boolean) => {
+    yprovider.ws!.addEventListener("message", (evt) => {
+      // ignore non-relevant events
+      if (evt.data instanceof Blob) {
+        return;
+      }
+      let message: EventMessage;
+      try {
+        message = JSON.parse(evt.data) as EventMessage;
+      } catch (err) {
+        return;
+      }
+      const { type, eventPayload } = message;
+
+      const maybeHandlers = eventHandlers.get(type);
+      if (!maybeHandlers) {
+        return;
+      }
+
+      for (const handler of maybeHandlers) {
+        handler.onEvent(eventPayload);
+      }
+    });
+
     if (!connected) {
       console.error("Issue connecting to yjs...");
     }
@@ -217,13 +211,15 @@ function createPlayElementData<T extends TagType>(
   type tagType = (typeof tagInfo)["defaultData"];
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
-  // console.log(
-  //   "registering element",
-  //   elementId,
-  //   tagData.get(elementId) ?? tagInfo.defaultData,
-  //   tagData.get(elementId),
-  //   tagInfo.defaultData
-  // );
+  if (VERBOSE) {
+    console.log(
+      "registering element",
+      elementId,
+      tagData.get(elementId) ?? tagInfo.defaultData,
+      tagData.get(elementId),
+      tagInfo.defaultData
+    );
+  }
 
   const elementData: ElementData = {
     ...tagInfo,
@@ -240,9 +236,7 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
-      // console.log("changing!", tagData.get(elementId), newData);
       if (deepEquals(tagData.get(elementId), newData)) {
-        // if (tagData.get(elementId) === newData) {
         return;
       }
 
@@ -385,6 +379,9 @@ function setupElements(): void {
       continue;
     }
 
+    if (VERBOSE) {
+      console.log(`SET UP ${tag}`);
+    }
     void Promise.all(
       tagElements.map((element) => setupPlayElementForTag(element, tag))
     );
@@ -476,6 +473,11 @@ function maybeSetupTag(tag: TagType | string): void {
           return;
         }
 
+        if (VERBOSE) {
+          console.log(
+            `[OBSERVE] Setting up playhtml element for tag ${tag} with element ${element}`
+          );
+        }
         setupPlayElementForTag(element, tag);
       } else if (change.action === "update") {
         const elementHandler = tagElementHandlers.get(key)!;
@@ -508,6 +510,10 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element: HTMLElement,
   tag: T
 ): Promise<void> {
+  if (VERBOSE) {
+    console.log(`Setting up playhtml element for tag ${tag}`);
+  }
+
   if (!isElementValidForTag(element, tag)) {
     return;
   }

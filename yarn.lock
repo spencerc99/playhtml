@@ -1117,11 +1117,6 @@ estree-walker@^2.0.2:
   resolved "https://registry.npmjs.org/estree-walker/-/estree-walker-2.0.2.tgz"
   integrity sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w==
 
-event-target-shim@^6.0.2:
-  version "6.0.2"
-  resolved "https://registry.npmjs.org/event-target-shim/-/event-target-shim-6.0.2.tgz"
-  integrity sha512-8q3LsZjRezbFZ2PN+uP+Q7pnHUMmAOziU2vA2OwoFaKIXxlxl38IylhSSgUorWu/rf4er67w0ikBqjBFk/pomA==
-
 execa@^8.0.1:
   version "8.0.1"
   resolved "https://registry.npmjs.org/execa/-/execa-8.0.1.tgz"
@@ -1556,13 +1551,6 @@ partykit@^0.0.79:
   optionalDependencies:
     fsevents "2.3.3"
 
-partysocket@^0.0.25:
-  version "0.0.25"
-  resolved "https://registry.npmjs.org/partysocket/-/partysocket-0.0.25.tgz"
-  integrity sha512-1oCGA65fydX/FgdnsiBh68buOvfxuteoZVSb3Paci2kRp/7lhF0HyA8EDb5X/O6FxId1e+usPTQNRuzFEvkJbQ==
-  dependencies:
-    event-target-shim "^6.0.2"
-
 path-key@^3.1.0:
   version "3.1.1"
   resolved "https://registry.npmjs.org/path-key/-/path-key-3.1.1.tgz"
@@ -1989,6 +1977,17 @@ y-partykit@^0.0.20:
   version "0.0.20"
   resolved "https://registry.npmjs.org/y-partykit/-/y-partykit-0.0.20.tgz"
   integrity sha512-wE4dcCCr0cBHBIB9cuButBtma6zoeeqmzuajF01pDoZrFpE2MvSA/tYUhfjC5xI5iTzVcowhbTRl5wKaSEvMxw==
+  dependencies:
+    lib0 "^0.2.88"
+    lodash.debounce "^4.0.8"
+    react "^18.2.0"
+    y-protocols "^1.0.6"
+    yjs "^13.6.10"
+
+y-partykit@^0.0.21:
+  version "0.0.21"
+  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.21.tgz#92e465b1a56b29b99b38503871337182569a257c"
+  integrity sha512-l1SRJL3GV2AZgnOunIdFqDaOHhjX+9tXP9at+tPCpyBJmNFt5Rhnux2sJcRe0Y46ECg9TKJwZf4YCARochrZRg==
   dependencies:
     lib0 "^0.2.88"
     lodash.debounce "^4.0.8"
