@@ -81,6 +81,28 @@ function sendPlayEvent(eventMessage: EventMessage) {
   yprovider.ws.send(JSON.stringify(eventMessage));
 }
 
+function onMessage(evt: MessageEvent) {
+  // ignore non-relevant events
+  if (evt.data instanceof Blob) {
+    return;
+  }
+  let message: EventMessage;
+  try {
+    message = JSON.parse(evt.data) as EventMessage;
+  } catch (err) {
+    return;
+  }
+  const { type, eventPayload } = message;
+
+  const maybeHandlers = eventHandlers.get(type);
+  if (!maybeHandlers) {
+    return;
+  }
+
+  for (const handler of maybeHandlers) {
+    handler.onEvent(eventPayload);
+  }
+}
 let hasSynced = false;
 let firstSetup = true;
 function initPlayHTML({
@@ -134,31 +156,13 @@ function initPlayHTML({
   // TODO: provide some loading state for these elements immediately?
   // some sort of "hydration" state?
   yprovider.on("sync", (connected: boolean) => {
-    yprovider.ws!.addEventListener("message", (evt) => {
-      // ignore non-relevant events
-      if (evt.data instanceof Blob) {
-        return;
-      }
-      let message: EventMessage;
-      try {
-        message = JSON.parse(evt.data) as EventMessage;
-      } catch (err) {
-        return;
-      }
-      const { type, eventPayload } = message;
-
-      const maybeHandlers = eventHandlers.get(type);
-      if (!maybeHandlers) {
-        return;
-      }
-
-      for (const handler of maybeHandlers) {
-        handler.onEvent(eventPayload);
-      }
-    });
-
     if (!connected) {
       console.error("Issue connecting to yjs...");
+    } else if (connected) {
+      yprovider.ws!.addEventListener("message", onMessage);
+    }
+    if (hasSynced) {
+      return;
     }
     hasSynced = true;
     console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
