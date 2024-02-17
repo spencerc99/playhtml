@@ -1,0 +1,22 @@
+@import "../base.scss";
+
+table {
+  border: 1px solid;
+
+  th {
+    border: 1px solid;
+  }
+
+  tr {
+    border: 1px solid;
+
+    td {
+      border: 1px solid;
+      padding: 0.5em;
+    }
+  }
+}
+
+details {
+  width: 300px;
+}
