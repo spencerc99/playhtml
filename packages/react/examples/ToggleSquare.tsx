@@ -3,7 +3,7 @@ import { withPlay } from "@playhtml/react";
 interface Props {}
 
 export const ToggleSquare = withPlay<Props>()(
-  { defaultData: { on: false }},
+  { defaultData: { on: false } },
   ({ data, setData, myAwareness, props }) => {
     return (
       <div
@@ -17,4 +17,3 @@ export const ToggleSquare = withPlay<Props>()(
     );
   }
 );
-=

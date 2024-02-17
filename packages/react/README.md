@@ -34,19 +34,17 @@ export default function App() {
 }
 ```
 
-Then, use `withPlay` to wrap your components to enhance them with live data. `withPlay` takes in a `defaultData` along with other configuration and a norma functional component definition, to which it will pass through the data and a callback to change that data `setData`.
-
-Note that `withPlay` returns a function that returns a function. This weirdness is unfortunately due to a known limitation in Typescript around generics (which hopefully will be [solved soon](https://github.com/microsoft/TypeScript/pull/26349))
+Then, use `withSharedState` to wrap your components in a higher order component to enhance them with live, shared data. `withSharedState` takes in a `defaultData` along with other configuration and a norma functional component definition, to which it will pass through the data and a callback to change that data `setData`.
 
 For example, to create a rectangle that switches between on and off states (designated by the background), you can use the following code:
 
 ```tsx
-import { withPlay } from "@playhtml/react";
+import { withSharedState } from "@playhtml/react";
 interface Props {}
 
-export const ToggleSquare = withPlay<Props>()(
+export const ToggleSquare = withSharedState(
   { defaultData: { on: false } },
-  ({ data, setData, ...props }) => {
+  ({ data, setData }, props: Props) => {
     return (
       <div
         style={{
@@ -66,7 +64,7 @@ https://github.com/spencerc99/playhtml/assets/14796580/beff368e-b659-4db0-b314-1
 A more complex example uses `awareness` to show the number of people on the page and their associated color:
 
 ```tsx
-export const OnlineIndicator = withPlay()(
+export const OnlineIndicator = withSharedState(
   { defaultData: {}, myDefaultAwareness: "#008000", id: "online-indicator" },
   ({ myAwareness, setMyAwareness, awareness }) => {
     const myAwarenessIdx = myAwareness ? awareness.indexOf(myAwareness) : -1;
@@ -108,11 +106,11 @@ interface Reaction {
   count: number;
 }
 
-export const ReactionView = withPlay<{ reaction: Reaction }>()(
+export const ReactionView = withSharedState(
   ({ reaction: { count } }) => ({
     defaultData: { count },
   }),
-  ({ props, data, setData, ref }) => {
+  ({ data, setData, ref }, props: { reaction: Reaction }) => {
     const {
       reaction: { emoji },
     } = props;

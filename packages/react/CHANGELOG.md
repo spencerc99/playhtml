@@ -2,6 +2,50 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 0.3.0 - 2024-02-17
+
+- **NEW API** Replaced the main api `withPlay` with `withSharedState` to make it more functionally clear what it does. This new API also is much cleaner because it removes the need to curry the function. The old `withPlay` API is still available for backwards compatibility but will be removed in the next major version. See some examples below for the comparison:
+
+**old api**
+
+```tsx
+export const ToggleSquare = withPlay<Props>()(
+  { defaultData: { on: false } },
+  ({ data, setData, ...props }) => {
+    return (
+      <div
+        style={{
+          width: "200px",
+          height: "200px",
+          ...(data.on ? { background: "green" } : { background: "red" }),
+        }}
+        onClick={() => setData({ on: !data.on })}
+      />
+    );
+  }
+);
+```
+
+**new api**
+
+```tsx
+export const ToggleSquare = withSharedState(
+  { defaultData: { on: false } },
+  ({ data, setData }, props: Props) => {
+    return (
+      <div
+        style={{
+          width: "200px",
+          height: "200px",
+          ...(data.on ? { background: "green" } : { background: "red" }),
+        }}
+        onClick={() => setData({ on: !data.on })}
+      />
+    );
+  }
+);
+```
+
 ## 0.2.0 - 2024-01-27
 
 - **NEW FEATURE** Added eventing support for imperative logic like showing confetti whenever someone clicks a button which don't depend on a reacting to a data value changing. See the README under "eventing" for more details on how to set this up.`

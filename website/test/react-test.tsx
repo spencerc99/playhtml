@@ -6,12 +6,13 @@ import {
   CanHoverElement,
   withPlay,
   PlayProvider,
-} from "../../packages/react/src";
+} from "@playhtml/react";
 import { ReactionView } from "../../packages/react/examples/Reaction";
 import { Lamp } from "../../packages/react/examples/SharedLamp";
 import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
 import { ConfettiZone } from "../../packages/react/examples/Confetti";
-import { VisitorCount } from "../../packages/react/examples/VisitorCount";
+import { LiveVisitorCount } from "../../packages/react/examples/VisitorCount";
+import { ViewCount } from "../../packages/react/examples/ViewCount";
 
 const Candle = withPlay()(
   { defaultData: { on: false } },
@@ -60,7 +61,8 @@ ReactDOM.createRoot(
       ></div>
     </CanResizeElement> */}
     <ConfettiZone />
-    <VisitorCount />
+    <LiveVisitorCount />
+    <ViewCount />
     {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
     {/* <MirrorableElement></MirrorableElement> */}
   </PlayProvider>

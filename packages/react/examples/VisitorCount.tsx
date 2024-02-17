@@ -4,7 +4,7 @@ import { CanPlayElement } from "../src";
 export function pluralize(word: string, count: number) {
   return count > 1 ? `${word}s` : word;
 }
-export function VisitorCount() {
+export function LiveVisitorCount() {
   return (
     <CanPlayElement
       defaultData={{}}
