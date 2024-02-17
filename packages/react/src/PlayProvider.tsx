@@ -55,6 +55,8 @@ export function PlayProvider({
   return (
     <PlayContext.Provider
       value={{
+        // TODO: probably want to pass some sort of "synced" to handle
+        // initial sync / differentiate default data state from empty state
         setupPlayElements: playhtml.setupPlayElements,
         dispatchPlayEvent: playhtml.dispatchPlayEvent,
         registerPlayEventListener: playhtml.registerPlayEventListener,

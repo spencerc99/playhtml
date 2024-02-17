@@ -165,7 +165,7 @@ export type CanPlayProps<
  *   }
  * );
  */
-export function withSharedState<T extends object, P = any, V = any>(
+export function withSharedState<T extends object, V = any, P = any>(
   playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
   component: (
     playProps: ReactElementEventHandlerData<T, V>,
@@ -186,113 +186,6 @@ export function withSharedState<T extends object, P = any, V = any>(
 
   return (props) => renderChildren(props);
 }
-
-// export function useSharedState<T extends object, V = any>({
-//   id,
-//   ...restProps
-// }: WithPlayProps<T, V> & { id: string }): ReactElementEventHandlerData<T, V> {
-//   const { tagInfo = { "can-play": "" }, ...elementProps } = {
-//     defaultData: undefined,
-//     ...restProps,
-//   };
-//   const computedTagInfo = tagInfo
-//     ? Array.isArray(tagInfo)
-//       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
-//       : tagInfo
-//     : { "can-play": "" };
-//   const ref = useRef<HTMLElement>(null);
-//   const { defaultData, myDefaultAwareness } = elementProps;
-//   const [data, setData] = useState<T | undefined>(defaultData);
-//   const [awareness, setAwareness] = useState<V[]>(
-//     myDefaultAwareness ? [myDefaultAwareness] : []
-//   );
-//   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-//     myDefaultAwareness
-//   );
-//   // TODO: maybe have a separate one for free-form variables?
-//   playhtml.globalData?.get("can-play")?.set(id, data);
-
-//   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
-//   const updateElement: ElementInitializer["updateElementAwareness"] = ({
-//     data: newData,
-//     awareness: newAwareness,
-//     myAwareness,
-//   }) => {
-//     setData(newData);
-//     setAwareness(newAwareness);
-//     setMyAwareness(myAwareness);
-//   };
-
-//   useEffect(() => {
-//     if (!ref.current) {
-//       let ele = document.getElementById(id);
-//       if (!ele) {
-//         ele = document.createElement("div");
-//         for (const [tag, value] of Object.entries(computedTagInfo)) {
-//           ele.setAttribute(tag, value);
-//         }
-//         document.body.appendChild(ele).id = id;
-//       }
-//       ref.current = ele;
-//     }
-
-//     for (const [key, value] of Object.entries(elementProps)) {
-//       // @ts-ignore
-//       ref.current[key] = value;
-//     }
-//     // @ts-ignore
-//     ref.current.updateElement = updateElement;
-//     // @ts-ignore
-//     ref.current.updateElementAwareness = updateElement;
-//     playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
-//     console.log("setting up", ref.current.id);
-//     const existingData = playhtml.globalData
-//       ?.get("can-play")
-//       ?.get(ref.current.id);
-//     if (existingData) {
-//       setData(existingData);
-//     }
-//     // console.log("setting up", elementProps.defaultData, ref.current);
-
-//     return () => {
-//       if (!ref.current || !playhtml.elementHandlers) return;
-//       playhtml.removePlayElement(ref.current);
-//     };
-//   }, [playConfig, ref.current]);
-
-//   return {
-//     // @ts-ignore
-//     data,
-//     awareness,
-//     setData: (newData) => {
-//       // console.log("settingdata", newData);
-//       // console.log(ref.current?.id);
-//       // console.log(
-//       //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
-//       // );
-//       if (!ref.current?.id) {
-//         console.warn(`[@playhtml/react] No id set for element ${ref.current}`);
-//         return;
-//       }
-//       const handler = getCurrentElementHandler(TagType.CanPlay, ref.current.id);
-//       if (!handler) {
-//         console.warn(
-//           `[@playhtml/react] No handler found for element ${ref.current?.id}`
-//         );
-//         return;
-//       }
-//       handler.setData(newData);
-//     },
-//     setMyAwareness: (newLocalAwareness) => {
-//       getCurrentElementHandler(
-//         TagType.CanPlay,
-//         ref.current?.id || ""
-//       )?.setMyAwareness(newLocalAwareness);
-//     },
-//     myAwareness,
-//     ref,
-//   };
-// }
 
 // @deprecated use withSharedState instead
 export const withPlay =
