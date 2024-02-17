@@ -1,5 +1,9 @@
 @import "../base.scss";
 
+#main {
+  color: var(--background-inverted);
+}
+
 table {
   border: 1px solid;
 
@@ -19,4 +23,28 @@ table {
 
 details {
   width: 300px;
+}
+
+.colorController {
+  position: absolute;
+  top: 4em;
+  input {
+    transform: scale(5);
+    margin-bottom: 3.5em;
+    border-color: var(--background-inverted);
+  }
+  button {
+    width: 240px;
+    height: 40px;
+    transition: box-shadow 0.2s, background 0.2s, color 0.2s;
+    background: var(--background);
+    border: 2px solid;
+    border-color: var(--background-inverted);
+
+    &:hover {
+      background: var(--color);
+      color: var(--color-inverted);
+      // box-shadow: 0 0 12px 8px var(--color);
+    }
+  }
 }

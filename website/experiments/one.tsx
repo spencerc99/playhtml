@@ -1,5 +1,5 @@
 import "./one.scss";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { withPlay, PlayProvider } from "@playhtml/react";
 
@@ -58,26 +58,29 @@ const ColorController = withPlay()(
       const newColor = { color, timestamp: Date.now() };
       setData({ colors: [...colors, newColor] });
     };
-    console.log(invertColor(currentColor, false));
+    const colorsReversed = useMemo(() => [...colors].reverse(), [colors]);
 
     return (
       <div
+        id="main"
         style={{
-          width: "100vw",
-          height: "100vh",
+          minWidth: "100vw",
+          minHeight: "100vh",
           background: currentColor,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          justifyContent: "center",
           gap: "1em",
-          color: invertColor(currentColor, true),
+          "--background": currentColor,
+          "--background-inverted": invertColor(currentColor, true),
         }}
       >
         {/* TODO: interesting gradients with what people have selected that hasnt been saved? */}
         <div
+          className="colorController"
           style={{
             display: "flex",
+            flexDirection: "column",
             gap: "0.5em",
             alignItems: "center",
           }}
@@ -92,50 +95,61 @@ const ColorController = withPlay()(
           <button
             style={{
               borderRadius: "8px",
-              border: "none",
               padding: ".25em .5em",
               cursor: "pointer",
+              "--color": color,
+              "--color-inverted": invertColor(color, true),
             }}
             onClick={() => addColor()}
           >
             Change color
           </button>
         </div>
-        <p>the website's color has been changed {colors.length} times</p>
-        <details>
-          <summary>history</summary>
-          <table>
-            <thead>
-              <th>color</th>
-              <th>date</th>
-            </thead>
-            <tbody>
-              {colors.map(({ color, timestamp }) => (
-                <tr>
-                  <td>
-                    <div
-                      style={{
-                        display: "inline-block",
-                        width: "1em",
-                        height: "1em",
-                        background: color,
-                        verticalAlign: "middle",
-                        // TODO:
-                        border: "1px solid black",
-                        marginRight: "4px",
-                      }}
-                    ></div>
-                    {color}
-                  </td>
-                  <td>
-                    {new Date(timestamp).toLocaleDateString()}{" "}
-                    {new Date(timestamp).toLocaleTimeString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            marginTop: "300px",
+            gap: ".5em",
+            paddingBottom: "4em",
+          }}
+        >
+          <p>the website's color has been changed {colors.length} times</p>
+          <details>
+            <summary>history</summary>
+            <table>
+              <thead>
+                <th>color</th>
+                <th>date</th>
+              </thead>
+              <tbody>
+                {colorsReversed.map(({ color, timestamp }) => (
+                  <tr>
+                    <td>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          width: "1em",
+                          height: "1em",
+                          background: color,
+                          verticalAlign: "middle",
+                          // TODO:
+                          border: "1px solid black",
+                          marginRight: "4px",
+                        }}
+                      ></div>
+                      {color}
+                    </td>
+                    <td>
+                      {new Date(timestamp).toLocaleDateString()}{" "}
+                      {new Date(timestamp).toLocaleTimeString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </div>
       </div>
     );
   }
