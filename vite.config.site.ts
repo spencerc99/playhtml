@@ -6,7 +6,9 @@ export default defineConfig({
   root: path.join(__dirname, "website"),
   build: {
     rollupOptions: {
-      input: glob.sync(path.resolve(__dirname, "website", "*.html")),
+      input: glob.sync(path.resolve(__dirname, "website", "**/*.html"), {
+        ignore: ["**/test/**"],
+      }),
     },
     outDir: path.join(__dirname, "site-dist"),
     emptyOutDir: true,
