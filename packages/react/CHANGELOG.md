@@ -2,7 +2,7 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## 0.3.0 - 2024-02-17
+## 0.3.1 - 2024-02-17
 
 - **NEW API** Replaced the main api `withPlay` with `withSharedState` to make it more functionally clear what it does. This new API also is much cleaner because it removes the need to curry the function. The old `withPlay` API is still available for backwards compatibility but will be removed in the next major version. See some examples below for the comparison:
 
