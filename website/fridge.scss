@@ -1,4 +1,10 @@
 @import "./home.scss";
+html,
+body,
+#fridge {
+  padding-bottom: 10em;
+}
+
 #fridge {
   position: relative;
 }

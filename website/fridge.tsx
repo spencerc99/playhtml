@@ -199,45 +199,51 @@ const WordControls = withPlay()(
             bottom: "20%",
             right: "20%",
             display: "flex",
+            flexDirection: "column",
             gap: ".5em",
           }}
         >
-          <input
-            placeholder="New word..."
-            value={input}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onSubmit();
-            }}
-            onChange={(e) => setInput(e.target.value.trim())}
-          ></input>
-          <button
-            onClick={onSubmit}
-            disabled={!Boolean(input)}
+          <div
             style={{
-              padding: ".5em 1em",
+              display: "flex",
+              gap: ".5em",
             }}
           >
-            Add
-          </button>
-        </div>
-        <div
-          style={{
-            position: "fixed",
-            bottom: "16%",
-            right: "20%",
-            display: "flex",
-            gap: ".5em",
-          }}
-        >
-          <button
-            onClick={() => setDeleteMode(!deleteMode)}
+            <input
+              placeholder="New word..."
+              value={input}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSubmit();
+              }}
+              onChange={(e) => setInput(e.target.value.trim())}
+            ></input>
+            <button
+              onClick={onSubmit}
+              disabled={!Boolean(input)}
+              style={{
+                padding: ".5em 1em",
+              }}
+            >
+              Add
+            </button>
+          </div>
+          <div
             style={{
-              background: !deleteMode ? "red" : undefined,
-              padding: ".5em 1em",
+              display: "flex",
+              justifyContent: "flex-end",
             }}
           >
-            {deleteMode ? "Stop" : "Delete"}
-          </button>
+            <button
+              onClick={() => setDeleteMode(!deleteMode)}
+              style={{
+                background: !deleteMode ? "red" : undefined,
+                padding: ".5em 1em",
+                width: "fit-content",
+              }}
+            >
+              {deleteMode ? "Stop" : "Delete"}
+            </button>
+          </div>
         </div>
       </>
     );
