@@ -42,17 +42,23 @@ function padZero(str) {
 const ColorController = withPlay()(
   {
     defaultData: {
-      colors: [{ color: "#5f9ea0", timestamp: 1708112357909 }] as ColorChange[],
+      colors: [] as ColorChange[],
     },
+    myDefaultAwareness: undefined as undefined | { color: string },
   },
-  ({ data, setData }) => {
+  ({ data, setData, awareness, setMyAwareness }) => {
     const { colors } = data;
-    const currentColor = colors[colors.length - 1].color;
+    const currentColor = colors[colors.length - 1]?.color || "#ffffff";
     const [color, setColor] = useState(currentColor);
 
     useEffect(() => {
+      if (colors.length === 0) return;
       setColor(colors[colors.length - 1].color);
     }, [data.colors]);
+
+    useEffect(() => {
+      setMyAwareness(color === currentColor ? undefined : { color });
+    }, [color]);
 
     const addColor = () => {
       const newColor = { color, timestamp: Date.now() };
@@ -66,7 +72,6 @@ const ColorController = withPlay()(
         style={{
           minWidth: "100vw",
           minHeight: "100vh",
-          background: currentColor,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -75,7 +80,7 @@ const ColorController = withPlay()(
           "--background-inverted": invertColor(currentColor, true),
         }}
       >
-        {/* TODO: interesting gradients with what people have selected that hasnt been saved? */}
+        {/* TODO: interesting gradients with what people have selected that hasnt been saved? maybe online indicators but the color is what they have selected and they have blurred treartment */}
         <div
           className="colorController"
           style={{
@@ -94,16 +99,31 @@ const ColorController = withPlay()(
           />
           <button
             style={{
-              borderRadius: "8px",
-              padding: ".25em .5em",
-              cursor: "pointer",
               "--color": color,
               "--color-inverted": invertColor(color, true),
             }}
+            disabled={color === currentColor}
             onClick={() => addColor()}
           >
             Change color
           </button>
+          <div id="awareness">
+            {awareness.map((a) => {
+              return (
+                <div
+                  style={{
+                    background: a.color,
+                    width: "2em",
+                    height: "2em",
+                    // blur
+                    filter: "blur(4px)",
+                    boxShadow: `0 0 8px 4px ${a.color}`,
+                    borderRadius: "50%",
+                  }}
+                ></div>
+              );
+            })}
+          </div>
         </div>
         <div
           style={{
@@ -133,8 +153,7 @@ const ColorController = withPlay()(
                           height: "1em",
                           background: color,
                           verticalAlign: "middle",
-                          // TODO:
-                          border: "1px solid black",
+                          border: `1px solid ${invertColor(color, true)}`,
                           marginRight: "4px",
                         }}
                       ></div>
