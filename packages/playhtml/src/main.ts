@@ -22,8 +22,14 @@ const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const VERBOSE = 0;
 
 const doc = new Y.Doc();
-function getDefaultRoom(): string {
-  return window.location.pathname + window.location.search;
+
+function getDefaultRoom(includeSearch?: boolean): string {
+  // TODO: Strip filename extension
+  const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
+
+  return includeSearch
+    ? transformedPathname + window.location.search
+    : transformedPathname;
 }
 let yprovider: YPartyKitProvider;
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -65,6 +71,15 @@ export interface InitOptions<T = any> {
    *
    */
   events?: Record<string, PlayEvent<T>>;
+  /**
+   * configuration for the default room which is based on the window's url
+   */
+  defaultRoomOptions?: {
+    /**
+     * defaults to false
+     */
+    includeSearch?: boolean;
+  };
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -105,12 +120,13 @@ function onMessage(evt: MessageEvent) {
 }
 let hasSynced = false;
 let firstSetup = true;
-function initPlayHTML({
+async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
-  room: inputRoom = getDefaultRoom(),
   host = DefaultPartykitHost,
   extraCapabilities,
   events,
+  defaultRoomOptions = {},
+  room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
 }: InitOptions = {}) {
   if (!firstSetup) {
     console.error("playhtml already set up!");
@@ -153,20 +169,28 @@ function initPlayHTML({
   playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
   document.head.appendChild(playStyles);
 
-  // TODO: provide some loading state for these elements immediately?
-  // some sort of "hydration" state?
-  yprovider.on("sync", (connected: boolean) => {
-    if (!connected) {
-      console.error("Issue connecting to yjs...");
-    } else if (connected) {
-      yprovider.ws!.addEventListener("message", onMessage);
-    }
+  // await until yprovider is synced
+  await new Promise((resolve) => {
+    // TODO: provide some loading state for these elements immediately?
+    // some sort of "hydration" state?
+    console.log("awaiting...", hasSynced);
     if (hasSynced) {
-      return;
+      resolve(true);
     }
-    hasSynced = true;
-    console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
-    setupElements();
+    yprovider.on("sync", (connected: boolean) => {
+      if (!connected) {
+        console.error("Issue connecting to yjs...");
+      } else if (connected) {
+        yprovider.ws!.addEventListener("message", onMessage);
+      }
+      if (hasSynced) {
+        return;
+      }
+      hasSynced = true;
+      console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+      setupElements();
+      resolve(true);
+    });
   });
 
   return yprovider;
