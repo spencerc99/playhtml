@@ -287,10 +287,16 @@ footer {
 **/
 
 button {
-  background: rgb(80, 75, 69);
+  background: var(--color-text);
   border-radius: 4px;
   cursor: pointer;
+  color: var(--color-background-neutral);
+  // color: rgb(210, 210, 210);
   min-height: 25px;
+
+  &:disabled {
+    opacity: 0.6;
+  }
 }
 
 .wordSubmit {
@@ -387,70 +393,6 @@ kbd {
 @keyframes blink {
   50% {
     opacity: 1;
-  }
-}
-
-/** TODO: refactor into separate files
-** fridge.html
-**/
-#fridge {
-  position: relative;
-}
-
-.fridgeWord {
-  line-height: 1;
-  margin: 4px;
-  background-color: #efefef;
-  color: $color-text-light;
-  padding: 0.4em;
-  box-shadow: 3px 3px 0px 0px rgba(50, 50, 50, 1);
-  cursor: pointer;
-}
-
-.fridgeWordHolder {
-  display: inline-block;
-
-  // iPhone jiggle animation
-  // inspo from https://www.kirupa.com/html5/creating_the_ios_icon_jiggle_wobble_effect_in_css.htm
-  &:nth-child(2n) .fridgeWord:hover {
-    animation-name: jiggle1;
-    animation-iteration-count: infinite;
-    transform-origin: 50% 10%;
-    animation-duration: 0.25s;
-    animation-delay: var(--jiggle-delay);
-  }
-
-  &:nth-child(2n-1) .fridgeWord:hover {
-    animation-name: jiggle2;
-    animation-iteration-count: infinite;
-    animation-direction: alternate;
-    transform-origin: 30% 5%;
-    animation-duration: 0.45s;
-    animation-delay: var(--jiggle-delay);
-  }
-}
-
-@keyframes jiggle1 {
-  0% {
-    transform: rotate(-1deg);
-    animation-timing-function: ease-in;
-  }
-
-  50% {
-    transform: rotate(1.5deg);
-    animation-timing-function: ease-out;
-  }
-}
-
-@keyframes jiggle2 {
-  0% {
-    transform: rotate(1deg);
-    animation-timing-function: ease-in;
-  }
-
-  50% {
-    transform: rotate(-1.5deg);
-    animation-timing-function: ease-out;
   }
 }
 
