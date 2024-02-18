@@ -37,9 +37,6 @@ export function PlayProvider({
     // in future migrate this to a more "reactful" way by having all the elements rely state on this context
     playhtml.setupPlayElements();
   }, [location]);
-  // useEffect(() => {
-  //   playhtml.init(initOptions);
-  // }, []);
 
   const [hasSynced, setHasSynced] = useState(false);
 
@@ -54,13 +51,10 @@ export function PlayProvider({
       }
     );
   }, []);
-  console.log("SYNCED", hasSynced);
 
   return (
     <PlayContext.Provider
       value={{
-        // TODO: probably want to pass some sort of "synced" to handle
-        // initial sync / differentiate default data state from empty state
         setupPlayElements: playhtml.setupPlayElements,
         dispatchPlayEvent: playhtml.dispatchPlayEvent,
         registerPlayEventListener: playhtml.registerPlayEventListener,
@@ -69,7 +63,6 @@ export function PlayProvider({
       }}
     >
       {children}
-      {/* {hasSynced ? children : null} */}
     </PlayContext.Provider>
   );
 }
