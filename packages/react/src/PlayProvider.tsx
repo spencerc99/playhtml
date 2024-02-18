@@ -1,4 +1,4 @@
-import { PropsWithChildren, createContext, useEffect } from "react";
+import { PropsWithChildren, createContext, useEffect, useState } from "react";
 import playhtml from "./playhtml-singleton";
 import { InitOptions } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
@@ -10,7 +10,9 @@ export interface PlayContextInfo
     | "dispatchPlayEvent"
     | "registerPlayEventListener"
     | "removePlayEventListener"
-  > {}
+  > {
+  hasSynced: boolean;
+}
 
 export const PlayContext = createContext<PlayContextInfo>({
   setupPlayElements: () => {},
@@ -19,6 +21,7 @@ export const PlayContext = createContext<PlayContextInfo>({
     throw new Error("not yet implemented");
   },
   removePlayEventListener: () => {},
+  hasSynced: false,
 });
 
 interface Props {
@@ -34,23 +37,24 @@ export function PlayProvider({
     // in future migrate this to a more "reactful" way by having all the elements rely state on this context
     playhtml.setupPlayElements();
   }, [location]);
-  useEffect(() => {
-    playhtml.init(initOptions);
-  }, []);
-
-  // const [hasSynced, setHasSynced] = useState(false);
-
   // useEffect(() => {
-  //   playhtml.init(initOptions).then(
-  //     () => {
-  //       setHasSynced(true);
-  //     },
-  //     (err) => {
-  //       console.error(err);
-  //       setHasSynced(true);
-  //     }
-  //   );
+  //   playhtml.init(initOptions);
   // }, []);
+
+  const [hasSynced, setHasSynced] = useState(false);
+
+  useEffect(() => {
+    playhtml.init(initOptions).then(
+      () => {
+        setHasSynced(true);
+      },
+      (err) => {
+        console.error(err);
+        setHasSynced(true);
+      }
+    );
+  }, []);
+  console.log("SYNCED", hasSynced);
 
   return (
     <PlayContext.Provider
@@ -61,6 +65,7 @@ export function PlayProvider({
         dispatchPlayEvent: playhtml.dispatchPlayEvent,
         registerPlayEventListener: playhtml.registerPlayEventListener,
         removePlayEventListener: playhtml.removePlayEventListener,
+        hasSynced,
       }}
     >
       {children}
