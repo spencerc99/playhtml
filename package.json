@@ -17,10 +17,12 @@
     "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^20.3.3",
     "@types/react": "^18.2.48",
+    "@vitejs/plugin-react": "^4.2.1",
     "glob": "^10.3.10",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
-    "vite": "^4.3.9"
+    "vite": "^4.3.9",
+    "vite-plugin-mpa": "^1.2.0"
   },
   "dependencies": {
     "@playhtml/react": "^0.3.2",
