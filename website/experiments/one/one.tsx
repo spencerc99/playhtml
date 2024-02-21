@@ -81,7 +81,6 @@ const ColorController = withSharedState(
           "--background-inverted": invertColor(currentColor, true),
         }}
       >
-        {/* TODO: interesting gradients with what people have selected that hasnt been saved? maybe online indicators but the color is what they have selected and they have blurred treartment */}
         <div
           className="colorController"
           style={{
@@ -116,7 +115,6 @@ const ColorController = withSharedState(
                     background: a.color,
                     width: "2em",
                     height: "2em",
-                    // blur
                     filter: "blur(4px)",
                     boxShadow: `0 0 8px 4px ${a.color}`,
                     borderRadius: "50%",
@@ -180,10 +178,6 @@ ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
   <PlayProvider>
-    {/* <ColorControllerNone
-      data={{ colors: [{ color: "cadetblue", timestamp: 1708112357909 }] }}
-      setData={() => {}}
-    /> */}
     <ColorController></ColorController>
   </PlayProvider>
 );
