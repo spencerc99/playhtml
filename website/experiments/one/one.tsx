@@ -48,21 +48,24 @@ const ColorController = withSharedState(
   },
   ({ data, setData, awareness, setMyAwareness }) => {
     const { colors } = data;
+    // Get the latest color in the history, otherwise use white as the default background.
     const currentColor = colors[colors.length - 1]?.color || "#ffffff";
     const [color, setColor] = useState(currentColor);
 
     useEffect(() => {
       if (colors.length === 0) return;
+      // Handle updating color with the latest once the history syncs (it starts as `defaultData` and then updates with the latets info)
       setColor(colors[colors.length - 1].color);
     }, [data.colors]);
 
     useEffect(() => {
-      // TODO: can't set to undefined to clear it.
+      // Awareness is "live" information that isn't persisted. In this case, it will be an array of colors for each active user.
       setMyAwareness(color === currentColor ? { color } : { color });
     }, [color]);
 
     const addColor = () => {
       const newColor = { color, timestamp: Date.now() };
+      // Update the history with the latest color. Updates globally and live for everyone on the site.
       setData({ colors: [...colors, newColor] });
     };
     const colorsReversed = useMemo(() => [...colors].reverse(), [colors]);
