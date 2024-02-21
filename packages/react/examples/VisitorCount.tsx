@@ -12,7 +12,6 @@ export function LiveVisitorCount() {
       id="visitorCount"
     >
       {({ awareness }) => {
-        console.log(awareness);
         return (
           <div className="visitorCount">
             {awareness.length} {pluralize("visitor", awareness.length)}

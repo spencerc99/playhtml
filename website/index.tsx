@@ -11,7 +11,7 @@ interface FormData {
   message: string;
   timestamp: number;
 }
-console.log("INIT!");
+
 playhtml.init({
   events: {
     confetti: {

@@ -23,7 +23,6 @@ const Candle = withPlay()(
         selector-id=".candle"
         className="candle"
         onClick={() => {
-          console.log("clicked!", data, { on: !data.on });
           setData({ on: !data.on });
         }}
       />

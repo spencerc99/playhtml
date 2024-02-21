@@ -173,7 +173,6 @@ async function initPlayHTML({
   await new Promise((resolve) => {
     // TODO: provide some loading state for these elements immediately?
     // some sort of "hydration" state?
-    console.log("awaiting...", hasSynced);
     if (hasSynced) {
       resolve(true);
     }

@@ -7,13 +7,11 @@ export const ViewCount = withPlay<Props>()(
   { defaultData: { count: 0 }, id: "viewCount" },
   ({ data, setData }) => {
     const { hasSynced } = useContext(PlayContext);
-    console.log("SYNCEDINNER", hasSynced);
     useEffect(() => {
       if (!hasSynced) {
         return;
       }
 
-      console.log("hello", data.count);
       setData({ count: data.count + 1 });
     }, [hasSynced]);
     return (

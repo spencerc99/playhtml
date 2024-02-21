@@ -180,16 +180,8 @@ const WordControls = withPlay()(
 
                 return word === w.word && color === w.color;
               });
-              console.log(
-                "found idx",
-                idxToDelete,
-                id,
-                word,
-                color,
-                data[idxToDelete]
-              );
+
               setData(data.filter((_, idx) => idx !== idxToDelete));
-              console.log(data);
             }}
           />
         ))}
