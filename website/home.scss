@@ -47,26 +47,6 @@ i {
   position: relative;
 }
 
-footer {
-  @media screen and ((min-width: 768px) or (min-height: 768px)) {
-    position: fixed;
-    bottom: 32px;
-  }
-
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-  width: 100%;
-
-  div {
-    padding: 8px 0;
-    background: rgba(var(--background), 0.7);
-    text-align: center;
-    backdrop-filter: blur(2px);
-    border-radius: 8px;
-  }
-}
-
 #stamp {
   width: 120px;
   height: 120px;

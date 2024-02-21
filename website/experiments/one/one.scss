@@ -65,3 +65,10 @@ details {
   display: flex;
   gap: 0.5em;
 }
+
+footer {
+  color: var(--background-inverted);
+  a {
+    color: var(--background-inverted);
+  }
+}

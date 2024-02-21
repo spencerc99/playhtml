@@ -74,103 +74,113 @@ const ColorController = withSharedState(
       <div
         id="main"
         style={{
-          minWidth: "100vw",
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "1em",
-          "--background": currentColor,
           "--background-inverted": invertColor(currentColor, true),
+          "--background": currentColor,
         }}
       >
         <div
-          className="colorController"
           style={{
+            minWidth: "100vw",
+            minHeight: "100vh",
             display: "flex",
             flexDirection: "column",
-            gap: "0.5em",
             alignItems: "center",
+            gap: "1em",
           }}
         >
-          <input
-            type="color"
-            onChange={(e) => {
-              setColor(e.target.value);
-            }}
-            value={color}
-          />
-          <button
+          <div
+            className="colorController"
             style={{
-              "--color": color,
-              "--color-inverted": invertColor(color, true),
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5em",
+              alignItems: "center",
             }}
-            disabled={color === currentColor}
-            onClick={() => addColor()}
           >
-            Change color
-          </button>
-          <div id="awareness">
-            {awareness.map((a) => {
-              return (
-                <div
-                  style={{
-                    background: a.color,
-                    width: "2em",
-                    height: "2em",
-                    filter: "blur(4px)",
-                    boxShadow: `0 0 8px 4px ${a.color}`,
-                    borderRadius: "50%",
-                  }}
-                ></div>
-              );
-            })}
+            <input
+              type="color"
+              onChange={(e) => {
+                setColor(e.target.value);
+              }}
+              value={color}
+            />
+            <button
+              style={{
+                "--color": color,
+                "--color-inverted": invertColor(color, true),
+              }}
+              disabled={color === currentColor}
+              onClick={() => addColor()}
+            >
+              Change color
+            </button>
+            <div id="awareness">
+              {awareness.map((a) => {
+                return (
+                  <div
+                    style={{
+                      background: a.color,
+                      width: "2em",
+                      height: "2em",
+                      filter: "blur(4px)",
+                      boxShadow: `0 0 8px 4px ${a.color}`,
+                      borderRadius: "50%",
+                    }}
+                  ></div>
+                );
+              })}
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              marginTop: "300px",
+              gap: ".5em",
+              paddingBottom: "4em",
+            }}
+          >
+            <p>the website's color has been changed {colors.length} times</p>
+            <details>
+              <summary>history</summary>
+              <table>
+                <thead>
+                  <th>color</th>
+                  <th>date</th>
+                </thead>
+                <tbody>
+                  {colorsReversed.map(({ color, timestamp }) => (
+                    <tr>
+                      <td>
+                        <div
+                          style={{
+                            display: "inline-block",
+                            width: "1em",
+                            height: "1em",
+                            background: color,
+                            verticalAlign: "middle",
+                            border: `1px solid ${invertColor(color, true)}`,
+                            marginRight: "4px",
+                          }}
+                        ></div>
+                        {color}
+                      </td>
+                      <td>
+                        {new Date(timestamp).toLocaleDateString()}{" "}
+                        {new Date(timestamp).toLocaleTimeString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
           </div>
         </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            marginTop: "300px",
-            gap: ".5em",
-            paddingBottom: "4em",
-          }}
-        >
-          <p>the website's color has been changed {colors.length} times</p>
-          <details>
-            <summary>history</summary>
-            <table>
-              <thead>
-                <th>color</th>
-                <th>date</th>
-              </thead>
-              <tbody>
-                {colorsReversed.map(({ color, timestamp }) => (
-                  <tr>
-                    <td>
-                      <div
-                        style={{
-                          display: "inline-block",
-                          width: "1em",
-                          height: "1em",
-                          background: color,
-                          verticalAlign: "middle",
-                          border: `1px solid ${invertColor(color, true)}`,
-                          marginRight: "4px",
-                        }}
-                      ></div>
-                      {color}
-                    </td>
-                    <td>
-                      {new Date(timestamp).toLocaleDateString()}{" "}
-                      {new Date(timestamp).toLocaleTimeString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        </div>
+        <footer>
+          <div>
+            <a href="https://playhtml.fun">playhtml</a> experiment "1"
+          </div>
+        </footer>
       </div>
     );
   }
