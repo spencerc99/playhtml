@@ -178,7 +178,10 @@ const ColorController = withSharedState(
         </div>
         <footer>
           <div>
-            <a href="https://playhtml.fun">playhtml</a> experiment "1"
+            <a href="https://playhtml.fun">playhtml</a> experiment{" "}
+            <a href="https://github.com/spencerc99/playhtml/blob/main/website/experiments/one/">
+              "01"
+            </a>
           </div>
         </footer>
       </div>
