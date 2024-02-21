@@ -1,7 +1,7 @@
 import "./one.scss";
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { withPlay, PlayProvider } from "@playhtml/react";
+import { PlayProvider, withSharedState } from "@playhtml/react";
 
 interface ColorChange {
   color: string;
@@ -39,7 +39,7 @@ function padZero(str) {
   return (zeros + str).slice(-2);
 }
 
-const ColorController = withPlay()(
+const ColorController = withSharedState(
   {
     defaultData: {
       colors: [] as ColorChange[],
