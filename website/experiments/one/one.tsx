@@ -57,7 +57,8 @@ const ColorController = withPlay()(
     }, [data.colors]);
 
     useEffect(() => {
-      setMyAwareness(color === currentColor ? undefined : { color });
+      // TODO: can't set to undefined to clear it.
+      setMyAwareness(color === currentColor ? { color } : { color });
     }, [color]);
 
     const addColor = () => {
