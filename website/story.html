@@ -212,7 +212,7 @@
     <script type="module" src="./story.ts"></script>
     <script type="module">
       import "https://unpkg.com/playhtml@latest";
-      playhtml.init();
+      playhtml.init({ room: window.location.pathname });
     </script>
     <!-- import cursor chat -->
     <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
