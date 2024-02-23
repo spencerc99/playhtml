@@ -32,11 +32,11 @@ export function PlayProvider({
   children,
   initOptions,
 }: PropsWithChildren<Props>) {
-  const location = useLocation();
+  const { pathname, search } = useLocation();
   useEffect(() => {
     // in future migrate this to a more "reactful" way by having all the elements rely state on this context
     playhtml.setupPlayElements();
-  }, [location]);
+  }, [pathname, search]);
 
   const [hasSynced, setHasSynced] = useState(false);
 
