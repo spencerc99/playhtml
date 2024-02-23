@@ -3,8 +3,9 @@ import words from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
 import { withPlay } from "../packages/react/src";
-import React from "react";
+import React, { useState } from "react";
 import { PlayProvider } from "../packages/react/src";
+import { useLocation } from "./useLocation";
 
 interface FridgeWordType {
   id?: string;
@@ -242,15 +243,88 @@ const WordControls = withPlay()(
   }
 );
 
+function Main() {
+  const { search, pathname } = useLocation();
+  const params = new URLSearchParams(search);
+  const wall = params.get("wall") || pathname;
+  const isDefaultWall = pathname === wall;
+  const [newRoom, setNewRoom] = useState(wall);
+  function setRoom(room: string | null) {
+    // change "wall" search query param to "room"
+    const url = new URL(window.location.href);
+    if (room === null) url.searchParams.delete("wall");
+    else url.searchParams.set("wall", room);
+    window.location.href = url.toString();
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          position: "absolute",
+          top: "-150px",
+          left: "60%",
+          display: "flex",
+          flexDirection: "column",
+          gap: ".5em",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: ".5em",
+          }}
+        >
+          <input
+            placeholder="Room..."
+            value={newRoom}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setRoom(newRoom);
+            }}
+            onChange={(e) => setNewRoom(e.target.value.trim())}
+          ></input>
+          <button
+            onClick={() => setRoom(newRoom)}
+            disabled={!Boolean(newRoom) || newRoom === wall}
+            style={{
+              padding: ".5em 1em",
+            }}
+          >
+            Change Wall
+          </button>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            onClick={() => setRoom(null)}
+            style={{
+              padding: ".5em 1em",
+              width: "fit-content",
+            }}
+            disabled={isDefaultWall}
+          >
+            Back to Main Wall
+          </button>
+        </div>
+      </div>
+      <PlayProvider
+        initOptions={{
+          room: wall,
+        }}
+      >
+        {Words.map((w, i) => (
+          <FridgeWord key={i} word={w} />
+        ))}
+        <WordControls />
+      </PlayProvider>
+    </>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById("fridge") as HTMLElement).render(
-  <PlayProvider
-    initOptions={{
-      room: window.location.pathname,
-    }}
-  >
-    {Words.map((w, i) => (
-      <FridgeWord key={i} word={w} />
-    ))}
-    <WordControls />
-  </PlayProvider>
+  <Main />
 );

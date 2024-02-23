@@ -3,6 +3,7 @@
 #main {
   color: var(--background-inverted);
   background: var(--background);
+  padding-top: 6em;
 }
 
 table {
@@ -31,6 +32,7 @@ details {
   max-width: 800px;
   width: 100%;
   top: 4em;
+  padding-top: 6em;
   input {
     transform: scale(5);
     margin-bottom: 3.5em;
