@@ -97,12 +97,16 @@ const CursorController = withSharedState(
         <h2>cursor inventory</h2>
         <div className="cursors">
           <div
-            className="cursor"
+            className={`cursor ${"" === userCursor ? "active" : ""}`}
             onClick={() => {
               document.body.style.cursor = "";
+              setUserCursor("");
             }}
           >
             original
+            <div className="count">
+              {awareness.filter((a) => a.cursorUrl === "").length}
+            </div>
           </div>
           {cursors.map((cursor) => (
             <div
