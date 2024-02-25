@@ -22,6 +22,12 @@ body {
   flex-direction: column;
   gap: 0.2em;
 
+  .inputs {
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-start;
+  }
+
   img {
     max-width: 50px;
     max-height: 50px;

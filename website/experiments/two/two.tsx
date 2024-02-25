@@ -77,8 +77,8 @@ const CursorController = withSharedState(
               accept="image/png,image/gif"
               onChange={(e) => setCursorFile(e.target.value)}
             /> */}
+            <img src={cursorUrl} alt="cursor url preview" />
           </div>
-          <img src={cursorUrl} alt="cursor url preview" />
           <div
             className="testArea"
             style={{
