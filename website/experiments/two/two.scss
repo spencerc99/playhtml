@@ -58,6 +58,24 @@ body {
   cursor: pointer;
   padding: 0.2em;
   transition: box-shadow 0.2s, background 0.2s, color 0.2s;
+  position: relative;
+
+  .count {
+    position: absolute;
+    border-radius: 50%;
+    background: rgb(156, 191, 223);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    top: -5px;
+    right: -5px;
+  }
+
+  &.active {
+    background: hsl(121, 47%, 55%);
+  }
 
   img {
     max-width: 60px;

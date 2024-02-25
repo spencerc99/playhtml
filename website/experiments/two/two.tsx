@@ -8,19 +8,39 @@ interface Cursor {
   timestamp: number;
 }
 
-const ColorController = withSharedState(
+function randomFromArray<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+const CursorController = withSharedState(
   {
     defaultData: {
       cursors: [] as Cursor[],
     },
+    myDefaultAwareness: {
+      cursorUrl: "",
+    },
   },
-  ({ data, setData }) => {
+  ({ data, setData, myAwareness, setMyAwareness, awareness }) => {
     const [cursorUrl, setCursorUrl] = useState<string>("");
     // const [cursorFile, setCursorFile] = useState<string>("");
     // const [cursorFileEncoded, setCursorFileEncoded] = useState<string>("");
     const { cursors } = data;
     const cursorsSet = new Set(cursors.map((cursor) => cursor.cursorUrl));
-    console.log(cursors);
+    const userCursor = myAwareness?.cursorUrl;
+    const setUserCursor = (newUrl: string) => {
+      setMyAwareness({ cursorUrl: newUrl });
+    };
+    // const [userCursor, setUserCursor] = useState<string>("");
+
+    useEffect(() => {
+      if (cursors.length === 0 || userCursor) return;
+
+      const initCursor = randomFromArray(cursors).cursorUrl;
+      setUserCursor(initCursor);
+      changeCursorUrl(initCursor);
+    }, [data.cursors]);
+
     function changeCursorUrl(newUrl: string) {
       if (!newUrl) {
         return;
@@ -38,6 +58,7 @@ const ColorController = withSharedState(
         });
       }
       document.body.style.cursor = `url(${newUrl}), auto`;
+      setUserCursor(newUrl);
     }
     return (
       <div id="cursorsMain">
@@ -86,7 +107,7 @@ const ColorController = withSharedState(
             <div
               key={cursor.timestamp}
               className={`cursor ${
-                cursor.cursorUrl === cursorUrl ? "active" : ""
+                cursor.cursorUrl === userCursor ? "active" : ""
               }`}
               onClick={() => changeCursorUrl(cursor.cursorUrl)}
               style={{
@@ -94,6 +115,12 @@ const ColorController = withSharedState(
               }}
             >
               <img src={cursor.cursorUrl} alt="cursor" />
+              <div className="count">
+                {
+                  awareness.filter((a) => a.cursorUrl === cursor.cursorUrl)
+                    .length
+                }
+              </div>
             </div>
           ))}
         </div>
@@ -107,6 +134,6 @@ ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
   <PlayProvider>
-    <ColorController></ColorController>
+    <CursorController></CursorController>
   </PlayProvider>
 );
