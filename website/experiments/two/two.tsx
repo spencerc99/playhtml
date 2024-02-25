@@ -1,7 +1,8 @@
 import "./two.scss";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { PlayProvider, withSharedState } from "@playhtml/react";
+import { PlayContext, PlayProvider, withSharedState } from "@playhtml/react";
+import confetti from "canvas-confetti";
 
 interface Cursor {
   cursorUrl: string;
@@ -51,12 +52,36 @@ const CursorController = withSharedState(
     };
     const userCursorIsGif = userCursor && userCursor.endsWith(".gif");
     const [cursorLocation, setCursorLocation] = useState({ x: 0, y: 0 });
+    const { registerPlayEventListener, dispatchPlayEvent } =
+      useContext(PlayContext);
 
     useEffect(() => {
-      document.addEventListener("mousemove", (e) => {
+      const move = (e) => {
         setCursorLocation({ x: e.clientX, y: e.clientY });
-      });
-    });
+      };
+      document.addEventListener("mousemove", move);
+      const click = (e) => {
+        dispatchPlayEvent({
+          type: "confetti",
+          eventPayload: {
+            origin: {
+              x: e.clientX / window.innerWidth,
+              y: e.clientY / window.innerHeight,
+            },
+            particleCount: 7,
+            startVelocity: 10,
+            spread: 70,
+            decay: 1,
+          },
+        });
+      };
+      document.addEventListener("click", click);
+
+      return () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("click", click);
+      };
+    }, []);
     useEffect(() => {
       if (cursors.length === 0 || userCursor) return;
 
@@ -66,7 +91,7 @@ const CursorController = withSharedState(
     }, [data.cursors]);
 
     function changeCursorUrl(newUrl: string) {
-      if (!newUrl) {
+      if (!newUrl && !cursors.length) {
         return;
       }
 
@@ -101,7 +126,12 @@ const CursorController = withSharedState(
         )}
         <h1>cursor festival</h1>
         <p>
-          good sources: <a href="gifcities.org/">gifcities.org</a>,
+          a place for all cursors to play, choose your cursor and share it with
+          everyone else who visits.
+        </p>
+        <p>
+          add your own for others! some good sources:{" "}
+          <a href="gifcities.org/">gifcities.org</a> &{" "}
           <a href="https://www.cursors-4u.com/">https://www.cursors-4u.com/</a>
         </p>
         <div className="actions">
@@ -118,7 +148,7 @@ const CursorController = withSharedState(
               accept="image/png,image/gif"
               onChange={(e) => setCursorFile(e.target.value)}
             /> */}
-            <img src={cursorUrl} alt="cursor url preview" />
+            <img src={cursorUrl} alt="preview" />
           </div>
           <div
             className="testArea"
@@ -132,7 +162,7 @@ const CursorController = withSharedState(
             onClick={() => changeCursorUrl(cursorUrl)}
             disabled={!cursorUrl}
           >
-            change cursor
+            add cursor
           </button>
         </div>
         <h2>cursor inventory</h2>
@@ -179,7 +209,20 @@ const CursorController = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider
+    initOptions={{
+      events: {
+        confetti: {
+          type: "confetti",
+          onEvent: (data) => {
+            confetti({
+              ...(data || {}),
+            });
+          },
+        },
+      },
+    }}
+  >
     <CursorController></CursorController>
   </PlayProvider>
 );
