@@ -100,9 +100,10 @@ const CursorController = withSharedState(
           />
         )}
         <h1>cursor festival</h1>
-        {/* <p>
-          good sources: <a href="gifcities.org/">gifcities.org</a>
-        </p> */}
+        <p>
+          good sources: <a href="gifcities.org/">gifcities.org</a>,
+          <a href="https://www.cursors-4u.com/">https://www.cursors-4u.com/</a>
+        </p>
         <div className="actions">
           <div className="inputs">
             <input

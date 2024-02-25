@@ -19,6 +19,7 @@ body {
 
 .userCursor {
   position: absolute;
+  pointer-events: none;
 }
 
 .actions {
