@@ -1,0 +1,111 @@
+@import "../../base.scss";
+
+body {
+  background: hsl(47, 100%, 72%);
+}
+
+* {
+  cursor: unset;
+}
+
+#cursorsMain {
+  padding-top: 6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1em;
+}
+.actions {
+  display: flex;
+  margin-bottom: 5em;
+  flex-direction: column;
+  gap: 0.2em;
+
+  img {
+    max-width: 50px;
+    max-height: 50px;
+  }
+
+  .testArea {
+    width: 400px;
+    height: 150px;
+    border: 2px dotted black;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    span {
+      color: hsla(0, 0%, 0%, 0.668);
+      font-style: italic;
+    }
+  }
+}
+
+.cursors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+
+.cursor {
+  width: 70px;
+  height: 50px;
+  border: 1px solid;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0.2em;
+  transition: box-shadow 0.2s, background 0.2s, color 0.2s;
+
+  img {
+    max-width: 60px;
+    max-height: 40px;
+  }
+
+  &:hover {
+    box-shadow: 0 0 8px 4px hsla(0, 0%, 57%, 0.3);
+  }
+}
+
+.colorController {
+  position: absolute;
+  max-width: 800px;
+  width: 100%;
+  top: 4em;
+  padding-top: 6em;
+  input {
+    transform: scale(5);
+    margin-bottom: 3.5em;
+    border-color: var(--background-inverted);
+  }
+  button {
+    width: 240px;
+    height: 40px;
+    transition: box-shadow 0.2s, background 0.2s, color 0.2s, opacity 0.3s;
+    background: var(--background);
+    border: 2px solid;
+    border-color: var(--background-inverted);
+    color: var(--background-inverted);
+    border-radius: 8px;
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    &:hover {
+      background: var(--color);
+      color: var(--color-inverted);
+      // box-shadow: 0 0 12px 8px var(--color);
+    }
+  }
+}
+
+#awareness {
+  display: flex;
+  gap: 0.5em;
+}
