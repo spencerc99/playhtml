@@ -12,6 +12,24 @@ function randomFromArray<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function extractUrlFromCursorStyle(cursorStyle: string) {
+  if (!cursorStyle.startsWith('url("')) {
+    return;
+  }
+  cursorStyle = cursorStyle.slice(5);
+
+  if (!cursorStyle.endsWith('"), auto') || cursorStyle.endsWith('")')) {
+    return;
+  }
+  if (cursorStyle.endsWith('"), auto')) {
+    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 8);
+  } else {
+    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 2);
+  }
+
+  return cursorStyle;
+}
+
 const CursorController = withSharedState(
   {
     defaultData: {
@@ -31,8 +49,14 @@ const CursorController = withSharedState(
     const setUserCursor = (newUrl: string) => {
       setMyAwareness({ cursorUrl: newUrl });
     };
-    // const [userCursor, setUserCursor] = useState<string>("");
+    const userCursorIsGif = userCursor && userCursor.endsWith(".gif");
+    const [cursorLocation, setCursorLocation] = useState({ x: 0, y: 0 });
 
+    useEffect(() => {
+      document.addEventListener("mousemove", (e) => {
+        setCursorLocation({ x: e.clientX, y: e.clientY });
+      });
+    });
     useEffect(() => {
       if (cursors.length === 0 || userCursor) return;
 
@@ -62,7 +86,23 @@ const CursorController = withSharedState(
     }
     return (
       <div id="cursorsMain">
+        {userCursorIsGif && (
+          <img
+            src={userCursor}
+            alt="user cursor"
+            className="userCursor"
+            style={{
+              left: cursorLocation.x - 25,
+              top: cursorLocation.y - 25,
+              width: "50px",
+              height: "50px",
+            }}
+          />
+        )}
         <h1>cursor festival</h1>
+        {/* <p>
+          good sources: <a href="gifcities.org/">gifcities.org</a>
+        </p> */}
         <div className="actions">
           <div className="inputs">
             <input

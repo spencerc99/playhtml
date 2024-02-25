@@ -16,6 +16,11 @@ body {
   flex-direction: column;
   gap: 1em;
 }
+
+.userCursor {
+  position: absolute;
+}
+
 .actions {
   display: flex;
   margin-bottom: 5em;
@@ -51,6 +56,8 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5em;
+  max-width: 1000px;
+  padding: 0 1em;
 }
 
 .cursor {
