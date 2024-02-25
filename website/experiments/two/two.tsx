@@ -62,6 +62,7 @@ const CursorController = withSharedState(
     }
     return (
       <div id="cursorsMain">
+        <h1>cursor festival</h1>
         <div className="actions">
           <div className="inputs">
             <input
@@ -93,7 +94,7 @@ const CursorController = withSharedState(
             change cursor
           </button>
         </div>
-        <h1>All Cursors</h1>
+        <h2>cursor inventory</h2>
         <div className="cursors">
           <div
             className="cursor"
