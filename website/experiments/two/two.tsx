@@ -13,24 +13,6 @@ function randomFromArray<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function extractUrlFromCursorStyle(cursorStyle: string) {
-  if (!cursorStyle.startsWith('url("')) {
-    return;
-  }
-  cursorStyle = cursorStyle.slice(5);
-
-  if (!cursorStyle.endsWith('"), auto') || cursorStyle.endsWith('")')) {
-    return;
-  }
-  if (cursorStyle.endsWith('"), auto')) {
-    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 8);
-  } else {
-    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 2);
-  }
-
-  return cursorStyle;
-}
-
 const CursorController = withSharedState(
   {
     defaultData: {
@@ -42,8 +24,6 @@ const CursorController = withSharedState(
   },
   ({ data, setData, myAwareness, setMyAwareness, awareness }) => {
     const [cursorUrl, setCursorUrl] = useState<string>("");
-    // const [cursorFile, setCursorFile] = useState<string>("");
-    // const [cursorFileEncoded, setCursorFileEncoded] = useState<string>("");
     const { cursors } = data;
     const cursorsSet = new Set(cursors.map((cursor) => cursor.cursorUrl));
     const userCursor = myAwareness?.cursorUrl;
@@ -52,8 +32,7 @@ const CursorController = withSharedState(
     };
     const userCursorIsGif = userCursor && userCursor.endsWith(".gif");
     const [cursorLocation, setCursorLocation] = useState({ x: 0, y: 0 });
-    const { registerPlayEventListener, dispatchPlayEvent } =
-      useContext(PlayContext);
+    const { dispatchPlayEvent, hasSynced } = useContext(PlayContext);
 
     useEffect(() => {
       const move = (e) => {
@@ -81,7 +60,7 @@ const CursorController = withSharedState(
         document.removeEventListener("mousemove", move);
         document.removeEventListener("click", click);
       };
-    }, []);
+    }, [hasSynced]);
     useEffect(() => {
       if (cursors.length === 0 || userCursor) return;
 
@@ -141,13 +120,6 @@ const CursorController = withSharedState(
               value={cursorUrl}
               onChange={(e) => setCursorUrl(e.target.value)}
             />
-            {/* <input
-              type="file"
-              value={cursorFile}
-              multiple={false}
-              accept="image/png,image/gif"
-              onChange={(e) => setCursorFile(e.target.value)}
-            /> */}
             <img src={cursorUrl} alt="preview" />
           </div>
           <div
