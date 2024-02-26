@@ -150,6 +150,10 @@ export const ReactionView = withSharedState(
 );
 ```
 
+### Examples
+
+You can find plenty of examples under `packages/react/examples` to see how to use `@playhtml/react` in a variety of ways. Live examples can also be found at https://playhtml.fun/experiments/one/ and https://playhtml.fun/experiments/two/ (all located inside the repo).
+
 ### Eventing
 
 You can set up imperative logic that doesn't depend on a data value changing (like triggering confetti when someone clicks in an area) by registering events with playhtml. You can either pass in a list of events to `PlayProvider` or you can call `playhtml.registerPlayEventListener` to register an event at any time.

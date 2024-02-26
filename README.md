@@ -132,9 +132,7 @@ If you're trying this out and having trouble, please message me ([email](mailto:
 
 ## Examples
 
-To get started, you can find examples under the `example` folder or React examples under `packages/react/examples`.
-
-For full-fledged examples, check out our [community gallery](https://coda.io/@spencer/playhtml) for more inspiration on what you can do! And [submit your own](https://coda.io/form/playhtml-example_dnUR7xNE7wz) once you've made one.
+To get started, you can find examples inside `index.html`, the `website/experiments` folder (these all have corresponding live demos at playhtml.fun/experiments/one/), and React examples under `packages/react/examples`.
 
 ## Custom Capabilities
 
