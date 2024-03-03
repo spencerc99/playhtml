@@ -35,6 +35,7 @@ const CursorController = withSharedState(
     const { dispatchPlayEvent, hasSynced } = useContext(PlayContext);
 
     useEffect(() => {
+      // TODO: doesn't handle scroll
       const move = (e) => {
         setCursorLocation({ x: e.clientX, y: e.clientY });
       };
