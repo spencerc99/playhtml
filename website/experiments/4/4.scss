@@ -1,0 +1,141 @@
+@import "../../base.scss";
+
+body {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 18px;
+}
+
+#main {
+  color: var(--background-inverted);
+  padding-top: 6em;
+  position: relative;
+}
+
+table {
+  border: 1px solid;
+
+  th {
+    border: 1px solid;
+  }
+
+  tr {
+    border: 1px solid;
+
+    td {
+      border: 1px solid;
+      padding: 0.5em;
+    }
+  }
+}
+
+details {
+  width: 310px;
+}
+
+.colorController {
+  position: absolute;
+  max-width: 800px;
+  width: 100%;
+  top: 4em;
+  padding-top: 6em;
+  input {
+    transform: scale(5);
+    margin-bottom: 3.5em;
+    border-color: var(--background-inverted);
+  }
+  button {
+    mix-blend-mode: difference;
+    width: 240px;
+    height: 40px;
+    transition: box-shadow 0.2s, background 0.2s, color 0.2s, opacity 0.3s;
+    background: var(--background);
+    border: 2px solid;
+    border-color: var(--background-inverted);
+    color: var(--background-inverted);
+    border-radius: 8px;
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    &:hover {
+      background: var(--color);
+      color: var(--color-inverted);
+      // box-shadow: 0 0 12px 8px var(--color);
+    }
+  }
+}
+
+#awareness {
+  display: flex;
+  gap: 0.5em;
+}
+
+footer {
+  font-size: 1.5em;
+  color: white;
+  a {
+    color: white;
+  }
+}
+
+.backgrounds {
+  position: absolute;
+  top: 0;
+  display: flex;
+  min-height: 100dvh;
+  height: 100%;
+  width: 100%;
+
+  .background {
+    width: 100%;
+    background: var(--background);
+    color: var(--color);
+
+    &.selected {
+      background: radial-gradient(
+        ellipse at center,
+        var(--background-accent),
+        var(--background) 50%
+      );
+      h3,
+      p {
+        opacity: 1;
+      }
+    }
+
+    &:hover {
+      background: radial-gradient(
+        ellipse at center,
+        var(--background-accent),
+        var(--background) 50%
+      );
+      h3,
+      p {
+        opacity: 1;
+      }
+    }
+    text-align: center;
+    padding: 0.5em;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    min-width: 1px;
+
+    h3,
+    p {
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+  }
+}
+
+.error {
+  mix-blend-mode: difference;
+  color: white;
+  font-style: italic;
+}
