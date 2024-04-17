@@ -2,7 +2,7 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## 2.1.3 - 2024-04-17
+## 2.1.6 - 2024-04-17
 
 - fix bug with native image dragging conflicting with playhtml draggable elements.
 
