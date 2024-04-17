@@ -152,6 +152,8 @@ export class ElementHandler<T = any, U = any, V = any> {
         document.addEventListener("touchend", onDragStop);
       });
       element.addEventListener("mousedown", (e) => {
+        // To prevent dragging images behavior conflicting.
+        e.preventDefault();
         // Need to be able to not persist everything in the data, causing some lag.
         this.onDragStart?.(e, this.getEventHandlerData());
 
