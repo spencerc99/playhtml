@@ -136,6 +136,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       element.addEventListener("touchstart", (e) => {
         // To prevent scrolling the page while dragging
         e.preventDefault();
+        element.classList.add("cursordown");
 
         // Need to be able to not persist everything in the data, causing some lag.
         this.onDragStart?.(e, this.getEventHandlerData());
@@ -145,6 +146,7 @@ export class ElementHandler<T = any, U = any, V = any> {
           this.onDrag?.(e, this.getEventHandlerData());
         };
         const onDragStop = (e: TouchEvent) => {
+          element.classList.remove("cursordown");
           document.removeEventListener("touchmove", onMove);
           document.removeEventListener("touchend", onDragStop);
         };
@@ -156,12 +158,14 @@ export class ElementHandler<T = any, U = any, V = any> {
         e.preventDefault();
         // Need to be able to not persist everything in the data, causing some lag.
         this.onDragStart?.(e, this.getEventHandlerData());
+        element.classList.add("cursordown");
 
         const onMouseMove = (e: MouseEvent) => {
           e.preventDefault();
           this.onDrag?.(e, this.getEventHandlerData());
         };
         const onMouseUp = (e: MouseEvent) => {
+          element.classList.remove("cursordown");
           document.removeEventListener("mousemove", onMouseMove);
           document.removeEventListener("mouseup", onMouseUp);
         };

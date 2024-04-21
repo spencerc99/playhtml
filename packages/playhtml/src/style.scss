@@ -5,19 +5,28 @@
 .__playhtml-element {
 }
 .__playhtml-can-move {
-  cursor: pointer;
+  cursor: grab;
   transition: transform 150ms;
   will-change: transform;
+
+  &.cursordown {
+    cursor: grabbing;
+  }
 }
 .__playhtml-can-spin {
-  cursor: pointer;
+  cursor: grab;
   transition: transform 250ms;
   will-change: transform;
+
+  &.cursordown {
+    cursor: grabbing;
+  }
 }
 .__playhtml-can-grow {
   cursor: pointer;
   transition: transform 250ms;
   will-change: transform;
+  // TODO: turn cursor into a variable and then allow changing that.
 }
 .__playhtml-can-toggle {
   cursor: pointer;
