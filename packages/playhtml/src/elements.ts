@@ -177,10 +177,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.onDragStart = onDragStart;
 
     // Handle advanced settings
-    if (resetShortcut && !this.resetShortcut) {
-      if (!element.title) {
-        element.title = `Hold down the ${ModifierKeyToName[resetShortcut]} key while clicking to reset.`;
-      }
+    if (resetShortcut && !this.resetShortcut) {}
       // @ts-ignore
       element.reset = this.reset;
 
