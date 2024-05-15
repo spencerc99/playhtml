@@ -12,6 +12,7 @@ export function CanMoveElement({
 }) {
   return (
     <CanPlayElement
+      tagInfo={{ [TagType.CanMove]: "" }}
       {...TagTypeToElement[TagType.CanMove]}
       children={(renderData) => {
         const { data } = renderData;
@@ -19,12 +20,13 @@ export function CanMoveElement({
           children,
           renderData
         );
-        return React.cloneElement(
-          React.Children.only(renderedChildren) as any,
-          {
-            style: { transform: `translate(${data.x}px, ${data.y}px)` },
-          }
-        );
+        const child = React.Children.only(renderedChildren) as any;
+        return React.cloneElement(child, {
+          style: {
+            ...(child.props?.style || {}),
+            transform: `translate(${data.x}px, ${data.y}px)`,
+          },
+        });
       }}
     />
   );
@@ -77,12 +79,13 @@ export function CanSpinElement({
           children,
           renderData
         );
-        return React.cloneElement(
-          React.Children.only(renderedChildren) as any,
-          {
-            style: { transform: `rotate(${data.rotation}deg)` },
-          }
-        );
+        const child = React.Children.only(renderedChildren) as any;
+        return React.cloneElement(child, {
+          style: {
+            ...(child.props?.style || {}),
+            transform: `rotate(${data.rotation}deg)`,
+          },
+        });
       }}
     />
   );
@@ -102,12 +105,13 @@ export function CanGrowElement({
           children,
           renderData
         );
-        return React.cloneElement(
-          React.Children.only(renderedChildren) as any,
-          {
-            style: { transform: `scale(${data.scale}deg)` },
-          }
-        );
+        const child = React.Children.only(renderedChildren) as any;
+        return React.cloneElement(child, {
+          style: {
+            ...(child.props?.style || {}),
+            transform: `scale(${data.scale}deg)`,
+          },
+        });
       }}
     />
   );
