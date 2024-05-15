@@ -177,7 +177,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.onDragStart = onDragStart;
 
     // Handle advanced settings
-    if (resetShortcut && !this.resetShortcut) {}
+    if (resetShortcut && !this.resetShortcut) {
       // @ts-ignore
       element.reset = this.reset;
 
