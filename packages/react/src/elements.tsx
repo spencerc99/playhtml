@@ -12,21 +12,14 @@ export function CanMoveElement({
 }) {
   return (
     <CanPlayElement
-      tagInfo={{ [TagType.CanMove]: "" }}
+      tagInfo={[TagType.CanMove]}
       {...TagTypeToElement[TagType.CanMove]}
       children={(renderData) => {
-        const { data } = renderData;
         const renderedChildren = renderSingleChildOrPlayable(
           children,
           renderData
         );
-        const child = React.Children.only(renderedChildren) as any;
-        return React.cloneElement(child, {
-          style: {
-            ...(child.props?.style || {}),
-            transform: `translate(${data.x}px, ${data.y}px)`,
-          },
-        });
+        return renderedChildren;
       }}
     />
   );
@@ -39,27 +32,14 @@ export function CanToggleElement({
 }) {
   return (
     <CanPlayElement
+      tagInfo={[TagType.CanToggle]}
       {...TagTypeToElement[TagType.CanToggle]}
-      // TODO: decide whether to use existing html render logic or convert fully to react.
-      // tagInfo={{ [TagType.CanToggle]: "" }}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
           renderData
         );
-        const on =
-          typeof renderData.data === "boolean"
-            ? renderData.data
-            : renderData.data.on;
-        return React.cloneElement(
-          React.Children.only(renderedChildren) as any,
-          {
-            className: classNames(
-              renderedChildren?.props?.className,
-              on ? "clicked" : ""
-            ),
-          }
-        );
+        return renderedChildren;
       }}
     />
   );
@@ -72,20 +52,14 @@ export function CanSpinElement({
 }) {
   return (
     <CanPlayElement
+      tagInfo={[TagType.CanSpin]}
       {...TagTypeToElement[TagType.CanSpin]}
       children={(renderData) => {
-        const { data } = renderData;
         const renderedChildren = renderSingleChildOrPlayable(
           children,
           renderData
         );
-        const child = React.Children.only(renderedChildren) as any;
-        return React.cloneElement(child, {
-          style: {
-            ...(child.props?.style || {}),
-            transform: `rotate(${data.rotation}deg)`,
-          },
-        });
+        return renderedChildren;
       }}
     />
   );
@@ -98,20 +72,14 @@ export function CanGrowElement({
 }) {
   return (
     <CanPlayElement
-      {...TagTypeToElement[TagType.CanSpin]}
+      tagInfo={[TagType.CanGrow]}
+      {...TagTypeToElement[TagType.CanGrow]}
       children={(renderData) => {
-        const { data } = renderData;
         const renderedChildren = renderSingleChildOrPlayable(
           children,
           renderData
         );
-        const child = React.Children.only(renderedChildren) as any;
-        return React.cloneElement(child, {
-          style: {
-            ...(child.props?.style || {}),
-            transform: `scale(${data.scale}deg)`,
-          },
-        });
+        return renderedChildren;
       }}
     />
   );
