@@ -5,7 +5,6 @@ import {
   ElementEventHandlerData,
   ElementSetupData,
   ModifierKey,
-  ModifierKeyToName,
 } from "@playhtml/common";
 
 // @ts-ignore

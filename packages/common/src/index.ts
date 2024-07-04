@@ -1,10 +1,4 @@
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
-export const ModifierKeyToName: Record<ModifierKey, string> = {
-  ctrlKey: "Control",
-  altKey: "Alt",
-  shiftKey: "Shift",
-  metaKey: "Meta",
-};
 
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)
