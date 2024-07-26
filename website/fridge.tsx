@@ -257,10 +257,10 @@ function Main() {
   const { search, pathname } = useLocation();
   const [hasError, setHasError] = useState(false);
   const params = new URLSearchParams(search);
-  const wall = params.get("wall") || pathname;
-  const isDefaultWall = pathname === wall;
   // strip .html from the pathname
-  const transformedWall = wall.replace(/\.html/g, "");
+  const transformedPathname = pathname.replace(/\.html/g, "");
+  const wall = params.get("wall") || transformedPathname;
+  const isDefaultWall = transformedPathname === wall;
   const [newRoom, setNewRoom] = useState(wall);
   function setRoom(room: string | null) {
     // change "wall" search query param to "room"
@@ -314,7 +314,7 @@ function Main() {
           ></input>
           <button
             onClick={() => setRoom(newRoom)}
-            disabled={!Boolean(newRoom) || newRoom === transformedWall}
+            disabled={!Boolean(newRoom) || newRoom === wall}
             style={{
               padding: ".5em 1em",
             }}
@@ -342,7 +342,7 @@ function Main() {
       </div>
       <PlayProvider
         initOptions={{
-          room: transformedWall,
+          room: wall,
           onError: () => {
             setHasError(true);
           },
