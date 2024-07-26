@@ -134,6 +134,8 @@ const Words = [
   "moon",
 ];
 
+const MaxWords = 1000;
+
 const WordControls = withPlay()(
   {
     defaultData: [] as FridgeWordType[],
@@ -210,6 +212,7 @@ const WordControls = withPlay()(
             style={{
               display: "flex",
               gap: ".5em",
+              justifyContent: "flex-end",
             }}
           >
             <input
@@ -222,7 +225,7 @@ const WordControls = withPlay()(
             ></input>
             <button
               onClick={onSubmit}
-              disabled={!Boolean(input)}
+              disabled={!Boolean(input) || data.length >= MaxWords}
               style={{
                 padding: ".5em 1em",
               }}
@@ -230,6 +233,19 @@ const WordControls = withPlay()(
               Add
             </button>
           </div>
+          {data.length >= MaxWords ? (
+            <div
+              style={{
+                textAlign: "right",
+                color: "slategray",
+                fontSize: ".8em",
+              }}
+            >
+              The fridge is at its limit.
+              <br />
+              Remove some to add more!
+            </div>
+          ) : undefined}
           <div
             style={{
               display: "flex",
