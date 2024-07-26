@@ -80,6 +80,10 @@ export interface InitOptions<T = any> {
      */
     includeSearch?: boolean;
   };
+  /**
+   * Runs if playhtml fails to connect. Useful to show error messages and debugging.
+   */
+  onError?: () => void;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -127,6 +131,7 @@ async function initPlayHTML({
   events,
   defaultRoomOptions = {},
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
+  onError,
 }: InitOptions = {}) {
   if (!firstSetup) {
     console.error("playhtml already set up!");
@@ -149,6 +154,9 @@ async function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
   yprovider = new YPartyKitProvider(partykitHost, room, doc);
+  yprovider.on("error", () => {
+    onError?.();
+  });
   // @ts-ignore
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
