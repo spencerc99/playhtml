@@ -76,52 +76,62 @@ const FridgeWord = withPlay<Props>()(
 );
 
 const Words = [
+  "sometimes",
+  "I",
+  "dream",
+  "of",
+  "a",
+  "world",
+  "full",
+  "of",
+  "love",
+  "where",
   "lightning",
   "surrender",
-  "dream",
-  "love",
+  "s",
+  "with",
+  "vanish",
+  "ing",
+  "tender",
+  "ness",
   "!",
-  "who",
+  "why",
   "don't",
-  "and",
   "you",
   "if",
-  "world",
+  "not",
+  "us",
+  "then",
+  "who",
   "?",
-  "s",
-  "vanish",
-  "tender",
-  "with",
-  "where",
+  "and",
   "few",
-  "I",
-  "question",
-  "moon",
-  "as",
-  "ing",
-  "moment",
-  "its",
-  "but",
-  "is",
-  "sometimes",
-  "in",
-  "every",
   "would",
-  "could",
+  "question",
+  "the",
+  "living",
+  "moment",
+  "as",
+  "its",
+  "energy",
+  "surrounding",
+  "every",
+  "free",
+  "heart",
+  "but",
+  "life",
+  "is",
+  "in",
   "under",
   "around",
-  "s",
-  "the",
-  "once",
-  "surrounding",
-  "free",
-  "someone",
-  "touch",
-  "heart",
-  "life",
-  "living",
-  "never",
   "always",
+  "someone",
+  "s",
+  "touch",
+  "never",
+  "could",
+  "once",
+  "moon",
 ];
 
 const WordControls = withPlay()(
@@ -245,9 +255,11 @@ const WordControls = withPlay()(
 
 function Main() {
   const { search, pathname } = useLocation();
+  const [hasError, setHasError] = useState(false);
   const params = new URLSearchParams(search);
   const wall = params.get("wall") || pathname;
   const isDefaultWall = pathname === wall;
+  const transformedWall = wall.replace(/\./g, "");
   const [newRoom, setNewRoom] = useState(wall);
   function setRoom(room: string | null) {
     // change "wall" search query param to "room"
@@ -259,10 +271,26 @@ function Main() {
 
   return (
     <>
+      {hasError && (
+        <div
+          style={{
+            position: "absolute",
+            top: "-300px",
+            width: "100%",
+            boxShadow: "0 0 8px 4px red",
+            borderRadius: "4px",
+            padding: "0.5em 1em",
+            background: "white",
+          }}
+        >
+          We're having some trouble finding the fridge magnets! Give us a minute
+          to dig around and come back later...
+        </div>
+      )}
       <div
         style={{
           position: "absolute",
-          top: "-150px",
+          top: "-200px",
           left: "60%",
           display: "flex",
           flexDirection: "column",
@@ -285,7 +313,7 @@ function Main() {
           ></input>
           <button
             onClick={() => setRoom(newRoom)}
-            disabled={!Boolean(newRoom) || newRoom === wall}
+            disabled={!Boolean(newRoom) || newRoom === transformedWall}
             style={{
               padding: ".5em 1em",
             }}
@@ -313,7 +341,10 @@ function Main() {
       </div>
       <PlayProvider
         initOptions={{
-          room: wall,
+          room: transformedWall,
+          onError: () => {
+            setHasError(true);
+          },
         }}
       >
         {Words.map((w, i) => (
