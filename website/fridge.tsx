@@ -259,7 +259,8 @@ function Main() {
   const params = new URLSearchParams(search);
   const wall = params.get("wall") || pathname;
   const isDefaultWall = pathname === wall;
-  const transformedWall = wall.replace(/\./g, "");
+  // strip .html from the pathname
+  const transformedWall = wall.replace(/\.html/g, "");
   const [newRoom, setNewRoom] = useState(wall);
   function setRoom(room: string | null) {
     // change "wall" search query param to "room"
