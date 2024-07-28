@@ -225,7 +225,7 @@ Creates a rotatable element using a `rotate` `transform` on the element. Draggin
 
 ## Help & Community
 
-Join our [Discord community](https://discord.gg/h7sABTv8) to get help and show off what you've built!
+Join our [Discord community](https://discord.gg/SKbsSf4ptU) to get help and show off what you've built!
 
 ## Data Policy
 
