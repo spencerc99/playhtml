@@ -3,9 +3,10 @@ import words from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
 import { withPlay } from "../packages/react/src";
-import React, { useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
+import { PlayContext } from "../packages/react/src";
 
 interface FridgeWordType {
   id?: string;
@@ -17,6 +18,8 @@ interface Props extends FridgeWordType {
   onDeleteWord?: () => void;
   className?: string;
 }
+
+const DefaultRoom = "FRIDGE";
 
 const FridgeWord = withPlay<Props>()(
   {
@@ -277,14 +280,54 @@ const WordControls = withPlay()(
   }
 );
 
+function FridgeWords({ hasError }: { hasError: boolean }) {
+  const { hasSynced } = useContext(PlayContext);
+
+  return !hasSynced ? (
+    <div
+      className="loading"
+      style={{
+        borderRadius: "4px",
+        padding: "0.5em 1em",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "1.2em",
+      }}
+    >
+      Finding the words...
+    </div>
+  ) : hasError ? (
+    <div
+      style={{
+        position: "absolute",
+        top: "-300px",
+        width: "100%",
+        boxShadow: "0 0 8px 4px red",
+        borderRadius: "4px",
+        padding: "0.5em 1em",
+        background: "white",
+      }}
+    >
+      We're having some trouble finding the fridge magnets! Give us a minute to
+      dig around and come back later...
+    </div>
+  ) : (
+    <>
+      {Words.map((w, i) => (
+        <FridgeWord key={i} word={w} />
+      ))}
+      <WordControls />
+    </>
+  );
+}
+
 function Main() {
-  const { search, pathname } = useLocation();
+  const { search } = useLocation();
   const [hasError, setHasError] = useState(false);
   const params = new URLSearchParams(search);
-  // strip .html from the pathname
-  const transformedPathname = pathname.replace(/\.html/g, "");
-  const wall = params.get("wall") || transformedPathname;
-  const isDefaultWall = transformedPathname === wall;
+  const wall = params.get("wall") || DefaultRoom;
+  const isDefaultWall = DefaultRoom === wall;
   const [newRoom, setNewRoom] = useState(wall);
   function setRoom(room: string | null) {
     // change "wall" search query param to "room"
@@ -296,22 +339,6 @@ function Main() {
 
   return (
     <>
-      {hasError && (
-        <div
-          style={{
-            position: "absolute",
-            top: "-300px",
-            width: "100%",
-            boxShadow: "0 0 8px 4px red",
-            borderRadius: "4px",
-            padding: "0.5em 1em",
-            background: "white",
-          }}
-        >
-          We're having some trouble finding the fridge magnets! Give us a minute
-          to dig around and come back later...
-        </div>
-      )}
       <div
         style={{
           position: "absolute",
@@ -372,10 +399,7 @@ function Main() {
           },
         }}
       >
-        {Words.map((w, i) => (
-          <FridgeWord key={i} word={w} />
-        ))}
-        <WordControls />
+        <FridgeWords hasError={hasError} />
       </PlayProvider>
     </>
   );
