@@ -135,6 +135,7 @@ const Words = [
 ];
 
 const MaxWords = 500;
+const MaxWordLength = 40;
 
 const WordControls = withPlay()(
   {
@@ -153,6 +154,12 @@ const WordControls = withPlay()(
 
     function onSubmit() {
       if (!input) {
+        return;
+      }
+
+      if (input.length > MaxWordLength) {
+        alert("word too long!");
+        clearMessage();
         return;
       }
       if (
@@ -221,6 +228,7 @@ const WordControls = withPlay()(
               onKeyDown={(e) => {
                 if (e.key === "Enter") onSubmit();
               }}
+              maxLength={30}
               onChange={(e) => setInput(e.target.value.trim())}
             ></input>
             <button
