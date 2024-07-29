@@ -134,7 +134,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 1000;
+const MaxWords = 500;
 
 const WordControls = withPlay()(
   {
