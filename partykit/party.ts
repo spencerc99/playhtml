@@ -27,7 +27,9 @@ export default class PlayServer implements Party.Server {
     message: string | ArrayBuffer | ArrayBufferView,
     sender: Party.Connection<unknown>
   ): void | Promise<void> {
-    this.room.broadcast(message);
+    if (typeof message === "string") {
+      this.room.broadcast(message);
+    }
   }
   async onConnect(ws: Party.Connection<unknown>) {
     // optionally look for events here to filter out valid ones?

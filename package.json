@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.ts",
+    "dev-server": "npx partykit dev partykit/party.ts",
     "build-site": "vite build website --config vite.config.site.ts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && yarn run build); done"
   },
@@ -27,10 +28,10 @@
   "dependencies": {
     "@playhtml/react": "^0.3.2",
     "canvas-confetti": "^1.9.2",
-    "partykit": "^0.0.79",
+    "partykit": "^0.0.108",
     "profane-words": "^1.5.11",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "y-partykit": "^0.0.21"
+    "y-partykit": "^0.0.31"
   }
 }
