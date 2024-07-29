@@ -1,4 +1,8 @@
 @import "./home.scss";
+body {
+  margin: 0;
+  box-sizing: border-box;
+}
 html,
 body,
 #fridge {
@@ -99,4 +103,22 @@ body,
 .loading {
   background: hsla(139, 32%, 65%, 0.6);
   box-shadow: 0 0 8px 4px hsla(139, 42%, 45%, 0.829);
+}
+
+.board {
+  position: absolute;
+  top: 0;
+  width: 100dvw;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.556);
+
+  .boardTitle {
+    margin: 0 auto;
+    max-width: 1000px;
+    padding: 0.25em calc(min(15%, 400px));
+
+    @media screen and (max-width: 1100px) {
+      padding: 0.25em 5%;
+    }
+  }
 }
