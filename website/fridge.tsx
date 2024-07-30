@@ -19,7 +19,7 @@ interface Props extends FridgeWordType {
   className?: string;
 }
 
-const DefaultRoom = "fridge";
+const DefaultRoom = "FRIDGE";
 
 const FridgeWord = withPlay<Props>()(
   {

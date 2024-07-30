@@ -15,11 +15,6 @@ export default class PlayServer implements Party.Server {
       return new Response(JSON.stringify(items));
     }
 
-    if (req.method === "GET" && parsedUrl.searchParams.has("boom")) {
-      await this.room.storage.deleteAll();
-      return new Response("Destroyed room data");
-    }
-
     return new Response("Not found");
   }
 
