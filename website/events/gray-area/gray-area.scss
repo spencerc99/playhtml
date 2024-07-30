@@ -1,0 +1,104 @@
+html,
+body {
+  margin: 0;
+}
+body {
+  background: rgba(255, 254, 236, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-family: "Play";
+  overflow: hidden;
+}
+
+p {
+  margin: 0;
+}
+
+h1 {
+  margin: 0.5em 0;
+}
+
+.letter {
+  display: inline-block;
+
+  &.clicked {
+    text-shadow: orange 0px 0px 10px;
+  }
+}
+
+.lamp {
+  position: absolute;
+  max-width: 200px;
+  &.clicked.clicked {
+    filter: brightness(1.2) saturate(1.6)
+      drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
+  }
+
+  &:hover {
+    cursor: pointer;
+  }
+}
+
+.lampContainer {
+  &:hover {
+    cursor: pointer;
+    animation: jiggle 0.5s ease-in-out;
+  }
+}
+
+@keyframes jiggle {
+  0% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(1deg);
+  }
+  50% {
+    transform: rotate(0deg);
+  }
+  66% {
+    transform: rotate(-1.5deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.cursor {
+  position: fixed;
+  width: 24px;
+  height: 24px;
+  opacity: 0.4;
+  // -webkit-mask-image: url("data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='%23FFFFFF' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='%23FFFFFF' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' width='2' height='8'/%3E%3Cpolygon points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E")
+  //   no-repeat 50% 50%;
+  // mask-image: url("data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='%23FFFFFF' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='%23FFFFFF' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' width='2' height='8'/%3E%3Cpolygon points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E")
+  //   no-repeat 50% 50%;
+  // background-color: var(--bg-color);
+  // mask-repeat: no-repeat;
+  // -webkit-mask-size: cover;
+
+  mask-size: cover;
+  pointer-events: none;
+  z-index: 99999999999;
+  transition: transform ease;
+  position: absolute;
+  top: var(--starting-y);
+  left: var(--starting-x);
+  animation: wander infinite forwards var(--duration)
+    cubic-bezier(0.445, 0.05, 0.55, 0.95);
+}
+
+@keyframes wander {
+  // base it on var(--distance-x) and var(--distance-y)
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(var(--distance-x), var(--distance-y));
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}

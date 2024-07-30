@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite --config vite.config.site.ts",
     "dev-server": "npx partykit dev partykit/party.ts",
+    "deploy-server": "npx partykit deploy",
     "build-site": "vite build website --config vite.config.site.ts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && yarn run build); done"
   },
@@ -17,6 +18,7 @@
     "@cloudflare/workers-types": "^4.20230518.0",
     "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^20.3.3",
+    "@types/randomcolor": "^0.5.9",
     "@types/react": "^18.2.48",
     "@vitejs/plugin-react": "^4.2.1",
     "glob": "^10.3.10",
@@ -30,6 +32,7 @@
     "canvas-confetti": "^1.9.2",
     "partykit": "^0.0.108",
     "profane-words": "^1.5.11",
+    "randomcolor": "^0.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "y-partykit": "^0.0.31"
