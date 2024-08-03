@@ -19,7 +19,7 @@ interface Props extends FridgeWordType {
   className?: string;
 }
 
-const DefaultRoom = "FRIDGE";
+const DefaultRoom = "fridge";
 
 const FridgeWord = withPlay<Props>()(
   {
@@ -137,7 +137,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 500;
+const MaxWords = 200;
 const MaxWordLength = 40;
 
 const WordControls = withPlay()(
