@@ -419,9 +419,9 @@ export const TagTypeToElement: Record<
 
       observeElementChanges(element, (mutations) => {
         const currentState = getData();
-        // console.log("STATE UPDATING", currentState);
+        console.log("STATE UPDATING", currentState);
         const newState = updateStateWithMutation(currentState, mutations);
-        // console.log("STATE UPDATED", newState);
+        console.log("STATE UPDATED", newState);
         setData(newState);
       });
     },
@@ -549,6 +549,7 @@ function updateStateWithMutation(
   mutations: MutationRecord[]
 ): ElementState {
   let newState = deepClone(state);
+  console.log(mutations);
   mutations.forEach((mutation) => {
     switch (mutation.type) {
       case "attributes":
@@ -610,15 +611,34 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
     });
   }
 }
-
 function updateCharacterData(state: ElementState, mutation: MutationRecord) {
-  // @ts-ignore
-  if (mutation.target === state) {
-    // @ts-ignore
-    state.textContent = mutation.target.textContent;
+  if (mutation.target instanceof CharacterData) {
+    updateTextContentRecursive(state, mutation.target);
   }
 }
 
+function updateTextContentRecursive(
+  state: ElementState,
+  target: Node
+): boolean {
+  // TODO: this could get confused with the wrong element because we don't know what side of the tree it's on.
+  // somehow needs to trace the mutation back up to see where in the tree it is?
+  if (
+    state.children.length === 0 &&
+    target.parentElement?.tagName.toLowerCase() === state.tagName
+  ) {
+    state.textContent = target.textContent;
+    return true;
+  }
+
+  for (let childState of state.children) {
+    if (updateTextContentRecursive(childState, target)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 function constructInitialState(element: HTMLElement): ElementState {
   const state: ElementState = {
     tagName: element.tagName.toLowerCase(),
