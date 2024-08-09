@@ -477,7 +477,6 @@ function observeElementChanges(
   options?: {
     childList?: boolean;
     attributes?: boolean;
-    subtree?: boolean;
     characterData?: boolean;
     attributeFilter?: string[];
   }
@@ -486,7 +485,7 @@ function observeElementChanges(
   const defaultOptions = {
     childList: true,
     attributes: true,
-    subtree: true,
+    subtree: false,
     characterData: true,
   };
 
@@ -496,6 +495,11 @@ function observeElementChanges(
   // Callback function to execute when mutations are observed
   const mutationCallback = (mutationsList: MutationRecord[]) => {
     const filteredMutations = mutationsList.filter((mutation) => {
+      // TODO: actually not sure if this line does anything lol but nothing unexpected is happening yet...
+      if (mutation.target !== element) {
+        return false;
+      }
+
       if (config.childList && mutation.type === "childList") {
         return true;
       }
@@ -549,7 +553,6 @@ function updateStateWithMutation(
   mutations: MutationRecord[]
 ): ElementState {
   let newState = deepClone(state);
-  console.log(mutations);
   mutations.forEach((mutation) => {
     switch (mutation.type) {
       case "attributes":
@@ -612,17 +615,7 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
   }
 }
 function updateCharacterData(state: ElementState, mutation: MutationRecord) {
-  if (mutation.target instanceof CharacterData) {
-    updateTextContentRecursive(state, mutation.target);
-  }
-}
-
-function updateTextContentRecursive(
-  state: ElementState,
-  target: Node
-): boolean {
-  // TODO: this could get confused with the wrong element because we don't know what side of the tree it's on.
-  // somehow needs to trace the mutation back up to see where in the tree it is?
+  const target = mutation.target;
   if (
     state.children.length === 0 &&
     target.parentElement?.tagName.toLowerCase() === state.tagName
@@ -630,15 +623,9 @@ function updateTextContentRecursive(
     state.textContent = target.textContent;
     return true;
   }
-
-  for (let childState of state.children) {
-    if (updateTextContentRecursive(childState, target)) {
-      return true;
-    }
-  }
-
   return false;
 }
+
 function constructInitialState(element: HTMLElement): ElementState {
   const state: ElementState = {
     tagName: element.tagName.toLowerCase(),
