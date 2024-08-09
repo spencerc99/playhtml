@@ -499,7 +499,7 @@ function maybeSetupTag(tag: TagType | string): void {
   const tagData: Y.Map<tagType> = globalData.get(tag)!;
 
   tagData.observe((event) => {
-    event.changes.keys.forEach((change, key) => {
+    event.changes.keys.forEach(async (change, key) => {
       const tagElementHandlers = elementHandlers.get(tag)!;
       if (change.action === "add") {
         const element = document.getElementById(key)!;
@@ -515,8 +515,23 @@ function maybeSetupTag(tag: TagType | string): void {
         }
         setupPlayElementForTag(element, tag);
       } else if (change.action === "update") {
-        const elementHandler = tagElementHandlers.get(key)!;
-        elementHandler.__data = tagData.get(key)!;
+        let elementHandler = tagElementHandlers.get(key);
+        if (!elementHandler) {
+          const element = document.getElementById(key)!;
+          if (!isHTMLElement(element)) {
+            console.log(`Element ${key} not an HTML element. Ignoring.`);
+            return;
+          }
+
+          if (VERBOSE) {
+            console.log(
+              `[OBSERVE] Setting up playhtml element for tag ${tag} with element ${element}`
+            );
+          }
+          await setupPlayElementForTag(element, tag);
+          elementHandler = tagElementHandlers.get(key);
+        }
+        elementHandler!.__data = tagData.get(key)!;
       } else if (change.action === "delete") {
         tagElementHandlers.delete(key);
       } else {
