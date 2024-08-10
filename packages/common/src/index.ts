@@ -419,20 +419,17 @@ export const TagTypeToElement: Record<
 
       observeElementChanges(element, (mutations) => {
         const currentState = getData();
-        // console.log("STATE UPDATING", currentState);
-        console.log(mutations);
+        // console.log(mutations);
         const newState = updateStateWithMutation(currentState, mutations);
-        // console.log("STATE UPDATED", newState);
         setData(newState);
       });
     },
     updateElement: ({ element, data }) => {
-      console.log("new data", data);
+      // console.log("new data", data);
       const currentState = constructInitialState(element);
       if (areStatesEqual(currentState, data)) {
         return;
       }
-      console.log("updating");
       updateElementFromState(element, data);
     },
   },
@@ -590,9 +587,7 @@ function updateStateWithMutation(
         break;
     }
   });
-  if (!areStatesEqual(state, newState)) {
-    console.log("state updated", newState);
-  }
+
   return newState;
 }
 
@@ -619,7 +614,6 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
   if (mutation.removedNodes.length) {
     mutation.removedNodes.forEach((node) => {
       if (!isValidNode(node)) {
-        console.log("helo");
         return;
       }
       const nodeState = constructInitialState(node);
@@ -627,7 +621,7 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
         areStatesEqual(child, nodeState)
       );
       if (indexToRemove === -1) {
-        console.log("[remove] returning early!");
+        // console.log("[remove] returning early!");
         return;
       }
 
@@ -638,13 +632,12 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
   if (mutation.addedNodes.length) {
     mutation.addedNodes.forEach((node: Node) => {
       if (!isValidNode(node)) {
-        console.log("helo2");
         return;
       }
       // check to make sure this node is not already added.
       const nodeState = constructInitialState(node);
       if (state.children.find((child) => areStatesEqual(child, nodeState))) {
-        console.log("[add] returning early!");
+        // console.log("[add] returning early!");
         return;
       }
 
@@ -698,8 +691,6 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
     }
   });
 
-  console.log("initial state for", element.id, state);
-
   return state;
 }
 
@@ -707,7 +698,7 @@ function updateElementFromState(
   element: HTMLElement | Text,
   newState: ElementState
 ) {
-  console.log("updating element from state", element, newState);
+  // console.log("updating element from state", element, newState);
   updateCharacterDataFromState(element, newState);
 
   if (newState.nodeType === NodeType.HTMLElement) {
@@ -723,7 +714,6 @@ function updateCharacterDataFromState(
   element: HTMLElement | Text,
   state: ElementState
 ) {
-  //
   if (!state) {
     return;
   }
@@ -782,7 +772,6 @@ function updateChildrenFromState(
           : document.createElement(childState.tagName);
       element.appendChild(childElement);
     }
-    console.log("new element!", childElement);
 
     processedChildren.add(childElement);
     updateElementFromState(childElement, childState);
