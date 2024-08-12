@@ -55,6 +55,18 @@
         <button onclick="addTask()">Add</button>
         <button onclick="removeTask()">Delete</button>
       </div>
+      <br />
+      <hr />
+      <br />
+      <div can-mirror id="t5">red or blue</div>
+      <button onclick="changeText()">red or blue</button>
+      <div can-mirror id="contentEditable" contenteditable="true">
+        CONTENT EDITABLE
+      </div>
+      <div can-mirror id="textChildren2">
+        <h1>IM A TITLE</h1>
+        <p>CONTENT EDITABLE WITH CHILDREN</p>
+      </div>
       <script>
         function addTask() {
           const task = document.createElement("div");
@@ -64,6 +76,10 @@
 
         function removeTask() {
           tasks.removeChild(tasks.lastChild);
+        }
+
+        function changeText() {
+          t5.textContent = t5.textContent === "red" ? "blue" : "red";
         }
       </script>
     </div>

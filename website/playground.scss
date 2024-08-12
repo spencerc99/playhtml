@@ -1,0 +1,28 @@
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #87ceeb;
+}
+.neighborhood {
+  width: 800px;
+  height: 600px;
+  position: relative;
+  background-color: #7cfc00;
+  margin: 20px auto;
+  overflow: hidden;
+}
+.house {
+  width: 100px;
+  height: 100px;
+  background-color: #8b4513;
+  position: absolute;
+}
+.character {
+  width: 20px;
+  height: 20px;
+  background-color: #ff0000;
+  position: absolute;
+  transition: all 0.1s;
+  left: 0;
+  top: 0;
+}
