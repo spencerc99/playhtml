@@ -29,12 +29,14 @@
   },
   "dependencies": {
     "@playhtml/react": "^0.3.2",
+    "@supabase/supabase-js": "^2.45.1",
     "canvas-confetti": "^1.9.2",
-    "partykit": "0.0.79",
+    "partykit": "0.0.108",
     "profane-words": "^1.5.11",
     "randomcolor": "^0.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "y-partykit": "0.0.21"
+    "y-partykit": "0.0.31",
+    "yjs": "^13.6.18"
   }
 }

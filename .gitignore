@@ -27,3 +27,6 @@ dist-ssr
 
 # dev persisted state
 .partykit
+
+# secrets
+.env
