@@ -149,6 +149,11 @@ playhtml.init({
 const slide = confetti.shapeFromText({ text: "🛝" });
 
 document.querySelector("body").addEventListener("click", (e) => {
+  // 1/4 clicks should trigger confetti
+  if (Math.random() > 0.33) {
+    return;
+  }
+
   playhtml.dispatchPlayEvent({
     type: "confetti",
     eventPayload: {
