@@ -2230,14 +2230,14 @@ ws@^8.14.2, ws@^8.17.1:
   resolved "https://registry.npmjs.org/ws/-/ws-8.18.0.tgz"
   integrity sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==
 
-y-indexeddb@^9.0.11:
-  version "9.0.11"
-  resolved "https://registry.npmjs.org/y-indexeddb/-/y-indexeddb-9.0.11.tgz"
-  integrity sha512-HOKQ70qW1h2WJGtOKu9rE8fbX86ExVZedecndMuhwax3yM4DQsQzCTGHt/jvTrFZr/9Ahvd8neD6aZ4dMMjtdg==
+y-indexeddb@^9.0.12:
+  version "9.0.12"
+  resolved "https://registry.yarnpkg.com/y-indexeddb/-/y-indexeddb-9.0.12.tgz#73657f31d52886d7532256610babf5cca4ad5e58"
+  integrity sha512-9oCFRSPPzBK7/w5vOkJBaVCQZKHXB/v6SIT+WYhnJxlEC61juqG0hBrAf+y3gmSMLFLwICNH9nQ53uscuse6Hg==
   dependencies:
     lib0 "^0.2.74"
 
-y-partykit@0.0.31, y-partykit@^0.0.31:
+y-partykit@0.0.31:
   version "0.0.31"
   resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.31.tgz#86938737ed51bd42cc6d2954e7da61eb83f3c0b1"
   integrity sha512-3wM/4mMJYZoEipS0NXZvcb44RTOrI+eVJ/RDqdj7dAqCueIyx0KWXLK51impj2p08qEl4ispWYZ36OWVKuiMpg==
