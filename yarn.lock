@@ -1559,13 +1559,6 @@ lib0@^0.2.74, lib0@^0.2.85, lib0@^0.2.86:
   dependencies:
     isomorphic.js "^0.2.4"
 
-lib0@^0.2.88:
-  version "0.2.88"
-  resolved "https://registry.npmjs.org/lib0/-/lib0-0.2.88.tgz"
-  integrity sha512-KyroiEvCeZcZEMx5Ys+b4u4eEBbA1ch7XUaBhYpwa/nPMrzTjUhI4RfcytmQfYoTBPcdyx+FX6WFNIoNuJzJfQ==
-  dependencies:
-    isomorphic.js "^0.2.4"
-
 lib0@^0.2.94:
   version "0.2.97"
   resolved "https://registry.npmjs.org/lib0/-/lib0-0.2.97.tgz"
@@ -2249,9 +2242,9 @@ y-indexeddb@^9.0.11:
   dependencies:
     lib0 "^0.2.74"
 
-y-partykit@0.0.31:
+y-partykit@0.0.31, y-partykit@^0.0.31:
   version "0.0.31"
-  resolved "https://registry.npmjs.org/y-partykit/-/y-partykit-0.0.31.tgz"
+  resolved "https://registry.yarnpkg.com/y-partykit/-/y-partykit-0.0.31.tgz#86938737ed51bd42cc6d2954e7da61eb83f3c0b1"
   integrity sha512-3wM/4mMJYZoEipS0NXZvcb44RTOrI+eVJ/RDqdj7dAqCueIyx0KWXLK51impj2p08qEl4ispWYZ36OWVKuiMpg==
   dependencies:
     lib0 "^0.2.94"
@@ -2259,17 +2252,6 @@ y-partykit@0.0.31:
     react "^18.2.0"
     y-protocols "^1.0.6"
     yjs "^13.6.16"
-
-y-partykit@^0.0.20:
-  version "0.0.20"
-  resolved "https://registry.npmjs.org/y-partykit/-/y-partykit-0.0.20.tgz"
-  integrity sha512-wE4dcCCr0cBHBIB9cuButBtma6zoeeqmzuajF01pDoZrFpE2MvSA/tYUhfjC5xI5iTzVcowhbTRl5wKaSEvMxw==
-  dependencies:
-    lib0 "^0.2.88"
-    lodash.debounce "^4.0.8"
-    react "^18.2.0"
-    y-protocols "^1.0.6"
-    yjs "^13.6.10"
 
 y-protocols@^1.0.6:
   version "1.0.6"
@@ -2315,13 +2297,6 @@ yjs@13.6.18, yjs@^13.6.16:
   version "13.6.18"
   resolved "https://registry.yarnpkg.com/yjs/-/yjs-13.6.18.tgz#d1575203478bc99ad1b89c098e7d4bacb7f91c3b"
   integrity sha512-GBTjO4QCmv2HFKFkYIJl7U77hIB1o22vSCSQD1Ge8ZxWbIbn8AltI4gyXbtL+g5/GJep67HCMq3Y5AmNwDSyEg==
-  dependencies:
-    lib0 "^0.2.86"
-
-yjs@^13.6.10:
-  version "13.6.11"
-  resolved "https://registry.npmjs.org/yjs/-/yjs-13.6.11.tgz"
-  integrity sha512-FvRRJKX9u270dOLkllGF/UDCWwmIv2Z+ucM4v1QO1TuxdmoiMnSUXH1HAcOKOrkBEhQtPTkxep7tD2DrQB+l0g==
   dependencies:
     lib0 "^0.2.86"
 
