@@ -584,6 +584,18 @@
   resolved "https://registry.npmjs.org/@pkgjs/parseargs/-/parseargs-0.11.0.tgz"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
 
+"@playhtml/react@beta":
+  version "0.3.8-beta.0"
+  resolved "https://registry.yarnpkg.com/@playhtml/react/-/react-0.3.8-beta.0.tgz#3c2436783b3e747b29dc19f696933dabee0105cf"
+  integrity sha512-Gi5WLaXHpsv94S2xyHJPHGOXWL9e+53fwpx0c5fXEInhIM11bdbCkFKFZnkA8RbL4LRF8ddGidOr6rHEtOhg8Q==
+  dependencies:
+    "@playhtml/common" "^0.0.13"
+    classnames "^2.3.2"
+    playhtml beta
+    react "^16.8.0  || ^17.0.0 || ^18.2.0"
+    react-dom "^16.8.0  || ^17.0.0 || ^18.2.0"
+    react-is "^18.2.0"
+
 "@rollup/pluginutils@^5.0.2":
   version "5.0.2"
   resolved "https://registry.npmjs.org/@rollup/pluginutils/-/pluginutils-5.0.2.tgz"
@@ -1763,6 +1775,16 @@ picomatch@^2.0.4, picomatch@^2.2.1, picomatch@^2.3.1:
   resolved "https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz"
   integrity sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA==
 
+playhtml@beta:
+  version "2.1.12-beta.0"
+  resolved "https://registry.yarnpkg.com/playhtml/-/playhtml-2.1.12-beta.0.tgz#09ed63f96e54ed564b07ba872ff9ec6bcd827ebd"
+  integrity sha512-dxC9r2ZtEAuTCcJcm/Fx/ho42OfwVkP5olheZFsR9vEYIBaGRtxYvekwmTC/pui9anjlLp9cnWEzIlKazogVTw==
+  dependencies:
+    "@playhtml/common" "^0.0.13"
+    y-indexeddb "^9.0.12"
+    y-partykit "0.0.31"
+    yjs "13.6.18"
+
 postcss@^8.4.23:
   version "8.4.24"
   resolved "https://registry.npmjs.org/postcss/-/postcss-8.4.24.tgz"
@@ -2234,6 +2256,13 @@ y-indexeddb@^9.0.11:
   version "9.0.11"
   resolved "https://registry.npmjs.org/y-indexeddb/-/y-indexeddb-9.0.11.tgz"
   integrity sha512-HOKQ70qW1h2WJGtOKu9rE8fbX86ExVZedecndMuhwax3yM4DQsQzCTGHt/jvTrFZr/9Ahvd8neD6aZ4dMMjtdg==
+  dependencies:
+    lib0 "^0.2.74"
+
+y-indexeddb@^9.0.12:
+  version "9.0.12"
+  resolved "https://registry.yarnpkg.com/y-indexeddb/-/y-indexeddb-9.0.12.tgz#73657f31d52886d7532256610babf5cca4ad5e58"
+  integrity sha512-9oCFRSPPzBK7/w5vOkJBaVCQZKHXB/v6SIT+WYhnJxlEC61juqG0hBrAf+y3gmSMLFLwICNH9nQ53uscuse6Hg==
   dependencies:
     lib0 "^0.2.74"
 
