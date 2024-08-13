@@ -16,3 +16,14 @@ PRs for bugs or improvements to the core of the library.
 ## Contributing to the core library
 
 There is future work I'm planning on getting to in the Issues section. If you have other ideas, please feel free to open an issue to discuss. Would love contributions from the community for any bugs or feature requests :)
+
+### Linking local packages for development
+
+you'll need to link to local versions to test changes in `common` for use in `playhtml` or changes in `playhtml` for use in `react`. To do this, you can run the following commands:
+
+```bash
+cd packages/common
+yarn link
+cd ../playhtml # or other package name..
+yarn link @playhtml/common
+```
