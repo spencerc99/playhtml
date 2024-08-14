@@ -7,9 +7,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
   font-family: "Play";
-  overflow: hidden;
+  overflow-y: auto;
+  flex-direction: column;
 }
 
 p {
@@ -101,4 +101,71 @@ h1 {
   100% {
     transform: translate(0, 0);
   }
+}
+
+#workshopContent {
+  max-width: 1200px;
+  padding: 2em 4em;
+  background: rgba(255, 255, 185, 0.498);
+  border-radius: 1em;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  margin-bottom: 10vh;
+  font-size: 24px;
+  position: relative;
+
+  ul,
+  ol {
+    margin-top: 6px;
+  }
+}
+
+h3 {
+  color: blueviolet;
+  font-family: "Sono", "Cousine", monospace;
+}
+
+section {
+  margin: 8em 0;
+  &:nth-child(2) {
+    margin-top: 0;
+  }
+}
+
+.retro-timer {
+  font-family: "Courier New", Courier, monospace;
+  background: #808080;
+  color: yellow;
+  padding: 20px;
+  border-radius: 10px;
+  text-align: center;
+  width: fit-content;
+  margin: 20px auto;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.retro-timer h2 {
+  font-size: 2em;
+  margin: 0 0 20px;
+}
+
+.retro-timer .buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.retro-timer button {
+  background: #808080;
+  color: yellow;
+  border: 2px solid yellow;
+  padding: 10px 20px;
+  font-size: 1em;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background 0.3s, color 0.3s;
+}
+
+.retro-timer button:hover {
+  background: yellow;
+  color: #808080;
 }

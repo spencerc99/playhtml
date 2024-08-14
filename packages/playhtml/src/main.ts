@@ -158,6 +158,7 @@ async function initPlayHTML({
     onError?.();
   });
   // @ts-ignore
+  // TODO: we should backup in indexeddb too but not using this bc it introduces a bunch of weird conflicts
   // const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
   if (extraCapabilities) {
