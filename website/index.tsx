@@ -6,10 +6,13 @@ import { playhtml } from "../packages/playhtml/src/main";
 import confetti from "canvas-confetti";
 
 interface FormData {
-  id: string;
   name: string;
   message: string;
   timestamp: number;
+}
+
+function getFormDataId(formData: FormData) {
+  return `${formData.name}-${formData.timestamp}`;
 }
 
 playhtml.init({
@@ -38,7 +41,7 @@ playhtml.init({
         setLocalData,
       }) => {
         const entriesToAdd = entries.filter(
-          (entry) => !addedEntries.has(entry.id)
+          (entry) => !addedEntries.has(getFormDataId(entry))
         );
 
         const guestbookDiv = document.getElementById("guestbookMessages")!;
@@ -83,7 +86,7 @@ playhtml.init({
             newEntry.querySelector(".guestbook-entry-message")!.innerText =
               entry.message;
           }
-          addedEntries.add(entry.id);
+          addedEntries.add(getFormDataId(entry));
         });
 
         setLocalData({ addedEntries });
@@ -135,7 +138,6 @@ playhtml.init({
             message: "something",
             ...inputData,
             timestamp,
-            id: `${timestamp}-${inputData.name}`,
           };
           setData([...entries, newEntry]);
           clearMessage();
