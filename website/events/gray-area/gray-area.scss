@@ -125,9 +125,12 @@ h3 {
 }
 
 section {
-  margin: 8em 0;
+  margin: 15em 0;
   &:nth-child(2) {
     margin-top: 0;
+  }
+  &:last-child {
+    margin-bottom: 0;
   }
 }
 
@@ -168,4 +171,65 @@ section {
 .retro-timer button:hover {
   background: yellow;
   color: #808080;
+}
+
+#guestbook {
+  background: #d1e7ff;
+  border: 2px solid #0078d7;
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+  max-width: 600px;
+  margin: 20px auto;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  font-family: "Comic Sans MS", cursive, sans-serif;
+}
+
+.guestbook-actions {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1em;
+  gap: 0.3em;
+}
+
+.guestbook-actions span {
+}
+
+.guestbook-actions textarea {
+  height: 100px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 2px solid #0078d7;
+  border-radius: 5px;
+  font-family: "Comic Sans MS", cursive, sans-serif;
+}
+
+.guestbook-actions button {
+  background: #0078d7;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 1em;
+  align-self: flex-end;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background 0.3s;
+}
+
+.guestbook-actions button:hover {
+  background: #005bb5;
+}
+
+.guestbook-entry {
+  background: white;
+  border: 1px solid #0078d7;
+  gap: 0.1em;
+  border-radius: 5px;
+  padding: 10px;
+  margin-bottom: 10px;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.guestbook-entry b {
+  color: #0078d7;
 }

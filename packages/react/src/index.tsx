@@ -294,7 +294,9 @@ export function withSharedState<T extends object, V = any, P = any>(
 //   };
 // }
 
-// @deprecated use withSharedState instead
+/**
+ * @deprecated use withSharedState instead
+ */
 export const withPlay =
   <P extends object = {}>() =>
   <T extends object, V = any>(
@@ -304,7 +306,9 @@ export const withPlay =
     ) => React.ReactElement
   ) =>
     withPlayBase<P, T, V>(playConfig, component);
-// @deprecated use withSharedState instead
+/**
+ * @deprecated use withSharedState instead
+ */
 export function withPlayBase<P, T extends object, V = any>(
   playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
   component: (

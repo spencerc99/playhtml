@@ -2,9 +2,7 @@ import ReactDOM from "react-dom";
 import "./gray-area.scss";
 import randomColor from "randomcolor";
 import React, { useEffect } from "react";
-import { PlayProvider } from "@playhtml/react";
-import { withPlay } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { PlayProvider, withSharedState } from "@playhtml/react";
 
 const NumCursors = 50;
 
@@ -51,7 +49,7 @@ function Cursors() {
   );
 }
 
-const Timer = withPlay()(
+const Timer = withSharedState(
   {
     defaultData: { time: 0, isRunning: false },
   },
@@ -117,7 +115,32 @@ function PlayhtmlToolBox() {
   );
 }
 
+function useStickyState<T = any>(
+  key: string,
+  defaultValue: T,
+  onUpdateCallback?: (value: T) => void
+): [T, (value: T) => void] {
+  const [value, setValue] = React.useState(() => {
+    const stickyValue = window.localStorage.getItem(key);
+    return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
+  });
+  React.useEffect(() => {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    onUpdateCallback?.(value);
+  }, [key, value]);
+  return [value, setValue];
+}
+
 function Main() {
+  const [name, setName] = useStickyState<string | null>(
+    "username",
+    null,
+    (newName) => {
+      window.cursors?.setName(newName);
+    }
+  );
+  const [from, setFrom] = useStickyState<string | null>("from", null);
+
   return (
     <PlayProvider>
       <Cursors />
@@ -125,7 +148,31 @@ function Main() {
         <PlayhtmlToolBox />
         <section>
           <h3>hi welcome to "neighborhood internets"</h3>
-          <b>what will we do today</b>
+          <p>
+            get settled, introduce yourself to your neighbor, and open your
+            laptop to do the following:
+            <ol>
+              <li>
+                open{" "}
+                <a href="https://playhtml.fun/events/gray-area">
+                  https://playhtml.fun/events/gray-area
+                </a>
+              </li>
+              <li>
+                join this{" "}
+                <a href="https://discord.gg/pSK5cBtm">discord channel</a> (we'll
+                be using it as our class chat to share links, etc.)
+              </li>
+            </ol>
+          </p>
+          <p>
+            we'll wait a bit for everyone to get here to get started :) in the
+            meanwhile, if you're on this site, you can play around with some of
+            the objects here.
+          </p>
+        </section>
+        <section>
+          <h3>what will we do today</h3>
           <ul
             style={{
               marginTop: 6,
@@ -133,8 +180,8 @@ function Main() {
           >
             <li>make a collaborative website experience using playhtml</li>
             <li>
-              play each other's experiences and open up our ideas of what the
-              web can be
+              play each other's websites and expand our idea of what the web can
+              be
             </li>
             <li>have fun :)</li>
           </ul>
@@ -215,17 +262,30 @@ function Main() {
               </p>
             </div>
           </div>
+          <br />
+          <p>
+            <em>
+              (and thank you to Andre from Gray Area for helping us set up &
+              Gray Area for hosting us!)
+            </em>
+          </p>
         </section>
         <section>
           <h3>let's get to know each other a bit</h3>
           <ul>
             <li>
-              what's your name? <input placeholder="name" />
+              what's your name?{" "}
+              <input
+                placeholder="name"
+                value={name || ""}
+                onChange={(e) => {
+                  setName(e.target.value);
+                }}
+              />
             </li>
             <li>
               where are you from? <input placeholder="from?" />
             </li>
-            <button>submit</button>
             <li>
               what are you excited for today and/or what do you wish the web was
               like?
@@ -283,14 +343,21 @@ function Main() {
         <section>
           <h3>let's dip our toes with making something!!!!!</h3>
           <ul>
-            <li>copy this glitch template</li>
-            <li>you have one of each example on here</li>
-            <li>I'll quickly explain what's happening here</li>
+            <li>
+              copy this{" "}
+              <a href="https://glitch.com/edit/#!/honored-cubic-arthropod">
+                glitch template
+              </a>
+            </li>
             <li>
               let's play around for 10 mins here. I'd suggest finding different
               ways to replace the image, etc.
             </li>
-            <li>let's focus on a single interaction</li>
+            <li>
+              let's focus on trying out all the different capabilities with
+              different assets. try playing around with those around you to get
+              a feel for how it feels to be together on the same site!
+            </li>
           </ul>
           {/* TODO: <p>demonstrations for each capability</p> */}
           <p>
@@ -352,14 +419,119 @@ function Main() {
         <section>
           <h3>let's memorialize what we did here today!</h3>
           {/* TODO: hook up interactive sign up */}
-          <p>sign the guestbook</p>
+          <em>
+            sign the guestbook and if you'd like, leave a link to your website!
+          </em>
+          <br />
+          <br />
+          <Guestbook name={name} from={from} />
+          <footer>
+            a workshop by <a href="https://spencer.place/">spencer</a>
+          </footer>
         </section>
-        <footer>
-          a workshop by <a href="https://spencer.place/">spencer</a>
-        </footer>
       </div>
     </PlayProvider>
   );
 }
 
+interface GuestbookEntry {
+  name: string;
+  from: string;
+  color?: string;
+  message: string;
+  timestamp: number;
+}
+
+const Guestbook = withSharedState(
+  { defaultData: [] as GuestbookEntry[] },
+  ({ data, setData }, { name, from }: { name: string; from: string }) => {
+    const [message, setMessage] = React.useState("");
+
+    const handleSubmit = () => {
+      if (message.trim()) {
+        setData([
+          ...data,
+          {
+            name,
+            from,
+            color: window?.cursors?.color || undefined,
+            message,
+            timestamp: Date.now(),
+          },
+        ]);
+        setMessage("");
+      }
+    };
+
+    return (
+      <div id="guestbook">
+        <div
+          className="guestbook-actions"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            marginBottom: "1em",
+          }}
+        >
+          <span>
+            <b
+              style={{
+                color: window?.cursors.color || "black",
+              }}
+            >
+              {name}
+            </b>
+            {from ? ` (${from})` : ""} says...
+          </span>
+          <textarea
+            placeholder="message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
+          />
+          <button type="submit" onClick={handleSubmit}>
+            Send
+          </button>
+        </div>
+        <hr />
+        {data.map((entry, i) => (
+          <div
+            key={i}
+            className="guestbook-entry"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              marginBottom: "1em",
+            }}
+          >
+            <div>
+              <b
+                style={{
+                  color: entry.color || "black",
+                }}
+              >
+                {entry.name}
+              </b>{" "}
+              {entry.from && `(from ${entry.from})`}
+              <div
+                style={{
+                  float: "right",
+                  fontSize: "50%",
+                }}
+              >
+                {new Date(entry.timestamp).toLocaleString()}
+              </div>
+            </div>
+            <div>{entry.message}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+);
 ReactDOM.render(<Main />, document.getElementById("react"));
