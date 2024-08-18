@@ -110,6 +110,13 @@ function PlayhtmlToolBox() {
         }}
       >
         <Timer />
+        {/* <div id="scratchpad" style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "1em",
+        }}>
+
+        </div> */}
       </div>
     </div>
   );
@@ -531,7 +538,7 @@ const Guestbook = withSharedState(
           </button>
         </div>
         <hr />
-        {data.map((entry, i) => (
+        {data.reverse().map((entry, i) => (
           <div
             key={i}
             className="guestbook-entry"
