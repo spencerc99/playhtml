@@ -424,7 +424,7 @@ function Main() {
           </em>
           <br />
           <br />
-          <Guestbook name={name} from={from} />
+          <Guestbook name={name || undefined} from={from || undefined} />
           <footer>
             a workshop by <a href="https://spencer.place/">spencer</a>
           </footer>
@@ -435,8 +435,8 @@ function Main() {
 }
 
 interface GuestbookEntry {
-  name: string;
-  from: string;
+  name?: string;
+  from?: string;
   color?: string;
   message: string;
   timestamp: number;
@@ -444,7 +444,7 @@ interface GuestbookEntry {
 
 const Guestbook = withSharedState(
   { defaultData: [] as GuestbookEntry[] },
-  ({ data, setData }, { name, from }: { name: string; from: string }) => {
+  ({ data, setData }, { name, from }: { name?: string; from?: string }) => {
     const [message, setMessage] = React.useState("");
 
     const handleSubmit = () => {
@@ -452,7 +452,7 @@ const Guestbook = withSharedState(
         setData([
           ...data,
           {
-            name,
+            name: name,
             from,
             color: window?.cursors?.color || undefined,
             message,
@@ -479,7 +479,7 @@ const Guestbook = withSharedState(
                 color: window?.cursors.color || "black",
               }}
             >
-              {name}
+              {name || "Anonymous"}
             </b>
             {from ? ` (${from})` : ""} says...
           </span>
@@ -515,7 +515,7 @@ const Guestbook = withSharedState(
                   color: entry.color || "black",
                 }}
               >
-                {entry.name}
+                {entry.name || "Anonymous"}
               </b>{" "}
               {entry.from && `(from ${entry.from})`}
               <div
