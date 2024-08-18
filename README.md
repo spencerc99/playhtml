@@ -189,6 +189,12 @@ IDs are recommended on all elements to uniquely identify them. If you are applyi
 
 These capabilities are common ones that have been designed and created by the community. You should expect that they are relatively well-tested, and they simply build on top of the same API and constructs that `can-play` uses.
 
+### `can-mirror`
+
+**EXPERIMENTAL: USE WITH CAUTION**
+
+Automatically syncs all styles and children of an element. This is a really powerful and expressive way to code as you normally do but have it be automatically collaborative. Still in testing and may have some bugs. NOTE that anyone can change the styles using their dev console and have it also sync across. Restricting values to certain ranges or values will soon be supported.
+
 ### `can-move`
 
 https://github.com/spencerc99/playhtml/assets/14796580/215c7631-d71f-40e6-bdda-bd8146a88006

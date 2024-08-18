@@ -163,6 +163,13 @@ function Main() {
                 <a href="https://discord.gg/pSK5cBtm">discord channel</a> (we'll
                 be using it as our class chat to share links, etc.)
               </li>
+              <li>
+                get set up with Gray Area's Wifi.
+                <br />
+                network name: "Gray Area Residents"
+                <br />
+                password: Incubator2024
+              </li>
             </ol>
           </p>
           <p>
@@ -333,6 +340,9 @@ function Main() {
           <p>examples:</p>
           <ul>
             <li>
+              <a href="https://playhtml.fun">playhtml homepage</a>
+            </li>
+            <li>
               <a href="https://playhtml.fun/fridge">fridge poetry</a>
             </li>
             <li>
@@ -344,10 +354,11 @@ function Main() {
           <h3>let's dip our toes with making something!!!!!</h3>
           <ul>
             <li>
-              copy this{" "}
-              <a href="https://glitch.com/edit/#!/honored-cubic-arthropod">
+              play with this{" "}
+              <a href="https://honored-cubic-arthropod.glitch.me/">
                 glitch template
-              </a>
+              </a>{" "}
+              and then click "Remix on Glitch" to get started
             </li>
             <li>
               let's play around for 10 mins here. I'd suggest finding different
@@ -358,8 +369,7 @@ function Main() {
               different assets. try playing around with those around you to get
               a feel for how it feels to be together on the same site!
             </li>
-          </ul>
-          {/* TODO: <p>demonstrations for each capability</p> */}
+          </ul>{" "}
           <p>
             <strong>tips and tricks</strong>
           </p>
@@ -369,27 +379,18 @@ function Main() {
               knows which element to associate the data with
             </li>
             <li>
-              for creating custom capabilities
-              <ul>
-                <li>
-                  if things aren't working or you're stuck in a bad state,
-                  switch out IDs so that the data resets
-                </li>
-              </ul>
+              when using can-mirror, make sure things are working as expected
+              first without playhtml and then add in the can-mirror attribute
+            </li>
+            <li>
+              if things aren't working or you're stuck in a bad state, switch
+              out IDs so that the data resets
             </li>
             <li>
               work with your neighbors!! and ask them to help you test things
               out
             </li>
             <li>alejandro and i are available if you get stuck</li>
-          </ul>
-        </section>
-        <section>
-          <h3>share with those around you</h3>
-          <ul>
-            <li>how does it make you feel?</li>
-            <li>how does it feel when other people are there?</li>
-            <li>what is getting you excited?</li>
           </ul>
         </section>
         <section>
@@ -414,6 +415,36 @@ function Main() {
             <li>a collage</li>
             <li>a fireplace / campsite</li>
             <li>a friendship lamp</li>
+          </ul>
+          <p>
+            <strong>tips and tricks</strong>
+          </p>
+          <ul>
+            <li>
+              make sure each element has an ID! this makes it such that playhtml
+              knows which element to associate the data with
+            </li>
+            <li>
+              when using can-mirror, make sure things are working as expected
+              first without playhtml and then add in the can-mirror attribute
+            </li>
+            <li>
+              if things aren't working or you're stuck in a bad state, switch
+              out IDs so that the data resets
+            </li>
+            <li>
+              work with your neighbors!! and ask them to help you test things
+              out
+            </li>
+            <li>alejandro and i are available if you get stuck</li>
+          </ul>
+        </section>
+        <section>
+          <h3>break time! share with those around you</h3>
+          <ul>
+            <li>how does it make you feel?</li>
+            <li>how does it feel when other people are there?</li>
+            <li>what is getting you excited?</li>
           </ul>
         </section>
         <section>
