@@ -484,6 +484,7 @@ const Guestbook = withSharedState(
             {from ? ` (${from})` : ""} says...
           </span>
           <textarea
+            maxLength={800}
             placeholder="message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -507,6 +508,7 @@ const Guestbook = withSharedState(
               display: "flex",
               flexDirection: "column",
               marginBottom: "1em",
+              fontSize: "80%",
             }}
           >
             <div>
@@ -527,7 +529,7 @@ const Guestbook = withSharedState(
                 {new Date(entry.timestamp).toLocaleString()}
               </div>
             </div>
-            <div>{entry.message}</div>
+            <div style={{}}>{entry.message}</div>
           </div>
         ))}
       </div>
