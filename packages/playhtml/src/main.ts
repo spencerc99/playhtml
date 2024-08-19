@@ -133,10 +133,12 @@ async function initPlayHTML({
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
 }: InitOptions = {}) {
-  if (!firstSetup) {
-    console.error("playhtml already set up!");
+  if (!firstSetup || "playhtml" in window) {
+    console.error("playhtml already set up! ignoring");
     return;
   }
+  // @ts-ignore
+  window.playhtml = playhtml;
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
@@ -467,8 +469,6 @@ export const playhtml: PlayHTMLComponents = {
   registerPlayEventListener,
   removePlayEventListener,
 };
-// @ts-ignore
-window.playhtml = playhtml;
 
 /**
  * Performs any necessary setup for a playhtml TagType. Safe to call repeatedly.

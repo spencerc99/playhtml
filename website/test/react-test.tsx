@@ -7,6 +7,7 @@ import {
   withPlay,
   PlayProvider,
 } from "@playhtml/react";
+import { playhtml } from "../../packages/playhtml/src/main";
 import { ReactionView } from "../../packages/react/examples/Reaction";
 import { Lamp } from "../../packages/react/examples/SharedLamp";
 import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
