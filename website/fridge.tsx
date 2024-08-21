@@ -1,5 +1,5 @@
 import "./fridge.scss";
-import words from "profane-words";
+import profaneWords from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
 import { withPlay } from "../packages/react/src";
@@ -20,6 +20,10 @@ interface Props extends FridgeWordType {
 }
 
 const DefaultRoom = "fridge";
+const DeleteWordLimit = 3;
+const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
+const DeleteLimitReachedKey = "fridge-lastDeleteTime";
+const RestrictedWords = [...profaneWords];
 
 const FridgeWord = withPlay<Props>()(
   {
@@ -137,7 +141,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 200;
+const MaxWords = 300;
 const MaxWordLength = 40;
 
 const WordControls = withPlay()(
@@ -148,12 +152,27 @@ const WordControls = withPlay()(
   ({ data, setData }) => {
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
+    const [deleteCount, setDeleteCount] = React.useState(0);
+
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
 
     function clearMessage() {
       setInput("");
     }
+
+    useEffect(() => {
+      const lastDeleteTime = localStorage.getItem(DeleteLimitReachedKey);
+      if (lastDeleteTime) {
+        const elapsedTime = Date.now() - parseInt(lastDeleteTime);
+        if (elapsedTime < DeleteWordInterval) {
+          setDeleteCount(DeleteWordLimit);
+        } else {
+          setDeleteCount(0);
+          localStorage.removeItem(DeleteLimitReachedKey);
+        }
+      }
+    }, []);
 
     function onSubmit() {
       if (!input) {
@@ -166,7 +185,7 @@ const WordControls = withPlay()(
         return;
       }
       if (
-        words.some((word) => {
+        RestrictedWords.some((word) => {
           const regex = new RegExp(`\\b${word}\\b`, "gi");
           return regex.test(input);
         })
@@ -185,6 +204,32 @@ const WordControls = withPlay()(
       clearMessage();
     }
 
+    function handleDeleteWord(
+      id: string | undefined,
+      word: string,
+      color: string | undefined
+    ) {
+      if (deleteCount >= DeleteWordLimit) {
+        alert("why u deleting so much? chill");
+        setDeleteMode(false);
+        return;
+      }
+
+      const idxToDelete = data.findIndex((w) => {
+        if (id) {
+          return id === w.id;
+        }
+
+        return word === w.word && color === w.color;
+      });
+
+      setData(data.filter((_, idx) => idx !== idxToDelete));
+      setDeleteCount(deleteCount + 1);
+      if (deleteCount + 1 === DeleteWordLimit) {
+        localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
+      }
+    }
+
     return (
       <>
         {data.map(({ word, color, id }) => (
@@ -196,15 +241,7 @@ const WordControls = withPlay()(
             deleteMode={deleteMode}
             className="custom"
             onDeleteWord={() => {
-              const idxToDelete = data.findIndex((w) => {
-                if (id) {
-                  return id === w.id;
-                }
-
-                return word === w.word && color === w.color;
-              });
-
-              setData(data.filter((_, idx) => idx !== idxToDelete));
+              handleDeleteWord(id, word, color);
             }}
           />
         ))}
