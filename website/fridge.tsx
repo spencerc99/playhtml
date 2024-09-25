@@ -141,7 +141,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 300;
+const MaxWords = 400;
 const MaxWordLength = 40;
 
 const WordControls = withPlay()(
@@ -291,7 +291,9 @@ const WordControls = withPlay()(
             >
               The fridge is at its limit.
               <br />
-              Remove some to add more!
+              Remove some words to add more or
+              <br />
+              try changing to a different wall!
             </div>
           ) : undefined}
           <div
