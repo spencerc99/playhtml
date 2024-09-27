@@ -1,8 +1,8 @@
 import ReactDOM from "react-dom";
-import React from "react";
 import { PlayProvider } from "@playhtml/react";
-import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
+import { Cursors, PlayhtmlToolBox, Guestbook } from "../events";
+import React from "react";
 
 function Main() {
   const [name, setName] = useStickyState<string | null>(
@@ -21,30 +21,6 @@ function Main() {
         <PlayhtmlToolBox />
         <section>
           <h3>hi welcome to "neighborhood internets"</h3>
-          <p>
-            get settled, introduce yourself to your neighbor, and open your
-            laptop to do the following:
-            <ol>
-              <li>
-                open{" "}
-                <a href="https://playhtml.fun/events/gray-area">
-                  https://playhtml.fun/events/gray-area
-                </a>
-              </li>
-              <li>
-                join this{" "}
-                <a href="https://discord.gg/pSK5cBtm">discord channel</a> (we'll
-                be using it as our class chat to share links, etc.)
-              </li>
-              <li>
-                get set up with Gray Area's Wifi.
-                <br />
-                network name: "Gray Area Residents"
-                <br />
-                password: Incubator2024
-              </li>
-            </ol>
-          </p>
           <p>
             we'll wait a bit for everyone to get here to get started :) in the
             meanwhile, if you're on this site, you can play around with some of
@@ -122,33 +98,7 @@ function Main() {
               </p>
             </div>
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: ".5em",
-            }}
-          >
-            <img
-              style={{
-                width: "160px",
-                borderRadius: "8px",
-              }}
-              src="https://avatars.githubusercontent.com/u/4564870?v=4"
-            />
-            <div>
-              <b>Alejandro García Salas</b>
-              <p>
-                peruvian software engineer based in San Francisco, California.
-              </p>
-            </div>
-          </div>
           <br />
-          <p>
-            <em>
-              (and thank you to Andre from Gray Area for helping us set up &
-              Gray Area for hosting us!)
-            </em>
-          </p>
         </section>
         <section>
           <h3>let's get to know each other a bit</h3>
@@ -263,7 +213,6 @@ function Main() {
               work with your neighbors!! and ask them to help you test things
               out
             </li>
-            <li>alejandro and i are available if you get stuck</li>
           </ul>
         </section>
         <section>
