@@ -69,8 +69,8 @@ function Main() {
           </ul>
           <p>
             p.s. this website is collaborative and you can follow along with me:{" "}
-            <a href="https://playhtml.fun/events/gray-area">
-              https://playhtml.fun/events/gray-area
+            <a href="https://playhtml.fun/events/if-then">
+              https://playhtml.fun/events/if-then
             </a>
           </p>
         </section>
