@@ -2,7 +2,7 @@ import "./fridge.scss";
 import profaneWords from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
-import { withPlay } from "../packages/react/src";
+import { withPlay, withSharedState } from "../packages/react/src";
 import React, { useContext, useEffect, useState } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
@@ -144,7 +144,7 @@ const Words = [
 const MaxWords = 400;
 const MaxWordLength = 40;
 
-const WordControls = withPlay()(
+const WordControls = withSharedState<FridgeWordType[]>(
   {
     defaultData: [] as FridgeWordType[],
     id: "newWords",
@@ -319,46 +319,98 @@ const WordControls = withPlay()(
   }
 );
 
-function FridgeWords({ hasError }: { hasError: boolean }) {
-  const { hasSynced } = useContext(PlayContext);
-
-  return !hasSynced ? (
-    <div
-      className="loading"
-      style={{
-        borderRadius: "4px",
-        padding: "0.5em 1em",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: "1.2em",
-      }}
-    >
-      Finding the words...
-    </div>
-  ) : hasError ? (
+const AdminSettings = ({
+  data,
+  setData,
+}: {
+  data: { showDefaultWords: boolean };
+  setData: (data: { showDefaultWords: boolean }) => void;
+}) => {
+  return (
     <div
       style={{
-        position: "absolute",
-        top: "-300px",
-        width: "100%",
-        boxShadow: "0 0 8px 4px red",
-        borderRadius: "4px",
-        padding: "0.5em 1em",
+        position: "fixed",
+        top: "20px",
+        right: "20px",
         background: "white",
+        padding: "1em",
+        borderRadius: "4px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        zIndex: 1000,
       }}
     >
-      We're having some trouble finding the fridge magnets! Give us a minute to
-      dig around and come back later...
+      <h3 style={{ margin: "0 0 1em 0" }}>Admin Settings</h3>
+      <label style={{ display: "flex", alignItems: "center", gap: "0.5em" }}>
+        <input
+          type="checkbox"
+          checked={data.showDefaultWords}
+          onChange={(e) =>
+            setData({ ...data, showDefaultWords: e.target.checked })
+          }
+        />
+        Show Default Words
+      </label>
     </div>
-  ) : (
-    <>
-      {Words.map((w, i) => (
-        <FridgeWord key={i} word={w} />
-      ))}
-      <WordControls />
-    </>
   );
+};
+
+interface FridgeWordsProps {
+  hasError: boolean;
+}
+
+const FridgeWordsContent = withPlay<FridgeWordsProps>()(
+  {
+    defaultData: { showDefaultWords: true },
+    id: "adminSettings",
+  },
+  ({ data, props, setData }) => {
+    const { hasSynced } = useContext(PlayContext);
+    const { search } = useLocation();
+    const params = new URLSearchParams(search);
+    const isAdmin = params.get("admin") !== null;
+
+    return !hasSynced ? (
+      <div
+        className="loading"
+        style={{
+          borderRadius: "4px",
+          padding: "0.5em 1em",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "1.2em",
+        }}
+      >
+        Finding the words...
+      </div>
+    ) : props.hasError ? (
+      <div
+        style={{
+          position: "absolute",
+          top: "-300px",
+          width: "100%",
+          boxShadow: "0 0 8px 4px red",
+          borderRadius: "4px",
+          padding: "0.5em 1em",
+          background: "white",
+        }}
+      >
+        We're having some trouble finding the fridge magnets! Give us a minute
+        to dig around and come back later...
+      </div>
+    ) : (
+      <>
+        {data.showDefaultWords &&
+          Words.map((w, i) => <FridgeWord key={i} word={w} />)}
+        <WordControls />
+        {isAdmin && <AdminSettings data={data} setData={setData} />}
+      </>
+    );
+  }
+);
+
+function FridgeWords(props: FridgeWordsProps) {
+  return <FridgeWordsContent {...props} />;
 }
 
 function Main() {
