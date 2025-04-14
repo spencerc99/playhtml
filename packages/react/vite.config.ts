@@ -25,11 +25,12 @@ export default defineConfig({
       fileName: (format) => `react-playhtml.${format}.js`,
     },
     rollupOptions: {
-      external: ["react", "react-dom"],
+      external: ["react", "react-dom", "react/jsx-runtime"],
       output: {
         globals: {
+          "react-dom": "ReactDom",
           react: "React",
-          "react-dom": "ReactDOM",
+          "react/jsx-runtime": "ReactJsxRuntime",
         },
       },
     },
