@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "0.3.7",
+  "version": "0.4.0",
   "license": "MIT",
   "type": "module",
   "keywords": [
