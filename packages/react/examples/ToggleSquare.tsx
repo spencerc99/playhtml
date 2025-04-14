@@ -1,10 +1,11 @@
-import { withPlay } from "@playhtml/react";
+import React from "react";
+import { withSharedState } from "@playhtml/react";
 
 interface Props {}
 
-export const ToggleSquare = withPlay<Props>()(
+export const ToggleSquare = withSharedState(
   { defaultData: { on: false } },
-  ({ data, setData, myAwareness, props }) => {
+  ({ data, setData }, props) => {
     return (
       <div
         style={{

@@ -2,11 +2,20 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
-## 0.4.0 - 2024-12-08
+## 0.4.0 - 2025-04-14
+
+### Breaking Changes
+
+- **REMOVED API** Completely removed the deprecated `withPlay` function. Use `withSharedState` instead (see migration guide in 0.3.1 release notes below).
+
+### Enhancements
 
 - **ENHANCEMENT** Added support for React 19
 - Updated peerDependencies to include React 19
 - Updated TypeScript definitions to support React 19
+- Improvements to provider detection & handling island architectures like Astro
+  - Added standalone mode functionality to eliminate the requirement for a PlayProvider wrapper
+  - Enhanced provider detection with clearer error messages when a provider is missing
 
 ## 0.3.1 - 2024-02-17
 

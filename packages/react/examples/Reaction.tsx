@@ -1,18 +1,20 @@
-import { withPlay } from "@playhtml/react";
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { withSharedState } from "@playhtml/react";
 
 interface Reaction {
   emoji: string;
   count: number;
 }
 
-// something like.. "userData" ?
-export const ReactionView = withPlay<{ reaction: Reaction }>()(
-  ({ reaction: { count } }) => ({
+interface Props {
+  reaction: Reaction;
+}
+
+export const ReactionView = withSharedState(
+  ({ reaction: { count } }: Props) => ({
     defaultData: { count },
   }),
-  ({ props, data, setData, ref }) => {
+  ({ data, setData, ref }, props: Props) => {
     const {
       reaction: { emoji },
     } = props;

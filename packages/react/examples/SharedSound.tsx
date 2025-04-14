@@ -1,36 +1,36 @@
-import { withPlay } from "@playhtml/react";
-import { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
+import { withSharedState } from "@playhtml/react";
 
-export const SharedSound = withPlay<{ soundUrl: string }>()(
-  { defaultData: { isPlaying: false } },
-  ({ data, setData, props, ref }) => {
-    const { soundUrl } = props;
-    const { isPlaying } = data;
+export const SharedSound = withSharedState(
+  { defaultData: { isPlaying: false, timestamp: 0 } },
+  ({ data, setData }, { soundUrl }) => {
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
     useEffect(() => {
-      // This is only needed because of chrome's disabling of autoplay until you have interacted with the page.
-      const listener = () => {
-        if (isPlaying) {
-          (ref.current as HTMLAudioElement)?.play();
-        } else if (!isPlaying) {
-          (ref.current as HTMLAudioElement)?.pause();
-        }
-      };
-      document.addEventListener("click", listener);
-
-      () => document.removeEventListener("click", listener);
-    }, []);
+      if (data.isPlaying) {
+        audioRef.current?.play();
+      } else {
+        audioRef.current?.pause();
+      }
+    }, [data.isPlaying]);
 
     return (
-      <audio
-        className="sound-file"
-        id="sound"
-        controls
-        src={soundUrl}
-        loop
-        autoPlay={isPlaying}
-        muted
-        onPlay={() => setData({ isPlaying: true })}
-      />
+      <div id="sound">
+        <audio
+          ref={audioRef}
+          src={soundUrl}
+          className="sound-file"
+          controls
+          loop
+        />
+        <button
+          onClick={() =>
+            setData({ isPlaying: !data.isPlaying, timestamp: Date.now() })
+          }
+        >
+          {data.isPlaying ? "Pause" : "Play"}
+        </button>
+      </div>
     );
   }
 );

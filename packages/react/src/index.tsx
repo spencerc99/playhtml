@@ -213,14 +213,19 @@ export function withSharedState<T extends object, V = any, P = any>(
   component: (
     playProps: ReactElementEventHandlerData<T, V>,
     props: P
-  ) => React.ReactElement
+  ) => React.ReactElement,
+  options?: { standalone?: boolean }
 ): (props: P) => React.ReactElement {
   const renderChildren = (props: P) => {
+    const configForProps =
+      typeof playConfig === "function" ? playConfig(props) : playConfig;
+
     return (
       <CanPlayElement
         tagInfo={undefined}
         defaultData={undefined}
-        {...(typeof playConfig === "function" ? playConfig(props) : playConfig)}
+        standalone={options?.standalone}
+        {...configForProps}
       >
         {(playData) => component(playData, props)}
       </CanPlayElement>
@@ -336,43 +341,6 @@ export function withSharedState<T extends object, V = any, P = any>(
 //     ref,
 //   };
 // }
-
-/**
- * @deprecated use withSharedState instead
- */
-export const withPlay =
-  <P extends object = {}>() =>
-  <T extends object, V = any>(
-    playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
-    component: (
-      props: ReactElementEventHandlerData<T, V> & { props: P }
-    ) => React.ReactElement
-  ) =>
-    withPlayBase<P, T, V>(playConfig, component);
-/**
- * @deprecated use withSharedState instead
- */
-export function withPlayBase<P, T extends object, V = any>(
-  playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
-  component: (
-    props: ReactElementEventHandlerData<T, V> & { props: P }
-  ) => React.ReactElement
-): (props: P) => React.ReactElement {
-  const renderChildren = (props: P) => {
-    return (
-      // @ts-ignore
-      <CanPlayElement
-        tagInfo={undefined}
-        {...(typeof playConfig === "function" ? playConfig(props) : playConfig)}
-      >
-        {(playData) => component({ props, ...playData })}
-      </CanPlayElement>
-    );
-  };
-
-  // console.log("rendering", ref.current?.id, data, awareness, myAwareness);
-  return (props) => renderChildren(props);
-}
 
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";

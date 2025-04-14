@@ -1,8 +1,9 @@
-import { withPlay } from "@playhtml/react";
+import React from "react";
+import { withSharedState } from "@playhtml/react";
 
-export const OnlineIndicator = withPlay()(
+export const OnlineIndicator = withSharedState(
   { defaultData: {}, myDefaultAwareness: "#008000", id: "online-indicator" },
-  ({ myAwareness, setMyAwareness, awareness }) => {
+  ({ myAwareness, setMyAwareness, awareness }, props) => {
     const myAwarenessIdx = myAwareness ? awareness.indexOf(myAwareness) : -1;
     return (
       <>
