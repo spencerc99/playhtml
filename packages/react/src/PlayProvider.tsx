@@ -12,16 +12,28 @@ export interface PlayContextInfo
     | "removePlayEventListener"
   > {
   hasSynced: boolean;
+  isProviderMissing: boolean;
 }
 
 export const PlayContext = createContext<PlayContextInfo>({
-  setupPlayElements: () => {},
-  dispatchPlayEvent: () => {},
+  setupPlayElements: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  dispatchPlayEvent: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
   registerPlayEventListener: () => {
-    throw new Error("not yet implemented");
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
   },
   removePlayEventListener: () => {},
   hasSynced: false,
+  isProviderMissing: true,
 });
 
 interface Props {
@@ -60,6 +72,7 @@ export function PlayProvider({
         registerPlayEventListener: playhtml.registerPlayEventListener,
         removePlayEventListener: playhtml.removePlayEventListener,
         hasSynced,
+        isProviderMissing: false,
       }}
     >
       {children}

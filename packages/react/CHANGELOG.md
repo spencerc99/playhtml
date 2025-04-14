@@ -2,6 +2,12 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 0.4.0 - 2024-12-08
+
+- **ENHANCEMENT** Added support for React 19
+- Updated peerDependencies to include React 19
+- Updated TypeScript definitions to support React 19
+
 ## 0.3.1 - 2024-02-17
 
 - **NEW API** Replaced the main api `withPlay` with `withSharedState` to make it more functionally clear what it does. This new API also is much cleaner because it removes the need to curry the function. The old `withPlay` API is still available for backwards compatibility but will be removed in the next major version. See some examples below for the comparison:

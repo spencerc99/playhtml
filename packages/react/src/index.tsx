@@ -1,7 +1,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import ReactIs from "react-is";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import { cloneThroughFragments, getCurrentElementHandler } from "./utils";
@@ -9,11 +9,22 @@ import type {
   ReactElementInitializer,
   ReactElementEventHandlerData,
 } from "./utils";
+import { PlayContext } from "./PlayProvider";
 
 export type WithPlayProps<T, V> =
   | Omit<ReactElementInitializer<T, V>, "children">
   | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
+      standalone?: boolean; // Allow standalone mode without provider
+    });
+
+// Add standalone to the ReactElementInitializer type
+export type ReactElementInitializerWithStandalone<T, V> =
+  | (ReactElementInitializer<T, V> & { standalone?: boolean })
+  | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
+      defaultData: undefined;
+      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
+      standalone?: boolean;
     });
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
@@ -21,13 +32,45 @@ export type WithPlayProps<T, V> =
 export function CanPlayElement<T, V>({
   children,
   id,
+  standalone = false,
   ...restProps
-}:
-  | ReactElementInitializer<T, V>
-  | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
-      defaultData: undefined;
-      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
-    })) {
+}: ReactElementInitializerWithStandalone<T, V>) {
+  const playContext = useContext(PlayContext);
+
+  if (playContext.isProviderMissing && !standalone) {
+    console.error(
+      `[@playhtml/react] No PlayProvider found in the component tree. Make sure to wrap your app with <PlayProvider>.
+      Without a PlayProvider, playhtml components won't work correctly.
+
+      Add this to your app:
+
+      import { PlayProvider } from "@playhtml/react";
+
+      function App() {
+        return (
+          <PlayProvider>
+            {/* your app content */}
+          </PlayProvider>
+        );
+      }
+
+      Alternatively, you can use the 'standalone' prop on individual components
+      `
+    );
+  }
+
+  // Ensure playhtml is initialized if in standalone mode
+  useEffect(() => {
+    if (standalone && playContext.isProviderMissing) {
+      // Initialize playhtml in standalone mode
+      playhtml
+        .init()
+        .catch((err) =>
+          console.error("Error initializing playhtml in standalone mode:", err)
+        );
+    }
+  }, [standalone, playContext.isProviderMissing]);
+
   const { tagInfo = { "can-play": "" }, ...elementProps } = {
     tagInfo: undefined,
     ...restProps,

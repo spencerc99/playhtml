@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "0.3.7",
+  "version": "0.4.0",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -42,29 +42,36 @@
   "scripts": {
     "build": "tsc && vite build",
     "set-publishing-config": "yarn config set version-tag-prefix '@playhtml/react-v' && yarn config set version-git-message '@playhtml/react-v%s'",
-    "publish-npm": "yarn run build && npm run set-publishing-config && yarn publish"
+    "publish-npm": "yarn run build && npm run set-publishing-config && yarn publish",
+    "test": "vitest run --no-typecheck",
+    "test:watch": "vitest --no-typecheck"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@types/react": "^18.2.21",
-    "@types/react-is": "^18.2.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^18.2.21 || ^19.0.0",
+    "@types/react-is": "^18.2.2 || ^19.0.0",
     "@vitejs/plugin-react": "^4.0.4",
+    "jsdom": "^26.1.0",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
-    "vite-plugin-dts": "^3.0.3"
+    "vite-plugin-dts": "^3.0.3",
+    "vitest": "^3.1.1"
   },
   "dependencies": {
     "@playhtml/common": "^0.0.13",
     "classnames": "^2.3.2",
     "playhtml": "^2.1.11",
-    "react": "^16.8.0  || ^17.0.0 || ^18.2.0",
-    "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0",
+    "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
+    "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
     "react-is": "^18.2.0"
   },
   "peerDependencies": {
-    "react": "^16.8.0  || ^17.0.0 || ^18.2.0",
-    "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0"
+    "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
+    "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0"
   }
 }

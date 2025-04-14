@@ -11,6 +11,10 @@ npm install @playhtml/react # or
 # yarn add @playhtml/react
 ```
 
+## Compatibility
+
+`@playhtml/react` is compatible with React versions 16.8.0 and above, including React 17, React 18, and React 19.
+
 ## Usage
 
 First, wrap your app in the `PlayProvider` component. This will handling initializing the `playhtml` client and setting up the connection to the server. You can specify the same `initOptions` to `PlayProvider` as you would when initializing the client directly.
