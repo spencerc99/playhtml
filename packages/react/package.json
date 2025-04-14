@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -43,6 +43,10 @@
     "build": "tsc && vite build",
     "set-publishing-config": "yarn config set version-tag-prefix '@playhtml/react-v' && yarn config set version-git-message '@playhtml/react-v%s'",
     "publish-npm": "yarn run build && npm run set-publishing-config && yarn publish",
+    "prepublish-beta": "yarn run build && npm run set-publishing-config",
+    "publish-beta": "yarn run prepublish-beta && yarn version --prerelease --preid beta && yarn publish --tag beta",
+    "publish-beta-patch": "yarn run prepublish-beta && yarn version --patch --preid beta && yarn publish --tag beta",
+    "publish-beta-minor": "yarn run prepublish-beta && yarn version --minor --preid beta && yarn publish --tag beta",
     "test": "vitest run --no-typecheck",
     "test:watch": "vitest --no-typecheck"
   },
