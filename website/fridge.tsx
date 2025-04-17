@@ -156,7 +156,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 400;
+const MaxWords = 1000;
 const MaxWordLength = 40;
 
 const WordControls = withSharedState<FridgeWordType[]>(
