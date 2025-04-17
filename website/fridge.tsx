@@ -24,10 +24,13 @@ interface FridgeWordType {
   word: string;
   color?: string;
 }
+
 interface Props extends FridgeWordType {
   deleteMode?: boolean;
   onDeleteWord?: () => void;
   className?: string;
+  userColor: string;
+  wall: string;
 }
 
 const DefaultRoom = "fridge";
@@ -39,18 +42,25 @@ const RestrictedWords = [...profaneWords];
 const FridgeWord = withSharedState(
   {
     tagInfo: [TagType.CanMove],
-    onDrag: () => {
-      // Track word movement
-      window.plausible?.("MovedWord");
-    },
   },
   ({}, props: Props) => {
-    const { id, word, deleteMode, onDeleteWord, className } = props;
+    const { id, word, deleteMode, onDeleteWord, className, userColor, wall } =
+      props;
     return (
       <div
         id={id}
         selector-id="#fridge .fridgeWordHolder"
         className="fridgeWordHolder"
+        // TODO: this is a hack since we dont support a callback for TagType.CanMove
+        onPointerDown={() => {
+          if (!userColor || !wall) return;
+          window.plausible?.("MovedWord", {
+            props: {
+              userColor: userColor,
+              wall: wall,
+            },
+          });
+        }}
       >
         <div
           className={`fridgeWord ${className}`}
@@ -284,6 +294,8 @@ const WordControls = withSharedState<FridgeWordType[]>(
             onDeleteWord={() => {
               handleDeleteWord(id, word, color);
             }}
+            userColor={userColor}
+            wall={wall}
           />
         ))}
         <div
