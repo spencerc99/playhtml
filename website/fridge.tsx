@@ -2,11 +2,22 @@ import "./fridge.scss";
 import profaneWords from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
-import { withPlay, withSharedState } from "../packages/react/src";
+import { withSharedState } from "../packages/react/src";
 import React, { useContext, useEffect, useState } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
 import { PlayContext } from "../packages/react/src";
+
+// Add Plausible analytics type definition
+declare global {
+  interface Window {
+    plausible?: (
+      eventName: string,
+      options?: { props?: Record<string, any> }
+    ) => void;
+    cursors?: { color: string };
+  }
+}
 
 interface FridgeWordType {
   id?: string;
@@ -25,11 +36,15 @@ const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
 const DeleteLimitReachedKey = "fridge-lastDeleteTime";
 const RestrictedWords = [...profaneWords];
 
-const FridgeWord = withPlay<Props>()(
+const FridgeWord = withSharedState(
   {
     tagInfo: [TagType.CanMove],
+    onDrag: () => {
+      // Track word movement
+      window.plausible?.("MovedWord");
+    },
   },
-  ({ props }) => {
+  ({}, props: Props) => {
     const { id, word, deleteMode, onDeleteWord, className } = props;
     return (
       <div
@@ -149,7 +164,8 @@ const WordControls = withSharedState<FridgeWordType[]>(
     defaultData: [] as FridgeWordType[],
     id: "newWords",
   },
-  ({ data, setData }) => {
+  ({ data, setData }, props: { wall: string }) => {
+    const { wall } = props;
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
@@ -197,6 +213,15 @@ const WordControls = withSharedState<FridgeWordType[]>(
         return false;
       }
 
+      // Track word creation
+      window.plausible?.("CreateWord", {
+        props: {
+          wordLength: input.length,
+          userColor: userColor,
+          wall: wall,
+        },
+      });
+
       setData([
         ...data,
         { word: input, color: userColor, id: Date.now().toString() },
@@ -210,6 +235,13 @@ const WordControls = withSharedState<FridgeWordType[]>(
       color: string | undefined
     ) {
       if (deleteCount >= DeleteWordLimit) {
+        // Track delete overload
+        window.plausible?.("DeleteWordOverload", {
+          props: {
+            userColor: userColor,
+            wall: wall,
+          },
+        });
         alert("why u deleting so much? chill");
         setDeleteMode(false);
         return;
@@ -221,6 +253,15 @@ const WordControls = withSharedState<FridgeWordType[]>(
         }
 
         return word === w.word && color === w.color;
+      });
+
+      // Track successful word deletion
+      window.plausible?.("DeleteWord", {
+        props: {
+          wordLength: word.length,
+          userColor: userColor,
+          wall: wall,
+        },
       });
 
       setData(data.filter((_, idx) => idx !== idxToDelete));
@@ -356,14 +397,16 @@ const AdminSettings = ({
 
 interface FridgeWordsProps {
   hasError: boolean;
+  wall: string;
 }
 
-const FridgeWordsContent = withPlay<FridgeWordsProps>()(
+const FridgeWordsContent = withSharedState(
   {
     defaultData: { showDefaultWords: true },
     id: "adminSettings",
   },
-  ({ data, props, setData }) => {
+  ({ data, setData }, props: FridgeWordsProps) => {
+    const { hasError, wall } = props;
     const { hasSynced } = useContext(PlayContext);
     const { search } = useLocation();
     const params = new URLSearchParams(search);
@@ -402,7 +445,7 @@ const FridgeWordsContent = withPlay<FridgeWordsProps>()(
       <>
         {data.showDefaultWords &&
           Words.map((w, i) => <FridgeWord key={i} word={w} />)}
-        <WordControls />
+        <WordControls wall={wall} />
         {isAdmin && <AdminSettings data={data} setData={setData} />}
       </>
     );
@@ -490,7 +533,7 @@ function Main() {
           },
         }}
       >
-        <FridgeWords hasError={hasError} />
+        <FridgeWords hasError={hasError} wall={wall} />
       </PlayProvider>
     </>
   );
