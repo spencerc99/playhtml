@@ -336,7 +336,17 @@ const WordControls = withSharedState<FridgeWordType[]>(
               <br />
               try changing to a different wall!
             </div>
-          ) : undefined}
+          ) : (
+            <div
+              style={{
+                textAlign: "right",
+                color: "slategray",
+                fontSize: ".8em",
+              }}
+            >
+              p.s. you can hit "enter" to add, too
+            </div>
+          )}
           <div
             style={{
               display: "flex",
