@@ -20,6 +20,7 @@
     "@types/node": "^20.3.3",
     "@types/randomcolor": "^0.5.9",
     "@types/react": "^18.2.48",
+    "@types/react-is": "^19.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "glob": "^10.3.10",
     "sass": "^1.62.1",
