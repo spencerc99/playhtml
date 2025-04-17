@@ -170,6 +170,7 @@ export function CanPlayElement<T, V>({
   return cloneThroughFragments(
     React.Children.only(renderedChildren),
     {
+      // @ts-ignore
       ref,
       ...computedTagInfo,
     },

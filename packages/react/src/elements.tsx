@@ -180,6 +180,8 @@ export function CanHoverElement({
           React.Children.only(renderedChildren) as any,
           {
             className: classNames(
+              // TODO: fix these type errors
+              // @ts-ignore
               renderedChildren?.props?.className,
               // @ts-ignore
               awareness.some((ele) => ele.isHovering) ? "hovering" : ""

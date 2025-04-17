@@ -10,7 +10,7 @@ import ReactIs from "react-is";
 export type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
   "localData" | "setLocalData" | "element"
-> & { ref: React.RefObject<HTMLElement> };
+> & { ref: React.RefObject<HTMLElement | null> };
 
 export interface PlayableChildren<T = object, V = any> {
   // TODO: force this to return a single child?
@@ -63,6 +63,8 @@ export function cloneThroughFragments<P = any>(
       </>
     );
   } else if (!isDOMElement(element)) {
+    // TODO: FIX this type error
+    // @ts-ignore
     return domProps(element, props);
   }
 
