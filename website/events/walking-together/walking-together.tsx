@@ -59,10 +59,10 @@ export function UserSetup() {
   );
 
   const [color, setColor] = useStickyState<string | null>(
-    "userColor",
-    null,
+    "color",
+    "",
     (newColor) => {
-      if (newColor === window.cursors?.color) {
+      if (newColor === window.cursors?.color && newColor !== "") {
         return;
       }
       window.cursors?.setColor(newColor);
