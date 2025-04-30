@@ -223,3 +223,80 @@ export const Guestbook = withSharedState(
     );
   }
 );
+
+interface SharedURL {
+  url: string;
+  userName: string;
+  userColor: string;
+  timestamp: number;
+}
+
+export const URLChat = withSharedState(
+  {
+    defaultData: { urls: [] as SharedURL[] },
+  },
+  ({ data, setData }) => {
+    const [inputUrl, setInputUrl] = React.useState("");
+    const urlListRef = React.useRef<HTMLDivElement>(null);
+
+    // Scroll to top (since we're using column-reverse) when new URLs are added
+    React.useEffect(() => {
+      if (urlListRef.current) {
+        urlListRef.current.scrollTop = 0;
+      }
+    }, [data.urls]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+      const newUrl: SharedURL = {
+        url: inputUrl,
+        userName: window.cursors?.name || "Anonymous",
+        userColor: window.cursors?.color || "#000000",
+        timestamp: Date.now(),
+      };
+
+      setData({ urls: [...data.urls, newUrl] });
+      setInputUrl("");
+    };
+
+    const copyToClipboard = () => {
+      const text = data.urls
+        .map(({ userName, url }) => `${userName}: ${url}`)
+        .join("\n");
+      navigator.clipboard.writeText(text);
+    };
+
+    return (
+      <div className="url-chat">
+        <div className="url-list" ref={urlListRef}>
+          {[...data.urls].reverse().map((urlData, i) => (
+            <div key={i} className="url-entry">
+              <span className="timestamp">
+                {new Date(urlData.timestamp).toLocaleTimeString()}
+              </span>
+              <span className="username" style={{ color: urlData.userColor }}>
+                {urlData.userName}:
+              </span>
+              <a href={urlData.url} target="_blank" rel="noopener noreferrer">
+                {urlData.url}
+              </a>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="url"
+            value={inputUrl}
+            onChange={(e) => setInputUrl(e.target.value)}
+            placeholder="Share a URL"
+          />
+          <button type="submit">Share</button>
+        </form>
+        {data.urls.length > 0 && (
+          <button onClick={copyToClipboard} style={{ marginTop: "0.5em" }}>
+            Copy All URLs
+          </button>
+        )}
+      </div>
+    );
+  }
+);

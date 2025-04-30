@@ -129,10 +129,10 @@ export const URLChat = withSharedState(
     const [inputUrl, setInputUrl] = React.useState("");
     const urlListRef = React.useRef<HTMLDivElement>(null);
 
-    // Scroll to bottom when new URLs are added
+    // Scroll to top (since we're using column-reverse) when new URLs are added
     React.useEffect(() => {
       if (urlListRef.current) {
-        urlListRef.current.scrollTop = urlListRef.current.scrollHeight;
+        urlListRef.current.scrollTop = 0;
       }
     }, [data.urls]);
 
@@ -162,18 +162,19 @@ export const URLChat = withSharedState(
     };
 
     return (
-      <div className="url-chat">
-        <form onSubmit={handleSubmit}>
-          <input
-            type="url"
-            value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
-            placeholder="Share a URL"
-          />
-          <button type="submit">Share</button>
-        </form>
+      <div className="url-chat" id="url-chat">
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+          }}
+        >
+          {data.urls.length > 0 && (
+            <button onClick={copyToClipboard}>Copy All URLs</button>
+          )}
+        </div>
         <div className="url-list" ref={urlListRef}>
-          {data.urls.map((urlData, i) => (
+          {[...data.urls].reverse().map((urlData, i) => (
             <div key={i} className="url-entry">
               <span className="timestamp">
                 {new Date(urlData.timestamp).toLocaleTimeString()}
@@ -187,9 +188,15 @@ export const URLChat = withSharedState(
             </div>
           ))}
         </div>
-        {/* {data.urls.length > 0 && (
-          <button onClick={copyToClipboard}>Copy All URLs</button>
-        )} */}
+        <form onSubmit={handleSubmit}>
+          <input
+            type="url"
+            value={inputUrl}
+            onChange={(e) => setInputUrl(e.target.value)}
+            placeholder="Share a URL"
+          />
+          <button type="submit">Share</button>
+        </form>
       </div>
     );
   }
@@ -231,13 +238,13 @@ export const GroupActivityDisplay = withSharedState(
     const seconds = timeLeft % 60;
 
     return (
-      <div className="group-activity">
+      <div className="group-activity" id="group-activity">
         <h3>Current Activity:</h3>
         <p className="instruction">
           {CURSOR_INSTRUCTIONS[data.currentInstructionIndex]}
         </p>
         <p className="countdown">
-          Next activity in: {minutes}:{seconds.toString().padStart(2, "0")}
+          {minutes}:{seconds.toString().padStart(2, "0")}
         </p>
       </div>
     );
