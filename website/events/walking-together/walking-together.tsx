@@ -170,7 +170,15 @@ export const URLChat = withSharedState(
           }}
         >
           {data.urls.length > 0 && (
-            <button onClick={copyToClipboard}>Copy All URLs</button>
+            <button
+              style={{
+                fontSize: "10px",
+                fontFamily: "monospace",
+              }}
+              onClick={copyToClipboard}
+            >
+              COPY
+            </button>
           )}
         </div>
         <div className="url-list" ref={urlListRef}>
