@@ -25,13 +25,19 @@ interface SharedURL {
   timestamp: number;
 }
 
-const CURSOR_INSTRUCTIONS = [
+function shuffleArray<T>(array: T[]): T[] {
+  return array.sort(() => Math.random() - 0.5);
+}
+
+const CURSOR_INSTRUCTIONS = shuffleArray([
   "Make a circle together",
-  "Make a zigzag together",
   "Play tag with each other",
   "Stack all cursors in the center",
+  "Make a zigzag together",
+  "Coordinate by colors",
   "Split into your preferred corner",
-];
+  "Imagine your cursor as a falling rain drop",
+]);
 
 // URL validation helper
 function isValidUrl(url: string) {
@@ -272,15 +278,6 @@ export const GroupActivityDisplay = withSharedState(
 );
 
 function Main() {
-  const [name, setName] = useStickyState<string | null>(
-    "username",
-    null,
-    (newName) => {
-      window.cursors?.setName(newName);
-    }
-  );
-  const [from, setFrom] = useStickyState<string | null>("from", null);
-
   return (
     <PlayProvider>
       <div className="walking-together">
