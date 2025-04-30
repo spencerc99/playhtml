@@ -29,7 +29,7 @@ function shuffleArray<T>(array: T[]): T[] {
   return array.sort(() => Math.random() - 0.5);
 }
 
-const CURSOR_INSTRUCTIONS = shuffleArray([
+const CURSOR_INSTRUCTIONS = [
   "Make a circle together",
   "Play tag with each other",
   "Stack all cursors in the center",
@@ -37,7 +37,7 @@ const CURSOR_INSTRUCTIONS = shuffleArray([
   "Coordinate by colors",
   "Split into your preferred corner",
   "Imagine your cursor as a falling rain drop",
-]);
+];
 
 // URL validation helper
 function isValidUrl(url: string) {
@@ -236,13 +236,13 @@ export const GroupActivityDisplay = withSharedState(
     },
   },
   ({ data, setData }) => {
-    const [timeLeft, setTimeLeft] = React.useState(180); // 3 minutes in seconds
+    const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
 
     React.useEffect(() => {
       const interval = setInterval(() => {
         const now = Date.now();
         const elapsed = Math.floor((now - data.lastChangeTime) / 1000);
-        const remaining = 180 - elapsed;
+        const remaining = 30 - elapsed;
 
         if (remaining <= 0) {
           // Update to next instruction
@@ -251,7 +251,7 @@ export const GroupActivityDisplay = withSharedState(
               (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
             lastChangeTime: now,
           });
-          setTimeLeft(180);
+          setTimeLeft(30);
         } else {
           setTimeLeft(remaining);
         }
@@ -263,15 +263,53 @@ export const GroupActivityDisplay = withSharedState(
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
 
+    const handleSkip = () => {
+      setData({
+        currentInstructionIndex:
+          (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+        lastChangeTime: Date.now(),
+      });
+      setTimeLeft(30);
+    };
+
+    const isAdmin =
+      window.cursors?.name === "Kristoffer" ||
+      window.cursors?.name === "spencer";
+
     return (
       <div className="group-activity" id="group-activity">
         <h3>Current Activity:</h3>
         <p className="instruction">
           {CURSOR_INSTRUCTIONS[data.currentInstructionIndex]}
         </p>
-        <p className="countdown">
-          {minutes}:{seconds.toString().padStart(2, "0")}
-        </p>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1em",
+            justifyContent: "center",
+          }}
+        >
+          <p className="countdown">
+            {minutes}:{seconds.toString().padStart(2, "0")}
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={handleSkip}
+            style={{
+              fontSize: "10px",
+              padding: "2px 4px",
+              fontFamily: "monospace",
+              opacity: 0.5,
+              marginTop: "-.5em",
+              position: "absolute",
+              transform: "translateX(-50%)",
+            }}
+          >
+            SKIP
+          </button>
+        )}
       </div>
     );
   }
