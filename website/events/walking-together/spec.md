@@ -1,0 +1,12 @@
+- **User customization**:
+  - Name input
+  - Color picker for cursor
+- **URL sharing**:
+  - Input field for favorite/notable URLs with validation
+  - Real-time display on screen in chat-style format
+  - Show user's name/initials in their chosen color followed by URL
+- **URL export feature**:
+  - Create functionality to export all submitted URLs with associated usernames
+  - Format as a simple bullet list or plain text for later use
+- **Collaborative activities**:
+  - Provide simple instructions for collaborative activities

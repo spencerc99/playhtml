@@ -3,6 +3,7 @@ import React from "react";
 import { PlayProvider } from "@playhtml/react";
 import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
+import "./gray-area.scss";
 
 function Main() {
   const [name, setName] = useStickyState<string | null>(

@@ -1,0 +1,22 @@
+html,
+body {
+  margin: 0;
+}
+body {
+  background: rgba(255, 254, 236, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Play";
+  overflow-y: auto;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+p {
+  margin: 0;
+}
+
+h1 {
+  margin: 0.5em 0;
+}
