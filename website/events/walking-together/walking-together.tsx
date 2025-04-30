@@ -44,9 +44,24 @@ function isValidUrl(url: string) {
 }
 
 export function UserSetup() {
-  const [name, setName] = useStickyState<string>("username", "");
+  const [name, setName] = useStickyState<string | null>(
+    "username",
+    null,
+    (newName) => {
+      window.cursors?.setName(newName);
+    }
+  );
 
-  const [color, setColor] = useStickyState<string>("userColor", "");
+  const [color, setColor] = useStickyState<string | null>(
+    "userColor",
+    null,
+    (newColor) => {
+      if (newColor === window.cursors?.color) {
+        return;
+      }
+      window.cursors?.setColor(newColor);
+    }
+  );
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
 
@@ -57,9 +72,6 @@ export function UserSetup() {
         setCursorsLoaded(true);
         if (window.cursors.color) {
           setColor(window.cursors.color);
-        }
-        if (window.cursors.name) {
-          setName(window.cursors.name);
         }
       }
     };
