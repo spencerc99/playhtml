@@ -1,5 +1,5 @@
 import ReactDOM from "react-dom";
-import React from "react";
+import React, { useState } from "react";
 import { PlayProvider, withSharedState } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
@@ -58,16 +58,13 @@ export function UserSetup() {
     }
   );
 
-  const [color, setColor] = useStickyState<string | null>(
-    "color",
-    "",
-    (newColor) => {
-      if (newColor === window.cursors?.color && newColor !== "") {
-        return;
-      }
-      window.cursors?.setColor(newColor);
-    }
+  const [color, setInternalColor] = useState(
+    JSON.parse(localStorage.getItem("color") || "null") || window.cursors?.color
   );
+  const setColor = (newColor: string) => {
+    setInternalColor(newColor);
+    window.cursors?.setColor(newColor);
+  };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
 
@@ -76,9 +73,6 @@ export function UserSetup() {
     const checkCursors = () => {
       if (window.cursors) {
         setCursorsLoaded(true);
-        if (window.cursors.color) {
-          setColor(window.cursors.color);
-        }
       }
     };
 
