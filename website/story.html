@@ -146,6 +146,12 @@
                   submitBtn.disabled = false;
                   return;
                 }
+                // valid length again
+                if (input.value.length > 20) {
+                  alert("too long!");
+                  submitBtn.disabled = false;
+                  return;
+                }
                 const existingStory = getData();
                 const newEntry = {
                   word: input.value,
