@@ -20,11 +20,66 @@ function getSecondsSinceLastUpdate(timestamp: number): number {
   return Math.floor((Date.now() - timestamp) / 1000);
 }
 
-function generateRandomColor(): string {
+function hslToHex(h: number, s: number, l: number): string {
+  l /= 100;
+  const a = (s * Math.min(l, 1 - l)) / 100;
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function hexToHsl(hex: string): string {
+  // Convert hex to RGB first
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  // Then to HSL
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0,
+    s,
+    l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0; // achromatic
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+
+  return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(
+    l * 100
+  )}%)`;
+}
+
+function generateRandomColor(): { hex: string; hsl: string } {
   const hue = Math.floor(Math.random() * 360);
   const saturation = Math.floor(Math.random() * 30) + 70; // 70-100%
   const lightness = Math.floor(Math.random() * 30) + 35; // 35-65%
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  return {
+    hex: hslToHex(hue, saturation, lightness),
+    hsl: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
+  };
 }
 
 function formatMinuteOfDay(minuteIndex: number): string {
@@ -33,57 +88,6 @@ function formatMinuteOfDay(minuteIndex: number): string {
   return `${hour.toString().padStart(2, "0")}:${minute
     .toString()
     .padStart(2, "0")}`;
-}
-
-function createColorBars(colors: string[]): string {
-  if (!colors || colors.length === 0) return "#ffffff";
-  if (colors.length === 1) return colors[0];
-
-  // Create vertical bars by setting each color to an equal width
-  const width = 100 / colors.length;
-  const stops = colors.map((color, index) => {
-    const start = width * index;
-    const end = width * (index + 1);
-    return `${color} ${start}%, ${color} ${end}%`;
-  });
-
-  return `linear-gradient(to right, ${stops.join(", ")})`;
-}
-
-function createColorGrid(colors: string[]): string {
-  if (!colors || colors.length === 0) return "#ffffff";
-  if (colors.length === 1) return colors[0];
-
-  // For 2-3 colors, make vertical bars
-  if (colors.length <= 3) {
-    const width = 100 / colors.length;
-    const stops = colors.map((color, index) => {
-      const start = width * index;
-      const end = width * (index + 1);
-      return `${color} ${start}%, ${color} ${end}%`;
-    });
-    return `linear-gradient(to right, ${stops.join(", ")})`;
-  }
-
-  // For 4+ colors, create a 3x3 grid using multiple background images
-  const gridColors = [...colors];
-  while (gridColors.length < 9) {
-    gridColors.push(gridColors[gridColors.length - 1]); // Repeat last color to fill grid
-  }
-
-  // Create individual color blocks
-  const backgrounds = gridColors.map((color, index) => {
-    const row = Math.floor(index / 3);
-    const col = index % 3;
-    const x1 = (col * 33.333).toFixed(3);
-    const x2 = ((col + 1) * 33.333).toFixed(3);
-    const y1 = (row * 33.333).toFixed(3);
-    const y2 = ((row + 1) * 33.333).toFixed(3);
-
-    return `linear-gradient(${color}, ${color}) ${x1}% ${y1}% / 33.333% 33.333% no-repeat`;
-  });
-
-  return backgrounds.join(", ");
 }
 
 function calculateGridDimensions(
@@ -228,6 +232,13 @@ const Main = withSharedState(
     const currentMinuteRef = useRef<HTMLDivElement>(null);
     const mainRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const totalColors = useMemo(() => {
+      if (!data?.minutes) return 0;
+      return data.minutes.reduce(
+        (acc, minute) => acc + (minute?.colors?.length || 0),
+        0
+      );
+    }, [data.minutes]);
 
     // Track fullscreen changes
     useEffect(() => {
@@ -349,7 +360,7 @@ const Main = withSharedState(
         // Remove the oldest color (first in the array) and add the new one
         newColors = newColors.slice(1);
       }
-      newColors.push(color);
+      newColors.push(color); // Store HSL color
 
       newMinutes[currentMinuteIndex] = {
         colors: newColors,
@@ -359,6 +370,7 @@ const Main = withSharedState(
       setData({ minutes: newMinutes });
       setMyAwareness({ color });
       setCurrentColor(generateRandomColor());
+      setShowColorPicker(false);
     };
 
     const renderMinuteBox = (minuteIndex: number) => {
@@ -366,7 +378,7 @@ const Main = withSharedState(
       const timeLabel = formatMinuteOfDay(minuteIndex);
       const isCurrentMinute = minuteIndex === currentMinuteIndex;
       const pulseColor =
-        minute?.colors?.[minute.colors.length - 1] || currentColor;
+        minute?.colors?.[minute.colors.length - 1] || currentColor.hsl;
       const colors = minute?.colors || [];
 
       const getColorGridClass = (count: number) => {
@@ -444,8 +456,11 @@ const Main = withSharedState(
           <h1>minute faces (together)</h1>
           <p>
             It is now {formatMinuteOfDay(currentMinuteIndex)}. Every minute may
-            be colored in only during that minute.
-            <br />
+            be colored in only during that minute.{" "}
+            <AnimatedCounter start={0} end={totalColors} duration={1500} />{" "}
+            colors have been added.
+          </p>
+          <p>
             <button
               className="scroll-to-now"
               onClick={() => scrollToCurrentMinute()}
@@ -468,40 +483,42 @@ const Main = withSharedState(
               ×
             </button>
             <h2>Coloring {formatMinuteOfDay(currentMinuteIndex)}</h2>
-            <div
+            <input
+              type="color"
               className="color-preview"
-              style={{ background: currentColor }}
-              onClick={() => {
-                const input = document.querySelector(
-                  'input[type="color"]'
-                ) as HTMLInputElement;
-                input?.click();
-              }}
+              value={currentColor.hex}
+              onChange={(e) =>
+                setCurrentColor({
+                  hex: e.target.value,
+                  hsl: hexToHsl(e.target.value),
+                })
+              }
             />
-            <div className="color-picker-buttons">
+            <div
+              style={{
+                display: "flex",
+                gap: ".5rem",
+                alignItems: "center",
+              }}
+            >
               <button
                 className="randomize"
                 onClick={() => setCurrentColor(generateRandomColor())}
               >
                 🎲
               </button>
-              <input
-                type="color"
-                value={currentColor}
-                onChange={(e) => setCurrentColor(e.target.value)}
-              />
+              <button
+                className="add-color-button"
+                onClick={() => addColorToMinute(currentColor.hsl)}
+                style={
+                  {
+                    "--button-color": currentColor.hsl,
+                  } as React.CSSProperties
+                }
+              >
+                <span className="button-text">Add Color</span>
+              </button>
             </div>
-            <button
-              className="add-color-button"
-              onClick={() => addColorToMinute(currentColor)}
-              style={
-                {
-                  "--button-color": currentColor,
-                } as React.CSSProperties
-              }
-            >
-              <span className="button-text">Add Color</span>
-            </button>
           </div>
         )}
 
@@ -527,6 +544,9 @@ const Main = withSharedState(
         </div>
 
         <footer className={isFullscreen ? "hidden" : ""}>
+          <div>
+            sequel to <a href="https://clock.spencer.place">minute faces</a>
+          </div>
           <div>
             <a href="https://playhtml.fun/experiments">playhtml experiment</a>{" "}
             <a href="https://github.com/spencerc99/playhtml/blob/main/website/experiments/5/">
