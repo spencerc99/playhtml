@@ -48,6 +48,8 @@
   },
   "scripts": {
     "build": "tsc && vite build",
+    "test": "vitest run --no-typecheck",
+    "test:watch": "vitest --no-typecheck",
     "set-publishing-config": "bun config set version-tag-prefix 'playhtml-v' && bun config set version-git-message 'playhtml-v%s'",
     "publish-npm": "(bun run build && npm run set-publishing-config && rm README.md && cp ../../README.md . && bun publish && bun run cleanup) || (bun run cleanup)",
     "cleanup": "rm README.md && ln -s ../../README.md ."
@@ -56,7 +58,9 @@
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
-    "vite-plugin-dts": "^3.0.3"
+    "vite-plugin-dts": "^3.0.3",
+    "vitest": "^3.1.1",
+    "jsdom": "^26.1.0"
   },
   "dependencies": {
     "@playhtml/common": "0.0.14",
