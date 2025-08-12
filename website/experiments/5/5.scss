@@ -3,4 +3,521 @@
 body {
   font-family: "Times New Roman", Times, serif;
   font-size: 18px;
+  margin: 0;
+  padding: 0;
+  background: black;
+}
+
+#main {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+
+  &.fullscreen {
+    background: black;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+}
+
+.hidden {
+  display: none !important;
+}
+
+.experiment-description {
+  padding: 2rem;
+  text-align: center;
+  color: white;
+  mix-blend-mode: difference;
+  font-family: monospace;
+
+  h1 {
+    font-size: 2rem;
+    margin: 0;
+  }
+
+  p {
+    font-size: 1.2rem;
+    max-width: 600px;
+    margin: 1rem auto;
+  }
+
+  .scroll-to-now,
+  .toggle-fullscreen {
+    background: none;
+    border: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+    margin-left: 0.5em;
+    cursor: pointer;
+    text-decoration: underline;
+    mix-blend-mode: difference;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
+}
+
+.color-picker-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.95);
+  padding: 2rem;
+  border-radius: 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  font-family: monospace;
+  min-width: 300px;
+
+  .close-button {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 2rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0.6;
+    transition: all 0.2s;
+
+    &:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+  }
+
+  h2 {
+    color: white;
+    margin: 0;
+    font-size: 1.5rem;
+  }
+
+  .color-preview {
+    width: 200px;
+    height: 200px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+
+    &:hover {
+      transform: scale(1.02);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+  }
+
+  .color-picker-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+
+    .randomize {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: white;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.2rem;
+      border-radius: 6px;
+      transition: all 0.2s;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: scale(1.1);
+      }
+    }
+
+    input[type="color"] {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: none;
+
+      &::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+      &::-webkit-color-swatch {
+        border: none;
+        border-radius: 6px;
+      }
+    }
+  }
+
+  .add-color-button {
+    background: var(--button-color);
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    width: 100%;
+    font-family: inherit;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.2)
+      );
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    &:hover {
+      transform: translateY(-2px);
+
+      &::before {
+        opacity: 1;
+      }
+    }
+
+    .button-text {
+      position: relative;
+      z-index: 1;
+      color: white;
+      mix-blend-mode: difference;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      letter-spacing: 1px;
+    }
+  }
+}
+
+.grid-container {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: #111;
+
+  &.fullscreen {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
+.all-minutes-grid {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  padding: 1px;
+  margin: 0;
+  align-self: stretch;
+
+  &.fullscreen {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    background: black;
+    z-index: 9999;
+
+    .minute-box {
+      margin: 0;
+      padding: 0;
+      border: none;
+      outline: none;
+      width: 100%;
+      height: 100%;
+
+      &.empty {
+        display: none;
+      }
+
+      .time-label {
+        font-size: 0.6rem;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      &:hover .time-label {
+        opacity: 1;
+      }
+
+      &.current::before {
+        border-width: 2px;
+      }
+
+      .color-grid {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    }
+  }
+
+  .minute-box {
+    aspect-ratio: 1;
+    position: relative;
+    transition: transform 0.2s;
+    overflow: hidden;
+
+    .color-grid {
+      position: absolute;
+      inset: 0;
+      display: flex;
+
+      // Single color fills the entire box
+      &.full {
+        .color-cell {
+          width: 100%;
+          height: 100%;
+        }
+      }
+
+      // Vertical bars for 2, 3, or 5 colors
+      &.vertical-bars {
+        flex-direction: row;
+
+        .color-cell {
+          flex: 1;
+          height: 100%;
+        }
+      }
+
+      // 2x2 grid for 4 colors
+      &.grid-2x2 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+      }
+
+      // 2x3 grid for 6 colors
+      &.grid-2x3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+      }
+
+      // 3-2-2 layout for 7 colors
+      &.grid-3-2-2 {
+        display: grid;
+        grid-template-areas:
+          "a b c"
+          "d d e"
+          "f g g";
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
+
+        .color-cell {
+          &:nth-child(1) {
+            grid-area: a;
+          }
+          &:nth-child(2) {
+            grid-area: b;
+          }
+          &:nth-child(3) {
+            grid-area: c;
+          }
+          &:nth-child(4) {
+            grid-area: d;
+          }
+          &:nth-child(5) {
+            grid-area: e;
+          }
+          &:nth-child(6) {
+            grid-area: f;
+          }
+          &:nth-child(7) {
+            grid-area: g;
+          }
+        }
+      }
+
+      // 3-3-2 layout for 8 colors
+      &.grid-3-3-2 {
+        display: grid;
+        grid-template-areas:
+          "a b c"
+          "d e f"
+          "g g h";
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
+
+        .color-cell {
+          &:nth-child(1) {
+            grid-area: a;
+          }
+          &:nth-child(2) {
+            grid-area: b;
+          }
+          &:nth-child(3) {
+            grid-area: c;
+          }
+          &:nth-child(4) {
+            grid-area: d;
+          }
+          &:nth-child(5) {
+            grid-area: e;
+          }
+          &:nth-child(6) {
+            grid-area: f;
+          }
+          &:nth-child(7) {
+            grid-area: g;
+          }
+          &:nth-child(8) {
+            grid-area: h;
+          }
+        }
+      }
+
+      // 3x3 grid for 9 colors
+      &.grid-3x3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+      }
+
+      .color-cell {
+        width: 100%;
+        height: 100%;
+      }
+    }
+
+    &.empty {
+      background: black;
+      display: none;
+    }
+
+    &.current {
+      z-index: 1;
+      cursor: pointer;
+
+      &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 4px solid currentColor;
+        animation: pulseBorder 2s infinite;
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      &:hover {
+        transform: scale(1.1);
+      }
+
+      .time-label {
+        animation: blink 1.5s steps(1) infinite;
+      }
+    }
+
+    .time-label {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      mix-blend-mode: difference;
+      color: white;
+      text-align: center;
+      pointer-events: none;
+      font-family: "Courier New", monospace;
+      letter-spacing: -0.5px;
+      font-weight: bold;
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 0.9rem;
+      z-index: 2;
+
+      .seconds {
+        font-size: 1.2em;
+        font-weight: bold;
+        letter-spacing: 1px;
+      }
+
+      .last-update {
+        font-size: 0.8em;
+        opacity: 0.8;
+        font-style: italic;
+      }
+    }
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes pulseBorder {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.4;
+  }
+}
+
+footer {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  mix-blend-mode: difference;
+  color: white;
+  font-size: 1rem;
+  z-index: 10;
+  font-family: monospace;
+
+  a {
+    color: white;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 }
