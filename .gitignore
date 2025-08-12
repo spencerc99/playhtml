@@ -30,3 +30,5 @@ dist-ssr
 
 # secrets
 .env
+
+.claude
