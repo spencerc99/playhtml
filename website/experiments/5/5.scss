@@ -415,6 +415,7 @@ body {
         position: absolute;
         inset: 0;
         border: 4px solid currentColor;
+        mix-blend-mode: difference;
         animation: pulseBorder 2s infinite;
         pointer-events: none;
         z-index: 2;

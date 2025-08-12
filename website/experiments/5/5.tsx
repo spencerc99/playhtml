@@ -448,15 +448,59 @@ const Main = withSharedState(
       );
     };
 
+    const renderGrid = () => {
+      const currentHour = Math.floor(currentMinuteIndex / 60);
+      const minutesInHour = 60;
+      const hoursInDay = 24;
+
+      // Create array of hour indices starting from current hour
+      const hourOrder = Array.from(
+        { length: hoursInDay },
+        (_, i) => (currentHour + i) % hoursInDay
+      );
+
+      // Create array of all minute indices in the correct order
+      const orderedMinutes = hourOrder.flatMap((hour) =>
+        Array.from({ length: minutesInHour }, (_, i) => hour * 60 + i)
+      );
+
+      return (
+        <div
+          ref={mainRef}
+          className={`all-minutes-grid ${isFullscreen ? "fullscreen" : ""}`}
+          style={{
+            gridTemplateColumns: `repeat(${gridDimensions[0]}, 1fr)`,
+            gridTemplateRows: `repeat(${gridDimensions[1]}, 1fr)`,
+          }}
+        >
+          {Array.from(
+            { length: gridDimensions[0] * gridDimensions[1] },
+            (_, i) =>
+              i < MINUTES_IN_DAY ? (
+                renderMinuteBox(orderedMinutes[i])
+              ) : (
+                <div key={`empty-${i}`} className="minute-box empty" />
+              )
+          )}
+        </div>
+      );
+    };
+
     return (
-      <div id="main" className={isFullscreen ? "fullscreen" : ""}>
+      <div
+        id="main"
+        className={isFullscreen ? "fullscreen" : ""}
+        style={{
+          paddingBottom: isFullscreen ? "0" : "3rem",
+        }}
+      >
         <div
           className={`experiment-description ${isFullscreen ? "hidden" : ""}`}
         >
           <h1>minute faces (together)</h1>
           <p>
-            It is now {formatMinuteOfDay(currentMinuteIndex)}. Every minute may
-            be colored in only during that minute.{" "}
+            It is currently {formatMinuteOfDay(currentMinuteIndex)}. Every
+            minute can be colored only during that minute.{" "}
             <AnimatedCounter start={0} end={totalColors} duration={1500} />{" "}
             colors have been added.
           </p>
@@ -523,24 +567,7 @@ const Main = withSharedState(
         )}
 
         <div ref={containerRef} className="grid-container">
-          <div
-            ref={mainRef}
-            className={`all-minutes-grid ${isFullscreen ? "fullscreen" : ""}`}
-            style={{
-              gridTemplateColumns: `repeat(${gridDimensions[0]}, 1fr)`,
-              gridTemplateRows: `repeat(${gridDimensions[1]}, 1fr)`,
-            }}
-          >
-            {Array.from(
-              { length: gridDimensions[0] * gridDimensions[1] },
-              (_, i) =>
-                i < MINUTES_IN_DAY ? (
-                  renderMinuteBox(i)
-                ) : (
-                  <div key={`empty-${i}`} className="minute-box empty" />
-                )
-            )}
-          </div>
+          {renderGrid()}
         </div>
 
         <footer className={isFullscreen ? "hidden" : ""}>
