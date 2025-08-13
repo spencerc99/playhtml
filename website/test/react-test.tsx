@@ -6,6 +6,8 @@ import {
   CanHoverElement,
   withPlay,
   PlayProvider,
+  CanMoveElement,
+  CanSpinElement,
 } from "@playhtml/react";
 import { playhtml } from "../../packages/playhtml/src/main";
 import { ReactionView } from "../../packages/react/examples/Reaction";
@@ -14,6 +16,7 @@ import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
 import { ConfettiZone } from "../../packages/react/examples/Confetti";
 import { LiveVisitorCount } from "../../packages/react/examples/VisitorCount";
 import { ViewCount } from "../../packages/react/examples/ViewCount";
+import { CanDuplicateElement } from "@playhtml/react";
 
 const Candle = withPlay()(
   { defaultData: { on: false } },
@@ -38,6 +41,26 @@ ReactDOM.createRoot(
     <Candle />
     <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
     <Lamp />
+    <CanMoveElement>
+      <div
+        style={{
+          width: "100px",
+          height: "100px",
+          background: "blue",
+        }}
+        className="moveBox"
+      ></div>
+    </CanMoveElement>
+    <CanSpinElement>
+      <div
+        style={{
+          width: "100px",
+          height: "100px",
+          background: "yellow",
+        }}
+        className="moveBox"
+      ></div>
+    </CanSpinElement>
     <OnlineIndicator />
     <CanGrowElement>
       <div id="plant"></div>
@@ -49,6 +72,7 @@ ReactDOM.createRoot(
           height: "100px",
           background: "red",
         }}
+        id="hover"
         className="hoverBox"
       ></div>
     </CanHoverElement>
