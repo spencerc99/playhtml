@@ -36,6 +36,17 @@ export function CanPlayElement<T, V>({
 }: ReactElementInitializerWithStandalone<T, V>) {
   const playContext = useContext(PlayContext);
 
+  // NOTE: Potential optimization: allowlist/blocklist collaborative paths
+  // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
+  // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
+  // Example API (future):
+  // <CanPlayElement
+  //   defaultData={...}
+  //   crdtPaths={{ allow: ["lists.todos", "nested.a.b.c.values"], block: ["profile", "counters"] }}
+  // >
+  // This would proxy only specified paths in synced mode, keeping others as plain local React state.
+  // This aligns with the common case where nested arrays need collaboration more than nested objects.
+
   if (playContext.isProviderMissing && !standalone) {
     console.error(
       `[@playhtml/react] No PlayProvider found in the component tree. Make sure to wrap your app with <PlayProvider>.

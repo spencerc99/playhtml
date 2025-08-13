@@ -447,10 +447,15 @@ function createPlayElementData<T extends TagType>(
       if (useSyncedStore) {
         // Mutator form support: onChange can accept function(draft)
         if (typeof (newData as any) === "function") {
-          (newData as any)(dataProxy);
+          // Batch all nested mutations into a single Yjs transaction to coalesce events
+          doc.transact(() => {
+            (newData as any)(dataProxy);
+          });
         } else {
           // Value form: replace snapshot semantics
-          deepReplaceIntoProxy(dataProxy, newData);
+          doc.transact(() => {
+            deepReplaceIntoProxy(dataProxy, newData);
+          });
         }
       } else {
         // Legacy plain-object update path
@@ -515,29 +520,8 @@ function deepReplaceIntoProxy(target: any, src: any) {
     return;
   }
   // primitives
-  // If target is a plain object and src is a primitive, try a best-effort map.
-  if (isPlainObject(target)) {
-    // Heuristic for common toggle pattern: boolean -> { on: boolean }
-    if (typeof src === "boolean") {
-      if (
-        Object.prototype.hasOwnProperty.call(target, "on") &&
-        typeof target["on"] === "boolean"
-      ) {
-        target["on"] = src;
-        return;
-      }
-    }
-  }
-  // Fallback: replace arrays/objects by clearing and assigning properties when possible
-  if (Array.isArray(target)) {
-    target.splice(0, target.length, src);
-    return;
-  }
-  // For primitives, direct assignment to local reference won't update proxy; set a generic field if possible
-  try {
-    // @ts-ignore attempt to assign a value-like property
-    target.value = src;
-  } catch {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  target = src;
 }
 
 function clonePlain<T>(value: T): T {
@@ -927,13 +911,19 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
     // @ts-ignore
     (yVal as any).unobserveDeep(existing);
   }
+  let scheduled = false;
   const observer = () => {
-    // Push current proxy snapshot into handler
-    const proxy = store.play[tag]?.[elementId];
-    if (!proxy) return;
-    // Trigger updateElement
-    // @ts-ignore private usage intended
-    handler.__data = proxy;
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      // Push current proxy snapshot into handler
+      const proxy = store.play[tag]?.[elementId];
+      if (!proxy) return;
+      // Trigger updateElement
+      // @ts-ignore private usage intended
+      handler.__data = proxy;
+    });
   };
   // @ts-ignore
   (yVal as any).observeDeep(observer);
