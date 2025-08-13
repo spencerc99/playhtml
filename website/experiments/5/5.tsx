@@ -370,7 +370,6 @@ const Main = withSharedState(
       setData({ minutes: newMinutes });
       setMyAwareness({ color });
       setCurrentColor(generateRandomColor());
-      setShowColorPicker(false);
     };
 
     const renderMinuteBox = (minuteIndex: number) => {
