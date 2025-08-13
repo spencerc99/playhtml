@@ -49,7 +49,7 @@ describe("playhtml nested data behavior (pre-SyncedStore)", () => {
     expect(handler.data).toEqual({ on: true });
   });
 
-  it("does not support merging nested arrays (current behavior)", async () => {
+  it("merges nested arrays via mutator semantics (SyncedStore)", async () => {
     const tag = "can-duplicate";
     const el = setupSimpleElement(tag, "e2");
     el.setAttribute("can-duplicate", "target");
@@ -63,19 +63,17 @@ describe("playhtml nested data behavior (pre-SyncedStore)", () => {
     const handler = playhtml.elementHandlers!.get(tag)!.get("e2")!;
     expect(Array.isArray(handler.data)).toBe(true);
 
-    // Two concurrent appends simulated by two setData calls
-    const a1 = ["x"];
-    const a2 = ["y"];
-    handler.setData(a1 as any);
-    handler.setData(a2 as any);
-
-    // With plain replace semantics, last-write-wins would be expected at CRDT level; our local handler doesn't merge
-    // Current behavior replaces rather than merging; after two sets, last write wins locally
-    // Since both setData calls run synchronously and Y observers apply, final state equals the second array
-    expect(handler.data).toEqual(["y"]);
+    // Two appends via mutator form; expect both in array
+    handler.setData((d: any) => {
+      d.push("x");
+    });
+    handler.setData((d: any) => {
+      d.push("y");
+    });
+    expect(handler.data).toEqual(["x", "y"]);
   });
 
-  it("concurrent array appends should merge (post-migration)", async () => {
+  it("concurrent-like array appends should merge (post-migration)", async () => {
     const tag = "can-duplicate";
     const el = setupSimpleElement(tag, "e4");
     el.setAttribute("can-duplicate", "target2");
@@ -88,15 +86,13 @@ describe("playhtml nested data behavior (pre-SyncedStore)", () => {
     const handler = playhtml.elementHandlers!.get(tag)!.get("e4")!;
     expect(Array.isArray(handler.data)).toBe(true);
 
-    // Simulate two independent appends that would be concurrent in a real multi-client scenario
-    // Current behavior is last-write-wins replacement; post-migration we expect merge semantics
-    const append1 = ["a"];
-    const append2 = ["b"];
-    handler.setData(append1 as any);
-    handler.setData(append2 as any);
-
-    // Expected post-migration behavior (SyncedStore/Yjs-backed nested arrays): merged appends
-    // We expect both entries to be present without losing either append
+    // Simulate two independent mutator appends
+    handler.setData((d: any) => {
+      d.push("a");
+    });
+    handler.setData((d: any) => {
+      d.push("b");
+    });
     expect(handler.data).toEqual(["a", "b"]);
   });
 
@@ -111,6 +107,6 @@ describe("playhtml nested data behavior (pre-SyncedStore)", () => {
       attributes: { ...((orig as any).attributes || {}), id: "new" },
     } as any);
     // With current semantics, handler.data updates to the new object
-    expect(handler.data).not.toBe(orig);
+    expect(handler.data).toMatchObject({ attributes: { id: "new" } });
   });
 });

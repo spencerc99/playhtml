@@ -14,6 +14,7 @@ import {
   RegisteredPlayEvent,
 } from "@playhtml/common";
 import * as Y from "yjs";
+import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
 
@@ -21,7 +22,12 @@ const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
 const VERBOSE = 0;
 
-const doc = new Y.Doc();
+// Root SyncedStore for nested CRDT semantics while keeping plain API
+type StoreShape = {
+  play: Record<string, Record<string, any>>; // tag -> elementId -> data proxy
+};
+const store = syncedStore<StoreShape>({ play: {} });
+const doc = getYjsDoc(store);
 
 function getDefaultRoom(includeSearch?: boolean): string {
   // TODO: Strip filename extension
@@ -33,6 +39,29 @@ function getDefaultRoom(includeSearch?: boolean): string {
 }
 let yprovider: YPartyKitProvider;
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
+// Internal map for quick access to proxies
+const proxyByTagAndId = new Map<string, Map<string, any>>();
+const yObserverByKey = new Map<string, (events: any[]) => void>();
+
+function ensureElementProxy<T = any>(
+  tag: string,
+  elementId: string,
+  defaultData: T
+) {
+  if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+  const tagMap = proxyByTagAndId.get(tag)!;
+  if (!tagMap.has(elementId)) {
+    store.play[tag] ??= {};
+    if (store.play[tag][elementId] === undefined) {
+      // Always clone to avoid reusing the same object reference across multiple elements,
+      // which SyncedStore forbids ("reassigning object that already occurs in the tree").
+      const initial = clonePlain(defaultData) as any;
+      store.play[tag][elementId] = initial;
+    }
+    tagMap.set(elementId, store.play[tag][elementId]);
+  }
+  return tagMap.get(elementId)!;
+}
 let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
@@ -89,10 +118,17 @@ export interface InitOptions<T = any> {
    * If true, will render some helpful development UI.
    */
   developmentMode?: boolean;
+
+  /**
+   * Select data path: 'syncedstore' for nested Yjs types, or 'plain' for legacy plain-object storage.
+   * Defaults to 'syncedstore'.
+   */
+  dataMode?: "syncedstore" | "plain";
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
+let currentDataMode: "syncedstore" | "plain" = "syncedstore";
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
@@ -252,6 +288,7 @@ async function initPlayHTML({
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
   developmentMode = false,
+  dataMode = "syncedstore",
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -259,6 +296,7 @@ async function initPlayHTML({
   }
   // @ts-ignore
   window.playhtml = playhtml;
+  currentDataMode = dataMode;
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
@@ -383,14 +421,22 @@ function createPlayElementData<T extends TagType>(
     );
   }
 
+  // Determine initial value
+  const initialData =
+    tagData.get(elementId) ??
+    (tagInfo.defaultData instanceof Function
+      ? tagInfo.defaultData(element)
+      : tagInfo.defaultData);
+
+  // Branch based on data mode
+  const useSyncedStore = currentDataMode === "syncedstore";
+  const dataProxy = useSyncedStore
+    ? ensureElementProxy(tag as string, elementId, initialData)
+    : null;
+
   const elementData: ElementData = {
     ...tagInfo,
-    // TODO: when adding save-state if no save state, then just use defaultData
-    data:
-      tagData.get(elementId) ??
-      (tagInfo.defaultData instanceof Function
-        ? tagInfo.defaultData(element)
-        : tagInfo.defaultData),
+    data: useSyncedStore ? dataProxy : initialData,
     awareness:
       getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
@@ -398,11 +444,21 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
-      if (deepEquals(tagData.get(elementId), newData)) {
-        return;
+      if (useSyncedStore) {
+        // Mutator form support: onChange can accept function(draft)
+        if (typeof (newData as any) === "function") {
+          (newData as any)(dataProxy);
+        } else {
+          // Value form: replace snapshot semantics
+          deepReplaceIntoProxy(dataProxy, newData);
+        }
+      } else {
+        // Legacy plain-object update path
+        if (deepEquals(tagData.get(elementId), newData)) {
+          return;
+        }
+        tagData.set(elementId, newData);
       }
-
-      tagData.set(elementId, newData);
     },
     onAwarenessChange: (elementAwarenessData) => {
       const localAwareness = yprovider.awareness.getLocalState()?.[tag] || {};
@@ -420,6 +476,84 @@ function createPlayElementData<T extends TagType>(
   };
 
   return elementData;
+}
+
+function isPlainObject(value: any): value is Record<string, any> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+// Replacement variant used for tags that keep a canonical snapshot (e.g., can-mirror)
+function deepReplaceIntoProxy(target: any, src: any) {
+  if (src === null || src === undefined) return;
+  if (Array.isArray(src)) {
+    target.splice(0, target.length, ...src);
+    return;
+  }
+  if (isPlainObject(src)) {
+    // Remove keys not present in src
+    for (const key of Object.keys(target)) {
+      if (!(key in src)) {
+        delete target[key];
+      }
+    }
+    // Set all keys from src
+    for (const [k, v] of Object.entries(src)) {
+      if (Array.isArray(v)) {
+        if (!Array.isArray(target[k])) target[k] = [];
+        deepReplaceIntoProxy(target[k], v);
+      } else if (isPlainObject(v)) {
+        if (!isPlainObject(target[k])) target[k] = {};
+        deepReplaceIntoProxy(target[k], v);
+      } else {
+        target[k] = v;
+      }
+    }
+    return;
+  }
+  // primitives
+  // If target is a plain object and src is a primitive, try a best-effort map.
+  if (isPlainObject(target)) {
+    // Heuristic for common toggle pattern: boolean -> { on: boolean }
+    if (typeof src === "boolean") {
+      if (
+        Object.prototype.hasOwnProperty.call(target, "on") &&
+        typeof target["on"] === "boolean"
+      ) {
+        target["on"] = src;
+        return;
+      }
+    }
+  }
+  // Fallback: replace arrays/objects by clearing and assigning properties when possible
+  if (Array.isArray(target)) {
+    target.splice(0, target.length, src);
+    return;
+  }
+  // For primitives, direct assignment to local reference won't update proxy; set a generic field if possible
+  try {
+    // @ts-ignore attempt to assign a value-like property
+    target.value = src;
+  } catch {}
+}
+
+function clonePlain<T>(value: T): T {
+  // Prefer structuredClone when available; fallback to JSON clone for plain data
+  try {
+    // @ts-ignore
+    if (typeof structuredClone === "function") {
+      // @ts-ignore
+      return structuredClone(value);
+    }
+  } catch {}
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") {
+    return JSON.parse(JSON.stringify(value));
+  }
+  return value;
 }
 
 function isCorrectElementInitializer(
@@ -745,6 +879,8 @@ async function setupPlayElementForTag<T extends TagType | string>(
   if (tagElementHandlers.has(elementId)) {
     // Try to update the elements info
     tagElementHandlers.get(elementId)!.reinitializeElementData(elementData);
+    // ensure observer is attached
+    attachSyncedStoreObserver(tag as string, elementId);
     return;
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
@@ -769,6 +905,39 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.classList.add(`__playhtml-element`);
   element.classList.add(`__playhtml-${tag}`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+
+  // Attach deep observer so nested changes update the element
+  if (currentDataMode === "syncedstore") {
+    attachSyncedStoreObserver(tag as string, elementId);
+  }
+}
+
+function attachSyncedStoreObserver(tag: string, elementId: string) {
+  const key = `${tag}:${elementId}`;
+  const tagHandlers = elementHandlers.get(tag);
+  if (!tagHandlers) return;
+  const handler = tagHandlers.get(elementId);
+  if (!handler) return;
+
+  // Detach previous observer if present
+  const yVal = getYjsValue(store.play[tag]?.[elementId]);
+  if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
+  const existing = yObserverByKey.get(key);
+  if (existing) {
+    // @ts-ignore
+    (yVal as any).unobserveDeep(existing);
+  }
+  const observer = () => {
+    // Push current proxy snapshot into handler
+    const proxy = store.play[tag]?.[elementId];
+    if (!proxy) return;
+    // Trigger updateElement
+    // @ts-ignore private usage intended
+    handler.__data = proxy;
+  };
+  // @ts-ignore
+  (yVal as any).observeDeep(observer);
+  yObserverByKey.set(key, observer);
 }
 
 // TODO: make async and run it after synced

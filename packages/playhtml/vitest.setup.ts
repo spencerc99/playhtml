@@ -59,3 +59,18 @@ vi.mock("y-partykit/provider", () => {
     },
   };
 });
+
+// Silence the noisy multi-line banner during tests while preserving other logs
+const originalConsoleLog = console.log;
+console.log = (...args: any[]) => {
+  try {
+    const suppress = args.some(
+      (a) =>
+        typeof a === "string" &&
+        (a.includes("booting up playhtml") || a.includes("[PLAYHTML]"))
+    );
+    if (suppress) return;
+  } catch {}
+  // @ts-ignore
+  return originalConsoleLog(...args);
+};

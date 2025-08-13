@@ -1,15 +1,14 @@
 import "../home.scss";
-import React from "react";
+import React, { PropsWithChildren } from "react";
 import ReactDOM from "react-dom/client";
 import {
   CanGrowElement,
   CanHoverElement,
-  withPlay,
+  withSharedState,
   PlayProvider,
   CanMoveElement,
   CanSpinElement,
 } from "@playhtml/react";
-import { playhtml } from "../../packages/playhtml/src/main";
 import { ReactionView } from "../../packages/react/examples/Reaction";
 import { Lamp } from "../../packages/react/examples/SharedLamp";
 import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
@@ -18,7 +17,7 @@ import { LiveVisitorCount } from "../../packages/react/examples/VisitorCount";
 import { ViewCount } from "../../packages/react/examples/ViewCount";
 import { CanDuplicateElement } from "@playhtml/react";
 
-const Candle = withPlay()(
+const Candle = withSharedState(
   { defaultData: { on: false } },
   ({ data, setData }) => {
     return (
