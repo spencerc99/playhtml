@@ -2,7 +2,7 @@ import "../home.scss";
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 
-const ExperimentNumber = 4;
+const ExperimentNumber = 5;
 
 const Experiments: Record<number, any> = {
   1: {
