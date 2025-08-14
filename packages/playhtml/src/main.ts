@@ -29,6 +29,106 @@ type StoreShape = {
 const store = syncedStore<StoreShape>({ play: {} });
 const doc = getYjsDoc(store);
 
+// MIGRATION: Flags and infrastructure for transitioning to SyncedStore-only
+const MIGRATION_FLAGS = {
+  // Enable migration from Y.Map to SyncedStore (Phase 1)
+  enableMigration: true,
+  // Use SyncedStore as primary data source (Phase 2)
+  useSyncedStoreOnly: false,
+  // Create backup of Y.Map data before migration
+  createBackups: true,
+  // Log migration progress
+  logMigration: VERBOSE > 0,
+};
+
+// MIGRATION: Backup storage for Y.Map data during transition
+const migrationBackup: Record<string, Record<string, any>> = {};
+
+// MIGRATION: Functions for safely migrating Y.Map data to SyncedStore
+function createBackupOfYMapData(): void {
+  if (!MIGRATION_FLAGS.createBackups) return;
+
+  globalData.forEach((tagMap, tag) => {
+    if (!migrationBackup[tag]) migrationBackup[tag] = {};
+    if (tagMap instanceof Map) {
+      tagMap.forEach((elementData, elementId) => {
+        migrationBackup[tag][elementId] = clonePlain(elementData);
+      });
+    }
+  });
+
+  if (MIGRATION_FLAGS.logMigration) {
+    console.log("[MIGRATION] Created backup of Y.Map data:", migrationBackup);
+  }
+}
+
+function migrateTagFromYMapToSyncedStore(tag: string): void {
+  if (!MIGRATION_FLAGS.enableMigration) return;
+
+  const tagMap = globalData.get(tag);
+  if (!tagMap) return;
+
+  // Ensure tag exists in SyncedStore
+  store.play[tag] ??= {};
+
+  let migratedCount = 0;
+  tagMap.forEach((elementData, elementId) => {
+    // Only migrate if not already present in SyncedStore
+    if (store.play[tag][elementId] === undefined) {
+      const clonedData = clonePlain(elementData);
+      store.play[tag][elementId] = clonedData;
+      migratedCount++;
+
+      if (MIGRATION_FLAGS.logMigration) {
+        console.log(`[MIGRATION] Migrated ${tag}:${elementId}:`, clonedData);
+      }
+    }
+  });
+
+  if (MIGRATION_FLAGS.logMigration && migratedCount > 0) {
+    console.log(
+      `[MIGRATION] Migrated ${migratedCount} elements for tag: ${tag}`
+    );
+  }
+}
+
+function migrateAllDataFromYMapToSyncedStore(): void {
+  if (!MIGRATION_FLAGS.enableMigration) return;
+
+  if (MIGRATION_FLAGS.logMigration) {
+    console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
+  }
+
+  // Create backup first
+  createBackupOfYMapData();
+
+  // Migrate all tags
+  globalData.forEach((_, tag) => {
+    migrateTagFromYMapToSyncedStore(tag);
+  });
+
+  if (MIGRATION_FLAGS.logMigration) {
+    console.log(
+      "[MIGRATION] Migration completed. SyncedStore state:",
+      clonePlain(store.play)
+    );
+  }
+}
+
+function getElementDataUnified(tag: string, elementId: string): any {
+  // During migration, prefer SyncedStore if available, fallback to Y.Map
+  if (
+    MIGRATION_FLAGS.useSyncedStoreOnly ||
+    store.play[tag]?.[elementId] !== undefined
+  ) {
+    return store.play[tag]?.[elementId];
+  }
+
+  // Fallback to Y.Map
+  const tagMap = globalData.get(tag);
+  return tagMap?.get(elementId);
+}
+
 function getDefaultRoom(includeSearch?: boolean): string {
   // TODO: Strip filename extension
   const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
@@ -119,16 +219,12 @@ export interface InitOptions<T = any> {
    */
   developmentMode?: boolean;
 
-  /**
-   * Select data path: 'syncedstore' for nested Yjs types, or 'plain' for legacy plain-object storage.
-   * Defaults to 'syncedstore'.
-   */
-  dataMode?: "syncedstore" | "plain";
+  // MIGRATION: Removed dataMode - now using SyncedStore exclusively
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
-let currentDataMode: "syncedstore" | "plain" = "syncedstore";
+// MIGRATION: Removed currentDataMode - now using SyncedStore exclusively
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
@@ -175,7 +271,12 @@ function setupDevUI() {
   const resetDataButton = document.createElement("button");
   resetDataButton.innerText = "Reset Data";
   resetDataButton.onclick = () => {
-    globalData.clear();
+    // MIGRATION: Clear SyncedStore data instead of globalData
+    Object.keys(store.play).forEach((tag) => {
+      Object.keys(store.play[tag]).forEach((elementId) => {
+        delete store.play[tag][elementId];
+      });
+    });
   };
   devUi.appendChild(resetDataButton);
 
@@ -288,7 +389,6 @@ async function initPlayHTML({
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
   developmentMode = false,
-  dataMode = "syncedstore",
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -296,7 +396,7 @@ async function initPlayHTML({
   }
   // @ts-ignore
   window.playhtml = playhtml;
-  currentDataMode = dataMode;
+  // MIGRATION: Removed dataMode assignment - now using SyncedStore exclusively
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
@@ -360,6 +460,10 @@ async function initPlayHTML({
       }
       hasSynced = true;
       console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+
+      // MIGRATION: Migrate existing Y.Map data to SyncedStore before setting up elements
+      migrateAllDataFromYMapToSyncedStore();
+
       setupElements();
       resolve(true);
     });
@@ -408,41 +512,25 @@ function createPlayElementData<T extends TagType>(
   tagInfo: ElementInitializer<T>,
   elementId: string
 ): ElementData<T> {
-  type tagType = (typeof tagInfo)["defaultData"];
-  const tagData: Y.Map<tagType> = globalData.get(tag)!;
+  // MIGRATION: Removed tagData Y.Map reference - using SyncedStore exclusively
 
   if (VERBOSE) {
-    console.log(
-      "registering element",
-      elementId,
-      tagData.get(elementId) ?? tagInfo.defaultData,
-      tagData.get(elementId),
-      tagInfo.defaultData
-    );
+    console.log("registering element", elementId, "using SyncedStore data");
   }
 
-  // Determine initial value
-  // In SyncedStore mode, rely on SyncedStore tree for initialization to avoid
-  // mixing plain snapshots with CRDT proxies.
-  const useSyncedStore = currentDataMode === "syncedstore";
-  const initialData = useSyncedStore
-    ? tagInfo.defaultData instanceof Function
+  // MIGRATION: Use SyncedStore exclusively - no more Y.Map branching
+  const initialData =
+    tagInfo.defaultData instanceof Function
       ? tagInfo.defaultData(element)
-      : tagInfo.defaultData
-    : tagData.get(elementId) ??
-      (tagInfo.defaultData instanceof Function
-        ? tagInfo.defaultData(element)
-        : tagInfo.defaultData);
+      : tagInfo.defaultData;
 
-  // Branch based on data mode
-  const dataProxy = useSyncedStore
-    ? ensureElementProxy(tag as string, elementId, initialData)
-    : null;
+  // Always use SyncedStore proxy
+  const dataProxy = ensureElementProxy(tag as string, elementId, initialData);
 
   const elementData: ElementData = {
     ...tagInfo,
     // Always provide a plain snapshot to render paths
-    data: useSyncedStore ? clonePlain(dataProxy) : initialData,
+    data: clonePlain(dataProxy),
     awareness:
       getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
@@ -450,25 +538,18 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
-      if (useSyncedStore) {
+      // MIGRATION: SyncedStore-only onChange handler
+      if (typeof (newData as any) === "function") {
         // Mutator form support: onChange can accept function(draft)
-        if (typeof (newData as any) === "function") {
-          // Batch all nested mutations into a single Yjs transaction to coalesce events
-          doc.transact(() => {
-            (newData as any)(dataProxy);
-          });
-        } else {
-          // Value form: replace snapshot semantics
-          doc.transact(() => {
-            deepReplaceIntoProxy(dataProxy, newData);
-          });
-        }
+        // Batch all nested mutations into a single Yjs transaction to coalesce events
+        doc.transact(() => {
+          (newData as any)(dataProxy);
+        });
       } else {
-        // Legacy plain-object update path
-        if (deepEquals(tagData.get(elementId), newData)) {
-          return;
-        }
-        tagData.set(elementId, newData);
+        // Value form: replace snapshot semantics
+        doc.transact(() => {
+          deepReplaceIntoProxy(dataProxy, newData);
+        });
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
@@ -676,14 +757,8 @@ function setupElements(): void {
   if (!firstSetup) {
     return;
   }
-  globalData.observe((event) => {
-    event.changes.keys.forEach((change, key) => {
-      if (change.action === "add") {
-        globalData.set(key, globalData.get(key)!);
-        // TODO: need to re-initialize the above handlers here too...?
-      }
-    });
-  });
+  // MIGRATION: Removed Y.Map observer - SyncedStore handles data sync automatically
+  // Individual element observers are handled by attachSyncedStoreObserver()
 
   yprovider.awareness.on("change", () => onChangeAwareness());
   firstSetup = false;
@@ -695,7 +770,8 @@ interface PlayHTMLComponents {
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  globalData: Y.Map<any> | undefined;
+  // MIGRATION: Replaced globalData with store for debugging access
+  store: typeof store;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -710,7 +786,8 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,
-  globalData,
+  // MIGRATION: Expose store instead of globalData for debugging
+  store,
   elementHandlers,
   eventHandlers,
   dispatchPlayEvent,
@@ -733,61 +810,12 @@ function maybeSetupTag(tag: TagType | string): void {
   if (!elementHandlers.has(tag)) {
     elementHandlers.set(tag, new Map<string, ElementHandler>());
   }
-  let tagCommonElementInitializerInfo =
-    tag !== TagType.CanPlay ? capabilitiesToInitializer[tag] : undefined;
 
-  type tagType =
-    typeof tagCommonElementInitializerInfo extends ElementInitializer
-      ? (typeof tagCommonElementInitializerInfo)["defaultData"]
-      : any;
-  // check for safety, but this should always be true because of the first check.
-  if (!globalData.get(tag)) {
-    globalData.set(tag, new Y.Map<tagType>());
-  }
+  // MIGRATION: Ensure tag exists in SyncedStore structure
+  store.play[tag] ??= {};
 
-  const tagData: Y.Map<tagType> = globalData.get(tag)!;
-
-  tagData.observe((event) => {
-    event.changes.keys.forEach(async (change, key) => {
-      const tagElementHandlers = elementHandlers.get(tag)!;
-      if (change.action === "add") {
-        const element = document.getElementById(key)!;
-        if (!isHTMLElement(element)) {
-          console.log(`Element ${key} not an HTML element. Ignoring.`);
-          return;
-        }
-
-        if (VERBOSE) {
-          console.log(
-            `[OBSERVE] Setting up playhtml element for tag ${tag} with element ${element}`
-          );
-        }
-        setupPlayElementForTag(element, tag);
-      } else if (change.action === "update") {
-        let elementHandler = tagElementHandlers.get(key);
-        if (!elementHandler) {
-          const element = document.getElementById(key)!;
-          if (!isHTMLElement(element)) {
-            console.log(`Element ${key} not an HTML element. Ignoring.`);
-            return;
-          }
-
-          if (VERBOSE) {
-            console.log(
-              `[OBSERVE] Setting up playhtml element for tag ${tag} with element ${element}`
-            );
-          }
-          await setupPlayElementForTag(element, tag);
-          elementHandler = tagElementHandlers.get(key);
-        }
-        elementHandler!.__data = tagData.get(key)!;
-      } else if (change.action === "delete") {
-        tagElementHandlers.delete(key);
-      } else {
-        console.log(`Unhandled action: ${change.action}`);
-      }
-    });
-  });
+  // MIGRATION: Removed Y.Map observer code - SyncedStore handles data sync automatically
+  // Individual element observers are handled by attachSyncedStoreObserver()
 }
 
 /**
@@ -857,8 +885,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
-  type tagType = (typeof elementInitializerInfo)["defaultData"];
-  const tagData: Y.Map<tagType> = globalData.get(tag)!;
+  // MIGRATION: Removed tagData Y.Map reference - using SyncedStore exclusively
 
   const elementData = createPlayElementData(
     element,
@@ -875,20 +902,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
   }
-  // if there is nothing stored in the synced data, set it to the default data if the element gets successfully created
-  if (currentDataMode !== "syncedstore") {
-    if (
-      tagData.get(elementId) === undefined &&
-      elementInitializerInfo.defaultData !== undefined
-    ) {
-      tagData.set(
-        elementId,
-        elementInitializerInfo.defaultData instanceof Function
-          ? elementInitializerInfo.defaultData(element)
-          : elementInitializerInfo.defaultData
-      );
-    }
-  }
+  // MIGRATION: Data initialization now handled by ensureElementProxy in SyncedStore
 
   // redo this now that we have set it in the mapping.
   // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
@@ -898,10 +912,8 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.classList.add(`__playhtml-${tag}`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 
-  // Attach deep observer so nested changes update the element
-  if (currentDataMode === "syncedstore") {
-    attachSyncedStoreObserver(tag as string, elementId);
-  }
+  // MIGRATION: Always attach SyncedStore observer
+  attachSyncedStoreObserver(tag as string, elementId);
 }
 
 function attachSyncedStoreObserver(tag: string, elementId: string) {
