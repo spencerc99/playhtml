@@ -22,13 +22,14 @@ export const SharedSound = withSharedState(
           className="sound-file"
           controls
           loop
+          style={{
+            visibility: "hidden",
+          }}
         />
+        {data.isPlaying ? <span>🔈</span> : <span>🔇</span>}
         <button
           onClick={() =>
-            setData((d) => {
-              d.isPlaying = !d.isPlaying;
-              d.timestamp = Date.now();
-            })
+            setData({ isPlaying: !data.isPlaying, timestamp: Date.now() })
           }
         >
           {data.isPlaying ? "Pause" : "Play"}
