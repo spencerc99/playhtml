@@ -422,21 +422,27 @@ function createPlayElementData<T extends TagType>(
   }
 
   // Determine initial value
-  const initialData =
-    tagData.get(elementId) ??
-    (tagInfo.defaultData instanceof Function
+  // In SyncedStore mode, rely on SyncedStore tree for initialization to avoid
+  // mixing plain snapshots with CRDT proxies.
+  const useSyncedStore = currentDataMode === "syncedstore";
+  const initialData = useSyncedStore
+    ? tagInfo.defaultData instanceof Function
       ? tagInfo.defaultData(element)
-      : tagInfo.defaultData);
+      : tagInfo.defaultData
+    : tagData.get(elementId) ??
+      (tagInfo.defaultData instanceof Function
+        ? tagInfo.defaultData(element)
+        : tagInfo.defaultData);
 
   // Branch based on data mode
-  const useSyncedStore = currentDataMode === "syncedstore";
   const dataProxy = useSyncedStore
     ? ensureElementProxy(tag as string, elementId, initialData)
     : null;
 
   const elementData: ElementData = {
     ...tagInfo,
-    data: useSyncedStore ? dataProxy : initialData,
+    // Always provide a plain snapshot to render paths
+    data: useSyncedStore ? clonePlain(dataProxy) : initialData,
     awareness:
       getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
@@ -870,16 +876,18 @@ async function setupPlayElementForTag<T extends TagType | string>(
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
   }
   // if there is nothing stored in the synced data, set it to the default data if the element gets successfully created
-  if (
-    tagData.get(elementId) === undefined &&
-    elementInitializerInfo.defaultData !== undefined
-  ) {
-    tagData.set(
-      elementId,
-      elementInitializerInfo.defaultData instanceof Function
-        ? elementInitializerInfo.defaultData(element)
-        : elementInitializerInfo.defaultData
-    );
+  if (currentDataMode !== "syncedstore") {
+    if (
+      tagData.get(elementId) === undefined &&
+      elementInitializerInfo.defaultData !== undefined
+    ) {
+      tagData.set(
+        elementId,
+        elementInitializerInfo.defaultData instanceof Function
+          ? elementInitializerInfo.defaultData(element)
+          : elementInitializerInfo.defaultData
+      );
+    }
   }
 
   // redo this now that we have set it in the mapping.
@@ -917,12 +925,12 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      // Push current proxy snapshot into handler
+      // Push plain snapshot into handler for stable rendering
       const proxy = store.play[tag]?.[elementId];
       if (!proxy) return;
-      // Trigger updateElement
+      const plain = clonePlain(proxy);
       // @ts-ignore private usage intended
-      handler.__data = proxy;
+      handler.__data = plain;
     });
   };
   // @ts-ignore
