@@ -8,10 +8,10 @@
     "packages/common"
   ],
   "scripts": {
-    "dev": "vite --config vite.config.site.ts",
+    "dev": "vite --config vite.config.site.mts",
     "dev-server": "bunx partykit dev partykit/party.ts",
     "deploy-server": "bunx partykit deploy",
-    "build-site": "vite build website --config vite.config.site.ts",
+    "build-site": "vite build website --config vite.config.site.mts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && bun run build); done"
   },
   "devDependencies": {
