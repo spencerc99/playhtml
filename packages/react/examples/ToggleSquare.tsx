@@ -13,7 +13,11 @@ export const ToggleSquare = withSharedState(
           height: "200px",
           ...(data.on ? { background: "green" } : { background: "red" }),
         }}
-        onClick={() => setData({ on: !data.on })}
+        onClick={() =>
+          setData((d) => {
+            d.on = !d.on;
+          })
+        }
       />
     );
   }

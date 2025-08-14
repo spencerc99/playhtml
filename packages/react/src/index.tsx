@@ -141,7 +141,7 @@ export function CanPlayElement<T, V>({
     // @ts-ignore
     data,
     awareness,
-    setData: (newData) => {
+    setData: (newData: T | ((draft: T) => void)) => {
       // console.log("settingdata", newData);
       // console.log(ref.current?.id);
       // console.log(

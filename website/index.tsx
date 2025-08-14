@@ -140,8 +140,7 @@ playhtml.init({
             ...inputData,
             timestamp,
           };
-          // Use mutator form for CRDT-friendly append semantics
-          // @ts-ignore allow mutator form in SyncedStore mode
+
           setData((d: FormData[]) => {
             d.push(newEntry);
           });

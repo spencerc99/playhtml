@@ -26,9 +26,9 @@ export const CanResizeElement = withSharedState(
         height={height}
         lockAspectRatio
         onResize={(e, d) => {
-          setData({
-            width: d.size.width,
-            height: d.size.height,
+          setData((state) => {
+            state.width = d.size.width;
+            state.height = d.size.height;
           });
           onResize(d.size.width, d.size.height);
         }}

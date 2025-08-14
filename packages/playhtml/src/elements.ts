@@ -295,8 +295,10 @@ export class ElementHandler<T = any, U = any, V = any> {
    * - Directly mutating eventData.data may work in SyncedStore mode, but the
    *   recommended portable pattern is setData(draft => { ... }).
    */
-  setData(data: T): void {
-    this.onChange(data);
+  setData(data: T | ((draft: T) => void)): void {
+    // The onChange implementation in main.ts understands both forms.
+    // Cast is safe because the callee inspects and branches by typeof.
+    this.onChange(data as unknown as T);
   }
 
   // TODO: this should be keyed on the element to avoid conflicts

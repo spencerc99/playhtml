@@ -25,7 +25,10 @@ export const SharedSound = withSharedState(
         />
         <button
           onClick={() =>
-            setData({ isPlaying: !data.isPlaying, timestamp: Date.now() })
+            setData((d) => {
+              d.isPlaying = !d.isPlaying;
+              d.timestamp = Date.now();
+            })
           }
         >
           {data.isPlaying ? "Pause" : "Play"}

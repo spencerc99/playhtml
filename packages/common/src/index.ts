@@ -71,7 +71,7 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
    *   scenarios (e.g., mirroring DOM state) or in legacy plain mode.
    *   Example: setData({ on: true })
    */
-  setData: (data: T) => void;
+  setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U) => void;
   setMyAwareness: (data: V) => void;
@@ -87,7 +87,7 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getLocalData: () => U;
   getAwareness: () => V[];
   getElement: () => HTMLElement;
-  setData: (data: T) => void;
+  setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U) => void;
   setMyAwareness: (data: V) => void;
 }
@@ -609,32 +609,6 @@ interface HTMLElementState {
 interface TextState {
   nodeType: NodeType.Text;
   textContent: string;
-}
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
-}
-
-function updateStateWithMutation(
-  state: ElementState,
-  mutations: MutationRecord[]
-): ElementState {
-  let newState = deepClone(state);
-  mutations.forEach((mutation) => {
-    switch (mutation.type) {
-      case "attributes":
-        updateAttributes(newState, mutation);
-        break;
-      case "childList":
-        updateChildList(newState, mutation);
-        break;
-      case "characterData":
-        updateCharacterData(newState, mutation);
-        break;
-    }
-  });
-
-  return newState;
 }
 
 /**

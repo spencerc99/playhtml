@@ -22,8 +22,9 @@ const LiveChat = withSharedState(
     const [newMessage, setNewMessage] = useState("");
     const [isMinimized, setIsMinimized] = useState(true);
     const userId = localStorage.getItem("userId") || "unknown";
-    const userName = Boolean(localStorage.getItem("username"))
-      ? JSON.parse(localStorage.getItem("username")) || "Anonymous"
+    const usernameRaw = localStorage.getItem("username");
+    const userName = usernameRaw
+      ? JSON.parse(usernameRaw) || "Anonymous"
       : "Anonymous";
 
     const handleSend = () => {
@@ -36,7 +37,9 @@ const LiveChat = withSharedState(
           //   @ts-ignore
           color: window.cursors.color,
         };
-        setData({ messages: [...data.messages, message] });
+        setData((d) => {
+          d.messages.push(message);
+        });
         setNewMessage("");
       }
     };
@@ -92,7 +95,9 @@ export const LiveChatController = withSharedState(
 
     const handleCreateChat = () => {
       if (newChatName.trim() && !data.chatNames.includes(newChatName)) {
-        setData({ chatNames: [...data.chatNames, newChatName] });
+        setData((d) => {
+          d.chatNames.push(newChatName);
+        });
         setNewChatName("");
       }
     };
