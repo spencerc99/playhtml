@@ -5,7 +5,6 @@ import {
 } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import React, { PropsWithChildren } from "react";
-import ReactIs from "react-is";
 
 export type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
@@ -40,12 +39,67 @@ function isDOMElement(element: React.ReactElement): boolean {
   return typeof element.type === "string";
 }
 
+/**
+ * Reliable React Fragment detection helper.
+ *
+ * Background: We discovered that ReactIs.isFragment() was consistently returning false
+ * even for valid React Fragments, even with correct react-is@18.3.1 matching react@18.3.1.
+ * This was causing Fragment IDs to be lost, resulting in random element IDs instead of
+ * the specified ones.
+ *
+ * This implementation is designed to be robust across React versions and bundling scenarios:
+ * 1. Direct comparison with current React.Fragment (same instance)
+ * 2. Global symbol registry lookup (cross-instance compatibility)
+ * 3. String representation fallback (emergency compatibility)
+ * 4. Strict validation to prevent false positives
+ *
+ * @param element React element to check
+ * @returns true if element is a React Fragment, false otherwise (never false positive)
+ */
+export function isReactFragment(element: React.ReactElement): boolean {
+  // Defensive check: must be a valid React element
+  if (!element || typeof element !== "object" || !element.type) {
+    return false;
+  }
+
+  // TypeScript doesn't know that element.type can be a symbol for fragments,
+  // so we need to cast it to unknown first to avoid type errors
+  const elementType = element.type as unknown;
+
+  // Method 1: Direct comparison with current React.Fragment instance
+  // This works when both the element and our code use the same React instance
+  if (elementType === React.Fragment) {
+    return true;
+  }
+
+  // Method 2: Global symbol registry lookup
+  // This works across different React instances as long as they use the same symbol
+  if (elementType === Symbol.for("react.fragment")) {
+    return true;
+  }
+
+  // Method 3: Additional robustness - check if it's a symbol and looks like a fragment
+  // This handles cases where React versions might use different symbol creation methods
+  if (typeof elementType === "symbol") {
+    const symbolString = elementType.toString();
+    // Only match exact fragment symbols to avoid false positives
+    if (
+      symbolString === "Symbol(react.fragment)" ||
+      symbolString === "Symbol.for(react.fragment)"
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function cloneThroughFragments<P = any>(
   element: React.ReactElement<P>,
   props: PropsWithChildren<P>,
   { fragmentId }: { fragmentId?: string } = {}
 ): React.ReactElement<P> {
-  if (ReactIs.isFragment(element)) {
+  if (isReactFragment(element)) {
     if (!fragmentId) {
       throw new Error(`Fragments must have an id attribute`);
     }
@@ -82,6 +136,11 @@ function domProps(
     return element;
   }
 
+  // If this is already a DOM element, just apply props directly
+  if (typeof element.type === "string") {
+    return React.cloneElement(element, propsToPass);
+  }
+
   // Keep track of whether props have been passed down
   let propsPassed = false;
 
@@ -89,21 +148,39 @@ function domProps(
   const clonedChildren = React.Children.map(
     (element.props as PropsWithChildren).children,
     (child: React.ReactNode) => {
+      // Skip non-React elements (text, numbers, null, etc.)
+      if (!React.isValidElement(child)) {
+        return child;
+      }
+
       // Check if props have been passed down and if the child is a DOM element
-      if (
-        !propsPassed &&
-        React.isValidElement(child) &&
-        typeof child.type === "string"
-      ) {
+      if (!propsPassed && typeof child.type === "string") {
         propsPassed = true;
         return domProps(child, propsToPass, true);
       }
+
+      // For non-DOM elements, recursively search their children
+      if (!propsPassed && typeof child.type !== "string") {
+        try {
+          const result = domProps(child, propsToPass, true);
+          if (result !== child) {
+            propsPassed = true;
+            return result;
+          }
+        } catch {
+          // Continue searching other children if this one doesn't have DOM elements
+        }
+      }
+
       return child;
     }
   );
 
+  // If we still haven't found a DOM element, try a more forgiving approach
   if (!propsPassed && !isRecursing) {
-    throw new Error(`no DOM element found in children of ${element}`);
+    throw new Error(
+      `[@playhtml/react] no DOM element found in children of ${element}. Please ensure that your component has a direct DOM child.`
+    );
   }
 
   const clonedElement = React.cloneElement(element, {

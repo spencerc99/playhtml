@@ -1,10 +1,9 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
-import ReactIs from "react-is";
 import { useContext, useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
-import { cloneThroughFragments, getCurrentElementHandler } from "./utils";
+import { cloneThroughFragments, getCurrentElementHandler, isReactFragment } from "./utils";
 import type {
   ReactElementInitializer,
   ReactElementEventHandlerData,
@@ -160,13 +159,12 @@ export function CanPlayElement<T, V>({
     ref,
   });
 
-  if (ReactIs.isFragment(renderedChildren) && !id) {
+  if (isReactFragment(renderedChildren) && !id) {
     throw new Error(
       `If you pass a single React Fragment as the children, you must also specify 'id' in the props`
     );
   }
-
-  // console.log("rendering", ref.current?.id, data, awareness, myAwareness);
+  
   return cloneThroughFragments(
     React.Children.only(renderedChildren),
     {
