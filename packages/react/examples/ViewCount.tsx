@@ -12,9 +12,7 @@ export const ViewCount = withSharedState(
         return;
       }
 
-      setData((d) => {
-        d.count = d.count + 1;
-      });
+      setData({ count: data.count + 1 });
     }, [hasSynced]);
     return (
       <div

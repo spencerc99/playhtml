@@ -122,13 +122,6 @@ export function CanPlayElement<T, V>({
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
       playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
-      // console.log("setting up", ref.current.id);
-      const existingData = playhtml.globalData
-        ?.get("can-play")
-        ?.get(ref.current.id);
-      if (existingData) {
-        setData(existingData);
-      }
     }
     // console.log("setting up", elementProps.defaultData, ref.current);
 

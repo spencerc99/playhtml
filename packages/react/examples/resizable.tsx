@@ -7,7 +7,7 @@ import "react-resizable/css/styles.css";
 interface Props {
   initialWidth: number;
   initialHeight: number;
-  onResize: (newWidth: number, newHeight: number) => void;
+  onResize?: (newWidth: number, newHeight: number) => void;
 }
 
 export const CanResizeElement = withSharedState(
@@ -30,10 +30,17 @@ export const CanResizeElement = withSharedState(
             state.width = d.size.width;
             state.height = d.size.height;
           });
-          onResize(d.size.width, d.size.height);
+          onResize?.(d.size.width, d.size.height);
         }}
       >
-        {children}
+        <div
+          style={{
+            width,
+            height,
+          }}
+        >
+          {children}
+        </div>
       </Resizable>
     );
   }

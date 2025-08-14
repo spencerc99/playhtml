@@ -3,6 +3,10 @@ import { withSharedState } from "@playhtml/react";
 import { PlayProvider } from "@playhtml/react";
 import "./LiveChat.scss";
 
+const randomColor = () => {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16);
+};
+
 interface ChatMessage {
   id: string;
   name: string;
@@ -14,7 +18,7 @@ interface LiveChatProps {
   name: string;
 }
 
-const LiveChat = withSharedState(
+export const LiveChat = withSharedState(
   {
     defaultData: { messages: [] as ChatMessage[] },
   },
@@ -35,7 +39,7 @@ const LiveChat = withSharedState(
           text: newMessage,
           //   this comes from cursor party, if not defined it just defaults to black
           //   @ts-ignore
-          color: window.cursors.color,
+          color: window.cursors?.color || randomColor(),
         };
         setData((d) => {
           d.messages.push(message);

@@ -15,7 +15,9 @@ import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
 import { ConfettiZone } from "../../packages/react/examples/Confetti";
 import { LiveVisitorCount } from "../../packages/react/examples/VisitorCount";
 import { ViewCount } from "../../packages/react/examples/ViewCount";
-import { CanDuplicateElement } from "@playhtml/react";
+import { LiveChat } from "../../packages/react/examples/LiveChat";
+import { FridgeWord } from "../../packages/react/examples/FridgeWord";
+import { CanResizeElement } from "../../packages/react/examples/resizable";
 
 const Candle = withSharedState(
   { defaultData: { on: false } },
@@ -75,17 +77,30 @@ ReactDOM.createRoot(
         className="hoverBox"
       ></div>
     </CanHoverElement>
-    {/* <CanResizeElement initialHeight={150} initialWidth={150}>
+    <CanResizeElement
+      initialHeight={150}
+      initialWidth={150}
+      onResize={() => {}}
+    >
       <div
+        id="resize"
         style={{
-          background: "orange",
           border: "1px solid black",
+          background: "orange",
+          width: "100%",
+          height: "100%",
         }}
       ></div>
-    </CanResizeElement> */}
+    </CanResizeElement>
     <ConfettiZone />
     <LiveVisitorCount />
     <ViewCount />
+    <LiveChat name="Live Chat" />
+    <FridgeWord word="Hello" color="red" />
+    <FridgeWord word="World" color="blue" />
+    <FridgeWord word="tender" color="green" />
+    <FridgeWord word="days" color="yellow" />
+
     {/* <SharedSound soundUrl={"/lamp-on.m4a"} /> */}
     {/* <MirrorableElement></MirrorableElement> */}
   </PlayProvider>
