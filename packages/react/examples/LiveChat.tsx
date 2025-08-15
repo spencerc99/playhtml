@@ -3,6 +3,10 @@ import { withSharedState } from "@playhtml/react";
 import { PlayProvider } from "@playhtml/react";
 import "./LiveChat.scss";
 
+const randomColor = () => {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16);
+};
+
 interface ChatMessage {
   id: string;
   name: string;
@@ -14,7 +18,7 @@ interface LiveChatProps {
   name: string;
 }
 
-const LiveChat = withSharedState(
+export const LiveChat = withSharedState(
   {
     defaultData: { messages: [] as ChatMessage[] },
   },
@@ -22,8 +26,9 @@ const LiveChat = withSharedState(
     const [newMessage, setNewMessage] = useState("");
     const [isMinimized, setIsMinimized] = useState(true);
     const userId = localStorage.getItem("userId") || "unknown";
-    const userName = Boolean(localStorage.getItem("username"))
-      ? JSON.parse(localStorage.getItem("username")) || "Anonymous"
+    const usernameRaw = localStorage.getItem("username");
+    const userName = usernameRaw
+      ? JSON.parse(usernameRaw) || "Anonymous"
       : "Anonymous";
 
     const handleSend = () => {
@@ -34,9 +39,11 @@ const LiveChat = withSharedState(
           text: newMessage,
           //   this comes from cursor party, if not defined it just defaults to black
           //   @ts-ignore
-          color: window.cursors.color,
+          color: window.cursors?.color || randomColor(),
         };
-        setData({ messages: [...data.messages, message] });
+        setData((d) => {
+          d.messages.push(message);
+        });
         setNewMessage("");
       }
     };
@@ -92,7 +99,9 @@ export const LiveChatController = withSharedState(
 
     const handleCreateChat = () => {
       if (newChatName.trim() && !data.chatNames.includes(newChatName)) {
-        setData({ chatNames: [...data.chatNames, newChatName] });
+        setData((d) => {
+          d.chatNames.push(newChatName);
+        });
         setNewChatName("");
       }
     };

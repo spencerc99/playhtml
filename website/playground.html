@@ -51,14 +51,99 @@
         }
       </script>
       <h1>Tasks</h1>
-      <div can-mirror id="tasks" style="display: flex; flex-direction: column">
+      <div can-mirror id="tasks1" style="display: flex; flex-direction: column">
         <button onclick="addTask()">Add</button>
         <button onclick="removeTask()">Delete</button>
       </div>
       <br />
       <hr />
       <br />
-      <div can-mirror id="t5">red or blue</div>
+      <div id="candleFactory">
+        <button id="makeCandleBtn" can-duplicate="customCandle">🕯️</button>
+      </div>
+      <img
+        can-play
+        can-move
+        id="customCandle"
+        src="/candle-gif.gif"
+        class="candle"
+      />
+
+      <!-- Set data for custom (can-play) playhtml elements -->
+      <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
+      <script>
+        const candle = document.getElementById("customCandle");
+        candle.defaultData = { on: true };
+        candle.onClick = (_e, { data, setData }) => {
+          const on = typeof data === "object" ? data.on : data;
+          setData(!on);
+        };
+        candle.updateElement = ({ element, data }) => {
+          const on = typeof data === "object" ? data.on : data;
+          element.src = on ? "/candle-gif.gif" : "/candle-off.png";
+        };
+        candle.resetShortcut = "shiftKey";
+      </script>
+      <hr />
+      <br />
+
+      <h2>Synced nested data demo</h2>
+      <div id="nestedDemo">
+        <button id="addItemA">Append A</button>
+        <button id="addItemB">Append B</button>
+        <button id="resetNested">Reset</button>
+        <pre id="nestedState"></pre>
+      </div>
+      <script>
+        // Minimal demo using can-play with nested array
+        const demo = document.createElement("div");
+        demo.id = "nestedElement";
+        demo.setAttribute("can-play", "");
+        document.body.appendChild(demo);
+
+        demo.defaultData = { list: [] };
+        demo.updateElement = ({ data }) => {
+          nestedState.textContent = JSON.stringify(data, null, 2);
+        };
+
+        addItemA.onclick = () => {
+          // mutator update; should merge across clients
+          // @ts-ignore
+          window.playhtml?.elementHandlers
+            ?.get("can-play")
+            ?.get("nestedElement")
+            ?.setData((d) => {
+              d.list.push("A");
+            });
+        };
+        addItemB.onclick = () => {
+          // @ts-ignore
+          window.playhtml?.elementHandlers
+            ?.get("can-play")
+            ?.get("nestedElement")
+            ?.setData((d) => {
+              d.list.push("B");
+            });
+        };
+
+        resetNested.onclick = () => {
+          // Prefer using the handler's reset to restore defaultData
+          // @ts-ignore
+          const handler = window.playhtml?.elementHandlers
+            ?.get("can-play")
+            ?.get("nestedElement");
+          if (handler?.reset) {
+            handler.reset();
+          } else {
+            // Fallback: clear the array via mutator
+            handler?.setData((d) => {
+              d.list.splice(0, d.list.length);
+            });
+          }
+        };
+      </script>
+
+      <div can-mirror id="t6">red or blue</div>
       <button onclick="changeText()">red or blue</button>
       <div can-mirror id="contentEditable" contenteditable="true">
         CONTENT EDITABLE
@@ -68,6 +153,7 @@
         <p>CONTENT EDITABLE WITH CHILDREN</p>
       </div>
       <script>
+        const tasks = document.getElementById("tasks1");
         function addTask() {
           const task = document.createElement("div");
           task.innerText = `New Task ${tasks.children.length + 1}`;
@@ -79,7 +165,7 @@
         }
 
         function changeText() {
-          t5.textContent = t5.textContent === "red" ? "blue" : "red";
+          t6.textContent = t6.textContent === "red" ? "blue" : "red";
         }
       </script>
     </div>
@@ -92,7 +178,7 @@
 
     <script type="module" src="./playground.ts"></script>
     <style>
-      #tasks button {
+      #tasks1 button {
         width: 120px;
         background: burlywood;
         font-size: 16px;

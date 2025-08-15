@@ -130,6 +130,31 @@ To create your own custom element, refer to the [can-play](#can-play) section.
 
 If you're trying this out and having trouble, please message me ([email](mailto:spencerc99@gmail.com), [twitter](https://twitter.com/spencerc99)) and I'm happy to help out!
 
+### Data updates: mutator vs replacement
+
+playhtml supports two ways to update an element's `data` via `setData`, and they have different semantics:
+
+- Mutator form: pass a function that receives a draft and mutate it in place. This is merge-friendly (supports adding to a list without conflicts) and is the recommended way to update nested arrays/objects. If you don't do this for a list, you might get conflicts if two people try to add to the list at the same time and one disconnects from the internet briefly.
+- Replacement form: pass a full value. This replaces the entire snapshot and is useful for canonical state.
+
+Examples
+
+1. Mutator (merge-friendly): append to a list
+
+```tsx
+// data: { messages: string[] }
+setData((draft) => {
+  draft.messages.push("hello");
+});
+```
+
+2. Replacement (overwrite snapshot): toggle boolean
+
+```tsx
+// data: { on: boolean }
+setData({ on: !data.on });
+```
+
 ## Examples
 
 To get started, you can find examples inside `index.html`, the `website/experiments` folder (these all have corresponding live demos at playhtml.fun/experiments/one/), and React examples under `packages/react/examples`.

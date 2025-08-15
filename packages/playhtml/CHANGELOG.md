@@ -1,5 +1,13 @@
 # Change Log
 
+## Unreleased
+
+### Added
+
+- SyncedStore-backed nested CRDT support by default (dataMode = "syncedstore"), enabling automatic conflict resolution for arrays/objects under `data`.
+- Mutator form for `setData`: `setData(draft => { ... })` now supported across core and React wrappers, providing merge-friendly edits to nested structures.
+- Replacement semantics for `setData(value)` clarified and enforced for canonical snapshot updates (e.g., can-mirror).
+
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## 2.1.6 - 2024-04-17

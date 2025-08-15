@@ -56,7 +56,22 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   localData: U;
   awareness: V[];
   element: HTMLElement;
-  setData: (data: T) => void;
+  /**
+   * Updates the element's shared data.
+   *
+   * Two forms:
+   * - Mutator form: setData((draft) => { ... })
+   *   When the runtime uses SyncedStore/Yjs, draft is a live CRDT proxy.
+   *   Mutate nested arrays/objects for merge-friendly collaborative edits.
+   *   Concurrent updates will be merged across clients. Example:
+   *     setData(d => { d.list.push(item); })
+   *
+   * - Value form: setData(value)
+   *   Replaces the entire data snapshot. Use for canonical replacement
+   *   scenarios (e.g., mirroring DOM state) or in legacy plain mode.
+   *   Example: setData({ on: true })
+   */
+  setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U) => void;
   setMyAwareness: (data: V) => void;
@@ -72,7 +87,7 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getLocalData: () => U;
   getAwareness: () => V[];
   getElement: () => HTMLElement;
-  setData: (data: T) => void;
+  setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U) => void;
   setMyAwareness: (data: V) => void;
 }
@@ -415,21 +430,52 @@ export const TagTypeToElement: Record<
     defaultData: (element: HTMLElement) => constructInitialState(element),
     onMount: ({ getElement, setData, getData }) => {
       const element = getElement();
-      // console.log("mirroring", element);
+      console.debug("[can-mirror] attach observer", {
+        id: element.id,
+        tag: element.tagName.toLowerCase(),
+      });
 
+      const setDataAny = setData as unknown as (data: any) => void;
       observeElementChanges(element, (mutations) => {
-        const currentState = getData();
-        // console.log(mutations);
-        const newState = updateStateWithMutation(currentState, mutations);
-        setData(newState);
+        const summaries = mutations.map((m) => ({
+          type: m.type,
+          target: (m.target as HTMLElement)?.id || (m.target as Node)?.nodeName,
+          added: m.type === "childList" ? m.addedNodes.length : undefined,
+          removed: m.type === "childList" ? m.removedNodes.length : undefined,
+          attribute: m.type === "attributes" ? m.attributeName : undefined,
+        }));
+        console.debug("[can-mirror] mutations", summaries);
+        // Apply granular, collaborative edits in place using the mutator form.
+        setDataAny((draft: any) => {
+          console.debug("[can-mirror] applyMutationsInPlace:start", {
+            childCount:
+              (draft &&
+                (draft as any).children &&
+                (draft as any).children.length) ||
+              0,
+          });
+          applyMutationsInPlace(draft, mutations);
+          console.debug("[can-mirror] applyMutationsInPlace:done", {
+            childCount:
+              (draft &&
+                (draft as any).children &&
+                (draft as any).children.length) ||
+              0,
+          });
+        });
       });
     },
     updateElement: ({ element, data }) => {
-      // console.log("new data", data);
+      console.debug("[can-mirror] updateElement", {
+        id: element.id,
+        tag: element.tagName.toLowerCase(),
+      });
       const currentState = constructInitialState(element);
       if (areStatesEqual(currentState, data)) {
+        console.debug("[can-mirror] updateElement:skip (equal)");
         return;
       }
+      console.debug("[can-mirror] updateElement:apply");
       updateElementFromState(element, data);
     },
   },
@@ -565,30 +611,29 @@ interface TextState {
   textContent: string;
 }
 
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
-}
-
-function updateStateWithMutation(
+/**
+ * Applies a list of DOM MutationRecord patches directly to the provided
+ * ElementState. This is used with the mutator setData form so that nested
+ * arrays/objects are updated incrementally (push/splice, assign/remove),
+ * enabling conflict-free collaborative edits under SyncedStore/Yjs.
+ */
+function applyMutationsInPlace(
   state: ElementState,
   mutations: MutationRecord[]
-): ElementState {
-  let newState = deepClone(state);
+): void {
   mutations.forEach((mutation) => {
     switch (mutation.type) {
       case "attributes":
-        updateAttributes(newState, mutation);
+        updateAttributes(state, mutation);
         break;
       case "childList":
-        updateChildList(newState, mutation);
+        updateChildList(state, mutation);
         break;
       case "characterData":
-        updateCharacterData(newState, mutation);
+        updateCharacterData(state, mutation);
         break;
     }
   });
-
-  return newState;
 }
 
 function updateAttributes(state: ElementState, mutation: MutationRecord) {
@@ -598,6 +643,7 @@ function updateAttributes(state: ElementState, mutation: MutationRecord) {
   if (mutation.target instanceof HTMLElement) {
     const attributeName = mutation.attributeName!;
     const attributeValue = mutation.target.getAttribute(attributeName);
+    console.debug("[can-mirror] attr", attributeName, attributeValue);
     if (attributeValue !== null) {
       state.attributes[attributeName] = attributeValue;
     } else {
@@ -617,6 +663,7 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
         return;
       }
       const nodeState = constructInitialState(node);
+      console.debug("[can-mirror] remove child", nodeState);
       const indexToRemove = state.children.findIndex((child) =>
         areStatesEqual(child, nodeState)
       );
@@ -636,6 +683,7 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
       }
       // check to make sure this node is not already added.
       const nodeState = constructInitialState(node);
+      console.debug("[can-mirror] add child", nodeState);
       if (state.children.find((child) => areStatesEqual(child, nodeState))) {
         // console.log("[add] returning early!");
         return;
@@ -734,12 +782,16 @@ function updateAttributesFromState(
     return;
   }
   // Set new attributes from state
-  for (const [key, value] of Object.entries(state.attributes)) {
+  const attrs: Record<string, string> =
+    (state as any).attributes && typeof (state as any).attributes === "object"
+      ? ((state as any).attributes as Record<string, string>)
+      : {};
+  for (const [key, value] of Object.entries(attrs)) {
     if (element.getAttribute(key) !== value) element.setAttribute(key, value);
   }
 
   Array.from(element.attributes).forEach((attr) => {
-    if (!state.attributes[attr.name]) element.removeAttribute(attr.name);
+    if (!attrs[attr.name]) element.removeAttribute(attr.name);
   });
 }
 
