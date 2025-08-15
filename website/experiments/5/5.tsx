@@ -504,13 +504,6 @@ const Main = withSharedState(
             colors have been added.
           </p>
           <p>
-            <button
-              className="scroll-to-now"
-              onClick={() => scrollToCurrentMinute()}
-            >
-              scroll to now
-            </button>
-            &nbsp;&nbsp;
             <button className="toggle-fullscreen" onClick={toggleFullscreen}>
               view fullscreen
             </button>
