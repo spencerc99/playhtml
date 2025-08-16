@@ -10,20 +10,34 @@ import type {
 } from "./utils";
 import { PlayContext } from "./PlayProvider";
 
+// Loading configuration options for React components
+export interface LoadingOptions {
+  behavior?: 'auto' | 'hidden' | 'animate' | 'none';
+  customClass?: string;
+  style?: 'breathing' | 'pulse' | 'fade' | 'none';
+}
+
 export type WithPlayProps<T, V> =
-  | Omit<ReactElementInitializer<T, V>, "children">
+  | (Omit<ReactElementInitializer<T, V>, "children"> & {
+      loading?: LoadingOptions;
+    })
   | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean; // Allow standalone mode without provider
+      loading?: LoadingOptions;
     });
 
-// Add standalone to the ReactElementInitializer type
+// Add standalone and loading to the ReactElementInitializer type
 export type ReactElementInitializerWithStandalone<T, V> =
-  | (ReactElementInitializer<T, V> & { standalone?: boolean })
+  | (ReactElementInitializer<T, V> & { 
+      standalone?: boolean;
+      loading?: LoadingOptions;
+    })
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
       defaultData: undefined;
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean;
+      loading?: LoadingOptions;
     });
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
@@ -32,6 +46,7 @@ export function CanPlayElement<T, V>({
   children,
   id,
   standalone = false,
+  loading,
   ...restProps
 }: ReactElementInitializerWithStandalone<T, V>) {
   const playContext = useContext(PlayContext);
@@ -90,6 +105,18 @@ export function CanPlayElement<T, V>({
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
       : tagInfo
     : { "can-play": "" };
+
+  // Add loading attributes based on loading options
+  const loadingAttributes: Record<string, string> = {};
+  if (loading?.behavior) {
+    loadingAttributes['loading-behavior'] = loading.behavior;
+  }
+  if (loading?.customClass) {
+    loadingAttributes['loading-class'] = loading.customClass;
+  }
+  if (loading?.style) {
+    loadingAttributes['loading-style'] = loading.style;
+  }
   const ref = useRef<HTMLElement>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
   const [data, setData] = useState<T | undefined>(defaultData);
@@ -175,6 +202,7 @@ export function CanPlayElement<T, V>({
       // @ts-ignore
       ref,
       ...computedTagInfo,
+      ...loadingAttributes,
     },
     { fragmentId: id }
   );
@@ -217,7 +245,7 @@ export function withSharedState<T extends object, V = any, P = any>(
     playProps: ReactElementEventHandlerData<T, V>,
     props: P
   ) => React.ReactElement,
-  options?: { standalone?: boolean }
+  options?: { standalone?: boolean; loading?: LoadingOptions }
 ): (props: P) => React.ReactElement {
   const renderChildren = (props: P) => {
     const configForProps =
@@ -228,6 +256,7 @@ export function withSharedState<T extends object, V = any, P = any>(
         tagInfo={undefined}
         defaultData={undefined}
         standalone={options?.standalone}
+        loading={options?.loading || configForProps.loading}
         {...configForProps}
       >
         {(playData) => component(playData, props)}
@@ -347,6 +376,7 @@ export function withSharedState<T extends object, V = any, P = any>(
 
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
+export { usePlayContext } from "./usePlayContext";
 export {
   CanMoveElement,
   CanSpinElement,

@@ -8,6 +8,8 @@ import {
   PlayProvider,
   CanMoveElement,
   CanSpinElement,
+  CanToggleElement,
+  usePlayContext,
 } from "@playhtml/react";
 import { ReactionView } from "../../packages/react/examples/Reaction";
 import { Lamp } from "../../packages/react/examples/SharedLamp";
@@ -42,11 +44,102 @@ const Candle = withSharedState(
   }
 );
 
+// Loading State Test Component
+const LoadingStateTest = () => {
+  const { hasSynced } = usePlayContext();
+
+  return (
+    <div
+      style={{ padding: "20px", border: "2px solid #333", margin: "20px 0" }}
+    >
+      <h3>Enhanced Loading State Tests</h3>
+      <p style={{ marginBottom: "20px" }}>
+        Sync Status:{" "}
+        <strong>{hasSynced ? "✅ Synced" : "⏳ Loading..."}</strong>
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: "20px",
+        }}
+      >
+        {/* can-play with opt-in loading */}
+        <WithSharedStateCanPlayWithLoading />
+
+        {/* Custom loading with breathing + custom class */}
+        <CanMoveElement
+          defaultData={{ x: 0, y: 0 }}
+          loading={{ behavior: "animate", customClass: "custom-loader" }}
+        >
+          <div
+            style={{
+              width: "180px",
+              height: "100px",
+              background: "linear-gradient(45deg, #ffeaa7, #fdcb6e)",
+              borderRadius: "12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "16px",
+              fontWeight: "bold",
+              color: "white",
+              textShadow: "0 1px 3px rgba(0,0,0,0.3)",
+            }}
+          >
+            Custom class
+          </div>
+        </CanMoveElement>
+      </div>
+
+      <style>
+        {`
+          .custom-loader {
+            border: 3px solid #fff !important;
+            box-shadow: 0 0 15px rgba(255,255,255,0.5) !important;
+          }
+        `}
+      </style>
+    </div>
+  );
+};
+
+// can-play with opt-in loading
+const WithSharedStateCanPlayWithLoading = withSharedState(
+  {
+    defaultData: { count: 0 },
+    loading: { behavior: "animate", style: "pulse" },
+  },
+  ({ data, setData }) => (
+    <div
+      style={{
+        width: "180px",
+        height: "100px",
+        background: "linear-gradient(45deg, #fd79a8, #e17055)",
+        borderRadius: "12px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "16px",
+        fontWeight: "bold",
+        color: "white",
+        textShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        cursor: "pointer",
+      }}
+      onClick={() => setData({ count: data.count + 1 })}
+    >
+      can-play (pulse) - {data.count}
+    </div>
+  )
+);
+
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
   <PlayProvider>
     <div>
+      <LoadingStateTest />
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
       <Lamp />
