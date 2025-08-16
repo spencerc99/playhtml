@@ -93,3 +93,77 @@ body .__playhtml-element.editing:nth-child(2n-1) {
     animation-timing-function: ease-out;
   }
 }
+
+// Loading states: Base styles
+.playhtml-loading {
+  pointer-events: none;
+}
+
+// can-move: Hidden completely (prevents positioning confusion)
+[can-move].playhtml-loading {
+  opacity: 0;
+  visibility: hidden;
+}
+
+// can-play: NO automatic loading by default (most likely to have custom loading)
+// Developers can opt-in using loading-behavior="animate"
+
+// can-toggle, can-spin, can-grow, can-duplicate, can-mirror, can-draw: Breathing animation
+[can-toggle].playhtml-loading,
+[can-spin].playhtml-loading,
+[can-grow].playhtml-loading,
+[can-duplicate].playhtml-loading,
+[can-mirror].playhtml-loading,
+[can-draw].playhtml-loading,
+[loading-behavior="animate"].playhtml-loading {
+  animation: playhtml-breathing 2s infinite ease-in-out;
+}
+
+// Hidden behavior (alternative to can-move default)
+[loading-behavior="hidden"].playhtml-loading {
+  opacity: 0;
+  visibility: hidden;
+}
+
+// Breathing animation keyframes
+@keyframes playhtml-breathing {
+  0%, 100% { 
+    opacity: 0.7; 
+    transform: scale(1); 
+  }
+  50% { 
+    opacity: 0.4; 
+    transform: scale(1.01); 
+  }
+}
+
+// Loading style overrides
+[loading-style="pulse"].playhtml-loading {
+  animation: playhtml-pulse 1.5s infinite !important;
+}
+
+@keyframes playhtml-pulse {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
+
+[loading-style="fade"].playhtml-loading {
+  opacity: 0.4 !important;
+  animation: none !important;
+  transform: none !important;
+}
+
+[loading-style="none"].playhtml-loading,
+[loading-behavior="none"].playhtml-loading {
+  opacity: 1 !important;
+  animation: none !important;
+  transform: none !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
