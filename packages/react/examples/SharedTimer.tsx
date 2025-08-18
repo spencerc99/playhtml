@@ -53,14 +53,19 @@ export const SharedTimer = withSharedState<TimerData, any, SharedTimerProps>(
         setData({
           ...data,
           state: "paused",
-          elapsedMs: data.durationMs,
+        setData(draft => {
+          draft.state = "paused";
+          draft.elapsedMs = data.durationMs!;
         });
       }
     }, [remainingMs, data, setData]);
 
     const start = () => {
       if (data.state === "running") return;
-      setData({ ...data, state: "running", startAtMs: Date.now() });
+      setData(draft => {
+        draft.state = "running";
+        draft.startAtMs = Date.now();
+      });
     };
     const pause = () => {
       if (data.state !== "running") return;

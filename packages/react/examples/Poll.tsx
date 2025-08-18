@@ -67,7 +67,8 @@ export const Poll = withSharedState<PollData, any, PollProps>(
       setData({
         question: data.question,
         options: [...data.options, { id, label }],
-        votesByUser: data.votesByUser,
+      setData(draft => {
+        draft.options.push({ id, label });
       });
       setNewOption("");
     };
