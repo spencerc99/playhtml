@@ -115,20 +115,6 @@ function migrateAllDataFromYMapToSyncedStore(): void {
   }
 }
 
-function getElementDataUnified(tag: string, elementId: string): any {
-  // During migration, prefer SyncedStore if available, fallback to Y.Map
-  if (
-    MIGRATION_FLAGS.useSyncedStoreOnly ||
-    store.play[tag]?.[elementId] !== undefined
-  ) {
-    return store.play[tag]?.[elementId];
-  }
-
-  // Fallback to Y.Map
-  const tagMap = globalData.get(tag);
-  return tagMap?.get(elementId);
-}
-
 function getDefaultRoom(includeSearch?: boolean): string {
   // TODO: Strip filename extension
   const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
@@ -218,13 +204,10 @@ export interface InitOptions<T = any> {
    * If true, will render some helpful development UI.
    */
   developmentMode?: boolean;
-
-  // MIGRATION: Removed dataMode - now using SyncedStore exclusively
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
-// MIGRATION: Removed currentDataMode - now using SyncedStore exclusively
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
@@ -271,7 +254,6 @@ function setupDevUI() {
   const resetDataButton = document.createElement("button");
   resetDataButton.innerText = "Reset Data";
   resetDataButton.onclick = () => {
-    // MIGRATION: Clear SyncedStore data instead of globalData
     Object.keys(store.play).forEach((tag) => {
       Object.keys(store.play[tag]).forEach((elementId) => {
         delete store.play[tag][elementId];
@@ -380,6 +362,17 @@ function setupDevUI() {
 
 let hasSynced = false;
 let firstSetup = true;
+// NOTE: Potential optimization: allowlist/blocklist collaborative paths
+// In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
+// Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
+// Example API (future):
+// <CanPlayElement
+//   defaultData={...}
+//   crdtPaths={{ allow: ["lists.todos", "nested.a.b.c.values"], block: ["profile", "counters"] }}
+// >
+// This would proxy only specified paths in synced mode, keeping others as plain local React state.
+// This aligns with the common case where nested arrays need collaboration more than nested objects.
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host = DefaultPartykitHost,
@@ -396,12 +389,11 @@ async function initPlayHTML({
   }
   // @ts-ignore
   window.playhtml = playhtml;
-  // MIGRATION: Removed dataMode assignment - now using SyncedStore exclusively
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
 
-  // TODO: there's a typescript error here but it all seems to work...
+  // NOTE: there's a typescript error here but it all seems to work...
   // @ts-ignore
   const partykitHost = import.meta.env.DEV ? "localhost:1999" : host;
 
@@ -461,7 +453,6 @@ async function initPlayHTML({
       hasSynced = true;
       console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
-      // MIGRATION: Migrate existing Y.Map data to SyncedStore before setting up elements
       migrateAllDataFromYMapToSyncedStore();
 
       setupElements();
@@ -512,13 +503,10 @@ function createPlayElementData<T extends TagType>(
   tagInfo: ElementInitializer<T>,
   elementId: string
 ): ElementData<T> {
-  // MIGRATION: Removed tagData Y.Map reference - using SyncedStore exclusively
-
   if (VERBOSE) {
     console.log("registering element", elementId, "using SyncedStore data");
   }
 
-  // MIGRATION: Use SyncedStore exclusively - no more Y.Map branching
   const initialData =
     tagInfo.defaultData instanceof Function
       ? tagInfo.defaultData(element)
@@ -538,7 +526,6 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
-      // MIGRATION: SyncedStore-only onChange handler
       if (typeof (newData as any) === "function") {
         // Mutator form support: onChange can accept function(draft)
         // Batch all nested mutations into a single Yjs transaction to coalesce events
@@ -757,8 +744,6 @@ function setupElements(): void {
   if (!firstSetup) {
     return;
   }
-  // MIGRATION: Removed Y.Map observer - SyncedStore handles data sync automatically
-  // Individual element observers are handled by attachSyncedStoreObserver()
 
   yprovider.awareness.on("change", () => onChangeAwareness());
   firstSetup = false;
@@ -770,7 +755,6 @@ interface PlayHTMLComponents {
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  // MIGRATION: Replaced globalData with store for debugging access
   store: typeof store;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
@@ -786,7 +770,6 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,
-  // MIGRATION: Expose store instead of globalData for debugging
   store,
   elementHandlers,
   eventHandlers,
@@ -811,11 +794,7 @@ function maybeSetupTag(tag: TagType | string): void {
     elementHandlers.set(tag, new Map<string, ElementHandler>());
   }
 
-  // MIGRATION: Ensure tag exists in SyncedStore structure
   store.play[tag] ??= {};
-
-  // MIGRATION: Removed Y.Map observer code - SyncedStore handles data sync automatically
-  // Individual element observers are handled by attachSyncedStoreObserver()
 }
 
 /**
@@ -858,7 +837,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
       element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
-      // TODO: use a hash function that compresses here
       element.id = await hashElement(tag, element);
     }
   }
@@ -885,8 +863,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
-  // MIGRATION: Removed tagData Y.Map reference - using SyncedStore exclusively
-
   const elementData = createPlayElementData(
     element,
     tag,
@@ -902,7 +878,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
   }
-  // MIGRATION: Data initialization now handled by ensureElementProxy in SyncedStore
 
   // redo this now that we have set it in the mapping.
   // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
@@ -912,7 +887,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.classList.add(`__playhtml-${tag}`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 
-  // MIGRATION: Always attach SyncedStore observer
   attachSyncedStoreObserver(tag as string, elementId);
 }
 
