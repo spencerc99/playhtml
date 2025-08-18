@@ -50,10 +50,7 @@ export const SharedTimer = withSharedState<TimerData, any, SharedTimerProps>(
     useEffect(() => {
       if (data.durationMs && remainingMs === 0 && data.state === "running") {
         // auto-stop at end
-        setData({
-          ...data,
-          state: "paused",
-        setData(draft => {
+        setData((draft) => {
           draft.state = "paused";
           draft.elapsedMs = data.durationMs!;
         });
@@ -62,7 +59,7 @@ export const SharedTimer = withSharedState<TimerData, any, SharedTimerProps>(
 
     const start = () => {
       if (data.state === "running") return;
-      setData(draft => {
+      setData((draft) => {
         draft.state = "running";
         draft.startAtMs = Date.now();
       });

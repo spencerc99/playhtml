@@ -64,10 +64,7 @@ export const Poll = withSharedState<PollData, any, PollProps>(
       const label = newOption.trim();
       if (!label) return;
       const id = Math.random().toString(36).slice(2, 10);
-      setData({
-        question: data.question,
-        options: [...data.options, { id, label }],
-      setData(draft => {
+      setData((draft) => {
         draft.options.push({ id, label });
       });
       setNewOption("");

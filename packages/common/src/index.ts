@@ -430,52 +430,20 @@ export const TagTypeToElement: Record<
     defaultData: (element: HTMLElement) => constructInitialState(element),
     onMount: ({ getElement, setData, getData }) => {
       const element = getElement();
-      console.debug("[can-mirror] attach observer", {
-        id: element.id,
-        tag: element.tagName.toLowerCase(),
-      });
 
       const setDataAny = setData as unknown as (data: any) => void;
       observeElementChanges(element, (mutations) => {
-        const summaries = mutations.map((m) => ({
-          type: m.type,
-          target: (m.target as HTMLElement)?.id || (m.target as Node)?.nodeName,
-          added: m.type === "childList" ? m.addedNodes.length : undefined,
-          removed: m.type === "childList" ? m.removedNodes.length : undefined,
-          attribute: m.type === "attributes" ? m.attributeName : undefined,
-        }));
-        console.debug("[can-mirror] mutations", summaries);
         // Apply granular, collaborative edits in place using the mutator form.
         setDataAny((draft: any) => {
-          console.debug("[can-mirror] applyMutationsInPlace:start", {
-            childCount:
-              (draft &&
-                (draft as any).children &&
-                (draft as any).children.length) ||
-              0,
-          });
           applyMutationsInPlace(draft, mutations);
-          console.debug("[can-mirror] applyMutationsInPlace:done", {
-            childCount:
-              (draft &&
-                (draft as any).children &&
-                (draft as any).children.length) ||
-              0,
-          });
         });
       });
     },
     updateElement: ({ element, data }) => {
-      console.debug("[can-mirror] updateElement", {
-        id: element.id,
-        tag: element.tagName.toLowerCase(),
-      });
       const currentState = constructInitialState(element);
       if (areStatesEqual(currentState, data)) {
-        console.debug("[can-mirror] updateElement:skip (equal)");
         return;
       }
-      console.debug("[can-mirror] updateElement:apply");
       updateElementFromState(element, data);
     },
   },
@@ -643,7 +611,6 @@ function updateAttributes(state: ElementState, mutation: MutationRecord) {
   if (mutation.target instanceof HTMLElement) {
     const attributeName = mutation.attributeName!;
     const attributeValue = mutation.target.getAttribute(attributeName);
-    console.debug("[can-mirror] attr", attributeName, attributeValue);
     if (attributeValue !== null) {
       state.attributes[attributeName] = attributeValue;
     } else {
@@ -663,7 +630,6 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
         return;
       }
       const nodeState = constructInitialState(node);
-      console.debug("[can-mirror] remove child", nodeState);
       const indexToRemove = state.children.findIndex((child) =>
         areStatesEqual(child, nodeState)
       );
@@ -683,7 +649,6 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
       }
       // check to make sure this node is not already added.
       const nodeState = constructInitialState(node);
-      console.debug("[can-mirror] add child", nodeState);
       if (state.children.find((child) => areStatesEqual(child, nodeState))) {
         // console.log("[add] returning early!");
         return;
