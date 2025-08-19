@@ -31,42 +31,93 @@ const doc = getYjsDoc(store);
 
 // MIGRATION: Flags and infrastructure for transitioning to SyncedStore-only
 const MIGRATION_FLAGS = {
-  // Enable migration from Y.Map to SyncedStore (Phase 1)
+  // TESTING: Re-enabled for production data volume testing
   enableMigration: true,
   // Use SyncedStore as primary data source (Phase 2)
   useSyncedStoreOnly: false,
-  // Create backup of Y.Map data before migration
-  createBackups: true,
-  // Log migration progress
-  logMigration: VERBOSE > 0,
+  // Log migration progress - ENABLED for testing
+  logMigration: false,
 };
 
 function migrateTagFromYMapToSyncedStore(tag: string): void {
   if (!MIGRATION_FLAGS.enableMigration) return;
 
+  const startTime = performance.now();
+  console.debug(`[MIGRATION] Starting migration for tag: ${tag}`);
+
   const tagMap = globalData.get(tag);
-  if (!tagMap) return;
+  if (!tagMap) {
+    console.debug(`[MIGRATION] No data found for tag: ${tag}`);
+    return;
+  }
+
+  // Log the size of data we're about to migrate
+  let mapSize = 0;
+  try {
+    tagMap.forEach(() => mapSize++);
+    console.debug(`[MIGRATION] Found ${mapSize} entries for tag: ${tag}`);
+  } catch (error) {
+    console.error(
+      `[MIGRATION ERROR] Failed to count entries for tag ${tag}:`,
+      error
+    );
+    return;
+  }
 
   // Ensure tag exists in SyncedStore
   store.play[tag] ??= {};
 
   let migratedCount = 0;
-  tagMap.forEach((elementData, elementId) => {
-    // Only migrate if not already present in SyncedStore
-    if (store.play[tag][elementId] === undefined) {
-      const clonedData = clonePlain(elementData);
-      store.play[tag][elementId] = clonedData;
-      migratedCount++;
+  let errorCount = 0;
 
-      if (MIGRATION_FLAGS.logMigration) {
-        console.log(`[MIGRATION] Migrated ${tag}:${elementId}:`, clonedData);
-      }
-    }
-  });
+  try {
+    // Batch all migration operations in a single transaction to prevent excessive broadcasts
+    doc.transact(() => {
+      tagMap.forEach((elementData, elementId) => {
+        try {
+          // Only migrate if not already present in SyncedStore
+          if (store.play[tag][elementId] === undefined) {
+            // Log memory usage for large objects
+            const dataSize = JSON.stringify(elementData).length;
+            if (dataSize > 10000) {
+              console.debug(
+                `[MIGRATION] Large data entry: ${tag}:${elementId} (${dataSize} chars)`
+              );
+            }
 
-  if (MIGRATION_FLAGS.logMigration && migratedCount > 0) {
-    console.log(
-      `[MIGRATION] Migrated ${migratedCount} elements for tag: ${tag}`
+            const clonedData = clonePlain(elementData);
+            store.play[tag][elementId] = clonedData;
+            migratedCount++;
+
+            // Log progress every 1000 items for large datasets
+            if (migratedCount % 1000 === 0) {
+              console.debug(
+                `[MIGRATION] Progress: ${migratedCount}/${mapSize} migrated for ${tag}`
+              );
+            }
+          }
+        } catch (error) {
+          errorCount++;
+          console.error(
+            `[MIGRATION ERROR] Failed to migrate ${tag}:${elementId}:`,
+            error
+          );
+        }
+      });
+    });
+  } catch (error) {
+    console.error(`[MIGRATION FATAL] forEach failed for tag ${tag}:`, error);
+    return;
+  }
+
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+
+  if (MIGRATION_FLAGS.logMigration) {
+    console.debug(
+      `[MIGRATION] Completed ${tag}: ${migratedCount} migrated, ${errorCount} errors, ${duration.toFixed(
+        2
+      )}ms`
     );
   }
 }
@@ -220,7 +271,7 @@ function onMessage(evt: MessageEvent) {
 }
 
 function setupDevUI() {
-  const devUi = document.createElement("div");
+  const devUi = document.zElement("div");
   devUi.id = "playhtml-dev-ui";
   devUi.style.position = "fixed";
   devUi.style.bottom = "10px";
