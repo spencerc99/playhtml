@@ -755,7 +755,9 @@ interface PlayHTMLComponents {
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  store: typeof store;
+  syncedStore: (typeof store)["play"];
+  // TODO: REMOVE AFTER MIGRATION VALIDATED
+  globalData: typeof globalData;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -770,7 +772,9 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,
-  store,
+  syncedStore: store.play,
+  // TODO: REMOVE AFTER MIGRATION VALIDATED
+  globalData,
   elementHandlers,
   eventHandlers,
   dispatchPlayEvent,
