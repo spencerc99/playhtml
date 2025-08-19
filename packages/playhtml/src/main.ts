@@ -73,7 +73,7 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
   try {
     // Batch all migration operations in a single transaction to prevent excessive broadcasts
     doc.transact(() => {
-      tagMap.forEach((elementData, elementId) => {
+      tagMap.forEach((elementData: any, elementId: string) => {
         try {
           // Log memory usage for large objects
           const dataSize = JSON.stringify(elementData).length;
@@ -84,7 +84,7 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
           }
 
           const clonedData = clonePlain(elementData);
-          store.play[tag][elementId] = clonedData;
+          store.play[tag]![elementId] = clonedData;
           migratedCount++;
 
           // Log progress every 1000 items for large datasets
@@ -156,6 +156,7 @@ function getDefaultRoom(includeSearch?: boolean): string {
     : transformedPathname;
 }
 let yprovider: YPartyKitProvider;
+// @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
@@ -287,9 +288,12 @@ function setupDevUI() {
   resetDataButton.innerText = "Reset Data";
   resetDataButton.onclick = () => {
     Object.keys(store.play).forEach((tag) => {
-      Object.keys(store.play[tag]).forEach((elementId) => {
-        delete store.play[tag][elementId];
-      });
+      const tagData = store.play[tag];
+      if (tagData) {
+        Object.keys(tagData).forEach((elementId) => {
+          delete tagData[elementId];
+        });
+      }
     });
   };
   devUi.appendChild(resetDataButton);
@@ -503,30 +507,6 @@ function getElementAwareness(tagType: TagType, elementId: string) {
 
 function isHTMLElement(ele: any): ele is HTMLElement {
   return ele instanceof HTMLElement;
-}
-
-function deepEquals(a: any, b: any): boolean {
-  if (a === b) {
-    return true;
-  }
-
-  if (a instanceof Object && b instanceof Object) {
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
-    if (aKeys.length !== bKeys.length) {
-      return false;
-    }
-
-    for (const key of aKeys) {
-      if (!deepEquals(a[key], b[key])) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  return false;
 }
 
 function createPlayElementData<T extends TagType>(
