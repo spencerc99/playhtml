@@ -349,25 +349,34 @@ const Main = withSharedState(
     }, [currentMinuteIndex]);
 
     const addColorToMinute = (color: string) => {
-      const newMinutes = [...data.minutes];
-      const currentMinute = newMinutes[currentMinuteIndex] || {
-        colors: [],
-        lastChangedTs: Date.now(),
-      };
+      // Using mutator form for merge-friendly collaborative edits
+      setData((draft) => {
+        // Initialize the minute if it's null
+        if (draft.minutes[currentMinuteIndex] === null) {
+          // For SyncedStore, we need to use splice to properly initialize array elements
+          draft.minutes.splice(currentMinuteIndex, 1, {
+            colors: [],
+            lastChangedTs: Date.now(),
+          });
+        }
 
-      let newColors = [...(currentMinute.colors || [])];
-      if (newColors.length >= MAX_COLORS_PER_MINUTE) {
-        // Remove the oldest color (first in the array) and add the new one
-        newColors = newColors.slice(1);
-      }
-      newColors.push(color); // Store HSL color
+        const currentMinute = draft.minutes[currentMinuteIndex];
 
-      newMinutes[currentMinuteIndex] = {
-        colors: newColors,
-        lastChangedTs: Date.now(),
-      };
+        // Ensure colors array exists
+        if (!currentMinute.colors) {
+          currentMinute.colors = [];
+        }
 
-      setData({ minutes: newMinutes });
+        // Remove oldest color if at max capacity
+        if (currentMinute.colors.length >= MAX_COLORS_PER_MINUTE) {
+          currentMinute.colors.splice(0, 1);
+        }
+
+        // Add new color and update timestamp
+        currentMinute.colors.push(color);
+        currentMinute.lastChangedTs = Date.now();
+      });
+
       setMyAwareness({ color });
       setCurrentColor(generateRandomColor());
     };

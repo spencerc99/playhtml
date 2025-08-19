@@ -76,14 +76,12 @@ const CursorController = withSharedState(
       }
 
       if (!cursorsSet.has(newUrl)) {
-        setData({
-          cursors: [
-            ...cursors,
-            {
-              cursorUrl: newUrl,
-              timestamp: Date.now(),
-            },
-          ],
+        // Using mutator form for merge-friendly collaborative edits
+        setData((draft) => {
+          draft.cursors.push({
+            cursorUrl: newUrl,
+            timestamp: Date.now(),
+          });
         });
       }
       document.body.style.cursor = `url(${newUrl}), auto`;

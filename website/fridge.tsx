@@ -232,10 +232,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
         },
       });
 
-      setData([
-        ...data,
-        { word: input, color: userColor, id: Date.now().toString() },
-      ]);
+      setData((d) => {
+        d.push({ word: input, color: userColor, id: Date.now().toString() });
+      });
       clearMessage();
     }
 
@@ -274,7 +273,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
         },
       });
 
-      setData(data.filter((_, idx) => idx !== idxToDelete));
+      setData((d) => {
+        d.splice(idxToDelete, 1);
+      });
       setDeleteCount(deleteCount + 1);
       if (deleteCount + 1 === DeleteWordLimit) {
         localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
@@ -408,7 +409,9 @@ const AdminSettings = ({
           type="checkbox"
           checked={data.showDefaultWords}
           onChange={(e) =>
-            setData({ ...data, showDefaultWords: e.target.checked })
+            setData((d) => {
+              d.showDefaultWords = e.target.checked;
+            })
           }
         />
         Show Default Words

@@ -8,7 +8,7 @@ interface ColorChange {
   timestamp: number;
 }
 
-function invertColor(hex, bw) {
+function invertColor(hex: string, bw: boolean): string {
   if (hex.indexOf("#") === 0) {
     hex = hex.slice(1);
   }
@@ -27,14 +27,14 @@ function invertColor(hex, bw) {
     return r * 0.299 + g * 0.587 + b * 0.114 > 186 ? "#000000" : "#FFFFFF";
   }
   // invert color components
-  r = (255 - r).toString(16);
-  g = (255 - g).toString(16);
-  b = (255 - b).toString(16);
+  let rStr = (255 - r).toString(16);
+  let gStr = (255 - g).toString(16);
+  let bStr = (255 - b).toString(16);
   // pad each with zeros and return
-  return "#" + padZero(r) + padZero(g) + padZero(b);
+  return "#" + padZero(rStr) + padZero(gStr) + padZero(bStr);
 }
 
-function padZero(str) {
+function padZero(str: string): string {
   var zeros = new Array(2).join("0");
   return (zeros + str).slice(-2);
 }
@@ -66,17 +66,21 @@ const ColorController = withSharedState(
     const addColor = () => {
       const newColor = { color, timestamp: Date.now() };
       // Update the history with the latest color. Updates globally and live for everyone on the site.
-      setData({ colors: [...colors, newColor] });
+      setData((draft) => {
+        draft.colors.push(newColor);
+      });
     };
     const colorsReversed = useMemo(() => [...colors].reverse(), [colors]);
 
     return (
       <div
         id="main"
-        style={{
-          "--background-inverted": invertColor(currentColor, true),
-          "--background": currentColor,
-        }}
+        style={
+          {
+            "--background-inverted": invertColor(currentColor, true),
+            "--background": currentColor,
+          } as React.CSSProperties
+        }
       >
         <div
           style={{
@@ -105,10 +109,12 @@ const ColorController = withSharedState(
               value={color}
             />
             <button
-              style={{
-                "--color": color,
-                "--color-inverted": invertColor(color, true),
-              }}
+              style={
+                {
+                  "--color": color,
+                  "--color-inverted": invertColor(color, true),
+                } as React.CSSProperties
+              }
               disabled={color === currentColor}
               onClick={() => addColor()}
             >

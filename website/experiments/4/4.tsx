@@ -129,7 +129,9 @@ const ColorController = withSharedState(
     const addColor = () => {
       const newColor = { color, timestamp: Date.now() };
       // Update the history with the latest color. Updates globally and live for everyone on the site.
-      setData({ colors: [...colors, newColor] });
+      setData((d) => {
+        d.colors.push(newColor);
+      });
     };
     const colorsReversed = useMemo(() => [...colors].reverse(), [colors]);
     const isInvalidColor = color === currentColor || colorSet.has(color);

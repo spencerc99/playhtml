@@ -409,7 +409,9 @@ export const TagTypeToElement: Record<
       const newElementId =
         duplicateElementId + "-" + Math.random().toString(36).substr(2, 9);
 
-      setData([...data, newElementId]);
+      setData((draft) => {
+        draft.push(newElementId);
+      });
     },
     isValidElementForTag: (element) => {
       const tagAttribute = element.getAttribute(TagType.CanDuplicate);

@@ -130,31 +130,6 @@ To create your own custom element, refer to the [can-play](#can-play) section.
 
 If you're trying this out and having trouble, please message me ([email](mailto:spencerc99@gmail.com), [twitter](https://twitter.com/spencerc99)) and I'm happy to help out!
 
-### Data updates: mutator vs replacement
-
-playhtml supports two ways to update an element's `data` via `setData`, and they have different semantics:
-
-- Mutator form: pass a function that receives a draft and mutate it in place. This is merge-friendly (supports adding to a list without conflicts) and is the recommended way to update nested arrays/objects. If you don't do this for a list, you might get conflicts if two people try to add to the list at the same time and one disconnects from the internet briefly.
-- Replacement form: pass a full value. This replaces the entire snapshot and is useful for canonical state.
-
-Examples
-
-1. Mutator (merge-friendly): append to a list
-
-```tsx
-// data: { messages: string[] }
-setData((draft) => {
-  draft.messages.push("hello");
-});
-```
-
-2. Replacement (overwrite snapshot): toggle boolean
-
-```tsx
-// data: { on: boolean }
-setData({ on: !data.on });
-```
-
 ## Examples
 
 To get started, you can find examples inside `index.html`, the `website/experiments` folder (these all have corresponding live demos at playhtml.fun/experiments/one/), and React examples under `packages/react/examples`.
@@ -205,6 +180,59 @@ See all supported properties in the `ElementInitializer` [object in `common/src/
 The only required properties are `defaultData`, `updateElement` and some kind of setup to trigger those functions (in this case, `onClick`, but you can add custom event listeners and logic using the `onMount` property). See more examples based on the definitions for the included capabilities in [`elements.ts`](https://github.com/spencerc99/playhtml/blob/packages/playhtml/src/elements.ts).
 
 If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so we [welcome contributions](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md) for new built-in capabilities.
+
+#### Data updates: mutator vs replacement
+
+playhtml supports two ways to update an element's `data` via `setData`, and they have different semantics:
+
+- **Mutator form**: pass a function that receives a draft and mutate it in place. This is merge-friendly (supports adding to a list without conflicts) and is the recommended way to update nested arrays/objects.
+- **Replacement form**: pass a full value. This replaces the entire snapshot and is useful for canonical state.
+
+Examples
+
+1. **Mutator (merge-friendly): append to a list**
+
+```tsx
+// data: { messages: string[] }
+setData((draft) => {
+  draft.messages.push("hello");
+});
+```
+
+Note: when working with the mutator forms, there are some limitations on how you can mutate the array properly.
+**✅ Supported Array Operations:**
+
+```tsx
+setData((draft) => {
+  // ✅ Adding elements
+  draft.items.push(newItem);
+
+  // ✅ Removing/inserting at specific positions
+  draft.items.splice(0, 1); // Remove first element
+  draft.items.splice(2, 0, newItem); // replace element at index 2
+
+  // ✅ Modifying existing objects in the array
+  draft.items[0].name = "updated";
+});
+```
+
+**❌ Unsupported Array Operations:**
+
+```tsx
+setData((draft) => {
+  // ❌ These will throw "array assignment is not implemented / supported"
+  draft.items.shift(); // Use splice(0, 1) instead
+  draft.items.pop(); // Use splice(-1, 1) instead
+  draft.items[index] = newItem; // Use splice(index, 1, newItem) instead
+});
+```
+
+2. **Replacement (overwrite snapshot): toggle boolean**
+
+```tsx
+// data: { on: boolean; ... }
+setData({ ...data, on: !data.on });
+```
 
 ### Advanced
 
@@ -269,3 +297,7 @@ See [CONTRIBUTING.md](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUT
 ## Support & Maintenance
 
 Thank you for considering reading this little README and browing this project! I'd love to see you share the library and what you've made with it to me and with your friends. And if you enjoy using this, please consider [sponsoring the project or sending a small donation](https://github.com/sponsors/spencerc99). This helps ensure that the library is maintained and improved over time and funds the hosting costs for the syncing and persistence services.
+
+```
+
+```
