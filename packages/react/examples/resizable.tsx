@@ -1,23 +1,23 @@
 // install react-resizable and add to package.json
 import React, { PropsWithChildren } from "react";
 import { Resizable } from "react-resizable";
-import { withSharedState } from "@playhtml/react";
+import { withPlay } from "@playhtml/react";
 import "react-resizable/css/styles.css";
 
 interface Props {
   initialWidth: number;
   initialHeight: number;
-  onResize?: (newWidth: number, newHeight: number) => void;
+  onResize: (newWidth: number, newHeight: number) => void;
 }
 
-export const CanResizeElement = withSharedState(
+export const CanResizeElement = withPlay<PropsWithChildren<Props>>()(
   ({ initialWidth, initialHeight }) => ({
     defaultData: {
       width: initialWidth,
       height: initialHeight,
     },
   }),
-  ({ data, setData }, props: PropsWithChildren<Props>) => {
+  ({ props, data, setData }) => {
     const { onResize, children } = props;
     const { width, height } = data;
     return (
@@ -26,21 +26,14 @@ export const CanResizeElement = withSharedState(
         height={height}
         lockAspectRatio
         onResize={(e, d) => {
-          setData((state) => {
-            state.width = d.size.width;
-            state.height = d.size.height;
+          setData({
+            width: d.size.width,
+            height: d.size.height,
           });
-          onResize?.(d.size.width, d.size.height);
+          onResize(d.size.width, d.size.height);
         }}
       >
-        <div
-          style={{
-            width,
-            height,
-          }}
-        >
-          {children}
-        </div>
+        {children}
       </Resizable>
     );
   }

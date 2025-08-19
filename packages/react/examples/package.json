@@ -10,6 +10,6 @@
     "vite": "^4.3.9"
   },
   "dependencies": {
-    "@playhtml/react": "workspace:*"
+    "playhtml-react": "^0.1.3"
   }
 }

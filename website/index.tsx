@@ -20,14 +20,14 @@ playhtml.init({
     confetti: {
       type: "confetti",
       onEvent: (data) => {
-        const payload: any = { ...(data || {}) };
-        // NOTE: this serialization is needed because `slide` doesn't serialize to JSON properly.
-        if (payload.shapes && Array.isArray(payload.shapes)) {
-          payload.shapes = payload.shapes.map((shape: any) =>
-            shape === "slide" ? slide : shape
-          );
-        }
-        confetti(payload);
+        confetti({
+          ...(data || {}),
+          shapes:
+            // NOTE: this serialization is needed because `slide` doesn't serialize to JSON properly.
+            "shapes" in data
+              ? data.shapes.map((shape) => (shape === "slide" ? slide : shape))
+              : undefined,
+        });
       },
     },
   },
@@ -112,7 +112,7 @@ playhtml.init({
           // @ts-ignore
           const inputData = Object.fromEntries(formData.entries());
 
-          if (!inputData.name || !inputData.message) {
+          if (!inputData.name ?? !inputData.message) {
             clearMessage();
             return false;
           }
@@ -121,8 +121,7 @@ playhtml.init({
             words.some((word) => {
               const regex = new RegExp(`\\b${word}\\b`, "gi");
               return (
-                regex.test(String(inputData.message)) ||
-                regex.test(String(inputData.name))
+                regex.test(inputData.message) || regex.test(inputData.name)
               );
             })
           ) {
@@ -140,10 +139,7 @@ playhtml.init({
             ...inputData,
             timestamp,
           };
-
-          setData((d: FormData[]) => {
-            d.push(newEntry);
-          });
+          setData([...entries, newEntry]);
           clearMessage();
           return false;
         });
@@ -154,7 +150,7 @@ playhtml.init({
 
 const slide = confetti.shapeFromText({ text: "🛝" });
 
-document.body.addEventListener("click", (e) => {
+document.querySelector("body").addEventListener("click", (e) => {
   // 1/4 clicks should trigger confetti
   if (Math.random() > 0.33) {
     return;
