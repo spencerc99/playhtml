@@ -1,0 +1,29 @@
+{
+  "name": "@playhtml/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@playhtml/react": "workspace:*",
+    "@playhtml/common": "workspace:*",
+    "playhtml": "workspace:*",
+    "webextension-polyfill": "^0.12.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/webextension-polyfill": "^0.10.7",
+    "@types/chrome": "^0.0.270",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.0.2",
+    "vite": "^7.1.2",
+    "vite-plugin-web-extension": "^4.1.6",
+    "vitest": "^2.0.0"
+  }
+}
