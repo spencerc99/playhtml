@@ -33,8 +33,6 @@ const doc = getYjsDoc(store);
 const MIGRATION_FLAGS = {
   // TESTING: Re-enabled for production data volume testing
   enableMigration: true,
-  // Use SyncedStore as primary data source (Phase 2)
-  useSyncedStoreOnly: false,
   // Log migration progress - ENABLED for testing
   logMigration: false,
 };
@@ -516,9 +514,8 @@ function isHTMLElement(ele: any): ele is HTMLElement {
 
 // Loading state management functions
 function getDefaultLoadingBehavior(element: HTMLElement): string {
-  if (element.hasAttribute("can-move")) return "hidden";
   if (element.hasAttribute("can-play")) return "none"; // No auto-loading for can-play
-  return "animate"; // can-toggle, can-spin, can-grow, etc.
+  return "animate"; // can-move, can-toggle, can-spin, can-grow, etc.
 }
 
 function markElementAsLoading(element: HTMLElement): void {
@@ -976,7 +973,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
   elementData.triggerAwarenessUpdate?.();
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.classList.add(`__playhtml-${tag}`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 
   attachSyncedStoreObserver(tag as string, elementId);

@@ -4,7 +4,7 @@
 // Common classes to every open websites element.
 .__playhtml-element {
 }
-.__playhtml-can-move {
+[can-move] {
   cursor: grab;
   transition: transform 150ms;
   will-change: transform;
@@ -13,7 +13,7 @@
     cursor: grabbing;
   }
 }
-.__playhtml-can-spin {
+[can-spin] {
   cursor: grab;
   transition: transform 250ms;
   will-change: transform;
@@ -22,33 +22,33 @@
     cursor: grabbing;
   }
 }
-.__playhtml-can-grow {
+[can-grow] {
   cursor: pointer;
   transition: transform 250ms;
   will-change: transform;
   // TODO: turn cursor into a variable and then allow changing that.
 }
-.__playhtml-can-toggle {
+[can-toggle] {
   cursor: pointer;
 }
-.__playhtml-can-draw {
-  cursor: pointer;
-  .__playhtml-draw-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    cursor: none;
+// [can-draw] {
+//   cursor: pointer;
+//   .draw-container {
+//     position: relative;
+//     width: 100%;
+//     height: 100%;
+//     cursor: none;
 
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='32' height='32' viewport='0 0 100 100' style='overflow: visible; fill:black;font-size:20px;'><text y='-30%' x='-50%' style='transform:rotate(180deg)'>🖍️</text></svg>")
-          16 0,
-        auto; /*!emojicursor.app*/
-    }
-  }
-}
+//     canvas {
+//       position: absolute;
+//       top: 0;
+//       left: 0;
+//       cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='32' height='32' viewport='0 0 100 100' style='overflow: visible; fill:black;font-size:20px;'><text y='-30%' x='-50%' style='transform:rotate(180deg)'>🖍️</text></svg>")
+//           16 0,
+//         auto; /*!emojicursor.app*/
+//     }
+//   }
+// }
 
 // iPhone jiggle animation
 // inspo from https://www.kirupa.com/html5/creating_the_ios_icon_jiggle_wobble_effect_in_css.htm
@@ -99,16 +99,11 @@ body .__playhtml-element.editing:nth-child(2n-1) {
   pointer-events: none;
 }
 
-// can-move: Hidden completely (prevents positioning confusion)
-[can-move].playhtml-loading {
-  opacity: 0;
-  visibility: hidden;
-}
-
 // can-play: NO automatic loading by default (most likely to have custom loading)
 // Developers can opt-in using loading-behavior="animate"
 
-// can-toggle, can-spin, can-grow, can-duplicate, can-mirror, can-draw: Breathing animation
+// can-move, can-toggle, can-spin, can-grow, can-duplicate, can-mirror, can-draw: Breathing animation
+[can-move].playhtml-loading,
 [can-toggle].playhtml-loading,
 [can-spin].playhtml-loading,
 [can-grow].playhtml-loading,
@@ -119,7 +114,7 @@ body .__playhtml-element.editing:nth-child(2n-1) {
   animation: playhtml-breathing 2s infinite ease-in-out;
 }
 
-// Hidden behavior (alternative to can-move default)
+// Hidden behavior (opt-in via loading-behavior="hidden")
 [loading-behavior="hidden"].playhtml-loading {
   opacity: 0;
   visibility: hidden;
@@ -127,13 +122,14 @@ body .__playhtml-element.editing:nth-child(2n-1) {
 
 // Breathing animation keyframes
 @keyframes playhtml-breathing {
-  0%, 100% { 
-    opacity: 0.7; 
-    transform: scale(1); 
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
   }
-  50% { 
-    opacity: 0.4; 
-    transform: scale(1.01); 
+  50% {
+    opacity: 0.4;
+    transform: scale(1.01);
   }
 }
 
@@ -143,7 +139,8 @@ body .__playhtml-element.editing:nth-child(2n-1) {
 }
 
 @keyframes playhtml-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.7;
     transform: scale(1);
   }

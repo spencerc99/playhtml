@@ -1,16 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { playhtml } from "../main";
-import * as Y from "yjs";
+
 beforeAll(async () => {
-  // Pre-populate tags before init to avoid triggering globalData 'add' observer during tests
-  if (!playhtml.globalData!.get("can-toggle")) {
-    playhtml.globalData!.set("can-toggle", new Y.Map());
-  }
+  // Initialize playhtml with SyncedStore as primary storage
   await playhtml.init({});
   await new Promise((r) => setTimeout(r, 0));
 });
 
-describe("playhtml basic setup", () => {
+describe("playhtml basic setup with SyncedStore", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
   });
@@ -28,9 +25,15 @@ describe("playhtml basic setup", () => {
     const handler = playhtml.elementHandlers!.get("can-toggle")!.get("foo");
     expect(handler).toBeTruthy();
     expect(handler!.data).toEqual({ on: false });
-    // Ensure CSS classes are added
+
+    // Verify element has the generic playhtml class for easy selection
     expect(el.classList.contains("__playhtml-element")).toBe(true);
-    expect(el.classList.contains("__playhtml-can-toggle")).toBe(true);
+    // Verify element has the attribute for CSS targeting
+    expect(el.hasAttribute("can-toggle")).toBe(true);
+
+    // Verify data is stored in SyncedStore
+    expect(playhtml.syncedStore["can-toggle"]).toBeDefined();
+    expect(playhtml.syncedStore["can-toggle"]["foo"]).toEqual({ on: false });
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {
@@ -38,13 +41,49 @@ describe("playhtml basic setup", () => {
     el.id = "bar";
     el.setAttribute("can-toggle", "");
     document.body.appendChild(el);
-    if (!playhtml.globalData!.get("can-toggle")) {
-      playhtml.globalData!.set("can-toggle", new Y.Map());
-    }
     await playhtml.setupPlayElementForTag(el, "can-toggle");
 
     const handler = playhtml.elementHandlers!.get("can-toggle")!.get("bar")!;
     // Trigger local awareness update; for can-toggle, updateElementAwareness is undefined, but this should not throw
     expect(() => handler.setMyAwareness({ active: true } as any)).not.toThrow();
+
+    // Verify element can be found using the generic class
+    const playhtmlElements = document.querySelectorAll(".__playhtml-element");
+    expect(playhtmlElements.length).toBe(1);
+    expect(playhtmlElements[0]).toBe(el);
+  });
+
+  it("supports both mutator and value forms for setData", async () => {
+    const el = document.createElement("div");
+    el.id = "toggle-test";
+    el.setAttribute("can-toggle", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-toggle");
+
+    const handler = playhtml
+      .elementHandlers!.get("can-toggle")!
+      .get("toggle-test")!;
+
+    // Test value form
+    handler.setData({ on: true });
+    // Wait for sync layer to update handler.data
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(handler.data).toEqual({ on: true });
+    expect(playhtml.syncedStore["can-toggle"]["toggle-test"]).toEqual({
+      on: true,
+    });
+
+    // Test mutator form
+    handler.setData((draft: any) => {
+      draft.on = false;
+    });
+    // Wait for sync layer to update handler.data
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(handler.data).toEqual({ on: false });
+    expect(playhtml.syncedStore["can-toggle"]["toggle-test"]).toEqual({
+      on: false,
+    });
   });
 });
