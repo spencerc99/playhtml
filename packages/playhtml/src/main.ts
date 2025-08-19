@@ -14,6 +14,7 @@ import {
   RegisteredPlayEvent,
 } from "@playhtml/common";
 import * as Y from "yjs";
+import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
 
@@ -21,7 +22,133 @@ const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
 const VERBOSE = 0;
 
-const doc = new Y.Doc();
+// Root SyncedStore for nested CRDT semantics while keeping plain API
+type StoreShape = {
+  play: Record<string, Record<string, any>>; // tag -> elementId -> data proxy
+};
+const store = syncedStore<StoreShape>({ play: {} });
+const doc = getYjsDoc(store);
+
+// MIGRATION: Flags and infrastructure for transitioning to SyncedStore-only
+const MIGRATION_FLAGS = {
+  // TESTING: Re-enabled for production data volume testing
+  enableMigration: true,
+  // Use SyncedStore as primary data source (Phase 2)
+  useSyncedStoreOnly: false,
+  // Log migration progress - ENABLED for testing
+  logMigration: false,
+};
+
+function migrateTagFromYMapToSyncedStore(tag: string): void {
+  if (!MIGRATION_FLAGS.enableMigration) return;
+
+  const startTime = performance.now();
+  console.debug(`[MIGRATION] Starting migration for tag: ${tag}`);
+
+  const tagMap = globalData.get(tag);
+  if (!tagMap) {
+    console.debug(`[MIGRATION] No data found for tag: ${tag}`);
+    return;
+  }
+
+  // Log the size of data we're about to migrate
+  let mapSize = 0;
+  try {
+    tagMap.forEach(() => mapSize++);
+    console.debug(`[MIGRATION] Found ${mapSize} entries for tag: ${tag}`);
+  } catch (error) {
+    console.error(
+      `[MIGRATION ERROR] Failed to count entries for tag ${tag}:`,
+      error
+    );
+    return;
+  }
+
+  // Ensure tag exists in SyncedStore
+  store.play[tag] ??= {};
+
+  let migratedCount = 0;
+  let errorCount = 0;
+
+  try {
+    // Batch all migration operations in a single transaction to prevent excessive broadcasts
+    doc.transact(() => {
+      tagMap.forEach((elementData, elementId) => {
+        try {
+          // Only migrate if not already present in SyncedStore
+          if (store.play[tag][elementId] === undefined) {
+            // Log memory usage for large objects
+            const dataSize = JSON.stringify(elementData).length;
+            if (dataSize > 10000) {
+              console.debug(
+                `[MIGRATION] Large data entry: ${tag}:${elementId} (${dataSize} chars)`
+              );
+            }
+
+            const clonedData = clonePlain(elementData);
+            store.play[tag][elementId] = clonedData;
+            migratedCount++;
+
+            // Log progress every 1000 items for large datasets
+            if (migratedCount % 1000 === 0) {
+              console.debug(
+                `[MIGRATION] Progress: ${migratedCount}/${mapSize} migrated for ${tag}`
+              );
+            }
+          }
+        } catch (error) {
+          errorCount++;
+          console.error(
+            `[MIGRATION ERROR] Failed to migrate ${tag}:${elementId}:`,
+            error
+          );
+        }
+      });
+    });
+  } catch (error) {
+    console.error(`[MIGRATION FATAL] forEach failed for tag ${tag}:`, error);
+    return;
+  }
+
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+
+  if (MIGRATION_FLAGS.logMigration) {
+    console.debug(
+      `[MIGRATION] Completed ${tag}: ${migratedCount} migrated, ${errorCount} errors, ${duration.toFixed(
+        2
+      )}ms`
+    );
+  }
+}
+
+function migrateAllDataFromYMapToSyncedStore(): void {
+  if (!MIGRATION_FLAGS.enableMigration) return;
+
+  // Check if migration has already been completed
+  const migrationComplete = globalData.get("__migration_complete__");
+  if (migrationComplete) {
+    console.log("[MIGRATION] Migration already completed, skipping");
+    return;
+  }
+
+  console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
+
+  // Migrate all tags (excluding our migration flag)
+  globalData.forEach((_, tag) => {
+    if (tag !== "__migration_complete__") {
+      migrateTagFromYMapToSyncedStore(tag);
+    }
+  });
+
+  // Mark migration as complete so other clients don't run it
+  globalData.set("__migration_complete__", true);
+
+  console.log(
+    "[MIGRATION] Migration completed. SyncedStore state:",
+    clonePlain(store.play)
+  );
+}
 
 function getDefaultRoom(includeSearch?: boolean): string {
   // TODO: Strip filename extension
@@ -33,6 +160,29 @@ function getDefaultRoom(includeSearch?: boolean): string {
 }
 let yprovider: YPartyKitProvider;
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
+// Internal map for quick access to proxies
+const proxyByTagAndId = new Map<string, Map<string, any>>();
+const yObserverByKey = new Map<string, (events: any[]) => void>();
+
+function ensureElementProxy<T = any>(
+  tag: string,
+  elementId: string,
+  defaultData: T
+) {
+  if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+  const tagMap = proxyByTagAndId.get(tag)!;
+  if (!tagMap.has(elementId)) {
+    store.play[tag] ??= {};
+    if (store.play[tag][elementId] === undefined) {
+      // Always clone to avoid reusing the same object reference across multiple elements,
+      // which SyncedStore forbids ("reassigning object that already occurs in the tree").
+      const initial = clonePlain(defaultData) as any;
+      store.play[tag][elementId] = initial;
+    }
+    tagMap.set(elementId, store.play[tag][elementId]);
+  }
+  return tagMap.get(elementId)!;
+}
 let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
@@ -139,7 +289,11 @@ function setupDevUI() {
   const resetDataButton = document.createElement("button");
   resetDataButton.innerText = "Reset Data";
   resetDataButton.onclick = () => {
-    globalData.clear();
+    Object.keys(store.play).forEach((tag) => {
+      Object.keys(store.play[tag]).forEach((elementId) => {
+        delete store.play[tag][elementId];
+      });
+    });
   };
   devUi.appendChild(resetDataButton);
 
@@ -243,6 +397,17 @@ function setupDevUI() {
 
 let hasSynced = false;
 let firstSetup = true;
+// NOTE: Potential optimization: allowlist/blocklist collaborative paths
+// In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
+// Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
+// Example API (future):
+// <CanPlayElement
+//   defaultData={...}
+//   crdtPaths={{ allow: ["lists.todos", "nested.a.b.c.values"], block: ["profile", "counters"] }}
+// >
+// This would proxy only specified paths in synced mode, keeping others as plain local React state.
+// This aligns with the common case where nested arrays need collaboration more than nested objects.
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host = DefaultPartykitHost,
@@ -263,7 +428,7 @@ async function initPlayHTML({
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
 
-  // TODO: there's a typescript error here but it all seems to work...
+  // NOTE: there's a typescript error here but it all seems to work...
   // @ts-ignore
   const partykitHost = import.meta.env.DEV ? "localhost:1999" : host;
 
@@ -322,6 +487,9 @@ async function initPlayHTML({
       }
       hasSynced = true;
       console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+
+      migrateAllDataFromYMapToSyncedStore();
+
       setupElements();
       resolve(true);
     });
@@ -370,27 +538,22 @@ function createPlayElementData<T extends TagType>(
   tagInfo: ElementInitializer<T>,
   elementId: string
 ): ElementData<T> {
-  type tagType = (typeof tagInfo)["defaultData"];
-  const tagData: Y.Map<tagType> = globalData.get(tag)!;
-
   if (VERBOSE) {
-    console.log(
-      "registering element",
-      elementId,
-      tagData.get(elementId) ?? tagInfo.defaultData,
-      tagData.get(elementId),
-      tagInfo.defaultData
-    );
+    console.log("registering element", elementId, "using SyncedStore data");
   }
+
+  const initialData =
+    tagInfo.defaultData instanceof Function
+      ? tagInfo.defaultData(element)
+      : tagInfo.defaultData;
+
+  // Always use SyncedStore proxy
+  const dataProxy = ensureElementProxy(tag as string, elementId, initialData);
 
   const elementData: ElementData = {
     ...tagInfo,
-    // TODO: when adding save-state if no save state, then just use defaultData
-    data:
-      tagData.get(elementId) ??
-      (tagInfo.defaultData instanceof Function
-        ? tagInfo.defaultData(element)
-        : tagInfo.defaultData),
+    // Always provide a plain snapshot to render paths
+    data: clonePlain(dataProxy),
     awareness:
       getElementAwareness(tag, elementId) ??
       tagInfo.myDefaultAwareness !== undefined
@@ -398,11 +561,18 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
-      if (deepEquals(tagData.get(elementId), newData)) {
-        return;
+      if (typeof (newData as any) === "function") {
+        // Mutator form support: onChange can accept function(draft)
+        // Batch all nested mutations into a single Yjs transaction to coalesce events
+        doc.transact(() => {
+          (newData as any)(dataProxy);
+        });
+      } else {
+        // Value form: replace snapshot semantics
+        doc.transact(() => {
+          deepReplaceIntoProxy(dataProxy, newData);
+        });
       }
-
-      tagData.set(elementId, newData);
     },
     onAwarenessChange: (elementAwarenessData) => {
       const localAwareness = yprovider.awareness.getLocalState()?.[tag] || {};
@@ -420,6 +590,63 @@ function createPlayElementData<T extends TagType>(
   };
 
   return elementData;
+}
+
+function isPlainObject(value: any): value is Record<string, any> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+// Replacement variant used for tags that keep a canonical snapshot (e.g., can-mirror)
+function deepReplaceIntoProxy(target: any, src: any) {
+  if (src === null || src === undefined) return;
+  if (Array.isArray(src)) {
+    target.splice(0, target.length, ...src);
+    return;
+  }
+  if (isPlainObject(src)) {
+    // Remove keys not present in src
+    for (const key of Object.keys(target)) {
+      if (!(key in src)) {
+        delete target[key];
+      }
+    }
+    // Set all keys from src
+    for (const [k, v] of Object.entries(src)) {
+      if (Array.isArray(v)) {
+        if (!Array.isArray(target[k])) target[k] = [];
+        deepReplaceIntoProxy(target[k], v);
+      } else if (isPlainObject(v)) {
+        if (!isPlainObject(target[k])) target[k] = {};
+        deepReplaceIntoProxy(target[k], v);
+      } else {
+        target[k] = v;
+      }
+    }
+    return;
+  }
+  // primitives
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  target = src;
+}
+
+function clonePlain<T>(value: T): T {
+  // Prefer structuredClone when available; fallback to JSON clone for plain data
+  try {
+    // @ts-ignore
+    if (typeof structuredClone === "function") {
+      // @ts-ignore
+      return structuredClone(value);
+    }
+  } catch {}
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") {
+    return JSON.parse(JSON.stringify(value));
+  }
+  return value;
 }
 
 function isCorrectElementInitializer(
@@ -552,14 +779,6 @@ function setupElements(): void {
   if (!firstSetup) {
     return;
   }
-  globalData.observe((event) => {
-    event.changes.keys.forEach((change, key) => {
-      if (change.action === "add") {
-        globalData.set(key, globalData.get(key)!);
-        // TODO: need to re-initialize the above handlers here too...?
-      }
-    });
-  });
 
   yprovider.awareness.on("change", () => onChangeAwareness());
   firstSetup = false;
@@ -571,7 +790,9 @@ interface PlayHTMLComponents {
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  globalData: Y.Map<any> | undefined;
+  syncedStore: (typeof store)["play"];
+  // TODO: REMOVE AFTER MIGRATION VALIDATED
+  globalData: typeof globalData;
   elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -586,6 +807,8 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElement,
   removePlayElement,
   setupPlayElementForTag,
+  syncedStore: store.play,
+  // TODO: REMOVE AFTER MIGRATION VALIDATED
   globalData,
   elementHandlers,
   eventHandlers,
@@ -609,61 +832,8 @@ function maybeSetupTag(tag: TagType | string): void {
   if (!elementHandlers.has(tag)) {
     elementHandlers.set(tag, new Map<string, ElementHandler>());
   }
-  let tagCommonElementInitializerInfo =
-    tag !== TagType.CanPlay ? capabilitiesToInitializer[tag] : undefined;
 
-  type tagType =
-    typeof tagCommonElementInitializerInfo extends ElementInitializer
-      ? (typeof tagCommonElementInitializerInfo)["defaultData"]
-      : any;
-  // check for safety, but this should always be true because of the first check.
-  if (!globalData.get(tag)) {
-    globalData.set(tag, new Y.Map<tagType>());
-  }
-
-  const tagData: Y.Map<tagType> = globalData.get(tag)!;
-
-  tagData.observe((event) => {
-    event.changes.keys.forEach(async (change, key) => {
-      const tagElementHandlers = elementHandlers.get(tag)!;
-      if (change.action === "add") {
-        const element = document.getElementById(key)!;
-        if (!isHTMLElement(element)) {
-          console.log(`Element ${key} not an HTML element. Ignoring.`);
-          return;
-        }
-
-        if (VERBOSE) {
-          console.log(
-            `[OBSERVE] Setting up playhtml element for tag ${tag} with element ${element}`
-          );
-        }
-        setupPlayElementForTag(element, tag);
-      } else if (change.action === "update") {
-        let elementHandler = tagElementHandlers.get(key);
-        if (!elementHandler) {
-          const element = document.getElementById(key)!;
-          if (!isHTMLElement(element)) {
-            console.log(`Element ${key} not an HTML element. Ignoring.`);
-            return;
-          }
-
-          if (VERBOSE) {
-            console.log(
-              `[OBSERVE] Setting up playhtml element for tag ${tag} with element ${element}`
-            );
-          }
-          await setupPlayElementForTag(element, tag);
-          elementHandler = tagElementHandlers.get(key);
-        }
-        elementHandler!.__data = tagData.get(key)!;
-      } else if (change.action === "delete") {
-        tagElementHandlers.delete(key);
-      } else {
-        console.log(`Unhandled action: ${change.action}`);
-      }
-    });
-  });
+  store.play[tag] ??= {};
 }
 
 /**
@@ -706,7 +876,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
       element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
-      // TODO: use a hash function that compresses here
       element.id = await hashElement(tag, element);
     }
   }
@@ -733,9 +902,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
-  type tagType = (typeof elementInitializerInfo)["defaultData"];
-  const tagData: Y.Map<tagType> = globalData.get(tag)!;
-
   const elementData = createPlayElementData(
     element,
     tag,
@@ -745,21 +911,11 @@ async function setupPlayElementForTag<T extends TagType | string>(
   if (tagElementHandlers.has(elementId)) {
     // Try to update the elements info
     tagElementHandlers.get(elementId)!.reinitializeElementData(elementData);
+    // ensure observer is attached
+    attachSyncedStoreObserver(tag as string, elementId);
     return;
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
-  }
-  // if there is nothing stored in the synced data, set it to the default data if the element gets successfully created
-  if (
-    tagData.get(elementId) === undefined &&
-    elementInitializerInfo.defaultData !== undefined
-  ) {
-    tagData.set(
-      elementId,
-      elementInitializerInfo.defaultData instanceof Function
-        ? elementInitializerInfo.defaultData(element)
-        : elementInitializerInfo.defaultData
-    );
   }
 
   // redo this now that we have set it in the mapping.
@@ -769,6 +925,42 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.classList.add(`__playhtml-element`);
   element.classList.add(`__playhtml-${tag}`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+
+  attachSyncedStoreObserver(tag as string, elementId);
+}
+
+function attachSyncedStoreObserver(tag: string, elementId: string) {
+  const key = `${tag}:${elementId}`;
+  const tagHandlers = elementHandlers.get(tag);
+  if (!tagHandlers) return;
+  const handler = tagHandlers.get(elementId);
+  if (!handler) return;
+
+  // Detach previous observer if present
+  const yVal = getYjsValue(store.play[tag]?.[elementId]);
+  if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
+  const existing = yObserverByKey.get(key);
+  if (existing) {
+    // @ts-ignore
+    (yVal as any).unobserveDeep(existing);
+  }
+  let scheduled = false;
+  const observer = () => {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      // Push plain snapshot into handler for stable rendering
+      const proxy = store.play[tag]?.[elementId];
+      if (!proxy) return;
+      const plain = clonePlain(proxy);
+      // @ts-ignore private usage intended
+      handler.__data = plain;
+    });
+  };
+  // @ts-ignore
+  (yVal as any).observeDeep(observer);
+  yObserverByKey.set(key, observer);
 }
 
 // TODO: make async and run it after synced

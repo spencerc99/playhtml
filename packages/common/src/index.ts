@@ -56,7 +56,22 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   localData: U;
   awareness: V[];
   element: HTMLElement;
-  setData: (data: T) => void;
+  /**
+   * Updates the element's shared data.
+   *
+   * Two forms:
+   * - Mutator form: setData((draft) => { ... })
+   *   When the runtime uses SyncedStore/Yjs, draft is a live CRDT proxy.
+   *   Mutate nested arrays/objects for merge-friendly collaborative edits.
+   *   Concurrent updates will be merged across clients. Example:
+   *     setData(d => { d.list.push(item); })
+   *
+   * - Value form: setData(value)
+   *   Replaces the entire data snapshot. Use for canonical replacement
+   *   scenarios (e.g., mirroring DOM state) or in legacy plain mode.
+   *   Example: setData({ on: true })
+   */
+  setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U) => void;
   setMyAwareness: (data: V) => void;
@@ -72,7 +87,7 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getLocalData: () => U;
   getAwareness: () => V[];
   getElement: () => HTMLElement;
-  setData: (data: T) => void;
+  setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U) => void;
   setMyAwareness: (data: V) => void;
 }
@@ -415,17 +430,16 @@ export const TagTypeToElement: Record<
     defaultData: (element: HTMLElement) => constructInitialState(element),
     onMount: ({ getElement, setData, getData }) => {
       const element = getElement();
-      // console.log("mirroring", element);
 
+      const setDataAny = setData as unknown as (data: any) => void;
       observeElementChanges(element, (mutations) => {
-        const currentState = getData();
-        // console.log(mutations);
-        const newState = updateStateWithMutation(currentState, mutations);
-        setData(newState);
+        // Apply granular, collaborative edits in place using the mutator form.
+        setDataAny((draft: any) => {
+          applyMutationsInPlace(draft, mutations);
+        });
       });
     },
     updateElement: ({ element, data }) => {
-      // console.log("new data", data);
       const currentState = constructInitialState(element);
       if (areStatesEqual(currentState, data)) {
         return;
@@ -565,30 +579,29 @@ interface TextState {
   textContent: string;
 }
 
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
-}
-
-function updateStateWithMutation(
+/**
+ * Applies a list of DOM MutationRecord patches directly to the provided
+ * ElementState. This is used with the mutator setData form so that nested
+ * arrays/objects are updated incrementally (push/splice, assign/remove),
+ * enabling conflict-free collaborative edits under SyncedStore/Yjs.
+ */
+function applyMutationsInPlace(
   state: ElementState,
   mutations: MutationRecord[]
-): ElementState {
-  let newState = deepClone(state);
+): void {
   mutations.forEach((mutation) => {
     switch (mutation.type) {
       case "attributes":
-        updateAttributes(newState, mutation);
+        updateAttributes(state, mutation);
         break;
       case "childList":
-        updateChildList(newState, mutation);
+        updateChildList(state, mutation);
         break;
       case "characterData":
-        updateCharacterData(newState, mutation);
+        updateCharacterData(state, mutation);
         break;
     }
   });
-
-  return newState;
 }
 
 function updateAttributes(state: ElementState, mutation: MutationRecord) {
@@ -734,12 +747,16 @@ function updateAttributesFromState(
     return;
   }
   // Set new attributes from state
-  for (const [key, value] of Object.entries(state.attributes)) {
+  const attrs: Record<string, string> =
+    (state as any).attributes && typeof (state as any).attributes === "object"
+      ? ((state as any).attributes as Record<string, string>)
+      : {};
+  for (const [key, value] of Object.entries(attrs)) {
     if (element.getAttribute(key) !== value) element.setAttribute(key, value);
   }
 
   Array.from(element.attributes).forEach((attr) => {
-    if (!state.attributes[attr.name]) element.removeAttribute(attr.name);
+    if (!attrs[attr.name]) element.removeAttribute(attr.name);
   });
 }
 
