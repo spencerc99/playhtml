@@ -1,6 +1,8 @@
 # Change Log
 
-## Unreleased
+The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
+
+## 0.5.0 - 2025-08-19
 
 ### Added
 
@@ -11,8 +13,6 @@
 
 - Updated to playhtml 2.2.0 with improved CRDT array operations
 - Updated to @playhtml/common 0.1.0 with enhanced type definitions
-
-The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## 0.4.1 - 2025-04-14
 

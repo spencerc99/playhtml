@@ -31,7 +31,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.0.14",
+      "version": "0.1.0",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^4.3.9",
@@ -40,9 +40,9 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.1.12",
+      "version": "2.2.0",
       "dependencies": {
-        "@playhtml/common": "0.0.14",
+        "@playhtml/common": "0.1.0",
         "@syncedstore/core": "^0.6.0",
         "y-indexeddb": "^9.0.11",
         "y-partykit": "^0.0.31",
@@ -59,11 +59,11 @@
     },
     "packages/react": {
       "name": "@playhtml/react",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "dependencies": {
-        "@playhtml/common": "^0.0.13",
+        "@playhtml/common": "^0.1.0",
         "classnames": "^2.3.2",
-        "playhtml": "^2.1.11",
+        "playhtml": "^2.2.0",
         "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
         "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
       },
@@ -924,8 +924,6 @@
     "@microsoft/tsdoc-config/resolve": ["resolve@1.19.0", "", { "dependencies": { "is-core-module": "^2.1.0", "path-parse": "^1.0.6" } }, "sha512-rArEXAgsBG4UgRGcynxWIWKFvh/XZCcS8UJdHhwy91zwAvCZIbcs+vAbflgBnNjYMs/i/i+/Ux6IZhML1yPvxg=="],
 
     "@playhtml/common/vite": ["vite@4.5.14", "", { "dependencies": { "esbuild": "^0.18.10", "postcss": "^8.4.27", "rollup": "^3.27.1" }, "optionalDependencies": { "fsevents": "~2.3.2" }, "peerDependencies": { "@types/node": ">= 14", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-+v57oAaoYNnO3hIu5Z/tJRZjq5aHM2zDve9YZ8HngVHbhk66RStobhb1sqPMIPEleV6cNKYK4eGrAbE9Ulbl2g=="],
-
-    "@playhtml/react/@playhtml/common": ["@playhtml/common@0.0.13", "", {}, "sha512-4E0IQXFBpmbEXphY3iAiIw0LKNnWgzwuYPPL0n7qxtCth0I1tgk6vAP35auW1H6IQqg93WgwqXWhnzK83HZAgw=="],
 
     "@playhtml/react/vite": ["vite@4.5.14", "", { "dependencies": { "esbuild": "^0.18.10", "postcss": "^8.4.27", "rollup": "^3.27.1" }, "optionalDependencies": { "fsevents": "~2.3.2" }, "peerDependencies": { "@types/node": ">= 14", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-+v57oAaoYNnO3hIu5Z/tJRZjq5aHM2zDve9YZ8HngVHbhk66RStobhb1sqPMIPEleV6cNKYK4eGrAbE9Ulbl2g=="],
 
