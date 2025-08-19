@@ -125,21 +125,29 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
 function migrateAllDataFromYMapToSyncedStore(): void {
   if (!MIGRATION_FLAGS.enableMigration) return;
 
-  if (MIGRATION_FLAGS.logMigration) {
-    console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
+  // Check if migration has already been completed
+  const migrationComplete = globalData.get("__migration_complete__");
+  if (migrationComplete) {
+    console.log("[MIGRATION] Migration already completed, skipping");
+    return;
   }
 
-  // Migrate all tags
+  console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
+
+  // Migrate all tags (excluding our migration flag)
   globalData.forEach((_, tag) => {
-    migrateTagFromYMapToSyncedStore(tag);
+    if (tag !== "__migration_complete__") {
+      migrateTagFromYMapToSyncedStore(tag);
+    }
   });
 
-  if (MIGRATION_FLAGS.logMigration) {
-    console.log(
-      "[MIGRATION] Migration completed. SyncedStore state:",
-      clonePlain(store.play)
-    );
-  }
+  // Mark migration as complete so other clients don't run it
+  globalData.set("__migration_complete__", true);
+
+  console.log(
+    "[MIGRATION] Migration completed. SyncedStore state:",
+    clonePlain(store.play)
+  );
 }
 
 function getDefaultRoom(includeSearch?: boolean): string {
@@ -271,7 +279,7 @@ function onMessage(evt: MessageEvent) {
 }
 
 function setupDevUI() {
-  const devUi = document.zElement("div");
+  const devUi = document.createElement("div");
   devUi.id = "playhtml-dev-ui";
   devUi.style.position = "fixed";
   devUi.style.bottom = "10px";
