@@ -75,26 +75,23 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
     doc.transact(() => {
       tagMap.forEach((elementData, elementId) => {
         try {
-          // Only migrate if not already present in SyncedStore
-          if (store.play[tag][elementId] === undefined) {
-            // Log memory usage for large objects
-            const dataSize = JSON.stringify(elementData).length;
-            if (dataSize > 10000) {
-              console.debug(
-                `[MIGRATION] Large data entry: ${tag}:${elementId} (${dataSize} chars)`
-              );
-            }
+          // Log memory usage for large objects
+          const dataSize = JSON.stringify(elementData).length;
+          if (dataSize > 10000) {
+            console.debug(
+              `[MIGRATION] Large data entry: ${tag}:${elementId} (${dataSize} chars)`
+            );
+          }
 
-            const clonedData = clonePlain(elementData);
-            store.play[tag][elementId] = clonedData;
-            migratedCount++;
+          const clonedData = clonePlain(elementData);
+          store.play[tag][elementId] = clonedData;
+          migratedCount++;
 
-            // Log progress every 1000 items for large datasets
-            if (migratedCount % 1000 === 0) {
-              console.debug(
-                `[MIGRATION] Progress: ${migratedCount}/${mapSize} migrated for ${tag}`
-              );
-            }
+          // Log progress every 1000 items for large datasets
+          if (migratedCount % 1000 === 0) {
+            console.debug(
+              `[MIGRATION] Progress: ${migratedCount}/${mapSize} migrated for ${tag}`
+            );
           }
         } catch (error) {
           errorCount++;
@@ -122,7 +119,7 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
   }
 }
 
-function migrateAllDataFromYMapToSyncedStore(retryCount = 0): void {
+function migrateAllDataFromYMapToSyncedStore(): void {
   if (!MIGRATION_FLAGS.enableMigration) return;
 
   // Check if migration has already been completed
@@ -130,36 +127,6 @@ function migrateAllDataFromYMapToSyncedStore(retryCount = 0): void {
   if (migrationComplete) {
     console.log("[MIGRATION] Migration already completed, skipping");
     return;
-  }
-
-  const maxRetries = 20; // 20 * 250ms = 5 seconds max wait
-  const retryDelayMs = 250;
-
-  if (retryCount >= maxRetries) {
-    console.log(
-      "[MIGRATION] Max retries reached, proceeding with migration anyway"
-    );
-  } else {
-    // Wait for some data to be present, but don't wait forever
-    let hasAnyData = false;
-    globalData.forEach((_, tag) => {
-      if (tag !== "__migration_complete__") {
-        hasAnyData = true;
-      }
-    });
-
-    if (!hasAnyData) {
-      console.log(
-        `[MIGRATION] No data found yet (attempt ${
-          retryCount + 1
-        }/${maxRetries}), retrying in ${retryDelayMs}ms...`
-      );
-      setTimeout(
-        () => migrateAllDataFromYMapToSyncedStore(retryCount + 1),
-        retryDelayMs
-      );
-      return;
-    }
   }
 
   console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
