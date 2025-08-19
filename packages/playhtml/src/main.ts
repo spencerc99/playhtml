@@ -41,27 +41,6 @@ const MIGRATION_FLAGS = {
   logMigration: VERBOSE > 0,
 };
 
-// MIGRATION: Backup storage for Y.Map data during transition
-const migrationBackup: Record<string, Record<string, any>> = {};
-
-// MIGRATION: Functions for safely migrating Y.Map data to SyncedStore
-function createBackupOfYMapData(): void {
-  if (!MIGRATION_FLAGS.createBackups) return;
-
-  globalData.forEach((tagMap, tag) => {
-    if (!migrationBackup[tag]) migrationBackup[tag] = {};
-    if (tagMap instanceof Map) {
-      tagMap.forEach((elementData, elementId) => {
-        migrationBackup[tag][elementId] = clonePlain(elementData);
-      });
-    }
-  });
-
-  if (MIGRATION_FLAGS.logMigration) {
-    console.log("[MIGRATION] Created backup of Y.Map data:", migrationBackup);
-  }
-}
-
 function migrateTagFromYMapToSyncedStore(tag: string): void {
   if (!MIGRATION_FLAGS.enableMigration) return;
 
@@ -98,9 +77,6 @@ function migrateAllDataFromYMapToSyncedStore(): void {
   if (MIGRATION_FLAGS.logMigration) {
     console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
   }
-
-  // Create backup first
-  createBackupOfYMapData();
 
   // Migrate all tags
   globalData.forEach((_, tag) => {
