@@ -122,7 +122,7 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
   }
 }
 
-function migrateAllDataFromYMapToSyncedStore(): void {
+function migrateAllDataFromYMapToSyncedStore(retryCount = 0): void {
   if (!MIGRATION_FLAGS.enableMigration) return;
 
   // Check if migration has already been completed
@@ -130,6 +130,36 @@ function migrateAllDataFromYMapToSyncedStore(): void {
   if (migrationComplete) {
     console.log("[MIGRATION] Migration already completed, skipping");
     return;
+  }
+
+  const maxRetries = 20; // 20 * 250ms = 5 seconds max wait
+  const retryDelayMs = 250;
+
+  if (retryCount >= maxRetries) {
+    console.log(
+      "[MIGRATION] Max retries reached, proceeding with migration anyway"
+    );
+  } else {
+    // Wait for some data to be present, but don't wait forever
+    let hasAnyData = false;
+    globalData.forEach((_, tag) => {
+      if (tag !== "__migration_complete__") {
+        hasAnyData = true;
+      }
+    });
+
+    if (!hasAnyData) {
+      console.log(
+        `[MIGRATION] No data found yet (attempt ${
+          retryCount + 1
+        }/${maxRetries}), retrying in ${retryDelayMs}ms...`
+      );
+      setTimeout(
+        () => migrateAllDataFromYMapToSyncedStore(retryCount + 1),
+        retryDelayMs
+      );
+      return;
+    }
   }
 
   console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
