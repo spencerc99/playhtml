@@ -30,8 +30,13 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "set-publishing-config": "bun config set version-tag-prefix '@playhtml/common-v' && bun config set version-git-message '@playhtml/common-v%s'",
-    "publish-npm": "bun run build && npm run set-publishing-config && bun publish"
+    "version-patch": "bun pm version patch",
+    "version-minor": "bun pm version minor",
+    "version-major": "bun pm version major",
+    "publish-only": "bun run build && bun publish",
+    "release-patch": "bun pm version patch && bun run build && bun publish",
+    "release-minor": "bun pm version minor && bun run build && bun publish",
+    "release-major": "bun pm version major && bun run build && bun publish"
   },
   "devDependencies": {
     "typescript": "^5.0.2",

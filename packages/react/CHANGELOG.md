@@ -1,5 +1,17 @@
 # Change Log
 
+## Unreleased
+
+### Added
+
+- Enhanced mutator form support for `setData`: `setData(draft => { ... })` now fully supported with improved CRDT collaboration
+- Inherited SyncedStore-backed nested CRDT support from playhtml core for automatic conflict resolution
+
+### Changed
+
+- Updated to playhtml 2.2.0 with improved CRDT array operations
+- Updated to @playhtml/common 0.1.0 with enhanced type definitions
+
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## 0.4.1 - 2025-04-14
