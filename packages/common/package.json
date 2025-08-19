@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/common",
   "description": "Common types for playhtml packages",
-  "version": "0.0.14",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "author": "Spencer Chang <spencerc99@gmail.com>",
@@ -30,13 +30,13 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "version-patch": "bun pm version patch",
-    "version-minor": "bun pm version minor",
-    "version-major": "bun pm version major",
-    "publish-only": "bun run build && bun publish",
-    "release-patch": "bun pm version patch && bun run build && bun publish",
-    "release-minor": "bun pm version minor && bun run build && bun publish",
-    "release-major": "bun pm version major && bun run build && bun publish"
+    "version-patch": "node -e \"const pkg=require('./package.json'); const [major,minor,patch]=pkg.version.split('.').map(Number); pkg.version=\\`\\${major}.\\${minor}.\\${patch+1}\\`; require('fs').writeFileSync('./package.json', JSON.stringify(pkg,null,2)+'\\\\n')\" && git add package.json && git commit -m \"bump @playhtml/common to v$(node -p \\\"require('./package.json').version\\\")\" && git tag @playhtml/common-v$(node -p \\\"require('./package.json').version\\\")",
+    "version-minor": "node -e \"const pkg=require('./package.json'); const [major,minor]=pkg.version.split('.').map(Number); pkg.version=\\`\\${major}.\\${minor+1}.0\\`; require('fs').writeFileSync('./package.json', JSON.stringify(pkg,null,2)+'\\\\n')\" && git add package.json && git commit -m \"bump @playhtml/common to v$(node -p \\\"require('./package.json').version\\\")\" && git tag @playhtml/common-v$(node -p \\\"require('./package.json').version\\\")",
+    "version-major": "node -e \"const pkg=require('./package.json'); const [major]=pkg.version.split('.').map(Number); pkg.version=\\`\\${major+1}.0.0\\`; require('fs').writeFileSync('./package.json', JSON.stringify(pkg,null,2)+'\\\\n')\" && git add package.json && git commit -m \"bump @playhtml/common to v$(node -p \\\"require('./package.json').version\\\")\" && git tag @playhtml/common-v$(node -p \\\"require('./package.json').version\\\")",
+    "publish-only": "bun run build && npm publish",
+    "release-patch": "bun run version-patch && bun run publish-only",
+    "release-minor": "bun run version-minor && bun run publish-only",
+    "release-major": "bun run version-major && bun run publish-only"
   },
   "devDependencies": {
     "typescript": "^5.0.2",
