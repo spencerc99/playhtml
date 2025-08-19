@@ -125,11 +125,11 @@ function migrateAllDataFromYMapToSyncedStore(): void {
   // Check if migration has already been completed
   const migrationComplete = globalData.get("__migration_complete__");
   if (migrationComplete) {
-    console.log("[MIGRATION] Migration already completed, skipping");
+    console.debug("[MIGRATION] Migration already completed, skipping");
     return;
   }
 
-  console.log("[MIGRATION] Starting migration from Y.Map to SyncedStore");
+  console.debug("[MIGRATION] Starting migration from Y.Map to SyncedStore");
 
   // Migrate all tags (excluding our migration flag)
   globalData.forEach((_, tag) => {
@@ -141,7 +141,7 @@ function migrateAllDataFromYMapToSyncedStore(): void {
   // Mark migration as complete so other clients don't run it
   globalData.set("__migration_complete__", true);
 
-  console.log(
+  console.debug(
     "[MIGRATION] Migration completed. SyncedStore state:",
     clonePlain(store.play)
   );
