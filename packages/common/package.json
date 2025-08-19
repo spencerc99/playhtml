@@ -29,9 +29,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && vite build",
-    "set-publishing-config": "bun config set version-tag-prefix '@playhtml/common-v' && bun config set version-git-message '@playhtml/common-v%s'",
-    "publish-npm": "bun run build && npm run set-publishing-config && bun publish"
+    "build": "tsc && vite build"
   },
   "devDependencies": {
     "typescript": "^5.0.2",

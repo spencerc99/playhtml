@@ -50,8 +50,13 @@
     "build": "tsc && vite build",
     "test": "vitest run --no-typecheck",
     "test:watch": "vitest --no-typecheck",
-    "set-publishing-config": "bun config set version-tag-prefix 'playhtml-v' && bun config set version-git-message 'playhtml-v%s'",
-    "publish-npm": "(bun run build && npm run set-publishing-config && rm README.md && cp ../../README.md . && bun publish && bun run cleanup) || (bun run cleanup)",
+    "version-patch": "bun pm version patch",
+    "version-minor": "bun pm version minor",
+    "version-major": "bun pm version major",
+    "publish": "(bun run build && rm README.md && cp ../../README.md . && bun publish && bun run cleanup) || (bun run cleanup)",
+    "release-patch": "bun run version-patch && bun run publish",
+    "release-minor": "bun run version-minor && bun run publish",
+    "release-major": "bun run version-major && bun run publish",
     "cleanup": "rm README.md && ln -s ../../README.md ."
   },
   "devDependencies": {
