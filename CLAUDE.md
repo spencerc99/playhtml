@@ -102,7 +102,6 @@ Bun automatically handles workspace linking. When making changes across packages
 - Use `setData()` for persistent, synced state changes
 - Use `setLocalData()` for temporary, local-only state
 - Use `setMyAwareness()` for user presence/cursor data
-- For React, generally always try to use `withSharedState` rather than the internal `CanPlayElement`
 
 ### Event Handling
 - onClick, onDrag, onDragStart are the main interaction patterns

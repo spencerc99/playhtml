@@ -3,11 +3,7 @@ import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { ElementInitializer, TagType } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
-import {
-  cloneThroughFragments,
-  getCurrentElementHandler,
-  isReactFragment,
-} from "./utils";
+import { cloneThroughFragments, getCurrentElementHandler, isReactFragment } from "./utils";
 import type {
   ReactElementInitializer,
   ReactElementEventHandlerData,
@@ -115,6 +111,13 @@ export function CanPlayElement<T, V>({
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
       playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+      // console.log("setting up", ref.current.id);
+      const existingData = playhtml.globalData
+        ?.get("can-play")
+        ?.get(ref.current.id);
+      if (existingData) {
+        setData(existingData);
+      }
     }
     // console.log("setting up", elementProps.defaultData, ref.current);
 
@@ -127,7 +130,7 @@ export function CanPlayElement<T, V>({
     // @ts-ignore
     data,
     awareness,
-    setData: (newData: T | ((draft: T) => void)) => {
+    setData: (newData) => {
       // console.log("settingdata", newData);
       // console.log(ref.current?.id);
       // console.log(
@@ -161,7 +164,7 @@ export function CanPlayElement<T, V>({
       `If you pass a single React Fragment as the children, you must also specify 'id' in the props`
     );
   }
-
+  
   return cloneThroughFragments(
     React.Children.only(renderedChildren),
     {
