@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlayHTML Authentication Example</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .auth-status {
+        background: #f0f0f0;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      .element-container {
+        border: 2px dashed #ccc;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 5px;
+      }
+      .element-container.authenticated {
+        border-color: #4caf50;
+        background: #f9fff9;
+      }
+      .permission-denied {
+        color: red;
+        font-weight: bold;
+      }
+      button {
+        padding: 10px 15px;
+        margin: 5px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .primary {
+        background: #007cba;
+        color: white;
+      }
+      .secondary {
+        background: #6c757d;
+        color: white;
+      }
+      .element {
+        width: 100px;
+        height: 100px;
+        background: #ff6b6b;
+        margin: 10px;
+        cursor: move;
+        display: inline-block;
+        border-radius: 5px;
+        position: relative;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PlayHTML Authentication Example</h1>
+
+    <div class="auth-status">
+      <h3>Authentication Status</h3>
+      <div id="auth-info">Loading...</div>
+      <div id="session-info" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px;"></div>
+      <button id="create-identity" class="primary">Create New Identity</button>
+      <button id="export-identity" class="secondary">Export Identity</button>
+      <button id="clear-identity" class="secondary">Clear Identity</button>
+      <button id="test-session" class="primary" style="margin-top: 10px;">Test Session</button>
+    </div>
+
+    <div class="element-container">
+      <h3>Public Element (No Authentication Required)</h3>
+      <p>Anyone can interact with this element:</p>
+      <div
+        id="public-element"
+        class="element"
+        can-move
+        style="background: #4ecdc4"
+      >
+        Public
+      </div>
+    </div>
+
+    <div class="element-container authenticated">
+      <h3>Authenticated Element (Owner Only)</h3>
+      <p>
+        Only the owner can modify this element (using new simplified syntax):
+      </p>
+      <div
+        id="authenticated-element"
+        class="element"
+        can-move
+        playhtml-owner="replace_with_your_public_key"
+        playhtml-permissions="write:owner, delete:owner, admin:owner"
+      >
+        Owner Only
+      </div>
+    </div>
+
+    <div class="element-container authenticated">
+      <h3>Role-Based Element (Simple Permissions)</h3>
+      <p>Different actions require different roles:</p>
+      <div
+        id="role-based-element"
+        class="element"
+        can-toggle
+        playhtml-owner="MCowBQYDK2VwAyEA2OO0JvRX/KRiEGk1DRiMSsbUYMo0JTSL+u6PROBJDto="
+        playhtml-permissions="read:everyone, write:contributors, delete:moderators, admin:owner"
+      >
+        Role-Based
+      </div>
+    </div>
+
+    <div class="element-container">
+      <h3>Conditional Access Element</h3>
+      <p>Access based on visit count and time of day:</p>
+      <div
+        id="conditional-element"
+        class="element"
+        can-spin
+        playhtml-permissions="write:visitors, delete:earlyAccess"
+        style="background: #ffa726"
+      >
+        Conditional
+      </div>
+    </div>
+
+    <div id="permission-test-results"></div>
+
+    <script type="module">
+      import { playhtml } from "../../packages/playhtml/dist/playhtml.es.js";
+
+      let currentIdentity = null;
+      let currentSession = null;
+
+      // Session status display
+      function updateSessionStatus(session) {
+        const sessionInfo = document.getElementById("session-info");
+        
+        if (session) {
+          const hoursLeft = Math.round((session.expiresAt - Date.now()) / (1000 * 60 * 60));
+          sessionInfo.innerHTML = `
+            <strong>🔗 Session Active</strong><br>
+            Session ID: ${session.sessionId.slice(0, 8)}...<br>
+            Expires in: ${hoursLeft} hours<br>
+            <small>Session-based authentication enabled for better performance</small>
+          `;
+          sessionInfo.style.background = "#e8f5e8";
+          sessionInfo.style.border = "1px solid #4caf50";
+        } else {
+          sessionInfo.innerHTML = `
+            <strong>❌ No Session</strong><br>
+            <small>Authentication per action (slower)</small>
+          `;
+          sessionInfo.style.background = "#fff3cd";
+          sessionInfo.style.border = "1px solid #ffc107";
+        }
+      }
+
+      // Listen for session events
+      window.addEventListener("playhtmlSessionEstablished", (e) => {
+        console.log("✅ Session established:", e.detail);
+        currentSession = e.detail;
+        updateSessionStatus(currentSession);
+      });
+
+      window.addEventListener("playhtmlSessionRenewed", (e) => {
+        console.log("🔄 Session renewed:", e.detail);
+        currentSession = e.detail;
+        updateSessionStatus(currentSession);
+      });
+
+      window.addEventListener("playhtmlSessionExpired", (e) => {
+        console.log("❌ Session expired:", e.detail);
+        currentSession = null;
+        updateSessionStatus(null);
+      });
+
+      // Initialize PlayHTML with global role configuration
+      await playhtml.init({
+        // Define global roles for the site
+        roles: {
+          // Explicit public key assignments - will be populated when user creates identity
+          owner: [],
+          moderators: [],
+          contributors: [],
+
+          // Conditional role assignments
+          visitors: { condition: "frequentVisitor" },
+          earlyAccess: { condition: "workingHours" },
+        },
+
+        // Custom permission conditions (examples)
+        permissionConditions: {
+          // Time-based access
+          workingHours: async (context) => {
+            const hour = new Date().getHours();
+            return hour >= 9 && hour <= 17;
+          },
+
+          // Visit-based progression
+          frequentVisitor: async (context) => {
+            return context.visitCount >= 5;
+          },
+
+          // Morning-only access
+          morningOnly: async (context) => {
+            const hour = new Date().getHours();
+            return hour >= 6 && hour <= 12;
+          },
+
+          // Password protection
+          passwordProtected: async (context) => {
+            const password = prompt("Enter password:");
+            return password === "secret123";
+          },
+
+          // Konami code unlock
+          konamiUnlock: async (context) => {
+            return context.customData.konamiSequenceCompleted === true;
+          },
+
+          // Geographic proximity (example - would need real geolocation)
+          geographicProximity: async (context) => {
+            // This is just an example - would need real implementation
+            console.log("Geographic check would happen here");
+            return true; // Always allow for demo
+          },
+        },
+      });
+
+      function copyPublicKey() {
+        const publicKey = currentIdentity.publicKey;
+        navigator.clipboard.writeText(publicKey);
+        alert("Public key copied to clipboard");
+      }
+
+      // Update auth status display
+      function updateAuthStatus(auth) {
+        const authInfo = document.getElementById("auth-info");
+
+        if (auth.isAuthenticated && auth.identity) {
+          currentIdentity = auth.identity;
+          authInfo.innerHTML = `
+                    <strong>Authenticated</strong><br>
+                    Public Key: ${auth.identity.publicKey.slice(0, 32)}...<br>
+                    Display Name: ${auth.identity.displayName || "None"}<br>
+                    Created: ${new Date(
+                      auth.identity.createdAt
+                    ).toLocaleString()}
+                    <button id="copy-public-key">Copy Public Key</button>
+                `;
+
+          // Update HTML attributes with current public key
+          updateElementOwnership(auth.identity.publicKey);
+
+          // Add event listener for copy button (since it's dynamically created)
+          setTimeout(() => {
+            const copyButton = document.getElementById("copy-public-key");
+            if (copyButton) {
+              copyButton.addEventListener("click", copyPublicKey);
+            }
+          }, 0);
+
+          // Update global roles to include this user as owner
+          playhtml.auth.configureGlobalPermissions(
+            {
+              owner: [auth.identity.publicKey],
+              moderators: [],
+              contributors: [auth.identity.publicKey], // Auto-add as contributor
+              visitors: { condition: "frequentVisitor" },
+              earlyAccess: { condition: "workingHours" },
+            },
+            {
+              workingHours: async (context) => {
+                const hour = new Date().getHours();
+                return hour >= 9 && hour <= 17;
+              },
+              frequentVisitor: async (context) => {
+                return context.visitCount >= 5;
+              },
+            }
+          );
+        } else {
+          authInfo.innerHTML =
+            "<strong>Not Authenticated</strong> - Running in read-only mode";
+        }
+      }
+
+      // Update element ownership attributes
+      function updateElementOwnership(publicKey) {
+        const elements = document.querySelectorAll(
+          '[playhtml-owner="replace_with_your_public_key"]'
+        );
+        elements.forEach((element) => {
+          element.setAttribute("playhtml-owner", publicKey);
+        });
+      }
+
+      // Test permissions
+      async function testPermissions() {
+        const results = document.getElementById("permission-test-results");
+        const testElements = [
+          { id: "public-element", name: "Public Element" },
+          { id: "authenticated-element", name: "Owner Only" },
+          { id: "role-based-element", name: "Role-Based" },
+          { id: "conditional-element", name: "Conditional" },
+        ];
+        const testActions = ["read", "write", "delete", "admin"];
+
+        let html =
+          '<h3>Permission Test Results</h3><table border="1" style="width:100%; margin-top: 20px;">';
+        html +=
+          "<tr><th>Element</th><th>Read</th><th>Write</th><th>Delete</th><th>Admin</th></tr>";
+
+        for (const element of testElements) {
+          html += `<tr><td>${element.name}</td>`;
+
+          for (const action of testActions) {
+            try {
+              const hasPermission = await playhtml.auth.checkPermission(
+                element.id,
+                action,
+                currentIdentity
+              );
+              console.log(
+                `Permission check: ${element.id} ${action} = ${hasPermission}`
+              );
+              const color = hasPermission ? "green" : "red";
+              const text = hasPermission ? "✓" : "✗";
+              html += `<td style="color: ${color}; text-align: center; font-weight: bold;">${text}</td>`;
+            } catch (error) {
+              console.error(
+                `Permission check failed for ${element.id} ${action}:`,
+                error
+              );
+              html += `<td style="color: orange; text-align: center; font-weight: bold;">E</td>`;
+            }
+          }
+
+          html += "</tr>";
+        }
+
+        html += "</table>";
+
+        // Add permission explanations
+        html += '<div style="margin-top: 20px; font-size: 12px; color: #666;">';
+        html += "<p><strong>Permission Legend:</strong></p>";
+        html += "<ul>";
+        html +=
+          "<li><strong>Public Element:</strong> No restrictions (everyone can do everything)</li>";
+        html +=
+          "<li><strong>Owner Only:</strong> Only the owner can write, delete, or admin</li>";
+        html +=
+          "<li><strong>Role-Based:</strong> Different actions require different roles</li>";
+        html +=
+          "<li><strong>Conditional:</strong> Permissions based on visit count and time</li>";
+        html += "</ul>";
+        html += "</div>";
+
+        results.innerHTML = html;
+      }
+
+      // Initialize session status
+      updateSessionStatus(null);
+
+      // Wait for auth to be ready
+      playhtml.auth.onAuthReady((auth) => {
+        console.log("Auth ready:", auth);
+        updateAuthStatus(auth);
+        testPermissions();
+        
+        // Check if session was established
+        currentSession = playhtml.auth.getCurrentSession?.() || null;
+        updateSessionStatus(currentSession);
+      });
+
+      // Also run initial status check
+      setTimeout(() => {
+        const currentAuth = window.playhtmlAuth;
+        if (currentAuth) {
+          console.log("Initial auth status:", currentAuth);
+          updateAuthStatus(currentAuth);
+          testPermissions();
+          
+          // Check session status
+          currentSession = playhtml.auth.getCurrentSession?.() || null;
+          updateSessionStatus(currentSession);
+        } else {
+          console.log("No auth found, updating with unauthenticated state");
+          updateAuthStatus({ isAuthenticated: false });
+          testPermissions();
+          updateSessionStatus(null);
+        }
+      }, 1000);
+
+      // Event handlers
+      document
+        .getElementById("create-identity")
+        .addEventListener("click", async () => {
+          try {
+            console.log("Creating new identity...");
+
+            // Check if crypto is available
+            if (!window.crypto || !window.crypto.subtle) {
+              throw new Error(
+                "Web Crypto API not available. Try using HTTPS or a secure context."
+              );
+            }
+
+            const displayName = prompt("Enter a display name (optional):");
+            const identity = await playhtml.auth.createNewIdentity(displayName);
+            console.log("New identity created:", identity);
+
+            currentIdentity = identity;
+            updateAuthStatus({ isAuthenticated: true, identity });
+            
+            // Try to establish session after creating identity
+            try {
+              await playhtml.auth.establishSession();
+              console.log("Session established after identity creation");
+            } catch (sessionError) {
+              console.warn("Failed to establish session:", sessionError);
+            }
+            
+            testPermissions();
+          } catch (error) {
+            console.error("Create identity error:", error);
+            alert("Failed to create identity: " + error.message);
+          }
+        });
+
+      document
+        .getElementById("export-identity")
+        .addEventListener("click", () => {
+          if (!currentIdentity) {
+            alert("No identity to export");
+            return;
+          }
+
+          const exported = JSON.stringify(currentIdentity, null, 2);
+          const blob = new Blob([exported], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "playhtml-identity.json";
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+
+      document
+        .getElementById("clear-identity")
+        .addEventListener("click", () => {
+          if (confirm("Are you sure you want to clear your identity?")) {
+            localStorage.removeItem("playhtml_identity");
+            location.reload();
+          }
+        });
+
+      // Test session button
+      document
+        .getElementById("test-session")
+        .addEventListener("click", async () => {
+          try {
+            if (!currentIdentity) {
+              alert("Please create an identity first");
+              return;
+            }
+
+            console.log("Testing session establishment...");
+            await playhtml.auth.establishSession();
+            console.log("Session test completed successfully");
+          } catch (error) {
+            console.error("Session test failed:", error);
+            alert("Session test failed: " + error.message);
+          }
+        });
+
+      // Show current auth status
+      const currentAuth = window.playhtmlAuth;
+      if (currentAuth) {
+        updateAuthStatus(currentAuth);
+      }
+    </script>
+  </body>
+</html>

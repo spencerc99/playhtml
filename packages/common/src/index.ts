@@ -735,6 +735,9 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
   return state;
 }
 
+// Export authentication types and interfaces
+export * from "./auth";
+
 function updateElementFromState(
   element: HTMLElement | Text,
   newState: ElementState

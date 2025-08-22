@@ -1,7 +1,11 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType } from "@playhtml/common";
+import {
+  ElementInitializer,
+  TagType,
+  PermissionConfig,
+} from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -19,6 +23,12 @@ export interface LoadingOptions {
   behavior?: "auto" | "hidden" | "animate" | "none";
   customClass?: string;
   style?: "breathing" | "pulse" | "fade" | "none";
+}
+
+// Permission-related props for React components
+export interface PermissionProps {
+  owner?: string; // Owner public key or domain
+  permissions?: PermissionConfig | string; // Object or string like "write:owner, delete:moderators"
 }
 
 // Shared binding props for both generic and tag-specific React elements
@@ -40,20 +50,20 @@ export type WithPlayProps<T, V> =
       loading?: LoadingOptions;
       dataSource?: SharedBindingProps["dataSource"];
       shared?: SharedBindingProps["shared"];
-    });
+    } & PermissionProps);
 
 // Add standalone and loading to the ReactElementInitializer type
 export type ReactElementInitializerWithStandalone<T, V> =
   | (ReactElementInitializer<T, V> & {
       standalone?: boolean;
       loading?: LoadingOptions;
-    })
+    } & PermissionProps)
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
       defaultData: undefined;
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean;
       loading?: LoadingOptions;
-    });
+    } & PermissionProps);
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
@@ -100,7 +110,12 @@ export function CanPlayElement<T, V>({
     }
   }, [standalone, playContext.isProviderMissing]);
 
-  const { tagInfo = { "can-play": "" }, ...elementProps } = {
+  const {
+    tagInfo = { "can-play": "" },
+    owner,
+    permissions,
+    ...elementProps
+  } = {
     tagInfo: undefined,
     ...restProps,
   };
@@ -154,13 +169,13 @@ export function CanPlayElement<T, V>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
-      
+
       // Setup the element, which will handle data-source discovery if needed
       try {
         playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-        
+
         // If playhtml isn't initialized yet, log a helpful message
         if (!playhtml.elementHandlers) {
           console.warn(
@@ -215,6 +230,25 @@ export function CanPlayElement<T, V>({
     );
   }
 
+  // Convert permission props to HTML attributes
+  const permissionAttrs: Record<string, string> = {};
+
+  if (owner) {
+    permissionAttrs["playhtml-owner"] = owner;
+  }
+
+  if (permissions) {
+    if (typeof permissions === "string") {
+      permissionAttrs["playhtml-permissions"] = permissions;
+    } else {
+      // Convert object to string format
+      const permissionString = Object.entries(permissions)
+        .map(([action, role]) => `${action}:${role}`)
+        .join(", ");
+      permissionAttrs["playhtml-permissions"] = permissionString;
+    }
+  }
+
   return cloneThroughFragments(
     React.Children.only(renderedChildren),
     {
@@ -222,6 +256,7 @@ export function CanPlayElement<T, V>({
       ref,
       ...computedTagInfo,
       ...loadingAttributes,
+      ...permissionAttrs,
       ...(dataSource ? { "data-source": dataSource } : {}),
       ...(shared
         ? typeof shared === "string"
@@ -410,3 +445,4 @@ export {
   CanDuplicateElement,
   CanHoverElement,
 } from "./elements";
+export { usePlayHTMLPermissions } from "./hooks/usePlayHTMLPermissions";
