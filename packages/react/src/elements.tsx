@@ -1,18 +1,22 @@
 import { TagTypeToElement, TagType } from "@playhtml/common";
 import classNames from "classnames";
 import React, { useState } from "react";
-import { CanPlayElement } from ".";
+import { CanPlayElement, PermissionProps } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
 
 export function CanMoveElement({
   children,
+  owner,
+  permissions,
 }: {
   children: SingleChildOrPlayable;
-}) {
+} & PermissionProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanMove]}
+      owner={owner}
+      permissions={permissions}
       {...TagTypeToElement[TagType.CanMove]}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
@@ -27,12 +31,16 @@ export function CanMoveElement({
 
 export function CanToggleElement({
   children,
+  owner,
+  permissions,
 }: {
   children: SingleChildOrPlayable;
-}) {
+} & PermissionProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanToggle]}
+      owner={owner}
+      permissions={permissions}
       {...TagTypeToElement[TagType.CanToggle]}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
@@ -47,12 +55,16 @@ export function CanToggleElement({
 
 export function CanSpinElement({
   children,
+  owner,
+  permissions,
 }: {
   children: SingleChildOrPlayable;
-}) {
+} & PermissionProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanSpin]}
+      owner={owner}
+      permissions={permissions}
       {...TagTypeToElement[TagType.CanSpin]}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
@@ -67,12 +79,16 @@ export function CanSpinElement({
 
 export function CanGrowElement({
   children,
+  owner,
+  permissions,
 }: {
   children: SingleChildOrPlayable;
-}) {
+} & PermissionProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanGrow]}
+      owner={owner}
+      permissions={permissions}
       {...TagTypeToElement[TagType.CanGrow]}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(

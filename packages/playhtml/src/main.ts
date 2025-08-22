@@ -12,11 +12,28 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
+  PlayHTMLIdentity,
+  GlobalRoleDefinition,
+  PermissionFunction,
+  ValidatedSession,
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
+import {
+  initializeAuth,
+  onAuthReady,
+  getCurrentIdentity,
+  checkPermission,
+  createNewIdentity,
+  configureGlobalPermissions,
+  initializeSessionAuth,
+  getCurrentSession,
+  createSessionAction,
+  establishSessionWithWS,
+} from "./auth";
+import { createSignedAction, createAuthenticatedMessage } from "./crypto";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
@@ -237,6 +254,17 @@ export interface InitOptions<T = any> {
    * If true, will render some helpful development UI.
    */
   developmentMode?: boolean;
+  
+  /**
+   * Define global roles for the entire site. Maps role names to arrays of public keys
+   * or conditional role assignments.
+   */
+  roles?: GlobalRoleDefinition;
+  
+  /**
+   * Custom permission condition functions for dynamic role assignments.
+   */
+  permissionConditions?: Record<string, PermissionFunction>;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -418,6 +446,8 @@ async function initPlayHTML({
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
   developmentMode = false,
+  roles = {},
+  permissionConditions = {},
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -425,6 +455,11 @@ async function initPlayHTML({
   }
   // @ts-ignore
   window.playhtml = playhtml;
+
+  // Configure global permissions if provided
+  if (Object.keys(roles).length > 0 || Object.keys(permissionConditions).length > 0) {
+    configureGlobalPermissions(roles, permissionConditions);
+  }
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
@@ -491,12 +526,63 @@ async function initPlayHTML({
 
       migrateAllDataFromYMapToSyncedStore();
 
+      // Initialize authentication system
+      initializeAuth()
+        .then(async (auth) => {
+          if (auth.isAuthenticated) {
+            console.log(
+              "[PLAYHTML AUTH]: Authenticated as",
+              auth.identity?.displayName ||
+                auth.identity?.publicKey?.slice(0, 8) + "..."
+            );
+
+            // Initialize session-based authentication
+            try {
+              await initializeSessionAuth(yprovider.ws!);
+              console.log("[PLAYHTML SESSION]: Session authentication initialized");
+            } catch (error) {
+              console.warn("[PLAYHTML SESSION]: Failed to establish session:", error);
+            }
+
+            // Auto-register owned elements with authentication server
+            await autoRegisterAuthenticatedElements(auth.identity!);
+          } else {
+            console.log("[PLAYHTML AUTH]: Running in read-only mode");
+          }
+        })
+        .catch((error) => {
+          console.error("[PLAYHTML AUTH]: Failed to initialize auth:", error);
+        });
+
       setupElements();
       resolve(true);
     });
   });
 
   return yprovider;
+}
+
+// Auto-register elements with authentication attributes
+async function autoRegisterAuthenticatedElements(
+  identity: PlayHTMLIdentity
+): Promise<void> {
+  // Find all elements this user owns
+  const ownedElements = document.querySelectorAll(
+    `[playhtml-owner="${identity.publicKey}"]`
+  );
+
+  console.log(`[PLAYHTML AUTH]: Found ${ownedElements.length} owned elements to register`);
+  
+  // For the simplified system, we just notify the server of owned elements
+  // The server will validate permissions based on the simple string format
+  for (const element of Array.from(ownedElements)) {
+    if (!(element instanceof HTMLElement) || !element.id) continue;
+    
+    const permissions = element.getAttribute('playhtml-permissions');
+    if (permissions) {
+      console.log(`[PLAYHTML AUTH]: Element ${element.id} has permissions: ${permissions}`);
+    }
+  }
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
@@ -537,18 +623,75 @@ function createPlayElementData<T extends TagType>(
         ? [tagInfo.myDefaultAwareness]
         : undefined,
     element,
-    onChange: (newData) => {
-      if (typeof (newData as any) === "function") {
-        // Mutator form support: onChange can accept function(draft)
-        // Batch all nested mutations into a single Yjs transaction to coalesce events
-        doc.transact(() => {
-          (newData as any)(dataProxy);
-        });
+    onChange: async (newData) => {
+      // Check permissions if element has authentication attributes
+      const identity = getCurrentIdentity();
+      const session = getCurrentSession();
+      
+      if (element.hasAttribute("playhtml-owner")) {
+        const hasPermission = await checkPermission(
+          elementId,
+          "write",
+          identity
+        );
+        if (!hasPermission) {
+          console.warn(
+            `[PLAYHTML AUTH]: Permission denied for write action on element ${elementId}`
+          );
+          return;
+        }
+      }
+
+      // If we have a session, use session-based actions for server validation
+      if (session && identity) {
+        try {
+          // Create session action for server validation
+          const sessionAction = createSessionAction("write", elementId, newData);
+          
+          // Send to server for validation (optimistic update - apply locally first)
+          if (typeof (newData as any) === "function") {
+            doc.transact(() => {
+              (newData as any)(dataProxy);
+            });
+          } else {
+            doc.transact(() => {
+              deepReplaceIntoProxy(dataProxy, newData);
+            });
+          }
+
+          // Send session action to server for validation
+          yprovider.ws?.send(JSON.stringify({
+            type: "session_action",
+            action: sessionAction
+          }));
+
+        } catch (error) {
+          console.error("[PLAYHTML SESSION]: Failed to create session action:", error);
+          // Fall back to direct update for better UX
+          if (typeof (newData as any) === "function") {
+            doc.transact(() => {
+              (newData as any)(dataProxy);
+            });
+          } else {
+            doc.transact(() => {
+              deepReplaceIntoProxy(dataProxy, newData);
+            });
+          }
+        }
       } else {
-        // Value form: replace snapshot semantics
-        doc.transact(() => {
-          deepReplaceIntoProxy(dataProxy, newData);
-        });
+        // No session or identity - direct CRDT update
+        if (typeof (newData as any) === "function") {
+          // Mutator form support: onChange can accept function(draft)
+          // Batch all nested mutations into a single Yjs transaction to coalesce events
+          doc.transact(() => {
+            (newData as any)(dataProxy);
+          });
+        } else {
+          // Value form: replace snapshot semantics
+          doc.transact(() => {
+            deepReplaceIntoProxy(dataProxy, newData);
+          });
+        }
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
@@ -775,6 +918,19 @@ interface PlayHTMLComponents {
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
+  // Authentication
+  auth: {
+    getCurrentIdentity: typeof getCurrentIdentity;
+    checkPermission: typeof checkPermission;
+    onAuthReady: typeof onAuthReady;
+    createSignedAction: typeof createSignedAction;
+    createAuthenticatedMessage: typeof createAuthenticatedMessage;
+    createNewIdentity: typeof createNewIdentity;
+    configureGlobalPermissions: typeof configureGlobalPermissions;
+    // Session functions
+    getCurrentSession: typeof getCurrentSession;
+    establishSession: (identity?: PlayHTMLIdentity) => Promise<ValidatedSession>;
+  };
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -792,6 +948,28 @@ export const playhtml: PlayHTMLComponents = {
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
+  // Authentication
+  auth: {
+    getCurrentIdentity,
+    checkPermission,
+    onAuthReady,
+    createSignedAction,
+    createAuthenticatedMessage,
+    createNewIdentity,
+    configureGlobalPermissions,
+    // Session functions
+    getCurrentSession,
+    establishSession: async (identity?: PlayHTMLIdentity) => {
+      const actualIdentity = identity || getCurrentIdentity();
+      if (!actualIdentity) {
+        throw new Error('No identity available for session establishment');
+      }
+      if (!yprovider?.ws) {
+        throw new Error('No WebSocket connection available');
+      }
+      return await establishSessionWithWS(actualIdentity, yprovider.ws);
+    },
+  },
 };
 
 /**

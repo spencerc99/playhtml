@@ -1,7 +1,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType } from "@playhtml/common";
+import { ElementInitializer, TagType, PermissionConfig } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -14,21 +14,27 @@ import type {
 } from "./utils";
 import { PlayContext } from "./PlayProvider";
 
+// Permission-related props for React components
+export interface PermissionProps {
+  owner?: string; // Owner public key or domain
+  permissions?: PermissionConfig | string; // Object or string like "write:owner, delete:moderators"
+}
+
 export type WithPlayProps<T, V> =
   | Omit<ReactElementInitializer<T, V>, "children">
   | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean; // Allow standalone mode without provider
-    });
+    } & PermissionProps);
 
 // Add standalone to the ReactElementInitializer type
 export type ReactElementInitializerWithStandalone<T, V> =
-  | (ReactElementInitializer<T, V> & { standalone?: boolean })
+  | (ReactElementInitializer<T, V> & { standalone?: boolean } & PermissionProps)
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
       defaultData: undefined;
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean;
-    });
+    } & PermissionProps);
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
@@ -74,7 +80,7 @@ export function CanPlayElement<T, V>({
     }
   }, [standalone, playContext.isProviderMissing]);
 
-  const { tagInfo = { "can-play": "" }, ...elementProps } = {
+  const { tagInfo = { "can-play": "" }, owner, permissions, ...elementProps } = {
     tagInfo: undefined,
     ...restProps,
   };
@@ -162,12 +168,32 @@ export function CanPlayElement<T, V>({
     );
   }
 
+  // Convert permission props to HTML attributes
+  const permissionAttrs: Record<string, string> = {};
+  
+  if (owner) {
+    permissionAttrs['playhtml-owner'] = owner;
+  }
+  
+  if (permissions) {
+    if (typeof permissions === 'string') {
+      permissionAttrs['playhtml-permissions'] = permissions;
+    } else {
+      // Convert object to string format
+      const permissionString = Object.entries(permissions)
+        .map(([action, role]) => `${action}:${role}`)
+        .join(', ');
+      permissionAttrs['playhtml-permissions'] = permissionString;
+    }
+  }
+
   return cloneThroughFragments(
     React.Children.only(renderedChildren),
     {
       // @ts-ignore
       ref,
       ...computedTagInfo,
+      ...permissionAttrs,
     },
     { fragmentId: id }
   );
@@ -348,3 +374,4 @@ export {
   CanDuplicateElement,
   CanHoverElement,
 } from "./elements";
+export { usePlayHTMLPermissions } from "./hooks/usePlayHTMLPermissions";
