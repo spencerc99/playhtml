@@ -4,26 +4,34 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "vitest"
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "preview": "wxt preview",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "test": "vitest",
+    "postinstall": "wxt prepare"
   },
   "dependencies": {
-    "@playhtml/react": "workspace:*",
     "@playhtml/common": "workspace:*",
+    "@playhtml/react": "workspace:*",
     "playhtml": "workspace:*",
-    "webextension-polyfill": "^0.12.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
-    "@types/webextension-polyfill": "^0.10.7",
     "@types/chrome": "^0.0.270",
+    "@types/react": "^19.1.11",
+    "@types/react-dom": "^19.1.7",
+    "@types/webextension-polyfill": "^0.10.7",
     "@vitejs/plugin-react": "^4.2.1",
+    "@wxt-dev/module-react": "^1.1.3",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-web-extension": "^4.1.6",
-    "vitest": "^2.0.0"
+    "vitest": "^2.0.0",
+    "wxt": "^0.20.8"
   }
 }
