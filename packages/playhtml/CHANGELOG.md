@@ -4,6 +4,20 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 2.2.1 - 2025-08-25
+
+### Added
+
+- Default loading states for all playhtml elements while waiting for initial sync
+- Loading style options: `breathing` (default), `pulse`, `fade`, `none`  
+- Custom loading class support via `loading-class` attribute
+- `can-play` elements default to no loading state for maximum customization flexibility
+
+### Changed
+
+- Elements are now visually disabled (`pointer-events: none`) during loading state
+- Improved initial page load experience with consistent loading feedback
+
 ## 2.2.0 - 2025-08-19
 
 ### Added

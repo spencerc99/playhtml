@@ -33,8 +33,6 @@ const doc = getYjsDoc(store);
 const MIGRATION_FLAGS = {
   // TESTING: Re-enabled for production data volume testing
   enableMigration: true,
-  // Use SyncedStore as primary data source (Phase 2)
-  useSyncedStoreOnly: false,
   // Log migration progress - ENABLED for testing
   logMigration: false,
 };
@@ -470,10 +468,11 @@ async function initPlayHTML({
     setupDevUI();
   }
 
+  // Mark all discovered playhtml elements as loading before sync
+  markAllElementsAsLoading();
+
   // await until yprovider is synced
   await new Promise((resolve) => {
-    // TODO: provide some loading state for these elements immediately?
-    // some sort of "hydration" state?
     if (hasSynced) {
       resolve(true);
     }
@@ -492,6 +491,10 @@ async function initPlayHTML({
       migrateAllDataFromYMapToSyncedStore();
 
       setupElements();
+
+      // Mark all elements as ready after sync completes and elements are set up
+      markAllElementsAsReady();
+
       resolve(true);
     });
   });
@@ -507,6 +510,76 @@ function getElementAwareness(tagType: TagType, elementId: string) {
 
 function isHTMLElement(ele: any): ele is HTMLElement {
   return ele instanceof HTMLElement;
+}
+
+// Loading state management functions
+function getDefaultLoadingBehavior(element: HTMLElement): string {
+  if (element.hasAttribute("can-play")) return "none"; // No auto-loading for can-play
+  return "animate"; // can-move, can-toggle, can-spin, can-grow, etc.
+}
+
+function markElementAsLoading(element: HTMLElement): void {
+  const behavior =
+    element.getAttribute("loading-behavior") ||
+    getDefaultLoadingBehavior(element);
+
+  if (behavior === "none") return;
+
+  element.classList.add("playhtml-loading");
+
+  // Add custom loading class if specified
+  const customLoadingClass = element.getAttribute("loading-class");
+  if (customLoadingClass) {
+    element.classList.add(customLoadingClass);
+  }
+
+  // Add accessibility attributes
+  element.setAttribute("aria-busy", "true");
+  element.setAttribute("aria-live", "polite");
+}
+
+function markElementAsReady(element: HTMLElement): void {
+  const behavior =
+    element.getAttribute("loading-behavior") ||
+    getDefaultLoadingBehavior(element);
+
+  if (behavior === "none") return;
+
+  element.classList.remove("playhtml-loading");
+
+  // Remove custom loading class if it was added
+  const customLoadingClass = element.getAttribute("loading-class");
+  if (customLoadingClass) {
+    element.classList.remove(customLoadingClass);
+  }
+
+  // Remove accessibility attributes
+  element.removeAttribute("aria-busy");
+  element.removeAttribute("aria-live");
+}
+
+function markAllElementsAsLoading(): void {
+  for (const tag of getTagTypes()) {
+    const tagElements: HTMLElement[] = Array.from(
+      document.querySelectorAll(`[${tag}]`)
+    ).filter(isHTMLElement);
+
+    tagElements.forEach((element) => {
+      markElementAsLoading(element);
+    });
+  }
+}
+
+function markAllElementsAsReady(): void {
+  for (const tag of getTagTypes()) {
+    const tagElements: HTMLElement[] = Array.from(
+      document.querySelectorAll(`[${tag}]`)
+    ).filter(isHTMLElement);
+
+    tagElements.forEach((element) => {
+      markElementAsReady(element);
+    });
+  }
 }
 
 function createPlayElementData<T extends TagType>(
@@ -900,7 +973,6 @@ async function setupPlayElementForTag<T extends TagType | string>(
   elementData.triggerAwarenessUpdate?.();
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.classList.add(`__playhtml-${tag}`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 
   attachSyncedStoreObserver(tag as string, elementId);
@@ -957,6 +1029,21 @@ function setupPlayElement(
   if (!isHTMLElement(element)) {
     console.log(`Element ${element.id} not an HTML element. Ignoring.`);
     return;
+  }
+
+  // Handle loading state for dynamically added elements
+  const hasPlayhtmlAttributes = getTagTypes().some((tag) =>
+    element.hasAttribute(tag)
+  );
+
+  if (hasPlayhtmlAttributes) {
+    if (hasSynced) {
+      // If already synced, element will be ready immediately
+      markElementAsReady(element);
+    } else {
+      // If not synced yet, element should start loading
+      markElementAsLoading(element);
+    }
   }
 
   void Promise.all(
