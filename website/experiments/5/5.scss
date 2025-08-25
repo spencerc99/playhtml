@@ -44,6 +44,64 @@ body {
     margin: 1rem auto;
   }
 
+  .progress-section {
+    margin: 1.5rem auto;
+    max-width: 800px;
+
+    .progress-text {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .timeline-container {
+      width: 100%;
+
+      .timeline-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        opacity: 0.8;
+
+        .timeline-label {
+          font-family: "Courier New", monospace;
+          font-weight: bold;
+        }
+      }
+
+      .timeline-bar {
+        width: 100%;
+        height: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        display: flex;
+
+        .timeline-minute {
+          flex: 1;
+          height: 100%;
+          transition: all 0.3s ease;
+          min-width: 1px;
+
+          &.current {
+            box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+            transform: scaleY(1.5);
+            z-index: 1;
+            position: relative;
+          }
+
+          &:hover {
+            transform: scaleY(1.3);
+            z-index: 2;
+            position: relative;
+          }
+        }
+      }
+    }
+  }
+
   .scroll-to-now,
   .toggle-fullscreen {
     background: none;

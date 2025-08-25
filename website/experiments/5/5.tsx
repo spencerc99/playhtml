@@ -240,6 +240,18 @@ const Main = withSharedState(
       );
     }, [data.minutes]);
 
+    const filledMinutes = useMemo(() => {
+      if (!data?.minutes) return 0;
+      return data.minutes.reduce(
+        (acc, minute) => acc + (minute?.colors?.length > 0 ? 1 : 0),
+        0
+      );
+    }, [data.minutes]);
+
+    const progressPercentage = useMemo(() => {
+      return (filledMinutes / MINUTES_IN_DAY) * 100;
+    }, [filledMinutes]);
+
     // Track fullscreen changes
     useEffect(() => {
       const handleFullscreenChange = () => {
@@ -512,6 +524,49 @@ const Main = withSharedState(
             <AnimatedCounter start={0} end={totalColors} duration={1500} />{" "}
             colors have been added.
           </p>
+          <div className="progress-section">
+            <div className="progress-text">
+              <AnimatedCounter start={0} end={filledMinutes} duration={1500} />{" "}
+              of {MINUTES_IN_DAY} minutes filled (
+              {progressPercentage.toFixed(1)}%)
+            </div>
+            <div className="timeline-container">
+              <div className="timeline-labels">
+                <span className="timeline-label">00:00</span>
+                <span className="timeline-label">06:00</span>
+                <span className="timeline-label">12:00</span>
+                <span className="timeline-label">18:00</span>
+                <span className="timeline-label">23:59</span>
+              </div>
+              <div className="timeline-bar">
+                {Array.from({ length: MINUTES_IN_DAY }, (_, minuteIndex) => {
+                  const minute = data.minutes[minuteIndex];
+                  const hasColors = minute?.colors && minute.colors.length > 0;
+                  const primaryColor = hasColors
+                    ? minute.colors[minute.colors.length - 1]
+                    : undefined;
+
+                  return (
+                    <div
+                      key={minuteIndex}
+                      className={`timeline-minute ${
+                        minuteIndex === currentMinuteIndex ? "current" : ""
+                      }`}
+                      style={{
+                        background: primaryColor || "rgba(255, 255, 255, 0.1)",
+                        opacity: hasColors ? 1 : 0.3,
+                      }}
+                      title={`${formatMinuteOfDay(minuteIndex)}${
+                        hasColors
+                          ? ` - ${minute.colors.length} color(s)`
+                          : " - empty"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
           <p>
             <button className="toggle-fullscreen" onClick={toggleFullscreen}>
               view fullscreen
@@ -587,13 +642,21 @@ const Main = withSharedState(
   }
 );
 
-const AnimatedCounter = ({ start, end, duration = 1500 }) => {
+const AnimatedCounter = ({
+  start,
+  end,
+  duration = 1500,
+}: {
+  start: number;
+  end: number;
+  duration?: number;
+}) => {
   const direction = start < end ? "up" : "down";
   const [counter, setCounter] = useState(start);
 
   useEffect(() => {
-    let startTime = null;
-    const step = (timestamp) => {
+    let startTime: number | null = null;
+    const step = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
       const value =
