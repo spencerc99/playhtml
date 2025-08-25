@@ -2,6 +2,20 @@
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## 0.5.1 - 2025-08-25
+
+### Added
+
+- `LoadingOptions` interface for configuring loading states in React components
+- Loading prop support for all playhtml React components (`behavior`, `customClass`, `style`)
+- New `usePlayContext` hook to check sync status (`hasSynced`)
+- Enhanced loading experience with customizable loading behaviors and styles
+
+### Changed
+
+- Updated to playhtml 2.2.1 with improved loading state support
+- All React wrapper components now accept optional `loading` configuration
+
 ## 0.5.0 - 2025-08-19
 
 ### Added
