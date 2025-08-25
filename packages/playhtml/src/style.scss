@@ -94,30 +94,44 @@ body .__playhtml-element.editing:nth-child(2n-1) {
   }
 }
 
-// Loading states: Base styles
 .playhtml-loading {
   pointer-events: none;
-}
 
-// can-play: NO automatic loading by default (most likely to have custom loading)
-// Developers can opt-in using loading-behavior="animate"
+  &[data-loading-behavior="hidden"] {
+    opacity: 0;
+    visibility: hidden;
+  }
 
-// can-move, can-toggle, can-spin, can-grow, can-duplicate, can-mirror, can-draw: Breathing animation
-[can-move].playhtml-loading,
-[can-toggle].playhtml-loading,
-[can-spin].playhtml-loading,
-[can-grow].playhtml-loading,
-[can-duplicate].playhtml-loading,
-[can-mirror].playhtml-loading,
-[can-draw].playhtml-loading,
-[loading-behavior="animate"].playhtml-loading {
-  animation: playhtml-breathing 2s infinite ease-in-out;
-}
+  &[data-loading-style="breathing"] {
+    animation: playhtml-breathing 2s infinite ease-in-out;
+  }
 
-// Hidden behavior (opt-in via loading-behavior="hidden")
-[loading-behavior="hidden"].playhtml-loading {
-  opacity: 0;
-  visibility: hidden;
+  // default tags: breathing animation
+  &[can-move],
+  &[can-toggle],
+  &[can-spin],
+  &[can-grow],
+  &[can-duplicate],
+  &[can-mirror],
+  &[can-draw],
+  [loading-behavior="animate"].playhtml-loading {
+    animation: playhtml-breathing 2s infinite ease-in-out;
+  }
+
+  &[loading-style="fade"] {
+    opacity: 0.4 !important;
+    animation: none !important;
+    transform: none !important;
+  }
+
+  &[loading-style="none"],
+  &[loading-behavior="none"] {
+    opacity: 1 !important;
+    animation: none !important;
+    transform: none !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
 }
 
 // Breathing animation keyframes
@@ -133,11 +147,6 @@ body .__playhtml-element.editing:nth-child(2n-1) {
   }
 }
 
-// Loading style overrides
-[loading-style="pulse"].playhtml-loading {
-  animation: playhtml-pulse 1.5s infinite !important;
-}
-
 @keyframes playhtml-pulse {
   0%,
   100% {
@@ -148,19 +157,4 @@ body .__playhtml-element.editing:nth-child(2n-1) {
     opacity: 0.3;
     transform: scale(1);
   }
-}
-
-[loading-style="fade"].playhtml-loading {
-  opacity: 0.4 !important;
-  animation: none !important;
-  transform: none !important;
-}
-
-[loading-style="none"].playhtml-loading,
-[loading-behavior="none"].playhtml-loading {
-  opacity: 1 !important;
-  animation: none !important;
-  transform: none !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
 }
