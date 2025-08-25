@@ -32,3 +32,6 @@ dist-ssr
 .env
 
 .claude
+
+.wxt
+.output
