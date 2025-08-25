@@ -9,8 +9,6 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Added
 
 - Default loading states for all playhtml elements while waiting for initial sync
-- Automatic breathing animation for interactive elements (`can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`, `can-draw`)
-- Customizable loading behaviors: `animate` (default), `hidden`, `none`
 - Loading style options: `breathing` (default), `pulse`, `fade`, `none`  
 - Custom loading class support via `loading-class` attribute
 - `can-play` elements default to no loading state for maximum customization flexibility
