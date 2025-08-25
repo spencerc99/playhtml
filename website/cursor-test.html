@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlayHTML Cursor Tracking Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: white;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        text-align: center;
+      }
+
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      p {
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+        opacity: 0.9;
+      }
+
+      .play-area {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        padding: 40px;
+        margin: 40px 0;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .moveable-box {
+        width: 100px;
+        height: 100px;
+        background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+        border-radius: 15px;
+        margin: 20px auto;
+        cursor: move;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease;
+      }
+
+      .moveable-box:hover {
+        transform: scale(1.05);
+      }
+
+      .toggle-button {
+        background: #4ecdc4;
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 25px;
+        font-size: 1.1rem;
+        cursor: pointer;
+        margin: 10px;
+        transition: all 0.3s ease;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      }
+
+      .toggle-button.clicked {
+        background: #ff6b6b;
+        transform: translateY(2px);
+      }
+
+      .status {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 15px;
+        border-radius: 10px;
+        font-size: 0.9rem;
+      }
+
+      .proximity-info {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 15px;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        max-width: 300px;
+      }
+
+      .instructions {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+        text-align: left;
+      }
+
+      .instructions ul {
+        margin: 10px 0;
+        padding-left: 20px;
+      }
+
+      .instructions li {
+        margin: 5px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>✨ PlayHTML Cursor Magic</h1>
+      <p>Multi-user cursor tracking with proximity detection</p>
+
+      <div class="instructions">
+        <h3>🎮 How to test:</h3>
+        <ul>
+          <li>Open this page in multiple browser windows or tabs</li>
+          <li>Move your cursor around - you'll see other cursors appear</li>
+          <li>When cursors get close, magical proximity effects appear!</li>
+          <li>
+            Drag the box and toggle the button to see collaborative features
+          </li>
+        </ul>
+      </div>
+
+      <div class="play-area">
+        <div id="moveable-element" class="moveable-box" can-move></div>
+        <button id="toggle-element" class="toggle-button" can-toggle>
+          Click to toggle!
+        </button>
+      </div>
+
+      <div class="status" id="status">Initializing cursor tracking...</div>
+
+      <div class="proximity-info" id="proximity-info">
+        <strong>Proximity Events:</strong><br />
+        Move your cursor near others to see magical encounters!
+      </div>
+
+      <div
+        style="
+          position: fixed;
+          top: 20px;
+          left: 20px;
+          background: rgba(0, 0, 0, 0.8);
+          padding: 15px;
+          border-radius: 10px;
+          font-size: 0.9rem;
+          color: white;
+        "
+      >
+        <strong>Your Cursor:</strong><br />
+        <span id="cursor-info">Loading...</span>
+        <div style="margin-top: 10px">
+          <button
+            onclick="changeColor()"
+            style="
+              margin-right: 5px;
+              padding: 5px 10px;
+              background: #4ecdc4;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Random Color
+          </button>
+          <button
+            onclick="changeName()"
+            style="
+              padding: 5px 10px;
+              background: #ff6b6b;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Random Name
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { playhtml } from "../packages/playhtml/src/main.ts";
+
+      const statusElement = document.getElementById("status");
+      const proximityElement = document.getElementById("proximity-info");
+      const cursorInfoElement = document.getElementById("cursor-info");
+      let proximityCount = 0;
+
+      function updateStatus(message) {
+        statusElement.textContent = message;
+      }
+
+      function updateCursorInfo() {
+        if (window.cursors) {
+          cursorInfoElement.innerHTML = `
+                    Color: <span style="color: ${window.cursors.color}">●</span> ${window.cursors.color}<br>
+                    Name: ${window.cursors.name}<br>
+                    Active Users: ${window.cursors.count}<br>
+                    All Colors: ${window.cursors.allColors.length}
+                `;
+        }
+      }
+
+      function addProximityEvent(type, otherPlayer) {
+        proximityCount++;
+        const timestamp = new Date().toLocaleTimeString();
+        const playerColor =
+          otherPlayer?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+        const playerName =
+          otherPlayer?.name || `Player ${otherPlayer?.publicKey?.slice(-4)}`;
+
+        proximityElement.innerHTML = `
+                <strong>Proximity Events (${proximityCount}):</strong><br>
+                <div style="color: ${playerColor}; margin-top: 5px;">
+                    ${timestamp}: ${
+          type === "entered" ? "✨ Near" : "👋 Away from"
+        } ${playerName}
+                </div>
+                ${proximityElement.innerHTML
+                  .split("<br>")
+                  .slice(2)
+                  .join("<br>")}
+            `;
+      }
+
+      // Global functions for buttons
+      window.changeColor = function () {
+        if (window.cursors && window.cursors.setColor) {
+          const colors = [
+            "#ff6b6b",
+            "#4ecdc4",
+            "#45b7d1",
+            "#96ceb4",
+            "#ffeaa7",
+            "#dda0dd",
+            "#98d8c8",
+            "#f7dc6f",
+          ];
+          const randomColor = colors[Math.floor(Math.random() * colors.length)];
+          window.cursors.setColor(randomColor);
+          // updateCursorInfo will be called via the event listener
+        }
+      };
+
+      window.changeName = function () {
+        if (window.cursors && window.cursors.setName) {
+          const names = [
+            "Luna",
+            "Nova",
+            "Atlas",
+            "Orion",
+            "Sage",
+            "River",
+            "Phoenix",
+            "Echo",
+          ];
+          const randomName = names[Math.floor(Math.random() * names.length)];
+          window.cursors.setName(randomName);
+          // updateCursorInfo will be called via the event listener
+        }
+      };
+
+      // Initialize PlayHTML with cursor tracking
+      updateStatus("🚀 Starting PlayHTML...");
+
+      try {
+        await playhtml.init({
+          developmentMode: true,
+          cursors: {
+            enabled: true,
+            proximityThreshold: 200, // Increased for easier testing
+            visibilityThreshold: 400,
+            onProximityEntered: (otherPlayer) => {
+              console.log("🎉 Proximity entered!", otherPlayer);
+              addProximityEvent("entered", otherPlayer);
+            },
+            onProximityLeft: (otherPlayer) => {
+              console.log("👋 Proximity left!", otherPlayer);
+              addProximityEvent("left", otherPlayer);
+            },
+          },
+          onError: () => {
+            updateStatus("❌ Connection failed");
+          },
+        });
+
+        updateStatus("✅ Connected! Move your cursor around");
+        console.log("PlayHTML initialized with cursor tracking");
+        console.log("Cursor system:", playhtml.cursorSystem);
+        console.log("Window cursors API:", window.cursors);
+
+        // Demo the window API
+        if (window.cursors) {
+          console.log("Current cursor color:", window.cursors.color);
+          console.log("Current cursor name:", window.cursors.name);
+
+          // Listen to changes
+          window.cursors.on("count", (count) => {
+            console.log("User count changed:", count);
+            updateCursorInfo();
+          });
+
+          window.cursors.on("allColors", (colors) => {
+            updateCursorInfo();
+          });
+
+          window.cursors.on("color", (color) => {
+            console.log("Color changed:", color);
+            updateCursorInfo();
+          });
+
+          window.cursors.on("name", (name) => {
+            console.log("Name changed:", name);
+            updateCursorInfo();
+          });
+
+          // Initial display
+          updateCursorInfo();
+        }
+      } catch (error) {
+        console.error("Failed to initialize PlayHTML:", error);
+        updateStatus("❌ Failed to initialize: " + error.message);
+      }
+    </script>
+  </body>
+</html>

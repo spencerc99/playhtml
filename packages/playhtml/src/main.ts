@@ -12,11 +12,13 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
+  generatePlayerIdentity,
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
+import { CursorClient } from "./cursor-client";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 
@@ -154,6 +156,7 @@ function getDefaultRoom(includeSearch?: boolean): string {
     : transformedPathname;
 }
 let yprovider: YPartyKitProvider;
+let cursorClient: CursorClient | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
@@ -189,6 +192,17 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
 >();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
+export interface CursorOptions {
+  enabled?: boolean;
+  playerIdentity?: any;
+  proximityThreshold?: number;
+  visibilityThreshold?: number;
+  cursorStyle?: string;
+  onProximityEntered?: (playerIdentity?: any) => void;
+  onProximityLeft?: (connectionId: string) => void;
+  enableChat?: boolean;
+}
+
 export interface InitOptions<T = any> {
   /**
    * The room to connect users to (this should be a string that matches the other users
@@ -235,6 +249,11 @@ export interface InitOptions<T = any> {
    * If true, will render some helpful development UI.
    */
   developmentMode?: boolean;
+
+  /**
+   * Cursor tracking and proximity detection configuration
+   */
+  cursors?: CursorOptions;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -256,14 +275,26 @@ function onMessage(evt: MessageEvent) {
   if (evt.data instanceof Blob) {
     return;
   }
-  let message: EventMessage;
+  let message: any;
   try {
-    message = JSON.parse(evt.data) as EventMessage;
+    message = JSON.parse(evt.data);
   } catch (err) {
     return;
   }
-  const { type, eventPayload } = message;
 
+  // Handle cursor messages
+  if (
+    message.type &&
+    (message.type.startsWith("cursor-") ||
+      message.type.startsWith("proximity-")) &&
+    cursorClient
+  ) {
+    cursorClient.handleMessage(message);
+    return;
+  }
+
+  // Handle regular event messages
+  const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
   if (!maybeHandlers) {
     return;
@@ -416,6 +447,7 @@ async function initPlayHTML({
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
   developmentMode = false,
+  cursors,
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -439,10 +471,56 @@ async function initPlayHTML({
 ࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
-  yprovider = new YPartyKitProvider(partykitHost, room, doc);
+
+  // Create provider with cursor tracking parameters if enabled
+  const providerParams: any = {};
+  if (cursors?.enabled !== false) {
+    providerParams.from = window.location.href;
+    if (cursors?.playerIdentity) {
+      providerParams.playerIdentity = encodeURIComponent(
+        JSON.stringify(cursors.playerIdentity)
+      );
+    }
+  }
+
+  yprovider = new YPartyKitProvider(partykitHost, room, doc, {
+    params: Object.keys(providerParams).length > 0 ? providerParams : undefined,
+    connect: false,
+  });
   yprovider.on("error", () => {
     onError?.();
   });
+
+  // Set up message handling as soon as WebSocket is available
+  const setupMessageHandler = () => {
+    if (yprovider.ws) {
+      console.log("Setting up message handler on WebSocket");
+      yprovider.ws.addEventListener("message", onMessage);
+    } else {
+      // Wait for WebSocket to be available
+      setTimeout(setupMessageHandler, 10);
+    }
+  };
+  setupMessageHandler();
+
+  // Initialize cursor tracking immediately after provider creation
+  if (cursors?.enabled !== false) {
+    // Generate player identity if not provided
+    const cursorOptions = {
+      enabled: true,
+      ...cursors,
+    };
+    if (!cursorOptions.playerIdentity) {
+      cursorOptions.playerIdentity = generatePlayerIdentity();
+    }
+
+    console.log("Creating cursor client with options:", cursorOptions);
+    cursorClient = new CursorClient(yprovider, cursorOptions);
+    console.log("Cursor client created:", !!cursorClient);
+  }
+
+  yprovider.connect();
+
   // @ts-ignore
   // TODO: we should backup in indexeddb too but not using this bc it introduces a bunch of weird conflicts
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
@@ -479,8 +557,6 @@ async function initPlayHTML({
     yprovider.on("sync", (connected: boolean) => {
       if (!connected) {
         console.error("Issue connecting to yjs...");
-      } else if (connected) {
-        yprovider.ws!.addEventListener("message", onMessage);
       }
       if (hasSynced) {
         return;
@@ -489,6 +565,8 @@ async function initPlayHTML({
       console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
       migrateAllDataFromYMapToSyncedStore();
+
+      // Cursor tracking was already initialized earlier
 
       setupElements();
 
@@ -848,6 +926,7 @@ interface PlayHTMLComponents {
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
+  cursorClient: CursorClient | null;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -865,6 +944,9 @@ export const playhtml: PlayHTMLComponents = {
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
+  get cursorClient() {
+    return cursorClient;
+  },
 };
 
 /**

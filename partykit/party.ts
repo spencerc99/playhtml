@@ -3,6 +3,11 @@ import { onConnect } from "y-partykit";
 import { createClient } from "@supabase/supabase-js";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
+import { CursorManager, type ConnectionWithCursor } from "./cursor-manager";
+import {
+  decodeCursorMessage,
+  cursorClientMessageSchema,
+} from "./cursor-schemas";
 
 // Create a single supabase client for interacting with your database
 const supabase = createClient(
@@ -11,20 +16,59 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
-export default class implements Party.Server {
-  constructor(public room: Party.Room) {}
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET",
+  "Access-Control-Allow-Headers":
+    "Origin, X-Requested-With, Content-Type, Accept",
+};
+
+export default class PlayHTMLPartyServer implements Party.Server {
+  options: Party.ServerOptions = {
+    hibernate: true,
+  };
+
+  private cursorManager: CursorManager;
+
+  constructor(public room: Party.Room) {
+    this.cursorManager = new CursorManager(room);
+  }
+
+  // Domain verification removed - allow all connections
 
   async onMessage(
     message: string | ArrayBuffer | ArrayBufferView,
     sender: Party.Connection<unknown>
   ): Promise<void> {
-    if (typeof message === "string") {
-      this.room.broadcast(message);
+    // Only try cursor message handling if it's a string that looks like JSON with cursor type
+    if (
+      typeof message === "string" &&
+      message.includes('"type":"cursor-update"')
+    ) {
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed.type === "cursor-update") {
+          this.cursorManager.onMessage(message, sender as ConnectionWithCursor);
+          return;
+        }
+      } catch (error) {
+        console.log("Error parsing cursor message:", error);
+        // Not a valid cursor message, continue to Yjs handling
+      }
     }
+
+    // Handle all other messages (Yjs binary and string messages)
+    this.room.broadcast(message);
   }
 
-  async onConnect(connection: Party.Connection) {
+  async onConnect(
+    connection: Party.Connection,
+    { request }: Party.ConnectionContext
+  ) {
     const room = this.room;
+
+    // Initialize cursor tracking for this connection
+    this.cursorManager.onConnect(connection as ConnectionWithCursor, request);
 
     await onConnect(connection, this.room, {
       async load() {
@@ -80,5 +124,27 @@ export default class implements Party.Server {
         },
       },
     });
+  }
+
+  onClose(connection: Party.Connection): void {
+    this.cursorManager.onClose(connection as ConnectionWithCursor);
+  }
+
+  onError(connection: Party.Connection, error: Error): void {
+    this.cursorManager.onError(connection as ConnectionWithCursor);
+  }
+
+  async onRequest(req: Party.Request): Promise<Response> {
+    if (req.method === "GET") {
+      // Return current cursor state for SSR
+      const cursors = this.cursorManager.getCursors();
+      return Response.json({ cursors }, { status: 200, headers: CORS });
+    }
+
+    if (req.method === "OPTIONS") {
+      return Response.json({ ok: true }, { status: 200, headers: CORS });
+    }
+
+    return new Response("Method Not Allowed", { status: 405 });
   }
 }
