@@ -112,13 +112,6 @@ The core cursor infrastructure is complete and ready for browser extension integ
 
 ### Immediate Next Steps
 
-#### 1. Handle Showing Name for Self Cursor
-
-- **Todo**: Implement visual indicator for user's own cursor
-- **Current State**: Other users' cursors show names, but own cursor doesn't
-- **Approach**: Add optional self-cursor name display with different styling
-- **Files to modify**: `packages/playhtml/src/cursor-client.ts`
-
 #### 2. Resolve Chat UI
 
 - **Todo**: Finalize chat user experience and visual design
@@ -128,20 +121,6 @@ The core cursor infrastructure is complete and ready for browser extension integ
   - Message display duration and styling
   - Keyboard shortcut conflicts
 - **Files to modify**: `packages/playhtml/src/cursor-chat.ts`
-
-#### 3. Finalize Proximity UI
-
-- **Todo**: Polish proximity indicators and magical encounter effects
-- **Current State**: Basic proximity detection works
-- **Needs**:
-  - More engaging proximity animations
-  - Configurable proximity effects
-  - Special encounter interactions
-- **Files to modify**: `packages/playhtml/src/cursor-client.ts` (proximity methods)
-
-#### 4. Finalize Cursor Sync
-
-- **Todo**: Ensure cursor sync is working correctly. it still sometimes shows our cursor twice which means our sync isnt always being handled
 
 ### Extension-Specific Architecture Needs
 

@@ -25,9 +25,9 @@ function encodeSVG(svgData: string): string {
 function getSvgForCursor(color: string): string {
   return `<svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="10 9 34 34"
-    width="36"
-    height="36"
+    viewBox="10 9 18 18"
+    width="18"
+    height="18"
     fill="none"
     fillRule="evenodd"
   >
@@ -155,6 +155,7 @@ export class CursorClient {
     const primaryColor =
       this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
     document.documentElement.style.cursor = getCursorStyleForUser(primaryColor);
+
     // Message handling is now set up externally via handleMessage()
 
     // Request initial sync after a short delay to ensure everything is connected
@@ -245,14 +246,18 @@ export class CursorClient {
         }
       }
 
-      // Show/hide native cursor based on pointer type (like cursor-party)
+      // Show/hide our own cursor based on pointer type (like cursor-party)
+      // This ONLY affects our own cursor (document.documentElement.style.cursor)
+      // Other cursors (.playhtml-cursor-other elements) are handled separately
       if (pointer === "mouse") {
         // Show our custom colored cursor, hide native cursor
-        document.documentElement.style.cursor = getCursorStyleForUser(
+        const cursorStyle = getCursorStyleForUser(
           this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6"
         );
+        document.documentElement.style.cursor = cursorStyle;
+
       } else {
-        // Show native cursor for custom cursors
+        // Show native cursor for custom cursors (grab, pointer, etc.)
         document.documentElement.style.cursor = "auto";
       }
 
@@ -574,21 +579,46 @@ export class CursorClient {
       this.updateCursorName(cursorElement, playerIdentity);
     }
 
-    // Update position
+    // Update position with boundary checks
+    // Reduced clamping - only prevent going completely off-screen
+    const cursorSize = 20; // Just the main cursor part, not names/messages
+    const margin = 2; // Minimal margin to prevent cut-off
+
+    // Use window.innerWidth/Height for viewport (includes scrollbars)
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Only clamp if cursor would go completely off-screen
+    const clampedX = Math.max(
+      -cursorSize + margin,
+      Math.min(viewportWidth - margin, cursor.x)
+    );
+    const clampedY = Math.max(
+      -cursorSize + margin,
+      Math.min(viewportHeight - margin, cursor.y)
+    );
+
+
     cursorElement.style.position = "fixed";
-    cursorElement.style.left = `${cursor.x}px`;
-    cursorElement.style.top = `${cursor.y}px`;
+    cursorElement.style.left = `${clampedX}px`;
+    cursorElement.style.top = `${clampedY}px`;
     cursorElement.style.zIndex = "999999";
     cursorElement.style.pointerEvents = "none";
 
+
     // Handle visibility based on distance from our cursor
+    // Note: Other cursors are ALWAYS shown regardless of our current pointer type
+    // Only distance-based culling is applied, not pointer-type-based hiding
     if (this.currentCursor) {
+      // Calculate distance using the original cursor position (not clamped)
+      // This ensures visibility calculation is accurate even at edges
       const distance = calculateDistance(cursor, this.currentCursor);
       const isVisible = distance < this.visibilityThreshold;
 
       cursorElement.style.opacity = isVisible ? "1" : "0";
       cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
     } else {
+      // Always show other cursors if we don't have our position data
       cursorElement.style.opacity = "1";
       cursorElement.style.transform = "scale(1)";
     }
