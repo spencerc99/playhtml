@@ -52,7 +52,6 @@ export default class PlayHTMLPartyServer implements Party.Server {
           return;
         }
       } catch (error) {
-        console.log("Error parsing cursor message:", error);
         // Not a valid cursor message, continue to Yjs handling
       }
     }

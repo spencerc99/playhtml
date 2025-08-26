@@ -77,7 +77,6 @@ export class CursorManager {
 
     const result = cursorClientMessageSchema.safeParse(data);
     if (!result.success) {
-      console.log("Invalid cursor message:", result.error);
       return;
     }
 
@@ -102,7 +101,6 @@ export class CursorManager {
   }
 
   private join(connection: ConnectionWithCursor): void {
-    console.log("sending cursor sync message");
     const user = this.getUser(connection);
     this.enqueueAdd(connection.id, user);
 
@@ -118,7 +116,6 @@ export class CursorManager {
       users: Object.fromEntries(this.cursors),
     };
     connection.send(JSON.stringify(sync));
-    console.log("Sent cursor sync to connection:", connection.id);
   }
 
   private leave(connection: ConnectionWithCursor): void {

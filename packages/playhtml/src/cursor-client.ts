@@ -177,7 +177,6 @@ export class CursorClient {
 
     try {
       this.provider.ws.send(JSON.stringify(request));
-      console.log("Requested cursor sync");
     } catch (error) {
       console.warn("Failed to request cursor sync:", error);
     }
@@ -373,13 +372,9 @@ export class CursorClient {
     this.cursors.clear();
     this.allPlayerColors.clear();
 
-    console.log("handleCursorSync", message);
     if (!this.ourConnectionId) {
       // Use the WebSocket connection ID, just like cursor-party does
       this.ourConnectionId = this.provider.id;
-      console.log(
-        `[CURSOR] Identified our connection ID from WebSocket: ${this.ourConnectionId}`
-      );
     }
 
     // Add all users from sync (except our own connection)
@@ -432,9 +427,6 @@ export class CursorClient {
       (this.provider.ws as any).id
     ) {
       this.ourConnectionId = (this.provider.ws as any).id;
-      console.log(
-        `[CURSOR] Identified our connection ID from WebSocket in changes: ${this.ourConnectionId}`
-      );
     }
 
     // Handle additions
