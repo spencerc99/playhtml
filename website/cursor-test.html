@@ -111,6 +111,115 @@
       .instructions li {
         margin: 5px 0;
       }
+
+      /* Custom Proximity UI Styles */
+      @keyframes magicalProximityPulse {
+        0%, 100% { 
+          transform: scale(1) rotate(0deg); 
+          opacity: 0.7; 
+          filter: blur(0px) hue-rotate(0deg);
+        }
+        25% { 
+          transform: scale(1.1) rotate(90deg); 
+          opacity: 0.9; 
+          filter: blur(1px) hue-rotate(90deg);
+        }
+        50% { 
+          transform: scale(1.3) rotate(180deg); 
+          opacity: 1; 
+          filter: blur(2px) hue-rotate(180deg);
+        }
+        75% { 
+          transform: scale(1.1) rotate(270deg); 
+          opacity: 0.9; 
+          filter: blur(1px) hue-rotate(270deg);
+        }
+      }
+
+      @keyframes sparkleRain {
+        0% { 
+          transform: translateY(-20px) rotate(0deg) scale(0); 
+          opacity: 0; 
+        }
+        20% { 
+          transform: translateY(0px) rotate(72deg) scale(1); 
+          opacity: 1; 
+        }
+        80% { 
+          transform: translateY(20px) rotate(288deg) scale(1); 
+          opacity: 1; 
+        }
+        100% { 
+          transform: translateY(40px) rotate(360deg) scale(0); 
+          opacity: 0; 
+        }
+      }
+
+      @keyframes connectionRipple {
+        0% { 
+          transform: scale(0.5); 
+          opacity: 1; 
+          border-width: 4px;
+        }
+        50% { 
+          transform: scale(2); 
+          opacity: 0.5; 
+          border-width: 2px;
+        }
+        100% { 
+          transform: scale(3.5); 
+          opacity: 0; 
+          border-width: 0px;
+        }
+      }
+
+      .proximity-indicator {
+        position: fixed;
+        pointer-events: none;
+        z-index: 999998;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        animation: magicalProximityPulse 3s infinite ease-in-out;
+        transition: all 0.3s ease;
+        border: 3px solid;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 
+                    inset 0 0 20px rgba(255, 255, 255, 0.1);
+      }
+
+      .proximity-sparkle {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: white;
+        border-radius: 50%;
+        animation: sparkleRain 2s infinite;
+        box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+      }
+
+      .proximity-ripple {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        border: 3px solid;
+        animation: connectionRipple 2s infinite;
+      }
+
+      .proximity-text {
+        position: absolute;
+        top: -40px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        white-space: nowrap;
+        z-index: 999999;
+      }
     </style>
   </head>
   <body>
@@ -186,6 +295,22 @@
           >
             Random Name
           </button>
+          <button
+            onclick="toggleSimulationMode()"
+            id="simulation-button"
+            style="
+              padding: 5px 10px;
+              background: #9b59b6;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              margin-top: 5px;
+              display: block;
+            "
+          >
+            Enable Simulation Mode
+          </button>
         </div>
       </div>
     </div>
@@ -234,6 +359,219 @@
                   .join("<br>")}
             `;
       }
+
+      // Custom Proximity UI Implementation
+      const activeProximityIndicators = new Map();
+
+      function showMagicalProximityUI(otherPlayer) {
+        const playerId = otherPlayer?.publicKey || 'unknown';
+        
+        // Don't create duplicate indicators
+        if (activeProximityIndicators.has(playerId)) return;
+
+        const playerColor = otherPlayer?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+        const playerName = otherPlayer?.name || `Player ${otherPlayer?.publicKey?.slice(-4)}`;
+
+        // Create main proximity indicator
+        const indicator = document.createElement("div");
+        indicator.className = "proximity-indicator";
+        indicator.style.borderColor = playerColor;
+        indicator.style.background = `radial-gradient(circle, transparent 60%, ${playerColor}30)`;
+        
+        // Position near current cursor (estimate center of screen if no cursor position)
+        const x = window.innerWidth / 2;
+        const y = window.innerHeight / 2;
+        indicator.style.left = `${x - 60}px`;
+        indicator.style.top = `${y - 60}px`;
+
+        // Add player name
+        const nameLabel = document.createElement("div");
+        nameLabel.className = "proximity-text";
+        nameLabel.textContent = `${playerName} nearby!`;
+        nameLabel.style.color = playerColor;
+        indicator.appendChild(nameLabel);
+
+        // Create sparkles
+        for (let i = 0; i < 8; i++) {
+          const sparkle = document.createElement("div");
+          sparkle.className = "proximity-sparkle";
+          sparkle.style.left = `${Math.random() * 100}px`;
+          sparkle.style.top = `${Math.random() * 100}px`;
+          sparkle.style.animationDelay = `${Math.random() * 2}s`;
+          indicator.appendChild(sparkle);
+        }
+
+        // Create ripples
+        for (let i = 0; i < 3; i++) {
+          const ripple = document.createElement("div");
+          ripple.className = "proximity-ripple";
+          ripple.style.borderColor = playerColor;
+          ripple.style.animationDelay = `${i * 0.7}s`;
+          indicator.appendChild(ripple);
+        }
+
+        document.body.appendChild(indicator);
+        activeProximityIndicators.set(playerId, indicator);
+
+        // Auto-remove after 4 seconds
+        setTimeout(() => {
+          hideMagicalProximityUI(playerId);
+        }, 4000);
+      }
+
+      function hideMagicalProximityUI(playerId) {
+        const indicator = activeProximityIndicators.get(playerId);
+        if (indicator) {
+          indicator.style.animation = "magicalProximityPulse 0.3s ease-out reverse";
+          setTimeout(() => {
+            if (indicator.parentNode) {
+              indicator.remove();
+            }
+            activeProximityIndicators.delete(playerId);
+          }, 300);
+        }
+      }
+
+      // Simulation Mode for Testing Proximity UI
+      let simulationMode = false;
+      let simulatedCursors = [];
+      let simulationInterval = null;
+
+      function createSimulatedCursor(id, color, name) {
+        const cursor = document.createElement("div");
+        cursor.className = "playhtml-cursor-other";
+        cursor.id = `sim-cursor-${id}`;
+        cursor.innerHTML = `
+          <svg height="32" viewBox="0 0 32 32" width="32" xmlns="http://www.w3.org/2000/svg">
+            <g fill="none" fillRule="evenodd" transform="translate(10 7)">
+              <path d="m6.148 18.473 1.863-1.003 1.615-.839-2.568-4.816h4.332l-11.379-11.408v16.015l3.316-3.221z" fill="#fff"/>
+              <path d="m6.431 17 1.765-.941-2.775-5.202h3.604l-8.025-8.043v11.188l2.53-2.442z" fill="${color}"/>
+            </g>
+          </svg>
+          <div style="position: absolute; top: -25px; left: 35px; background: rgba(0,0,0,0.8); color: white; padding: 2px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">${name}</div>
+        `;
+        cursor.style.position = "fixed";
+        cursor.style.zIndex = "999999";
+        cursor.style.pointerEvents = "none";
+        cursor.style.transition = "all 0.1s ease";
+        
+        document.body.appendChild(cursor);
+        return cursor;
+      }
+
+      function moveSimulatedCursor(cursor, x, y) {
+        cursor.style.left = `${x}px`;
+        cursor.style.top = `${y}px`;
+      }
+
+      function getDistanceFromRealCursor(x, y) {
+        const realCursor = { x: window.lastMouseX || window.innerWidth / 2, y: window.lastMouseY || window.innerHeight / 2 };
+        return Math.sqrt(Math.pow(x - realCursor.x, 2) + Math.pow(y - realCursor.y, 2));
+      }
+
+      // Track real cursor position
+      window.lastMouseX = window.innerWidth / 2;
+      window.lastMouseY = window.innerHeight / 2;
+      document.addEventListener('mousemove', (e) => {
+        window.lastMouseX = e.clientX;
+        window.lastMouseY = e.clientY;
+      });
+
+      window.toggleSimulationMode = function() {
+        simulationMode = !simulationMode;
+        const button = document.getElementById('simulation-button');
+        
+        if (simulationMode) {
+          button.textContent = 'Disable Simulation Mode';
+          button.style.background = '#e74c3c';
+          
+          // Create 3 simulated cursors
+          const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1'];
+          const names = ['Alice', 'Bob', 'Charlie'];
+          
+          simulatedCursors = colors.map((color, i) => {
+            const cursor = createSimulatedCursor(i, color, names[i]);
+            return {
+              element: cursor,
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              vx: (Math.random() - 0.5) * 2,
+              vy: (Math.random() - 0.5) * 2,
+              color: color,
+              name: names[i],
+              publicKey: `sim-key-${i}`,
+              wasNear: false
+            };
+          });
+          
+          // Start simulation loop
+          simulationInterval = setInterval(() => {
+            simulatedCursors.forEach(simCursor => {
+              // Update position with simple physics
+              simCursor.x += simCursor.vx;
+              simCursor.y += simCursor.vy;
+              
+              // Bounce off walls
+              if (simCursor.x < 0 || simCursor.x > window.innerWidth - 32) simCursor.vx *= -1;
+              if (simCursor.y < 0 || simCursor.y > window.innerHeight - 32) simCursor.vy *= -1;
+              
+              // Keep in bounds
+              simCursor.x = Math.max(0, Math.min(window.innerWidth - 32, simCursor.x));
+              simCursor.y = Math.max(0, Math.min(window.innerHeight - 32, simCursor.y));
+              
+              // Update visual position
+              moveSimulatedCursor(simCursor.element, simCursor.x, simCursor.y);
+              
+              // Check proximity to real cursor
+              const distance = getDistanceFromRealCursor(simCursor.x, simCursor.y);
+              const isNear = distance < 200; // Same threshold as real proximity
+              
+              if (isNear && !simCursor.wasNear) {
+                // Entered proximity
+                console.log('🎉 Simulated proximity entered!', simCursor.name);
+                const fakePlayer = {
+                  publicKey: simCursor.publicKey,
+                  name: simCursor.name,
+                  playerStyle: { colorPalette: [simCursor.color] }
+                };
+                addProximityEvent("entered", fakePlayer);
+                showMagicalProximityUI(fakePlayer);
+                simCursor.wasNear = true;
+              } else if (!isNear && simCursor.wasNear) {
+                // Left proximity
+                console.log('👋 Simulated proximity left!', simCursor.name);
+                const fakePlayer = {
+                  publicKey: simCursor.publicKey,
+                  name: simCursor.name,
+                  playerStyle: { colorPalette: [simCursor.color] }
+                };
+                addProximityEvent("left", fakePlayer);
+                hideMagicalProximityUI(simCursor.publicKey);
+                simCursor.wasNear = false;
+              }
+            });
+          }, 50); // 20fps for smooth movement
+          
+        } else {
+          button.textContent = 'Enable Simulation Mode';
+          button.style.background = '#9b59b6';
+          
+          // Clean up simulation
+          if (simulationInterval) {
+            clearInterval(simulationInterval);
+            simulationInterval = null;
+          }
+          
+          simulatedCursors.forEach(simCursor => {
+            if (simCursor.element.parentNode) {
+              simCursor.element.remove();
+            }
+            // Clean up any active proximity indicators
+            hideMagicalProximityUI(simCursor.publicKey);
+          });
+          simulatedCursors = [];
+        }
+      };
 
       // Global functions for buttons
       window.changeColor = function () {
@@ -285,10 +623,12 @@
             onProximityEntered: (otherPlayer) => {
               console.log("🎉 Proximity entered!", otherPlayer);
               addProximityEvent("entered", otherPlayer);
+              showMagicalProximityUI(otherPlayer);
             },
             onProximityLeft: (otherPlayer) => {
               console.log("👋 Proximity left!", otherPlayer);
               addProximityEvent("left", otherPlayer);
+              hideMagicalProximityUI(otherPlayer?.publicKey || 'unknown');
             },
           },
           onError: () => {

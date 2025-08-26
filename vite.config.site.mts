@@ -25,4 +25,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   plugins: [react()],
+  server: {
+    allowedHosts: ["a8965e5cb1e9.ngrok-free.app"],
+  },
 });

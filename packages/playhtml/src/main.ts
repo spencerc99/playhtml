@@ -21,6 +21,46 @@ import { hashElement } from "./utils";
 import { CursorClient } from "./cursor-client";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
+const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
+const DevPartykitHost = "localhost:1999";
+
+// Environment-specific host resolution
+function getPartykitHost(userHost?: string): string {
+  // If user explicitly provides a host, use it
+  if (userHost) {
+    return userHost;
+  }
+
+  const hostname = window.location.hostname;
+
+  // Staging domain detection (customize these patterns for your setup)
+  if (hostname.includes("staging") || hostname.includes("ngrok-free")) {
+    return StagingPartykitHost;
+  }
+
+  // @ts-expect-error - import.meta is not defined in the browser
+  if (typeof import.meta !== "undefined" && import.meta.env) {
+    // @ts-expect-error - import.meta is not defined in the browser
+    if (import.meta.env.DEV) {
+      return DevPartykitHost;
+    }
+
+    // @ts-expect-error - import.meta is not defined in the browser
+    if (import.meta.env.VITE_PARTYKIT_HOST) {
+      // @ts-expect-error - import.meta is not defined in the browser
+      return import.meta.env.VITE_PARTYKIT_HOST;
+    }
+
+    // Environment-specific hosts
+    // @ts-expect-error - import.meta is not defined in the browser
+    if (import.meta.env.MODE === "staging") {
+      return StagingPartykitHost;
+    }
+  }
+
+  // Default to production
+  return DefaultPartykitHost;
+}
 
 const VERBOSE = 0;
 
@@ -440,7 +480,7 @@ let firstSetup = true;
 
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
-  host = DefaultPartykitHost,
+  host,
   extraCapabilities,
   events,
   defaultRoomOptions = {},
@@ -459,9 +499,7 @@ async function initPlayHTML({
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
 
-  // NOTE: there's a typescript error here but it all seems to work...
-  // @ts-ignore
-  const partykitHost = import.meta.env.DEV ? "localhost:1999" : host;
+  const partykitHost = getPartykitHost(host);
 
   console.log(
     `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂

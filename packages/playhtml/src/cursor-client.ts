@@ -104,7 +104,6 @@ declare global {
 
 export class CursorClient {
   private cursors: Map<string, HTMLElement> = new Map();
-  private proximityIndicators: Map<string, HTMLElement> = new Map();
   private currentCursor: Cursor | null = null;
   private playerIdentity: PlayerIdentity;
   private updateThrottled: boolean = false;
@@ -190,22 +189,6 @@ export class CursorClient {
     const style = document.createElement("style");
     style.id = "playhtml-cursor-styles";
     style.textContent = `
-      @keyframes proximityPulse {
-        0%, 100% { transform: scale(1); opacity: 0.6; }
-        50% { transform: scale(1.2); opacity: 0.9; }
-      }
-      
-      .playhtml-proximity-indicator {
-        position: fixed;
-        pointer-events: none;
-        z-index: 999998;
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        animation: proximityPulse 2s infinite;
-        transition: all 0.3s ease;
-        border: 2px solid;
-      }
       
       .playhtml-cursor-other {
         position: fixed;
@@ -722,43 +705,18 @@ export class CursorClient {
     }
   }
 
+  // Proximity indicators are now handled by the developer via callbacks
   private showProximityIndicator(
     connectionId: string,
     playerIdentity: PlayerIdentity
   ): void {
-    if (this.proximityIndicators.has(connectionId)) return;
-
-    const indicator = document.createElement("div");
-    indicator.className = "playhtml-proximity-indicator";
-
-    const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
-    indicator.style.borderColor = color;
-    indicator.style.background = `radial-gradient(circle, transparent 70%, ${color}20)`;
-
-    // Position near our cursor
-    if (this.currentCursor) {
-      indicator.style.left = `${this.currentCursor.x - 50}px`;
-      indicator.style.top = `${this.currentCursor.y - 50}px`;
-    }
-
-    document.body.appendChild(indicator);
-    this.proximityIndicators.set(connectionId, indicator);
-
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-      this.hideProximityIndicator(connectionId);
-    }, 3000);
+    // This method is kept for backward compatibility but does nothing
+    // Developers should handle proximity UI via onProximityEntered callback
   }
 
   private hideProximityIndicator(connectionId: string): void {
-    const indicator = this.proximityIndicators.get(connectionId);
-    if (indicator) {
-      indicator.style.animation = "cursorFadeOut 0.3s ease-out";
-      setTimeout(() => {
-        indicator.remove();
-        this.proximityIndicators.delete(connectionId);
-      }, 300);
-    }
+    // This method is kept for backward compatibility but does nothing
+    // Developers should handle proximity UI via onProximityLeft callback
   }
 
   // Public method to handle messages from external interceptor
@@ -1003,10 +961,6 @@ export class CursorClient {
     // Clean up cursors
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
-
-    // Clean up proximity indicators
-    this.proximityIndicators.forEach((element) => element.remove());
-    this.proximityIndicators.clear();
 
     // Clean up chat
     if (this.chat) {
