@@ -3,15 +3,14 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   srcDir: "src",
   manifest: {
-    name: "PlayHTML Bag",
+    name: "Tiny Internets",
     description:
-      "Transform webpages into interactive playgrounds. Add elements and discover what others have left behind.",
+      "Turn the internet into an multiplayer playground. Add elements and discover what others have left behind.",
     permissions: ["storage", "activeTab", "scripting", "tabs"],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
-      default_title: "PlayHTML Bag",
+      default_title: "Tiny Internets",
     },
-    devtools_page: "devtools/devtools.html",
     web_accessible_resources: [
       {
         resources: ["content-scripts/content.css"],
