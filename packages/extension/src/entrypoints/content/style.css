@@ -1,0 +1,53 @@
+/* PlayHTML Extension Content Styles */
+
+.playhtml-extension-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10000;
+}
+
+.playhtml-extension-cursor {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.6);
+  pointer-events: none;
+  transition: transform 0.1s ease;
+  transform: translate(-50%, -50%);
+}
+
+.playhtml-extension-element-picker {
+  outline: 2px dashed #6366f1 !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+  cursor: pointer !important;
+}
+
+.playhtml-extension-enhanced-element {
+  position: relative;
+}
+
+.playhtml-extension-enhanced-element::after {
+  content: '✨';
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  font-size: 12px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Gentle shimmer for discoverable elements */
+@keyframes playhtml-shimmer {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+.playhtml-extension-discoverable {
+  animation: playhtml-shimmer 3s ease-in-out infinite;
+}
