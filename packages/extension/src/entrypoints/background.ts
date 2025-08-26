@@ -3,8 +3,6 @@ import browser from 'webextension-polyfill'
 export default defineBackground(() => {
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
-    console.log('PlayHTML Extension installed:', details.reason)
-    
     if (details.reason === 'install') {
       // First time installation - setup default identity
       initializePlayerIdentity()
@@ -31,7 +29,6 @@ export default defineBackground(() => {
         }
         
         await browser.storage.local.set({ playerIdentity: identity })
-        console.log('New player identity created')
       }
     } catch (error) {
       console.error('Failed to initialize player identity:', error)
@@ -49,8 +46,6 @@ export default defineBackground(() => {
 
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('Background received message:', message, 'from:', sender.tab?.url)
-    
     if (message.type === 'GET_PLAYER_IDENTITY') {
       getPlayerIdentity().then(sendResponse)
       return true // Will respond asynchronously
@@ -73,7 +68,6 @@ export default defineBackground(() => {
     if (playerIdentity && !playerIdentity.discoveredSites.includes(domain)) {
       playerIdentity.discoveredSites.push(domain)
       await browser.storage.local.set({ playerIdentity })
-      console.log('New site discovered:', domain)
     }
   }
 });

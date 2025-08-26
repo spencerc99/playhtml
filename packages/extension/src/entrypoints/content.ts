@@ -5,10 +5,6 @@ export default defineContentScript({
   runAt: "document_idle",
   cssInjectionMode: "ui",
   main() {
-    console.log(
-      "PlayHTML Extension content script loaded on:",
-      window.location.href
-    );
 
     // Initialize PlayHTML extension on page
     class PlayHTMLExtension {
@@ -44,10 +40,6 @@ export default defineContentScript({
           this.setupCollectionDetection();
 
           this.isInitialized = true;
-          console.log(
-            "PlayHTML Extension initialized with identity:",
-            this.playerIdentity?.publicKey
-          );
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
         }
@@ -60,16 +52,7 @@ export default defineContentScript({
         );
 
         if (existingElements.length > 0) {
-          console.log(
-            "Existing PlayHTML detected:",
-            existingElements.length,
-            "elements"
-          );
           // TODO: Coordinate with existing PlayHTML instance
-        } else {
-          console.log(
-            "No existing PlayHTML detected - extension has full control"
-          );
         }
 
         return existingElements.length;
@@ -141,7 +124,7 @@ export default defineContentScript({
           ];
           return (
             contentTags.includes(el.tagName) &&
-            el.textContent &&
+            el.textContent !== null &&
             el.textContent.trim().length > 0
           );
         };
@@ -356,15 +339,12 @@ export default defineContentScript({
         elementHasPlayHTML: boolean
       ) {
         // Dynamically import React and the modal component
-        const [
-          { default: React, createElement },
-          { createRoot },
-          { CapabilityModal },
-        ] = await Promise.all([
-          import("react"),
-          import("react-dom/client"),
-          import("../components/CapabilityModal"),
-        ]);
+        const [{ default: React }, { createRoot }, { CapabilityModal }] =
+          await Promise.all([
+            import("react"),
+            import("react-dom/client"),
+            import("../components/CapabilityModal"),
+          ]);
 
         // Create container for React component
         const container = document.createElement("div");
@@ -395,8 +375,10 @@ export default defineContentScript({
         };
 
         // Render the React component
+        // @ts-ignore - Dynamic import type issue
         root.render(
-          createElement(CapabilityModal, {
+          // @ts-ignore - React createElement with dynamic component
+          React.createElement(CapabilityModal, {
             element,
             elementHasPlayHTML,
             onCollect: handleCollect,
@@ -416,8 +398,6 @@ export default defineContentScript({
 
         // Add the capability attribute
         element.setAttribute(capability, "");
-
-        console.log(`Applied ${capability} to element:`, element.tagName);
 
         // TODO: Initialize PlayHTML on this element
         // TODO: Sync with backend if available
@@ -453,7 +433,6 @@ export default defineContentScript({
           // Save to storage
           await browser.storage.local.set({ gameInventory: updatedInventory });
 
-          console.log("Added item to inventory:", newItem);
         } catch (error) {
           console.error("Failed to add item to inventory:", error);
         }
@@ -473,7 +452,7 @@ export default defineContentScript({
 
           // Check if we already have a site signature for this domain
           const existingSiteSignature = inventory.items.find(
-            (item) =>
+            (item: any) =>
               item.type === "site_signature" &&
               item.sourceUrl.includes(currentDomain)
           );
@@ -499,7 +478,6 @@ export default defineContentScript({
               },
             });
 
-            console.log("New site discovered:", currentDomain);
           }
         } catch (error) {
           console.error("Failed to check site discovery:", error);
@@ -550,7 +528,12 @@ export default defineContentScript({
       }
 
       private makeElementCollectable(element: HTMLElement) {
-        // Add visual indicator that element is collectable
+        // Store original styles to restore later
+        const originalBoxShadow = element.style.boxShadow;
+        const originalCursor = element.style.cursor;
+        const originalTitle = element.title;
+
+        // Add visual indicator that element is collectable (only during picker mode)
         element.style.boxShadow = "0 0 0 2px rgba(16, 185, 129, 0.3)";
         element.style.cursor = "grab";
         element.title = element.title || "Click to collect this item";
@@ -564,9 +547,11 @@ export default defineContentScript({
 
           // Remove collection ability after collecting
           element.removeEventListener("click", collectHandler);
-          element.style.boxShadow = "0 0 0 2px rgba(99, 102, 241, 0.5)";
-          element.style.cursor = "default";
-          element.title = "Collected!";
+
+          // Restore original styles instead of applying "collected" styles
+          element.style.boxShadow = originalBoxShadow;
+          element.style.cursor = originalCursor;
+          element.title = originalTitle || "Collected!";
           element.removeAttribute("can-collect");
           element.setAttribute("collected", "true");
         };
@@ -591,10 +576,6 @@ export default defineContentScript({
             element.title ||
             `Collected from ${window.location.hostname}`;
 
-          // Store the full HTML for redistribution
-          const elementHtml = element.outerHTML;
-          const computedStyles = this.getComputedStyles(element);
-
           await this.addToInventory({
             type: "element",
             name: itemName,
@@ -606,11 +587,14 @@ export default defineContentScript({
               className: element.className || null,
               snapshot: snapshot,
               originalText: element.textContent?.slice(0, 100) || null,
-              html: elementHtml,
-              styles: computedStyles,
+              // Use new comprehensive snapshot structure
+              html: snapshot.html,
+              styles: snapshot.styles,
+              metadata: snapshot.metadata,
+              // Keep legacy rect for backward compatibility
               rect: {
-                width: element.getBoundingClientRect().width,
-                height: element.getBoundingClientRect().height,
+                width: snapshot.metadata.dimensions.width,
+                height: snapshot.metadata.dimensions.height,
               },
             },
           });
@@ -626,7 +610,6 @@ export default defineContentScript({
           }, 300);
 
           this.showNotification(`Collected: ${itemName}`);
-          console.log("Element collected:", element);
         } catch (error) {
           console.error("Failed to collect element:", error);
           this.showNotification("Failed to collect item");
@@ -660,81 +643,192 @@ export default defineContentScript({
         return styles;
       }
 
-      private async captureElementSnapshot(
+      private getComprehensiveStyles(
         element: HTMLElement
-      ): Promise<string> {
+      ): Record<string, string> {
+        const computed = window.getComputedStyle(element);
+        const importantStyles = [
+          // Layout
+          "display",
+          "position",
+          "top",
+          "right",
+          "bottom",
+          "left",
+          "width",
+          "height",
+          "minWidth",
+          "minHeight",
+          "maxWidth",
+          "maxHeight",
+          "margin",
+          "marginTop",
+          "marginRight",
+          "marginBottom",
+          "marginLeft",
+          "padding",
+          "paddingTop",
+          "paddingRight",
+          "paddingBottom",
+          "paddingLeft",
+
+          // Typography
+          "color",
+          "fontSize",
+          "fontFamily",
+          "fontWeight",
+          "fontStyle",
+          "lineHeight",
+          "textAlign",
+          "textDecoration",
+          "textTransform",
+          "letterSpacing",
+          "wordSpacing",
+
+          // Background & Border
+          "backgroundColor",
+          "backgroundImage",
+          "backgroundSize",
+          "backgroundRepeat",
+          "backgroundPosition",
+          "border",
+          "borderTop",
+          "borderRight",
+          "borderBottom",
+          "borderLeft",
+          "borderRadius",
+          "borderWidth",
+          "borderStyle",
+          "borderColor",
+
+          // Visual Effects
+          "opacity",
+          "boxShadow",
+          "transform",
+          "overflow",
+          "visibility",
+          "cursor",
+          "pointerEvents",
+
+          // Flexbox & Grid
+          "flexDirection",
+          "flexWrap",
+          "justifyContent",
+          "alignItems",
+          "alignSelf",
+          "flex",
+          "flexGrow",
+          "flexShrink",
+          "flexBasis",
+        ];
+
+        const styles: Record<string, string> = {};
+        importantStyles.forEach((prop) => {
+          const value = computed.getPropertyValue(prop);
+          if (
+            value &&
+            value !== "auto" &&
+            value !== "normal" &&
+            value !== "initial"
+          ) {
+            styles[prop] = value;
+          }
+        });
+
+        return styles;
+      }
+
+      private async captureElementSnapshot(element: HTMLElement): Promise<{
+        html: string;
+        styles: Record<string, string>;
+        metadata: {
+          tagName: string;
+          textContent: string | null;
+          dimensions: { width: number; height: number };
+          hasImage: boolean;
+          imageUrl?: string;
+        };
+      }> {
         try {
-          // Create a canvas to capture the element
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-          if (!ctx) throw new Error("Could not get canvas context");
-
-          // Get element dimensions
           const rect = element.getBoundingClientRect();
-          const scaleFactor = 2; // For higher quality
 
-          canvas.width = Math.min(rect.width, 200) * scaleFactor;
-          canvas.height = Math.min(rect.height, 200) * scaleFactor;
+          // Get the element's HTML (sanitized)
+          const clonedElement = element.cloneNode(true) as HTMLElement;
 
-          // Style the element for capture
-          const originalTransform = element.style.transform;
-          element.style.transform = "scale(1)";
+          // Remove any script tags for security
+          const scripts = clonedElement.querySelectorAll("script");
+          scripts.forEach((script) => script.remove());
 
-          // Use html2canvas alternative - create SVG representation
-          const svgData = this.elementToSVG(element, rect);
+          // For images, ensure we capture the src
+          let hasImage = false;
+          let imageUrl: string | undefined;
 
-          // Restore original styles
-          element.style.transform = originalTransform;
+          if (element.tagName.toLowerCase() === "img") {
+            const imgElement = element as HTMLImageElement;
+            imageUrl = imgElement.src || imgElement.currentSrc;
+            hasImage = true;
+          } else {
+            // Check for images within the element
+            const images = clonedElement.querySelectorAll("img");
+            if (images.length > 0) {
+              hasImage = true;
+              imageUrl = (images[0] as HTMLImageElement).src;
+            }
+          }
 
-          return svgData;
+          // Get comprehensive computed styles
+          const computedStyles = this.getComprehensiveStyles(element);
+
+          return {
+            html: clonedElement.outerHTML,
+            styles: computedStyles,
+            metadata: {
+              tagName: element.tagName.toLowerCase(),
+              textContent: element.textContent,
+              dimensions: {
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              },
+              hasImage,
+              imageUrl,
+            },
+          };
         } catch (error) {
           console.error("Failed to capture element snapshot:", error);
-          // Return a fallback SVG
+          // Return a minimal fallback
           return this.createFallbackSnapshot(element);
         }
       }
 
-      private elementToSVG(element: HTMLElement, rect: DOMRect): string {
-        const computedStyle = window.getComputedStyle(element);
-        const backgroundColor = computedStyle.backgroundColor || "transparent";
-        const color = computedStyle.color || "#000000";
-        const fontSize = computedStyle.fontSize || "14px";
-        const fontFamily = computedStyle.fontFamily || "Arial";
-
-        const text = element.textContent?.slice(0, 50) || element.tagName;
-
-        const svg = `
-          <svg width="100" height="60" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100" height="60" fill="${backgroundColor}" stroke="#e5e7eb" stroke-width="1" rx="4"/>
-            <text x="50" y="35" font-family="${fontFamily}" font-size="10" fill="${color}" text-anchor="middle">
-              ${this.escapeHtml(text)}
-            </text>
-          </svg>
-        `;
-
-        return `data:image/svg+xml;base64,${btoa(svg)}`;
-      }
-
-      private createFallbackSnapshot(element: HTMLElement): string {
+      private createFallbackSnapshot(element: HTMLElement): {
+        html: string;
+        styles: Record<string, string>;
+        metadata: {
+          tagName: string;
+          textContent: string | null;
+          dimensions: { width: number; height: number };
+          hasImage: boolean;
+          imageUrl?: string;
+        };
+      } {
+        const rect = element.getBoundingClientRect();
         const tagName = element.tagName.toLowerCase();
-        const text = element.textContent?.slice(0, 20) || tagName;
 
-        const svg = `
-          <svg width="100" height="60" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100" height="60" fill="#f9fafb" stroke="#6366f1" stroke-width="2" rx="4"/>
-            <text x="50" y="35" font-family="Arial" font-size="10" fill="#1f2937" text-anchor="middle">
-              ${this.escapeHtml(text)}
-            </text>
-          </svg>
-        `;
-
-        return `data:image/svg+xml;base64,${btoa(svg)}`;
-      }
-
-      private escapeHtml(text: string): string {
-        const div = document.createElement("div");
-        div.textContent = text;
-        return div.innerHTML;
+        return {
+          html: element.outerHTML,
+          styles: this.getComputedStyles(element),
+          metadata: {
+            tagName,
+            textContent: element.textContent,
+            dimensions: {
+              width: Math.round(rect.width) || 100,
+              height: Math.round(rect.height) || 60,
+            },
+            hasImage: tagName === "img",
+            imageUrl:
+              tagName === "img" ? (element as HTMLImageElement).src : undefined,
+          },
+        };
       }
 
       private showNotification(message: string) {
@@ -765,7 +859,6 @@ export default defineContentScript({
 
       private setupPresenceDetection() {
         // TODO: Implement real-time presence with other players
-        console.log("Presence detection active");
 
         // Simple cursor tracking for now
         document.addEventListener("mousemove", (e) => {
@@ -788,28 +881,31 @@ export default defineContentScript({
     }
 
     // Listen for messages from popup/devtools
-    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      console.log("Content script received message:", message);
+    browser.runtime.onMessage.addListener(
+      (message: any, sender: any, sendResponse: any) => {
 
-      if (message.type === "PING") {
-        sendResponse({ status: "pong", url: window.location.href });
-        return;
-      }
+        if (message.type === "PING") {
+          sendResponse({ status: "pong", url: window.location.href });
+          return true; // Keep message channel open for async response
+        }
 
-      if (message.type === "CHECK_PLAYHTML_STATUS") {
-        const status = extensionInstance?.checkPlayHTMLStatus() || {
-          elementCount: 0,
-          detected: false,
-        };
-        sendResponse(status);
-        return;
-      }
+        if (message.type === "CHECK_PLAYHTML_STATUS") {
+          const status = extensionInstance?.checkPlayHTMLStatus() || {
+            elementCount: 0,
+            detected: false,
+          };
+          sendResponse(status);
+          return true; // Keep message channel open for async response
+        }
 
-      if (message.type === "ACTIVATE_ELEMENT_PICKER") {
-        extensionInstance?.activateElementPicker();
-        sendResponse({ success: true });
-        return;
+        if (message.type === "ACTIVATE_ELEMENT_PICKER") {
+          extensionInstance?.activateElementPicker();
+          sendResponse({ success: true });
+          return true; // Keep message channel open for async response
+        }
+
+        return; // Don't keep the channel open for other message types
       }
-    });
+    );
   },
 });
