@@ -1,13 +1,6 @@
 import { encode, decode } from "@msgpack/msgpack";
 import z from "zod";
-import type {
-  Cursor,
-  PlayerIdentity,
-  CursorPresence,
-  CursorUser,
-  CursorPartyMessage,
-  CursorClientMessage,
-} from "@playhtml/common";
+import type { CursorPartyMessage, CursorClientMessage } from "@playhtml/common";
 
 // Zod schemas for server-side validation
 export const cursorSchema = z.object({

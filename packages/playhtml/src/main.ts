@@ -44,18 +44,6 @@ function getPartykitHost(userHost?: string): string {
     if (import.meta.env.DEV) {
       return DevPartykitHost;
     }
-
-    // @ts-expect-error - import.meta is not defined in the browser
-    if (import.meta.env.VITE_PARTYKIT_HOST) {
-      // @ts-expect-error - import.meta is not defined in the browser
-      return import.meta.env.VITE_PARTYKIT_HOST;
-    }
-
-    // Environment-specific hosts
-    // @ts-expect-error - import.meta is not defined in the browser
-    if (import.meta.env.MODE === "staging") {
-      return StagingPartykitHost;
-    }
   }
 
   // Default to production
