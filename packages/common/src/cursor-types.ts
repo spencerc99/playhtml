@@ -56,10 +56,14 @@ export type CursorPartyMessage =
       otherConnectionId: string;
     };
 
-export type CursorClientMessage = {
-  type: "cursor-update";
-  presence: CursorPresence;
-};
+export type CursorClientMessage = 
+  | {
+      type: "cursor-update";
+      presence: CursorPresence;
+    }
+  | {
+      type: "cursor-request-sync";
+    };
 
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels

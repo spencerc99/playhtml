@@ -115,7 +115,7 @@ export class CursorManager {
       type: "cursor-sync",
       users: Object.fromEntries(this.cursors),
     };
-    connection.send(JSON.stringify(sync));
+    connection.send(encodeCursorPartyMessage(sync));
   }
 
   private leave(connection: ConnectionWithCursor): void {
@@ -188,9 +188,9 @@ export class CursorManager {
     // Send to both players
     this.party
       .getConnection(connectionId)
-      ?.send(JSON.stringify(proximityMessage));
+      ?.send(encodeCursorPartyMessage(proximityMessage));
     this.party.getConnection(otherId)?.send(
-      JSON.stringify({
+      encodeCursorPartyMessage({
         ...proximityMessage,
         connectionId: otherId,
         otherConnectionId: connectionId,
@@ -208,9 +208,9 @@ export class CursorManager {
     // Send to both players
     this.party
       .getConnection(connectionId)
-      ?.send(JSON.stringify(proximityMessage));
+      ?.send(encodeCursorPartyMessage(proximityMessage));
     this.party.getConnection(otherId)?.send(
-      JSON.stringify({
+      encodeCursorPartyMessage({
         ...proximityMessage,
         connectionId: otherId,
         otherConnectionId: connectionId,
@@ -316,7 +316,7 @@ export class CursorManager {
       remove: this.pendingRemove.length > 0 ? this.pendingRemove : undefined,
     };
 
-    this.party.broadcast(JSON.stringify(update));
+    this.party.broadcast(encodeCursorPartyMessage(update));
     this.clearPendingUpdates();
   }
 

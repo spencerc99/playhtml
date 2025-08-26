@@ -80,12 +80,12 @@ export function decodeCursorMessage(message: string | ArrayBufferLike) {
 
 export function encodeCursorPartyMessage(
   data: CursorPartyMessage
-): ArrayBufferLike {
+): Uint8Array {
   return encode(cursorPartyMessageSchema.parse(data));
 }
 
 export function encodeCursorClientMessage(
   data: CursorClientMessage
-): ArrayBufferLike {
+): Uint8Array {
   return encode(cursorClientMessageSchema.parse(data));
 }

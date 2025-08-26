@@ -7,11 +7,11 @@ import {
   Cursor,
   generatePlayerIdentity,
   calculateDistance,
-  PROXIMITY_THRESHOLD,
   VISIBILITY_THRESHOLD,
 } from "@playhtml/common";
 import type { CursorOptions } from "./main";
 import { CursorChat } from "./cursor-chat";
+import { encodeCursorClientMessage } from "./cursor-encoding";
 
 // SVG cursor creation utilities (from cursor-party)
 function encodeSVG(svgData: string): string {
@@ -108,7 +108,6 @@ export class CursorClient {
   private playerIdentity: PlayerIdentity;
   private updateThrottled: boolean = false;
   private lastUpdate: number = 0;
-  private proximityThreshold: number;
   private visibilityThreshold: number;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
@@ -123,7 +122,6 @@ export class CursorClient {
     private options: CursorOptions = {}
   ) {
     this.playerIdentity = options.playerIdentity || generatePlayerIdentity();
-    this.proximityThreshold = options.proximityThreshold || PROXIMITY_THRESHOLD;
     this.visibilityThreshold =
       options.visibilityThreshold || VISIBILITY_THRESHOLD;
 
@@ -171,12 +169,12 @@ export class CursorClient {
       return;
     }
 
-    const request = {
+    const request: CursorClientMessage = {
       type: "cursor-request-sync",
     };
 
     try {
-      this.provider.ws.send(JSON.stringify(request));
+      this.provider.ws.send(encodeCursorClientMessage(request));
     } catch (error) {
       console.warn("Failed to request cursor sync:", error);
     }
@@ -321,10 +319,6 @@ export class CursorClient {
 
   private sendCursorUpdate(): void {
     if (!this.provider.ws || this.provider.ws.readyState !== WebSocket.OPEN) {
-      console.log("Cannot send cursor update: WebSocket not ready", {
-        ws: !!this.provider.ws,
-        readyState: this.provider.ws?.readyState,
-      });
       return;
     }
 
@@ -341,7 +335,7 @@ export class CursorClient {
     };
 
     try {
-      this.provider.ws.send(JSON.stringify(message));
+      this.provider.ws.send(encodeCursorClientMessage(message));
     } catch (error) {
       console.warn("Failed to send cursor update:", error);
     }
@@ -727,18 +721,16 @@ export class CursorClient {
     }
   }
 
-  // Proximity indicators are now handled by the developer via callbacks
+  // Proximity indicators are handled by developers via callbacks
   private showProximityIndicator(
     connectionId: string,
     playerIdentity: PlayerIdentity
   ): void {
-    // This method is kept for backward compatibility but does nothing
-    // Developers should handle proximity UI via onProximityEntered callback
+    // Developers handle proximity UI via onProximityEntered callback
   }
 
   private hideProximityIndicator(connectionId: string): void {
-    // This method is kept for backward compatibility but does nothing
-    // Developers should handle proximity UI via onProximityLeft callback
+    // Developers handle proximity UI via onProximityLeft callback
   }
 
   // Public method to handle messages from external interceptor
@@ -830,7 +822,6 @@ export class CursorClient {
 
     // Add new message if present
     if (message) {
-      const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
       const messageElement = document.createElement("div");
       messageElement.className = "playhtml-cursor-message";
       messageElement.style.cssText = `

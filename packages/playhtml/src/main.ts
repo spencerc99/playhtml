@@ -19,6 +19,7 @@ import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
 import { CursorClient } from "./cursor-client";
+import { decodeCursorPartyMessage } from "./cursor-encoding";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
@@ -303,21 +304,53 @@ function onMessage(evt: MessageEvent) {
   if (evt.data instanceof Blob) {
     return;
   }
+
   let message: any;
-  try {
-    message = JSON.parse(evt.data);
-  } catch (err) {
-    return;
+
+  // Try to handle cursor messages first (could be msgpack binary data)
+  if (evt.data instanceof ArrayBuffer || evt.data instanceof Uint8Array) {
+    try {
+      console.log("decodeCursorPartyMessage", evt.data);
+      message = decodeCursorPartyMessage(evt.data);
+      // If this is a cursor message, forward to cursor client
+      if (
+        cursorClient &&
+        message.type &&
+        (message.type.startsWith("cursor-") ||
+          message.type.startsWith("proximity-"))
+      ) {
+        cursorClient.handleMessage(message);
+        return;
+      }
+    } catch (err) {
+      console.error("Error decoding cursor message", err);
+      // Not a cursor message, ignore
+      return;
+    }
   }
 
-  // Handle cursor messages
-  if (
-    message.type &&
-    (message.type.startsWith("cursor-") ||
-      message.type.startsWith("proximity-")) &&
-    cursorClient
-  ) {
-    cursorClient.handleMessage(message);
+  // Handle string messages (JSON)
+  if (typeof evt.data === "string") {
+    try {
+      message = JSON.parse(evt.data);
+    } catch (err) {
+      // Try as cursor message
+      try {
+        message = decodeCursorPartyMessage(evt.data);
+        if (
+          cursorClient &&
+          message.type &&
+          (message.type.startsWith("cursor-") ||
+            message.type.startsWith("proximity-"))
+        ) {
+          cursorClient.handleMessage(message);
+          return;
+        }
+      } catch (cursorErr) {
+        return;
+      }
+    }
+  } else {
     return;
   }
 
