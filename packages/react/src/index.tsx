@@ -16,9 +16,9 @@ import { PlayContext } from "./PlayProvider";
 
 // Loading configuration options for React components
 export interface LoadingOptions {
-  behavior?: 'auto' | 'hidden' | 'animate' | 'none';
+  behavior?: "auto" | "hidden" | "animate" | "none";
   customClass?: string;
-  style?: 'breathing' | 'pulse' | 'fade' | 'none';
+  style?: "breathing" | "pulse" | "fade" | "none";
 }
 
 export type WithPlayProps<T, V> =
@@ -33,7 +33,7 @@ export type WithPlayProps<T, V> =
 
 // Add standalone and loading to the ReactElementInitializer type
 export type ReactElementInitializerWithStandalone<T, V> =
-  | (ReactElementInitializer<T, V> & { 
+  | (ReactElementInitializer<T, V> & {
       standalone?: boolean;
       loading?: LoadingOptions;
     })
@@ -102,13 +102,13 @@ export function CanPlayElement<T, V>({
   // Add loading attributes based on loading options
   const loadingAttributes: Record<string, string> = {};
   if (loading?.behavior) {
-    loadingAttributes['loading-behavior'] = loading.behavior;
+    loadingAttributes["loading-behavior"] = loading.behavior;
   }
   if (loading?.customClass) {
-    loadingAttributes['loading-class'] = loading.customClass;
+    loadingAttributes["loading-class"] = loading.customClass;
   }
   if (loading?.style) {
-    loadingAttributes['loading-style'] = loading.style;
+    loadingAttributes["loading-style"] = loading.style;
   }
   const ref = useRef<HTMLElement>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
@@ -239,7 +239,7 @@ export function withSharedState<T extends object, V = any, P = any>(
     props: P
   ) => React.ReactElement,
   options?: { standalone?: boolean; loading?: LoadingOptions }
-): (props: P) => React.ReactElement {
+): React.ComponentType<P> {
   const renderChildren = (props: P) => {
     const configForProps =
       typeof playConfig === "function" ? playConfig(props) : playConfig;
