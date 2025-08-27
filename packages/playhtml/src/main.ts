@@ -19,6 +19,7 @@ import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
+
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
 const DevPartykitHost = "localhost:1999";
@@ -301,20 +302,13 @@ function onMessage(evt: MessageEvent) {
     return;
   }
 
-  let message: any;
-
-  // Handle string messages (JSON) for PlayHTML events
-  if (typeof evt.data === "string") {
-    try {
-      message = JSON.parse(evt.data);
-    } catch (err) {
-      return;
-    }
-  } else {
+  let message: EventMessage;
+  try {
+    message = JSON.parse(evt.data) as EventMessage;
+  } catch (err) {
     return;
   }
 
-  // Handle regular event messages
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
   if (!maybeHandlers) {
@@ -468,7 +462,7 @@ async function initPlayHTML({
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
   developmentMode = false,
-  cursors,
+  cursors = {},
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -546,19 +540,16 @@ async function initPlayHTML({
       setupElements();
 
       // Initialize cursor tracking immediately after provider creation
-      if (cursors?.enabled !== false) {
+      if (cursors.enabled) {
         // Generate player identity if not provided
         const cursorOptions = {
-          enabled: true,
           ...cursors,
         };
         if (!cursorOptions.playerIdentity) {
           cursorOptions.playerIdentity = generatePlayerIdentity();
         }
 
-        console.log("Creating cursor client with options:", cursorOptions);
         cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
-        console.log("Cursor client created:", !!cursorClient);
       }
 
       // Mark all elements as ready after sync completes and elements are set up
