@@ -62,7 +62,6 @@
   "dependencies": {
     "@playhtml/common": "0.2.0",
     "@syncedstore/core": "^0.6.0",
-    "y-indexeddb": "^9.0.11",
     "y-partykit": "^0.0.31",
     "yjs": "13.6.18"
   }
