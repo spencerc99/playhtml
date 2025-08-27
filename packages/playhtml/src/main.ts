@@ -1,7 +1,6 @@
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
 import YPartyKitProvider from "y-partykit/provider";
-import { IndexeddbPersistence } from "y-indexeddb";
 import "./style.scss";
 import {
   ElementData,
@@ -489,10 +488,6 @@ async function initPlayHTML({
   yprovider.on("error", () => {
     onError?.();
   });
-
-  // @ts-ignore
-  // TODO: we should backup in indexeddb too but not using this bc it introduces a bunch of weird conflicts
-  const _indexedDBProvider = new IndexeddbPersistence(room, doc);
 
   if (extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
