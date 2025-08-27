@@ -1,13 +1,4 @@
-export interface PlayerIdentity {
-  publicKey: string;
-  playerStyle: {
-    colorPalette: string[];
-    animationStyle: string;
-  };
-  discoveredSites: string[];
-  createdAt: number;
-}
-
+import { PlayerIdentity } from "@playhtml/common";
 export interface InventoryItem {
   id: string;
   type: "element" | "site_signature" | "interaction";
@@ -29,3 +20,5 @@ export interface PlayHTMLStatus {
   elementCount: number;
   checking: boolean;
 }
+
+export type { PlayerIdentity };

@@ -64,7 +64,7 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.2.0",
+      "version": "2.2.1",
       "dependencies": {
         "@playhtml/common": "0.1.0",
         "@syncedstore/core": "^0.6.0",
@@ -83,11 +83,11 @@
     },
     "packages/react": {
       "name": "@playhtml/react",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "dependencies": {
         "@playhtml/common": "^0.1.0",
         "classnames": "^2.3.2",
-        "playhtml": "^2.2.0",
+        "playhtml": "^2.2.1",
         "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
         "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
       },

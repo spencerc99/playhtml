@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlayHTML Cursor Tracking Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: white;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        text-align: center;
+      }
+
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      p {
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+        opacity: 0.9;
+      }
+
+      .play-area {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        padding: 40px;
+        margin: 40px 0;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .moveable-box {
+        width: 100px;
+        height: 100px;
+        background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+        border-radius: 15px;
+        margin: 20px auto;
+        cursor: move;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease;
+      }
+
+      .moveable-box:hover {
+        transform: scale(1.05);
+      }
+
+      .toggle-button {
+        background: #4ecdc4;
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 25px;
+        font-size: 1.1rem;
+        cursor: pointer;
+        margin: 10px;
+        transition: all 0.3s ease;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      }
+
+      .toggle-button.clicked {
+        background: #ff6b6b;
+        transform: translateY(2px);
+      }
+
+      .status {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 15px;
+        border-radius: 10px;
+        font-size: 0.9rem;
+      }
+
+      .proximity-info {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 15px;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        max-width: 300px;
+      }
+
+      .instructions {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+        text-align: left;
+      }
+
+      .instructions ul {
+        margin: 10px 0;
+        padding-left: 20px;
+      }
+
+      .instructions li {
+        margin: 5px 0;
+      }
+
+      /* Simple Proximity UI Styles */
+      @keyframes simpleProximityPulse {
+        0%, 100% { 
+          transform: scale(1); 
+          opacity: 0.8; 
+        }
+        50% { 
+          transform: scale(1.2); 
+          opacity: 1; 
+        }
+      }
+
+      .proximity-indicator {
+        position: fixed;
+        pointer-events: none;
+        z-index: 999998;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        animation: simpleProximityPulse 2s infinite ease-in-out;
+        border: 3px solid;
+        background: transparent;
+      }
+
+      .proximity-text {
+        position: absolute;
+        top: -30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 11px;
+        white-space: nowrap;
+        z-index: 999999;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>✨ PlayHTML Cursor Magic</h1>
+      <p>Multi-user cursor tracking with proximity detection</p>
+
+      <div class="instructions">
+        <h3>🎮 How to test:</h3>
+        <ul>
+          <li>Open this page in multiple browser windows or tabs</li>
+          <li>Move your cursor around - you'll see other cursors appear</li>
+          <li>When cursors get close, magical proximity effects appear!</li>
+          <li>
+            Drag the box and toggle the button to see collaborative features
+          </li>
+        </ul>
+      </div>
+
+      <div class="play-area">
+        <div id="moveable-element" class="moveable-box" can-move></div>
+        <button id="toggle-element" class="toggle-button" can-toggle>
+          Click to toggle!
+        </button>
+      </div>
+
+      <div class="status" id="status">Initializing cursor tracking...</div>
+
+      <div class="proximity-info" id="proximity-info">
+        <strong>Proximity Events:</strong><br />
+        Move your cursor near others to see magical encounters!
+      </div>
+
+      <div
+        style="
+          position: fixed;
+          top: 20px;
+          left: 20px;
+          background: rgba(0, 0, 0, 0.8);
+          padding: 15px;
+          border-radius: 10px;
+          font-size: 0.9rem;
+          color: white;
+        "
+      >
+        <strong>Your Cursor:</strong><br />
+        <span id="cursor-info">Loading...</span>
+        <div style="margin-top: 10px">
+          <button
+            onclick="changeColor()"
+            style="
+              margin-right: 5px;
+              padding: 5px 10px;
+              background: #4ecdc4;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Random Color
+          </button>
+          <button
+            onclick="changeName()"
+            style="
+              padding: 5px 10px;
+              background: #ff6b6b;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Random Name
+          </button>
+          <button
+            onclick="toggleSimulationMode()"
+            id="simulation-button"
+            style="
+              padding: 5px 10px;
+              background: #9b59b6;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              margin-top: 5px;
+              display: block;
+            "
+          >
+            Enable Simulation Mode
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { playhtml } from "../packages/playhtml/src/main.ts";
+
+      const statusElement = document.getElementById("status");
+      const proximityElement = document.getElementById("proximity-info");
+      const cursorInfoElement = document.getElementById("cursor-info");
+      let proximityCount = 0;
+
+      function updateStatus(message) {
+        statusElement.textContent = message;
+      }
+
+      function updateCursorInfo() {
+        if (window.cursors) {
+          cursorInfoElement.innerHTML = `
+                    Color: <span style="color: ${window.cursors.color}">●</span> ${window.cursors.color}<br>
+                    Name: ${window.cursors.name}<br>
+                    Active Users: ${window.cursors.count}<br>
+                    All Colors: ${window.cursors.allColors.length}
+                `;
+        }
+      }
+
+      function addProximityEvent(type, otherPlayer) {
+        proximityCount++;
+        const timestamp = new Date().toLocaleTimeString();
+        const playerColor =
+          otherPlayer?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+        const playerName =
+          otherPlayer?.name || `Player ${otherPlayer?.publicKey?.slice(-4)}`;
+
+        proximityElement.innerHTML = `
+                <strong>Proximity Events (${proximityCount}):</strong><br>
+                <div style="color: ${playerColor}; margin-top: 5px;">
+                    ${timestamp}: ${
+          type === "entered" ? "✨ Near" : "👋 Away from"
+        } ${playerName}
+                </div>
+                ${proximityElement.innerHTML
+                  .split("<br>")
+                  .slice(2)
+                  .join("<br>")}
+            `;
+      }
+
+      // Custom Proximity UI Implementation
+      const activeProximityIndicators = new Map();
+
+      function showMagicalProximityUI(otherPlayer) {
+        const playerId = otherPlayer?.publicKey || 'unknown';
+        
+        // Don't create duplicate indicators
+        if (activeProximityIndicators.has(playerId)) return;
+
+        const playerColor = otherPlayer?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+        const playerName = otherPlayer?.name || `Player ${otherPlayer?.publicKey?.slice(-4)}`;
+
+        // Create simple proximity indicator
+        const indicator = document.createElement("div");
+        indicator.className = "proximity-indicator";
+        indicator.style.borderColor = playerColor;
+        
+        // Position at actual cursor location (where proximity happened)
+        const x = window.lastMouseX || window.innerWidth / 2;
+        const y = window.lastMouseY || window.innerHeight / 2;
+        indicator.style.left = `${x - 40}px`;
+        indicator.style.top = `${y - 40}px`;
+
+        // Add player name
+        const nameLabel = document.createElement("div");
+        nameLabel.className = "proximity-text";
+        nameLabel.textContent = `${playerName} nearby!`;
+        nameLabel.style.color = playerColor;
+        indicator.appendChild(nameLabel);
+
+        document.body.appendChild(indicator);
+        activeProximityIndicators.set(playerId, indicator);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+          hideMagicalProximityUI(playerId);
+        }, 3000);
+      }
+
+      function hideMagicalProximityUI(playerId) {
+        const indicator = activeProximityIndicators.get(playerId);
+        if (indicator) {
+          indicator.style.animation = "simpleProximityPulse 0.3s ease-out reverse";
+          setTimeout(() => {
+            if (indicator.parentNode) {
+              indicator.remove();
+            }
+            activeProximityIndicators.delete(playerId);
+          }, 300);
+        }
+      }
+
+      // Simulation Mode for Testing Proximity UI
+      let simulationMode = false;
+      let simulatedCursors = [];
+      let simulationInterval = null;
+
+      function createSimulatedCursor(id, color, name) {
+        const cursor = document.createElement("div");
+        cursor.className = "playhtml-cursor-other";
+        cursor.id = `sim-cursor-${id}`;
+        cursor.innerHTML = `
+          <svg height="32" viewBox="0 0 32 32" width="32" xmlns="http://www.w3.org/2000/svg">
+            <g fill="none" fillRule="evenodd" transform="translate(10 7)">
+              <path d="m6.148 18.473 1.863-1.003 1.615-.839-2.568-4.816h4.332l-11.379-11.408v16.015l3.316-3.221z" fill="#fff"/>
+              <path d="m6.431 17 1.765-.941-2.775-5.202h3.604l-8.025-8.043v11.188l2.53-2.442z" fill="${color}"/>
+            </g>
+          </svg>
+          <div style="position: absolute; top: -25px; left: 35px; background: rgba(0,0,0,0.8); color: white; padding: 2px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">${name}</div>
+        `;
+        cursor.style.position = "fixed";
+        cursor.style.zIndex = "999999";
+        cursor.style.pointerEvents = "none";
+        cursor.style.transition = "all 0.1s ease";
+        
+        document.body.appendChild(cursor);
+        return cursor;
+      }
+
+      function moveSimulatedCursor(cursor, x, y) {
+        cursor.style.left = `${x}px`;
+        cursor.style.top = `${y}px`;
+      }
+
+      function getDistanceFromRealCursor(x, y) {
+        const realCursor = { x: window.lastMouseX || window.innerWidth / 2, y: window.lastMouseY || window.innerHeight / 2 };
+        return Math.sqrt(Math.pow(x - realCursor.x, 2) + Math.pow(y - realCursor.y, 2));
+      }
+
+      // Track real cursor position
+      window.lastMouseX = window.innerWidth / 2;
+      window.lastMouseY = window.innerHeight / 2;
+      document.addEventListener('mousemove', (e) => {
+        window.lastMouseX = e.clientX;
+        window.lastMouseY = e.clientY;
+      });
+
+      window.toggleSimulationMode = function() {
+        simulationMode = !simulationMode;
+        const button = document.getElementById('simulation-button');
+        
+        if (simulationMode) {
+          button.textContent = 'Disable Simulation Mode';
+          button.style.background = '#e74c3c';
+          
+          // Create 3 simulated cursors
+          const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1'];
+          const names = ['Alice', 'Bob', 'Charlie'];
+          
+          simulatedCursors = colors.map((color, i) => {
+            const cursor = createSimulatedCursor(i, color, names[i]);
+            return {
+              element: cursor,
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              vx: (Math.random() - 0.5) * 2,
+              vy: (Math.random() - 0.5) * 2,
+              color: color,
+              name: names[i],
+              publicKey: `sim-key-${i}`,
+              wasNear: false
+            };
+          });
+          
+          // Start simulation loop
+          simulationInterval = setInterval(() => {
+            simulatedCursors.forEach(simCursor => {
+              // Update position with simple physics
+              simCursor.x += simCursor.vx;
+              simCursor.y += simCursor.vy;
+              
+              // Bounce off walls
+              if (simCursor.x < 0 || simCursor.x > window.innerWidth - 32) simCursor.vx *= -1;
+              if (simCursor.y < 0 || simCursor.y > window.innerHeight - 32) simCursor.vy *= -1;
+              
+              // Keep in bounds
+              simCursor.x = Math.max(0, Math.min(window.innerWidth - 32, simCursor.x));
+              simCursor.y = Math.max(0, Math.min(window.innerHeight - 32, simCursor.y));
+              
+              // Update visual position
+              moveSimulatedCursor(simCursor.element, simCursor.x, simCursor.y);
+              
+              // Check proximity to real cursor
+              const distance = getDistanceFromRealCursor(simCursor.x, simCursor.y);
+              const isNear = distance < 200; // Same threshold as real proximity
+              
+              if (isNear && !simCursor.wasNear) {
+                // Entered proximity
+                console.log('🎉 Simulated proximity entered!', simCursor.name);
+                const fakePlayer = {
+                  publicKey: simCursor.publicKey,
+                  name: simCursor.name,
+                  playerStyle: { colorPalette: [simCursor.color] }
+                };
+                addProximityEvent("entered", fakePlayer);
+                showMagicalProximityUI(fakePlayer);
+                simCursor.wasNear = true;
+              } else if (!isNear && simCursor.wasNear) {
+                // Left proximity
+                console.log('👋 Simulated proximity left!', simCursor.name);
+                const fakePlayer = {
+                  publicKey: simCursor.publicKey,
+                  name: simCursor.name,
+                  playerStyle: { colorPalette: [simCursor.color] }
+                };
+                addProximityEvent("left", fakePlayer);
+                hideMagicalProximityUI(simCursor.publicKey);
+                simCursor.wasNear = false;
+              }
+            });
+          }, 50); // 20fps for smooth movement
+          
+        } else {
+          button.textContent = 'Enable Simulation Mode';
+          button.style.background = '#9b59b6';
+          
+          // Clean up simulation
+          if (simulationInterval) {
+            clearInterval(simulationInterval);
+            simulationInterval = null;
+          }
+          
+          simulatedCursors.forEach(simCursor => {
+            if (simCursor.element.parentNode) {
+              simCursor.element.remove();
+            }
+            // Clean up any active proximity indicators
+            hideMagicalProximityUI(simCursor.publicKey);
+          });
+          simulatedCursors = [];
+        }
+      };
+
+      // Global functions for buttons
+      window.changeColor = function () {
+        if (window.cursors && window.cursors.setColor) {
+          const colors = [
+            "#ff6b6b",
+            "#4ecdc4",
+            "#45b7d1",
+            "#96ceb4",
+            "#ffeaa7",
+            "#dda0dd",
+            "#98d8c8",
+            "#f7dc6f",
+          ];
+          const randomColor = colors[Math.floor(Math.random() * colors.length)];
+          window.cursors.setColor(randomColor);
+          // updateCursorInfo will be called via the event listener
+        }
+      };
+
+      window.changeName = function () {
+        if (window.cursors && window.cursors.setName) {
+          const names = [
+            "Luna",
+            "Nova",
+            "Atlas",
+            "Orion",
+            "Sage",
+            "River",
+            "Phoenix",
+            "Echo",
+          ];
+          const randomName = names[Math.floor(Math.random() * names.length)];
+          window.cursors.setName(randomName);
+          // updateCursorInfo will be called via the event listener
+        }
+      };
+
+      // Initialize PlayHTML with cursor tracking
+      updateStatus("🚀 Starting PlayHTML...");
+
+      try {
+        await playhtml.init({
+          developmentMode: true,
+          cursors: {
+            enabled: true,
+            proximityThreshold: 200, // Increased for easier testing
+            visibilityThreshold: 400,
+            onProximityEntered: (otherPlayer) => {
+              console.log("🎉 Proximity entered!", otherPlayer);
+              addProximityEvent("entered", otherPlayer);
+              showMagicalProximityUI(otherPlayer);
+            },
+            onProximityLeft: (otherPlayer) => {
+              console.log("👋 Proximity left!", otherPlayer);
+              addProximityEvent("left", otherPlayer);
+              hideMagicalProximityUI(otherPlayer?.publicKey || 'unknown');
+            },
+          },
+          onError: () => {
+            updateStatus("❌ Connection failed");
+          },
+        });
+
+        updateStatus("✅ Connected! Move your cursor around");
+        console.log("PlayHTML initialized with cursor tracking");
+        console.log("Cursor system:", playhtml.cursorSystem);
+        console.log("Window cursors API:", window.cursors);
+
+        // Demo the window API
+        if (window.cursors) {
+          console.log("Current cursor color:", window.cursors.color);
+          console.log("Current cursor name:", window.cursors.name);
+
+          // Listen to changes
+          window.cursors.on("count", (count) => {
+            console.log("User count changed:", count);
+            updateCursorInfo();
+          });
+
+          window.cursors.on("allColors", (colors) => {
+            updateCursorInfo();
+          });
+
+          window.cursors.on("color", (color) => {
+            console.log("Color changed:", color);
+            updateCursorInfo();
+          });
+
+          window.cursors.on("name", (name) => {
+            console.log("Name changed:", name);
+            updateCursorInfo();
+          });
+
+          // Initial display
+          updateCursorInfo();
+        }
+      } catch (error) {
+        console.error("Failed to initialize PlayHTML:", error);
+        updateStatus("❌ Failed to initialize: " + error.message);
+      }
+    </script>
+  </body>
+</html>

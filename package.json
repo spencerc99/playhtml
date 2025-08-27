@@ -13,6 +13,7 @@
     "dev-server": "bunx partykit dev partykit/party.ts",
     "dev-extension": "cd packages/extension && bun run dev",
     "deploy-server": "bunx partykit deploy",
+    "deploy-server:staging": "bunx partykit deploy --preview staging",
     "build-site": "vite build website --config vite.config.site.mts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && bun run build); done",
     "build-extension": "cd packages/extension && bun run build",

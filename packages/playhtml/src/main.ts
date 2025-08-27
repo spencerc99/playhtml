@@ -12,13 +12,41 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
+  generatePlayerIdentity,
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
+import { CursorClientAwareness } from "./cursors/cursor-client";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
+const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
+const DevPartykitHost = "localhost:1999";
+
+// Environment-specific host resolution
+function getPartykitHost(userHost?: string): string {
+  // If user explicitly provides a host, use it
+  if (userHost) {
+    return userHost;
+  }
+
+  const hostname = window.location.hostname;
+
+  // Staging domain detection (customize these patterns for your setup)
+  if (hostname.includes("staging") || hostname.includes("ngrok-free")) {
+    return StagingPartykitHost;
+  }
+
+  if (typeof import.meta !== "undefined" && import.meta.env) {
+    if (import.meta.env.DEV) {
+      return DevPartykitHost;
+    }
+  }
+
+  // Default to production
+  return DefaultPartykitHost;
+}
 
 const VERBOSE = 0;
 
@@ -154,6 +182,7 @@ function getDefaultRoom(includeSearch?: boolean): string {
     : transformedPathname;
 }
 let yprovider: YPartyKitProvider;
+let cursorClient: CursorClientAwareness | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
@@ -189,6 +218,17 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
 >();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
+export interface CursorOptions {
+  enabled?: boolean;
+  playerIdentity?: any;
+  proximityThreshold?: number;
+  visibilityThreshold?: number;
+  cursorStyle?: string;
+  onProximityEntered?: (playerIdentity?: any) => void;
+  onProximityLeft?: (connectionId: string) => void;
+  enableChat?: boolean;
+}
+
 export interface InitOptions<T = any> {
   /**
    * The room to connect users to (this should be a string that matches the other users
@@ -235,6 +275,11 @@ export interface InitOptions<T = any> {
    * If true, will render some helpful development UI.
    */
   developmentMode?: boolean;
+
+  /**
+   * Cursor tracking and proximity detection configuration
+   */
+  cursors?: CursorOptions;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -256,14 +301,15 @@ function onMessage(evt: MessageEvent) {
   if (evt.data instanceof Blob) {
     return;
   }
+
   let message: EventMessage;
   try {
     message = JSON.parse(evt.data) as EventMessage;
   } catch (err) {
     return;
   }
-  const { type, eventPayload } = message;
 
+  const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
   if (!maybeHandlers) {
     return;
@@ -409,13 +455,14 @@ let firstSetup = true;
 
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
-  host = DefaultPartykitHost,
+  host,
   extraCapabilities,
   events,
   defaultRoomOptions = {},
   room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
   onError,
   developmentMode = false,
+  cursors = {},
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -427,9 +474,7 @@ async function initPlayHTML({
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
 
-  // NOTE: there's a typescript error here but it all seems to work...
-  // @ts-ignore
-  const partykitHost = import.meta.env.DEV ? "localhost:1999" : host;
+  const partykitHost = getPartykitHost(host);
 
   console.log(
     `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
@@ -439,10 +484,12 @@ async function initPlayHTML({
 ࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
+
   yprovider = new YPartyKitProvider(partykitHost, room, doc);
   yprovider.on("error", () => {
     onError?.();
   });
+
   // @ts-ignore
   // TODO: we should backup in indexeddb too but not using this bc it introduces a bunch of weird conflicts
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
@@ -491,6 +538,19 @@ async function initPlayHTML({
       migrateAllDataFromYMapToSyncedStore();
 
       setupElements();
+
+      // Initialize cursor tracking immediately after provider creation
+      if (cursors.enabled) {
+        // Generate player identity if not provided
+        const cursorOptions = {
+          ...cursors,
+        };
+        if (!cursorOptions.playerIdentity) {
+          cursorOptions.playerIdentity = generatePlayerIdentity();
+        }
+
+        cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
+      }
 
       // Mark all elements as ready after sync completes and elements are set up
       markAllElementsAsReady();
@@ -848,6 +908,7 @@ interface PlayHTMLComponents {
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
+  cursorClient: CursorClientAwareness | null;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -865,6 +926,9 @@ export const playhtml: PlayHTMLComponents = {
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
+  get cursorClient() {
+    return cursorClient;
+  },
 };
 
 /**

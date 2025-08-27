@@ -10,22 +10,30 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - **packages/react**: React wrapper components for playhtml functionality
 - **packages/common**: Shared TypeScript types and interfaces
 - **partykit/**: Real-time sync server using PartyKit and Yjs for collaborative state
-- **website/**: Demo site showcasing playhtml capabilities
+- **website/**: Demo site showcasing playhtml capabilities and the home page for the library. Any test pages should go in here.
 
 ## Development Commands
 
 ### Core Development
+
 - `bun dev`: Start the development server for the website
 - `bun dev-server`: Start the PartyKit development server for real-time sync
 - `bun build-site`: Build the website for production
 - `bun build-packages`: Build all packages in the monorepo
 
+### Installing Dependencies
+
+- use bun install to install dependencies for all packages
+
 ### Package-Specific Commands
+
 Each package (playhtml, react, common) has its own build process:
+
 - `cd packages/[package-name] && bun build`: Build individual package
 - `cd packages/react && bun test`: Run React package tests
 
 ### Testing
+
 - `cd packages/react && bun test`: Run tests for React components
 - `cd packages/react && bun test:watch`: Run tests in watch mode
 
@@ -36,8 +44,9 @@ Each package (playhtml, react, common) has its own build process:
 The playhtml library revolves around the concept of "capabilities" - interactive behaviors that can be added to HTML elements via data attributes:
 
 1. **Element Capabilities**: Defined in `packages/playhtml/src/elements.ts` and `packages/common/src/index.ts`
+
    - `can-move`: Draggable elements with 2D translation
-   - `can-spin`: Rotatable elements  
+   - `can-spin`: Rotatable elements
    - `can-toggle`: Toggle on/off state with CSS classes
    - `can-grow`: Scalable elements with click/alt-click
    - `can-duplicate`: Clone elements dynamically
@@ -45,6 +54,7 @@ The playhtml library revolves around the concept of "capabilities" - interactive
    - `can-play`: Fully customizable capability framework
 
 2. **State Management**: Uses Yjs for real-time collaborative state sync
+
    - Global shared state: `globalData` (Y.Map)
    - Element handlers: `elementHandlers` (Map of ElementHandler instances)
    - Awareness (user presence): `yprovider.awareness`
@@ -66,6 +76,7 @@ The playhtml library revolves around the concept of "capabilities" - interactive
 ### React Integration
 
 The React package provides declarative components that wrap the core playhtml functionality:
+
 - `<PlayProvider>`: Context provider for playhtml initialization
 - `<CanMove>`, `<CanSpin>`, `<CanToggle>` etc.: Component wrappers for each capability
 - Custom hooks for accessing playhtml state and events
@@ -94,17 +105,20 @@ Bun automatically handles workspace linking. When making changes across packages
 ## Important Patterns
 
 ### Element Initialization
+
 - Elements must have unique `id` attributes
 - Capabilities are detected via data attributes (e.g., `can-move`, `can-toggle`)
 - Custom elements use the `can-play` attribute with JavaScript setup
 
 ### State Management
+
 - Use `setData()` for persistent, synced state changes
 - Use `setLocalData()` for temporary, local-only state
 - Use `setMyAwareness()` for user presence/cursor data
 - For React, generally always try to use `withSharedState` rather than the internal `CanPlayElement`
 
 ### Event Handling
+
 - onClick, onDrag, onDragStart are the main interaction patterns
 - Reset shortcuts use modifier keys (shift, ctrl, alt, meta)
 - Custom event listeners can be added in `onMount`
