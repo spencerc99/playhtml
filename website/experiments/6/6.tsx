@@ -1,5 +1,5 @@
 import "./6.scss";
-import React, { useEffect, useMemo, useState, useRef, useContext } from "react";
+import React, { useEffect, useMemo, useState, useRef, useContext, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 import {
   PlayProvider,
@@ -101,6 +101,9 @@ const Main = withSharedState(
     const [isResizing, setIsResizing] = useState(false);
     const [zoom, setZoom] = useState(1);
     const [targetZoom, setTargetZoom] = useState(1);
+    const [isPanning, setIsPanning] = useState(false);
+    const [lastTouchDistance, setLastTouchDistance] = useState(0);
+    const [panStartY, setPanStartY] = useState(0);
     const containerRef = useRef<HTMLDivElement>(null);
     const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -198,13 +201,8 @@ const Main = withSharedState(
       return () => cancelAnimationFrame(animationId);
     }, [targetZoom]);
 
-    // Mouse wheel zoom with snapping (centered zooming only)
-    const handleWheel = (e: React.WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY;
-      const zoomFactor = delta > 0 ? 0.9 : 1.1;
-      let newZoom = targetZoom * zoomFactor;
-
+    // Zoom helper function
+    const updateZoom = useCallback((newZoom: number) => {
       // Snap to device sizes when close
       for (const device of DEVICE_SIZES) {
         const deviceZoom = Math.min(
@@ -218,7 +216,128 @@ const Main = withSharedState(
       }
 
       setTargetZoom(Math.max(0.1, Math.min(5, newZoom)));
+    }, [currentSize.width, currentSize.height]);
+
+    // Prevent scroll on body and handle it for zooming
+    useEffect(() => {
+      const handleScroll = (e: Event) => {
+        e.preventDefault();
+        return false;
+      };
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        // Prevent arrow keys, space, page up/down from scrolling
+        if (['ArrowUp', 'ArrowDown', 'Space', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.code)) {
+          e.preventDefault();
+          
+          // Convert key presses to zoom
+          const zoomFactor = e.code === 'ArrowUp' || e.code === 'PageUp' ? 1.1 : 
+                            e.code === 'ArrowDown' || e.code === 'PageDown' ? 0.9 : 1;
+          if (zoomFactor !== 1) {
+            updateZoom(targetZoom * zoomFactor);
+          }
+        }
+      };
+
+      // Add event listeners to prevent scrolling and handle keyboard zoom
+      window.addEventListener('scroll', handleScroll, { passive: false });
+      window.addEventListener('keydown', handleKeyDown, { passive: false });
+      document.body.addEventListener('scroll', handleScroll, { passive: false });
+      document.documentElement.addEventListener('scroll', handleScroll, { passive: false });
+
+      return () => {
+        window.removeEventListener('scroll', handleScroll);
+        window.removeEventListener('keydown', handleKeyDown);
+        document.body.removeEventListener('scroll', handleScroll);
+        document.documentElement.removeEventListener('scroll', handleScroll);
+      };
+    }, [targetZoom, updateZoom]);
+
+    // Mouse wheel zoom with snapping (centered zooming only)
+    const handleWheel = useCallback((e: React.WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY;
+      const zoomFactor = delta > 0 ? 0.9 : 1.1;
+      updateZoom(targetZoom * zoomFactor);
+    }, [targetZoom, updateZoom]);
+
+    // Touch/pan gesture handlers
+    const getTouchDistance = (touches: TouchList) => {
+      if (touches.length < 2) return 0;
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      return Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
     };
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+      e.preventDefault();
+      setIsPanning(true);
+
+      if (e.touches.length === 2) {
+        // Pinch gesture
+        setLastTouchDistance(getTouchDistance(e.touches));
+      } else if (e.touches.length === 1) {
+        // Single finger pan for zoom
+        setPanStartY(e.touches[0].clientY);
+      }
+    }, []);
+
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+      e.preventDefault();
+      if (!isPanning) return;
+
+      if (e.touches.length === 2) {
+        // Pinch zoom
+        const currentDistance = getTouchDistance(e.touches);
+        if (lastTouchDistance > 0) {
+          const scale = currentDistance / lastTouchDistance;
+          updateZoom(targetZoom * scale);
+        }
+        setLastTouchDistance(currentDistance);
+      } else if (e.touches.length === 1) {
+        // Pan gesture zoom (vertical movement)
+        const deltaY = panStartY - e.touches[0].clientY;
+        const sensitivity = 0.005;
+        const zoomDelta = deltaY * sensitivity;
+        updateZoom(targetZoom * (1 + zoomDelta));
+        setPanStartY(e.touches[0].clientY);
+      }
+    }, [isPanning, lastTouchDistance, panStartY, targetZoom, updateZoom]);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+      e.preventDefault();
+      setIsPanning(false);
+      setLastTouchDistance(0);
+      setPanStartY(0);
+    }, []);
+
+    // Mouse pan gesture handlers (for trackpads)
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+      if (e.button !== 0) return; // Only left mouse button
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStartY(e.clientY);
+    }, []);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+      if (!isPanning) return;
+      e.preventDefault();
+      
+      const deltaY = panStartY - e.clientY;
+      const sensitivity = 0.003;
+      const zoomDelta = deltaY * sensitivity;
+      updateZoom(targetZoom * (1 + zoomDelta));
+      setPanStartY(e.clientY);
+    }, [isPanning, panStartY, targetZoom, updateZoom]);
+
+    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsPanning(false);
+      setPanStartY(0);
+    }, []);
 
     // Get all unique sizes sorted by area (largest first for proper nesting)
     const allSizes = useMemo(() => {
@@ -227,82 +346,96 @@ const Main = withSharedState(
       );
     }, [data.sizes]);
 
-    // Render nested rectangles
-    const renderScreenSizes = () => {
-      if (allSizes.length === 0) return null;
+    // Memoized screen rectangle component for performance
+    const ScreenRectangle = useCallback(({ size, index, zoom, isCurrentSize }: {
+      size: ScreenSize;
+      index: number;
+      zoom: number;
+      isCurrentSize: boolean;
+    }) => {
+      const color = ALBERS_COLORS[index % ALBERS_COLORS.length];
+      const scaledWidth = size.width * zoom;
+      const scaledHeight = size.height * zoom;
 
-      return allSizes.map((size, index) => {
-        const color = ALBERS_COLORS[index % ALBERS_COLORS.length];
-        const isCurrentSize =
-          getScreenSizeKey(size.width, size.height) ===
-          getScreenSizeKey(currentSize.width, currentSize.height);
+      // Find nearest device for label (memoized)
+      const nearestDevice = useMemo(() => findNearestDeviceSize(size.width, size.height), [size.width, size.height]);
+      const isExactMatch = nearestDevice.width === size.width && nearestDevice.height === size.height;
+      
+      // Pre-format strings to avoid recalculation
+      const modelId = useMemo(() => 
+        isExactMatch 
+          ? nearestDevice.name.toUpperCase().replace(/[^A-Z0-9]/g, '')
+          : `~${nearestDevice.name.toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+        [nearestDevice.name, isExactMatch]
+      );
+      
+      const timeString = useMemo(() => 
+        new Date(size.lastSeen).toLocaleTimeString('en-US', { 
+          hour12: false, 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        [size.lastSeen]
+      );
 
-        const scaledWidth = size.width * zoom;
-        const scaledHeight = size.height * zoom;
-
-        // Find nearest device for label
-        const nearestDevice = findNearestDeviceSize(size.width, size.height);
-        const isExactMatch =
-          nearestDevice.width === size.width &&
-          nearestDevice.height === size.height;
-
-        return (
-          <div
-            key={getScreenSizeKey(size.width, size.height)}
-            className={`screen-rectangle ${isCurrentSize ? "current" : ""}`}
-            style={{
-              width: scaledWidth,
-              height: scaledHeight,
-              backgroundColor: color,
-              opacity: isCurrentSize ? 1 : 0.7,
-              border: isCurrentSize
-                ? `3px solid ${color}`
-                : `1px solid ${color}`,
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              transform: `translate(-50%, -50%)`,
-              zIndex: index + 1, // Smaller rectangles (higher index) get higher z-index
-            }}
-          >
-            {/* Labels around the viewport */}
-            <div className="screen-label top-left">
-              <div className="device-name">
-                {isExactMatch ? nearestDevice.name : `~${nearestDevice.name}`}
-              </div>
-              <div className="dimensions">
-                {size.width} × {size.height}
-              </div>
+      return (
+        <div
+          key={getScreenSizeKey(size.width, size.height)}
+          className={`screen-rectangle ${isCurrentSize ? "current" : ""}`}
+          style={{
+            width: scaledWidth,
+            height: scaledHeight,
+            backgroundColor: color,
+            opacity: isCurrentSize ? 1 : 0.7,
+            border: isCurrentSize ? `3px solid ${color}` : `1px solid ${color}`,
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: `translate(-50%, -50%)`,
+            zIndex: index + 1,
+          }}
+        >
+          <div className="equipment-labels">
+            <div className="equipment-header">
+              <span className="model-id">{modelId}</span>
+              <span className="dimensions">{size.width}×{size.height}</span>
             </div>
-
-            <div className="screen-label top-right">
-              <div className="count">×{size.count}</div>
-              <div className="last-seen">
-                {new Date(size.lastSeen).toLocaleTimeString()}
+            
+            <div className="equipment-stats">
+              <div className="stat-row">
+                <span className="stat-label">CNT</span>
+                <span className="stat-value">{size.count.toString().padStart(3, '0')}</span>
               </div>
-            </div>
-
-            <div className="screen-label bottom-left">
-              <div className="platform">{size.deviceInfo.platform}</div>
-              <div className="pixel-ratio">
-                {size.deviceInfo.pixelRatio}× pixel ratio
+              <div className="stat-row">
+                <span className="stat-label">DPR</span>
+                <span className="stat-value">{size.deviceInfo.pixelRatio.toFixed(1)}×</span>
               </div>
-            </div>
-
-            <div className="screen-label bottom-right">
-              <div className="first-seen">
-                First: {new Date(size.timestamps[0]).toLocaleTimeString()}
+              <div className="stat-row">
+                <span className="stat-label">LST</span>
+                <span className="stat-value">{timeString}</span>
               </div>
-              {size.timestamps.length > 1 && (
-                <div className="session-count">
-                  {size.timestamps.length} sessions
-                </div>
-              )}
             </div>
           </div>
-        );
-      });
-    };
+        </div>
+      );
+    }, []);
+
+    // Render nested rectangles
+    const renderScreenSizes = useMemo(() => {
+      if (allSizes.length === 0) return null;
+
+      const currentSizeKey = getScreenSizeKey(currentSize.width, currentSize.height);
+      
+      return allSizes.map((size, index) => (
+        <ScreenRectangle
+          key={getScreenSizeKey(size.width, size.height)}
+          size={size}
+          index={index}
+          zoom={zoom}
+          isCurrentSize={getScreenSizeKey(size.width, size.height) === currentSizeKey}
+        />
+      ));
+    }, [allSizes, zoom, currentSize, ScreenRectangle]);
 
     return (
       <div id="main">
@@ -316,8 +449,18 @@ const Main = withSharedState(
           ref={containerRef}
           className="visualization-container"
           onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{
+            cursor: isPanning ? 'ns-resize' : 'default',
+          }}
         >
-          {renderScreenSizes()}
+          {renderScreenSizes}
         </div>
 
         {/* Floating controls - bottom right */}
