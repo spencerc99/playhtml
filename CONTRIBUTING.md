@@ -20,3 +20,34 @@ There is future work I'm planning on getting to in the Issues section. If you ha
 ### Working with local packages
 
 Bun automatically handles workspace linking, so changes in `common` will be immediately available in `playhtml` and `react` packages without any additional setup. Just run `bun install` at the root to set up the workspace dependencies.
+
+## Release Process
+
+This project uses [Changesets](https://github.com/changesets/changesets) for managing package versions and releases.
+
+### Creating a Changeset
+
+When you make changes that should be included in a release, you need to create a changeset:
+
+```bash
+bun run changeset
+```
+
+This will prompt you to:
+1. Select which packages are affected by your changes
+2. Choose the type of version bump (patch, minor, major)
+3. Provide a summary of your changes
+
+### Automated Releases
+
+Once your changes are merged to `main`, the GitHub Action workflow will:
+
+1. **Create a Release PR**: If there are pending changesets, it will create a "Release" PR that updates package versions and generates changelogs
+2. **Publish to NPM**: When the Release PR is merged, it will automatically publish the updated packages to NPM
+
+### Manual Release Commands (Deprecated)
+
+The following manual release commands have been removed and replaced with the changesets workflow:
+
+- ~~`bun run release:*`~~ - Use changesets instead  
+- ~~`node scripts/release.js`~~ - Removed, use changesets workflow
