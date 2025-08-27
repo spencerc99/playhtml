@@ -7,6 +7,10 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   release:
     name: Release
@@ -33,6 +37,9 @@ jobs:
           publish: bun run release
           title: "ci: release packages"
           commit: "ci: release packages"
+          setupGitUser: true
+          createGithubReleases: true
+          commitMode: "pull-request"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
