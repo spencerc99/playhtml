@@ -272,11 +272,11 @@ const Main = withSharedState(
       );
     }, [data.sizes]);
 
-    // Zoom helper function with dynamic max zoom based on largest screen size
+    // Zoom helper function with proper min zoom based on largest screen size
     const updateZoom = useCallback(
       (newZoom: number) => {
-        // Calculate max zoom based on largest screen size with padding
-        let maxZoom = 5; // Default fallback
+        let minZoom = 0.1; // Default fallback
+        const maxZoom = 5; // Fixed max zoom
 
         if (
           allSizes.length > 0 &&
@@ -284,17 +284,18 @@ const Main = withSharedState(
           currentSize.height > 0
         ) {
           const largestSize = allSizes[0]; // Already sorted by area, largest first
-          const paddingFactor = 1.2; // 20% padding around the largest rectangle
+          const paddingFactor = 1.05; // 5% padding around the largest rectangle
 
-          const maxZoomByWidth =
-            (currentSize.width * 0.9) / (largestSize.width * paddingFactor);
-          const maxZoomByHeight =
-            (currentSize.height * 0.9) / (largestSize.height * paddingFactor);
+          // Calculate minimum zoom where largest rectangle fits with padding
+          const minZoomByWidth =
+            (currentSize.width * 0.95) / (largestSize.width * paddingFactor);
+          const minZoomByHeight =
+            (currentSize.height * 0.95) / (largestSize.height * paddingFactor);
 
-          maxZoom = Math.min(maxZoomByWidth, maxZoomByHeight, 5); // Cap at 5x for safety
+          minZoom = Math.min(minZoomByWidth, minZoomByHeight);
         }
 
-        setTargetZoom(Math.max(0.1, Math.min(maxZoom, newZoom)));
+        setTargetZoom(Math.max(minZoom, Math.min(maxZoom, newZoom)));
       },
       [allSizes, currentSize.width, currentSize.height]
     );
@@ -498,7 +499,7 @@ const Main = withSharedState(
               top: "50%",
               transform: `translate(-50%, -50%)`,
               zIndex: index + 1,
-              animationDelay: `${(allSizes.length - 1 - index) * 1000}ms`, // Smaller rectangles first
+              animationDelay: `${(allSizes.length - 1 - index) * 200}ms`, // Smaller rectangles first
             }}
           >
             <div className="equipment-labels">
@@ -620,7 +621,7 @@ const Main = withSharedState(
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           style={{
-            cursor: isPanning ? "ns-resize" : "default",
+            cursor: isPanning ? "ns-resize" : undefined,
           }}
         >
           {renderScreenSizes}
@@ -659,7 +660,11 @@ const Main = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider
+    initOptions={{
+      cursors: { enabled: true },
+    }}
+  >
     <Main />
   </PlayProvider>
 );

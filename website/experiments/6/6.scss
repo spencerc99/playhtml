@@ -49,7 +49,6 @@ body {
   height: 100vh;
   position: relative;
   user-select: none;
-  cursor: default;
 
   // Dotted grid background
   background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
@@ -88,7 +87,6 @@ body {
 // Screen rectangles
 .screen-rectangle {
   border-radius: 12px;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
 
   &.current {
@@ -99,11 +97,15 @@ body {
 
   &:hover {
     box-shadow: 0 12px 50px rgba(0, 0, 0, 0.2);
+    transition: box-shadow 0.3s ease;
   }
 
   // Entry animation for new screen sizes
   &.animate-in {
-    animation: screen-appear 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    animation: screen-appear 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+
+    // Remove transitions during animation to avoid conflicts
+    transition: none !important;
   }
 }
 
