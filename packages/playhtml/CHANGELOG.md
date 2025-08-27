@@ -4,11 +4,7 @@
 
 ### Added
 
-- Real-time cursor tracking system with proximity-based presence detection
-- Global cursor API (`window.cursors`) for programmatic color/name management
-- Chat functionality integrated with cursor presence
-- Configurable cursor options: proximity/visibility thresholds, styles, callbacks
-- Support for mouse, touch, and custom cursor types with smooth animations
+- Real-time cursor tracking system with proximity detection, chat, and global API
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 

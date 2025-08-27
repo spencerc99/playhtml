@@ -30,8 +30,6 @@ dist-ssr
 
 # secrets
 .env
-.env.staging
-.env.production
 
 .claude
 

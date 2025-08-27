@@ -1,4 +1,3 @@
-// Cursor client using Yjs awareness instead of custom messaging
 import type YPartyKitProvider from "y-partykit/provider";
 import {
   CursorPresence,
@@ -7,9 +6,11 @@ import {
   generatePlayerIdentity,
   calculateDistance,
   VISIBILITY_THRESHOLD,
+  PROXIMITY_THRESHOLD,
 } from "@playhtml/common";
 import type { CursorOptions } from "../main";
 import { CursorChat } from "./chat";
+import randomColor from "randomcolor";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -125,8 +126,7 @@ export class CursorClientAwareness {
     this.visibilityThreshold =
       options.visibilityThreshold || VISIBILITY_THRESHOLD;
 
-    // Initialize chat if enabled (defaults to true)
-    if (this.options.enableChat !== false) {
+    if (this.options.enableChat === true) {
       this.chat = new CursorChat({
         onMessageUpdate: (message) => {
           this.currentMessage = message;
@@ -146,7 +146,8 @@ export class CursorClientAwareness {
 
     // Set initial cursor style
     const primaryColor =
-      this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
+      this.playerIdentity.playerStyle.colorPalette[0] ||
+      randomColor({ luminosity: "bright" });
     document.documentElement.style.cursor = getCursorStyleForUser(primaryColor);
   }
 
@@ -224,7 +225,8 @@ export class CursorClientAwareness {
         this.currentCursor!,
         cursorData.cursor
       );
-      const isNear = distance < (this.options.proximityThreshold || 150);
+      const isNear =
+        distance < (this.options.proximityThreshold || PROXIMITY_THRESHOLD);
 
       // Simple proximity detection - you can enhance this with enter/leave tracking
       if (isNear) {

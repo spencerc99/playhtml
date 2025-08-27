@@ -13,6 +13,8 @@ export type PlayerIdentity = {
     colorPalette: string[];
     cursorStyle?: string;
   };
+  discoveredSites?: string[];
+  createdAt?: number;
 };
 
 export type CursorPresence = {
@@ -22,48 +24,6 @@ export type CursorPresence = {
   message?: string | null;
 };
 
-export type CursorMetadata = {
-  country: string | null;
-  connectionId: string;
-};
-
-export type CursorUser = {
-  presence: CursorPresence;
-  metadata: CursorMetadata;
-};
-
-// Message types
-export type CursorPartyMessage =
-  | {
-      type: "cursor-sync";
-      users: { [connectionId: string]: CursorUser };
-    }
-  | {
-      type: "cursor-changes";
-      add?: { [connectionId: string]: CursorUser };
-      presence?: { [connectionId: string]: CursorPresence };
-      remove?: string[];
-    }
-  | {
-      type: "proximity-entered";
-      connectionId: string;
-      otherConnectionId: string;
-      playerIdentity?: PlayerIdentity;
-    }
-  | {
-      type: "proximity-left";
-      connectionId: string;
-      otherConnectionId: string;
-    };
-
-export type CursorClientMessage = 
-  | {
-      type: "cursor-update";
-      presence: CursorPresence;
-    }
-  | {
-      type: "cursor-request-sync";
-    };
 
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
@@ -93,5 +53,7 @@ export function generatePlayerIdentity(): PlayerIdentity {
     playerStyle: {
       colorPalette,
     },
+    discoveredSites: [],
+    createdAt: Date.now(),
   };
 }
