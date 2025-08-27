@@ -500,7 +500,8 @@ const Main = withSharedState(
               transform: `translate(-50%, -50%)`,
               zIndex: index + 1,
               animationDelay: `${(allSizes.length - 1 - index) * 200}ms`, // Smaller rectangles first
-            }}
+              '--zoom-factor': zoom,
+            } as React.CSSProperties & { '--zoom-factor': number }}
           >
             <div className="equipment-labels">
               {/* Top edge - Device identification */}

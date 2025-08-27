@@ -159,21 +159,21 @@ body {
   // Top edge - Device identification
   .label-top {
     position: absolute;
-    top: 6px;
-    left: 8px;
-    right: 8px;
+    top: 2%;
+    left: 3%;
+    right: 3%;
     display: flex;
     justify-content: space-between;
     align-items: center;
 
     .device-id {
-      font-size: 0.8rem;
+      font-size: calc(0.8rem * var(--zoom-factor, 1));
       font-weight: 800;
       letter-spacing: 0.5px;
     }
 
     .dimensions {
-      font-size: 0.75rem;
+      font-size: calc(0.75rem * var(--zoom-factor, 1));
       font-weight: 700;
       letter-spacing: 0.25px;
       opacity: 0.95;
@@ -183,11 +183,11 @@ body {
   // Right edge - System info (vertical text)
   .label-right {
     position: absolute;
-    top: 30px;
-    right: 6px;
+    top: 15%;
+    right: 2%;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2%;
     align-items: flex-end;
 
     .info-block {
@@ -197,20 +197,20 @@ body {
       gap: 1px;
 
       .label {
-        font-size: 0.6rem;
+        font-size: calc(0.6rem * var(--zoom-factor, 1));
         font-weight: 600;
         opacity: 0.8;
         letter-spacing: 0.3px;
       }
 
       .value {
-        font-size: 0.7rem;
+        font-size: calc(0.7rem * var(--zoom-factor, 1));
         font-weight: 800;
         letter-spacing: 0.25px;
       }
 
       .sub {
-        font-size: 0.55rem;
+        font-size: calc(0.55rem * var(--zoom-factor, 1));
         font-weight: 600;
         opacity: 0.9;
         letter-spacing: 0.2px;
@@ -221,14 +221,14 @@ body {
   // Bottom edge - Usage stats
   .label-bottom {
     position: absolute;
-    bottom: 6px;
-    left: 8px;
-    right: 8px;
+    bottom: 2%;
+    left: 3%;
+    right: 3%;
     display: flex;
     justify-content: space-between;
 
     .stat {
-      font-size: 0.65rem;
+      font-size: calc(0.65rem * var(--zoom-factor, 1));
       font-weight: 700;
       letter-spacing: 0.3px;
       font-variant-numeric: tabular-nums;
@@ -238,11 +238,11 @@ body {
   // Left edge - Browser & time info
   .label-left {
     position: absolute;
-    top: 30px;
-    left: 6px;
+    top: 15%;
+    left: 2%;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2%;
 
     .info-block {
       display: flex;
@@ -250,20 +250,20 @@ body {
       gap: 1px;
 
       .label {
-        font-size: 0.6rem;
+        font-size: calc(0.6rem * var(--zoom-factor, 1));
         font-weight: 600;
         opacity: 0.8;
         letter-spacing: 0.3px;
       }
 
       .value {
-        font-size: 0.7rem;
+        font-size: calc(0.7rem * var(--zoom-factor, 1));
         font-weight: 800;
         letter-spacing: 0.25px;
       }
 
       .sub {
-        font-size: 0.55rem;
+        font-size: calc(0.55rem * var(--zoom-factor, 1));
         font-weight: 600;
         opacity: 0.9;
         letter-spacing: 0.2px;
