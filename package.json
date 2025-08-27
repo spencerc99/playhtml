@@ -20,6 +20,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build-packages && changeset publish"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
     "@types/canvas-confetti": "^1.6.4",
