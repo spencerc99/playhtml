@@ -3,11 +3,12 @@ import { onConnect } from "y-partykit";
 import { createClient } from "@supabase/supabase-js";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
-import { CursorManager, type ConnectionWithCursor } from "./cursor-manager";
-import {
-  decodeCursorMessage,
-  cursorClientMessageSchema,
-} from "./cursor-schemas";
+// No longer using custom cursor manager - cursors now handled via Yjs awareness
+// import { CursorManager, type ConnectionWithCursor } from "./cursor-manager";
+// import {
+//   decodeCursorMessage,
+//   cursorClientMessageSchema,
+// } from "./cursor-schemas";
 
 // Create a single supabase client for interacting with your database
 const supabase = createClient(
@@ -28,10 +29,10 @@ export default class PlayHTMLPartyServer implements Party.Server {
     hibernate: true,
   };
 
-  private cursorManager: CursorManager;
+  // private cursorManager: CursorManager; // No longer using custom cursor manager
 
   constructor(public room: Party.Room) {
-    this.cursorManager = new CursorManager(room);
+    // this.cursorManager = new CursorManager(room); // No longer using custom cursor manager
   }
 
   // Domain verification removed - allow all connections
@@ -40,25 +41,13 @@ export default class PlayHTMLPartyServer implements Party.Server {
     message: string | ArrayBuffer | ArrayBufferView,
     sender: Party.Connection<unknown>
   ): Promise<void> {
-    // Only try cursor message handling if it's a string that looks like JSON with cursor type
-    if (
-      typeof message === "string" &&
-      message.includes('"type":"cursor-update"')
-    ) {
-      try {
-        const parsed = JSON.parse(message);
-        if (parsed.type === "cursor-update") {
-          this.cursorManager.onMessage(message, sender as ConnectionWithCursor);
-          return;
-        }
-      } catch (error) {
-        // Not a valid cursor message, continue to Yjs handling
-      }
-    }
-
-    // Handle all other messages (Yjs binary and string messages)
+    // All messages are now handled by Yjs, including cursor data via awareness
+    // No need for custom cursor message handling
     this.room.broadcast(message);
   }
+
+  // No longer needed - cursor messages are handled via Yjs awareness
+  // private looksLikeCursorMessage(message: string | ArrayBuffer | ArrayBufferView): boolean { ... }
 
   async onConnect(
     connection: Party.Connection,
@@ -66,8 +55,8 @@ export default class PlayHTMLPartyServer implements Party.Server {
   ) {
     const room = this.room;
 
-    // Initialize cursor tracking for this connection
-    this.cursorManager.onConnect(connection as ConnectionWithCursor, request);
+    // Cursor tracking is now handled via Yjs awareness - no custom setup needed
+    // this.cursorManager.onConnect(connection as ConnectionWithCursor, request);
 
     await onConnect(connection, this.room, {
       async load() {
@@ -126,18 +115,19 @@ export default class PlayHTMLPartyServer implements Party.Server {
   }
 
   onClose(connection: Party.Connection): void {
-    this.cursorManager.onClose(connection as ConnectionWithCursor);
+    // Cursor cleanup is handled by Yjs awareness automatically
+    // this.cursorManager.onClose(connection as ConnectionWithCursor);
   }
 
   onError(connection: Party.Connection, error: Error): void {
-    this.cursorManager.onError(connection as ConnectionWithCursor);
+    // Cursor error handling is no longer needed
+    // this.cursorManager.onError(connection as ConnectionWithCursor);
   }
 
   async onRequest(req: Party.Request): Promise<Response> {
     if (req.method === "GET") {
-      // Return current cursor state for SSR
-      const cursors = this.cursorManager.getCursors();
-      return Response.json({ cursors }, { status: 200, headers: CORS });
+      // Cursor state is now available via Yjs awareness - no custom endpoint needed
+      return Response.json({ message: "Cursor data available via Yjs awareness" }, { status: 200, headers: CORS });
     }
 
     if (req.method === "OPTIONS") {

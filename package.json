@@ -51,7 +51,6 @@
     "vite-plugin-mpa": "^1.2.0"
   },
   "dependencies": {
-    "@msgpack/msgpack": "^3.1.2",
     "@supabase/supabase-js": "^2.45.1",
     "canvas-confetti": "^1.9.2",
     "partykit": "0.0.108",

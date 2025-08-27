@@ -18,9 +18,7 @@ import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
-import { CursorClient } from "./cursor-client";
-import { decodeCursorPartyMessage } from "./cursor-encoding";
-
+import { CursorClientAwareness } from "./cursors/cursor-client";
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
 const DevPartykitHost = "localhost:1999";
@@ -185,7 +183,7 @@ function getDefaultRoom(includeSearch?: boolean): string {
     : transformedPathname;
 }
 let yprovider: YPartyKitProvider;
-let cursorClient: CursorClient | null = null;
+let cursorClient: CursorClientAwareness | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
@@ -307,48 +305,12 @@ function onMessage(evt: MessageEvent) {
 
   let message: any;
 
-  // Try to handle cursor messages first (could be msgpack binary data)
-  if (evt.data instanceof ArrayBuffer || evt.data instanceof Uint8Array) {
-    try {
-      console.log("decodeCursorPartyMessage", evt.data);
-      message = decodeCursorPartyMessage(evt.data);
-      // If this is a cursor message, forward to cursor client
-      if (
-        cursorClient &&
-        message.type &&
-        (message.type.startsWith("cursor-") ||
-          message.type.startsWith("proximity-"))
-      ) {
-        cursorClient.handleMessage(message);
-        return;
-      }
-    } catch (err) {
-      console.error("Error decoding cursor message", err);
-      // Not a cursor message, ignore
-      return;
-    }
-  }
-
-  // Handle string messages (JSON)
+  // Handle string messages (JSON) for PlayHTML events
   if (typeof evt.data === "string") {
     try {
       message = JSON.parse(evt.data);
     } catch (err) {
-      // Try as cursor message
-      try {
-        message = decodeCursorPartyMessage(evt.data);
-        if (
-          cursorClient &&
-          message.type &&
-          (message.type.startsWith("cursor-") ||
-            message.type.startsWith("proximity-"))
-        ) {
-          cursorClient.handleMessage(message);
-          return;
-        }
-      } catch (cursorErr) {
-        return;
-      }
+      return;
     }
   } else {
     return;
@@ -550,17 +512,8 @@ async function initPlayHTML({
     onError?.();
   });
 
-  // Set up message handling as soon as WebSocket is available
-  const setupMessageHandler = () => {
-    if (yprovider.ws) {
-      console.log("Setting up message handler on WebSocket");
-      yprovider.ws.addEventListener("message", onMessage);
-    } else {
-      // Wait for WebSocket to be available
-      setTimeout(setupMessageHandler, 10);
-    }
-  };
-  setupMessageHandler();
+  // Set up standard message handling for Yjs and events
+  yprovider.on("message", onMessage);
 
   // Initialize cursor tracking immediately after provider creation
   if (cursors?.enabled !== false) {
@@ -574,7 +527,7 @@ async function initPlayHTML({
     }
 
     console.log("Creating cursor client with options:", cursorOptions);
-    cursorClient = new CursorClient(yprovider, cursorOptions);
+    cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
     console.log("Cursor client created:", !!cursorClient);
   }
 
@@ -985,7 +938,7 @@ interface PlayHTMLComponents {
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
-  cursorClient: CursorClient | null;
+  cursorClient: CursorClientAwareness | null;
 }
 
 // Expose big variables to the window object for debugging purposes.
