@@ -1,5 +1,5 @@
 ---
-"@playhtml/playhtml": minor
+"playhtml": minor
 "@playhtml/common": minor
 ---
 
