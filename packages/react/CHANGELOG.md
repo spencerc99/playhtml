@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [639c9b3]
+  - playhtml@2.3.0
+  - @playhtml/common@0.2.0
+
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## 0.5.1 - 2025-08-25
