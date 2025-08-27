@@ -1,5 +1,11 @@
 # Change Log
 
+## 0.5.3
+
+### Patch Changes
+
+- aa19771: Fix JSX component type error in withSharedState. Changed component return type from ReactElement to ReactNode and withSharedState return type to React.ComponentType for proper JSX compatibility.
+
 ## 0.5.2
 
 ### Patch Changes
