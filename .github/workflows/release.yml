@@ -35,8 +35,8 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: bun run release
-          title: "ci: release packages"
-          commit: "ci: release packages"
+          title: "Release: Version packages"
+          commit: "chore(release): version packages"
           setupGitUser: true
           createGithubReleases: true
         env:
