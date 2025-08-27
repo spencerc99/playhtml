@@ -37,9 +37,7 @@ function getPartykitHost(userHost?: string): string {
     return StagingPartykitHost;
   }
 
-  // @ts-expect-error - import.meta is not defined in the browser
   if (typeof import.meta !== "undefined" && import.meta.env) {
-    // @ts-expect-error - import.meta is not defined in the browser
     if (import.meta.env.DEV) {
       return DevPartykitHost;
     }
@@ -493,45 +491,10 @@ async function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
 
-  // Create provider with cursor tracking parameters if enabled
-  const providerParams: any = {};
-  if (cursors?.enabled !== false) {
-    providerParams.from = window.location.href;
-    if (cursors?.playerIdentity) {
-      providerParams.playerIdentity = encodeURIComponent(
-        JSON.stringify(cursors.playerIdentity)
-      );
-    }
-  }
-
-  yprovider = new YPartyKitProvider(partykitHost, room, doc, {
-    params: Object.keys(providerParams).length > 0 ? providerParams : undefined,
-    connect: false,
-  });
+  yprovider = new YPartyKitProvider(partykitHost, room, doc);
   yprovider.on("error", () => {
     onError?.();
   });
-
-  // Set up standard message handling for Yjs and events
-  yprovider.on("message", onMessage);
-
-  // Initialize cursor tracking immediately after provider creation
-  if (cursors?.enabled !== false) {
-    // Generate player identity if not provided
-    const cursorOptions = {
-      enabled: true,
-      ...cursors,
-    };
-    if (!cursorOptions.playerIdentity) {
-      cursorOptions.playerIdentity = generatePlayerIdentity();
-    }
-
-    console.log("Creating cursor client with options:", cursorOptions);
-    cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
-    console.log("Cursor client created:", !!cursorClient);
-  }
-
-  yprovider.connect();
 
   // @ts-ignore
   // TODO: we should backup in indexeddb too but not using this bc it introduces a bunch of weird conflicts
@@ -569,6 +532,8 @@ async function initPlayHTML({
     yprovider.on("sync", (connected: boolean) => {
       if (!connected) {
         console.error("Issue connecting to yjs...");
+      } else if (connected) {
+        yprovider.ws!.addEventListener("message", onMessage);
       }
       if (hasSynced) {
         return;
@@ -578,9 +543,23 @@ async function initPlayHTML({
 
       migrateAllDataFromYMapToSyncedStore();
 
-      // Cursor tracking was already initialized earlier
-
       setupElements();
+
+      // Initialize cursor tracking immediately after provider creation
+      if (cursors?.enabled !== false) {
+        // Generate player identity if not provided
+        const cursorOptions = {
+          enabled: true,
+          ...cursors,
+        };
+        if (!cursorOptions.playerIdentity) {
+          cursorOptions.playerIdentity = generatePlayerIdentity();
+        }
+
+        console.log("Creating cursor client with options:", cursorOptions);
+        cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
+        console.log("Cursor client created:", !!cursorClient);
+      }
 
       // Mark all elements as ready after sync completes and elements are set up
       markAllElementsAsReady();

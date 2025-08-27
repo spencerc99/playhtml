@@ -24,7 +24,6 @@ export type CursorPresence = {
   message?: string | null;
 };
 
-
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
 export const VISIBILITY_THRESHOLD = 300; // pixels

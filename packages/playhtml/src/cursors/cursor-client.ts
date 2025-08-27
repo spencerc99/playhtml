@@ -8,6 +8,7 @@ import {
   VISIBILITY_THRESHOLD,
   PROXIMITY_THRESHOLD,
 } from "@playhtml/common";
+import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions } from "../main";
 import { CursorChat } from "./chat";
 import randomColor from "randomcolor";
@@ -106,6 +107,8 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
 
 export class CursorClientAwareness {
   private cursors: Map<string, HTMLElement> = new Map();
+  private spatialGrid: SpatialGrid<CursorPresence> = new SpatialGrid(300); // 300px cell size
+  private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
   private playerIdentity: PlayerIdentity;
   private updateThrottled: boolean = false;
@@ -204,13 +207,16 @@ export class CursorClientAwareness {
       this.otherUsersWithMessages.delete(clientId.toString());
     });
 
+    // Rebuild spatial grid with updated cursor data
+    this.rebuildSpatialGrid();
+
     this.updateGlobalColors();
     this.updateChatCTA();
-    this.checkProximity();
+    this.checkProximityOptimized();
   }
 
-  private checkProximity(): void {
-    if (!this.currentCursor) return;
+  private rebuildSpatialGrid(): void {
+    this.spatialGrid.clear();
 
     const states = this.provider.awareness.getStates();
     const myClientId = this.provider.awareness.clientID;
@@ -219,20 +225,57 @@ export class CursorClientAwareness {
       if (clientId === myClientId) return;
 
       const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-      if (!cursorData?.cursor) return;
-
-      const distance = calculateDistance(
-        this.currentCursor!,
-        cursorData.cursor
-      );
-      const isNear =
-        distance < (this.options.proximityThreshold || PROXIMITY_THRESHOLD);
-
-      // Simple proximity detection - you can enhance this with enter/leave tracking
-      if (isNear) {
-        this.options.onProximityEntered?.(cursorData.playerIdentity);
+      if (cursorData?.cursor) {
+        this.spatialGrid.insert({
+          id: clientId.toString(),
+          x: cursorData.cursor.x,
+          y: cursorData.cursor.y,
+          data: cursorData,
+        });
       }
     });
+  }
+
+  private checkProximityOptimized(): void {
+    if (!this.currentCursor) return;
+
+    const currentProximity = new Set<string>();
+    const proximityThreshold =
+      this.options.proximityThreshold || PROXIMITY_THRESHOLD;
+
+    // Use spatial grid to efficiently find nearby cursors
+    const nearbyItems = this.spatialGrid.findNearby(
+      this.currentCursor.x,
+      this.currentCursor.y,
+      proximityThreshold
+    );
+
+    // Check precise distance for nearby candidates
+    for (const item of nearbyItems) {
+      const presence = item.data;
+      if (!presence.cursor) continue;
+
+      const distance = calculateDistance(this.currentCursor, presence.cursor);
+      const isNear = distance < proximityThreshold;
+
+      if (isNear) {
+        currentProximity.add(item.id);
+
+        // Trigger proximity entered if this is new
+        if (!this.proximityUsers.has(item.id)) {
+          this.options.onProximityEntered?.(presence.playerIdentity);
+        }
+      }
+    }
+
+    // Check for users who left proximity
+    for (const connectionId of this.proximityUsers) {
+      if (!currentProximity.has(connectionId)) {
+        this.options.onProximityLeft?.(connectionId);
+      }
+    }
+
+    this.proximityUsers = currentProximity;
   }
 
   private addCursorStyles(): void {
@@ -335,11 +378,9 @@ export class CursorClientAwareness {
     document.addEventListener("touchend", handleTouchEnd);
 
     // Handle leaving the page/window
-    document.addEventListener("mouseout", (e) => {
-      if (e.relatedTarget === null) {
-        this.currentCursor = null;
-        this.updateCursorAwareness();
-      }
+    document.addEventListener("mouseleave", (e) => {
+      this.currentCursor = null;
+      this.updateCursorAwareness();
     });
   }
 
@@ -793,6 +834,9 @@ export class CursorClientAwareness {
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
 
+    // Clean up spatial grid
+    this.spatialGrid.clear();
+
     // Clean up chat
     if (this.chat) {
       this.chat.destroy();
@@ -800,5 +844,20 @@ export class CursorClientAwareness {
 
     // Remove awareness data
     this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+  }
+
+  // Debug method to inspect spatial partitioning efficiency
+  getDebugInfo(): {
+    totalCursors: number;
+    gridCells: number;
+    avgCursorsPerCell: number;
+  } {
+    const totalCursors = this.spatialGrid.getItemCount();
+    const gridCells = this.spatialGrid.getCellCount();
+    return {
+      totalCursors,
+      gridCells,
+      avgCursorsPerCell: gridCells > 0 ? totalCursors / gridCells : 0,
+    };
   }
 }
