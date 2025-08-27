@@ -1,11 +1,5 @@
 # Change Log
 
-## Unreleased
-
-### Added
-
-- Real-time cursor tracking system with proximity detection, chat, and global API
-
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## 2.2.1 - 2025-08-25
