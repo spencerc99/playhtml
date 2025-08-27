@@ -39,7 +39,6 @@ jobs:
           commit: "ci: release packages"
           setupGitUser: true
           createGithubReleases: true
-          commitMode: "pull-request"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
