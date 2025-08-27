@@ -4,7 +4,6 @@ import {
   PlayerIdentity,
   Cursor,
   generatePlayerIdentity,
-  calculateDistance,
   VISIBILITY_THRESHOLD,
   PROXIMITY_THRESHOLD,
 } from "@playhtml/common";
@@ -21,6 +20,12 @@ interface CursorEvents {
   allColors: string[];
   color: string;
   name: string;
+}
+
+export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
+  return Math.sqrt(
+    Math.pow(cursor1.x - cursor2.x, 2) + Math.pow(cursor1.y - cursor2.y, 2)
+  );
 }
 
 interface CursorEventEmitter {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { calculateDistance, PROXIMITY_THRESHOLD } from "@playhtml/common";
+import { PROXIMITY_THRESHOLD } from "@playhtml/common";
 import type { Cursor, CursorPresence, PlayerIdentity } from "@playhtml/common";
+import { calculateDistance } from "../cursors/cursor-client";
 
 // Mock the CursorClientAwareness class for testing proximity logic
 import { SpatialGrid } from "../cursors/spatial-grid";

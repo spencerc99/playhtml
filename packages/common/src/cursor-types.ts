@@ -28,13 +28,6 @@ export type CursorPresence = {
 export const PROXIMITY_THRESHOLD = 150; // pixels
 export const VISIBILITY_THRESHOLD = 300; // pixels
 
-// Utility functions
-export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
-  return Math.sqrt(
-    Math.pow(cursor1.x - cursor2.x, 2) + Math.pow(cursor1.y - cursor2.y, 2)
-  );
-}
-
 export function generatePlayerIdentity(): PlayerIdentity {
   const publicKey = crypto
     .getRandomValues(new Uint8Array(16))
