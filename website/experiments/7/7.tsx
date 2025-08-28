@@ -12,9 +12,11 @@ import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
 interface Star {
   id: string;
   colors: [string, string];
-  brightness: number;
+  connectionCount: number;
   position: { x: number; y: number };
+  rotation: number;
   createdAt: number;
+  lastInteraction: number;
 }
 
 interface HandHold {
@@ -23,6 +25,7 @@ interface HandHold {
   user2: any;
   position1: { x: number; y: number };
   position2: { x: number; y: number };
+  angle: number;
   startedAt: number;
 }
 
@@ -38,12 +41,11 @@ interface StellarAwareness {
 function getPairId(user1: any, user2: any): string {
   const getColor = (user: any) => {
     // For simulated users or real users, get the primary color
-    if (user?.color) return user.color; // simulated cursor
-    if (user?.playerStyle?.colorPalette?.[0]) return user.playerStyle.colorPalette[0]; // real user
-    if (user?.publicKey === "me") return "#4ecdc4"; // our own user
+    if (user?.playerStyle?.colorPalette?.[0])
+      return user.playerStyle.colorPalette[0]; // real user
     return "#ffffff"; // fallback
   };
-  
+
   const color1 = getColor(user1);
   const color2 = getColor(user2);
   return [color1, color2].sort().join("-");
@@ -67,70 +69,85 @@ function mixColors(color1: string, color2: string): string {
   return parseColor(color1); // For now, just use first color
 }
 
-// SVG Hand component
+// SVG Hand component using actual SVG files
 const HandSVG: React.FC<{
   color: string;
   isLeft: boolean;
-  style?: React.CSSProperties;
-}> = ({ color, isLeft, style }) => (
-  <div
-    className="hand-svg"
-    style={{
-      position: "absolute",
-      pointerEvents: "none",
-      zIndex: 1000,
-      ...style,
-    }}
-  >
-    <svg width="40" height="40" viewBox="0 0 40 40">
-      <g transform={isLeft ? "scale(-1,1) translate(-40,0)" : ""}>
-        <path
-          d="M10 25c0-3 2-5 5-5s5 2 5 5v8c0 2-1 3-3 3h-4c-2 0-3-1-3-3v-8z"
-          fill={color}
-          stroke="#000"
-          strokeWidth="1"
-        />
-        <circle
-          cx="12"
-          cy="18"
-          r="2"
-          fill={color}
-          stroke="#000"
-          strokeWidth="1"
-        />
-        <circle
-          cx="15"
-          cy="16"
-          r="2"
-          fill={color}
-          stroke="#000"
-          strokeWidth="1"
-        />
-        <circle
-          cx="18"
-          cy="18"
-          r="2"
-          fill={color}
-          stroke="#000"
-          strokeWidth="1"
-        />
-        <circle
-          cx="21"
-          cy="20"
-          r="1.5"
-          fill={color}
-          stroke="#000"
-          strokeWidth="1"
-        />
-      </g>
-    </svg>
-  </div>
-);
+  position: { x: number; y: number };
+  rotation?: number;
+}> = ({ color, isLeft, position, rotation = 0 }) => {
+  const [svgContent, setSvgContent] = useState<string>("");
 
-// Star component
+  useEffect(() => {
+    const loadSVG = async () => {
+      try {
+        const svgFile = isLeft ? "openhand.svg" : "closedhand.svg";
+        const response = await fetch(`./${svgFile}`);
+        const content = await response.text();
+        setSvgContent(content);
+      } catch (error) {
+        console.warn("Could not load hand SVG:", error);
+      }
+    };
+    loadSVG();
+  }, [isLeft]);
+
+  if (!svgContent) return null;
+
+  return (
+    <div
+      className="hand-svg"
+      style={
+        {
+          position: "absolute",
+          left: position.x,
+          top: position.y,
+          transform: `translate(-50%, -50%) rotate(${rotation}rad) ${
+            isLeft ? "scaleX(-1)" : ""
+          }`,
+          pointerEvents: "none",
+          zIndex: 500,
+          width: 40,
+          height: 40,
+          "--hand-color": color,
+        } as React.CSSProperties
+      }
+      dangerouslySetInnerHTML={{ __html: svgContent }}
+    />
+  );
+};
+
+// Star component with tooltip
 const StarComponent: React.FC<{ star: Star }> = ({ star }) => {
   const [color1, color2] = star.colors;
-  const mixedColor = mixColors(color1, color2);
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  const formatTime = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - timestamp;
+
+    if (diff < 60000) return "just now";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return `${Math.floor(diff / 86400000)}d ago`;
+  };
+
+  // Create a slightly imperfect hand-drawn star path using the star's rotation as a seed
+  const r = star.rotation || 0; // Ensure we have a valid number
+  const handDrawnPath = `
+    M10,${2 + Math.sin(r) * 0.5} 
+    L${12 + Math.cos(r * 2) * 0.3},${8 + Math.sin(r * 3) * 0.4} 
+    L${18 + Math.cos(r * 1.5) * 0.4},${8 + Math.sin(r * 2.5) * 0.3} 
+    L${13.5 + Math.cos(r * 1.2) * 0.3},${12 + Math.sin(r * 1.8) * 0.4} 
+    L${15.5 + Math.cos(r * 2.8) * 0.3},${18 + Math.sin(r * 1.3) * 0.4} 
+    L${10 + Math.cos(r * 3.2) * 0.2},${14 + Math.sin(r * 2.2) * 0.3} 
+    L${4.5 + Math.cos(r * 1.7) * 0.3},${18 + Math.sin(r * 2.7) * 0.3} 
+    L${6.5 + Math.cos(r * 2.5) * 0.4},${12 + Math.sin(r * 1.5) * 0.3} 
+    L${2 + Math.cos(r * 1.9) * 0.3},${8 + Math.sin(r * 2.9) * 0.4} 
+    L${8 + Math.cos(r * 2.3) * 0.3},${8 + Math.sin(r * 1.1) * 0.3} Z
+  `
+    .replace(/\s+/g, " ")
+    .trim();
 
   return (
     <div
@@ -139,10 +156,20 @@ const StarComponent: React.FC<{ star: Star }> = ({ star }) => {
         position: "absolute",
         left: star.position.x,
         top: star.position.y,
-        transform: "translate(-50%, -50%)",
-        opacity: Math.min(star.brightness / 5, 1),
-        filter: `brightness(${100 + star.brightness * 20}%)`,
+        transform: `translate(-50%, -50%) rotate(${r}rad) scale(${
+          0.9 + Math.sin(r * 4) * 0.1
+        })`,
+        opacity: Math.min(star.connectionCount / 5, 1),
+        filter: `brightness(${100 + star.connectionCount * 20}%) hue-rotate(${
+          r * 20
+        }deg)`,
+        cursor: "pointer",
+        transition: "transform 0.3s ease",
+        zIndex: 100,
+        pointerEvents: "auto",
       }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
     >
       <svg width="20" height="20" viewBox="0 0 20 20">
         <defs>
@@ -158,12 +185,85 @@ const StarComponent: React.FC<{ star: Star }> = ({ star }) => {
           </linearGradient>
         </defs>
         <path
-          d="M10 2 L12 8 L18 8 L13.5 12 L15.5 18 L10 14 L4.5 18 L6.5 12 L2 8 L8 8 Z"
+          d={handDrawnPath}
           fill={`url(#gradient-${star.id})`}
           stroke="#fff"
-          strokeWidth="0.5"
+          strokeWidth="0.3"
+          strokeLinejoin="round"
+          strokeLinecap="round"
         />
       </svg>
+
+      {showTooltip && (
+        <div
+          className="star-tooltip"
+          style={{
+            position: "absolute",
+            bottom: "30px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(255, 255, 255, 0.1)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            color: "white",
+            padding: "12px 16px",
+            borderRadius: "16px",
+            fontSize: "12px",
+            whiteSpace: "nowrap",
+            zIndex: 1000,
+            boxShadow: `
+              0 8px 32px rgba(0, 0, 0, 0.3),
+              0 0 0 1px rgba(255, 255, 255, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2)
+            `,
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "8px",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "10px",
+                height: "10px",
+                borderRadius: "50%",
+                background: color1,
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+                boxShadow: `0 0 6px ${color1}60`,
+              }}
+            ></div>
+            <span style={{ opacity: 0.8, fontSize: "10px" }}>×</span>
+            <div
+              style={{
+                width: "10px",
+                height: "10px",
+                borderRadius: "50%",
+                background: color2,
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+                boxShadow: `0 0 6px ${color2}60`,
+              }}
+            ></div>
+          </div>
+          <div style={{ textAlign: "center", marginBottom: "4px", fontWeight: 500 }}>
+            star #{Math.abs(star.id.split('').reduce((a, b) => { return a + b.charCodeAt(0); }, 0)) % 10000}
+          </div>
+          <div style={{ textAlign: "center", marginBottom: "6px", fontSize: "11px", opacity: 0.8 }}>
+            {star.connectionCount} connection{star.connectionCount === 1 ? '' : 's'}
+          </div>
+          <div style={{ opacity: 0.7, fontSize: "11px", textAlign: "center", marginBottom: "2px" }}>
+            First met: {formatTime(star.createdAt)}
+          </div>
+          <div style={{ opacity: 0.7, fontSize: "11px", textAlign: "center" }}>
+            Last held: {formatTime(star.lastInteraction)}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -181,14 +281,24 @@ const Main = withSharedState(
     const [proximityUsers, setProximityUsers] = useState<Set<string>>(
       new Set()
     );
+    const [activeHandHolds, setActiveHandHolds] = useState<
+      Map<string, HandHold>
+    >(new Map());
     const [testHandHold, setTestHandHold] = useState(false);
     const mainRef = useRef<HTMLDivElement>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
     // Proximity handlers
     const handleProximityEntered = useCallback(
-      (otherPlayer: any) => {
-        console.log("Proximity entered!", otherPlayer);
+      (
+        otherPlayer: any,
+        positions?: {
+          ours: { x: number; y: number };
+          theirs: { x: number; y: number };
+        },
+        angle?: number
+      ) => {
+        console.log("Proximity entered!", otherPlayer, positions, angle);
 
         if (!otherPlayer) return;
 
@@ -196,21 +306,30 @@ const Main = withSharedState(
           otherPlayer.publicKey || otherPlayer.connectionId || "unknown";
         setProximityUsers((prev) => new Set([...prev, connectionId]));
 
-        // Get cursor positions (approximate)
-        const centerX = window.innerWidth / 2;
-        const centerY = window.innerHeight / 2;
+        // Use actual cursor positions if available, otherwise fallback to center
+        const ourPos = positions?.ours || {
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        };
+        const theirPos = positions?.theirs || {
+          x: window.innerWidth / 2 + 60,
+          y: window.innerHeight / 2,
+        };
 
-        // Set hand hold in awareness
+        // Set hand hold in awareness with actual positions and angle
         const pairId = getPairId({ publicKey: "me" }, otherPlayer);
         const handHold: HandHold = {
           id: pairId,
           user1: { publicKey: "me" },
           user2: otherPlayer,
-          position1: { x: centerX - 30, y: centerY },
-          position2: { x: centerX + 30, y: centerY },
+          position1: ourPos,
+          position2: theirPos,
+          angle: angle || 0,
           startedAt: Date.now(),
         };
 
+        // Store locally for cursor hiding
+        setActiveHandHolds((prev) => new Map(prev.set(connectionId, handHold)));
         setMyAwareness({ activeHandHold: handHold });
 
         // Create or brighten star
@@ -218,26 +337,28 @@ const Main = withSharedState(
           setData((draft) => {
             const starId = pairId;
             const myColor = "#4ecdc4";
-            const otherColor =
-              otherPlayer.playerStyle?.colorPalette?.[0] || "#ff6b6b";
+            const otherColor = otherPlayer.playerStyle?.colorPalette?.[0];
 
             if (draft.stars[starId]) {
-              // Brighten existing star
-              draft.stars[starId].brightness += 1;
+              // Increase connection count and update last interaction
+              draft.stars[starId].connectionCount += 1;
+              draft.stars[starId].lastInteraction = Date.now();
             } else {
-              // Create new star
-              const angle = Math.random() * Math.PI * 2;
-              const distance = 150 + Math.random() * 300;
+              // Create new star at the midpoint between cursors
+              const midX = (ourPos.x + theirPos.x) / 2;
+              const midY = (ourPos.y + theirPos.y) / 2;
 
               draft.stars[starId] = {
                 id: starId,
                 colors: [myColor, otherColor],
-                brightness: 1,
+                connectionCount: 1,
                 position: {
-                  x: centerX + Math.cos(angle) * distance,
-                  y: centerY + Math.sin(angle) * distance,
+                  x: midX,
+                  y: midY,
                 },
+                rotation: Math.random() * Math.PI * 2,
                 createdAt: Date.now(),
+                lastInteraction: Date.now(),
               };
             }
           });
@@ -256,10 +377,30 @@ const Main = withSharedState(
           return next;
         });
 
+        // Remove from local state
+        setActiveHandHolds((prev) => {
+          const next = new Map(prev);
+          next.delete(connectionId);
+          return next;
+        });
+
         // Remove hand hold from awareness
         setMyAwareness({ activeHandHold: undefined });
       },
       [setMyAwareness]
+    );
+
+    // Custom cursor renderer to hide cursors that are hand-holding
+    const customCursorRenderer = useCallback(
+      (connectionId: string, element: HTMLElement) => {
+        // If this cursor is part of an active hand hold, hide it
+        if (activeHandHolds.has(connectionId)) {
+          element.style.display = "none";
+          return element;
+        }
+        return null; // Use default rendering
+      },
+      [activeHandHolds]
     );
 
     // Configure cursor proximity handlers
@@ -267,10 +408,14 @@ const Main = withSharedState(
       configureCursors({
         onProximityEntered: handleProximityEntered,
         onProximityLeft: handleProximityLeft,
-        proximityThreshold: 100, // Distance for hand-holding
-        visibilityThreshold: 300, // Distance to see other cursors
+        onCustomCursorRender: customCursorRenderer,
       });
-    }, [handleProximityEntered, handleProximityLeft, configureCursors]);
+    }, [
+      handleProximityEntered,
+      handleProximityLeft,
+      customCursorRenderer,
+      configureCursors,
+    ]);
 
     // Track mouse position
     useEffect(() => {
@@ -302,6 +447,7 @@ const Main = withSharedState(
           user2: testUser,
           position1: { x: centerX - 50, y: centerY },
           position2: { x: centerX + 50, y: centerY },
+          angle: 0, // Horizontal hold
           startedAt: Date.now(),
         };
 
@@ -315,7 +461,8 @@ const Main = withSharedState(
             const otherColor = "#ff6b6b";
 
             if (draft.stars[starId]) {
-              draft.stars[starId].brightness += 1;
+              draft.stars[starId].connectionCount += 1;
+              draft.stars[starId].lastInteraction = Date.now();
             } else {
               const angle = Math.random() * Math.PI * 2;
               const distance = 150 + Math.random() * 300;
@@ -323,12 +470,14 @@ const Main = withSharedState(
               draft.stars[starId] = {
                 id: starId,
                 colors: [myColor, otherColor],
-                brightness: 1,
+                connectionCount: 1,
                 position: {
                   x: centerX + Math.cos(angle) * distance,
                   y: centerY + Math.sin(angle) * distance,
                 },
+                rotation: Math.random() * Math.PI * 2,
                 createdAt: Date.now(),
+                lastInteraction: Date.now(),
               };
             }
           });
@@ -360,101 +509,56 @@ const Main = withSharedState(
         const user2Color =
           handHold.user2?.playerStyle?.colorPalette?.[0] || "#ff6b6b";
 
+        // Calculate positions so hands appear to be holding
+        const midX = (handHold.position1.x + handHold.position2.x) / 2;
+        const midY = (handHold.position1.y + handHold.position2.y) / 2;
+        const distance = Math.sqrt(
+          Math.pow(handHold.position2.x - handHold.position1.x, 2) +
+            Math.pow(handHold.position2.y - handHold.position1.y, 2)
+        );
+        const handOffset = 15; // Distance from center for each hand
+
         return (
           <React.Fragment key={handHold.id}>
             <HandSVG
               color={user1Color}
               isLeft={false}
-              style={{
-                left: handHold.position1.x - 20,
-                top: handHold.position1.y - 20,
+              position={{
+                x: midX - handOffset * Math.cos(handHold.angle),
+                y: midY - handOffset * Math.sin(handHold.angle),
               }}
+              rotation={handHold.angle}
             />
             <HandSVG
               color={user2Color}
               isLeft={true}
-              style={{
-                left: handHold.position2.x - 20,
-                top: handHold.position2.y - 20,
+              position={{
+                x: midX + handOffset * Math.cos(handHold.angle),
+                y: midY + handOffset * Math.sin(handHold.angle),
               }}
-            />
-            <div
-              className="connection-line"
-              style={{
-                position: "absolute",
-                left: Math.min(handHold.position1.x, handHold.position2.x),
-                top: Math.min(handHold.position1.y, handHold.position2.y),
-                width: Math.abs(handHold.position2.x - handHold.position1.x),
-                height: Math.abs(handHold.position2.y - handHold.position1.y),
-                background: `linear-gradient(45deg, ${user1Color}50, ${user2Color}50)`,
-                borderRadius: "2px",
-                pointerEvents: "none",
-                zIndex: 999,
-              }}
+              rotation={handHold.angle + Math.PI}
             />
           </React.Fragment>
         );
       });
     }, [awareness]);
 
-
     return (
       <div id="stellar-connections" ref={mainRef}>
         {/* Title */}
         <div className="title">
-          <h1>stellar connections</h1>
-          <p>move close to other cursors to hold hands and light the stars</p>
+          <h1>when cursors meet</h1>
+          <p>find others to hold hands</p>
+          <p>
+            <a href="/">playhtml</a> <a href="/experiments">experiment</a> 7
+          </p>
         </div>
 
         {/* Stars background */}
-        <div className="stars-container">{renderStars}</div>
+        <div className="stars-container" style={{ position: "relative", zIndex: 10 }}>{renderStars}</div>
 
         {/* Hand holds overlay */}
         <div className="hands-container">{renderHandHolds}</div>
-
-        {/* Our own cursor */}
-        <div
-          className="our-cursor"
-          style={{
-            position: "fixed",
-            left: mousePosition.x,
-            top: mousePosition.y,
-            pointerEvents: "none",
-            zIndex: 10001,
-            transform: "translate(-5px, -5px)",
-          }}
-        >
-          <svg width="32" height="32" viewBox="0 0 32 32">
-            <g transform="translate(10 7)">
-              <path
-                d="m6.148 18.473 1.863-1.003 1.615-.839-2.568-4.816h4.332l-11.379-11.408v16.015l3.316-3.221z"
-                fill="#fff"
-                stroke="#000"
-                strokeWidth="0.5"
-              />
-              <path
-                d="m6.431 17 1.765-.941-2.775-5.202h3.604l-8.025-8.043v11.188l2.53-2.442z"
-                fill="#4ecdc4"
-              />
-            </g>
-          </svg>
-          <div
-            style={{
-              position: "absolute",
-              top: -25,
-              left: 35,
-              background: "rgba(0,0,0,0.8)",
-              color: "white",
-              padding: "2px 6px",
-              borderRadius: "8px",
-              fontSize: "11px",
-              whiteSpace: "nowrap",
-              border: "1px solid #4ecdc4",
-            }}
-          >
-            You
-          </div>
-        </div>
 
         {/* Test hand hold button */}
         <button
@@ -518,8 +622,8 @@ ReactDOM.createRoot(
     initOptions={{
       cursors: {
         enabled: true,
-        proximityThreshold: 100,
-        visibilityThreshold: 200,
+        proximityThreshold: 30,
+        visibilityThreshold: 300,
       },
     }}
   >

@@ -8,10 +8,11 @@ body {
   padding: 0;
   height: 100%;
   overflow: hidden;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: "Arial", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+    sans-serif;
   background: radial-gradient(ellipse at center, #0f0f23 0%, #050505 100%);
   color: #fff;
-  cursor: none; // Hide default cursor for immersive experience
+  user-select: none;
 }
 
 #main {
@@ -19,22 +20,23 @@ body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: 
-    radial-gradient(2px 2px at 20px 30px, #ffffff15, transparent),
+  background: radial-gradient(2px 2px at 20px 30px, #ffffff15, transparent),
     radial-gradient(2px 2px at 40px 70px, #ffffff08, transparent),
     radial-gradient(1px 1px at 90px 40px, #ffffff12, transparent),
     radial-gradient(1px 1px at 130px 80px, #ffffff05, transparent),
     radial-gradient(2px 2px at 160px 30px, #ffffff08, transparent);
-  background-size: 200px 100px, 300px 150px, 250px 120px, 180px 90px, 220px 110px;
+  background-size: 200px 100px, 300px 150px, 250px 120px, 180px 90px,
+    220px 110px;
   animation: twinkle 8s infinite linear;
 }
 
 @keyframes twinkle {
-  0%, 100% { 
-    opacity: 1; 
+  0%,
+  100% {
+    opacity: 1;
   }
-  50% { 
-    opacity: 0.8; 
+  50% {
+    opacity: 0.8;
   }
 }
 
@@ -46,17 +48,17 @@ body {
   transform: translateX(-50%);
   z-index: 100;
   text-align: center;
+  width: 100%;
+  padding: 0 2em;
 
   h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2.8rem;
-    font-weight: 300;
-    letter-spacing: 0.1em;
+    font-family: "Courier New", Courier, monospace;
+    word-spacing: -0.25em;
     color: #fff;
-    text-shadow: 
-      0 0 10px rgba(255, 255, 255, 0.5),
-      0 0 20px rgba(138, 43, 226, 0.3),
-      0 0 30px rgba(138, 43, 226, 0.2);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5),
+      0 0 20px rgba(138, 43, 226, 0.3), 0 0 30px rgba(138, 43, 226, 0.2);
     animation: glow 3s ease-in-out infinite alternate;
   }
 
@@ -67,21 +69,28 @@ body {
     opacity: 0.8;
     color: #ccc;
     letter-spacing: 0.05em;
+
+    a {
+      color: #9b59b6;
+      transition: all 0.2s ease;
+
+      &:hover {
+        color: #fff;
+        background: rgba(155, 89, 182, 0.2);
+        box-shadow: 0 0 8px rgba(155, 89, 182, 0.3);
+      }
+    }
   }
 }
 
 @keyframes glow {
   from {
-    text-shadow: 
-      0 0 10px rgba(255, 255, 255, 0.5),
-      0 0 20px rgba(138, 43, 226, 0.3),
-      0 0 30px rgba(138, 43, 226, 0.2);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5),
+      0 0 20px rgba(138, 43, 226, 0.3), 0 0 30px rgba(138, 43, 226, 0.2);
   }
   to {
-    text-shadow: 
-      0 0 15px rgba(255, 255, 255, 0.7),
-      0 0 25px rgba(138, 43, 226, 0.5),
-      0 0 35px rgba(138, 43, 226, 0.3);
+    text-shadow: 0 0 15px rgba(255, 255, 255, 0.7),
+      0 0 25px rgba(138, 43, 226, 0.5), 0 0 35px rgba(138, 43, 226, 0.3);
   }
 }
 
@@ -92,7 +101,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 10;
 }
 
@@ -111,12 +120,12 @@ body {
 
 @keyframes star-pulse {
   0% {
-    transform: translate(-50%, -50%) scale(0.8);
+    transform: translate(-50%, -50%);
     filter: brightness(100%);
   }
   100% {
-    transform: translate(-50%, -50%) scale(1.2);
-    filter: brightness(150%);
+    transform: translate(-50%, -50%);
+    filter: brightness(120%);
   }
 }
 
@@ -136,7 +145,8 @@ body {
   filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
 
   svg {
-    path, circle {
+    path,
+    circle {
       filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
     }
   }
@@ -152,13 +162,19 @@ body {
 }
 
 .connection-line {
-  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%);
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.2) 50%,
+    transparent 70%
+  );
   height: 2px !important;
   animation: connection-shimmer 1.5s ease-in-out infinite;
 }
 
 @keyframes connection-shimmer {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.3;
   }
   50% {
@@ -166,7 +182,7 @@ body {
   }
 }
 
-// Info panel - bottom left  
+// Info panel - bottom left
 .info-panel {
   position: fixed;
   bottom: 2rem;
@@ -180,9 +196,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .stat {
@@ -191,7 +205,7 @@ body {
   align-items: center;
   gap: 1rem;
   font-family: "JetBrains Mono", monospace;
-  
+
   .label {
     font-size: 0.75rem;
     font-weight: 400;
@@ -209,12 +223,48 @@ body {
   }
 }
 
-// Cursor customizations for the experience
-body {
-  cursor: none;
-  
-  * {
-    cursor: none !important;
+// Stars styling
+.star {
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translate(-50%, -50%) scale(1.2) !important;
+    filter: brightness(150%) saturate(1.2) !important;
+    z-index: 1000;
+  }
+}
+
+.star-tooltip {
+  animation: tooltipFadeIn 0.2s ease-out;
+  pointer-events: none;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+// Hand holds styling
+.hands-container {
+  pointer-events: none;
+}
+
+.hand-svg {
+  animation: handGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes handGlow {
+  from {
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+  }
+  to {
+    filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.6));
   }
 }
 
@@ -222,7 +272,7 @@ body {
 @media (max-width: 768px) {
   .title {
     top: 1rem;
-    
+
     h1 {
       font-size: 2rem;
     }
@@ -240,7 +290,7 @@ body {
 
     .stat {
       gap: 0.5rem;
-      
+
       .label {
         font-size: 0.7rem;
       }
@@ -268,7 +318,8 @@ body {
 
 // Animation for when stars appear
 .star {
-  animation: star-appear 1s ease-out forwards, star-pulse 2s ease-in-out infinite alternate 1s;
+  animation: star-appear 1s ease-out forwards,
+    star-pulse 2s ease-in-out infinite alternate 1s;
 }
 
 @keyframes star-appear {
@@ -293,20 +344,6 @@ body {
   }
 }
 
-// Our own cursor
-.our-cursor {
-  filter: drop-shadow(0 3px 6px rgba(78, 205, 196, 0.4));
-  animation: cursor-glow 2s ease-in-out infinite alternate;
-  
-  svg {
-    transition: transform 0.2s ease;
-  }
-  
-  div {
-    font-weight: 600;
-  }
-}
-
 @keyframes cursor-glow {
   0% {
     filter: drop-shadow(0 3px 6px rgba(78, 205, 196, 0.4));
@@ -319,7 +356,7 @@ body {
 // Simulated cursors
 .simulated-cursor {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-  
+
   svg {
     transition: transform 0.1s ease;
   }
@@ -332,17 +369,28 @@ body {
 // Simulation button styles are inline for hover effects
 
 // Mystical atmosphere enhancements
-#main::before {
+#stellar-connections::before {
   content: "";
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
-    radial-gradient(circle at 20% 20%, rgba(138, 43, 226, 0.1) 0%, transparent 30%),
-    radial-gradient(circle at 80% 80%, rgba(75, 0, 130, 0.08) 0%, transparent 25%),
-    radial-gradient(circle at 60% 40%, rgba(148, 0, 211, 0.06) 0%, transparent 20%);
+  background: radial-gradient(
+      circle at 20% 20%,
+      rgba(138, 43, 226, 0.1) 0%,
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 80% 80%,
+      rgba(75, 0, 130, 0.08) 0%,
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 60% 40%,
+      rgba(148, 0, 211, 0.06) 0%,
+      transparent 20%
+    );
   pointer-events: none;
   z-index: 1;
 }
