@@ -67,7 +67,7 @@ The playhtml library revolves around the concept of "capabilities" - interactive
 
 ### Key Files and Components
 
-- `packages/playhtml/src/main.ts`: Core initialization and setup logic
+- `packages/playhtml/src/index.ts`: Core initialization and setup logic
 - `packages/playhtml/src/elements.ts`: ElementHandler class and capability definitions
 - `packages/common/src/index.ts`: TypeScript interfaces and types
 - `partykit/party.ts`: Real-time server with Supabase persistence
