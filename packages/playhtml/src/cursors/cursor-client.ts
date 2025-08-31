@@ -266,7 +266,15 @@ export class CursorClientAwareness {
 
         // Trigger proximity entered if this is new
         if (!this.proximityUsers.has(item.id)) {
-          this.options.onProximityEntered?.(presence.playerIdentity);
+          const positions = {
+            ours: { x: this.currentCursor.x, y: this.currentCursor.y },
+            theirs: { x: presence.cursor.x, y: presence.cursor.y }
+          };
+          const dx = presence.cursor.x - this.currentCursor.x;
+          const dy = presence.cursor.y - this.currentCursor.y;
+          const angle = Math.atan2(dy, dx);
+          
+          this.options.onProximityEntered?.(presence.playerIdentity, positions, angle);
         }
       }
     }
@@ -451,7 +459,8 @@ export class CursorClientAwareness {
       cursorElement = this.createCursorElement(
         cursorData.playerIdentity,
         cursor.pointer,
-        cursorData.message
+        cursorData.message,
+        clientId
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(clientId, cursorElement);
@@ -508,10 +517,19 @@ export class CursorClientAwareness {
   private createCursorElement(
     playerIdentity?: PlayerIdentity,
     pointer: string = "mouse",
-    message?: string | null
+    message?: string | null,
+    connectionId?: string
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
+
+    // Check for custom cursor renderer first
+    if (connectionId && this.options.onCustomCursorRender) {
+      const customElement = this.options.onCustomCursorRender(connectionId, element);
+      if (customElement) {
+        return customElement;
+      }
+    }
 
     const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
 
@@ -885,6 +903,20 @@ export class CursorClientAwareness {
     // Update player identity if provided
     if (options.playerIdentity !== undefined) {
       this.playerIdentity = options.playerIdentity;
+    }
+  }
+
+  hideCursor(connectionId: string): void {
+    const cursorElement = this.cursors.get(connectionId);
+    if (cursorElement) {
+      cursorElement.style.display = "none";
+    }
+  }
+
+  showCursor(connectionId: string): void {
+    const cursorElement = this.cursors.get(connectionId);
+    if (cursorElement) {
+      cursorElement.style.display = "block";
     }
   }
 

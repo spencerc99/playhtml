@@ -15,6 +15,7 @@ interface Star {
   connectionCount: number;
   position: { x: number; y: number };
   rotation: number;
+  meetingAngle: number;
   createdAt: number;
   lastInteraction: number;
 }
@@ -40,10 +41,7 @@ interface StellarAwareness {
 // Generate a unique ID for a pair of users based on their colors
 function getPairId(user1: any, user2: any): string {
   const getColor = (user: any) => {
-    // For simulated users or real users, get the primary color
-    if (user?.playerStyle?.colorPalette?.[0])
-      return user.playerStyle.colorPalette[0]; // real user
-    return "#ffffff"; // fallback
+    return user.playerStyle.colorPalette[0];
   };
 
   const color1 = getColor(user1);
@@ -120,6 +118,10 @@ const HandSVG: React.FC<{
 // Star component with tooltip
 const StarComponent: React.FC<{ star: Star }> = ({ star }) => {
   const [color1, color2] = star.colors;
+
+  // Create a valid gradient ID by sanitizing the star ID
+  const gradientId = `gradient-${star.id.replace(/[^a-zA-Z0-9-]/g, "")}`;
+
   const [showTooltip, setShowTooltip] = useState(false);
 
   const formatTime = (timestamp: number) => {
@@ -172,21 +174,20 @@ const StarComponent: React.FC<{ star: Star }> = ({ star }) => {
       onMouseLeave={() => setShowTooltip(false)}
     >
       <svg width="20" height="20" viewBox="0 0 20 20">
-        <defs>
-          <linearGradient
-            id={`gradient-${star.id}`}
-            x1="0%"
-            y1="0%"
-            x2="100%"
-            y2="100%"
-          >
-            <stop offset="0%" style={{ stopColor: color1, stopOpacity: 1 }} />
-            <stop offset="100%" style={{ stopColor: color2, stopOpacity: 1 }} />
-          </linearGradient>
-        </defs>
+        {color1 && color2 && (
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style={{ stopColor: color1, stopOpacity: 1 }} />
+              <stop
+                offset="100%"
+                style={{ stopColor: color2, stopOpacity: 1 }}
+              />
+            </linearGradient>
+          </defs>
+        )}
         <path
           d={handDrawnPath}
-          fill={`url(#gradient-${star.id})`}
+          fill={color1 && color2 ? `url(#${gradientId})` : color1 || color2}
           stroke="#fff"
           strokeWidth="0.3"
           strokeLinejoin="round"
@@ -223,40 +224,84 @@ const StarComponent: React.FC<{ star: Star }> = ({ star }) => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
               justifyContent: "center",
+              marginBottom: "8px",
+              height: "24px",
+              position: "relative",
             }}
           >
             <div
-              style={{
-                width: "10px",
-                height: "10px",
-                borderRadius: "50%",
-                background: color1,
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-                boxShadow: `0 0 6px ${color1}60`,
+              style={
+                {
+                  position: "absolute",
+                  left: "calc(50% - 3px)",
+                  top: "50%",
+                  transform: `translate(-50%, -50%) rotate(${
+                    star.meetingAngle || 0
+                  }rad)`,
+                  width: "20px",
+                  height: "20px",
+                  "--hand-color": color1,
+                } as React.CSSProperties
+              }
+              dangerouslySetInnerHTML={{
+                __html:
+                  '<svg width="20" height="20" viewBox="0 0 32 32"><path fill="var(--hand-color, #FFFFFF)" d="M12.6,13c0.5-0.2,1.4-0.1,1.7,0.5c0.2,0.5,0.4,1.2,0.4,1.1c0-0.4,0-1.2,0.1-1.6 c0.1-0.3,0.3-0.6,0.7-0.7c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.3,0.1-1.2,0.3-1.6 c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7 c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8 c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0 c-0.2,0.4-0.7,1.1-1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-1-0.9-1.2-2 c-0.2-0.9-0.2-1.4,0-1.8c0.2-0.4,0.7-0.6,0.9-0.6c0.2,0,0.7,0,0.9,0.1c0.2,0.1,0.3,0.2,0.5,0.4c0.2,0.3,0.3,0.5,0.2,0.1 c-0.1-0.3-0.3-0.6-0.4-1c-0.1-0.4-0.4-0.9-0.4-1.5C11.7,13.9,11.8,13.3,12.6,13z"/></svg>',
               }}
-            ></div>
-            <span style={{ opacity: 0.8, fontSize: "10px" }}>×</span>
+            />
             <div
-              style={{
-                width: "10px",
-                height: "10px",
-                borderRadius: "50%",
-                background: color2,
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-                boxShadow: `0 0 6px ${color2}60`,
+              style={
+                {
+                  position: "absolute",
+                  left: "calc(50% + 3px)",
+                  top: "50%",
+                  transform: `translate(-50%, -50%) rotate(${
+                    (star.meetingAngle || 0) + Math.PI
+                  }rad) scaleX(-1)`,
+                  width: "20px",
+                  height: "20px",
+                  "--hand-color": color2,
+                } as React.CSSProperties
+              }
+              dangerouslySetInnerHTML={{
+                __html:
+                  '<svg width="20" height="20" viewBox="0 0 32 32"><path fill="var(--hand-color, #FFFFFF)" d="M12.6,16.6c-0.1-0.4-0.2-0.8-0.4-1.6c-0.2-0.6-0.3-0.9-0.5-1.2 c-0.2-0.5-0.3-0.7-0.5-1.2c-0.1-0.3-0.4-1-0.5-1.4c-0.1-0.5,0-0.9,0.2-1.2c0.3-0.3,1-0.5,1.4-0.4c0.4,0.1,0.7,0.5,0.9,0.8 c0.3,0.5,0.4,0.6,0.7,1.5c0.4,1,0.6,1.9,0.6,2.2l0.1,0.5c0,0,0-1.1,0-1.2c0-1-0.1-1.8,0-2.9c0-0.1,0.1-0.6,0.1-0.7 c0.1-0.5,0.3-0.8,0.7-1c0.4-0.2,0.9-0.2,1.4,0c0.4,0.2,0.6,0.5,0.7,1c0,0.1,0.1,1,0.1,1.1c0,1,0,1.6,0,2.2c0,0.2,0,1.6,0,1.5 c0.1-0.7,0.1-3.2,0.3-3.9c0.1-0.4,0.4-0.7,0.8-0.9c0.4-0.2,1.1-0.1,1.4,0.2c0.3,0.3,0.4,0.7,0.5,1.2c0,0.4,0,0.9,0,1.2 c0,0.9,0,1.3,0,2.1c0,0,0,0.3,0,0.2c0.1-0.3,0.2-0.5,0.3-0.7c0-0.1,0.2-0.6,0.4-0.9c0.1-0.2,0.2-0.4,0.4-0.7 c0.2-0.3,0.4-0.4,0.7-0.6c0.5-0.2,1.1,0.1,1.3,0.6c0.1,0.2,0,0.7,0,1.1c-0.1,0.6-0.3,1.3-0.4,1.6c-0.1,0.4-0.3,1.2-0.3,1.6 c-0.1,0.4-0.2,1.4-0.4,1.8c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9 s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4 c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1-1.1-1.3-1.6c-0.2-0.4-0.3-1-0.2-1.3 c0.2-0.6,0.7-0.9,1.4-0.8c0.5,0,0.8,0.2,1.2,0.5c0.2,0.2,0.6,0.5,0.8,0.7c0.2,0.2,0.2,0.3,0.4,0.5 C12.6,16.8,12.6,16.9,12.6,16.6"/></svg>',
               }}
-            ></div>
+            />
           </div>
-          <div style={{ textAlign: "center", marginBottom: "4px", fontWeight: 500 }}>
-            star #{Math.abs(star.id.split('').reduce((a, b) => { return a + b.charCodeAt(0); }, 0)) % 10000}
+          <div
+            style={{
+              textAlign: "center",
+              marginBottom: "4px",
+              fontWeight: 500,
+            }}
+          >
+            star #
+            {Math.abs(
+              star.id.split("").reduce((a, b) => {
+                return a + b.charCodeAt(0);
+              }, 0)
+            ) % 10000}
           </div>
-          <div style={{ textAlign: "center", marginBottom: "6px", fontSize: "11px", opacity: 0.8 }}>
-            {star.connectionCount} connection{star.connectionCount === 1 ? '' : 's'}
+          <div
+            style={{
+              textAlign: "center",
+              marginBottom: "6px",
+              fontSize: "11px",
+              opacity: 0.8,
+            }}
+          >
+            {star.connectionCount} connection
+            {star.connectionCount === 1 ? "" : "s"}
           </div>
-          <div style={{ opacity: 0.7, fontSize: "11px", textAlign: "center", marginBottom: "2px" }}>
+          <div
+            style={{
+              opacity: 0.7,
+              fontSize: "11px",
+              textAlign: "center",
+              marginBottom: "2px",
+            }}
+          >
             First met: {formatTime(star.createdAt)}
           </div>
           <div style={{ opacity: 0.7, fontSize: "11px", textAlign: "center" }}>
@@ -277,7 +322,8 @@ const Main = withSharedState(
     id: "stellar-connections",
   },
   ({ data, setData, awareness, setMyAwareness }) => {
-    const { hasSynced, configureCursors } = usePlayContext();
+    const { hasSynced, configureCursors, getMyPlayerIdentity } =
+      usePlayContext();
     const [proximityUsers, setProximityUsers] = useState<Set<string>>(
       new Set()
     );
@@ -287,6 +333,63 @@ const Main = withSharedState(
     const [testHandHold, setTestHandHold] = useState(false);
     const mainRef = useRef<HTMLDivElement>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    const [starAnimations, setStarAnimations] = useState<
+      Array<{
+        id: string;
+        x: number;
+        y: number;
+        color1: string;
+        color2: string;
+        startTime: number;
+      }>
+    >([]);
+    const [animationTick, setAnimationTick] = useState(0);
+
+    // Animation frame loop
+    useEffect(() => {
+      let animationFrame: number;
+
+      const animate = () => {
+        setAnimationTick(Date.now());
+        animationFrame = requestAnimationFrame(animate);
+      };
+
+      if (starAnimations.length > 0) {
+        animationFrame = requestAnimationFrame(animate);
+      }
+
+      return () => {
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame);
+        }
+      };
+    }, [starAnimations.length]);
+
+    // Function to trigger star creation animation
+    const triggerStarAnimation = useCallback(
+      (x: number, y: number, color1: string, color2: string) => {
+        const animationId = `anim-${Date.now()}-${Math.random()}`;
+        setStarAnimations((prev) => [
+          ...prev,
+          {
+            id: animationId,
+            x,
+            y,
+            color1,
+            color2,
+            startTime: Date.now(),
+          },
+        ]);
+
+        // Remove animation after it completes (1.5 seconds)
+        setTimeout(() => {
+          setStarAnimations((prev) =>
+            prev.filter((anim) => anim.id !== animationId)
+          );
+        }, 1500);
+      },
+      []
+    );
 
     // Proximity handlers
     const handleProximityEntered = useCallback(
@@ -302,8 +405,7 @@ const Main = withSharedState(
 
         if (!otherPlayer) return;
 
-        const connectionId =
-          otherPlayer.publicKey || otherPlayer.connectionId || "unknown";
+        const connectionId = otherPlayer.connectionId || "unknown";
         setProximityUsers((prev) => new Set([...prev, connectionId]));
 
         // Use actual cursor positions if available, otherwise fallback to center
@@ -317,10 +419,13 @@ const Main = withSharedState(
         };
 
         // Set hand hold in awareness with actual positions and angle
-        const pairId = getPairId({ publicKey: "me" }, otherPlayer);
+        const myIdentity = getMyPlayerIdentity();
+        const myColor = myIdentity.color;
+        const myUser = { playerStyle: { colorPalette: [myColor] } };
+        const pairId = getPairId(myUser, otherPlayer);
         const handHold: HandHold = {
           id: pairId,
-          user1: { publicKey: "me" },
+          user1: myUser,
           user2: otherPlayer,
           position1: ourPos,
           position2: theirPos,
@@ -336,8 +441,7 @@ const Main = withSharedState(
         if (hasSynced) {
           setData((draft) => {
             const starId = pairId;
-            const myColor = "#4ecdc4";
-            const otherColor = otherPlayer.playerStyle?.colorPalette?.[0];
+            const otherColor = otherPlayer.playerStyle.colorPalette[0];
 
             if (draft.stars[starId]) {
               // Increase connection count and update last interaction
@@ -348,23 +452,31 @@ const Main = withSharedState(
               const midX = (ourPos.x + theirPos.x) / 2;
               const midY = (ourPos.y + theirPos.y) / 2;
 
+              // Ensure colors are valid strings
+              const validMyColor = myColor || "#3b82f6";
+              const validOtherColor = otherColor || "#ef4444";
+
               draft.stars[starId] = {
                 id: starId,
-                colors: [myColor, otherColor],
+                colors: [validMyColor, validOtherColor],
                 connectionCount: 1,
                 position: {
                   x: midX,
                   y: midY,
                 },
                 rotation: Math.random() * Math.PI * 2,
+                meetingAngle: angle || 0,
                 createdAt: Date.now(),
                 lastInteraction: Date.now(),
               };
+
+              // Trigger animation for new star
+              triggerStarAnimation(midX, midY, validMyColor, validOtherColor);
             }
           });
         }
       },
-      [hasSynced, setData, setMyAwareness]
+      [hasSynced, setData, setMyAwareness, triggerStarAnimation]
     );
 
     const handleProximityLeft = useCallback(
@@ -431,19 +543,32 @@ const Main = withSharedState(
     const toggleTestHandHold = useCallback(() => {
       if (!testHandHold) {
         // Create test hand hold
+        const testColors = [
+          "#ef4444",
+          "#10b981",
+          "#f59e0b",
+          "#8b5cf6",
+          "#ec4899",
+        ];
         const testUser = {
-          publicKey: "test-user",
           name: "Test User",
-          playerStyle: { colorPalette: ["#ff6b6b"] },
+          playerStyle: {
+            colorPalette: [
+              testColors[Math.floor(Math.random() * testColors.length)],
+            ],
+          },
         };
 
-        const pairId = getPairId({ publicKey: "me" }, testUser);
+        const myIdentity = getMyPlayerIdentity();
+        const myColor = myIdentity.color;
+        const myUser = { playerStyle: { colorPalette: [myColor] } };
+        const pairId = getPairId(myUser, testUser);
         const centerX = window.innerWidth / 2;
         const centerY = window.innerHeight / 2;
 
         const handHold: HandHold = {
           id: pairId,
-          user1: { publicKey: "me" },
+          user1: myUser,
           user2: testUser,
           position1: { x: centerX - 50, y: centerY },
           position2: { x: centerX + 50, y: centerY },
@@ -457,8 +582,7 @@ const Main = withSharedState(
         if (hasSynced) {
           setData((draft) => {
             const starId = pairId;
-            const myColor = "#4ecdc4";
-            const otherColor = "#ff6b6b";
+            const otherColor = testUser.playerStyle.colorPalette[0];
 
             if (draft.stars[starId]) {
               draft.stars[starId].connectionCount += 1;
@@ -467,18 +591,29 @@ const Main = withSharedState(
               const angle = Math.random() * Math.PI * 2;
               const distance = 150 + Math.random() * 300;
 
+              // Ensure colors are valid strings
+              const validMyColor = myColor || "#3b82f6";
+              const validOtherColor = otherColor || "#ef4444";
+
+              const starX = centerX + Math.cos(angle) * distance;
+              const starY = centerY + Math.sin(angle) * distance;
+
               draft.stars[starId] = {
                 id: starId,
-                colors: [myColor, otherColor],
+                colors: [validMyColor, validOtherColor],
                 connectionCount: 1,
                 position: {
-                  x: centerX + Math.cos(angle) * distance,
-                  y: centerY + Math.sin(angle) * distance,
+                  x: starX,
+                  y: starY,
                 },
                 rotation: Math.random() * Math.PI * 2,
+                meetingAngle: 0, // Horizontal for test hand hold
                 createdAt: Date.now(),
                 lastInteraction: Date.now(),
               };
+
+              // Trigger animation for new test star
+              triggerStarAnimation(starX, starY, validMyColor, validOtherColor);
             }
           });
         }
@@ -489,7 +624,14 @@ const Main = withSharedState(
         setMyAwareness({ activeHandHold: undefined });
         setTestHandHold(false);
       }
-    }, [testHandHold, hasSynced, setData, setMyAwareness]);
+    }, [
+      testHandHold,
+      hasSynced,
+      setData,
+      setMyAwareness,
+      triggerStarAnimation,
+      getMyPlayerIdentity,
+    ]);
 
     // Render stars
     const renderStars = useMemo(() => {
@@ -505,18 +647,14 @@ const Main = withSharedState(
         .filter((handHold): handHold is HandHold => handHold !== undefined);
 
       return allHandHolds.map((handHold) => {
-        const user1Color = "#4ecdc4"; // Should get from cursor system
-        const user2Color =
-          handHold.user2?.playerStyle?.colorPalette?.[0] || "#ff6b6b";
+        const myIdentity = getMyPlayerIdentity();
+        const user1Color = myIdentity.color;
+        const user2Color = handHold.user2.playerStyle.colorPalette[0];
 
-        // Calculate positions so hands appear to be holding
+        // Calculate positions so hands appear to be overlapping/holding
         const midX = (handHold.position1.x + handHold.position2.x) / 2;
         const midY = (handHold.position1.y + handHold.position2.y) / 2;
-        const distance = Math.sqrt(
-          Math.pow(handHold.position2.x - handHold.position1.x, 2) +
-            Math.pow(handHold.position2.y - handHold.position1.y, 2)
-        );
-        const handOffset = 15; // Distance from center for each hand
+        const handOffset = 8; // Reduced distance for overlapping hands
 
         return (
           <React.Fragment key={handHold.id}>
@@ -543,6 +681,60 @@ const Main = withSharedState(
       });
     }, [awareness]);
 
+    // Render star creation animations
+    const renderStarAnimations = useMemo(() => {
+      return starAnimations.map((anim) => {
+        const elapsed = animationTick - anim.startTime;
+        const progress = Math.min(elapsed / 1500, 1); // 1.5 second animation
+        const scale = 1 + progress * 15; // Scale from 1 to 16x (more reasonable)
+        const opacity = Math.max(0, 0.4 * (1 - progress)); // Start at 40% opacity, fade to 0
+
+        if (progress >= 1) return null;
+
+        // Convert colors to rgba format - handle both hex and hsl
+        const parseColor = (color: string) => {
+          if (color.startsWith('hsl')) {
+            // For HSL colors, extract values and convert to rgba
+            const hslMatch = color.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+            if (hslMatch) {
+              const [, h, s, l] = hslMatch;
+              return `hsla(${h}, ${s}%, ${l}%, ${opacity})`;
+            }
+          } else if (color.startsWith('#')) {
+            // For hex colors, convert to rgba
+            const hex = color.slice(1);
+            const r = parseInt(hex.slice(0, 2), 16);
+            const g = parseInt(hex.slice(2, 4), 16);
+            const b = parseInt(hex.slice(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+          }
+          return `rgba(59, 130, 246, ${opacity})`; // fallback blue
+        };
+
+        const color1Rgba = parseColor(anim.color1);
+        const color2Rgba = parseColor(anim.color2).replace(/[\d.]+\)$/, '0)'); // Make second color transparent
+
+        return (
+          <div
+            key={anim.id}
+            style={{
+              position: "absolute",
+              left: anim.x,
+              top: anim.y,
+              transform: `translate(-50%, -50%) scale(${scale})`,
+              width: "200px",
+              height: "200px",
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${color1Rgba} 0%, ${color2Rgba} 70%)`,
+              pointerEvents: "none",
+              zIndex: 1000,
+              transition: "none",
+            }}
+          />
+        );
+      });
+    }, [starAnimations, animationTick]);
+
     return (
       <div id="stellar-connections" ref={mainRef}>
         {/* Title */}
@@ -555,10 +747,31 @@ const Main = withSharedState(
         </div>
 
         {/* Stars background */}
-        <div className="stars-container" style={{ position: "relative", zIndex: 10 }}>{renderStars}</div>
+        <div
+          className="stars-container"
+          style={{ position: "relative", zIndex: 10 }}
+        >
+          {renderStars}
+        </div>
 
         {/* Hand holds overlay */}
         <div className="hands-container">{renderHandHolds}</div>
+
+        {/* Star creation animations */}
+        <div
+          className="star-animations"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        >
+          {renderStarAnimations}
+        </div>
 
         {/* Test hand hold button */}
         <button

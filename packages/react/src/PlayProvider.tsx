@@ -14,6 +14,7 @@ export interface PlayContextInfo
   hasSynced: boolean;
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
+  getMyPlayerIdentity: () => { color: string; name: string };
 }
 
 export const PlayContext = createContext<PlayContextInfo>({
@@ -36,6 +37,11 @@ export const PlayContext = createContext<PlayContextInfo>({
   hasSynced: false,
   isProviderMissing: true,
   configureCursors: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  getMyPlayerIdentity: () => {
     throw new Error(
       "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
     );
@@ -79,6 +85,15 @@ export function PlayProvider({
     }
   };
 
+  const getMyPlayerIdentity = () => {
+    // Access the global cursors API that exposes the current player's information
+    const cursors = (window as any).cursors;
+    return {
+      color: cursors.color,
+      name: cursors.name,
+    };
+  };
+
   return (
     <PlayContext.Provider
       value={{
@@ -89,6 +104,7 @@ export function PlayProvider({
         hasSynced,
         isProviderMissing: false,
         configureCursors,
+        getMyPlayerIdentity,
       }}
     >
       {children}
