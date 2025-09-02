@@ -1,5 +1,18 @@
 # Change Log
 
+## 0.6.0
+
+### Minor Changes
+
+- 335af8b: Add dynamic cursor configuration API, fix visibility threshold, and add custom cursor renderer.
+- 335af8b: Add `getMyPlayerIdentity` method to PlayContext for accessing current user's color and name information from the cursor system
+
+### Patch Changes
+
+- aa19771: Fix JSX component type error in withSharedState. Changed component return type from ReactElement to ReactNode and withSharedState return type to React.ComponentType for proper JSX compatibility.
+- Updated dependencies [335af8b]
+  - playhtml@2.4.0
+
 ## 0.5.2
 
 ### Patch Changes
