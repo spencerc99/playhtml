@@ -330,7 +330,6 @@ const Main = withSharedState(
     const [activeHandHolds, setActiveHandHolds] = useState<
       Map<string, HandHold>
     >(new Map());
-    const [testHandHold, setTestHandHold] = useState(false);
     const mainRef = useRef<HTMLDivElement>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const [starAnimations, setStarAnimations] = useState<
@@ -401,7 +400,6 @@ const Main = withSharedState(
         },
         angle?: number
       ) => {
-        console.log("Proximity entered!", otherPlayer, positions, angle);
 
         if (!otherPlayer) return;
 
@@ -481,7 +479,6 @@ const Main = withSharedState(
 
     const handleProximityLeft = useCallback(
       (connectionId: string) => {
-        console.log("Proximity left!", connectionId);
 
         setProximityUsers((prev) => {
           const next = new Set(prev);
@@ -539,99 +536,6 @@ const Main = withSharedState(
       return () => window.removeEventListener("mousemove", handleMouseMove);
     }, []);
 
-    // Test hand hold toggle
-    const toggleTestHandHold = useCallback(() => {
-      if (!testHandHold) {
-        // Create test hand hold
-        const testColors = [
-          "#ef4444",
-          "#10b981",
-          "#f59e0b",
-          "#8b5cf6",
-          "#ec4899",
-        ];
-        const testUser = {
-          name: "Test User",
-          playerStyle: {
-            colorPalette: [
-              testColors[Math.floor(Math.random() * testColors.length)],
-            ],
-          },
-        };
-
-        const myIdentity = getMyPlayerIdentity();
-        const myColor = myIdentity.color;
-        const myUser = { playerStyle: { colorPalette: [myColor] } };
-        const pairId = getPairId(myUser, testUser);
-        const centerX = window.innerWidth / 2;
-        const centerY = window.innerHeight / 2;
-
-        const handHold: HandHold = {
-          id: pairId,
-          user1: myUser,
-          user2: testUser,
-          position1: { x: centerX - 50, y: centerY },
-          position2: { x: centerX + 50, y: centerY },
-          angle: 0, // Horizontal hold
-          startedAt: Date.now(),
-        };
-
-        setMyAwareness({ activeHandHold: handHold });
-
-        // Create or brighten star
-        if (hasSynced) {
-          setData((draft) => {
-            const starId = pairId;
-            const otherColor = testUser.playerStyle.colorPalette[0];
-
-            if (draft.stars[starId]) {
-              draft.stars[starId].connectionCount += 1;
-              draft.stars[starId].lastInteraction = Date.now();
-            } else {
-              const angle = Math.random() * Math.PI * 2;
-              const distance = 150 + Math.random() * 300;
-
-              // Ensure colors are valid strings
-              const validMyColor = myColor || "#3b82f6";
-              const validOtherColor = otherColor || "#ef4444";
-
-              const starX = centerX + Math.cos(angle) * distance;
-              const starY = centerY + Math.sin(angle) * distance;
-
-              draft.stars[starId] = {
-                id: starId,
-                colors: [validMyColor, validOtherColor],
-                connectionCount: 1,
-                position: {
-                  x: starX,
-                  y: starY,
-                },
-                rotation: Math.random() * Math.PI * 2,
-                meetingAngle: 0, // Horizontal for test hand hold
-                createdAt: Date.now(),
-                lastInteraction: Date.now(),
-              };
-
-              // Trigger animation for new test star
-              triggerStarAnimation(starX, starY, validMyColor, validOtherColor);
-            }
-          });
-        }
-
-        setTestHandHold(true);
-      } else {
-        // Remove test hand hold
-        setMyAwareness({ activeHandHold: undefined });
-        setTestHandHold(false);
-      }
-    }, [
-      testHandHold,
-      hasSynced,
-      setData,
-      setMyAwareness,
-      triggerStarAnimation,
-      getMyPlayerIdentity,
-    ]);
 
     // Render stars
     const renderStars = useMemo(() => {
@@ -773,38 +677,6 @@ const Main = withSharedState(
           {renderStarAnimations}
         </div>
 
-        {/* Test hand hold button */}
-        <button
-          className="test-handhold-toggle"
-          onClick={toggleTestHandHold}
-          style={{
-            position: "fixed",
-            bottom: "2rem",
-            right: "2rem",
-            background: testHandHold ? "#e74c3c" : "#9b59b6",
-            color: "white",
-            border: "none",
-            padding: "0.75rem 1.5rem",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontSize: "0.9rem",
-            fontWeight: "500",
-            zIndex: 1000,
-            boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-            backdropFilter: "blur(10px)",
-            transition: "all 0.3s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "translateY(-2px)";
-            e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.3)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.boxShadow = "0 4px 15px rgba(0,0,0,0.2)";
-          }}
-        >
-          {testHandHold ? "End Test Hand Hold" : "Test Hand Hold"}
-        </button>
 
         {/* Info panel */}
         <div className="info-panel">

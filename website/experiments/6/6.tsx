@@ -687,6 +687,9 @@ const Main = withSharedState(
         {/* Title - always visible */}
         <div className="title">
           <h1>screen symphony</h1>
+          <span style={{ fontSize: "0.5rem" }}>
+            <a href="/">playhtml</a> <a href="/experiments">experiment</a> 06
+          </span>
         </div>
 
         {/* Full-screen visualization container */}
