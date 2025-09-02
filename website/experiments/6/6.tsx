@@ -4,16 +4,10 @@ import React, {
   useMemo,
   useState,
   useRef,
-  useContext,
   useCallback,
 } from "react";
 import ReactDOM from "react-dom/client";
-import {
-  PlayProvider,
-  withSharedState,
-  PlayContext,
-  usePlayContext,
-} from "@playhtml/react";
+import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
 
 interface DeviceInfo {
   userAgent: string;
@@ -44,45 +38,96 @@ interface ScreenSizeData {
 // Memoized device name cache
 const deviceNameCache = new Map<string, string>();
 
-// Generate descriptive screen size names - optimized with caching
-function getScreenSizeName(width: number, height: number): string {
-  const key = `${width}x${height}`;
+// Generate descriptive screen size names from device info - optimized with caching
+function getScreenSizeName(deviceInfo: DeviceInfo): string {
+  const key = `${deviceInfo.os}-${deviceInfo.deviceType}-${deviceInfo.browser}`;
   if (deviceNameCache.has(key)) {
     return deviceNameCache.get(key)!;
   }
 
-  const area = width * height;
-  let name: string;
+  let name = "";
 
-  if (area < 500000) {
-    name = "MOBILE";
-  } else if (area < 1000000) {
-    name = "TABLET";
-  } else if (area < 2000000) {
-    name = "LAPTOP";
+  // Start with device type if available
+  if (deviceInfo.deviceType) {
+    name = deviceInfo.deviceType.toUpperCase();
+  } else if (deviceInfo.os) {
+    // Infer device type from OS
+    switch (deviceInfo.os.toLowerCase()) {
+      case "ios":
+        name = "MOBILE";
+        break;
+      case "android":
+        name = deviceInfo.userAgent.includes("Mobile") ? "MOBILE" : "TABLET";
+        break;
+      case "macos":
+        name = "MAC";
+        break;
+      case "windows":
+        name = "PC";
+        break;
+      case "linux":
+        name = "LINUX";
+        break;
+      default:
+        name = "DEVICE";
+    }
   } else {
-    name = "DESKTOP";
+    name = "DEVICE";
+  }
+
+  // Add OS version if available for specificity
+  if (deviceInfo.osVersion) {
+    name += ` ${deviceInfo.osVersion}`;
   }
 
   deviceNameCache.set(key, name);
   return name;
 }
 
-// Josef Albers inspired color palette
-const ALBERS_COLORS = [
-  "#FF6B35", // Orange
-  "#F7931E", // Yellow-orange
-  "#FFD23F", // Yellow
-  "#06FFA5", // Green
-  "#118AB2", // Blue
-  "#073B4C", // Dark blue
-  "#EF476F", // Pink
-  "#B7094C", // Dark pink
-  "#A663CC", // Purple
-  "#4E148C", // Dark purple
-  "#2E86AB", // Light blue
-  "#A23B72", // Burgundy
-];
+// Josef Albers inspired color generation
+// Based on his geometric color theory: high contrast, bold saturation, vibrant composition
+function generateAlbersColor(seed: string): string {
+  // Use the screen size key as a seed for consistent colors per size
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+
+  // Balanced Albers-inspired hue distribution
+  const albersHueRanges = [
+    [0, 20], // Pure reds
+    [20, 40], // Red-oranges
+    [40, 55], // Pure oranges
+    [120, 150], // Greens
+    [150, 180], // Green-cyans
+    [180, 210], // Cyans
+    [210, 250], // Blues
+    [250, 280], // Blue-purples
+    [280, 320], // Purples/magentas
+  ];
+
+  // Pick a hue range based on hash
+  const rangeIndex = Math.abs(hash) % albersHueRanges.length;
+  const [minHue, maxHue] = albersHueRanges[rangeIndex];
+  const hue = minHue + (Math.abs(hash * 2) % (maxHue - minHue));
+
+  // Higher saturation and smart lightness based on hue
+  const saturation = 80 + (Math.abs(hash * 3) % 20); // 80-100%
+
+  // Adjust lightness based on hue to avoid browns in reds/oranges only
+  let lightness;
+  if (hue <= 55) {
+    // Reds and oranges only: keep in 45-65% range to avoid browns
+    lightness = 45 + (Math.abs(hash * 5) % 20); // 45-65%
+  } else {
+    // All other colors including greens: can use wider range
+    lightness = 35 + (Math.abs(hash * 5) % 40); // 35-75%
+  }
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
 
 function getCurrentDeviceInfo(): DeviceInfo {
   const ua = navigator.userAgent;
@@ -179,8 +224,12 @@ const Main = withSharedState(
     const [isPanning, setIsPanning] = useState(false);
     const [lastTouchDistance, setLastTouchDistance] = useState(0);
     const [panStartY, setPanStartY] = useState(0);
+    const [showIntro, setShowIntro] = useState(true);
+    const [hasStarted, setHasStarted] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    // Track which rectangles have already appeared to prevent re-animation
+    const appearedRectangles = useRef<Set<string>>(new Set());
 
     // Track current screen size and register device
     useEffect(() => {
@@ -339,10 +388,7 @@ const Main = withSharedState(
       e.preventDefault();
       setIsPanning(true);
 
-      if (e.touches.length === 2) {
-        // Pinch gesture
-        setLastTouchDistance(getTouchDistance(e.touches));
-      } else if (e.touches.length === 1) {
+      if (e.touches.length === 1) {
         // Single finger pan for zoom
         setPanStartY(e.touches[0].clientY);
       }
@@ -353,18 +399,7 @@ const Main = withSharedState(
         e.preventDefault();
         if (!isPanning) return;
 
-        if (e.touches.length === 2) {
-          // Pinch zoom
-          const currentDistance = getTouchDistance(e.touches);
-          if (lastTouchDistance > 0) {
-            const scale = Math.max(
-              0.5,
-              Math.min(2, currentDistance / lastTouchDistance)
-            ); // Clamp scale
-            updateZoom(targetZoom * scale);
-          }
-          setLastTouchDistance(currentDistance);
-        } else if (e.touches.length === 1) {
+        if (e.touches.length === 1) {
           // Pan gesture zoom (vertical movement) - reduced sensitivity for smoother interaction
           const deltaY = panStartY - e.touches[0].clientY;
           const sensitivity = 0.003;
@@ -411,23 +446,35 @@ const Main = withSharedState(
       setPanStartY(0);
     }, []);
 
+    // Handle continue from intro
+    const handleContinue = useCallback(() => {
+      setShowIntro(false);
+      setHasStarted(true);
+
+      // Clear the appeared rectangles so they all animate in
+      appearedRectangles.current.clear();
+    }, []);
+
     // Screen rectangle component with all labels
     const ScreenRectangle = React.memo(
       ({
         size,
         index,
         isCurrentSize,
+        shouldAnimate,
       }: {
         size: ScreenSize;
         index: number;
         isCurrentSize: boolean;
+        shouldAnimate: boolean;
       }) => {
-        const color = ALBERS_COLORS[index % ALBERS_COLORS.length];
+        const sizeKey = getScreenSizeKey(size.width, size.height);
+        const color = generateAlbersColor(sizeKey);
 
         // Memoized computations
         const deviceName = useMemo(
-          () => getScreenSizeName(size.width, size.height),
-          [size.width, size.height]
+          () => getScreenSizeName(size.deviceInfo),
+          [size.deviceInfo]
         );
 
         const timeString = useMemo(
@@ -443,20 +490,21 @@ const Main = withSharedState(
         return (
           <div
             key={getScreenSizeKey(size.width, size.height)}
-            className={`screen-rectangle ${
-              isCurrentSize ? "current" : ""
-            } animate-in`}
+            className={`screen-rectangle ${isCurrentSize ? "current" : ""} ${
+              shouldAnimate ? "animate-in" : ""
+            }`}
             style={{
               width: size.width,
               height: size.height,
               backgroundColor: color,
-              borderColor: color,
               position: "absolute",
               left: "50%",
               top: "50%",
               transform: `translate(-50%, -50%)`,
               zIndex: index + 1,
-              animationDelay: `${(allSizes.length - 1 - index) * 200}ms`, // Smaller rectangles first
+              animationDelay: shouldAnimate
+                ? `${(allSizes.length - 1 - index) * 200}ms`
+                : "0ms", // Smaller rectangles first
             }}
           >
             <div className="equipment-labels">
@@ -555,20 +603,88 @@ const Main = withSharedState(
           (s) => getScreenSizeKey(s.width, s.height) === sizeKey
         );
 
+        // Check if this rectangle is new and should animate
+        const shouldAnimate =
+          hasStarted && !appearedRectangles.current.has(sizeKey);
+        if (shouldAnimate) {
+          appearedRectangles.current.add(sizeKey);
+        }
+
         return (
           <ScreenRectangle
             key={sizeKey}
             size={size}
             index={originalIndex}
             isCurrentSize={sizeKey === currentSizeKey}
+            shouldAnimate={shouldAnimate}
           />
         );
       });
-    }, [allSizes, currentSizeKey]);
+    }, [allSizes, currentSizeKey, hasStarted]);
+
+    // Render current rectangle for intro
+    const renderCurrentRectangle = useMemo(() => {
+      if (allSizes.length === 0) return null;
+
+      const currentSizeKey = getScreenSizeKey(
+        currentSize.width,
+        currentSize.height
+      );
+      const currentSizeData = data.sizes[currentSizeKey];
+
+      if (!currentSizeData) return null;
+
+      const color = generateAlbersColor(currentSizeKey);
+      const deviceName = getScreenSizeName(currentSizeData.deviceInfo);
+
+      return (
+        <div
+          className="screen-rectangle current intro-rectangle"
+          style={{
+            width: Math.max(currentSize.width * 0.4, 400), // Larger to fit content
+            height: Math.max(currentSize.height * 0.4, 300),
+            backgroundColor: color,
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 1,
+          }}
+        >
+          <div className="equipment-labels">
+            <div className="label-top">
+              <span className="device-id">{deviceName}</span>
+              <span className="dimensions">
+                {currentSize.width}×{currentSize.height}
+              </span>
+            </div>
+          </div>
+
+          <div className="intro-content-inside">
+            <p>
+              screen symphony is a collective visualization of screen sizes
+              visiting this website. Each rectangle represents a unique screen
+              resolution.
+            </p>
+            <ol>
+              <li className="detail-item">
+                <span>Zoom with scroll/pinch, pan with drag</span>
+              </li>
+              <li className="detail-item">
+                <span>Rectangles appear as visitors join</span>
+              </li>
+            </ol>
+            <button className="continue-button" onClick={handleContinue}>
+              Begin Symphony
+            </button>
+          </div>
+        </div>
+      );
+    }, [allSizes, currentSize, data.sizes]);
 
     return (
       <div id="main">
-        {/* Title - top left */}
+        {/* Title - always visible */}
         <div className="title">
           <h1>screen symphony</h1>
         </div>
@@ -577,37 +693,42 @@ const Main = withSharedState(
         <div
           ref={containerRef}
           className="visualization-container"
-          onWheel={handleWheel}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onWheel={showIntro ? undefined : handleWheel}
+          onTouchStart={showIntro ? undefined : handleTouchStart}
+          onTouchMove={showIntro ? undefined : handleTouchMove}
+          onTouchEnd={showIntro ? undefined : handleTouchEnd}
+          onMouseDown={showIntro ? undefined : handleMouseDown}
+          onMouseMove={showIntro ? undefined : handleMouseMove}
+          onMouseUp={showIntro ? undefined : handleMouseUp}
+          onMouseLeave={showIntro ? undefined : handleMouseUp}
           style={{
             cursor: isPanning ? "ns-resize" : undefined,
           }}
         >
-          {/* Zoom transform applied here instead of individual rectangles */}
-          <div
-            className="zoom-container"
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: `translate3d(-50%, -50%, 0) scale3d(${zoom}, ${zoom}, 1)`,
-              transformOrigin: "center center",
-              width: "100%",
-              height: "100%",
-              backfaceVisibility: "hidden", // Force GPU acceleration
-            }}
-          >
-            {renderScreenSizes}
-          </div>
+          {showIntro ? (
+            // Intro state: show only current rectangle with content inside
+            renderCurrentRectangle
+          ) : (
+            // Main state: show all rectangles with zoom
+            <div
+              className="zoom-container"
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: `translate3d(-50%, -50%, 0) scale3d(${zoom}, ${zoom}, 1)`,
+                transformOrigin: "center center",
+                width: "100%",
+                height: "100%",
+                backfaceVisibility: "hidden", // Force GPU acceleration
+              }}
+            >
+              {renderScreenSizes}
+            </div>
+          )}
         </div>
 
-        {/* Floating controls - bottom right */}
+        {/* Floating controls - always visible */}
         <div className="floating-controls">
           <div className="info-chips">
             <div className="chip current-size">
@@ -620,15 +741,17 @@ const Main = withSharedState(
             <div className="chip zoom-level">{(zoom * 100).toFixed(0)}%</div>
           </div>
 
-          <div className="control-buttons">
-            <button
-              onClick={() => setTargetZoom(1)}
-              disabled={isResizing}
-              title="Reset Zoom"
-            >
-              Reset Zoom
-            </button>
-          </div>
+          {!showIntro && (
+            <div className="control-buttons">
+              <button
+                onClick={() => setTargetZoom(1)}
+                disabled={isResizing}
+                title="Reset Zoom"
+              >
+                Reset Zoom
+              </button>
+            </div>
+          )}
 
           {isResizing && <div className="resize-status">Adjusting size...</div>}
         </div>

@@ -12,6 +12,7 @@ body {
     sans-serif;
   background: #f8f9fa;
   color: #333;
+  font-size: 24px;
 }
 
 #main {
@@ -30,7 +31,7 @@ body {
 
   h1 {
     margin: 0;
-    font-size: 2.5rem;
+    font-size: 1rem;
     font-weight: 300;
     letter-spacing: -0.02em;
     color: #073b4c;
@@ -88,7 +89,7 @@ body {
 .screen-rectangle {
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
-  opacity: 0;
+  opacity: 1;
   transition: 0.2s ease;
 
   .equipment-labels {
@@ -106,15 +107,16 @@ body {
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15),
       0 0 0 3px rgba(255, 107, 53, 0.3);
     animation: screen-appear 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-      pulse-current 5s infinite;
+      pulse-current 3s infinite;
     border: 10px solid black;
   }
   &:hover {
-    filter: brightness(1.2);
+    filter: brightness(1.1);
   }
 
-  // Entry animation for new screen sizes
+  // Entry animation for new screen sizes only
   &.animate-in {
+    opacity: 0; // Start hidden for animation
     animation: screen-appear 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   }
 }
@@ -133,10 +135,10 @@ body {
 @keyframes pulse-current {
   0%,
   100% {
-    filter: brightness(1);
+    filter: brightness(1) saturate(1);
   }
   50% {
-    filter: brightness(1.2);
+    filter: brightness(1.2) saturate(1.2) hue-rotate(10deg);
   }
 }
 
@@ -324,7 +326,7 @@ body {
   backdrop-filter: blur(15px);
   padding: 0.5rem 0.875rem;
   border-radius: 20px;
-  font-size: 0.85rem;
+  font-size: 0.6rem;
   font-weight: 500;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -372,7 +374,7 @@ body {
     color: #118ab2;
     padding: 0.6rem 1rem;
     border-radius: 8px;
-    font-size: 0.8rem;
+    font-size: 0.6rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -419,64 +421,200 @@ body {
 
 // Responsive design for mobile
 @media (max-width: 768px) {
+  body {
+    font-size: 16px; // Reduce base font size
+  }
+
   .title {
-    top: 1rem;
-    left: 1rem;
+    top: 0.5rem;
+    left: 0.5rem;
 
     h1 {
-      font-size: 1.8rem;
-      padding: 0.4rem 0.8rem;
+      font-size: 0.8rem;
+      padding: 0.3rem 0.5rem;
+      border-radius: 8px;
     }
   }
 
   .floating-controls {
-    bottom: 1rem;
-    right: 1rem;
-    max-width: calc(100vw - 2rem);
+    bottom: 0.5rem;
+    right: 0.5rem;
+    gap: 0.5rem;
+    max-width: calc(100vw - 1rem);
   }
 
   .info-chips {
+    gap: 0.25rem;
     flex-wrap: wrap;
     max-width: 100%;
   }
 
   .chip {
-    font-size: 0.75rem;
-    padding: 0.4rem 0.7rem;
+    font-size: 0.5rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: 12px;
+
+    &.current-size .resize-dot {
+      margin-left: 0.25rem;
+    }
   }
 
   .control-buttons {
-    flex-direction: column;
-    width: 100%;
+    gap: 0.25rem;
 
     button {
-      font-size: 0.75rem;
-      padding: 0.5rem 0.8rem;
+      font-size: 0.5rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
     }
   }
 
-  .screen-label {
-    font-size: 0.7rem;
-    padding: 0.4rem 0.6rem;
-    min-width: 100px;
+  .resize-status {
+    font-size: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 12px;
+  }
 
-    .device-name {
+  // Make labels LARGER and more readable on mobile
+  .equipment-labels {
+    .label-top {
+      top: 1%;
+      left: 2%;
+      right: 2%;
+
+      .device-id {
+        font-size: calc(0.8rem * var(--zoom-factor, 1));
+        font-weight: 900;
+      }
+
+      .dimensions {
+        font-size: calc(0.7rem * var(--zoom-factor, 1));
+        font-weight: 800;
+      }
+    }
+
+    .label-right,
+    .label-left {
+      top: 8%;
+
+      .info-block {
+        gap: 2px;
+
+        .label {
+          font-size: calc(0.6rem * var(--zoom-factor, 1));
+          font-weight: 700;
+        }
+
+        .value {
+          font-size: calc(0.7rem * var(--zoom-factor, 1));
+          font-weight: 900;
+        }
+
+        .sub {
+          font-size: calc(0.55rem * var(--zoom-factor, 1));
+          font-weight: 700;
+        }
+      }
+    }
+
+    .label-bottom {
+      bottom: 1%;
+      left: 2%;
+      right: 2%;
+
+      .stat {
+        font-size: calc(0.6rem * var(--zoom-factor, 1));
+        font-weight: 800;
+      }
+    }
+  }
+}
+
+// Intro content inside the rectangle
+.intro-rectangle {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.intro-content-inside {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  p,
+  ol {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    margin-bottom: 0;
+  }
+  ol {
+    margin-bottom: 1rem;
+  }
+}
+
+.continue-button {
+  background: rgba(255, 255, 255, 0.9);
+  color: #118ab2;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 25px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 1);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+@keyframes intro-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+// Mobile intro adjustments
+@media (max-width: 768px) {
+  .intro-content-inside {
+    p {
       font-size: 0.7rem;
     }
+  }
 
-    .dimensions {
-      font-size: 0.65rem;
-    }
+  .detail-item {
+    font-size: 0.6rem;
+    gap: 0.4rem;
 
-    &.top-left,
-    &.bottom-left {
-      transform: translate(-50%, -100%);
+    .icon {
+      font-size: 0.7rem;
+      width: 0.8rem;
     }
+  }
 
-    &.top-right,
-    &.bottom-right {
-      transform: translate(50%, -100%);
-    }
+  .continue-button {
+    font-size: 0.7rem;
+    padding: 0.5rem 1rem;
   }
 }
 
