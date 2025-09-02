@@ -239,8 +239,8 @@ export function withSharedState<T extends object, V = any, P = any>(
     props: P
   ) => React.ReactElement,
   options?: { standalone?: boolean; loading?: LoadingOptions }
-): React.ComponentType<P> {
-  const renderChildren = (props: P) => {
+): (props: P) => JSX.Element {
+  const renderChildren = (props: P): JSX.Element => {
     const configForProps =
       typeof playConfig === "function" ? playConfig(props) : playConfig;
 
@@ -257,7 +257,7 @@ export function withSharedState<T extends object, V = any, P = any>(
     );
   };
 
-  return (props) => renderChildren(props);
+  return renderChildren;
 }
 
 // export function useSharedState<T extends object, V = any>({

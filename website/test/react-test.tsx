@@ -1,5 +1,5 @@
 import "../home.scss";
-import React, { PropsWithChildren } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import {
   CanGrowElement,
@@ -8,7 +8,6 @@ import {
   PlayProvider,
   CanMoveElement,
   CanSpinElement,
-  CanToggleElement,
   usePlayContext,
 } from "@playhtml/react";
 import { ReactionView } from "../../packages/react/examples/Reaction";
@@ -67,30 +66,6 @@ const LoadingStateTest = () => {
       >
         {/* can-play with opt-in loading */}
         <WithSharedStateCanPlayWithLoading />
-
-        {/* Custom loading with breathing + custom class */}
-        <CanMoveElement
-          defaultData={{ x: 0, y: 0 }}
-          loading={{ behavior: "animate", customClass: "custom-loader" }}
-        >
-          <div
-            style={{
-              width: "180px",
-              height: "100px",
-              background: "linear-gradient(45deg, #ffeaa7, #fdcb6e)",
-              borderRadius: "12px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "16px",
-              fontWeight: "bold",
-              color: "white",
-              textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-            }}
-          >
-            Custom class
-          </div>
-        </CanMoveElement>
       </div>
 
       <style>
