@@ -1,2 +1,2 @@
-import { playhtml } from "./main";
+import { playhtml } from ".";
 playhtml.init({});

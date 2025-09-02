@@ -4,11 +4,10 @@ import {
   PlayerIdentity,
   Cursor,
   generatePlayerIdentity,
-  VISIBILITY_THRESHOLD,
   PROXIMITY_THRESHOLD,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
-import type { CursorOptions } from "../main";
+import type { CursorOptions } from "..";
 import { CursorChat } from "./chat";
 import randomColor from "randomcolor";
 
@@ -118,7 +117,7 @@ export class CursorClientAwareness {
   private playerIdentity: PlayerIdentity;
   private updateThrottled: boolean = false;
   private lastUpdate: number = 0;
-  private visibilityThreshold: number;
+  private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
   private allPlayerColors: Set<string> = new Set();
@@ -131,8 +130,7 @@ export class CursorClientAwareness {
     private options: CursorOptions = {}
   ) {
     this.playerIdentity = options.playerIdentity || generatePlayerIdentity();
-    this.visibilityThreshold =
-      options.visibilityThreshold || VISIBILITY_THRESHOLD;
+    this.visibilityThreshold = options.visibilityThreshold || undefined;
 
     if (this.options.enableChat === true) {
       this.chat = new CursorChat({
@@ -268,7 +266,15 @@ export class CursorClientAwareness {
 
         // Trigger proximity entered if this is new
         if (!this.proximityUsers.has(item.id)) {
-          this.options.onProximityEntered?.(presence.playerIdentity);
+          const positions = {
+            ours: { x: this.currentCursor.x, y: this.currentCursor.y },
+            theirs: { x: presence.cursor.x, y: presence.cursor.y }
+          };
+          const dx = presence.cursor.x - this.currentCursor.x;
+          const dy = presence.cursor.y - this.currentCursor.y;
+          const angle = Math.atan2(dy, dx);
+          
+          this.options.onProximityEntered?.(presence.playerIdentity, positions, angle);
         }
       }
     }
@@ -359,6 +365,9 @@ export class CursorClientAwareness {
         pointer,
       };
       this.throttledUpdateCursorAwareness();
+      
+      // Update visibility of all other cursors when our cursor moves
+      this.updateAllCursorVisibility();
     };
 
     const updateTouchCursor = (e: TouchEvent) => {
@@ -370,6 +379,9 @@ export class CursorClientAwareness {
           pointer: "touch",
         };
         this.throttledUpdateCursorAwareness();
+        
+        // Update visibility of all other cursors when our cursor moves
+        this.updateAllCursorVisibility();
       }
     };
 
@@ -386,6 +398,8 @@ export class CursorClientAwareness {
     document.addEventListener("mouseleave", (e) => {
       this.currentCursor = null;
       this.updateCursorAwareness();
+      // When cursor leaves, show all cursors (no visibility restriction)
+      this.showAllCursors();
     });
   }
 
@@ -445,7 +459,8 @@ export class CursorClientAwareness {
       cursorElement = this.createCursorElement(
         cursorData.playerIdentity,
         cursor.pointer,
-        cursorData.message
+        cursorData.message,
+        clientId
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(clientId, cursorElement);
@@ -485,11 +500,15 @@ export class CursorClientAwareness {
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
       const distance = calculateDistance(cursor, this.currentCursor);
-      const isVisible = distance < this.visibilityThreshold;
+      const isVisible = this.visibilityThreshold
+        ? distance < this.visibilityThreshold
+        : true;
 
+      cursorElement.style.display = isVisible ? "block" : "none";
       cursorElement.style.opacity = isVisible ? "1" : "0";
       cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
     } else {
+      cursorElement.style.display = "block";
       cursorElement.style.opacity = "1";
       cursorElement.style.transform = "scale(1)";
     }
@@ -498,10 +517,19 @@ export class CursorClientAwareness {
   private createCursorElement(
     playerIdentity?: PlayerIdentity,
     pointer: string = "mouse",
-    message?: string | null
+    message?: string | null,
+    connectionId?: string
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
+
+    // Check for custom cursor renderer first
+    if (connectionId && this.options.onCustomCursorRender) {
+      const customElement = this.options.onCustomCursorRender(connectionId, element);
+      if (customElement) {
+        return customElement;
+      }
+    }
 
     const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
 
@@ -832,6 +860,64 @@ export class CursorClientAwareness {
   private getContrastColor(backgroundColor: string): string {
     const luminance = this.getLuminance(backgroundColor);
     return luminance > 0.5 ? "#000000" : "#ffffff";
+  }
+
+  private updateAllCursorVisibility(): void {
+    if (!this.currentCursor || !this.visibilityThreshold) return;
+
+    this.cursors.forEach((cursorElement, clientId) => {
+      // Get cursor data from spatial grid
+      const gridItems = this.spatialGrid.getAll();
+      const cursorData = gridItems.find(item => item.id === clientId)?.data;
+      
+      if (cursorData && cursorData.cursor) {
+        const distance = calculateDistance(this.currentCursor!, cursorData.cursor);
+        const isVisible = distance < this.visibilityThreshold!;
+        
+        cursorElement.style.display = isVisible ? "block" : "none";
+        cursorElement.style.opacity = isVisible ? "1" : "0";
+        cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
+      }
+    });
+  }
+
+  private showAllCursors(): void {
+    this.cursors.forEach((cursorElement) => {
+      cursorElement.style.display = "block";
+      cursorElement.style.opacity = "1";
+      cursorElement.style.transform = "scale(1)";
+    });
+  }
+
+  configure(options: Partial<CursorOptions>): void {
+    // Update options object
+    Object.assign(this.options, options);
+
+    // Update visibility threshold if changed
+    if (options.visibilityThreshold !== undefined) {
+      this.visibilityThreshold = options.visibilityThreshold;
+      // Immediately update cursor visibility with new threshold
+      this.updateAllCursorVisibility();
+    }
+
+    // Update player identity if provided
+    if (options.playerIdentity !== undefined) {
+      this.playerIdentity = options.playerIdentity;
+    }
+  }
+
+  hideCursor(connectionId: string): void {
+    const cursorElement = this.cursors.get(connectionId);
+    if (cursorElement) {
+      cursorElement.style.display = "none";
+    }
+  }
+
+  showCursor(connectionId: string): void {
+    const cursorElement = this.cursors.get(connectionId);
+    if (cursorElement) {
+      cursorElement.style.display = "block";
+    }
   }
 
   destroy(): void {

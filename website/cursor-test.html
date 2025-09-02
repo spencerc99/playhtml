@@ -114,13 +114,14 @@
 
       /* Simple Proximity UI Styles */
       @keyframes simpleProximityPulse {
-        0%, 100% { 
-          transform: scale(1); 
-          opacity: 0.8; 
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.8;
         }
-        50% { 
-          transform: scale(1.2); 
-          opacity: 1; 
+        50% {
+          transform: scale(1.2);
+          opacity: 1;
         }
       }
 
@@ -245,7 +246,7 @@
     </div>
 
     <script type="module">
-      import { playhtml } from "../packages/playhtml/src/main.ts";
+      import { playhtml } from "../packages/playhtml/src/index.ts";
 
       const statusElement = document.getElementById("status");
       const proximityElement = document.getElementById("proximity-info");
@@ -293,19 +294,21 @@
       const activeProximityIndicators = new Map();
 
       function showMagicalProximityUI(otherPlayer) {
-        const playerId = otherPlayer?.publicKey || 'unknown';
-        
+        const playerId = otherPlayer?.publicKey || "unknown";
+
         // Don't create duplicate indicators
         if (activeProximityIndicators.has(playerId)) return;
 
-        const playerColor = otherPlayer?.playerStyle?.colorPalette?.[0] || "#3b82f6";
-        const playerName = otherPlayer?.name || `Player ${otherPlayer?.publicKey?.slice(-4)}`;
+        const playerColor =
+          otherPlayer?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+        const playerName =
+          otherPlayer?.name || `Player ${otherPlayer?.publicKey?.slice(-4)}`;
 
         // Create simple proximity indicator
         const indicator = document.createElement("div");
         indicator.className = "proximity-indicator";
         indicator.style.borderColor = playerColor;
-        
+
         // Position at actual cursor location (where proximity happened)
         const x = window.lastMouseX || window.innerWidth / 2;
         const y = window.lastMouseY || window.innerHeight / 2;
@@ -331,7 +334,8 @@
       function hideMagicalProximityUI(playerId) {
         const indicator = activeProximityIndicators.get(playerId);
         if (indicator) {
-          indicator.style.animation = "simpleProximityPulse 0.3s ease-out reverse";
+          indicator.style.animation =
+            "simpleProximityPulse 0.3s ease-out reverse";
           setTimeout(() => {
             if (indicator.parentNode) {
               indicator.remove();
@@ -363,7 +367,7 @@
         cursor.style.zIndex = "999999";
         cursor.style.pointerEvents = "none";
         cursor.style.transition = "all 0.1s ease";
-        
+
         document.body.appendChild(cursor);
         return cursor;
       }
@@ -374,30 +378,35 @@
       }
 
       function getDistanceFromRealCursor(x, y) {
-        const realCursor = { x: window.lastMouseX || window.innerWidth / 2, y: window.lastMouseY || window.innerHeight / 2 };
-        return Math.sqrt(Math.pow(x - realCursor.x, 2) + Math.pow(y - realCursor.y, 2));
+        const realCursor = {
+          x: window.lastMouseX || window.innerWidth / 2,
+          y: window.lastMouseY || window.innerHeight / 2,
+        };
+        return Math.sqrt(
+          Math.pow(x - realCursor.x, 2) + Math.pow(y - realCursor.y, 2)
+        );
       }
 
       // Track real cursor position
       window.lastMouseX = window.innerWidth / 2;
       window.lastMouseY = window.innerHeight / 2;
-      document.addEventListener('mousemove', (e) => {
+      document.addEventListener("mousemove", (e) => {
         window.lastMouseX = e.clientX;
         window.lastMouseY = e.clientY;
       });
 
-      window.toggleSimulationMode = function() {
+      window.toggleSimulationMode = function () {
         simulationMode = !simulationMode;
-        const button = document.getElementById('simulation-button');
-        
+        const button = document.getElementById("simulation-button");
+
         if (simulationMode) {
-          button.textContent = 'Disable Simulation Mode';
-          button.style.background = '#e74c3c';
-          
+          button.textContent = "Disable Simulation Mode";
+          button.style.background = "#e74c3c";
+
           // Create 3 simulated cursors
-          const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1'];
-          const names = ['Alice', 'Bob', 'Charlie'];
-          
+          const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1"];
+          const names = ["Alice", "Bob", "Charlie"];
+
           simulatedCursors = colors.map((color, i) => {
             const cursor = createSimulatedCursor(i, color, names[i]);
             return {
@@ -409,50 +418,61 @@
               color: color,
               name: names[i],
               publicKey: `sim-key-${i}`,
-              wasNear: false
+              wasNear: false,
             };
           });
-          
+
           // Start simulation loop
           simulationInterval = setInterval(() => {
-            simulatedCursors.forEach(simCursor => {
+            simulatedCursors.forEach((simCursor) => {
               // Update position with simple physics
               simCursor.x += simCursor.vx;
               simCursor.y += simCursor.vy;
-              
+
               // Bounce off walls
-              if (simCursor.x < 0 || simCursor.x > window.innerWidth - 32) simCursor.vx *= -1;
-              if (simCursor.y < 0 || simCursor.y > window.innerHeight - 32) simCursor.vy *= -1;
-              
+              if (simCursor.x < 0 || simCursor.x > window.innerWidth - 32)
+                simCursor.vx *= -1;
+              if (simCursor.y < 0 || simCursor.y > window.innerHeight - 32)
+                simCursor.vy *= -1;
+
               // Keep in bounds
-              simCursor.x = Math.max(0, Math.min(window.innerWidth - 32, simCursor.x));
-              simCursor.y = Math.max(0, Math.min(window.innerHeight - 32, simCursor.y));
-              
+              simCursor.x = Math.max(
+                0,
+                Math.min(window.innerWidth - 32, simCursor.x)
+              );
+              simCursor.y = Math.max(
+                0,
+                Math.min(window.innerHeight - 32, simCursor.y)
+              );
+
               // Update visual position
               moveSimulatedCursor(simCursor.element, simCursor.x, simCursor.y);
-              
+
               // Check proximity to real cursor
-              const distance = getDistanceFromRealCursor(simCursor.x, simCursor.y);
+              const distance = getDistanceFromRealCursor(
+                simCursor.x,
+                simCursor.y
+              );
               const isNear = distance < 200; // Same threshold as real proximity
-              
+
               if (isNear && !simCursor.wasNear) {
                 // Entered proximity
-                console.log('🎉 Simulated proximity entered!', simCursor.name);
+                console.log("🎉 Simulated proximity entered!", simCursor.name);
                 const fakePlayer = {
                   publicKey: simCursor.publicKey,
                   name: simCursor.name,
-                  playerStyle: { colorPalette: [simCursor.color] }
+                  playerStyle: { colorPalette: [simCursor.color] },
                 };
                 addProximityEvent("entered", fakePlayer);
                 showMagicalProximityUI(fakePlayer);
                 simCursor.wasNear = true;
               } else if (!isNear && simCursor.wasNear) {
                 // Left proximity
-                console.log('👋 Simulated proximity left!', simCursor.name);
+                console.log("👋 Simulated proximity left!", simCursor.name);
                 const fakePlayer = {
                   publicKey: simCursor.publicKey,
                   name: simCursor.name,
-                  playerStyle: { colorPalette: [simCursor.color] }
+                  playerStyle: { colorPalette: [simCursor.color] },
                 };
                 addProximityEvent("left", fakePlayer);
                 hideMagicalProximityUI(simCursor.publicKey);
@@ -460,18 +480,17 @@
               }
             });
           }, 50); // 20fps for smooth movement
-          
         } else {
-          button.textContent = 'Enable Simulation Mode';
-          button.style.background = '#9b59b6';
-          
+          button.textContent = "Enable Simulation Mode";
+          button.style.background = "#9b59b6";
+
           // Clean up simulation
           if (simulationInterval) {
             clearInterval(simulationInterval);
             simulationInterval = null;
           }
-          
-          simulatedCursors.forEach(simCursor => {
+
+          simulatedCursors.forEach((simCursor) => {
             if (simCursor.element.parentNode) {
               simCursor.element.remove();
             }
@@ -524,7 +543,6 @@
 
       try {
         await playhtml.init({
-          developmentMode: true,
           cursors: {
             enabled: true,
             proximityThreshold: 200, // Increased for easier testing
@@ -537,7 +555,7 @@
             onProximityLeft: (otherPlayer) => {
               console.log("👋 Proximity left!", otherPlayer);
               addProximityEvent("left", otherPlayer);
-              hideMagicalProximityUI(otherPlayer?.publicKey || 'unknown');
+              hideMagicalProximityUI(otherPlayer?.publicKey || "unknown");
             },
           },
           onError: () => {

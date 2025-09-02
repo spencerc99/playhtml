@@ -137,7 +137,13 @@ const WithSharedStateCanPlayWithLoading = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider
+    initOptions={{
+      cursors: {
+        enabled: true,
+      },
+    }}
+  >
     <div>
       <LoadingStateTest />
       <Candle />

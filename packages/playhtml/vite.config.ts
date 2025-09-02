@@ -6,13 +6,13 @@ export default defineConfig({
   plugins: [dts({ rollupTypes: true })],
   build: {
     rollupOptions: {
-      input: ["src/init.ts", "src/main.ts"],
+      input: ["src/init.ts", "src/index.ts"],
       output: {
         inlineDynamicImports: false,
       },
     },
     lib: {
-      entry: path.resolve(__dirname, "src/main.ts"),
+      entry: path.resolve(__dirname, "src/index.ts"),
       formats: ["es"],
       name: "playhtml",
       fileName: (format, entryName) => {

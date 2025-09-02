@@ -1,6 +1,6 @@
 import { PropsWithChildren, createContext, useEffect, useState } from "react";
 import playhtml from "./playhtml-singleton";
-import { InitOptions } from "playhtml";
+import { InitOptions, CursorOptions } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
 
 export interface PlayContextInfo
@@ -13,6 +13,8 @@ export interface PlayContextInfo
   > {
   hasSynced: boolean;
   isProviderMissing: boolean;
+  configureCursors: (options: Partial<CursorOptions>) => void;
+  getMyPlayerIdentity: () => { color: string; name: string };
 }
 
 export const PlayContext = createContext<PlayContextInfo>({
@@ -34,6 +36,16 @@ export const PlayContext = createContext<PlayContextInfo>({
   removePlayEventListener: () => {},
   hasSynced: false,
   isProviderMissing: true,
+  configureCursors: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  getMyPlayerIdentity: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
 });
 
 interface Props {
@@ -64,6 +76,24 @@ export function PlayProvider({
     );
   }, []);
 
+  const configureCursors = (options: Partial<CursorOptions>) => {
+    if (playhtml.cursorClient) {
+      // Use the new configure method
+      playhtml.cursorClient.configure(options);
+    } else {
+      console.warn('[@playhtml/react]: Cursor client not initialized. Make sure cursors are enabled in initOptions.');
+    }
+  };
+
+  const getMyPlayerIdentity = () => {
+    // Access the global cursors API that exposes the current player's information
+    const cursors = (window as any).cursors;
+    return {
+      color: cursors.color,
+      name: cursors.name,
+    };
+  };
+
   return (
     <PlayContext.Provider
       value={{
@@ -73,6 +103,8 @@ export function PlayProvider({
         removePlayEventListener: playhtml.removePlayEventListener,
         hasSynced,
         isProviderMissing: false,
+        configureCursors,
+        getMyPlayerIdentity,
       }}
     >
       {children}

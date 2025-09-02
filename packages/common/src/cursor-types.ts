@@ -26,7 +26,6 @@ export type CursorPresence = {
 
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
-export const VISIBILITY_THRESHOLD = 300; // pixels
 
 export function generatePlayerIdentity(): PlayerIdentity {
   const publicKey = crypto

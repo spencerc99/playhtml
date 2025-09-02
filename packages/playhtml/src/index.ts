@@ -224,8 +224,19 @@ export interface CursorOptions {
   proximityThreshold?: number;
   visibilityThreshold?: number;
   cursorStyle?: string;
-  onProximityEntered?: (playerIdentity?: any) => void;
+  onProximityEntered?: (
+    playerIdentity?: any,
+    positions?: {
+      ours: { x: number; y: number };
+      theirs: { x: number; y: number };
+    },
+    angle?: number
+  ) => void;
   onProximityLeft?: (connectionId: string) => void;
+  onCustomCursorRender?: (
+    connectionId: string,
+    element: HTMLElement
+  ) => HTMLElement | null;
   enableChat?: boolean;
 }
 
@@ -490,6 +501,19 @@ async function initPlayHTML({
     onError?.();
   });
 
+  // Initialize cursor tracking immediately after provider creation
+  if (cursors.enabled) {
+    // Generate player identity if not provided
+    const cursorOptions = {
+      ...cursors,
+    };
+    if (!cursorOptions.playerIdentity) {
+      cursorOptions.playerIdentity = generatePlayerIdentity();
+    }
+
+    cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
+  }
+
   // @ts-ignore
   // TODO: we should backup in indexeddb too but not using this bc it introduces a bunch of weird conflicts
   const _indexedDBProvider = new IndexeddbPersistence(room, doc);
@@ -538,19 +562,6 @@ async function initPlayHTML({
       migrateAllDataFromYMapToSyncedStore();
 
       setupElements();
-
-      // Initialize cursor tracking immediately after provider creation
-      if (cursors.enabled) {
-        // Generate player identity if not provided
-        const cursorOptions = {
-          ...cursors,
-        };
-        if (!cursorOptions.playerIdentity) {
-          cursorOptions.playerIdentity = generatePlayerIdentity();
-        }
-
-        cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
-      }
 
       // Mark all elements as ready after sync completes and elements are set up
       markAllElementsAsReady();

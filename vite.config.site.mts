@@ -9,7 +9,7 @@ export default defineConfig({
     alias: {
       "@playhtml/common": path.join(__dirname, "packages/common/src"),
       "@playhtml/react": path.join(__dirname, "packages/react/src"),
-      playhtml: path.join(__dirname, "packages/playhtml/src/main.ts"),
+      playhtml: path.join(__dirname, "packages/playhtml/src/index.ts"),
     },
   },
   optimizeDeps: {
@@ -26,6 +26,6 @@ export default defineConfig({
   },
   plugins: [react()],
   server: {
-    allowedHosts: ["a8965e5cb1e9.ngrok-free.app"],
+    allowedHosts: ["16ea7fb66b66.ngrok-free.app"],
   },
 });

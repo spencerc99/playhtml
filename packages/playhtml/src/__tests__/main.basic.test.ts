@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
-import { playhtml } from "../main";
+import { playhtml } from "../index";
 
 beforeAll(async () => {
   // Initialize playhtml with SyncedStore as primary storage
