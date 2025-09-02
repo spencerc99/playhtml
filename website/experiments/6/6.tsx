@@ -41,20 +41,31 @@ interface ScreenSizeData {
   sizes: Record<string, ScreenSize>;
 }
 
-// Generate descriptive screen size names
+// Memoized device name cache
+const deviceNameCache = new Map<string, string>();
+
+// Generate descriptive screen size names - optimized with caching
 function getScreenSizeName(width: number, height: number): string {
+  const key = `${width}x${height}`;
+  if (deviceNameCache.has(key)) {
+    return deviceNameCache.get(key)!;
+  }
+
   const area = width * height;
-  const aspectRatio = (width / height).toFixed(2);
+  let name: string;
 
   if (area < 500000) {
-    return "MOBILE";
+    name = "MOBILE";
   } else if (area < 1000000) {
-    return "TABLET";
+    name = "TABLET";
   } else if (area < 2000000) {
-    return "LAPTOP";
+    name = "LAPTOP";
   } else {
-    return "DESKTOP";
+    name = "DESKTOP";
   }
+
+  deviceNameCache.set(key, name);
+  return name;
 }
 
 // Josef Albers inspired color palette
@@ -248,21 +259,9 @@ const Main = withSharedState(
       };
     }, []);
 
-    // Smooth zoom animation
+    // Direct zoom - no animation for better performance
     useEffect(() => {
-      let animationId: number;
-      const animate = () => {
-        setZoom((prev) => {
-          const diff = targetZoom - prev;
-          const newZoom = prev + diff * 0.1;
-          if (Math.abs(diff) > 0.001) {
-            animationId = requestAnimationFrame(animate);
-          }
-          return newZoom;
-        });
-      };
-      animate();
-      return () => cancelAnimationFrame(animationId);
+      setZoom(targetZoom);
     }, [targetZoom]);
 
     // Get all unique sizes sorted by area (largest first for proper nesting)
@@ -300,60 +299,22 @@ const Main = withSharedState(
       [allSizes, currentSize.width, currentSize.height]
     );
 
-    // Prevent scroll on body and handle it for zooming
+    // Simplified keyboard controls for zooming
     useEffect(() => {
-      const handleScroll = (e: Event) => {
-        e.preventDefault();
-        return false;
-      };
-
       const handleKeyDown = (e: KeyboardEvent) => {
-        // Prevent arrow keys, space, page up/down from scrolling
-        if (
-          [
-            "ArrowUp",
-            "ArrowDown",
-            "Space",
-            "PageUp",
-            "PageDown",
-            "Home",
-            "End",
-          ].includes(e.code)
-        ) {
+        // Only handle specific zoom keys
+        if (["ArrowUp", "ArrowDown"].includes(e.code)) {
           e.preventDefault();
-
-          // Convert key presses to zoom
-          const zoomFactor =
-            e.code === "ArrowUp" || e.code === "PageUp"
-              ? 1.1
-              : e.code === "ArrowDown" || e.code === "PageDown"
-              ? 0.9
-              : 1;
-          if (zoomFactor !== 1) {
-            updateZoom(targetZoom * zoomFactor);
-          }
+          const zoomFactor = e.code === "ArrowUp" ? 1.1 : 0.9;
+          updateZoom(targetZoom * zoomFactor);
         }
       };
 
-      // Add event listeners to prevent scrolling and handle keyboard zoom
-      window.addEventListener("scroll", handleScroll, { passive: false });
-      window.addEventListener("keydown", handleKeyDown, { passive: false });
-      document.body.addEventListener("scroll", handleScroll, {
-        passive: false,
-      });
-      document.documentElement.addEventListener("scroll", handleScroll, {
-        passive: false,
-      });
-
-      return () => {
-        window.removeEventListener("scroll", handleScroll);
-        window.removeEventListener("keydown", handleKeyDown);
-        document.body.removeEventListener("scroll", handleScroll);
-        document.documentElement.removeEventListener("scroll", handleScroll);
-      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
     }, [targetZoom, updateZoom]);
 
-    // Mouse wheel zoom with snapping (centered zooming only)
+    // Direct wheel handler - let container scaling handle performance
     const handleWheel = useCallback(
       (e: React.WheelEvent) => {
         const delta = e.deltaY;
@@ -396,14 +357,17 @@ const Main = withSharedState(
           // Pinch zoom
           const currentDistance = getTouchDistance(e.touches);
           if (lastTouchDistance > 0) {
-            const scale = currentDistance / lastTouchDistance;
+            const scale = Math.max(
+              0.5,
+              Math.min(2, currentDistance / lastTouchDistance)
+            ); // Clamp scale
             updateZoom(targetZoom * scale);
           }
           setLastTouchDistance(currentDistance);
         } else if (e.touches.length === 1) {
-          // Pan gesture zoom (vertical movement)
+          // Pan gesture zoom (vertical movement) - reduced sensitivity for smoother interaction
           const deltaY = panStartY - e.touches[0].clientY;
-          const sensitivity = 0.005;
+          const sensitivity = 0.003;
           const zoomDelta = deltaY * sensitivity;
           updateZoom(targetZoom * (1 + zoomDelta));
           setPanStartY(e.touches[0].clientY);
@@ -447,24 +411,20 @@ const Main = withSharedState(
       setPanStartY(0);
     }, []);
 
-    // Memoized screen rectangle component for performance
-    const ScreenRectangle = useCallback(
+    // Screen rectangle component with all labels
+    const ScreenRectangle = React.memo(
       ({
         size,
         index,
-        zoom,
         isCurrentSize,
       }: {
         size: ScreenSize;
         index: number;
-        zoom: number;
         isCurrentSize: boolean;
       }) => {
         const color = ALBERS_COLORS[index % ALBERS_COLORS.length];
-        const scaledWidth = size.width * zoom;
-        const scaledHeight = size.height * zoom;
 
-        // Generate device name based on screen size
+        // Memoized computations
         const deviceName = useMemo(
           () => getScreenSizeName(size.width, size.height),
           [size.width, size.height]
@@ -487,21 +447,17 @@ const Main = withSharedState(
               isCurrentSize ? "current" : ""
             } animate-in`}
             style={{
-              width: scaledWidth,
-              height: scaledHeight,
+              width: size.width,
+              height: size.height,
               backgroundColor: color,
-              opacity: isCurrentSize ? 1 : 0.7,
-              border: isCurrentSize
-                ? `3px solid ${color}`
-                : `1px solid ${color}`,
+              borderColor: color,
               position: "absolute",
               left: "50%",
               top: "50%",
               transform: `translate(-50%, -50%)`,
               zIndex: index + 1,
               animationDelay: `${(allSizes.length - 1 - index) * 200}ms`, // Smaller rectangles first
-              '--zoom-factor': zoom,
-            } as React.CSSProperties & { '--zoom-factor': number }}
+            }}
           >
             <div className="equipment-labels">
               {/* Top edge - Device identification */}
@@ -576,31 +532,39 @@ const Main = withSharedState(
             </div>
           </div>
         );
-      },
-      []
+      }
     );
 
-    // Render nested rectangles
+    // Current size key - memoized to prevent recalculation
+    const currentSizeKey = useMemo(
+      () => getScreenSizeKey(currentSize.width, currentSize.height),
+      [currentSize.width, currentSize.height]
+    );
+
+    // Render rectangles up to visible count, smallest first
     const renderScreenSizes = useMemo(() => {
       if (allSizes.length === 0) return null;
 
-      const currentSizeKey = getScreenSizeKey(
-        currentSize.width,
-        currentSize.height
-      );
+      // allSizes is sorted largest first, so we need to reverse and take from the end
+      const smallestFirst = [...allSizes].reverse();
 
-      return allSizes.map((size, index) => (
-        <ScreenRectangle
-          key={getScreenSizeKey(size.width, size.height)}
-          size={size}
-          index={index}
-          zoom={zoom}
-          isCurrentSize={
-            getScreenSizeKey(size.width, size.height) === currentSizeKey
-          }
-        />
-      ));
-    }, [allSizes, zoom, currentSize, ScreenRectangle]);
+      return smallestFirst.map((size, index) => {
+        const sizeKey = getScreenSizeKey(size.width, size.height);
+        // Find the original index in allSizes for proper color/z-index
+        const originalIndex = allSizes.findIndex(
+          (s) => getScreenSizeKey(s.width, s.height) === sizeKey
+        );
+
+        return (
+          <ScreenRectangle
+            key={sizeKey}
+            size={size}
+            index={originalIndex}
+            isCurrentSize={sizeKey === currentSizeKey}
+          />
+        );
+      });
+    }, [allSizes, currentSizeKey]);
 
     return (
       <div id="main">
@@ -625,7 +589,22 @@ const Main = withSharedState(
             cursor: isPanning ? "ns-resize" : undefined,
           }}
         >
-          {renderScreenSizes}
+          {/* Zoom transform applied here instead of individual rectangles */}
+          <div
+            className="zoom-container"
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: `translate3d(-50%, -50%, 0) scale3d(${zoom}, ${zoom}, 1)`,
+              transformOrigin: "center center",
+              width: "100%",
+              height: "100%",
+              backfaceVisibility: "hidden", // Force GPU acceleration
+            }}
+          >
+            {renderScreenSizes}
+          </div>
         </div>
 
         {/* Floating controls - bottom right */}
