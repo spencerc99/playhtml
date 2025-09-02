@@ -1,5 +1,11 @@
 # Change Log
 
+## 2.4.0
+
+### Minor Changes
+
+- 335af8b: Add dynamic cursor configuration API, fix visibility threshold, and add custom cursor renderer.
+
 ## 2.3.0
 
 ### Minor Changes
