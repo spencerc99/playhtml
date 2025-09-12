@@ -1,0 +1,17 @@
+{
+  "name": "playhtml-partykit-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@types/node": "^20.3.3"
+  },
+  "dependencies": {
+    "y-partykit": "^0.0.120",
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}

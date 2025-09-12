@@ -47,13 +47,14 @@ async function verifySignature(
     console.log(`[PartyKit] Verifying signature with algorithm: ${algorithm}`);
     console.log(`[PartyKit] Public key length: ${publicKeyBase64.length}`);
     console.log(`[PartyKit] Signature length: ${signatureBase64.length}`);
-    
+
     const publicKeyBuffer = Buffer.from(publicKeyBase64, "base64");
-    
-    const keyAlgorithm = algorithm === "RSA-PSS" 
-      ? { name: "RSA-PSS", hash: "SHA-256" }
-      : { name: "Ed25519" };
-    
+
+    const keyAlgorithm =
+      algorithm === "RSA-PSS"
+        ? { name: "RSA-PSS", hash: "SHA-256" }
+        : { name: "Ed25519" };
+
     const publicKey = await crypto.subtle.importKey(
       "spki",
       publicKeyBuffer,
@@ -65,9 +66,8 @@ async function verifySignature(
     const messageBuffer = new TextEncoder().encode(message);
     const signatureBuffer = Buffer.from(signatureBase64, "base64");
 
-    const verifyAlgorithm = algorithm === "RSA-PSS" 
-      ? { name: "RSA-PSS", saltLength: 32 }
-      : "Ed25519";
+    const verifyAlgorithm =
+      algorithm === "RSA-PSS" ? { name: "RSA-PSS", saltLength: 32 } : "Ed25519";
 
     const result = await crypto.subtle.verify(
       verifyAlgorithm,
@@ -75,7 +75,7 @@ async function verifySignature(
       signatureBuffer,
       messageBuffer
     );
-    
+
     console.log(`[PartyKit] Signature verification result: ${result}`);
     return result;
   } catch (error) {
@@ -100,31 +100,52 @@ export default class implements Party.Server {
     message: string | ArrayBuffer | ArrayBufferView,
     sender: Party.Connection<unknown>
   ): Promise<void> {
-    if (typeof message === "string") {
-      try {
-        const parsed = JSON.parse(message);
-        console.log(`[PartyKit] Received message type: ${parsed.type}`);
-        
-        if (parsed.type === "session_establish") {
-          console.log(`[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(0, 8)}...`);
-          await this.handleSessionEstablishmentWS(parsed, sender);
-        } else if (parsed.type === "session_action") {
-          console.log(`[PartyKit] Handling session action: ${parsed.action?.action}`);
-          await this.handleSessionAction(parsed.action, sender);
-        } else {
-          // Regular message broadcasting for non-session messages
-          this.room.broadcast(message);
+    try {
+      if (typeof message === "string") {
+        try {
+          const parsed = JSON.parse(message);
+          console.log(`[PartyKit] Received message type: ${parsed.type}`);
+
+          if (parsed.type === "session_establish") {
+            console.log(
+              `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
+                0,
+                8
+              )}...`
+            );
+            await this.handleSessionEstablishmentWS(parsed, sender);
+            return; // Don't broadcast session messages
+          } else if (parsed.type === "session_action") {
+            console.log(
+              `[PartyKit] Handling session action: ${parsed.action?.action}`
+            );
+            await this.handleSessionAction(parsed.action, sender);
+            return; // Don't broadcast session actions
+          } else {
+            // Regular message broadcasting for non-session messages
+            this.room.broadcast(message);
+          }
+        } catch (parseError) {
+          console.log(
+            `[PartyKit] Non-JSON message or parse error:`,
+            parseError
+          );
+          // Not JSON, broadcast as-is
+          try {
+            this.room.broadcast(message);
+          } catch (broadcastError) {
+            console.error(`[PartyKit] Broadcast error:`, broadcastError);
+          }
         }
-      } catch (error) {
-        console.log(`[PartyKit] Non-JSON message or parse error:`, error);
-        // Not JSON, broadcast as-is
-        this.room.broadcast(message);
       }
+    } catch (error) {
+      console.error(`[PartyKit] Message handling error:`, error);
     }
   }
 
   async onConnect(connection: Party.Connection) {
     const room = this.room;
+    console.log(`[PartyKit] New connection established: ${connection.id}`);
 
     await onConnect(connection, this.room, {
       async load() {
@@ -183,11 +204,19 @@ export default class implements Party.Server {
   }
 
   // WebSocket-based session establishment
-  private async handleSessionEstablishmentWS(request: any, sender: Party.Connection) {
+  private async handleSessionEstablishmentWS(
+    request: any,
+    sender: Party.Connection
+  ) {
     try {
       const { challenge, signature, publicKey, algorithm } = request;
-      
-      console.log(`[PartyKit] Session request - algorithm: ${algorithm}, publicKey: ${publicKey?.slice(0, 16)}...`);
+
+      console.log(
+        `[PartyKit] Session request - algorithm: ${algorithm}, publicKey: ${publicKey?.slice(
+          0,
+          16
+        )}...`
+      );
 
       // Validate signature first - use algorithm if provided, default to Ed25519
       const isValidSignature = await verifySignature(
@@ -198,10 +227,12 @@ export default class implements Party.Server {
       );
 
       if (!isValidSignature) {
-        sender.send(JSON.stringify({
-          type: 'session_error',
-          message: 'Invalid signature'
-        }));
+        sender.send(
+          JSON.stringify({
+            type: "session_error",
+            message: "Invalid signature",
+          })
+        );
         return;
       }
 
@@ -210,16 +241,18 @@ export default class implements Party.Server {
 
       if (existingSession) {
         // Extend existing session
-        existingSession.expiresAt = Date.now() + (24 * 60 * 60 * 1000);
+        existingSession.expiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
         console.log(`🔄 Renewed session for ${publicKey.slice(0, 8)}...`);
 
-        sender.send(JSON.stringify({
-          type: 'session_renewed',
-          sessionId: existingSession.sessionId,
-          publicKey: existingSession.publicKey,
-          expiresAt: existingSession.expiresAt
-        }));
+        sender.send(
+          JSON.stringify({
+            type: "session_renewed",
+            sessionId: existingSession.sessionId,
+            publicKey: existingSession.publicKey,
+            expiresAt: existingSession.expiresAt,
+          })
+        );
       } else {
         // Create new session
         const session: ValidatedSession = {
@@ -227,29 +260,34 @@ export default class implements Party.Server {
           publicKey,
           domain: challenge.domain || "localhost",
           establishedAt: Date.now(),
-          expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
         };
 
         this.validSessions.set(session.sessionId, session);
 
-        console.log(`✅ New session established for ${publicKey.slice(0, 8)}...`);
+        console.log(
+          `✅ New session established for ${publicKey.slice(0, 8)}...`
+        );
 
-        sender.send(JSON.stringify({
-          type: 'session_established',
-          sessionId: session.sessionId,
-          publicKey: session.publicKey,
-          expiresAt: session.expiresAt
-        }));
+        sender.send(
+          JSON.stringify({
+            type: "session_established",
+            sessionId: session.sessionId,
+            publicKey: session.publicKey,
+            expiresAt: session.expiresAt,
+          })
+        );
       }
     } catch (error) {
       console.error("Session establishment error:", error);
-      sender.send(JSON.stringify({
-        type: 'session_error',
-        message: 'Session establishment failed'
-      }));
+      sender.send(
+        JSON.stringify({
+          type: "session_error",
+          message: "Session establishment failed",
+        })
+      );
     }
   }
-
 
   private findExistingSession(publicKey: string): ValidatedSession | null {
     for (const session of this.validSessions.values()) {
@@ -261,49 +299,57 @@ export default class implements Party.Server {
   }
 
   // Handle session-based actions
-  private async handleSessionAction(action: SessionAction, sender: Party.Connection) {
+  private async handleSessionAction(
+    action: SessionAction,
+    sender: Party.Connection
+  ) {
     try {
       // Validate session exists and is not expired
       const session = this.validSessions.get(action.sessionId);
       if (!session || session.expiresAt < Date.now()) {
-        throw new Error('Invalid or expired session');
+        throw new Error("Invalid or expired session");
       }
 
       // Basic action validation
       if (!this.isValidAction(action)) {
-        throw new Error('Invalid action format');
+        throw new Error("Invalid action format");
       }
 
       // Check nonce uniqueness (prevent replay attacks)
       const nonceKey = `${action.sessionId}:${action.nonce}`;
       if (this.usedNonces.has(nonceKey)) {
-        throw new Error('Duplicate action detected');
+        throw new Error("Duplicate action detected");
       }
 
       // Mark action as processed and broadcast validation
       this.usedNonces.add(nonceKey);
-      
-      this.room.broadcast(JSON.stringify({
-        type: 'session_action_validated',
-        action: {
-          elementId: action.elementId,
-          action: action.action,
-          appliedBy: session.publicKey,
-          appliedAt: Date.now()
-        }
-      }));
 
-      console.log(`✅ Session action validated: ${action.action} on ${action.elementId}`);
+      this.room.broadcast(
+        JSON.stringify({
+          type: "session_action_validated",
+          action: {
+            elementId: action.elementId,
+            action: action.action,
+            appliedBy: session.publicKey,
+            appliedAt: Date.now(),
+          },
+        })
+      );
+
+      console.log(
+        `✅ Session action validated: ${action.action} on ${action.elementId}`
+      );
 
       // Clean up old nonces (5 minute window)
       setTimeout(() => this.usedNonces.delete(nonceKey), 5 * 60 * 1000);
-
     } catch (error) {
       console.error("Session action error:", error);
-      sender.send(JSON.stringify({
-        type: "action_rejected", 
-        reason: error.message
-      }));
+      sender.send(
+        JSON.stringify({
+          type: "action_rejected",
+          reason: error.message,
+        })
+      );
     }
   }
 
@@ -315,7 +361,7 @@ export default class implements Party.Server {
       action.timestamp &&
       action.nonce &&
       // Timestamp should be recent (within 5 minutes)
-      (Date.now() - action.timestamp) < 5 * 60 * 1000
+      Date.now() - action.timestamp < 5 * 60 * 1000
     );
   }
 
