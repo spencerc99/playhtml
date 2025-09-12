@@ -305,19 +305,21 @@ export default class implements Party.Server {
           // Handle dynamic registration of shared source element
           await this.handleRegisterSharedElement(parsed.element, sender);
         } else if (parsed.type === "session_establish") {
-          console.log(
-            `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
-              0,
-              8
-            )}...`
-          );
-          await this.handleSessionEstablishmentWS(parsed, sender);
-        } else if (parsed.type === "session_action") {
-          console.log(
-            `[PartyKit] Handling session action: ${parsed.action?.action}`
-          );
-          await this.handleSessionAction(parsed.action, sender);
-        } else {
+            console.log(
+              `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
+                0,
+                8
+              )}...`
+            );
+            await this.handleSessionEstablishmentWS(parsed, sender);
+            return; // Don't broadcast session messages
+          } else if (parsed.type === "session_action") {
+            console.log(
+              `[PartyKit] Handling session action: ${parsed.action?.action}`
+            );
+            await this.handleSessionAction(parsed.action, sender);
+            return; // Don't broadcast session actions
+          }  else {
           // Broadcast other messages normally
           this.room.broadcast(message);
         }
@@ -325,6 +327,8 @@ export default class implements Party.Server {
         // If not valid JSON, broadcast as-is (existing behavior)
         this.room.broadcast(message);
       }
+    } catch (error) {
+      console.error(`[PartyKit] Message handling error:`, error);
     }
   }
 
@@ -384,6 +388,7 @@ export default class implements Party.Server {
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
     const room = this.room;
+    console.log(`[PartyKit] New connection established: ${connection.id}`);
 
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL

@@ -365,12 +365,16 @@ export async function establishSessionWithWS(
 
         // Set up one-time listener for session response
         const handleMessage = (event: MessageEvent) => {
+          console.log('[PLAYHTML] Received WebSocket message:', event.data);
           try {
             const data = JSON.parse(event.data);
+            console.log('[PLAYHTML] Parsed message type:', data.type);
+            
             if (
               data.type === "session_established" ||
               data.type === "session_renewed"
             ) {
+              console.log('[PLAYHTML] Session response received:', data);
               ws.removeEventListener("message", handleMessage);
 
               const session: ValidatedSession = {
@@ -402,18 +406,24 @@ export async function establishSessionWithWS(
 
               resolve(session);
             } else if (data.type === "session_error") {
+              console.log('[PLAYHTML] Session error received:', data);
               ws.removeEventListener("message", handleMessage);
               reject(new Error(data.message || "Session establishment failed"));
+            } else {
+              console.log('[PLAYHTML] Ignoring message type:', data.type);
             }
           } catch (error) {
-            // Ignore non-JSON messages
+            console.log('[PLAYHTML] Non-JSON message received:', event.data);
           }
         };
 
         ws.addEventListener("message", handleMessage);
 
         // Send session establishment request
+        console.log('[PLAYHTML] Sending session establishment request:', request);
+        console.log('[PLAYHTML] WebSocket readyState:', ws.readyState);
         ws.send(JSON.stringify(request));
+        console.log('[PLAYHTML] Session request sent, waiting for response...');
 
         // Set timeout for session establishment
         setTimeout(() => {
@@ -506,7 +516,23 @@ export function createSessionAction(
 export async function initializeSessionAuth(ws?: WebSocket): Promise<void> {
   const identity = getCurrentIdentity();
   if (identity && ws) {
+    // Wait a bit for WebSocket to be fully ready
+    if (ws.readyState !== WebSocket.OPEN) {
+      console.log('[PLAYHTML SESSION]: WebSocket not ready, waiting...');
+      await new Promise((resolve) => {
+        const checkReady = () => {
+          if (ws.readyState === WebSocket.OPEN) {
+            resolve(true);
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+        checkReady();
+      });
+    }
+    
     try {
+      console.log('[PLAYHTML SESSION]: Attempting to establish session...');
       await establishSessionWithWS(identity, ws);
     } catch (error) {
       console.warn("Failed to establish session on page load:", error);
