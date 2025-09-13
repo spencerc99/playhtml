@@ -15,6 +15,12 @@ export interface PlayContextInfo
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
   getMyPlayerIdentity: () => { color: string; name: string };
+  getCursors: () => {
+    allColors: string[];
+    count: number;
+    myColor: string;
+    myName: string;
+  };
 }
 
 export const PlayContext = createContext<PlayContextInfo>({
@@ -46,6 +52,12 @@ export const PlayContext = createContext<PlayContextInfo>({
       "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
     );
   },
+  getCursors: () => ({
+    allColors: [],
+    count: 0,
+    myColor: "",
+    myName: "",
+  }),
 });
 
 interface Props {
@@ -76,6 +88,7 @@ export function PlayProvider({
     );
   }, []);
 
+
   const configureCursors = (options: Partial<CursorOptions>) => {
     if (playhtml.cursorClient) {
       // Use the new configure method
@@ -94,6 +107,17 @@ export function PlayProvider({
     };
   };
 
+  const getCursors = () => {
+    // Direct access to current cursor information
+    const cursors = (window as any).cursors;
+    return {
+      allColors: cursors?.allColors || [],
+      count: cursors?.count || 0,
+      myColor: cursors?.color || "",
+      myName: cursors?.name || "",
+    };
+  };
+
   return (
     <PlayContext.Provider
       value={{
@@ -105,6 +129,7 @@ export function PlayProvider({
         isProviderMissing: false,
         configureCursors,
         getMyPlayerIdentity,
+        getCursors,
       }}
     >
       {children}

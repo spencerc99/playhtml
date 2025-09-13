@@ -322,7 +322,7 @@ const Main = withSharedState(
     id: "stellar-connections",
   },
   ({ data, setData, awareness, setMyAwareness }) => {
-    const { hasSynced, configureCursors, getMyPlayerIdentity } =
+    const { hasSynced, configureCursors, getMyPlayerIdentity, getCursors } =
       usePlayContext();
     const [proximityUsers, setProximityUsers] = useState<Set<string>>(
       new Set()
@@ -400,7 +400,6 @@ const Main = withSharedState(
         },
         angle?: number
       ) => {
-
         if (!otherPlayer) return;
 
         const connectionId = otherPlayer.connectionId || "unknown";
@@ -479,7 +478,6 @@ const Main = withSharedState(
 
     const handleProximityLeft = useCallback(
       (connectionId: string) => {
-
         setProximityUsers((prev) => {
           const next = new Set(prev);
           next.delete(connectionId);
@@ -526,6 +524,7 @@ const Main = withSharedState(
       configureCursors,
     ]);
 
+
     // Track mouse position
     useEffect(() => {
       const handleMouseMove = (e: MouseEvent) => {
@@ -535,7 +534,6 @@ const Main = withSharedState(
       window.addEventListener("mousemove", handleMouseMove);
       return () => window.removeEventListener("mousemove", handleMouseMove);
     }, []);
-
 
     // Render stars
     const renderStars = useMemo(() => {
@@ -597,14 +595,14 @@ const Main = withSharedState(
 
         // Convert colors to rgba format - handle both hex and hsl
         const parseColor = (color: string) => {
-          if (color.startsWith('hsl')) {
+          if (color.startsWith("hsl")) {
             // For HSL colors, extract values and convert to rgba
             const hslMatch = color.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
             if (hslMatch) {
               const [, h, s, l] = hslMatch;
               return `hsla(${h}, ${s}%, ${l}%, ${opacity})`;
             }
-          } else if (color.startsWith('#')) {
+          } else if (color.startsWith("#")) {
             // For hex colors, convert to rgba
             const hex = color.slice(1);
             const r = parseInt(hex.slice(0, 2), 16);
@@ -616,7 +614,7 @@ const Main = withSharedState(
         };
 
         const color1Rgba = parseColor(anim.color1);
-        const color2Rgba = parseColor(anim.color2).replace(/[\d.]+\)$/, '0)'); // Make second color transparent
+        const color2Rgba = parseColor(anim.color2).replace(/[\d.]+\)$/, "0)"); // Make second color transparent
 
         return (
           <div
@@ -677,6 +675,31 @@ const Main = withSharedState(
           {renderStarAnimations}
         </div>
 
+        {/* User presence indicator */}
+        <div className="presence-indicator">
+          <div className="presence-title">online now</div>
+          <div className="presence-users">
+            {getCursors().allColors.map((userColor, index) => {
+              const myIdentity = getMyPlayerIdentity();
+              const isMe = userColor === myIdentity?.color;
+
+              return (
+                <div
+                  key={`${userColor}-${index}`}
+                  className={`presence-user ${isMe ? "presence-user-me" : ""}`}
+                  style={{
+                    background: userColor,
+                    boxShadow: `0 0 12px ${userColor}40`,
+                  }}
+                  title={isMe ? "You" : `User with ${userColor} cursor`}
+                />
+              );
+            })}
+            {getCursors().allColors.length === 0 && (
+              <div className="presence-empty">waiting for others...</div>
+            )}
+          </div>
+        </div>
 
         {/* Info panel */}
         <div className="info-panel">

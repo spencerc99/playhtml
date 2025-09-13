@@ -3,7 +3,7 @@ import {
   CursorPresence,
   PlayerIdentity,
   Cursor,
-  generatePlayerIdentity,
+  generatePersistentPlayerIdentity,
   PROXIMITY_THRESHOLD,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
@@ -129,7 +129,7 @@ export class CursorClientAwareness {
     private provider: YPartyKitProvider,
     private options: CursorOptions = {}
   ) {
-    this.playerIdentity = options.playerIdentity || generatePlayerIdentity();
+    this.playerIdentity = options.playerIdentity || generatePersistentPlayerIdentity();
     this.visibilityThreshold = options.visibilityThreshold || undefined;
 
     if (this.options.enableChat === true) {
@@ -632,6 +632,15 @@ export class CursorClientAwareness {
     }
   }
 
+  private savePlayerIdentityToStorage(): void {
+    const STORAGE_KEY = 'playhtml_player_identity';
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.playerIdentity));
+    } catch (e) {
+      console.warn('Failed to save player identity to localStorage:', e);
+    }
+  }
+
   private setupGlobalAPI(): void {
     const primaryColor =
       this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
@@ -647,6 +656,7 @@ export class CursorClientAwareness {
         const cursorStyle = getCursorStyleForUser(color);
         document.documentElement.style.cursor = cursorStyle;
         this.updateCursorAwareness();
+        this.savePlayerIdentityToStorage();
         if (window.cursors) {
           window.cursors.color = color;
         }
@@ -655,6 +665,7 @@ export class CursorClientAwareness {
       setName: (name: string) => {
         this.playerIdentity.name = name;
         this.updateCursorAwareness();
+        this.savePlayerIdentityToStorage();
         if (window.cursors) {
           window.cursors.name = name;
         }
