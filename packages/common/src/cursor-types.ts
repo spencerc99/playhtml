@@ -49,11 +49,10 @@ export function generatePlayerIdentity(): PlayerIdentity {
   };
 }
 
+export const PLAYER_IDENTITY_STORAGE_KEY = "playhtml_player_identity";
 export function generatePersistentPlayerIdentity(): PlayerIdentity {
-  const STORAGE_KEY = "playhtml_player_identity";
-
   // Try to load existing identity from localStorage
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
   if (stored) {
     try {
       const identity = JSON.parse(stored);
@@ -74,7 +73,7 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
 
   // Save to localStorage
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+    localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
   } catch (e) {
     console.warn("Failed to save player identity to localStorage:", e);
   }
