@@ -173,7 +173,6 @@ function Main() {
             </li>
             <li>experience with code?</li>
           </ul>
-          {/* TODO: hook up interactive sign up */}
         </section>
         <section>
           <h3>what is playhtml?</h3>
@@ -323,7 +322,6 @@ function Main() {
         </section>
         <section>
           <h3>let's memorialize what we did here today!</h3>
-          {/* TODO: hook up interactive sign up */}
           <em>
             sign the guestbook and if you'd like, leave a link to your website!
           </em>
