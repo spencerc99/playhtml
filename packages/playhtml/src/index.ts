@@ -12,7 +12,7 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
-  generatePlayerIdentity,
+  generatePersistentPlayerIdentity,
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
@@ -508,7 +508,7 @@ async function initPlayHTML({
       ...cursors,
     };
     if (!cursorOptions.playerIdentity) {
-      cursorOptions.playerIdentity = generatePlayerIdentity();
+      cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
     }
 
     cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
@@ -1203,3 +1203,10 @@ function removePlayEventListener(type: string, id: string) {
     eventHandlers.delete(type);
   }
 }
+
+export type {
+  TagType,
+  PlayerIdentity,
+  Cursor,
+  CursorPresence,
+} from "@playhtml/common";

@@ -3,8 +3,9 @@ import {
   CursorPresence,
   PlayerIdentity,
   Cursor,
-  generatePlayerIdentity,
+  generatePersistentPlayerIdentity,
   PROXIMITY_THRESHOLD,
+  PLAYER_IDENTITY_STORAGE_KEY,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions } from "..";
@@ -18,7 +19,7 @@ const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 interface CursorEvents {
   allColors: string[];
   color: string;
-  name: string;
+  name: string | undefined;
 }
 
 export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
@@ -45,8 +46,6 @@ declare global {
       name: string;
       allColors: string[];
       count: number;
-      setColor?: (color: string) => void;
-      setName?: (name: string) => void;
       on: CursorEventEmitter["on"];
       off: CursorEventEmitter["off"];
     };
@@ -129,7 +128,8 @@ export class CursorClientAwareness {
     private provider: YPartyKitProvider,
     private options: CursorOptions = {}
   ) {
-    this.playerIdentity = options.playerIdentity || generatePlayerIdentity();
+    this.playerIdentity =
+      options.playerIdentity || generatePersistentPlayerIdentity();
     this.visibilityThreshold = options.visibilityThreshold || undefined;
 
     if (this.options.enableChat === true) {
@@ -268,13 +268,17 @@ export class CursorClientAwareness {
         if (!this.proximityUsers.has(item.id)) {
           const positions = {
             ours: { x: this.currentCursor.x, y: this.currentCursor.y },
-            theirs: { x: presence.cursor.x, y: presence.cursor.y }
+            theirs: { x: presence.cursor.x, y: presence.cursor.y },
           };
           const dx = presence.cursor.x - this.currentCursor.x;
           const dy = presence.cursor.y - this.currentCursor.y;
           const angle = Math.atan2(dy, dx);
-          
-          this.options.onProximityEntered?.(presence.playerIdentity, positions, angle);
+
+          this.options.onProximityEntered?.(
+            presence.playerIdentity,
+            positions,
+            angle
+          );
         }
       }
     }
@@ -365,7 +369,7 @@ export class CursorClientAwareness {
         pointer,
       };
       this.throttledUpdateCursorAwareness();
-      
+
       // Update visibility of all other cursors when our cursor moves
       this.updateAllCursorVisibility();
     };
@@ -379,7 +383,7 @@ export class CursorClientAwareness {
           pointer: "touch",
         };
         this.throttledUpdateCursorAwareness();
-        
+
         // Update visibility of all other cursors when our cursor moves
         this.updateAllCursorVisibility();
       }
@@ -525,7 +529,10 @@ export class CursorClientAwareness {
 
     // Check for custom cursor renderer first
     if (connectionId && this.options.onCustomCursorRender) {
-      const customElement = this.options.onCustomCursorRender(connectionId, element);
+      const customElement = this.options.onCustomCursorRender(
+        connectionId,
+        element
+      );
       if (customElement) {
         return customElement;
       }
@@ -632,42 +639,64 @@ export class CursorClientAwareness {
     }
   }
 
-  private setupGlobalAPI(): void {
-    const primaryColor =
-      this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
-    const playerName = this.playerIdentity.name || "Anonymous";
+  private savePlayerIdentityToStorage(): void {
+    try {
+      localStorage.setItem(
+        PLAYER_IDENTITY_STORAGE_KEY,
+        JSON.stringify(this.playerIdentity)
+      );
+    } catch (e) {
+      console.warn("Failed to save player identity to localStorage:", e);
+    }
+  }
 
-    window.cursors = {
-      color: primaryColor,
-      name: playerName,
-      allColors: Array.from(this.allPlayerColors),
-      count: this.cursors.size,
-      setColor: (color: string) => {
-        this.playerIdentity.playerStyle.colorPalette[0] = color;
-        const cursorStyle = getCursorStyleForUser(color);
-        document.documentElement.style.cursor = cursorStyle;
-        this.updateCursorAwareness();
-        if (window.cursors) {
-          window.cursors.color = color;
-        }
-        this.emitGlobalEvent("color", color);
+  private setupGlobalAPI(): void {
+    // Capture 'this' context for use in getters/setters
+    const self = this;
+
+    // Set the global API with direct getter/setter syntax
+    (window as any).cursors = {
+      get allColors() {
+        return Array.from(self.allPlayerColors);
       },
-      setName: (name: string) => {
-        this.playerIdentity.name = name;
-        this.updateCursorAwareness();
-        if (window.cursors) {
-          window.cursors.name = name;
-        }
-        this.emitGlobalEvent("name", name);
+      set allColors(newColors: string[]) {
+        self.allPlayerColors = new Set(newColors);
+        self.emitGlobalEvent("allColors", newColors);
       },
-      on: (event, callback) => {
-        if (!this.globalApiListeners.has(event)) {
-          this.globalApiListeners.set(event, new Set());
-        }
-        this.globalApiListeners.get(event)!.add(callback);
+      get count() {
+        return self.cursors.size;
       },
-      off: (event, callback) => {
-        const listeners = this.globalApiListeners.get(event);
+      get color() {
+        return self.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
+      },
+      set color(newColor: string) {
+        const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
+        self.playerIdentity.playerStyle.colorPalette[0] = newColor;
+        self.savePlayerIdentityToStorage();
+        document.documentElement.style.cursor = getCursorStyleForUser(newColor);
+        if (oldColor !== newColor) {
+          self.emitGlobalEvent("color", newColor);
+        }
+      },
+      get name() {
+        return self.playerIdentity.name;
+      },
+      set name(newName: string | undefined) {
+        const oldName = self.playerIdentity.name;
+        self.playerIdentity.name = newName;
+        self.savePlayerIdentityToStorage();
+        if (oldName !== newName) {
+          self.emitGlobalEvent("name", newName);
+        }
+      },
+      on: (event: keyof CursorEvents, callback: Function) => {
+        if (!self.globalApiListeners.has(event)) {
+          self.globalApiListeners.set(event, new Set());
+        }
+        self.globalApiListeners.get(event)!.add(callback);
+      },
+      off: (event: keyof CursorEvents, callback: Function) => {
+        const listeners = self.globalApiListeners.get(event);
         if (listeners) {
           listeners.delete(callback);
         }
@@ -688,7 +717,6 @@ export class CursorClientAwareness {
   private updateGlobalColors(): void {
     if (window.cursors) {
       window.cursors.allColors = Array.from(this.allPlayerColors);
-      window.cursors.count = this.cursors.size;
       this.emitGlobalEvent("allColors", window.cursors.allColors);
     }
   }
@@ -868,12 +896,15 @@ export class CursorClientAwareness {
     this.cursors.forEach((cursorElement, clientId) => {
       // Get cursor data from spatial grid
       const gridItems = this.spatialGrid.getAll();
-      const cursorData = gridItems.find(item => item.id === clientId)?.data;
-      
+      const cursorData = gridItems.find((item) => item.id === clientId)?.data;
+
       if (cursorData && cursorData.cursor) {
-        const distance = calculateDistance(this.currentCursor!, cursorData.cursor);
+        const distance = calculateDistance(
+          this.currentCursor!,
+          cursorData.cursor
+        );
         const isVisible = distance < this.visibilityThreshold!;
-        
+
         cursorElement.style.display = isVisible ? "block" : "none";
         cursorElement.style.opacity = isVisible ? "1" : "0";
         cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
