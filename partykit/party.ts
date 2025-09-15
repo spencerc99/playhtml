@@ -99,8 +99,10 @@ async function requestSharedAccess(
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.sharedElements) {
-        console.log(`[MAIN-PARTY] Received ${data.sharedElements.length} shared elements via HTTP`);
-        
+        console.log(
+          `[MAIN-PARTY] Received ${data.sharedElements.length} shared elements via HTTP`
+        );
+
         // Process each shared element directly
         for (const elementData of data.sharedElements) {
           await mainPartyInstance.injectSharedElementData(elementData);
@@ -137,6 +139,8 @@ const supabase = createClient(
 
 export default class implements Party.Server {
   private currentDoc: Y.Doc | null = null;
+  private observersSetup = false;
+  private sharedElementIds = new Set<string>();
 
   constructor(public room: Party.Room) {}
 
@@ -215,9 +219,16 @@ export default class implements Party.Server {
           );
         }
 
-        // Register shared elements if any
+        // Set up shared elements structure if this room has them
+        console.log(
+          `[MAIN-PARTY] Setting up shared elements structure for ${sharedElements.length} elements`
+        );
         if (sharedElements.length > 0) {
+          self.setupSharedElementsStructure(doc, sharedElements);
           await registerWithSharedParty(sharedElements, room);
+
+          // Set up observers immediately after structure is created
+          self.setupSharedElementObservers(doc);
         }
 
         // Request shared element access if any
@@ -231,6 +242,11 @@ export default class implements Party.Server {
       callback: {
         handler: async (doc) => {
           // This is called every few seconds if the document has changed
+
+          // Set up observers after first save (ensures structure exists)
+          if (!self.observersSetup && self.sharedElementIds.size > 0) {
+            self.setupSharedElementObservers(doc);
+          }
 
           // convert the Yjs document to a Uint8Array
           const content = Y.encodeStateAsUpdate(doc);
@@ -249,12 +265,218 @@ export default class implements Party.Server {
           if (error) {
             console.error("failed to save:", error);
           }
-
-          // TODO: Implement broadcasting of shared element updates
-          // await self.broadcastSharedUpdates.call(self, doc);
         },
       },
     });
+  }
+
+  /**
+   * Sets up the shared elements structure in the Y.Doc
+   * - Creates the shared-elements map in SyncedStore
+   * - Initializes shared elements with empty Y.Maps
+   * - Tracks shared element IDs for observer setup
+   */
+  private setupSharedElementsStructure(
+    doc: Y.Doc,
+    sharedElements: SharedElement[]
+  ) {
+    console.log(
+      `[MAIN-PARTY] Setting up shared elements structure for ${sharedElements.length} elements`
+    );
+
+    const syncedStore = doc.getMap("syncedstore");
+    let sharedElementsMap = syncedStore.get("shared-elements");
+
+    if (!sharedElementsMap) {
+      sharedElementsMap = new Y.Map();
+      syncedStore.set("shared-elements", sharedElementsMap);
+      console.log("[MAIN-PARTY] Created shared-elements map in SyncedStore");
+    }
+
+    // Initialize shared elements if they don't exist
+    sharedElements.forEach((element) => {
+      this.sharedElementIds.add(element.elementId);
+
+      if (!sharedElementsMap.has(element.elementId)) {
+        const elementMap = new Y.Map();
+        elementMap.set("metadata", {
+          permissions: element.permissions,
+          scope: element.scope,
+          path: element.path,
+        });
+        elementMap.set("data", new Y.Map()); // This will hold the actual element data
+        sharedElementsMap.set(element.elementId, elementMap);
+        console.log(
+          `[MAIN-PARTY] Initialized shared element: ${element.elementId}`
+        );
+      }
+    });
+  }
+
+  /**
+   * Sets up Y.js observers to detect changes to shared elements
+   * - Observes the actual playhtml element data in the 'play' map
+   * - Copies changes to our shared-elements structure for coordination
+   * - Triggers broadcasts when shared elements change
+   */
+  private setupSharedElementObservers(doc: Y.Doc) {
+    if (this.observersSetup) return;
+
+    console.log(
+      "[MAIN-PARTY] 🔍 Setting up Y.js observers for shared elements"
+    );
+
+    // Watch the actual playhtml element data locations
+    const directPlayMap = doc.getMap("play");
+    if (directPlayMap) {
+      console.log(
+        `[MAIN-PARTY] 📡 Observing direct play map with ${directPlayMap.size} capabilities`
+      );
+
+      // Observe changes to the play map itself (new capabilities)
+      directPlayMap.observe((event) => {
+        console.log(
+          "[MAIN-PARTY] 🆕 Play map capabilities changed:",
+          event.keysChanged
+        );
+        this.checkForSharedElementChanges(directPlayMap);
+      });
+
+      // Observe existing capabilities
+      directPlayMap.forEach((capabilityMap, capability) => {
+        if (capabilityMap instanceof Y.Map) {
+          console.log(
+            `[MAIN-PARTY] 👀 Setting up observer for capability: ${capability}`
+          );
+
+          capabilityMap.observe((event) => {
+            console.log(
+              `[MAIN-PARTY] 🔥 Capability ${capability} changed:`,
+              event.keysChanged
+            );
+
+            // Check if any changed elements are shared elements
+            event.keysChanged.forEach((elementId) => {
+              if (this.sharedElementIds.has(elementId)) {
+                const elementData = capabilityMap.get(elementId);
+                console.log(
+                  `[MAIN-PARTY] 🌟 Shared element ${elementId} changed in ${capability}:`,
+                  elementData
+                );
+                this.broadcastSharedElementChange(elementId, elementData);
+
+                // Also copy to shared-elements structure for coordination
+                this.updateSharedElementData(doc, elementId, elementData);
+              }
+            });
+          });
+        }
+      });
+    }
+
+    // Also observe SyncedStore play map if it exists
+    const syncedStore = doc.getMap("syncedstore");
+    const syncedPlayMap = syncedStore.get("play");
+    if (syncedPlayMap instanceof Y.Map) {
+      console.log(`[MAIN-PARTY] 📡 Also observing SyncedStore play map`);
+
+      syncedPlayMap.observe((event) => {
+        console.log(
+          "[MAIN-PARTY] 🆕 SyncedStore play map changed:",
+          event.keysChanged
+        );
+        this.checkForSharedElementChanges(syncedPlayMap);
+      });
+
+      syncedPlayMap.forEach((capabilityMap, capability) => {
+        if (capabilityMap instanceof Y.Map) {
+          capabilityMap.observe((event) => {
+            console.log(
+              `[MAIN-PARTY] 🔥 SyncedStore capability ${capability} changed:`,
+              event.keysChanged
+            );
+
+            event.keysChanged.forEach((elementId) => {
+              if (this.sharedElementIds.has(elementId)) {
+                const elementData = capabilityMap.get(elementId);
+                console.log(
+                  `[MAIN-PARTY] 🌟 Shared element ${elementId} changed in SyncedStore ${capability}:`,
+                  elementData
+                );
+                this.broadcastSharedElementChange(elementId, elementData);
+                this.updateSharedElementData(doc, elementId, elementData);
+              }
+            });
+          });
+        }
+      });
+    }
+
+    this.observersSetup = true;
+    console.log("[MAIN-PARTY] ✅ Y.js observers setup complete");
+  }
+
+  /**
+   * Checks for shared element changes in a capability map
+   */
+  private checkForSharedElementChanges(playMap: Y.Map<any>) {
+    playMap.forEach((capabilityMap, capability) => {
+      if (capabilityMap instanceof Y.Map) {
+        capabilityMap.forEach((elementData, elementId) => {
+          if (this.sharedElementIds.has(elementId)) {
+            console.log(
+              `[MAIN-PARTY] 🔍 Found shared element ${elementId} in ${capability}:`,
+              elementData
+            );
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Updates the shared-elements structure with new data
+   */
+  private updateSharedElementData(
+    doc: Y.Doc,
+    elementId: string,
+    elementData: any
+  ) {
+    const syncedStore = doc.getMap("syncedstore");
+    const sharedElementsMap = syncedStore.get("shared-elements");
+
+    if (sharedElementsMap instanceof Y.Map) {
+      const elementMap = sharedElementsMap.get(elementId);
+      if (elementMap instanceof Y.Map) {
+        elementMap.set("data", elementData);
+        console.log(
+          `[MAIN-PARTY] 📋 Updated shared-elements structure for ${elementId}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Broadcasts shared element changes to consumer rooms
+   * - Gets list of subscribers from shared party registry
+   * - Sends update messages to each consumer room via WebSocket
+   */
+  private async broadcastSharedElementChange(
+    elementId: string,
+    elementData: any
+  ) {
+    console.log(
+      `[MAIN-PARTY] 🔥 Y.js Observer detected change in shared element: ${elementId}`
+    );
+
+    // For now, just log the change - we'll implement broadcasting in Phase 2
+    const dataToLog =
+      elementData instanceof Y.Map ? elementData.toJSON() : elementData;
+    console.log(`[MAIN-PARTY] 📊 Element data:`, dataToLog);
+
+    // TODO: Phase 2 - Get subscribers and broadcast
+    // const subscribers = await this.getSubscribersForElement(elementId)
+    // ... broadcast to consumer rooms
   }
 
   /**

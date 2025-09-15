@@ -176,11 +176,25 @@ export enum TagType {
 }
 
 export function getIdForElement(ele: HTMLElement): string | undefined {
+  const dataSource = ele.getAttribute("data-source");
+  if (dataSource) {
+    return getSharedElementId(ele);
+  }
+
   return ele.id;
 }
 
+export function getSharedElementId(el: HTMLElement): string | undefined {
+  const dataSource = el.getAttribute("data-source");
+  if (!dataSource) {
+    throw new Error("Element has no data-source attribute");
+  }
+
+  return dataSource;
+}
+
 // Export cursor types
-export * from './cursor-types';
+export * from "./cursor-types";
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
       16 0,

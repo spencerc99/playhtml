@@ -61,20 +61,49 @@
 
 ## Implementation Strategy
 
-### 1. Room Key Generation
+### 1. Client-side changes
 
-```javascript
-// Current page-scoped rooms
-// "example.com-/blog/post"
+#### ID Generation / Mapping of shared elements
 
-// Domain-scoped shared elements
-// "shared-domain:example.com#elementId"
+- For local elements and shared element origins, we use the element's id
+- For shared elements that have a source, we use the data-source attribute
 
-// Global shared elements (includes path)
-// "shared-global:example.com/blog/post#elementId"
+YJS Structure
+
+```typescript
+const store = syncedStore<StoreShape>({ play: {} });
+const sharedElementsMap = syncedStore.get("shared-elements");
 ```
 
-### 2. Client-Side Discovery
+problem is right now we map data via tag type -> elementId rather than elementId -> data, so how involved is this change to account for shared elements?
+
+Option 1: work with existing structure
+
+// in server
+map the shared element data directly to the tag type -> elementId
+
+```typescript
+const store = syncedStore<StoreShape>({ play: {} });
+for (const elementId in sharedElementsMap) {
+  // derive what tag types this elementId is associated with
+  const tagTypes = getTagTypesForElement(elementId);
+  for (const tagType of tagTypes) {
+    store.play[tagType][elementId] = sharedElementsMap.get(elementId);
+    // attach observer for this tagType -> elementId
+    attachSyncedStoreObserver(tagType, elementId);
+  }
+}
+// in client
+const sharedElementsMap = syncedStore.get("shared-elements");
+for (const elementId in sharedElementsMap) {
+  const tagTypes = getTagTypesForElement(elementId);
+  for (const tagType of tagTypes) {
+    store.play[tagType][elementId] = sharedElementsMap.get(elementId);
+  }
+}
+```
+
+#### Discovery
 
 ```typescript
 // Client scans DOM and sends shared info during initial connection
@@ -110,137 +139,158 @@ function findSharedReferencesOnPage(): SharedReference[] {
 ```typescript
 // partykit/party.ts - Enhanced Main Party with Y.js Observers
 export default class MainParty implements Party.Server {
-  private currentDoc: Y.Doc | null = null
-  private observersSetup = false
-  private sharedElementIds = new Set<string>()
+  private currentDoc: Y.Doc | null = null;
+  private observersSetup = false;
+  private sharedElementIds = new Set<string>();
 
   async onConnect(connection: Party.Connection) {
-    const sharedElements = getSharedElementsFromParams(connection)
-    const sharedReferences = getSharedReferencesFromParams(connection)
-    
+    const sharedElements = getSharedElementsFromParams(connection);
+    const sharedReferences = getSharedReferencesFromParams(connection);
+
     await onConnect(connection, this.room, {
       async load() {
-        const doc = new Y.Doc()
-        this.currentDoc = doc
-        
+        const doc = new Y.Doc();
+        this.currentDoc = doc;
+
         // Load from Supabase (unified persistence)
         const { data } = await supabase
-          .from('documents')
-          .select('document')
-          .eq('name', this.room.id)
-          .maybeSingle()
-        
+          .from("documents")
+          .select("document")
+          .eq("name", this.room.id)
+          .maybeSingle();
+
         if (data) {
-          Y.applyUpdate(doc, new Uint8Array(Buffer.from(data.document, 'base64')))
+          Y.applyUpdate(
+            doc,
+            new Uint8Array(Buffer.from(data.document, "base64"))
+          );
         }
-        
+
         // Set up shared elements structure if this room has them
         if (sharedElements.length > 0) {
-          this.setupSharedElementsStructure(doc, sharedElements)
-          this.registerSharedElements(sharedElements)
+          this.setupSharedElementsStructure(doc, sharedElements);
+          this.registerSharedElements(sharedElements);
         }
-        
+
         // Request access to shared elements from other rooms
         if (sharedReferences.length > 0) {
-          await this.requestSharedElementAccess(sharedReferences, doc)
+          await this.requestSharedElementAccess(sharedReferences, doc);
         }
-        
-        return doc
+
+        return doc;
       },
-      
+
       callback: {
         handler: async (doc) => {
           // Set up observers after first save
           if (!this.observersSetup && this.sharedElementIds.size > 0) {
-            this.setupSharedElementObservers(doc)
+            this.setupSharedElementObservers(doc);
           }
-          
+
           // Unified Supabase persistence
-          const content = Y.encodeStateAsUpdate(doc)
-          await supabase.from('documents').upsert({
+          const content = Y.encodeStateAsUpdate(doc);
+          await supabase.from("documents").upsert({
             name: this.room.id,
-            document: Buffer.from(content).toString('base64')
-          })
-        }
-      }
-    })
+            document: Buffer.from(content).toString("base64"),
+          });
+        },
+      },
+    });
   }
-  
+
   private setupSharedElementObservers(doc: Y.Doc) {
-    if (this.observersSetup) return
-    
-    const syncedStore = doc.getMap('syncedstore')
-    const sharedElementsMap = syncedStore.get('shared-elements')
-    
+    if (this.observersSetup) return;
+
+    const syncedStore = doc.getMap("syncedstore");
+    const sharedElementsMap = syncedStore.get("shared-elements");
+
     if (sharedElementsMap instanceof Y.Map) {
-      console.log('[MAIN-PARTY] Setting up Y.js observers for shared elements')
-      
+      console.log("[MAIN-PARTY] Setting up Y.js observers for shared elements");
+
       // Observer for shared element map changes
       sharedElementsMap.observe((event) => {
-        event.keysChanged.forEach(elementId => {
-          const elementData = sharedElementsMap.get(elementId)
-          this.broadcastSharedElementChange(elementId, elementData)
-        })
-      })
-      
+        event.keysChanged.forEach((elementId) => {
+          const elementData = sharedElementsMap.get(elementId);
+          this.broadcastSharedElementChange(elementId, elementData);
+        });
+      });
+
       // Observer for individual element changes
       sharedElementsMap.forEach((elementData, elementId) => {
         if (elementData instanceof Y.Map) {
           elementData.observe(() => {
-            this.broadcastSharedElementChange(elementId, elementData)
-          })
+            this.broadcastSharedElementChange(elementId, elementData);
+          });
         }
-      })
-      
-      this.observersSetup = true
+      });
+
+      this.observersSetup = true;
     }
   }
-  
-  private async broadcastSharedElementChange(elementId: string, elementData: any) {
-    console.log(`[MAIN-PARTY] Broadcasting Y.js change for shared element ${elementId}`)
-    
+
+  private async broadcastSharedElementChange(
+    elementId: string,
+    elementData: any
+  ) {
+    console.log(
+      `[MAIN-PARTY] Broadcasting Y.js change for shared element ${elementId}`
+    );
+
     // Get list of consumer rooms from shared party registry
-    const subscribers = await this.getSubscribersForElement(elementId)
-    
+    const subscribers = await this.getSubscribersForElement(elementId);
+
     // Broadcast to each consumer room via direct WebSocket
     for (const subscriberRoomId of subscribers) {
       try {
-        const consumerRoom = this.room.context.parties.main.get(subscriberRoomId)
-        const socket = await consumerRoom.socket()
-        
-        socket.send(JSON.stringify({
-          type: 'shared-element-update',
-          elementId,
-          data: elementData instanceof Y.Map ? elementData.toJSON() : elementData,
-          sourceRoom: this.room.id
-        }))
+        const consumerRoom =
+          this.room.context.parties.main.get(subscriberRoomId);
+        const socket = await consumerRoom.socket();
+
+        socket.send(
+          JSON.stringify({
+            type: "shared-element-update",
+            elementId,
+            data:
+              elementData instanceof Y.Map ? elementData.toJSON() : elementData,
+            sourceRoom: this.room.id,
+          })
+        );
       } catch (error) {
-        console.error(`[MAIN-PARTY] Failed to broadcast to ${subscriberRoomId}:`, error)
+        console.error(
+          `[MAIN-PARTY] Failed to broadcast to ${subscriberRoomId}:`,
+          error
+        );
       }
     }
   }
-  
-  private async requestSharedElementAccess(references: SharedReference[], doc: Y.Doc) {
+
+  private async requestSharedElementAccess(
+    references: SharedReference[],
+    doc: Y.Doc
+  ) {
     for (const ref of references) {
-      const sourceRoomId = `${ref.domain}-${ref.path}`
-      const sourceRoom = this.room.context.parties.main.get(sourceRoomId)
-      
+      const sourceRoomId = `${ref.domain}-${ref.path}`;
+      const sourceRoom = this.room.context.parties.main.get(sourceRoomId);
+
       try {
         // Get initial data via HTTP
         const response = await sourceRoom.fetch({
-          method: 'GET',
-          headers: { 'X-Shared-Element': ref.elementId }
-        })
-        
+          method: "GET",
+          headers: { "X-Shared-Element": ref.elementId },
+        });
+
         if (response.ok) {
-          const { elementData } = await response.json()
-          this.injectSharedElementData(doc, ref.elementId, elementData)
-          
+          const { elementData } = await response.json();
+          this.injectSharedElementData(doc, ref.elementId, elementData);
+
           // Subscribe for real-time updates via WebSocket
-          await this.subscribeToSharedElement(ref, sourceRoom)
+          await this.subscribeToSharedElement(ref, sourceRoom);
         }
       } catch (error) {
-        console.error(`[MAIN-PARTY] Failed to access shared element ${ref.elementId}:`, error)
+        console.error(
+          `[MAIN-PARTY] Failed to access shared element ${ref.elementId}:`,
+          error
+        );
       }
     }
   }
@@ -271,7 +321,7 @@ export default class MainParty implements Party.Server {
 ### V2.0 Limitations
 
 - ❌ Complex permission models (domain allowlists)
-- ❌ HTML validation (relies on client-side registration)  
+- ❌ HTML validation (relies on client-side registration)
 - ❌ Lightweight shared party registry (for subscriber tracking)
 - ❌ Advanced error handling and retry logic
 - ❌ Performance monitoring and analytics
