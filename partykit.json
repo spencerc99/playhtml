@@ -1,5 +1,8 @@
 {
   "name": "playhtml",
   "main": "partykit/party.ts",
+  "parties": {
+    "shared": "partykit/shared-party.ts"
+  },
   "compatibilityDate": "2024-01-27"
 }

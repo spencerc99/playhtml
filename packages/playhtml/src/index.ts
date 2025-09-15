@@ -49,6 +49,20 @@ function getPartykitHost(userHost?: string): string {
 
 const VERBOSE = 0;
 
+// Shared elements interfaces
+interface SharedElement {
+  elementId: string;
+  permissions: string;
+  scope: 'domain' | 'global';
+  path?: string;
+}
+
+interface SharedReference {
+  domain: string;
+  path: string;
+  elementId: string;
+}
+
 // Root SyncedStore for nested CRDT semantics while keeping plain API
 type StoreShape = {
   play: Record<string, Record<string, any>>; // tag -> elementId -> data proxy
@@ -179,6 +193,68 @@ function getDefaultRoom(includeSearch?: boolean): string {
   return includeSearch
     ? transformedPathname + window.location.search
     : transformedPathname;
+}
+
+// Shared element discovery functions
+function findSharedElementsOnPage(): SharedElement[] {
+  const elements: SharedElement[] = [];
+  
+  // Find elements with shared attributes
+  document.querySelectorAll('[shared], [shared-domain], [shared-global]').forEach((el) => {
+    if (!el.id) return;
+    
+    let scope: 'domain' | 'global' = 'global';
+    let permissions = 'read-write';
+    
+    if (el.hasAttribute('shared-domain')) {
+      scope = 'domain';
+      const attrValue = el.getAttribute('shared-domain');
+      if (attrValue && attrValue !== '') {
+        permissions = attrValue.includes('read-only') ? 'read-only' : 'read-write';
+      }
+    } else if (el.hasAttribute('shared-global')) {
+      scope = 'global';
+      const attrValue = el.getAttribute('shared-global');
+      if (attrValue && attrValue !== '') {
+        permissions = attrValue.includes('read-only') ? 'read-only' : 'read-write';
+      }
+    } else if (el.hasAttribute('shared')) {
+      scope = 'global';
+      const attrValue = el.getAttribute('shared');
+      if (attrValue && attrValue !== '') {
+        permissions = attrValue.includes('read-only') ? 'read-only' : 'read-write';
+      }
+    }
+    
+    elements.push({
+      elementId: el.id,
+      permissions,
+      scope,
+      path: window.location.pathname,
+    });
+  });
+  
+  return elements;
+}
+
+function findSharedReferencesOnPage(): SharedReference[] {
+  const references: SharedReference[] = [];
+  
+  document.querySelectorAll('[data-source]').forEach((el) => {
+    const dataSource = el.getAttribute('data-source');
+    if (!dataSource) return;
+    
+    const [domainAndPath, elementId] = dataSource.split('#');
+    if (!domainAndPath || !elementId) return;
+    
+    const pathIndex = domainAndPath.indexOf('/');
+    const domain = pathIndex === -1 ? domainAndPath : domainAndPath.substring(0, pathIndex);
+    const path = pathIndex === -1 ? '/' : domainAndPath.substring(pathIndex);
+    
+    references.push({ domain, path, elementId });
+  });
+  
+  return references;
 }
 let yprovider: YPartyKitProvider;
 let cursorClient: CursorClientAwareness | null = null;
@@ -312,13 +388,23 @@ function onMessage(evt: MessageEvent) {
     return;
   }
 
-  let message: EventMessage;
+  let message: any;
   try {
-    message = JSON.parse(evt.data) as EventMessage;
+    message = JSON.parse(evt.data);
   } catch (err) {
     return;
   }
 
+  console.log(`[PLAYHTML] Received WebSocket message:`, message.type || 'unknown-type');
+
+  // Handle shared element data messages
+  if (message.type === "shared-element-data") {
+    console.log(`[PLAYHTML] Processing shared element data message`);
+    handleSharedElementData(message);
+    return;
+  }
+
+  // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
   if (!maybeHandlers) {
@@ -328,6 +414,59 @@ function onMessage(evt: MessageEvent) {
   for (const handler of maybeHandlers) {
     handler.onEvent(eventPayload);
   }
+}
+
+function handleSharedElementData(data: any) {
+  const { elementId, data: elementData, sourceDomain, permissions } = data;
+  
+  console.log(`[PLAYHTML] Received shared element data for ${elementId} from ${sourceDomain}:`, elementData);
+  
+  // Find the local element that has a data-source reference to this shared element
+  const referenceElements = document.querySelectorAll(`[data-source*="#${elementId}"]`);
+  console.log(`[PLAYHTML] Found ${referenceElements.length} reference elements for ${elementId}`);
+  
+  referenceElements.forEach((el) => {
+    if (!el.id) {
+      console.log(`[PLAYHTML] Skipping element without ID`);
+      return;
+    }
+    
+    const dataSource = el.getAttribute('data-source');
+    if (!dataSource || !dataSource.includes(sourceDomain)) {
+      console.log(`[PLAYHTML] Skipping element ${el.id} - data-source mismatch: ${dataSource} vs ${sourceDomain}`);
+      return;
+    }
+    
+    console.log(`[PLAYHTML] Injecting shared data into local element ${el.id}`);
+    
+    // Get the capability type from the element's attributes
+    const capabilityAttributes = ['can-move', 'can-toggle', 'can-grow', 'can-spin', 'can-duplicate', 'can-mirror', 'can-play'];
+    const capability = capabilityAttributes.find(attr => el.hasAttribute(attr));
+    
+    if (capability) {
+      // Inject the shared data into the local SyncedStore
+      store.play[capability] = store.play[capability] || {};
+      store.play[capability][el.id] = elementData;
+      
+      console.log(`[PLAYHTML] Shared data injected for ${capability}:${el.id}`, elementData);
+      
+      // Mark element as read-only if needed
+      if (permissions === 'read-only') {
+        el.setAttribute('data-shared-readonly', 'true');
+        console.log(`[PLAYHTML] Marked element ${el.id} as read-only`);
+      }
+      
+      // Force element update by triggering a re-render
+      const elementHandler = elementHandlers.get(capability)?.get(el.id);
+      if (elementHandler) {
+        console.log(`[PLAYHTML] Triggering element handler update for ${el.id}`);
+        // Force the element to update with new data
+        elementHandler.updateElement?.(elementData);
+      }
+    } else {
+      console.log(`[PLAYHTML] No capability found for element ${el.id}, attributes:`, Array.from(el.attributes).map(a => a.name));
+    }
+  });
 }
 
 function setupDevUI() {
@@ -482,7 +621,7 @@ async function initPlayHTML({
   window.playhtml = playhtml;
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
-  const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
+  const room = encodeURIComponent(window.location.host + "-" + inputRoom);
 
   const partykitHost = getPartykitHost(host);
 
@@ -495,7 +634,25 @@ async function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
 
-  yprovider = new YPartyKitProvider(partykitHost, room, doc);
+  // Discover shared elements and references on the page
+  const sharedElements = findSharedElementsOnPage();
+  const sharedReferences = findSharedReferencesOnPage();
+  
+  if (sharedElements.length > 0) {
+    console.log(`[PLAYHTML] Found ${sharedElements.length} shared elements:`, sharedElements);
+  }
+  
+  if (sharedReferences.length > 0) {
+    console.log(`[PLAYHTML] Found ${sharedReferences.length} shared references:`, sharedReferences);
+  }
+
+  // Create provider with shared element parameters
+  yprovider = new YPartyKitProvider(partykitHost, room, doc, {
+    params: {
+      sharedElements: JSON.stringify(sharedElements),
+      sharedReferences: JSON.stringify(sharedReferences),
+    },
+  });
   yprovider.on("error", () => {
     onError?.();
   });
