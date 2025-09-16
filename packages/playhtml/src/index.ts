@@ -410,13 +410,6 @@ function onMessage(evt: MessageEvent) {
     message.type || "unknown-type"
   );
 
-  // Handle shared element data messages
-  if (message.type === "shared-element-data") {
-    console.log(`[PLAYHTML] Processing shared element data message`);
-    handleSharedElementData(message);
-    return;
-  }
-
   // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
@@ -427,79 +420,6 @@ function onMessage(evt: MessageEvent) {
   for (const handler of maybeHandlers) {
     handler.onEvent(eventPayload);
   }
-}
-
-function handleSharedElementData(data: any) {
-  const { elementId, data: elementData, sourceDomain, permissions } = data;
-
-  console.log(
-    `[PLAYHTML] Received shared element data for ${elementId} from ${sourceDomain}:`,
-    elementData
-  );
-
-  // Find the local element that has a data-source reference to this shared element
-  const referenceElements = document.querySelectorAll(
-    `[data-source*="#${elementId}"]`
-  );
-  console.log(
-    `[PLAYHTML] Found ${referenceElements.length} reference elements for ${elementId}`
-  );
-
-  referenceElements.forEach((el) => {
-    if (!el.id) {
-      console.log(`[PLAYHTML] Skipping element without ID`);
-      return;
-    }
-
-    const dataSource = el.getAttribute("data-source");
-    if (!dataSource || !dataSource.includes(sourceDomain)) {
-      console.log(
-        `[PLAYHTML] Skipping element ${el.id} - data-source mismatch: ${dataSource} vs ${sourceDomain}`
-      );
-      return;
-    }
-
-    console.log(`[PLAYHTML] Mapping shared data to local element ${el.id}`);
-
-    // Get the capability type from the element's attributes
-    const capabilityAttributes = [
-      "can-move",
-      "can-toggle",
-      "can-grow",
-      "can-spin",
-      "can-duplicate",
-      "can-mirror",
-      "can-play",
-    ];
-    const capability = capabilityAttributes.find((attr) =>
-      el.hasAttribute(attr)
-    );
-
-    if (capability) {
-      // Simply map the shared data to the local element's ID in the Y.js store
-      // The existing element handlers will automatically respond to Y.js changes
-      store.play[capability] = store.play[capability] || {};
-      store.play[capability][el.id] = elementData;
-
-      console.log(
-        `[PLAYHTML] Mapped shared data to Y.js store ${capability}:${el.id}`,
-        elementData
-      );
-
-      // Mark element as read-only if needed
-      if (permissions === "read-only") {
-        el.setAttribute("data-shared-readonly", "true");
-        console.log(`[PLAYHTML] Marked element ${el.id} as read-only`);
-      }
-
-      // The existing Y.js observers and element handlers will take care of the rest
-    } else {
-      console.log(
-        `[PLAYHTML] No capability found for element ${el.id}, attributes:`,
-        Array.from(el.attributes).map((a) => a.name)
-      );
-    }
-  });
 }
 
 let hasSynced = false;
@@ -955,7 +875,19 @@ function setupElements(): void {
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
-    ).filter(isHTMLElement);
+    )
+      .filter(isHTMLElement)
+      .filter((element) => {
+        // Skip elements with data-source - they are consumer elements that should not create local Y.js data
+        const hasDataSource = element.hasAttribute("data-source");
+        if (hasDataSource) {
+          console.log(
+            `[PLAYHTML] Skipping setup for consumer element ${element.id} with data-source`
+          );
+        }
+        return !hasDataSource;
+      });
+
     if (!tagElements.length) {
       continue;
     }

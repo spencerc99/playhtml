@@ -117,18 +117,14 @@
       </div>
 
       <div class="shared-element">
-        <h3>🔄 Shared Counter (Global, Read-Write)</h3>
+        <h3>🔄 Shared Box (Global, Read-Write)</h3>
         <div class="element-info">
           <code>id="shared-counter" shared can-move</code>
         </div>
         <div id="shared-counter" shared can-move class="moveable-box">
-          <div style="color: white; font-size: 1.2em">🔄 Shared Counter</div>
-          <div class="counter-display">0</div>
-          <button onclick="incrementCounter('shared-counter')">+1</button>
-          <button onclick="decrementCounter('shared-counter')">-1</button>
-          <button onclick="resetCounter('shared-counter')">Reset</button>
+          <div style="color: white; font-size: 1.2em">🔄 Shared Box</div>
           <div style="font-size: 0.8em; margin-top: 0.5rem">
-            📱 Drag to move
+            📱 Drag to move - syncs globally
           </div>
         </div>
       </div>
@@ -156,17 +152,14 @@
       </div>
 
       <div class="shared-element">
-        <h3>🏠 Domain-Only Counter</h3>
+        <h3>🏠 Domain-Only Box</h3>
         <div class="element-info">
           <code>id="domain-counter" shared-domain can-move</code>
         </div>
         <div id="domain-counter" shared-domain can-move class="moveable-box">
-          <div style="color: white; font-size: 1.2em">🏠 Domain Counter</div>
-          <div class="counter-display">0</div>
-          <button onclick="incrementCounter('domain-counter')">+1</button>
-          <button onclick="decrementCounter('domain-counter')">-1</button>
+          <div style="color: white; font-size: 1.2em">🏠 Domain Box</div>
           <div style="font-size: 0.8em; margin-top: 0.5rem">
-            📱 Drag to move
+            📱 Drag to move - domain-only
           </div>
         </div>
       </div>
@@ -193,26 +186,6 @@
     </div>
 
     <script>
-      // Helper functions available immediately
-      window.incrementCounter = function (id) {
-        const element = document.getElementById(id);
-        const display = element.querySelector(".counter-display");
-        const current = parseInt(display.textContent) || 0;
-        display.textContent = current + 1;
-      };
-
-      window.decrementCounter = function (id) {
-        const element = document.getElementById(id);
-        const display = element.querySelector(".counter-display");
-        const current = parseInt(display.textContent) || 0;
-        display.textContent = Math.max(0, current - 1);
-      };
-
-      window.resetCounter = function (id) {
-        const element = document.getElementById(id);
-        const display = element.querySelector(".counter-display");
-        display.textContent = "0";
-      };
 
       window.toggleStatus = function () {
         const statusText = document.getElementById("status-text");
@@ -248,6 +221,9 @@
         console.log(
           "🎯 Source page loaded - shared elements should be registered"
         );
+
+        // Set up custom update handlers for counter display
+        setupCounterDisplayHandlers();
       } catch (error) {
         console.error("🎯 Failed to initialize PlayHTML:", error);
       }
