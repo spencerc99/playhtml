@@ -14,13 +14,11 @@ const supabase = createClient(
 
 export default class implements Party.Server {
   constructor(public room: Party.Room) {}
-  // Flags to suppress echo loops
-  private applyingFromPull = false; // consumer applying source->consumer (transaction scope)
-  private applyingFromMirror = false; // source applying consumer->source (transaction scope)
-  private suppressNextMirror = false; // suppress next consumer mirror in callback
-  private suppressNextNotify = false; // suppress next source notify in callback
   // Reuse the exact same options for all Y.Doc access
   private providerOptions: import("y-partykit").YPartyKitOptions | undefined;
+  private observersAttached = false;
+  private static readonly ORIGIN_S2C = "__bridge_s2c__";
+  private static readonly ORIGIN_C2S = "__bridge_c2s__";
 
   // --- Helper: normalize path used in room id derivation
   normalizePath(path: string): string {
@@ -221,7 +219,7 @@ export default class implements Party.Server {
       await room.storage.put("sharedReferences", entries);
 
       // Register with each source room so it can notify us on changes
-      for (const { sourceRoomId } of entries) {
+      for (const { sourceRoomId, elementIds } of entries) {
         const mainParty = room.context.parties.main;
         const sourceRoom = mainParty.get(sourceRoomId);
         console.log(
@@ -232,6 +230,7 @@ export default class implements Party.Server {
           body: JSON.stringify({
             action: "subscribe",
             consumerRoomId: room.id,
+            elementIds,
           }),
         });
       }
@@ -288,65 +287,6 @@ export default class implements Party.Server {
           if (error) {
             console.error("failed to save:", error);
           }
-
-          // If this is a SOURCE room and has subscribers, notify them to pull updates
-          const subscribers: string[] =
-            (await room.storage.get("subscribers")) || [];
-          if (subscribers.length) {
-            if (this.applyingFromMirror || this.suppressNextNotify) {
-              console.log(
-                `[bridge] source ${room.id} skipping notify (mirror/pull)`
-              );
-              this.suppressNextNotify = false;
-            } else {
-              console.log(
-                `[bridge] source ${room.id} changed; notifying ${subscribers.length} consumers`
-              );
-              const mainParty = room.context.parties.main;
-              await Promise.all(
-                subscribers.map(async (consumerRoomId) => {
-                  const consumerRoom = mainParty.get(consumerRoomId);
-                  await consumerRoom.fetch({
-                    method: "POST",
-                    body: JSON.stringify({ action: "pull" }),
-                  });
-                })
-              );
-            }
-          }
-
-          // If this is a CONSUMER room with sharedReferences, mirror writes to the corresponding sources
-          const refs: Array<{ sourceRoomId: string; elementIds: string[] }> =
-            (await room.storage.get("sharedReferences")) || [];
-          if (refs.length) {
-            if (this.applyingFromPull || this.suppressNextMirror) {
-              console.log(
-                `[bridge] consumer ${room.id} skipping mirror (mirror/pull)`
-              );
-              this.suppressNextMirror = false;
-            } else {
-              console.log(
-                `[bridge] consumer ${room.id} changed; mirroring to ${refs.length} source rooms`
-              );
-              const mainParty = room.context.parties.main;
-              for (const { sourceRoomId, elementIds } of refs) {
-                if (!elementIds?.length) continue;
-                const subtrees = this.extractPlaySubtrees(
-                  doc as Y.Doc,
-                  new Set(elementIds)
-                );
-                if (!Object.keys(subtrees).length) continue;
-                console.log(
-                  `[bridge] consumer ${room.id} -> source ${sourceRoomId} applying subtrees for ${elementIds.length} elementIds`
-                );
-                const sourceRoom = mainParty.get(sourceRoomId);
-                await sourceRoom.fetch({
-                  method: "POST",
-                  body: JSON.stringify({ action: "apply-subtrees", subtrees }),
-                });
-              }
-            }
-          }
         },
       },
     } as const;
@@ -354,10 +294,8 @@ export default class implements Party.Server {
     this.providerOptions = yOptions;
     await onConnect(connection, this.room, yOptions);
 
-    // After the Yjs connection is set up, perform an initial pull for consumers
-    if (sharedReferences.length) {
-      await this.handlePull();
-    }
+    // Attach immediate-update observers once
+    await this.attachImmediateBridgeObservers();
   }
 
   async onRequest(request: Party.Request): Promise<Response> {
@@ -371,14 +309,25 @@ export default class implements Party.Server {
       if (action === "subscribe") {
         // Called on SOURCE room; registers a consumer room id
         const consumerRoomId = (body && (body as any).consumerRoomId) as string;
+        const elementIds = (body && (body as any).elementIds) as
+          | string[]
+          | undefined;
         if (!consumerRoomId)
           return new Response("Bad Request", { status: 400 });
-        const existing: string[] =
-          (await this.room.storage.get("subscribers")) || [];
-        if (!existing.includes(consumerRoomId)) {
-          existing.push(consumerRoomId);
-          await this.room.storage.put("subscribers", existing);
+        const existing: Array<{
+          consumerRoomId: string;
+          elementIds?: string[];
+        }> = (await this.room.storage.get("subscribers")) || [];
+        if (!existing.find((s) => s.consumerRoomId === consumerRoomId)) {
+          existing.push({ consumerRoomId, elementIds });
+        } else {
+          // Update elementIds if provided
+          const idx = existing.findIndex(
+            (s) => s.consumerRoomId === consumerRoomId
+          );
+          if (idx !== -1 && elementIds) existing[idx].elementIds = elementIds;
         }
+        await this.room.storage.put("subscribers", existing);
         console.log(
           `[bridge] source ${this.room.id} subscribed consumer ${consumerRoomId} (total: ${existing.length})`
         );
@@ -403,51 +352,48 @@ export default class implements Party.Server {
         return new Response(JSON.stringify({ subtrees }));
       }
 
-      if (action === "apply-subtrees") {
-        // Called on SOURCE room; applies provided subtrees into its Y.Doc
+      // Removed legacy apply-subtrees; immediate path is used instead
+
+      if (action === "apply-subtrees-immediate") {
+        // Applies provided subtrees immediately and marks origin to suppress echo
         const subtrees = (((body as any) || {}).subtrees || {}) as Record<
           string,
           Record<string, any>
         >;
+        const sender = (body && (body as any).sender) as string | undefined;
         const yDoc = await unstable_getYDoc(
           this.room,
           this.providerOptions || { load: async () => null }
         );
-        this.applyingFromMirror = true;
-        try {
-          yDoc.transact(() => this.assignPlaySubtrees(yDoc, subtrees));
-        } finally {
-          this.applyingFromMirror = false;
-        }
-        console.log(
-          `[bridge] source ${this.room.id} applied subtrees: tags=${
-            Object.keys(subtrees).length
-          }`
-        );
-        // Proactively notify consumers to pull for lower latency
-        const subscribers: string[] =
-          (await this.room.storage.get("subscribers")) || [];
+        const hasSharedRefs = !!(await this.room.storage.get(
+          "sharedReferences"
+        ));
+        const ORIGIN = hasSharedRefs
+          ? ((this.constructor as any).ORIGIN_S2C as string)
+          : ((this.constructor as any).ORIGIN_C2S as string);
+        yDoc.transact(() => this.assignPlaySubtrees(yDoc, subtrees), ORIGIN);
+
+        // If this is a SOURCE room, immediately fanout to other consumers (excluding sender if provided)
+        const subscribers: Array<{
+          consumerRoomId: string;
+          elementIds?: string[];
+        }> = (await this.room.storage.get("subscribers")) || [];
         if (subscribers.length) {
           const mainParty = this.room.context.parties.main;
-          // Suppress the following consumer mirror triggered by pull
-          this.suppressNextMirror = true;
           await Promise.all(
-            subscribers.map(async (consumerRoomId) => {
+            subscribers.map(async ({ consumerRoomId }) => {
+              if (sender && consumerRoomId === sender) return;
               const consumerRoom = mainParty.get(consumerRoomId);
               await consumerRoom.fetch({
                 method: "POST",
-                body: JSON.stringify({ action: "pull" }),
+                body: JSON.stringify({
+                  action: "apply-subtrees-immediate",
+                  subtrees,
+                }),
               });
             })
           );
         }
-        return new Response(JSON.stringify({ ok: true }));
-      }
-
-      if (action === "pull") {
-        // Called on CONSUMER room; pulls from all registered sources and injects subtrees
-        console.log(`[bridge] consumer ${this.room.id} received pull`);
-        await this.handlePull();
         return new Response(JSON.stringify({ ok: true }));
       }
 
@@ -458,49 +404,69 @@ export default class implements Party.Server {
     }
   }
 
-  // Pulls from all registered sources for this consumer room and injects into its doc
-  private async handlePull(): Promise<void> {
-    const entries: Array<{ sourceRoomId: string; elementIds: string[] }> =
-      (await this.room.storage.get("sharedReferences")) || [];
-    if (!entries.length) return;
-
-    const mainParty = this.room.context.parties.main;
+  // Attach immediate observers to this room's doc to bridge changes without waiting for save callback
+  private async attachImmediateBridgeObservers(): Promise<void> {
+    if (this.observersAttached) return;
     const yDoc = await unstable_getYDoc(
       this.room,
       this.providerOptions || { load: async () => null }
     );
 
-    for (const { sourceRoomId, elementIds } of entries) {
-      const sourceRoom = mainParty.get(sourceRoomId);
-      console.log(
-        `[bridge] consumer ${this.room.id} pulling from source ${sourceRoomId} for ${elementIds.length} ids`
+    // Source room: on change, push to each subscribed consumer immediately
+    yDoc.on("update", async (_update: Uint8Array, origin: any) => {
+      // Ignore updates we just applied from a consumer pull to avoid echo
+      if (origin === (this.constructor as any).ORIGIN_C2S) return;
+      const subscribers: Array<{
+        consumerRoomId: string;
+        elementIds?: string[];
+      }> = (await this.room.storage.get("subscribers")) || [];
+      if (!subscribers.length) return;
+
+      const mainParty = this.room.context.parties.main;
+      // Export all subtrees of interest and push immediately
+      await Promise.all(
+        subscribers.map(async ({ consumerRoomId, elementIds }) => {
+          if (!elementIds || !elementIds.length) return;
+          const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
+          if (!Object.keys(subtrees).length) return;
+          const consumerRoom = mainParty.get(consumerRoomId);
+          await consumerRoom.fetch({
+            method: "POST",
+            body: JSON.stringify({
+              action: "apply-subtrees-immediate",
+              subtrees,
+              sender: this.room.id,
+            }),
+          });
+        })
       );
-      const res = await sourceRoom.fetch({
-        method: "POST",
-        body: JSON.stringify({ action: "export", elementIds }),
+    });
+
+    // Consumer room: when our doc changes for tracked shared refs, push back to sources immediately
+    const refs: Array<{ sourceRoomId: string; elementIds: string[] }> =
+      (await this.room.storage.get("sharedReferences")) || [];
+    if (refs.length) {
+      yDoc.on("update", async (_update: Uint8Array, origin: any) => {
+        // Ignore updates we just applied from a source push to avoid echo
+        if (origin === (this.constructor as any).ORIGIN_S2C) return;
+        const mainParty = this.room.context.parties.main;
+        for (const { sourceRoomId, elementIds } of refs) {
+          if (!elementIds?.length) continue;
+          const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
+          if (!Object.keys(subtrees).length) continue;
+          const sourceRoom = mainParty.get(sourceRoomId);
+          await sourceRoom.fetch({
+            method: "POST",
+            body: JSON.stringify({
+              action: "apply-subtrees-immediate",
+              subtrees,
+              sender: this.room.id,
+            }),
+          });
+        }
       });
-      if (!res.ok) continue;
-      const parsed = (await res.json()) as any;
-      const subtrees = (parsed && parsed.subtrees) as Record<
-        string,
-        Record<string, any>
-      >;
-      if (!subtrees) continue;
-      this.applyingFromPull = true;
-      try {
-        yDoc.transact(() => this.assignPlaySubtrees(yDoc, subtrees));
-      } finally {
-        this.applyingFromPull = false;
-      }
-      // Suppress the following source notify; it's caused by our own pull
-      this.suppressNextNotify = true;
-      console.log(
-        `[bridge] consumer ${
-          this.room.id
-        } injected subtrees from ${sourceRoomId}: tags=${
-          Object.keys(subtrees).length
-        }`
-      );
     }
+
+    this.observersAttached = true;
   }
 }
