@@ -5,18 +5,6 @@ import { CanPlayElement } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
 
-// Shared elements types
-interface SharedElementProps {
-  scope?: 'domain' | 'global';
-  permissions?: 'read-write' | 'read-only';
-  children: SingleChildOrPlayable;
-}
-
-interface SharedReferenceProps {
-  dataSource: string;
-  children: SingleChildOrPlayable;
-}
-
 export function CanMoveElement({
   children,
 }: {
@@ -200,104 +188,6 @@ export function CanHoverElement({
             ),
           }
         );
-      }}
-    />
-  );
-}
-
-// Shared Element Components
-
-export function SharedCanMoveElement({
-  scope = 'global',
-  permissions = 'read-write',
-  children,
-}: SharedElementProps) {
-  const sharedAttr = scope === 'domain' ? 'shared-domain' : 'shared-global';
-  const attrValue = permissions === 'read-only' ? 'read-only' : '';
-
-  const props = {
-    tagInfo: [TagType.CanMove],
-    ...TagTypeToElement[TagType.CanMove],
-    [sharedAttr]: attrValue,
-  };
-
-  return (
-    <CanPlayElement
-      {...props}
-      children={(renderData) => {
-        const renderedChildren = renderSingleChildOrPlayable(
-          children,
-          renderData
-        );
-        return renderedChildren;
-      }}
-    />
-  );
-}
-
-export function SharedCanToggleElement({
-  scope = 'global',
-  permissions = 'read-write',
-  children,
-}: SharedElementProps) {
-  const sharedAttr = scope === 'domain' ? 'shared-domain' : 'shared-global';
-  const attrValue = permissions === 'read-only' ? 'read-only' : '';
-
-  const props = {
-    tagInfo: [TagType.CanToggle],
-    ...TagTypeToElement[TagType.CanToggle],
-    [sharedAttr]: attrValue,
-  };
-
-  return (
-    <CanPlayElement
-      {...props}
-      children={(renderData) => {
-        const renderedChildren = renderSingleChildOrPlayable(
-          children,
-          renderData
-        );
-        return renderedChildren;
-      }}
-    />
-  );
-}
-
-export function SharedReferenceCanMoveElement({
-  dataSource,
-  children,
-}: SharedReferenceProps) {
-  return (
-    <CanPlayElement
-      tagInfo={[TagType.CanMove]}
-      {...TagTypeToElement[TagType.CanMove]}
-      data-source={dataSource}
-      children={(renderData) => {
-        const renderedChildren = renderSingleChildOrPlayable(
-          children,
-          renderData
-        );
-        return renderedChildren;
-      }}
-    />
-  );
-}
-
-export function SharedReferenceCanToggleElement({
-  dataSource,
-  children,
-}: SharedReferenceProps) {
-  return (
-    <CanPlayElement
-      tagInfo={[TagType.CanToggle]}
-      {...TagTypeToElement[TagType.CanToggle]}
-      data-source={dataSource}
-      children={(renderData) => {
-        const renderedChildren = renderSingleChildOrPlayable(
-          children,
-          renderData
-        );
-        return renderedChildren;
       }}
     />
   );

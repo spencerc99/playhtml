@@ -190,7 +190,12 @@ export function getSharedElementId(el: HTMLElement): string | undefined {
     throw new Error("Element has no data-source attribute");
   }
 
-  return dataSource;
+  const [domainAndPath, elementId] = dataSource.split("#");
+  if (!domainAndPath || !elementId) {
+    throw new Error("Invalid data-source attribute");
+  }
+
+  return elementId;
 }
 
 // Export cursor types

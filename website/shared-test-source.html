@@ -186,7 +186,6 @@
     </div>
 
     <script>
-
       window.toggleStatus = function () {
         const statusText = document.getElementById("status-text");
         const currentText = statusText.textContent;
@@ -221,9 +220,6 @@
         console.log(
           "🎯 Source page loaded - shared elements should be registered"
         );
-
-        // Set up custom update handlers for counter display
-        setupCounterDisplayHandlers();
       } catch (error) {
         console.error("🎯 Failed to initialize PlayHTML:", error);
       }
