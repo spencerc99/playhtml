@@ -4,7 +4,7 @@
     "": {
       "name": "playhtml-root",
       "dependencies": {
-        "@supabase/supabase-js": "^2.45.1",
+        "@supabase/supabase-js": "^2.57.4",
         "canvas-confetti": "^1.9.2",
         "partykit": "0.0.108",
         "profane-words": "^1.5.11",
@@ -413,17 +413,17 @@
 
     "@supabase/auth-js": ["@supabase/auth-js@2.71.1", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-mMIQHBRc+SKpZFRB2qtupuzulaUhFYupNyxqDj5Jp/LyPvcWvjaJzZzObv6URtL/O6lPxkanASnotGtNpS3H2Q=="],
 
-    "@supabase/functions-js": ["@supabase/functions-js@2.4.5", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-v5GSqb9zbosquTo6gBwIiq7W9eQ7rE5QazsK/ezNiQXdCbY+bH8D9qEaBIkhVvX4ZRW5rP03gEfw5yw9tiq4EQ=="],
+    "@supabase/functions-js": ["@supabase/functions-js@2.4.6", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-bhjZ7rmxAibjgmzTmQBxJU6ZIBCCJTc3Uwgvdi4FewueUTAGO5hxZT1Sj6tiD+0dSXf9XI87BDdJrg12z8Uaew=="],
 
     "@supabase/node-fetch": ["@supabase/node-fetch@2.6.15", "", { "dependencies": { "whatwg-url": "^5.0.0" } }, "sha512-1ibVeYUacxWYi9i0cf5efil6adJ9WRyZBLivgjs+AUpewx1F3xPi7gLgaASI2SmIQxPoCEjAsLAzKPgMJVgOUQ=="],
 
-    "@supabase/postgrest-js": ["@supabase/postgrest-js@1.19.4", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-O4soKqKtZIW3olqmbXXbKugUtByD2jPa8kL2m2c1oozAO11uCcGrRhkZL0kVxjBLrXHE0mdSkFsMj7jDSfyNpw=="],
+    "@supabase/postgrest-js": ["@supabase/postgrest-js@1.21.4", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-TxZCIjxk6/dP9abAi89VQbWWMBbybpGWyvmIzTd79OeravM13OjR/YEYeyUOPcM1C3QyvXkvPZhUfItvmhY1IQ=="],
 
-    "@supabase/realtime-js": ["@supabase/realtime-js@2.15.1", "", { "dependencies": { "@supabase/node-fetch": "^2.6.13", "@types/phoenix": "^1.6.6", "@types/ws": "^8.18.1", "ws": "^8.18.2" } }, "sha512-edRFa2IrQw50kNntvUyS38hsL7t2d/psah6om6aNTLLcWem0R6bOUq7sk7DsGeSlNfuwEwWn57FdYSva6VddYw=="],
+    "@supabase/realtime-js": ["@supabase/realtime-js@2.15.5", "", { "dependencies": { "@supabase/node-fetch": "^2.6.13", "@types/phoenix": "^1.6.6", "@types/ws": "^8.18.1", "ws": "^8.18.2" } }, "sha512-/Rs5Vqu9jejRD8ZeuaWXebdkH+J7V6VySbCZ/zQM93Ta5y3mAmocjioa/nzlB6qvFmyylUgKVS1KpE212t30OA=="],
 
-    "@supabase/storage-js": ["@supabase/storage-js@2.11.0", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-Y+kx/wDgd4oasAgoAq0bsbQojwQ+ejIif8uczZ9qufRHWFLMU5cODT+ApHsSrDufqUcVKt+eyxtOXSkeh2v9ww=="],
+    "@supabase/storage-js": ["@supabase/storage-js@2.12.1", "", { "dependencies": { "@supabase/node-fetch": "^2.6.14" } }, "sha512-QWg3HV6Db2J81VQx0PqLq0JDBn4Q8B1FYn1kYcbla8+d5WDmTdwwMr+EJAxNOSs9W4mhKMv+EYCpCrTFlTj4VQ=="],
 
-    "@supabase/supabase-js": ["@supabase/supabase-js@2.55.0", "", { "dependencies": { "@supabase/auth-js": "2.71.1", "@supabase/functions-js": "2.4.5", "@supabase/node-fetch": "2.6.15", "@supabase/postgrest-js": "1.19.4", "@supabase/realtime-js": "2.15.1", "@supabase/storage-js": "^2.10.4" } }, "sha512-Y1uV4nEMjQV1x83DGn7+Z9LOisVVRlY1geSARrUHbXWgbyKLZ6/08dvc0Us1r6AJ4tcKpwpCZWG9yDQYo1JgHg=="],
+    "@supabase/supabase-js": ["@supabase/supabase-js@2.57.4", "", { "dependencies": { "@supabase/auth-js": "2.71.1", "@supabase/functions-js": "2.4.6", "@supabase/node-fetch": "2.6.15", "@supabase/postgrest-js": "1.21.4", "@supabase/realtime-js": "2.15.5", "@supabase/storage-js": "2.12.1" } }, "sha512-LcbTzFhHYdwfQ7TRPfol0z04rLEyHabpGYANME6wkQ/kLtKNmI+Vy+WEM8HxeOZAtByUFxoUTTLwhXmrh+CcVw=="],
 
     "@syncedstore/core": ["@syncedstore/core@0.6.0", "", { "dependencies": { "@reactivedata/reactive": "^0.2.0", "@syncedstore/yjs-reactive-bindings": "^0.6.0" }, "peerDependencies": { "yjs": "^13.5.13" } }, "sha512-6TtjEoYJsceYi8u1oRecXwbbLmjHaU0S7HvVfOaEdDfphZLGm/faVuA2fpazqc28F0yIFGvYzvPEBUJn9vqRNw=="],
 

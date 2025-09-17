@@ -23,6 +23,7 @@ import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
+  isSharedReadOnly,
 } from "./sharing";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
@@ -194,6 +195,12 @@ let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
 const yObserverByKey = new Map<string, (events: any[]) => void>();
+// Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
+// Allows us to distinguish programmatic remote-applied changes from local user writes.
+// moved below (single declaration)
+// Dev: track hydration of shared references for warnings
+const sharedUpdateSeen: Set<string> = new Set();
+const sharedHydrationTimers: Map<string, number> = new Map();
 
 function ensureElementProxy<T = any>(
   tag: string,
@@ -370,6 +377,7 @@ function onMessage(evt: MessageEvent) {
 
 let hasSynced = false;
 let firstSetup = true;
+let isDevelopmentMode = false;
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -396,6 +404,7 @@ async function initPlayHTML({
     console.error("playhtml already set up! ignoring");
     return;
   }
+  isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
 
@@ -635,17 +644,8 @@ function createPlayElementData<T extends TagType>(
     element,
     onChange: (newData) => {
       // Prevent writes for read-only shared consumer elements
-      const isConsumer = element.hasAttribute("data-source");
-      const isReadOnlyExplicit =
-        isConsumer && element.hasAttribute("data-source-read-only");
       const elementIdFromAttr = getIdForElement(element);
-      const isReadOnlyFromSource = !!(function () {
-        if (!elementIdFromAttr) return false;
-        const perms: Map<string, "read-only" | "read-write"> = (window as any)
-          .__playhtmlSharedPerms;
-        return perms?.get(elementIdFromAttr) === "read-only";
-      })();
-      if (isReadOnlyExplicit || isReadOnlyFromSource) {
+      if (isSharedReadOnly(element, elementIdFromAttr)) {
         return;
       }
       if (typeof (newData as any) === "function") {
@@ -1013,6 +1013,8 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       } finally {
         remoteApplyingKeys.delete(applyKey);
       }
+      // Mark that this shared reference has received data
+      sharedUpdateSeen.add(key);
       // Debug: log updates for shared elements
       if (VERBOSE) {
         console.log(
@@ -1024,6 +1026,24 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   // @ts-ignore
   (yVal as any).observeDeep(observer);
   yObserverByKey.set(key, observer);
+
+  if (isDevelopmentMode) {
+    // Dev hydration warning for shared references
+    const el = handler.element;
+    if (el && el.hasAttribute && el.hasAttribute("data-source")) {
+      if (!sharedHydrationTimers.has(key)) {
+        const timeoutId = window.setTimeout(() => {
+          if (!sharedUpdateSeen.has(key)) {
+            console.warn(
+              `[playhtml] Shared reference ${tag}:${elementId} has not received data. Check data-source and source availability.`
+            );
+          }
+          sharedHydrationTimers.delete(key);
+        }, 3000);
+        sharedHydrationTimers.set(key, timeoutId);
+      }
+    }
+  }
 }
 
 // TODO: make async and run it after synced

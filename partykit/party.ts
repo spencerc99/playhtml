@@ -13,21 +13,30 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
+// Storage key constants for consistency
+const STORAGE_KEYS = {
+  subscribers: "subscribers",
+  sharedReferences: "sharedReferences",
+  sharedPermissions: "sharedPermissions",
+};
+const ORIGIN_S2C = "__bridge_s2c__";
+const ORIGIN_C2S = "__bridge_c2s__";
+
 export default class implements Party.Server {
   constructor(public room: Party.Room) {}
   // Reuse the exact same options for all Y.Doc access
   private providerOptions: import("y-partykit").YPartyKitOptions | undefined;
   private observersAttached = false;
-  // @ts-expect-error
-  private static readonly ORIGIN_S2C = "__bridge_s2c__";
-  // @ts-expect-error
-  private static readonly ORIGIN_C2S = "__bridge_c2s__";
 
   // --- Helper: normalize path used in room id derivation
   normalizePath(path: string): string {
     // strip file extension
     const cleaned = path.replace(/\.[^/.]+$/, "");
     return cleaned || "/";
+  }
+
+  private async isSourceRoom(): Promise<boolean> {
+    return !!(await this.room.storage.get(STORAGE_KEYS.sharedPermissions));
   }
 
   // --- Helper: compute source room id from domain and path
@@ -174,11 +183,6 @@ export default class implements Party.Server {
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL
     const sharedReferences = this.parseSharedReferencesFromUrl(ctx.request.url);
-    if (sharedReferences.length) {
-      console.log(
-        `[bridge] consumer ${room.id} registering ${sharedReferences.length} shared references`
-      );
-    }
 
     // Persist consumer interest mapping for later pulls/mirroring
     if (sharedReferences.length) {
@@ -195,17 +199,15 @@ export default class implements Party.Server {
       bySource.forEach((ids, srcId) => {
         entries.push({ sourceRoomId: srcId, elementIds: Array.from(ids) });
       });
-      await room.storage.put("sharedReferences", entries);
+      await room.storage.put(STORAGE_KEYS.sharedReferences, entries);
 
       // Register with each source room so it can notify us on changes
       for (const { sourceRoomId, elementIds } of entries) {
         const mainParty = room.context.parties.main;
         const sourceRoom = mainParty.get(sourceRoomId);
-        console.log(
-          `[bridge] consumer ${room.id} subscribing to source ${sourceRoomId}`
-        );
         await sourceRoom.fetch({
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({
             action: "subscribe",
             consumerRoomId: room.id,
@@ -227,11 +229,9 @@ export default class implements Party.Server {
             : "read-write";
         permissionsByElementId[el.elementId] = mode;
       }
-      await room.storage.put("sharedPermissions", permissionsByElementId);
-      console.log(
-        `[bridge] source ${room.id} registered ${
-          Object.keys(permissionsByElementId).length
-        } shared element permissions`
+      await room.storage.put(
+        STORAGE_KEYS.sharedPermissions,
+        permissionsByElementId
       );
     }
 
@@ -308,15 +308,20 @@ export default class implements Party.Server {
       if (action === "subscribe") {
         // Called on SOURCE room; registers a consumer room id
         const consumerRoomId = (body && (body as any).consumerRoomId) as string;
-        const elementIds = (body && (body as any).elementIds) as
+        const elementIdsRaw = (body && (body as any).elementIds) as
           | string[]
           | undefined;
         if (!consumerRoomId)
           return new Response("Bad Request", { status: 400 });
+        const elementIds = Array.isArray(elementIdsRaw)
+          ? Array.from(
+              new Set(elementIdsRaw.filter((x) => typeof x === "string"))
+            )
+          : undefined;
         const existing: Array<{
           consumerRoomId: string;
           elementIds?: string[];
-        }> = (await this.room.storage.get("subscribers")) || [];
+        }> = (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
         if (!existing.find((s) => s.consumerRoomId === consumerRoomId)) {
           existing.push({ consumerRoomId, elementIds });
         } else {
@@ -326,8 +331,10 @@ export default class implements Party.Server {
           );
           if (idx !== -1 && elementIds) existing[idx].elementIds = elementIds;
         }
-        await this.room.storage.put("subscribers", existing);
-        return new Response(JSON.stringify({ ok: true }));
+        await this.room.storage.put(STORAGE_KEYS.subscribers, existing);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "content-type": "application/json" },
+        });
       }
 
       if (action === "export") {
@@ -340,7 +347,9 @@ export default class implements Party.Server {
           this.providerOptions || { load: async () => null }
         );
         const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
-        return new Response(JSON.stringify({ subtrees }));
+        return new Response(JSON.stringify({ subtrees }), {
+          headers: { "content-type": "application/json" },
+        });
       }
 
       if (action === "export-permissions") {
@@ -349,12 +358,14 @@ export default class implements Party.Server {
           ? (body as any).elementIds
           : [];
         const perms: Record<string, "read-only" | "read-write"> =
-          (await this.room.storage.get("sharedPermissions")) || {};
+          (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
         const filtered: Record<string, "read-only" | "read-write"> = {};
         for (const id of elementIds) {
           if (perms[id]) filtered[id] = perms[id];
         }
-        return new Response(JSON.stringify({ permissions: filtered }));
+        return new Response(JSON.stringify({ permissions: filtered }), {
+          headers: { "content-type": "application/json" },
+        });
       }
 
       // Removed legacy apply-subtrees; immediate path is used instead
@@ -365,14 +376,17 @@ export default class implements Party.Server {
           string,
           Record<string, any>
         >;
+        if (!subtrees || typeof subtrees !== "object") {
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
         const sender = (body && (body as any).sender) as string | undefined;
         const yDoc = await unstable_getYDoc(
           this.room,
           this.providerOptions || { load: async () => null }
         );
-        const isSourceRoom = !!(await this.room.storage.get(
-          "sharedPermissions"
-        ));
+        const isSourceRoom = await this.isSourceRoom();
         let subtreesToApply: Record<string, Record<string, any>> = subtrees;
         if (isSourceRoom) {
           // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
@@ -390,7 +404,7 @@ export default class implements Party.Server {
           });
           // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
           const perms: Record<string, "read-only" | "read-write"> =
-            (await this.room.storage.get("sharedPermissions")) || {};
+            (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
           const filteredByPerms: Record<string, Record<string, any>> = {};
           Object.entries(filtered).forEach(([tag, elements]) => {
             const kept: Record<string, any> = {};
@@ -404,12 +418,15 @@ export default class implements Party.Server {
           });
           subtreesToApply = filteredByPerms;
         }
+        if (!Object.keys(subtreesToApply).length) {
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
         const hasSharedRefs = !!(await this.room.storage.get(
-          "sharedReferences"
+          STORAGE_KEYS.sharedReferences
         ));
-        const ORIGIN = hasSharedRefs
-          ? ((this.constructor as any).ORIGIN_S2C as string)
-          : ((this.constructor as any).ORIGIN_C2S as string);
+        const ORIGIN = hasSharedRefs ? ORIGIN_S2C : ORIGIN_C2S;
         yDoc.transact(
           () => this.assignPlaySubtrees(yDoc, subtreesToApply),
           ORIGIN
@@ -419,24 +436,29 @@ export default class implements Party.Server {
         const subscribers: Array<{
           consumerRoomId: string;
           elementIds?: string[];
-        }> = (await this.room.storage.get("subscribers")) || [];
+        }> = (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
         if (isSourceRoom && subscribers.length) {
           const mainParty = this.room.context.parties.main;
           await Promise.all(
             subscribers.map(async ({ consumerRoomId }) => {
               if (sender && consumerRoomId === sender) return;
               const consumerRoom = mainParty.get(consumerRoomId);
-              await consumerRoom.fetch({
-                method: "POST",
-                body: JSON.stringify({
-                  action: "apply-subtrees-immediate",
-                  subtrees: subtreesToApply,
-                }),
-              });
+              try {
+                await consumerRoom.fetch({
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    action: "apply-subtrees-immediate",
+                    subtrees: subtreesToApply,
+                  }),
+                });
+              } catch {}
             })
           );
         }
-        return new Response(JSON.stringify({ ok: true }));
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "content-type": "application/json" },
+        });
       }
 
       return new Response("Bad Request", { status: 400 });
@@ -457,7 +479,7 @@ export default class implements Party.Server {
     // Source room: on change, push to each subscribed consumer immediately
     yDoc.on("update", async (_update: Uint8Array, origin: any) => {
       // Ignore updates we just applied from a consumer pull to avoid echo
-      if (origin === (this.constructor as any).ORIGIN_C2S) return;
+      if (origin === ORIGIN_C2S) return;
       const subscribers: Array<{
         consumerRoomId: string;
         elementIds?: string[];
@@ -486,11 +508,11 @@ export default class implements Party.Server {
 
     // Consumer room: when our doc changes for tracked shared refs, push back to sources immediately
     const refs: Array<{ sourceRoomId: string; elementIds: string[] }> =
-      (await this.room.storage.get("sharedReferences")) || [];
+      (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
     if (refs.length) {
       yDoc.on("update", async (_update: Uint8Array, origin: any) => {
         // Ignore updates we just applied from a source push to avoid echo
-        if (origin === (this.constructor as any).ORIGIN_S2C) return;
+        if (origin === ORIGIN_S2C) return;
         const mainParty = this.room.context.parties.main;
         for (const { sourceRoomId, elementIds } of refs) {
           if (!elementIds?.length) continue;

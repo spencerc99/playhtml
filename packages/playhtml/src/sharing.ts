@@ -1,3 +1,5 @@
+import { getIdForElement } from "@playhtml/common";
+
 // Shared elements interfaces
 interface SharedElement {
   elementId: string;
@@ -55,4 +57,19 @@ export function findSharedReferencesOnPage(): SharedReference[] {
   });
 
   return references;
+}
+
+export function isSharedReadOnly(
+  element: HTMLElement,
+  elementId?: string | null
+): boolean {
+  const isConsumer = element.hasAttribute("data-source");
+  const isReadOnlyExplicit =
+    isConsumer && element.hasAttribute("data-source-read-only");
+  if (isReadOnlyExplicit) return true;
+  const eid = elementId ?? getIdForElement(element);
+  if (!eid) return false;
+  const perms: Map<string, "read-only" | "read-write"> = (window as any)
+    .__playhtmlSharedPerms;
+  return perms?.get(eid) === "read-only";
 }
