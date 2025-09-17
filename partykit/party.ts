@@ -17,7 +17,9 @@ export default class implements Party.Server {
   // Reuse the exact same options for all Y.Doc access
   private providerOptions: import("y-partykit").YPartyKitOptions | undefined;
   private observersAttached = false;
+  // @ts-expect-error
   private static readonly ORIGIN_S2C = "__bridge_s2c__";
+  // @ts-expect-error
   private static readonly ORIGIN_C2S = "__bridge_c2s__";
 
   // --- Helper: normalize path used in room id derivation
@@ -365,13 +367,31 @@ export default class implements Party.Server {
           this.room,
           this.providerOptions || { load: async () => null }
         );
+        // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
+        // the source of truth is derived from the source room and not consumer-added capabilities.
+        // This prevents consumers from introducing new capability tags for an elementId upstream.
+        const play = (yDoc.getMap("play") as Y.Map<any>) || ({} as any);
+        const filtered: Record<string, Record<string, any>> = {};
+        Object.entries(subtrees).forEach(([tag, elements]) => {
+          const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
+          if (!(tagMap instanceof Y.Map)) return;
+          const kept: Record<string, any> = {};
+          Object.entries(elements).forEach(([elementId, data]) => {
+            if (tagMap.has(elementId)) kept[elementId] = data;
+          });
+          if (Object.keys(kept).length) filtered[tag] = kept;
+        });
+        const subtreesToApply = filtered;
         const hasSharedRefs = !!(await this.room.storage.get(
           "sharedReferences"
         ));
         const ORIGIN = hasSharedRefs
           ? ((this.constructor as any).ORIGIN_S2C as string)
           : ((this.constructor as any).ORIGIN_C2S as string);
-        yDoc.transact(() => this.assignPlaySubtrees(yDoc, subtrees), ORIGIN);
+        yDoc.transact(
+          () => this.assignPlaySubtrees(yDoc, subtreesToApply),
+          ORIGIN
+        );
 
         // If this is a SOURCE room, immediately fanout to other consumers (excluding sender if provided)
         const subscribers: Array<{
@@ -388,7 +408,7 @@ export default class implements Party.Server {
                 method: "POST",
                 body: JSON.stringify({
                   action: "apply-subtrees-immediate",
-                  subtrees,
+                  subtrees: subtreesToApply,
                 }),
               });
             })

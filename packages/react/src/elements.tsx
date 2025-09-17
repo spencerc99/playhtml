@@ -1,19 +1,21 @@
 import { TagTypeToElement, TagType } from "@playhtml/common";
 import classNames from "classnames";
 import React, { useState } from "react";
-import { CanPlayElement } from ".";
+import { CanPlayElement, SharedBindingProps } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
 
 export function CanMoveElement({
   children,
-}: {
-  children: SingleChildOrPlayable;
-}) {
+  dataSource,
+  shared,
+}: { children: SingleChildOrPlayable } & SharedBindingProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanMove]}
       {...TagTypeToElement[TagType.CanMove]}
+      {...(dataSource ? { dataSource } : {})}
+      {...(shared ? { shared } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
@@ -27,13 +29,15 @@ export function CanMoveElement({
 
 export function CanToggleElement({
   children,
-}: {
-  children: SingleChildOrPlayable;
-}) {
+  dataSource,
+  shared,
+}: { children: SingleChildOrPlayable } & SharedBindingProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanToggle]}
       {...TagTypeToElement[TagType.CanToggle]}
+      {...(dataSource ? { dataSource } : {})}
+      {...(shared ? { shared } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
@@ -47,13 +51,15 @@ export function CanToggleElement({
 
 export function CanSpinElement({
   children,
-}: {
-  children: SingleChildOrPlayable;
-}) {
+  dataSource,
+  shared,
+}: { children: SingleChildOrPlayable } & SharedBindingProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanSpin]}
       {...TagTypeToElement[TagType.CanSpin]}
+      {...(dataSource ? { dataSource } : {})}
+      {...(shared ? { shared } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
@@ -67,13 +73,15 @@ export function CanSpinElement({
 
 export function CanGrowElement({
   children,
-}: {
-  children: SingleChildOrPlayable;
-}) {
+  dataSource,
+  shared,
+}: { children: SingleChildOrPlayable } & SharedBindingProps) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanGrow]}
       {...TagTypeToElement[TagType.CanGrow]}
+      {...(dataSource ? { dataSource } : {})}
+      {...(shared ? { shared } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
