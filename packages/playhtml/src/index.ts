@@ -12,6 +12,7 @@ import {
   EventMessage,
   RegisteredPlayEvent,
   generatePersistentPlayerIdentity,
+  deepReplaceIntoProxy,
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
@@ -678,47 +679,6 @@ function createPlayElementData<T extends TagType>(
   return elementData;
 }
 
-function isPlainObject(value: any): value is Record<string, any> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
-
-// Replacement variant used for tags that keep a canonical snapshot (e.g., can-mirror)
-function deepReplaceIntoProxy(target: any, src: any) {
-  if (src === null || src === undefined) return;
-  if (Array.isArray(src)) {
-    target.splice(0, target.length, ...src);
-    return;
-  }
-  if (isPlainObject(src)) {
-    // Remove keys not present in src
-    for (const key of Object.keys(target)) {
-      if (!(key in src)) {
-        delete target[key];
-      }
-    }
-    // Set all keys from src
-    for (const [k, v] of Object.entries(src)) {
-      if (Array.isArray(v)) {
-        if (!Array.isArray(target[k])) target[k] = [];
-        deepReplaceIntoProxy(target[k], v);
-      } else if (isPlainObject(v)) {
-        if (!isPlainObject(target[k])) target[k] = {};
-        deepReplaceIntoProxy(target[k], v);
-      } else {
-        target[k] = v;
-      }
-    }
-    return;
-  }
-  // primitives
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  target = src;
-}
-
 function clonePlain<T>(value: T): T {
   // Prefer structuredClone when available; fallback to JSON clone for plain data
   try {
@@ -1054,10 +1014,9 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
         remoteApplyingKeys.delete(applyKey);
       }
       // Debug: log updates for shared elements
-      const el = handler.element;
-      if (el && el.hasAttribute && el.hasAttribute("data-source")) {
+      if (VERBOSE) {
         console.log(
-          `[playhtml] updated shared element ${tag}:${elementId} via SyncedStore observer`
+          `[PLAYHTML] updated shared element ${tag}:${elementId} via SyncedStore observer`
         );
       }
     });

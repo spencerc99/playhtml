@@ -2,6 +2,7 @@ import type * as Party from "partykit/server";
 import { onConnect, unstable_getYDoc } from "y-partykit";
 import { createClient } from "@supabase/supabase-js";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
+import { deepReplaceIntoProxy } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 
@@ -134,8 +135,7 @@ export default class implements Party.Server {
           if (same) return;
         } catch {}
         if (proxy && typeof proxy === "object") {
-          // @ts-ignore
-          this.deepReplaceIntoProxy(proxy, data);
+          deepReplaceIntoProxy(proxy, data);
         } else {
           tagObj[elementId] = data;
         }
@@ -157,46 +157,6 @@ export default class implements Party.Server {
       return map;
     }
     return value;
-  }
-
-  // --- Helpers to mutate SyncedStore proxies in-place (preserve Y types)
-  private isPlainObject(value: any): value is Record<string, any> {
-    return (
-      value !== null &&
-      typeof value === "object" &&
-      Object.getPrototypeOf(value) === Object.prototype
-    );
-  }
-
-  private deepReplaceIntoProxy(target: any, src: any) {
-    if (src === null || src === undefined) return;
-    if (Array.isArray(src)) {
-      // Replace array contents in place
-      target.splice(0, target.length, ...src);
-      return;
-    }
-    if (this.isPlainObject(src)) {
-      // Remove keys not present in src
-      for (const key of Object.keys(target)) {
-        if (!(key in src)) delete target[key];
-      }
-      // Set all keys from src
-      for (const [k, v] of Object.entries(src)) {
-        if (Array.isArray(v)) {
-          if (!Array.isArray(target[k])) target[k] = [];
-          this.deepReplaceIntoProxy(target[k], v);
-        } else if (this.isPlainObject(v)) {
-          if (!this.isPlainObject(target[k])) target[k] = {};
-          this.deepReplaceIntoProxy(target[k], v);
-        } else {
-          target[k] = v;
-        }
-      }
-      return;
-    }
-    // primitives: assign
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    target = src;
   }
 
   async onMessage(
@@ -367,9 +327,6 @@ export default class implements Party.Server {
           if (idx !== -1 && elementIds) existing[idx].elementIds = elementIds;
         }
         await this.room.storage.put("subscribers", existing);
-        console.log(
-          `[bridge] source ${this.room.id} subscribed consumer ${consumerRoomId} (total: ${existing.length})`
-        );
         return new Response(JSON.stringify({ ok: true }));
       }
 
@@ -383,11 +340,6 @@ export default class implements Party.Server {
           this.providerOptions || { load: async () => null }
         );
         const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
-        console.log(
-          `[bridge] source ${this.room.id} export for ${
-            elementIds.length
-          } ids; tags: ${Object.keys(subtrees).length}`
-        );
         return new Response(JSON.stringify({ subtrees }));
       }
 

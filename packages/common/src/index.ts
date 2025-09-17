@@ -198,6 +198,10 @@ export function getSharedElementId(el: HTMLElement): string | undefined {
   return elementId;
 }
 
+// Re-export helpers from split files
+export * from "./objectUtils";
+export * from "./sharedElements";
+
 // Export cursor types
 export * from "./cursor-types";
 
@@ -807,15 +811,16 @@ function updateChildrenFromState(
 
     if (!childElement) {
       // Create a new child element if not found
-      childElement =
+      const created: HTMLElement | Text =
         childState.nodeType === NodeType.Text
           ? document.createTextNode(childState.textContent)
           : document.createElement(childState.tagName);
-      element.appendChild(childElement);
+      element.appendChild(created);
+      childElement = created;
     }
 
-    processedChildren.add(childElement);
-    updateElementFromState(childElement, childState);
+    processedChildren.add(childElement as Element | Text);
+    updateElementFromState(childElement as HTMLElement | Text, childState);
   });
 
   // Remove any remaining unused elements
