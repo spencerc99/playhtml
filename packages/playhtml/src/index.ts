@@ -221,6 +221,9 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
   string,
   Array<RegisteredPlayEvent>
 >();
+// Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
+// Allows us to distinguish programmatic remote-applied changes from local user writes.
+const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
 export interface CursorOptions {
@@ -334,6 +337,28 @@ function onMessage(evt: MessageEvent) {
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
   if (!maybeHandlers) {
+    // Handle internal bridge replies
+    if ((message as any).permissions) {
+      try {
+        const perms = (message as any).permissions as Record<
+          string,
+          "read-only" | "read-write"
+        >;
+        Object.entries(perms).forEach(([elementId, mode]) => {
+          const sharedPermissions: Map<string, "read-only" | "read-write"> = (
+            window as any
+          ).__playhtmlSharedPerms;
+          sharedPermissions.set(elementId, mode);
+          if (mode === "read-only") {
+            // Add not-allowed affordance to any matching referenced element
+            const el = document.querySelector(
+              `[data-source$="#${CSS.escape(elementId)}"]`
+            ) as HTMLElement | null;
+            if (el) el.setAttribute("data-source-read-only", "");
+          }
+        });
+      } catch {}
+    }
     return;
   }
 
@@ -390,6 +415,11 @@ async function initPlayHTML({
   // Discover shared elements and references on the page
   const sharedElements = findSharedElementsOnPage();
   const sharedReferences = findSharedReferencesOnPage();
+  // Map elementId -> permission for quick client-side checks (filled after initial sync)
+  // @ts-ignore attach to window scope for access in closures
+  (window as any).__playhtmlSharedPerms =
+    (window as any).__playhtmlSharedPerms ||
+    new Map<string, "read-only" | "read-write">();
 
   if (sharedElements.length > 0) {
     console.log(
@@ -476,6 +506,16 @@ async function initPlayHTML({
 
       // Mark all elements as ready after sync completes and elements are set up
       markAllElementsAsReady();
+
+      // Fetch simple permissions for referenced shared elements so clients can block writes locally
+      if (sharedReferences.length > 0) {
+        try {
+          const elementIds = sharedReferences.map((r) => r.elementId);
+          yprovider.ws?.send(
+            JSON.stringify({ type: "export-permissions", elementIds })
+          );
+        } catch {}
+      }
 
       resolve(true);
     });
@@ -593,6 +633,20 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
+      // Prevent writes for read-only shared consumer elements
+      const isConsumer = element.hasAttribute("data-source");
+      const isReadOnlyExplicit =
+        isConsumer && element.hasAttribute("data-source-read-only");
+      const elementIdFromAttr = getIdForElement(element);
+      const isReadOnlyFromSource = !!(function () {
+        if (!elementIdFromAttr) return false;
+        const perms: Map<string, "read-only" | "read-write"> = (window as any)
+          .__playhtmlSharedPerms;
+        return perms?.get(elementIdFromAttr) === "read-only";
+      })();
+      if (isReadOnlyExplicit || isReadOnlyFromSource) {
+        return;
+      }
       if (typeof (newData as any) === "function") {
         // Mutator form support: onChange can accept function(draft)
         // Batch all nested mutations into a single Yjs transaction to coalesce events
@@ -990,8 +1044,15 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       const proxy = store.play[tag]?.[elementId];
       if (!proxy) return;
       const plain = clonePlain(proxy);
-      // @ts-ignore private usage intended
-      handler.__data = plain;
+      // Mark as remote-apply so onChange can permit programmatic updates for RO elements
+      const applyKey = `${tag}:${elementId}`;
+      remoteApplyingKeys.add(applyKey);
+      try {
+        // @ts-ignore private usage intended
+        handler.__data = plain;
+      } finally {
+        remoteApplyingKeys.delete(applyKey);
+      }
       // Debug: log updates for shared elements
       const el = handler.element;
       if (el && el.hasAttribute && el.hasAttribute("data-source")) {

@@ -147,6 +147,20 @@
         <div class="element-info">
           <code>id="shared-lamp" shared can-toggle</code>
         </div>
+        <div class="shared-element">
+          <h3>🔒 Shared Status (Global, Read-Only)</h3>
+          <div class="element-info">
+            <code>id="shared-readonly" shared="read-only" can-toggle</code>
+          </div>
+          <div
+            id="shared-readonly"
+            shared="read-only"
+            can-move
+            class="moveable-box"
+          >
+            <div style="color: white; font-size: 1em">🔒 Read-Only</div>
+          </div>
+        </div>
         <img
           id="shared-lamp"
           shared
@@ -186,7 +200,7 @@
     </div>
 
     <script type="module">
-      import { playhtml } from "../packages/playhtml/dist/playhtml.es.js";
+      import { playhtml } from "../packages/playhtml/";
 
       console.log("🎯 Initializing PlayHTML...");
 

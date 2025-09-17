@@ -31,13 +31,17 @@ export function CanToggleElement({
   children,
   dataSource,
   shared,
-}: { children: SingleChildOrPlayable } & SharedBindingProps) {
+  readOnly,
+}: { children: SingleChildOrPlayable } & SharedBindingProps & {
+    readOnly?: boolean;
+  }) {
   return (
     <CanPlayElement
       tagInfo={[TagType.CanToggle]}
       {...TagTypeToElement[TagType.CanToggle]}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
+      {...(readOnly ? { "data-source-read-only": "" } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,

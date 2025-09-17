@@ -233,6 +233,27 @@
         />
       </div>
 
+      <div class="referenced-element">
+        <h3>🔒 Referenced Read-Only Status</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/shared-test-source#shared-readonly"
+            data-source-read-only can-toggle</code
+          >
+        </div>
+        <div
+          id="shared-readonly"
+          data-source="localhost:5173/shared-test-source#shared-readonly"
+          data-source-read-only
+          can-move
+          class="moveable-box"
+        >
+          <div style="color: white; font-size: 1em">
+            🔒 Read-Only (Consumer)
+          </div>
+        </div>
+      </div>
+
       <div class="container">
         <h2>🧪 Testing Notes</h2>
         <ul>
@@ -249,7 +270,7 @@
     </div>
 
     <script type="module">
-      import { playhtml } from "../packages/playhtml/dist/playhtml.es.js";
+      import { playhtml } from "../packages/playhtml/";
 
       console.log("📡 Initializing PlayHTML...");
 

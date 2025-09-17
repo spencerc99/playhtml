@@ -52,6 +52,23 @@ export default class implements Party.Server {
     }
   }
 
+  // --- Helper: parse shared elements (declared on source) from URL params
+  parseSharedElementsFromUrl(url: string): Array<{
+    elementId: string;
+    permissions?: string; // 'read-only' | 'read-write'
+  }> {
+    try {
+      const u = new URL(url);
+      const raw = u.searchParams.get("sharedElements");
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
   // --- Helper: extract subtrees for a set of elementIds from the play map
   extractPlaySubtrees(
     doc: Y.Doc,
@@ -238,6 +255,26 @@ export default class implements Party.Server {
       }
     }
 
+    // Persist source-declared permissions for simple global read-only
+    const sharedElements = this.parseSharedElementsFromUrl(ctx.request.url);
+    if (sharedElements.length) {
+      const permissionsByElementId: Record<string, "read-only" | "read-write"> =
+        {};
+      for (const el of sharedElements) {
+        const mode =
+          el.permissions && el.permissions.includes("read-only")
+            ? "read-only"
+            : "read-write";
+        permissionsByElementId[el.elementId] = mode;
+      }
+      await room.storage.put("sharedPermissions", permissionsByElementId);
+      console.log(
+        `[bridge] source ${room.id} registered ${
+          Object.keys(permissionsByElementId).length
+        } shared element permissions`
+      );
+    }
+
     const yOptions = {
       async load() {
         // This is called once per "room" when the first user connects
@@ -354,6 +391,20 @@ export default class implements Party.Server {
         return new Response(JSON.stringify({ subtrees }));
       }
 
+      if (action === "export-permissions") {
+        // Returns simple permissions (read-only/read-write) for requested elementIds
+        const elementIds: string[] = Array.isArray((body as any)?.elementIds)
+          ? (body as any).elementIds
+          : [];
+        const perms: Record<string, "read-only" | "read-write"> =
+          (await this.room.storage.get("sharedPermissions")) || {};
+        const filtered: Record<string, "read-only" | "read-write"> = {};
+        for (const id of elementIds) {
+          if (perms[id]) filtered[id] = perms[id];
+        }
+        return new Response(JSON.stringify({ permissions: filtered }));
+      }
+
       // Removed legacy apply-subtrees; immediate path is used instead
 
       if (action === "apply-subtrees-immediate") {
@@ -367,21 +418,40 @@ export default class implements Party.Server {
           this.room,
           this.providerOptions || { load: async () => null }
         );
-        // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
-        // the source of truth is derived from the source room and not consumer-added capabilities.
-        // This prevents consumers from introducing new capability tags for an elementId upstream.
-        const play = (yDoc.getMap("play") as Y.Map<any>) || ({} as any);
-        const filtered: Record<string, Record<string, any>> = {};
-        Object.entries(subtrees).forEach(([tag, elements]) => {
-          const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
-          if (!(tagMap instanceof Y.Map)) return;
-          const kept: Record<string, any> = {};
-          Object.entries(elements).forEach(([elementId, data]) => {
-            if (tagMap.has(elementId)) kept[elementId] = data;
+        const isSourceRoom = !!(await this.room.storage.get(
+          "sharedPermissions"
+        ));
+        let subtreesToApply: Record<string, Record<string, any>> = subtrees;
+        if (isSourceRoom) {
+          // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
+          // the source of truth is derived from the source room and not consumer-added capabilities.
+          const play = (yDoc.getMap("play") as Y.Map<any>) || ({} as any);
+          const filtered: Record<string, Record<string, any>> = {};
+          Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+            const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
+            if (!(tagMap instanceof Y.Map)) return;
+            const kept: Record<string, any> = {};
+            Object.entries(elements).forEach(([elementId, data]) => {
+              if (tagMap.has(elementId)) kept[elementId] = data;
+            });
+            if (Object.keys(kept).length) filtered[tag] = kept;
           });
-          if (Object.keys(kept).length) filtered[tag] = kept;
-        });
-        const subtreesToApply = filtered;
+          // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
+          const perms: Record<string, "read-only" | "read-write"> =
+            (await this.room.storage.get("sharedPermissions")) || {};
+          const filteredByPerms: Record<string, Record<string, any>> = {};
+          Object.entries(filtered).forEach(([tag, elements]) => {
+            const kept: Record<string, any> = {};
+            Object.entries(elements).forEach(([elementId, data]) => {
+              if (perms[elementId] === "read-only") {
+                return; // skip writes to read-only elements
+              }
+              kept[elementId] = data;
+            });
+            if (Object.keys(kept).length) filteredByPerms[tag] = kept;
+          });
+          subtreesToApply = filteredByPerms;
+        }
         const hasSharedRefs = !!(await this.room.storage.get(
           "sharedReferences"
         ));
@@ -398,7 +468,7 @@ export default class implements Party.Server {
           consumerRoomId: string;
           elementIds?: string[];
         }> = (await this.room.storage.get("subscribers")) || [];
-        if (subscribers.length) {
+        if (isSourceRoom && subscribers.length) {
           const mainParty = this.room.context.parties.main;
           await Promise.all(
             subscribers.map(async ({ consumerRoomId }) => {
