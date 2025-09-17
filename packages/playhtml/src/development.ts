@@ -1,7 +1,8 @@
-import { playhtml } from "./index";
-const { syncedStore: store, elementHandlers } = playhtml;
+import { PlayHTMLComponents } from "./index";
 
-export function setupDevUI() {
+export function setupDevUI(playhtml: PlayHTMLComponents) {
+  const { syncedStore: store, elementHandlers } = playhtml;
+
   const devUi = document.createElement("div");
   devUi.id = "playhtml-dev-ui";
   devUi.style.position = "fixed";

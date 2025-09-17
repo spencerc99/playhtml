@@ -5,6 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shared Elements - Consumer Page</title>
     <style>
+      /* Web 1.0 inspired styles */
+      body {
+        background: #fdfdfd;
+        font-family: "Times New Roman", serif;
+        color: #111;
+      }
+      .marquee {
+        background: #ffffcc;
+        border: 2px ridge #cc9900;
+        padding: 6px 10px;
+        margin-bottom: 12px;
+        font-weight: bold;
+      }
+      .domain {
+        display: inline-block;
+        padding: 2px 6px;
+        border: 1px dashed #333;
+      }
+      .domain.localhost {
+        background: #e0f7ff;
+      }
+      .domain.other {
+        background: #ffe0f0;
+      }
+      a {
+        color: #0000ee;
+      }
+      .hr {
+        border-top: 3px double #666;
+        margin: 10px 0;
+      }
+    </style>
+    <style>
       body {
         font-family: system-ui, -apple-system, sans-serif;
         max-width: 800px;
@@ -110,10 +143,31 @@
       .toggle-button:hover {
         background: #218838;
       }
+
+      .lamp {
+        width: 100px;
+        background-color: transparent;
+      }
+
+      .lamp:hover {
+        animation: jiggle 0.5s ease-in-out;
+      }
+      .lamp.clicked.clicked {
+        filter: brightness(1.2) saturate(1.6)
+          drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
+      }
     </style>
   </head>
   <body>
     <div class="container">
+      <div class="marquee">
+        <span>Welcome to my personal homepage!</span>
+        &nbsp;|&nbsp;
+        <span
+          >Domain:
+          <span id="consumer-domain" class="domain">unknown</span></span
+        >
+      </div>
       <h1>📡 Shared Elements - Consumer Page</h1>
 
       <div class="instructions">
@@ -160,6 +214,25 @@
         </div>
       </div>
 
+      <div class="referenced-element">
+        <h3>💡 Referenced Shared Lamp</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/shared-test-source#shared-lamp"
+            can-toggle</code
+          >
+        </div>
+        <img
+          id="shared-lamp"
+          data-source="localhost:5173/shared-test-source#shared-lamp"
+          can-toggle
+          class="lamp"
+          src="/noguchi-hanging-lamp.png"
+          alt="Lamp"
+          style="display: block; margin: 0.5rem auto; max-width: 240px"
+        />
+      </div>
+
       <div class="container">
         <h2>🧪 Testing Notes</h2>
         <ul>
@@ -190,6 +263,13 @@
         document.getElementById("status").textContent = "Connected";
         document.querySelector(".status-indicator").className =
           "status-indicator status-connected";
+
+        const dom = window.location.host;
+        const domainEl = document.getElementById("consumer-domain");
+        domainEl.textContent = dom;
+        domainEl.className = `domain ${
+          dom.startsWith("localhost") ? "localhost" : "other"
+        }`;
 
         console.log("📡 Consumer page loaded - should request shared elements");
       } catch (error) {

@@ -447,7 +447,7 @@ async function initPlayHTML({
   document.head.appendChild(playStyles);
 
   if (developmentMode) {
-    setupDevUI();
+    setupDevUI(playhtml);
   }
 
   // Mark all discovered playhtml elements as loading before sync
@@ -817,7 +817,7 @@ function setupElements(): void {
   firstSetup = false;
 }
 
-interface PlayHTMLComponents {
+export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;

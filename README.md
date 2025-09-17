@@ -18,6 +18,17 @@ At a glance, playhtml supports:
 - a range of magical plug-and-play and full customization
 - _(coming soon)_ a web component library for "plug-and-play" collaborative elements
 - _(coming soon)_ sharing state across domains
+
+### shared elements
+
+See the guide on referencing shared elements and capability contracts in `docs/shared-elements.md`.
+
+Highlights:
+
+- Reference with `data-source="domain/path#elementId"` and the matching capability (e.g., `can-move`)
+- Consumer markup/styles are free; the capability’s data contract must match
+- React: prefer `withSharedState()`; support for `shared` and `data-source` configuration coming soon
+
 - _(coming soon)_ permissioning for behaviors
 - _(coming soon)_ triggering behavior on a schedule (think cron)
 - _(coming soon)_ custom data sources for long-term persistence

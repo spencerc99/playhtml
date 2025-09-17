@@ -90,6 +90,19 @@
       .toggle-button:hover {
         background: #218838;
       }
+
+      .lamp {
+        width: 100px;
+        background-color: transparent;
+      }
+
+      .lamp:hover {
+        animation: jiggle 0.5s ease-in-out;
+      }
+      .lamp.clicked {
+        filter: brightness(1.2) saturate(1.6)
+          drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
+      }
     </style>
   </head>
   <body>
@@ -130,38 +143,19 @@
       </div>
 
       <div class="shared-element">
-        <h3>📖 Shared Status (Global, Read-Only)</h3>
+        <h3>💡 Shared Lamp (Global, Read-Write)</h3>
         <div class="element-info">
-          <code>id="shared-status" shared="read-only" can-toggle</code>
+          <code>id="shared-lamp" shared can-toggle</code>
         </div>
-        <div id="shared-status" shared="read-only" can-toggle>
-          <div
-            style="
-              padding: 1rem;
-              background: #e8f5e8;
-              border-radius: 4px;
-              text-align: center;
-            "
-          >
-            <span id="status-text">✅ Status: Active</span>
-          </div>
-          <button class="toggle-button" onclick="toggleStatus()">
-            Toggle Status
-          </button>
-        </div>
-      </div>
-
-      <div class="shared-element">
-        <h3>🏠 Domain-Only Box</h3>
-        <div class="element-info">
-          <code>id="domain-counter" shared-domain can-move</code>
-        </div>
-        <div id="domain-counter" shared-domain can-move class="moveable-box">
-          <div style="color: white; font-size: 1.2em">🏠 Domain Box</div>
-          <div style="font-size: 0.8em; margin-top: 0.5rem">
-            📱 Drag to move - domain-only
-          </div>
-        </div>
+        <img
+          id="shared-lamp"
+          shared
+          can-toggle
+          src="/noguchi-akari-a1.png"
+          alt="Lamp"
+          class="lamp"
+          style="display: block; margin: 0.5rem auto; max-width: 240px"
+        />
       </div>
 
       <div class="container">
@@ -176,6 +170,12 @@
           </li>
           <li>
             <code
+              >data-source="<span id="current-domain-lamp">localhost:5173</span
+              >/shared-test-source#shared-lamp"</code
+            >
+          </li>
+          <li>
+            <code
               >data-source="<span id="current-domain-2">localhost:5173</span
               >#domain-counter"</code
             >
@@ -184,20 +184,6 @@
         </ul>
       </div>
     </div>
-
-    <script>
-      window.toggleStatus = function () {
-        const statusText = document.getElementById("status-text");
-        const currentText = statusText.textContent;
-        if (currentText.includes("Active")) {
-          statusText.textContent = "❌ Status: Inactive";
-          statusText.parentElement.style.background = "#f8d7da";
-        } else {
-          statusText.textContent = "✅ Status: Active";
-          statusText.parentElement.style.background = "#e8f5e8";
-        }
-      };
-    </script>
 
     <script type="module">
       import { playhtml } from "../packages/playhtml/dist/playhtml.es.js";
@@ -216,6 +202,10 @@
           window.location.host + window.location.pathname;
         document.getElementById("current-domain-2").textContent =
           window.location.host + window.location.pathname;
+        const lampSpan = document.getElementById("current-domain-lamp");
+        if (lampSpan)
+          lampSpan.textContent =
+            window.location.host + window.location.pathname;
 
         console.log(
           "🎯 Source page loaded - shared elements should be registered"
