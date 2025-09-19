@@ -1,3 +1,4 @@
+import { parseDataSource } from "@playhtml/common";
 import { getIdForElement } from "@playhtml/common";
 import { sharedPermissions } from "./index";
 
@@ -45,16 +46,10 @@ export function findSharedReferencesOnPage(): SharedReference[] {
   document.querySelectorAll("[data-source]").forEach((el) => {
     const dataSource = el.getAttribute("data-source");
     if (!dataSource) return;
-
-    const [domainAndPath, elementId] = dataSource.split("#");
-    if (!domainAndPath || !elementId) return;
-
-    const pathIndex = domainAndPath.indexOf("/");
-    const domain =
-      pathIndex === -1 ? domainAndPath : domainAndPath.substring(0, pathIndex);
-    const path = pathIndex === -1 ? "/" : domainAndPath.substring(pathIndex);
-
-    references.push({ domain, path, elementId });
+    try {
+      const { domain, path, elementId } = parseDataSource(dataSource);
+      references.push({ domain, path, elementId });
+    } catch {}
   });
 
   return references;

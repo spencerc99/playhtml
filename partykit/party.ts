@@ -5,6 +5,7 @@ import { syncedStore, getYjsValue } from "@syncedstore/core";
 import { deepReplaceIntoProxy } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
+import { deriveRoomId, normalizePath } from "@playhtml/common";
 
 // Create a single supabase client for interacting with your database
 const supabase = createClient(
@@ -30,9 +31,7 @@ export default class implements Party.Server {
 
   // --- Helper: normalize path used in room id derivation
   normalizePath(path: string): string {
-    // strip file extension
-    const cleaned = path.replace(/\.[^/.]+$/, "");
-    return cleaned || "/";
+    return normalizePath(path);
   }
 
   private async isSourceRoom(): Promise<boolean> {
@@ -41,10 +40,7 @@ export default class implements Party.Server {
 
   // --- Helper: compute source room id from domain and pathOrRoom
   getSourceRoomId(domain: string, pathOrRoom: string): string {
-    // IMPORTANT: must match client room id derivation for sources
-    // Client builds: encodeURIComponent(window.location.host + "-" + inputRoom)
-    const normalized = this.normalizePath(pathOrRoom);
-    return encodeURIComponent(`${domain}-${normalized}`);
+    return deriveRoomId(domain, pathOrRoom);
   }
 
   // --- Helper: parse shared references array from connection/request URL
@@ -79,6 +75,109 @@ export default class implements Party.Server {
       return [];
     } catch {
       return [];
+    }
+  }
+
+  // --- Helper: group SharedReferences into storage entries
+  private groupRefsToEntries(
+    refs: Array<{ domain: string; path: string; elementId: string }>
+  ): Array<{ sourceRoomId: string; elementIds: string[] }> {
+    const bySource = new Map<string, Set<string>>();
+    for (const ref of refs) {
+      const srcId = this.getSourceRoomId(ref.domain, ref.path);
+      const set = bySource.get(srcId) ?? new Set<string>();
+      set.add(ref.elementId);
+      bySource.set(srcId, set);
+    }
+    return Array.from(bySource.entries()).map(([sourceRoomId, ids]) => ({
+      sourceRoomId,
+      elementIds: Array.from(ids),
+    }));
+  }
+
+  // --- Helper: merge and persist sharedReferences entries; returns updated entries and whether changed
+  private async mergeAndStoreSharedRefs(
+    newEntries: Array<{ sourceRoomId: string; elementIds: string[] }>
+  ): Promise<{
+    entries: Array<{ sourceRoomId: string; elementIds: string[] }>;
+    changed: boolean;
+  }> {
+    const existing: Array<{ sourceRoomId: string; elementIds: string[] }> =
+      (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+    const bySource = new Map<string, Set<string>>();
+    for (const e of existing)
+      bySource.set(e.sourceRoomId, new Set(e.elementIds));
+    let changed = false;
+    for (const e of newEntries) {
+      const set = bySource.get(e.sourceRoomId) ?? new Set<string>();
+      const before = set.size;
+      for (const id of e.elementIds) set.add(id);
+      if (!bySource.has(e.sourceRoomId) || set.size !== before) changed = true;
+      bySource.set(e.sourceRoomId, set);
+    }
+    if (changed) {
+      const merged = Array.from(bySource.entries()).map(
+        ([sourceRoomId, ids]) => ({
+          sourceRoomId,
+          elementIds: Array.from(ids),
+        })
+      );
+      await this.room.storage.put(STORAGE_KEYS.sharedReferences, merged);
+      return { entries: merged, changed: true };
+    }
+    return { entries: existing, changed: false };
+  }
+
+  // --- Helper: subscribe to sources and optionally hydrate immediately
+  private async subscribeAndHydrate(
+    entries: Array<{ sourceRoomId: string; elementIds: string[] }>,
+    shouldHydrate?: boolean
+  ): Promise<void> {
+    const mainPartyAny = this.room.context.parties.main as any;
+    // Subscribe
+    await Promise.all(
+      entries.map(async ({ sourceRoomId, elementIds }) => {
+        if (!elementIds?.length) return;
+        try {
+          const sourceRoomAny = mainPartyAny.get(sourceRoomId);
+          await (sourceRoomAny as any).fetch({
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "subscribe",
+              consumerRoomId: this.room.id,
+              elementIds,
+            }),
+          });
+        } catch {}
+      })
+    );
+    // One-shot hydrate
+    if (shouldHydrate) {
+      await Promise.all(
+        entries.map(async ({ sourceRoomId, elementIds }) => {
+          if (!elementIds?.length) return;
+          try {
+            const sourceRoomAny = mainPartyAny.get(sourceRoomId);
+            const exportRes = await (sourceRoomAny as any).fetch({
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ action: "export", elementIds }),
+            });
+            const { subtrees } = (await exportRes.json()) || {};
+            if (!subtrees || !Object.keys(subtrees).length) return;
+            await (this.room as any).fetch({
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "apply-subtrees-immediate",
+                subtrees,
+                sender: sourceRoomId,
+              }),
+            });
+          } catch {}
+        })
+      );
     }
   }
 
@@ -160,8 +259,81 @@ export default class implements Party.Server {
     sender: Party.Connection<unknown>
   ): Promise<void> {
     if (typeof message === "string") {
-      this.room.broadcast(message);
+      try {
+        const parsed = JSON.parse(message);
+
+        if (parsed.type === "add-shared-reference") {
+          // Handle dynamic addition of shared reference
+          await this.handleAddSharedReference(parsed.reference, sender);
+        } else if (parsed.type === "export-permissions") {
+          // Handle individual permission requests
+          await this.handleExportPermissions(parsed.elementIds, sender);
+        } else if (parsed.type === "register-shared-element") {
+          // Handle dynamic registration of shared source element
+          await this.handleRegisterSharedElement(parsed.element, sender);
+        } else {
+          // Broadcast other messages normally
+          this.room.broadcast(message);
+        }
+      } catch (error) {
+        // If not valid JSON, broadcast as-is (existing behavior)
+        this.room.broadcast(message);
+      }
     }
+  }
+
+  private async handleAddSharedReference(
+    reference: {
+      domain: string;
+      path: string;
+      elementId: string;
+    },
+    sender: Party.Connection<unknown>
+  ): Promise<void> {
+    if (!reference?.domain || !reference?.path || !reference?.elementId) return;
+
+    const sourceRoomId = this.getSourceRoomId(reference.domain, reference.path);
+    const { entries, changed } = await this.mergeAndStoreSharedRefs([
+      { sourceRoomId, elementIds: [reference.elementId] },
+    ]);
+    if (changed) await this.subscribeAndHydrate(entries, true);
+  }
+
+  private async handleExportPermissions(
+    elementIds: string[],
+    sender: Party.Connection<unknown>
+  ): Promise<void> {
+    const perms: Record<string, "read-only" | "read-write"> =
+      (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    const filtered: Record<string, "read-only" | "read-write"> = {};
+
+    for (const id of elementIds) {
+      if (perms[id]) filtered[id] = perms[id];
+    }
+
+    // Send permissions back to the requesting client
+    sender.send(JSON.stringify({ permissions: filtered }));
+  }
+
+  private async handleRegisterSharedElement(
+    element: {
+      elementId: string;
+      permissions: "read-only" | "read-write";
+      path?: string;
+    },
+    sender: Party.Connection<unknown>
+  ): Promise<void> {
+    if (!element || !element.elementId) return;
+
+    // Update shared permissions for this source room
+    const existingPerms: Record<string, "read-only" | "read-write"> =
+      (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    const mode =
+      element.permissions && element.permissions === "read-only"
+        ? "read-only"
+        : "read-write";
+    existingPerms[element.elementId] = mode;
+    await this.room.storage.put(STORAGE_KEYS.sharedPermissions, existingPerms);
   }
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
@@ -173,35 +345,9 @@ export default class implements Party.Server {
 
     // Persist consumer interest mapping for later pulls/mirroring
     if (sharedReferences.length) {
-      // Group by sourceRoomId
-      const bySource = new Map<string, Set<string>>();
-      for (const ref of sharedReferences) {
-        const srcId = this.getSourceRoomId(ref.domain, ref.path);
-        const set = bySource.get(srcId) ?? new Set<string>();
-        set.add(ref.elementId);
-        bySource.set(srcId, set);
-      }
-      // Store mapping in this consumer room's storage
-      const entries: Array<{ sourceRoomId: string; elementIds: string[] }> = [];
-      bySource.forEach((ids, srcId) => {
-        entries.push({ sourceRoomId: srcId, elementIds: Array.from(ids) });
-      });
-      await room.storage.put(STORAGE_KEYS.sharedReferences, entries);
-
-      // Register with each source room so it can notify us on changes
-      for (const { sourceRoomId, elementIds } of entries) {
-        const mainParty = room.context.parties.main;
-        const sourceRoom = mainParty.get(sourceRoomId);
-        await sourceRoom.fetch({
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            action: "subscribe",
-            consumerRoomId: room.id,
-            elementIds,
-          }),
-        });
-      }
+      const entries = this.groupRefsToEntries(sharedReferences);
+      const { entries: merged } = await this.mergeAndStoreSharedRefs(entries);
+      await this.subscribeAndHydrate(merged);
     }
 
     // Persist source-declared permissions for simple global read-only
@@ -494,29 +640,27 @@ export default class implements Party.Server {
     });
 
     // Consumer room: when our doc changes for tracked shared refs, push back to sources immediately
-    const refs: Array<{ sourceRoomId: string; elementIds: string[] }> =
-      (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
-    if (refs.length) {
-      yDoc.on("update", async (_update: Uint8Array, origin: any) => {
-        // Ignore updates we just applied from a source push to avoid echo
-        if (origin === ORIGIN_S2C) return;
-        const mainParty = this.room.context.parties.main;
-        for (const { sourceRoomId, elementIds } of refs) {
-          if (!elementIds?.length) continue;
-          const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
-          if (!Object.keys(subtrees).length) continue;
-          const sourceRoom = mainParty.get(sourceRoomId);
-          await sourceRoom.fetch({
-            method: "POST",
-            body: JSON.stringify({
-              action: "apply-subtrees-immediate",
-              subtrees,
-              sender: this.room.id,
-            }),
-          });
-        }
-      });
-    }
+    yDoc.on("update", async (_update: Uint8Array, origin: any) => {
+      // Ignore updates we just applied from a source push to avoid echo
+      if (origin === ORIGIN_S2C) return;
+      const mainParty = this.room.context.parties.main;
+      const refs: Array<{ sourceRoomId: string; elementIds: string[] }> =
+        (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+      for (const { sourceRoomId, elementIds } of refs) {
+        if (!elementIds?.length) continue;
+        const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
+        if (!Object.keys(subtrees).length) continue;
+        const sourceRoom = mainParty.get(sourceRoomId);
+        await sourceRoom.fetch({
+          method: "POST",
+          body: JSON.stringify({
+            action: "apply-subtrees-immediate",
+            subtrees,
+            sender: this.room.id,
+          }),
+        });
+      }
+    });
 
     this.observersAttached = true;
   }

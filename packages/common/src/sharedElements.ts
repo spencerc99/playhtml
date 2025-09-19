@@ -16,3 +16,14 @@ export function parseDataSource(value: string): SharedReference {
   const path = firstSlash === -1 ? "/" : domainAndPath.slice(firstSlash);
   return { domain, path, elementId };
 }
+
+export function normalizePath(path: string): string {
+  if (!path) return "/";
+  const cleaned = path.replace(/\.[^/.]+$/, "");
+  return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+}
+
+export function deriveRoomId(host: string, inputRoom: string): string {
+  const normalized = normalizePath(inputRoom);
+  return encodeURIComponent(`${host}-${normalized}`);
+}

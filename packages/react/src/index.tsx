@@ -154,7 +154,20 @@ export function CanPlayElement<T, V>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
-      playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+      
+      // Setup the element, which will handle data-source discovery if needed
+      try {
+        playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+      } catch (error) {
+        console.warn("[@playhtml/react] Failed to setup play element:", error);
+        
+        // If playhtml isn't initialized yet, log a helpful message
+        if (!playhtml.elementHandlers) {
+          console.warn(
+            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes."
+          );
+        }
+      }
     }
     // console.log("setting up", elementProps.defaultData, ref.current);
 

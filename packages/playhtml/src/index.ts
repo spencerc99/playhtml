@@ -25,6 +25,7 @@ import {
   findSharedReferencesOnPage,
   isSharedReadOnly,
 } from "./sharing";
+import { parseDataSource } from "@playhtml/common";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
@@ -204,12 +205,103 @@ const sharedHydrationTimers: Map<string, number> = new Map();
 
 // Shared permissions map for tracking element permissions
 export const sharedPermissions = new Map<string, "read-only" | "read-write">();
+// Track discovered shared references to avoid duplicates
+const discoveredSharedReferences = new Set<string>();
 
 function initializeSharedPermissions(): void {
   // Initialize if not already done
   if (sharedPermissions.size === 0) {
     // Clear any existing entries to ensure clean state
     sharedPermissions.clear();
+  }
+}
+
+// Handle discovery of a new shared reference element
+function handleNewSharedReference(element: HTMLElement): void {
+  const dataSource = element.getAttribute("data-source");
+  if (!dataSource) return;
+
+  // Parse and normalize using shared helper
+  let domain: string, path: string, elementId: string;
+  try {
+    ({ domain, path, elementId } = parseDataSource(dataSource));
+  } catch {
+    return;
+  }
+
+  // Unified dedupe key shape
+  const referenceKey = `${domain}${path}#${elementId}`;
+  if (discoveredSharedReferences.has(referenceKey)) return;
+  discoveredSharedReferences.add(referenceKey);
+
+  // Send updated shared references to the server if we're connected
+  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+    try {
+      const newReference = { domain, path, elementId };
+      // Send individual reference update
+      yprovider.ws.send(
+        JSON.stringify({
+          type: "add-shared-reference",
+          reference: newReference,
+        })
+      );
+
+      // Request permissions for this specific element
+      yprovider.ws.send(
+        JSON.stringify({
+          type: "export-permissions",
+          elementIds: [elementId],
+        })
+      );
+    } catch (error) {
+      console.warn(
+        "[PLAYHTML] Failed to notify server of new shared reference:",
+        error
+      );
+    }
+  }
+}
+
+// Handle registration of a new shared source element
+function handleNewSharedElement(element: HTMLElement): void {
+  if (!element.id) return;
+
+  const elementId = element.id;
+  const permissions = element.getAttribute("shared");
+  let permissionMode: "read-only" | "read-write" = "read-write";
+
+  if (permissions && permissions !== "") {
+    const val = permissions.toLowerCase();
+    if (val.includes("read-only") || val === "ro") {
+      permissionMode = "read-only";
+    }
+  }
+
+  // Update local permissions
+  sharedPermissions.set(elementId, permissionMode);
+
+  // Send to server if connected
+  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+    try {
+      // Register this element as shared with the server
+      const sharedElement = {
+        elementId,
+        permissions: permissionMode,
+        path: window.location.pathname,
+      };
+
+      yprovider.ws.send(
+        JSON.stringify({
+          type: "register-shared-element",
+          element: sharedElement,
+        })
+      );
+    } catch (error) {
+      console.warn(
+        "[PLAYHTML] Failed to notify server of new shared element:",
+        error
+      );
+    }
   }
 }
 
@@ -435,6 +527,12 @@ async function initPlayHTML({
   const sharedReferences = findSharedReferencesOnPage();
   // Map elementId -> permission for quick client-side checks (filled after initial sync)
   initializeSharedPermissions();
+
+  // Initialize tracking of discovered shared references
+  sharedReferences.forEach((ref) => {
+    const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
+    discoveredSharedReferences.add(referenceKey);
+  });
 
   if (sharedElements.length > 0) {
     console.log(
@@ -1068,6 +1166,16 @@ function setupPlayElement(
   if (!isHTMLElement(element)) {
     console.log(`Element ${element.id} not an HTML element. Ignoring.`);
     return;
+  }
+
+  // Check for data-source attribute and handle dynamic discovery
+  if (element.hasAttribute("data-source")) {
+    handleNewSharedReference(element);
+  }
+
+  // Check for shared attribute and register as shared element
+  if (element.hasAttribute("shared")) {
+    handleNewSharedElement(element);
   }
 
   // Handle loading state for dynamically added elements

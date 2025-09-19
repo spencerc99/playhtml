@@ -166,6 +166,27 @@
       .guestbook-entry-message {
         color: #333;
       }
+      
+      .test-button {
+        background: #007acc;
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        margin: 0.5rem;
+        transition: background 0.2s;
+      }
+      
+      .test-button:hover {
+        background: #005a9d;
+      }
+      
+      .test-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
@@ -253,6 +274,19 @@
         </form>
         <div id="guestbookMessages" class="guestbook-messages">
           <!-- Messages will appear here -->
+        </div>
+      </div>
+
+      <div class="container">
+        <h2>🧪 Dynamic Discovery Test</h2>
+        <p>Test that shared elements are properly discovered when added dynamically after playhtml initialization:</p>
+        <button class="test-button" id="add-dynamic-source-btn">Add Dynamic Shared Element</button>
+        <button class="test-button" id="remove-dynamic-source-btn" disabled>Remove Dynamic Element</button>
+        <div id="dynamic-source-container" style="margin-top: 1rem; min-height: 50px; border: 1px dashed #007acc; padding: 1rem; border-radius: 8px;">
+          <em>Click "Add Dynamic Shared Element" to test dynamic discovery</em>
+        </div>
+        <div id="source-log" style="max-height: 150px; overflow-y: auto; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; margin-top: 1rem; font-family: monospace; font-size: 0.85em;">
+          <div>Waiting for dynamic discovery events...</div>
         </div>
       </div>
 
@@ -394,6 +428,60 @@
         console.log(
           "🎯 Source page loaded - shared elements should be registered"
         );
+
+        // Dynamic discovery test functionality
+        const sourceLogContainer = document.getElementById("source-log");
+        function addSourceLog(message, type = "") {
+          const entry = document.createElement("div");
+          entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+          if (type) entry.style.color = type === 'discovery' ? '#007acc' : '#dc3545';
+          sourceLogContainer.appendChild(entry);
+          sourceLogContainer.scrollTop = sourceLogContainer.scrollHeight;
+        }
+
+        // Dynamic test for source page
+        let dynamicSourceAdded = false;
+        document.getElementById("add-dynamic-source-btn").addEventListener("click", () => {
+          if (dynamicSourceAdded) return;
+          
+          addSourceLog("Adding dynamic shared element (source)...", "discovery");
+          
+          const dynamicDiv = document.createElement("div");
+          dynamicDiv.id = "dynamic-shared-source";
+          dynamicDiv.setAttribute("shared", "");
+          dynamicDiv.setAttribute("can-move", "");
+          dynamicDiv.className = "moveable-box";
+          dynamicDiv.innerHTML = `
+            <div style="color: white; font-size: 1.1em">🆕 Dynamic Source</div>
+            <div style="font-size: 0.8em; margin-top: 0.5rem; color: white">
+              ✨ Added after init
+            </div>
+          `;
+          
+          document.getElementById("dynamic-source-container").innerHTML = "";
+          document.getElementById("dynamic-source-container").appendChild(dynamicDiv);
+          
+          // This should register it as a new shared element
+          playhtml.setupPlayElement(dynamicDiv);
+          
+          dynamicSourceAdded = true;
+          document.getElementById("add-dynamic-source-btn").disabled = true;
+          document.getElementById("remove-dynamic-source-btn").disabled = false;
+          
+          addSourceLog("Dynamic shared source element added and setup called", "discovery");
+        });
+
+        document.getElementById("remove-dynamic-source-btn").addEventListener("click", () => {
+          document.getElementById("dynamic-source-container").innerHTML = 
+            '<em>Dynamic element removed</em>';
+          dynamicSourceAdded = false;
+          document.getElementById("add-dynamic-source-btn").disabled = false;
+          document.getElementById("remove-dynamic-source-btn").disabled = true;
+          addSourceLog("Dynamic shared source element removed", "discovery");
+        });
+
+        addSourceLog("Dynamic discovery test handlers initialized", "discovery");
+
       } catch (error) {
         console.error("🎯 Failed to initialize PlayHTML:", error);
       }

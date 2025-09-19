@@ -213,6 +213,27 @@
       .guestbook-entry-message {
         color: #333;
       }
+
+      .test-button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        margin: 0.5rem;
+        transition: background 0.2s;
+      }
+
+      .test-button:hover {
+        background: #218838;
+      }
+
+      .test-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
@@ -352,6 +373,50 @@
       </div>
 
       <div class="container">
+        <h2>🧪 Dynamic Discovery Test</h2>
+        <p>
+          Test that shared reference elements are properly discovered when added
+          dynamically after playhtml initialization:
+        </p>
+        <button class="test-button" id="add-dynamic-consumer-btn">
+          Add Dynamic Shared Reference
+        </button>
+        <button class="test-button" id="remove-dynamic-consumer-btn" disabled>
+          Remove Dynamic Reference
+        </button>
+        <div
+          id="dynamic-consumer-container"
+          style="
+            margin-top: 1rem;
+            min-height: 50px;
+            border: 1px dashed #28a745;
+            padding: 1rem;
+            border-radius: 8px;
+          "
+        >
+          <em
+            >Click "Add Dynamic Shared Reference" to test dynamic discovery</em
+          >
+        </div>
+        <div
+          id="consumer-log"
+          style="
+            max-height: 150px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 0.85em;
+          "
+        >
+          <div>Waiting for dynamic discovery events...</div>
+        </div>
+      </div>
+
+      <div class="container">
         <h2>🧪 Testing Notes</h2>
         <ul>
           <li>
@@ -365,6 +430,10 @@
             The shared guestbook (array data) should sync bidirectionally - test
             adding messages from both pages
           </li>
+          <li>
+            The dynamic discovery test should show elements added after
+            initialization sync properly
+          </li>
           <li>Check browser console for detailed logging</li>
         </ul>
       </div>
@@ -374,6 +443,48 @@
       import { playhtml } from "../packages/playhtml/";
 
       console.log("📡 Initializing PlayHTML...");
+
+      // Debug logging for dynamic discovery
+      const consumerLogContainer = document.getElementById("consumer-log");
+      function addConsumerLog(message, type = "") {
+        const entry = document.createElement("div");
+        entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+        if (type)
+          entry.style.color =
+            type === "discovery"
+              ? "#28a745"
+              : type === "permission"
+              ? "#007acc"
+              : "#dc3545";
+        consumerLogContainer.appendChild(entry);
+        consumerLogContainer.scrollTop = consumerLogContainer.scrollHeight;
+      }
+
+      // Intercept console.log for discovery events
+      const originalConsoleLog = console.log;
+      console.log = function (...args) {
+        const message = args.join(" ");
+        if (message.includes("[PLAYHTML] Discovered new shared reference")) {
+          addConsumerLog(message, "discovery");
+        } else if (message.includes("[PLAYHTML] Successfully registered shared reference")) {
+          addConsumerLog(message, "discovery");
+        } else if (message.includes("[PLAYHTML] Received permissions")) {
+          addConsumerLog(message, "permission");
+        } else if (message.includes("permissions")) {
+          addConsumerLog(message, "permission");
+        }
+        originalConsoleLog.apply(console, args);
+      };
+
+      // Intercept console.warn for HTTP errors
+      const originalConsoleWarn = console.warn;
+      console.warn = function (...args) {
+        const message = args.join(" ");
+        if (message.includes("[PLAYHTML]")) {
+          addConsumerLog(`WARN: ${message}`, "error");
+        }
+        originalConsoleWarn.apply(console, args);
+      };
 
       // Initialize playhtml with development mode and can-post capability
       try {
@@ -481,11 +592,80 @@
         }`;
 
         console.log("📡 Consumer page loaded - should request shared elements");
+
+        // Dynamic discovery test functionality for consumer page
+        let dynamicConsumerAdded = false;
+        document
+          .getElementById("add-dynamic-consumer-btn")
+          .addEventListener("click", () => {
+            if (dynamicConsumerAdded) return;
+
+            addConsumerLog(
+              "Adding dynamic shared reference (consumer)...",
+              "discovery"
+            );
+
+            const dynamicDiv = document.createElement("div");
+            dynamicDiv.id = "dynamic";
+            dynamicDiv.setAttribute(
+              "data-source",
+              "localhost:5173/shared-test-source#dynamic-shared-source"
+            );
+            dynamicDiv.setAttribute("can-move", "");
+            dynamicDiv.className = "moveable-box";
+            dynamicDiv.innerHTML = `
+            <div style="color: white; font-size: 1.1em">🔗 Dynamic Reference</div>
+            <div style="font-size: 0.8em; margin-top: 0.5rem; color: white">
+              ✨ Added after init - should sync
+            </div>
+          `;
+
+            document.getElementById("dynamic-consumer-container").innerHTML =
+              "";
+            document
+              .getElementById("dynamic-consumer-container")
+              .appendChild(dynamicDiv);
+
+            // This should trigger the dynamic discovery
+            playhtml.setupPlayElement(dynamicDiv);
+
+            dynamicConsumerAdded = true;
+            document.getElementById("add-dynamic-consumer-btn").disabled = true;
+            document.getElementById(
+              "remove-dynamic-consumer-btn"
+            ).disabled = false;
+
+            addConsumerLog(
+              "Dynamic shared reference added and setup called",
+              "discovery"
+            );
+          });
+
+        document
+          .getElementById("remove-dynamic-consumer-btn")
+          .addEventListener("click", () => {
+            document.getElementById("dynamic-consumer-container").innerHTML =
+              "<em>Dynamic reference removed</em>";
+            dynamicConsumerAdded = false;
+            document.getElementById(
+              "add-dynamic-consumer-btn"
+            ).disabled = false;
+            document.getElementById(
+              "remove-dynamic-consumer-btn"
+            ).disabled = true;
+            addConsumerLog("Dynamic shared reference removed", "discovery");
+          });
+
+        addConsumerLog(
+          "Dynamic discovery test handlers initialized",
+          "discovery"
+        );
       } catch (error) {
         console.error("📡 Failed to initialize playhtml:", error);
         document.getElementById("status").textContent = "Connection Failed";
         document.querySelector(".status-indicator").className =
           "status-indicator status-error";
+        addConsumerLog(`Failed to initialize: ${error.message}`, "error");
       }
     </script>
   </body>
