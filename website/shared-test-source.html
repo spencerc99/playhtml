@@ -103,6 +103,69 @@
         filter: brightness(1.2) saturate(1.6)
           drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
       }
+      
+      .guestbook-form {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+      }
+      
+      .form-group {
+        margin-bottom: 1rem;
+      }
+      
+      .form-group label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: bold;
+        color: #333;
+      }
+      
+      .form-group input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 1rem;
+        box-sizing: border-box;
+      }
+      
+      .guestbook-messages {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1rem;
+        background: white;
+      }
+      
+      .guestbook-entry {
+        padding: 0.75rem;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 0.5rem;
+      }
+      
+      .guestbook-entry:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+      }
+      
+      .guestbook-entry-timestamp {
+        font-size: 0.8em;
+        color: #666;
+        margin-right: 0.5rem;
+      }
+      
+      .guestbook-entry-name {
+        font-weight: bold;
+        color: #007acc;
+        margin-right: 0.5rem;
+      }
+      
+      .guestbook-entry-message {
+        color: #333;
+      }
     </style>
   </head>
   <body>
@@ -146,30 +209,51 @@
         <h3>💡 Shared Lamp (Global, Read-Write)</h3>
         <div class="element-info">
           <code>id="shared-lamp" shared can-toggle</code>
+          <img
+            id="shared-lamp"
+            shared
+            can-toggle
+            src="/noguchi-akari-a1.png"
+            alt="Lamp"
+            class="lamp"
+            style="display: block; margin: 0.5rem auto; max-width: 240px"
+          />
         </div>
-        <div class="shared-element">
-          <h3>🔒 Shared Status (Global, Read-Only)</h3>
-          <div class="element-info">
-            <code>id="shared-readonly" shared="read-only" can-toggle</code>
-          </div>
-          <div
-            id="shared-readonly"
-            shared="read-only"
-            can-move
-            class="moveable-box"
-          >
-            <div style="color: white; font-size: 1em">🔒 Read-Only</div>
-          </div>
+      </div>
+      <div class="shared-element">
+        <h3>🔒 Shared Status (Global, Read-Only)</h3>
+        <div class="element-info">
+          <code>id="shared-readonly" shared="read-only" can-toggle</code>
         </div>
-        <img
-          id="shared-lamp"
-          shared
-          can-toggle
-          src="/noguchi-akari-a1.png"
-          alt="Lamp"
-          class="lamp"
-          style="display: block; margin: 0.5rem auto; max-width: 240px"
-        />
+        <div
+          id="shared-readonly"
+          shared="read-only"
+          can-move
+          class="moveable-box"
+        >
+          <div style="color: white; font-size: 1em">🔒 Read-Only</div>
+        </div>
+      </div>
+
+      <div class="shared-element">
+        <h3>📝 Shared Guestbook (Global, Read-Write)</h3>
+        <div class="element-info">
+          <code>id="shared-guestbook" shared can-post</code>
+        </div>
+        <form id="shared-guestbook" shared can-post class="guestbook-form">
+          <div class="form-group">
+            <label for="name">Name:</label>
+            <input type="text" name="name" placeholder="Your name" required maxlength="50" />
+          </div>
+          <div class="form-group">
+            <label for="message">Message:</label>
+            <input type="text" name="message" placeholder="Your message" required maxlength="200" />
+          </div>
+          <button type="submit">Post Message</button>
+        </form>
+        <div id="guestbookMessages" class="guestbook-messages">
+          <!-- Messages will appear here -->
+        </div>
       </div>
 
       <div class="container">
@@ -190,10 +274,15 @@
           </li>
           <li>
             <code
-              >data-source="<span id="current-domain-2">localhost:5173</span
-              >#domain-counter"</code
+              >data-source="<span id="current-domain-readonly">localhost:5173</span
+              >/shared-test-source#shared-readonly"</code
             >
-            (for domain-scoped)
+          </li>
+          <li>
+            <code
+              >data-source="<span id="current-domain-guestbook">localhost:5173</span
+              >/shared-test-source#shared-guestbook"</code
+            >
           </li>
         </ul>
       </div>
@@ -205,21 +294,102 @@
       console.log("🎯 Initializing PlayHTML...");
 
       try {
-        // Initialize playhtml with development mode
+        // Initialize playhtml with development mode and can-post capability
         await playhtml.init({
           developmentMode: true,
           host: "localhost:1999",
+          extraCapabilities: {
+            "can-post": {
+              defaultData: [],
+              defaultLocalData: { addedEntries: new Set() },
+              updateElement: ({
+                data: entries,
+                localData: { addedEntries },
+                setLocalData,
+              }) => {
+                const entriesToAdd = entries.filter(
+                  (entry) => !addedEntries.has(`${entry.name}-${entry.timestamp}`)
+                );
+
+                const guestbookDiv = document.getElementById("guestbookMessages");
+                if (!guestbookDiv) return;
+                
+                entriesToAdd.forEach((entry) => {
+                  const newEntry = document.createElement("div");
+                  newEntry.classList.add("guestbook-entry");
+                  const entryDate = new Date(entry.timestamp);
+                  const time = entryDate.toTimeString().split(" ")[0];
+                  const isToday =
+                    entryDate.toDateString() === new Date().toDateString();
+
+                  const dateString = (() => {
+                    const now = new Date();
+                    if (
+                      now.getFullYear() !== entryDate.getFullYear() ||
+                      now.getMonth() !== entryDate.getMonth()
+                    ) {
+                      return "Sometime before";
+                    } else if (isToday) {
+                      return "Today";
+                    } else if (now.getDate() - entryDate.getDate() === 1) {
+                      return "Yesterday";
+                    } else if (now.getDate() - entryDate.getDate() < 7) {
+                      return "This week";
+                    } else {
+                      return "Sometime before";
+                    }
+                  })();
+
+                  newEntry.innerHTML = `
+                    <span class="guestbook-entry-timestamp">${dateString} at ${time}</span>
+                    <span class="guestbook-entry-name">${entry.name}</span>
+                    <span class="guestbook-entry-message">${entry.message}</span>`;
+                  
+                  guestbookDiv.prepend(newEntry);
+                  addedEntries.add(`${entry.name}-${entry.timestamp}`);
+                });
+
+                setLocalData({ addedEntries });
+              },
+              onMount: ({ getElement, getData, setData }) => {
+                const element = getElement();
+                element.addEventListener("submit", (e) => {
+                  e.preventDefault();
+                  e.stopImmediatePropagation();
+                  
+                  const formData = new FormData(e.target);
+                  const inputData = Object.fromEntries(formData.entries());
+                  
+                  if (!inputData.name || !inputData.message) {
+                    return false;
+                  }
+                  
+                  const timestamp = Date.now();
+                  const newEntry = {
+                    name: inputData.name,
+                    message: inputData.message,
+                    timestamp,
+                  };
+
+                  setData((d) => {
+                    d.push(newEntry);
+                  });
+                  
+                  // Clear form
+                  element.querySelector('input[name="message"]').value = "";
+                  return false;
+                });
+              },
+            }
+          }
         });
 
         // Update domain display
-        document.getElementById("current-domain").textContent =
-          window.location.host + window.location.pathname;
-        document.getElementById("current-domain-2").textContent =
-          window.location.host + window.location.pathname;
-        const lampSpan = document.getElementById("current-domain-lamp");
-        if (lampSpan)
-          lampSpan.textContent =
-            window.location.host + window.location.pathname;
+        const currentUrl = window.location.host + window.location.pathname;
+        document.getElementById("current-domain").textContent = currentUrl;
+        document.getElementById("current-domain-lamp").textContent = currentUrl;
+        document.getElementById("current-domain-readonly").textContent = currentUrl;
+        document.getElementById("current-domain-guestbook").textContent = currentUrl;
 
         console.log(
           "🎯 Source page loaded - shared elements should be registered"

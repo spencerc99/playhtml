@@ -202,6 +202,17 @@ const yObserverByKey = new Map<string, (events: any[]) => void>();
 const sharedUpdateSeen: Set<string> = new Set();
 const sharedHydrationTimers: Map<string, number> = new Map();
 
+// Shared permissions map for tracking element permissions
+export const sharedPermissions = new Map<string, "read-only" | "read-write">();
+
+function initializeSharedPermissions(): void {
+  // Initialize if not already done
+  if (sharedPermissions.size === 0) {
+    // Clear any existing entries to ensure clean state
+    sharedPermissions.clear();
+  }
+}
+
 function ensureElementProxy<T = any>(
   tag: string,
   elementId: string,
@@ -353,9 +364,6 @@ function onMessage(evt: MessageEvent) {
           "read-only" | "read-write"
         >;
         Object.entries(perms).forEach(([elementId, mode]) => {
-          const sharedPermissions: Map<string, "read-only" | "read-write"> = (
-            window as any
-          ).__playhtmlSharedPerms;
           sharedPermissions.set(elementId, mode);
           if (mode === "read-only") {
             // Add not-allowed affordance to any matching referenced element
@@ -426,10 +434,7 @@ async function initPlayHTML({
   const sharedElements = findSharedElementsOnPage();
   const sharedReferences = findSharedReferencesOnPage();
   // Map elementId -> permission for quick client-side checks (filled after initial sync)
-  // @ts-ignore attach to window scope for access in closures
-  (window as any).__playhtmlSharedPerms =
-    (window as any).__playhtmlSharedPerms ||
-    new Map<string, "read-only" | "read-write">();
+  initializeSharedPermissions();
 
   if (sharedElements.length > 0) {
     console.log(

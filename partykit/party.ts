@@ -39,9 +39,12 @@ export default class implements Party.Server {
     return !!(await this.room.storage.get(STORAGE_KEYS.sharedPermissions));
   }
 
-  // --- Helper: compute source room id from domain and path
-  getSourceRoomId(domain: string, path: string): string {
-    return encodeURIComponent(`${domain}-${this.normalizePath(path)}`);
+  // --- Helper: compute source room id from domain and pathOrRoom
+  getSourceRoomId(domain: string, pathOrRoom: string): string {
+    // IMPORTANT: must match client room id derivation for sources
+    // Client builds: encodeURIComponent(window.location.host + "-" + inputRoom)
+    const normalized = this.normalizePath(pathOrRoom);
+    return encodeURIComponent(`${domain}-${normalized}`);
   }
 
   // --- Helper: parse shared references array from connection/request URL
@@ -150,22 +153,6 @@ export default class implements Party.Server {
         }
       });
     });
-  }
-
-  wrapPlainAsY(value: any): any {
-    if (Array.isArray(value)) {
-      const arr = new Y.Array<any>();
-      arr.push(value.map((v) => this.wrapPlainAsY(v)));
-      return arr;
-    }
-    if (value && typeof value === "object") {
-      const map = new Y.Map<any>();
-      Object.entries(value).forEach(([k, v]) => {
-        map.set(k, this.wrapPlainAsY(v));
-      });
-      return map;
-    }
-    return value;
   }
 
   async onMessage(

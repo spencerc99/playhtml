@@ -811,12 +811,11 @@ function updateChildrenFromState(
 
     if (!childElement) {
       // Create a new child element if not found
-      const created: HTMLElement | Text =
+      childElement =
         childState.nodeType === NodeType.Text
           ? document.createTextNode(childState.textContent)
           : document.createElement(childState.tagName);
-      element.appendChild(created);
-      childElement = created;
+      element.appendChild(childElement);
     }
 
     processedChildren.add(childElement as Element | Text);

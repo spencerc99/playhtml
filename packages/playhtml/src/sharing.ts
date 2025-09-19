@@ -1,4 +1,5 @@
 import { getIdForElement } from "@playhtml/common";
+import { sharedPermissions } from "./index";
 
 // Shared elements interfaces
 interface SharedElement {
@@ -69,7 +70,5 @@ export function isSharedReadOnly(
   if (isReadOnlyExplicit) return true;
   const eid = elementId ?? getIdForElement(element);
   if (!eid) return false;
-  const perms: Map<string, "read-only" | "read-write"> = (window as any)
-    .__playhtmlSharedPerms;
-  return perms?.get(eid) === "read-only";
+  return sharedPermissions.get(eid) === "read-only";
 }
