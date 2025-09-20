@@ -130,8 +130,7 @@ export default class implements Party.Server {
 
   // --- Helper: subscribe to sources and optionally hydrate immediately
   private async subscribeAndHydrate(
-    entries: Array<{ sourceRoomId: string; elementIds: string[] }>,
-    shouldHydrate?: boolean
+    entries: Array<{ sourceRoomId: string; elementIds: string[] }>
   ): Promise<void> {
     const mainPartyAny = this.room.context.parties.main as any;
     // Subscribe
@@ -152,33 +151,6 @@ export default class implements Party.Server {
         } catch {}
       })
     );
-    // One-shot hydrate
-    if (shouldHydrate) {
-      await Promise.all(
-        entries.map(async ({ sourceRoomId, elementIds }) => {
-          if (!elementIds?.length) return;
-          try {
-            const sourceRoomAny = mainPartyAny.get(sourceRoomId);
-            const exportRes = await (sourceRoomAny as any).fetch({
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ action: "export", elementIds }),
-            });
-            const { subtrees } = (await exportRes.json()) || {};
-            if (!subtrees || !Object.keys(subtrees).length) return;
-            await (this.room as any).fetch({
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                action: "apply-subtrees-immediate",
-                subtrees,
-                sender: sourceRoomId,
-              }),
-            });
-          } catch {}
-        })
-      );
-    }
   }
 
   // --- Helper: extract subtrees for a set of elementIds from the play map
@@ -296,7 +268,7 @@ export default class implements Party.Server {
     const { entries, changed } = await this.mergeAndStoreSharedRefs([
       { sourceRoomId, elementIds: [reference.elementId] },
     ]);
-    if (changed) await this.subscribeAndHydrate(entries, true);
+    if (changed) await this.subscribeAndHydrate(entries);
   }
 
   private async handleExportPermissions(
@@ -466,21 +438,6 @@ export default class implements Party.Server {
         }
         await this.room.storage.put(STORAGE_KEYS.subscribers, existing);
         return new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json" },
-        });
-      }
-
-      if (action === "export") {
-        // Called on SOURCE room; returns subtrees for requested elementIds across all tags
-        const elementIds: string[] = Array.isArray((body as any)?.elementIds)
-          ? (body as any).elementIds
-          : [];
-        const yDoc = await unstable_getYDoc(
-          this.room,
-          this.providerOptions || { load: async () => null }
-        );
-        const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
-        return new Response(JSON.stringify({ subtrees }), {
           headers: { "content-type": "application/json" },
         });
       }
