@@ -21,14 +21,25 @@ export interface LoadingOptions {
   style?: "breathing" | "pulse" | "fade" | "none";
 }
 
+// Shared binding props for both generic and tag-specific React elements
+export type SharedBindingProps = {
+  dataSource?: string;
+  shared?: boolean | string;
+};
+
 export type WithPlayProps<T, V> =
   | (Omit<ReactElementInitializer<T, V>, "children"> & {
       loading?: LoadingOptions;
+      // Shared binding props for shared elements
+      dataSource?: SharedBindingProps["dataSource"];
+      shared?: SharedBindingProps["shared"];
     })
   | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean; // Allow standalone mode without provider
       loading?: LoadingOptions;
+      dataSource?: SharedBindingProps["dataSource"];
+      shared?: SharedBindingProps["shared"];
     });
 
 // Add standalone and loading to the ReactElementInitializer type
@@ -93,6 +104,8 @@ export function CanPlayElement<T, V>({
     tagInfo: undefined,
     ...restProps,
   };
+  const dataSource = (restProps as any)?.dataSource as string | undefined;
+  const shared = (restProps as any)?.shared as boolean | string | undefined;
   const computedTagInfo = tagInfo
     ? Array.isArray(tagInfo)
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
@@ -141,7 +154,20 @@ export function CanPlayElement<T, V>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
-      playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+      
+      // Setup the element, which will handle data-source discovery if needed
+      try {
+        playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+      } catch (error) {
+        console.warn("[@playhtml/react] Failed to setup play element:", error);
+        
+        // If playhtml isn't initialized yet, log a helpful message
+        if (!playhtml.elementHandlers) {
+          console.warn(
+            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes."
+          );
+        }
+      }
     }
     // console.log("setting up", elementProps.defaultData, ref.current);
 
@@ -196,6 +222,12 @@ export function CanPlayElement<T, V>({
       ref,
       ...computedTagInfo,
       ...loadingAttributes,
+      ...(dataSource ? { "data-source": dataSource } : {}),
+      ...(shared
+        ? typeof shared === "string"
+          ? { shared: shared }
+          : { shared: "" }
+        : {}),
     },
     { fragmentId: id }
   );

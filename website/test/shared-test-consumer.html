@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shared Elements - Consumer Page</title>
+    <style>
+      .marquee {
+        background: #ffffcc;
+        border: 2px ridge #cc9900;
+        padding: 6px 10px;
+        margin-bottom: 12px;
+        font-weight: bold;
+      }
+      .domain {
+        display: inline-block;
+        padding: 2px 6px;
+        border: 1px dashed #333;
+      }
+      .domain.localhost {
+        background: #e0f7ff;
+      }
+      .domain.other {
+        background: #ffe0f0;
+      }
+      a {
+        color: #0000ee;
+      }
+      .hr {
+        border-top: 3px double #666;
+        margin: 10px 0;
+      }
+    </style>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+        background: #0037ff;
+      }
+      .container {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 2px solid #28a745;
+        padding-bottom: 0.5rem;
+      }
+      .referenced-element {
+        border: 2px dashed #28a745;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 8px;
+        background: #f0fff0;
+      }
+      .referenced-element h3 {
+        margin: 0 0 0.5rem 0;
+        color: #28a745;
+      }
+      .element-info {
+        font-size: 0.9em;
+        color: #666;
+        margin-bottom: 0.5rem;
+      }
+      .instructions {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+      .counter-display {
+        font-size: 2em;
+        font-weight: bold;
+        text-align: center;
+        margin: 1rem 0;
+      }
+      button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 0.25rem;
+      }
+      button:hover {
+        background: #218838;
+      }
+      button:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+      }
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 0.5rem;
+      }
+      .status-connected {
+        background: #28a745;
+      }
+      .status-connecting {
+        background: #ffc107;
+      }
+      .status-error {
+        background: #dc3545;
+      }
+      .moveable-box {
+        background: #ff8c00;
+        border: 2px solid #ff6600;
+        padding: 1rem;
+        border-radius: 8px;
+        cursor: move;
+        display: inline-block;
+        min-width: 120px;
+        text-align: center;
+        color: white;
+        font-weight: bold;
+        margin: 0.5rem;
+      }
+      .toggle-button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 0.5rem;
+      }
+      .toggle-button:hover {
+        background: #218838;
+      }
+
+      .lamp {
+        width: 100px;
+        background-color: transparent;
+      }
+
+      .lamp:hover {
+        animation: jiggle 0.5s ease-in-out;
+      }
+      .lamp.clicked.clicked {
+        filter: brightness(1.2) saturate(1.6)
+          drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
+      }
+
+      .guestbook-form {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+      }
+
+      .form-group {
+        margin-bottom: 1rem;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: bold;
+        color: #333;
+      }
+
+      .form-group input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 1rem;
+        box-sizing: border-box;
+      }
+
+      .guestbook-messages {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1rem;
+        background: white;
+      }
+
+      .guestbook-entry {
+        padding: 0.75rem;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 0.5rem;
+      }
+
+      .guestbook-entry:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+      }
+
+      .guestbook-entry-timestamp {
+        font-size: 0.8em;
+        color: #666;
+        margin-right: 0.5rem;
+      }
+
+      .guestbook-entry-name {
+        font-weight: bold;
+        color: #28a745;
+        margin-right: 0.5rem;
+      }
+
+      .guestbook-entry-message {
+        color: #333;
+      }
+
+      .test-button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        margin: 0.5rem;
+        transition: background 0.2s;
+      }
+
+      .test-button:hover {
+        background: #218838;
+      }
+
+      .test-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="marquee">
+        <span>Welcome to my personal homepage!</span>
+        &nbsp;|&nbsp;
+        <span
+          >Domain:
+          <span id="consumer-domain" class="domain">unknown</span></span
+        >
+      </div>
+      <h1>📡 Shared Elements - Consumer Page</h1>
+
+      <div class="instructions">
+        <strong>📍 Testing Instructions:</strong>
+        <ol>
+          <li>
+            This page <strong>consumes</strong> shared elements from other
+            domains
+          </li>
+          <li>
+            Elements with <code>data-source</code> attributes reference remote
+            elements
+          </li>
+          <li>
+            Make sure the source page is running on <code>localhost:5173</code>
+          </li>
+          <li>Changes from the source should appear here in real-time</li>
+        </ol>
+        <p>
+          <strong>Connection Status:</strong>
+          <span class="status-indicator status-connecting"></span>
+          <span id="status">Connecting...</span>
+        </p>
+      </div>
+
+      <div class="referenced-element">
+        <h3>🔗 Referenced Shared Box</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/test/shared-test-source#shared-counter"
+            can-move</code
+          >
+        </div>
+        <div
+          id="shared-counter"
+          data-source="localhost:5173/test/shared-test-source#shared-counter"
+          can-move
+          class="moveable-box"
+        >
+          <div style="color: white; font-size: 1.2em">🔗 Remote Box</div>
+          <div style="font-size: 0.8em; margin-top: 0.5rem; color: white">
+            ℹ️ Should sync with source
+          </div>
+        </div>
+      </div>
+
+      <div class="referenced-element">
+        <h3>💡 Referenced Shared Lamp</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/test/shared-test-source#shared-lamp"
+            can-toggle</code
+          >
+        </div>
+        <img
+          data-source="localhost:5173/test/shared-test-source#shared-lamp"
+          can-toggle
+          class="lamp"
+          src="/noguchi-hanging-lamp.png"
+          alt="Lamp"
+          style="display: block; margin: 0.5rem auto; max-width: 240px"
+        />
+      </div>
+
+      <div class="referenced-element">
+        <h3>🔒 Referenced Read-Only Status</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/test/shared-test-source#shared-readonly"
+            data-source-read-only can-toggle</code
+          >
+        </div>
+        <div
+          id="shared-readonly"
+          data-source="localhost:5173/test/shared-test-source#shared-readonly"
+          data-source-read-only
+          can-move
+          class="moveable-box"
+        >
+          <div style="color: white; font-size: 1em">
+            🔒 Read-Only (Consumer)
+          </div>
+        </div>
+      </div>
+
+      <div class="referenced-element">
+        <h3>📝 Referenced Shared Guestbook</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/test/shared-test-source#shared-guestbook"
+            can-post</code
+          >
+        </div>
+        <form
+          id="shared-guestbook-consumer"
+          data-source="localhost:5173/test/shared-test-source#shared-guestbook"
+          can-post
+          class="guestbook-form"
+        >
+          <div class="form-group">
+            <label for="name">Name:</label>
+            <input
+              type="text"
+              name="name"
+              placeholder="Your name"
+              required
+              maxlength="50"
+            />
+          </div>
+          <div class="form-group">
+            <label for="message">Message:</label>
+            <input
+              type="text"
+              name="message"
+              placeholder="Your message"
+              required
+              maxlength="200"
+            />
+          </div>
+          <button type="submit">Post Message (Consumer)</button>
+        </form>
+        <div id="guestbookMessages-consumer" class="guestbook-messages">
+          <!-- Messages will appear here -->
+        </div>
+      </div>
+
+      <div class="container">
+        <h2>🧪 Dynamic Discovery Test</h2>
+        <p>
+          Test that shared reference elements are properly discovered when added
+          dynamically after playhtml initialization:
+        </p>
+        <button class="test-button" id="add-dynamic-consumer-btn">
+          Add Dynamic Shared Reference
+        </button>
+        <button class="test-button" id="remove-dynamic-consumer-btn" disabled>
+          Remove Dynamic Reference
+        </button>
+        <div
+          id="dynamic-consumer-container"
+          style="
+            margin-top: 1rem;
+            min-height: 50px;
+            border: 1px dashed #28a745;
+            padding: 1rem;
+            border-radius: 8px;
+          "
+        >
+          <em
+            >Click "Add Dynamic Shared Reference" to test dynamic discovery</em
+          >
+        </div>
+        <div
+          id="consumer-log"
+          style="
+            max-height: 150px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 0.85em;
+          "
+        >
+          <div>Waiting for dynamic discovery events...</div>
+        </div>
+      </div>
+
+      <div class="container">
+        <h2>🧪 Testing Notes</h2>
+        <ul>
+          <li>
+            Run this page on a <strong>different port</strong> than the source
+            (e.g., <code>localhost:3000</code>)
+          </li>
+          <li>The global shared counter should sync bidirectionally</li>
+          <li>The shared lamp should sync bidirectionally</li>
+          <li>The read-only status should only update from the source</li>
+          <li>
+            The shared guestbook (array data) should sync bidirectionally - test
+            adding messages from both pages
+          </li>
+          <li>
+            The dynamic discovery test should show elements added after
+            initialization sync properly
+          </li>
+          <li>Check browser console for detailed logging</li>
+        </ul>
+      </div>
+    </div>
+
+    <script type="module">
+      import { playhtml } from "../../packages/playhtml/";
+
+      console.log("📡 Initializing PlayHTML...");
+
+      // Debug logging for dynamic discovery
+      const consumerLogContainer = document.getElementById("consumer-log");
+      function addConsumerLog(message, type = "") {
+        const entry = document.createElement("div");
+        entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+        if (type)
+          entry.style.color =
+            type === "discovery"
+              ? "#28a745"
+              : type === "permission"
+              ? "#007acc"
+              : "#dc3545";
+        consumerLogContainer.appendChild(entry);
+        consumerLogContainer.scrollTop = consumerLogContainer.scrollHeight;
+      }
+
+      // Intercept console.log for discovery events
+      const originalConsoleLog = console.log;
+      console.log = function (...args) {
+        const message = args.join(" ");
+        if (message.includes("[PLAYHTML] Discovered new shared reference")) {
+          addConsumerLog(message, "discovery");
+        } else if (
+          message.includes(
+            "[PLAYHTML] Successfully registered shared reference"
+          )
+        ) {
+          addConsumerLog(message, "discovery");
+        } else if (message.includes("[PLAYHTML] Received permissions")) {
+          addConsumerLog(message, "permission");
+        } else if (message.includes("permissions")) {
+          addConsumerLog(message, "permission");
+        }
+        originalConsoleLog.apply(console, args);
+      };
+
+      // Intercept console.warn for HTTP errors
+      const originalConsoleWarn = console.warn;
+      console.warn = function (...args) {
+        const message = args.join(" ");
+        if (message.includes("[PLAYHTML]")) {
+          addConsumerLog(`WARN: ${message}`, "error");
+        }
+        originalConsoleWarn.apply(console, args);
+      };
+
+      // Initialize playhtml with development mode and can-post capability
+      try {
+        await playhtml.init({
+          developmentMode: true,
+          host: "localhost:1999",
+          extraCapabilities: {
+            "can-post": {
+              defaultData: [],
+              defaultLocalData: { addedEntries: new Set() },
+              updateElement: ({
+                data: entries,
+                localData: { addedEntries },
+                setLocalData,
+              }) => {
+                const entriesToAdd = entries.filter(
+                  (entry) =>
+                    !addedEntries.has(`${entry.name}-${entry.timestamp}`)
+                );
+
+                const guestbookDiv = document.getElementById(
+                  "guestbookMessages-consumer"
+                );
+                if (!guestbookDiv) return;
+
+                entriesToAdd.forEach((entry) => {
+                  const newEntry = document.createElement("div");
+                  newEntry.classList.add("guestbook-entry");
+                  const entryDate = new Date(entry.timestamp);
+                  const time = entryDate.toTimeString().split(" ")[0];
+                  const isToday =
+                    entryDate.toDateString() === new Date().toDateString();
+
+                  const dateString = (() => {
+                    const now = new Date();
+                    if (
+                      now.getFullYear() !== entryDate.getFullYear() ||
+                      now.getMonth() !== entryDate.getMonth()
+                    ) {
+                      return "Sometime before";
+                    } else if (isToday) {
+                      return "Today";
+                    } else if (now.getDate() - entryDate.getDate() === 1) {
+                      return "Yesterday";
+                    } else if (now.getDate() - entryDate.getDate() < 7) {
+                      return "This week";
+                    } else {
+                      return "Sometime before";
+                    }
+                  })();
+
+                  newEntry.innerHTML = `
+                    <span class="guestbook-entry-timestamp">${dateString} at ${time}</span>
+                    <span class="guestbook-entry-name">${entry.name}</span>
+                    <span class="guestbook-entry-message">${entry.message}</span>`;
+
+                  guestbookDiv.prepend(newEntry);
+                  addedEntries.add(`${entry.name}-${entry.timestamp}`);
+                });
+
+                setLocalData({ addedEntries });
+              },
+              onMount: ({ getElement, getData, setData }) => {
+                const element = getElement();
+                element.addEventListener("submit", (e) => {
+                  e.preventDefault();
+                  e.stopImmediatePropagation();
+
+                  const formData = new FormData(e.target);
+                  const inputData = Object.fromEntries(formData.entries());
+
+                  if (!inputData.name || !inputData.message) {
+                    return false;
+                  }
+
+                  const timestamp = Date.now();
+                  const newEntry = {
+                    name: inputData.name,
+                    message: inputData.message,
+                    timestamp,
+                  };
+
+                  setData((d) => {
+                    d.push(newEntry);
+                  });
+
+                  // Clear form
+                  element.querySelector('input[name="message"]').value = "";
+                  return false;
+                });
+              },
+            },
+          },
+        });
+
+        document.getElementById("status").textContent = "Connected";
+        document.querySelector(".status-indicator").className =
+          "status-indicator status-connected";
+
+        const dom = window.location.host;
+        const domainEl = document.getElementById("consumer-domain");
+        domainEl.textContent = dom;
+        domainEl.className = `domain ${
+          dom.startsWith("localhost") ? "localhost" : "other"
+        }`;
+
+        console.log("📡 Consumer page loaded - should request shared elements");
+
+        // Dynamic discovery test functionality for consumer page
+        let dynamicConsumerAdded = false;
+        document
+          .getElementById("add-dynamic-consumer-btn")
+          .addEventListener("click", () => {
+            if (dynamicConsumerAdded) return;
+
+            addConsumerLog(
+              "Adding dynamic shared reference (consumer)...",
+              "discovery"
+            );
+
+            const dynamicDiv = document.createElement("div");
+            dynamicDiv.id = "dynamic";
+            dynamicDiv.setAttribute(
+              "data-source",
+              "localhost:5173/test/shared-test-source#dynamic-shared-source"
+            );
+            dynamicDiv.setAttribute("can-move", "");
+            dynamicDiv.className = "moveable-box";
+            dynamicDiv.innerHTML = `
+            <div style="color: white; font-size: 1.1em">🔗 Dynamic Reference</div>
+            <div style="font-size: 0.8em; margin-top: 0.5rem; color: white">
+              ✨ Added after init - should sync
+            </div>
+          `;
+
+            document.getElementById("dynamic-consumer-container").innerHTML =
+              "";
+            document
+              .getElementById("dynamic-consumer-container")
+              .appendChild(dynamicDiv);
+
+            // This should trigger the dynamic discovery
+            playhtml.setupPlayElement(dynamicDiv);
+
+            dynamicConsumerAdded = true;
+            document.getElementById("add-dynamic-consumer-btn").disabled = true;
+            document.getElementById(
+              "remove-dynamic-consumer-btn"
+            ).disabled = false;
+
+            addConsumerLog(
+              "Dynamic shared reference added and setup called",
+              "discovery"
+            );
+          });
+
+        document
+          .getElementById("remove-dynamic-consumer-btn")
+          .addEventListener("click", () => {
+            document.getElementById("dynamic-consumer-container").innerHTML =
+              "<em>Dynamic reference removed</em>";
+            dynamicConsumerAdded = false;
+            document.getElementById(
+              "add-dynamic-consumer-btn"
+            ).disabled = false;
+            document.getElementById(
+              "remove-dynamic-consumer-btn"
+            ).disabled = true;
+            addConsumerLog("Dynamic shared reference removed", "discovery");
+          });
+
+        addConsumerLog(
+          "Dynamic discovery test handlers initialized",
+          "discovery"
+        );
+      } catch (error) {
+        console.error("📡 Failed to initialize playhtml:", error);
+        document.getElementById("status").textContent = "Connection Failed";
+        document.querySelector(".status-indicator").className =
+          "status-indicator status-error";
+        addConsumerLog(`Failed to initialize: ${error.message}`, "error");
+      }
+    </script>
+  </body>
+</html>

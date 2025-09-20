@@ -8,6 +8,7 @@ import {
   PlayProvider,
   CanMoveElement,
   CanSpinElement,
+  CanToggleElement,
   usePlayContext,
 } from "@playhtml/react";
 import { ReactionView } from "../../packages/react/examples/Reaction";
@@ -124,6 +125,32 @@ ReactDOM.createRoot(
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
       <Lamp />
+      {/* Shared consumer test for React: toggle lamp from a source */}
+      <CanToggleElement
+        dataSource={"localhost:5173/shared-test-source#shared-lamp"}
+      >
+        <img
+          className="lamp"
+          src="/noguchi-akari-a1.png"
+          style={{ display: "block", margin: "0.5rem auto", maxWidth: 240 }}
+        />
+      </CanToggleElement>
+      <style>
+        {`
+      .lamp {
+        width: 100px;
+        background-color: transparent;
+      }
+
+      .lamp:hover {
+        animation: jiggle 0.5s ease-in-out;
+      }
+      .lamp.clicked.clicked {
+        filter: brightness(1.2) saturate(1.6)
+          drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
+      }
+  `}
+      </style>
       <CanMoveElement>
         <div
           style={{

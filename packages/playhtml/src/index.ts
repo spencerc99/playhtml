@@ -12,12 +12,20 @@ import {
   EventMessage,
   RegisteredPlayEvent,
   generatePersistentPlayerIdentity,
+  deepReplaceIntoProxy,
 } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
+import { setupDevUI } from "./development";
+import {
+  findSharedElementsOnPage,
+  findSharedReferencesOnPage,
+  isSharedReadOnly,
+} from "./sharing";
+import { parseDataSource } from "@playhtml/common";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
@@ -180,6 +188,7 @@ function getDefaultRoom(includeSearch?: boolean): string {
     ? transformedPathname + window.location.search
     : transformedPathname;
 }
+
 let yprovider: YPartyKitProvider;
 let cursorClient: CursorClientAwareness | null = null;
 // @ts-ignore, will be removed
@@ -187,6 +196,114 @@ let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
 const yObserverByKey = new Map<string, (events: any[]) => void>();
+// Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
+// Allows us to distinguish programmatic remote-applied changes from local user writes.
+// moved below (single declaration)
+// Dev: track hydration of shared references for warnings
+const sharedUpdateSeen: Set<string> = new Set();
+const sharedHydrationTimers: Map<string, number> = new Map();
+
+// Shared permissions map for tracking element permissions
+export const sharedPermissions = new Map<string, "read-only" | "read-write">();
+// Track discovered shared references to avoid duplicates
+const discoveredSharedReferences = new Set<string>();
+
+function initializeSharedPermissions(): void {
+  // Initialize if not already done
+  if (sharedPermissions.size === 0) {
+    // Clear any existing entries to ensure clean state
+    sharedPermissions.clear();
+  }
+}
+
+// Handle discovery of a new shared reference element
+function handleNewSharedReference(element: HTMLElement): void {
+  const dataSource = element.getAttribute("data-source");
+  if (!dataSource) return;
+
+  // Parse and normalize using shared helper
+  let domain: string, path: string, elementId: string;
+  try {
+    ({ domain, path, elementId } = parseDataSource(dataSource));
+  } catch {
+    return;
+  }
+
+  // Unified dedupe key shape
+  const referenceKey = `${domain}${path}#${elementId}`;
+  if (discoveredSharedReferences.has(referenceKey)) return;
+  discoveredSharedReferences.add(referenceKey);
+
+  // Send updated shared references to the server if we're connected
+  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+    try {
+      const newReference = { domain, path, elementId };
+      // Send individual reference update
+      yprovider.ws.send(
+        JSON.stringify({
+          type: "add-shared-reference",
+          reference: newReference,
+        })
+      );
+
+      // Request permissions for this specific element
+      yprovider.ws.send(
+        JSON.stringify({
+          type: "export-permissions",
+          elementIds: [elementId],
+        })
+      );
+    } catch (error) {
+      console.warn(
+        "[PLAYHTML] Failed to notify server of new shared reference:",
+        error
+      );
+    }
+  }
+}
+
+// Handle registration of a new shared source element
+function handleNewSharedElement(element: HTMLElement): void {
+  if (!element.id) return;
+
+  const elementId = element.id;
+  const permissions = element.getAttribute("shared");
+  let permissionMode: "read-only" | "read-write" = "read-write";
+
+  if (permissions && permissions !== "") {
+    const val = permissions.toLowerCase();
+    if (val.includes("read-only") || val === "ro") {
+      permissionMode = "read-only";
+    }
+  }
+
+  // Update local permissions
+  sharedPermissions.set(elementId, permissionMode);
+
+  // Send to server if connected
+  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+    try {
+      // Register this element as shared with the server
+      const sharedElement = {
+        elementId,
+        permissions: permissionMode,
+        path: window.location.pathname,
+      };
+
+      yprovider.ws.send(
+        JSON.stringify({
+          type: "register-shared-element",
+          element: sharedElement,
+        })
+      );
+    } catch (error) {
+      console.warn(
+        "[PLAYHTML] Failed to notify server of new shared element:",
+        error
+      );
+    }
+  }
+}
 
 function ensureElementProxy<T = any>(
   tag: string,
@@ -215,6 +332,9 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
   string,
   Array<RegisteredPlayEvent>
 >();
+// Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
+// Allows us to distinguish programmatic remote-applied changes from local user writes.
+const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
 export interface CursorOptions {
@@ -312,16 +432,41 @@ function onMessage(evt: MessageEvent) {
     return;
   }
 
-  let message: EventMessage;
+  let message: any;
   try {
-    message = JSON.parse(evt.data) as EventMessage;
+    message = JSON.parse(evt.data);
   } catch (err) {
     return;
   }
 
+  console.log(
+    `[PLAYHTML] Received WebSocket message:`,
+    message.type || "unknown-type"
+  );
+
+  // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
   if (!maybeHandlers) {
+    // Handle internal bridge replies
+    if ((message as any).permissions) {
+      try {
+        const perms = (message as any).permissions as Record<
+          string,
+          "read-only" | "read-write"
+        >;
+        Object.entries(perms).forEach(([elementId, mode]) => {
+          sharedPermissions.set(elementId, mode);
+          if (mode === "read-only") {
+            // Add not-allowed affordance to any matching referenced element
+            const el = document.querySelector(
+              `[data-source$="#${CSS.escape(elementId)}"]`
+            ) as HTMLElement | null;
+            if (el) el.setAttribute("data-source-read-only", "");
+          }
+        });
+      } catch {}
+    }
     return;
   }
 
@@ -330,128 +475,9 @@ function onMessage(evt: MessageEvent) {
   }
 }
 
-function setupDevUI() {
-  const devUi = document.createElement("div");
-  devUi.id = "playhtml-dev-ui";
-  devUi.style.position = "fixed";
-  devUi.style.bottom = "10px";
-  devUi.style.left = "10px";
-  devUi.style.zIndex = "10000";
-
-  const resetDataButton = document.createElement("button");
-  resetDataButton.innerText = "Reset Data";
-  resetDataButton.onclick = () => {
-    Object.keys(store.play).forEach((tag) => {
-      const tagData = store.play[tag];
-      if (tagData) {
-        Object.keys(tagData).forEach((elementId) => {
-          delete tagData[elementId];
-        });
-      }
-    });
-  };
-  devUi.appendChild(resetDataButton);
-
-  let logObjectMode = false;
-  const logObjectDataButton = document.createElement("button");
-  logObjectDataButton.innerText = "Log Object Data";
-
-  // Create overlay elements
-  const overlay = document.createElement("div");
-  overlay.style.position = "fixed";
-  overlay.style.pointerEvents = "none";
-  overlay.style.border = "2px solid #ff0000";
-  overlay.style.backgroundColor = "rgba(255, 0, 0, 0.1)";
-  overlay.style.zIndex = "9999";
-  overlay.style.display = "none";
-
-  const idLabel = document.createElement("div");
-  idLabel.style.position = "fixed";
-  idLabel.style.backgroundColor = "#ff0000";
-  idLabel.style.color = "#ffffff";
-  idLabel.style.padding = "2px 5px";
-  idLabel.style.fontSize = "12px";
-  idLabel.style.zIndex = "10000";
-  idLabel.style.display = "none";
-
-  document.body.appendChild(overlay);
-  document.body.appendChild(idLabel);
-
-  logObjectDataButton.onclick = () => {
-    logObjectMode = !logObjectMode;
-    logObjectDataButton.innerText = logObjectMode
-      ? "Exit Log Mode"
-      : "Log Object Data";
-    document.body.style.cursor = logObjectMode ? "pointer" : "default";
-    if (!logObjectMode) {
-      overlay.style.display = "none";
-      idLabel.style.display = "none";
-    }
-  };
-  devUi.appendChild(logObjectDataButton);
-
-  document.body.appendChild(devUi);
-
-  // Add mousemove event listener for highlighting
-  document.addEventListener("mousemove", (event) => {
-    if (!logObjectMode) return;
-
-    const target = event.target as HTMLElement;
-    const playElement = target.closest("[class^='__playhtml-']");
-
-    if (playElement && playElement instanceof HTMLElement) {
-      const rect = playElement.getBoundingClientRect();
-      overlay.style.display = "block";
-      overlay.style.left = `${rect.left}px`;
-      overlay.style.top = `${rect.top}px`;
-      overlay.style.width = `${rect.width}px`;
-      overlay.style.height = `${rect.height}px`;
-
-      idLabel.style.display = "block";
-      idLabel.style.left = `${rect.left}px`;
-      idLabel.style.top = `${rect.top - 20}px`;
-      idLabel.textContent = `#${playElement.id}`;
-    } else {
-      overlay.style.display = "none";
-      idLabel.style.display = "none";
-    }
-  });
-
-  // Add click event listener to log data
-  document.addEventListener("click", (event) => {
-    if (!logObjectMode) return;
-
-    const target = event.target as HTMLElement;
-    const playElement = target.closest("[class^='__playhtml-']");
-
-    if (playElement && playElement instanceof HTMLElement) {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const elementId = playElement.id;
-      const tagType = Array.from(playElement.classList)
-        .find((cls) => cls.startsWith("__playhtml-"))
-        ?.replace("__playhtml-", "");
-
-      if (tagType && elementHandlers.has(tagType)) {
-        const handler = elementHandlers.get(tagType)!.get(elementId);
-        if (handler) {
-          console.log(
-            `Data for element #${elementId} (${tagType}):`,
-            handler.__data
-          );
-        } else {
-          console.log(`No data found for element #${elementId} (${tagType})`);
-        }
-      } else {
-        console.log(`Unable to find data for element #${elementId}`);
-      }
-    }
-  });
-}
-
 let hasSynced = false;
 let firstSetup = true;
+let isDevelopmentMode = false;
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -478,11 +504,12 @@ async function initPlayHTML({
     console.error("playhtml already set up! ignoring");
     return;
   }
+  isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
-  const room = encodeURIComponent(window.location.hostname + "-" + inputRoom);
+  const room = encodeURIComponent(window.location.host + "-" + inputRoom);
 
   const partykitHost = getPartykitHost(host);
 
@@ -495,7 +522,39 @@ async function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
   );
 
-  yprovider = new YPartyKitProvider(partykitHost, room, doc);
+  // Discover shared elements and references on the page
+  const sharedElements = findSharedElementsOnPage();
+  const sharedReferences = findSharedReferencesOnPage();
+  // Map elementId -> permission for quick client-side checks (filled after initial sync)
+  initializeSharedPermissions();
+
+  // Initialize tracking of discovered shared references
+  sharedReferences.forEach((ref) => {
+    const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
+    discoveredSharedReferences.add(referenceKey);
+  });
+
+  if (sharedElements.length > 0) {
+    console.log(
+      `[PLAYHTML] Found ${sharedElements.length} shared elements:`,
+      sharedElements
+    );
+  }
+
+  if (sharedReferences.length > 0) {
+    console.log(
+      `[PLAYHTML] Found ${sharedReferences.length} shared references:`,
+      sharedReferences
+    );
+  }
+
+  // Create provider with shared element parameters
+  yprovider = new YPartyKitProvider(partykitHost, room, doc, {
+    params: {
+      sharedElements: JSON.stringify(sharedElements),
+      sharedReferences: JSON.stringify(sharedReferences),
+    },
+  });
   yprovider.on("error", () => {
     onError?.();
   });
@@ -531,7 +590,7 @@ async function initPlayHTML({
   document.head.appendChild(playStyles);
 
   if (developmentMode) {
-    setupDevUI();
+    setupDevUI(playhtml);
   }
 
   // Mark all discovered playhtml elements as loading before sync
@@ -560,6 +619,16 @@ async function initPlayHTML({
 
       // Mark all elements as ready after sync completes and elements are set up
       markAllElementsAsReady();
+
+      // Fetch simple permissions for referenced shared elements so clients can block writes locally
+      if (sharedReferences.length > 0) {
+        try {
+          const elementIds = sharedReferences.map((r) => r.elementId);
+          yprovider.ws?.send(
+            JSON.stringify({ type: "export-permissions", elementIds })
+          );
+        } catch {}
+      }
 
       resolve(true);
     });
@@ -677,6 +746,11 @@ function createPlayElementData<T extends TagType>(
         : undefined,
     element,
     onChange: (newData) => {
+      // Prevent writes for read-only shared consumer elements
+      const elementIdFromAttr = getIdForElement(element);
+      if (isSharedReadOnly(element, elementIdFromAttr)) {
+        return;
+      }
       if (typeof (newData as any) === "function") {
         // Mutator form support: onChange can accept function(draft)
         // Batch all nested mutations into a single Yjs transaction to coalesce events
@@ -706,47 +780,6 @@ function createPlayElementData<T extends TagType>(
   };
 
   return elementData;
-}
-
-function isPlainObject(value: any): value is Record<string, any> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
-
-// Replacement variant used for tags that keep a canonical snapshot (e.g., can-mirror)
-function deepReplaceIntoProxy(target: any, src: any) {
-  if (src === null || src === undefined) return;
-  if (Array.isArray(src)) {
-    target.splice(0, target.length, ...src);
-    return;
-  }
-  if (isPlainObject(src)) {
-    // Remove keys not present in src
-    for (const key of Object.keys(target)) {
-      if (!(key in src)) {
-        delete target[key];
-      }
-    }
-    // Set all keys from src
-    for (const [k, v] of Object.entries(src)) {
-      if (Array.isArray(v)) {
-        if (!Array.isArray(target[k])) target[k] = [];
-        deepReplaceIntoProxy(target[k], v);
-      } else if (isPlainObject(v)) {
-        if (!isPlainObject(target[k])) target[k] = {};
-        deepReplaceIntoProxy(target[k], v);
-      } else {
-        target[k] = v;
-      }
-    }
-    return;
-  }
-  // primitives
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  target = src;
 }
 
 function clonePlain<T>(value: T): T {
@@ -880,6 +913,7 @@ function setupElements(): void {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`)
     ).filter(isHTMLElement);
+
     if (!tagElements.length) {
       continue;
     }
@@ -900,7 +934,7 @@ function setupElements(): void {
   firstSetup = false;
 }
 
-interface PlayHTMLComponents {
+export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
@@ -909,8 +943,8 @@ interface PlayHTMLComponents {
   syncedStore: (typeof store)["play"];
   // TODO: REMOVE AFTER MIGRATION VALIDATED
   globalData: typeof globalData;
-  elementHandlers: Map<string, Map<string, ElementHandler>> | undefined;
-  eventHandlers: Map<string, Array<RegisteredPlayEvent>> | undefined;
+  elementHandlers: Map<string, Map<string, ElementHandler>>;
+  eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
@@ -1073,13 +1107,46 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       const proxy = store.play[tag]?.[elementId];
       if (!proxy) return;
       const plain = clonePlain(proxy);
-      // @ts-ignore private usage intended
-      handler.__data = plain;
+      // Mark as remote-apply so onChange can permit programmatic updates for RO elements
+      const applyKey = `${tag}:${elementId}`;
+      remoteApplyingKeys.add(applyKey);
+      try {
+        // @ts-ignore private usage intended
+        handler.__data = plain;
+      } finally {
+        remoteApplyingKeys.delete(applyKey);
+      }
+      // Mark that this shared reference has received data
+      sharedUpdateSeen.add(key);
+      // Debug: log updates for shared elements
+      if (VERBOSE) {
+        console.log(
+          `[PLAYHTML] updated shared element ${tag}:${elementId} via SyncedStore observer`
+        );
+      }
     });
   };
   // @ts-ignore
   (yVal as any).observeDeep(observer);
   yObserverByKey.set(key, observer);
+
+  if (isDevelopmentMode) {
+    // Dev hydration warning for shared references
+    const el = handler.element;
+    if (el && el.hasAttribute && el.hasAttribute("data-source")) {
+      if (!sharedHydrationTimers.has(key)) {
+        const timeoutId = window.setTimeout(() => {
+          if (!sharedUpdateSeen.has(key)) {
+            console.warn(
+              `[playhtml] Shared reference ${tag}:${elementId} has not received data. Check data-source and source availability.`
+            );
+          }
+          sharedHydrationTimers.delete(key);
+        }, 3000);
+        sharedHydrationTimers.set(key, timeoutId);
+      }
+    }
+  }
 }
 
 // TODO: make async and run it after synced
@@ -1099,6 +1166,16 @@ function setupPlayElement(
   if (!isHTMLElement(element)) {
     console.log(`Element ${element.id} not an HTML element. Ignoring.`);
     return;
+  }
+
+  // Check for data-source attribute and handle dynamic discovery
+  if (element.hasAttribute("data-source")) {
+    handleNewSharedReference(element);
+  }
+
+  // Check for shared attribute and register as shared element
+  if (element.hasAttribute("shared")) {
+    handleNewSharedElement(element);
   }
 
   // Handle loading state for dynamically added elements

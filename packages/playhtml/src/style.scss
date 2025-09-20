@@ -31,6 +31,12 @@
 [can-toggle] {
   cursor: pointer;
 }
+
+/* Read-only styling for shared elements */
+[data-source][data-source-read-only] {
+  cursor: not-allowed !important;
+  opacity: 0.9;
+}
 // [can-draw] {
 //   cursor: pointer;
 //   .draw-container {
