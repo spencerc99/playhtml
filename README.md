@@ -16,19 +16,8 @@ At a glance, playhtml supports:
 - sync and data persistence behavior customization (locally persisted, real-time synced, or globally persisted)
 - custom events for imperative logic
 - a range of magical plug-and-play and full customization
+- sharing state across pages and domains
 - _(coming soon)_ a web component library for "plug-and-play" collaborative elements
-- _(coming soon)_ sharing state across domains
-
-### shared elements
-
-See the guide on referencing shared elements and capability contracts in `docs/shared-elements.md`.
-
-Highlights:
-
-- Reference with `data-source="domain/path#elementId"` and the matching capability (e.g., `can-move`)
-- Consumer markup/styles are free; the capability’s data contract must match
-- React: prefer `withSharedState()`; support for `shared` and `data-source` configuration coming soon
-
 - _(coming soon)_ permissioning for behaviors
 - _(coming soon)_ triggering behavior on a schedule (think cron)
 - _(coming soon)_ custom data sources for long-term persistence
@@ -292,6 +281,14 @@ Creates an element that can be resized using a `scale` `transform`. Clicking the
 ### `can-spin`
 
 Creates a rotatable element using a `rotate` `transform` on the element. Dragging the element to the left or right will rotate it counter-clockwise and clockwise respectively.
+
+## Shared Elements
+
+Shared elements allow you to share an element's state across pages and domains. This means a lamp on one site can trigger different lights on other sites. This enables creating interconnected tiny internets that dynamically interact with and react to each other.
+
+https://github.com/user-attachments/assets/5f20b7b4-0d53-43e6-add1-754afba52e12
+
+See the guide on referencing shared elements for more details [shared-elements.md](https://github.com/spencerc99/playhtml/blob/main/docs/shared-elements.md).
 
 ## Help & Community
 

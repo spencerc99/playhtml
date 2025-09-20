@@ -458,8 +458,6 @@ export default class implements Party.Server {
         });
       }
 
-      // Removed legacy apply-subtrees; immediate path is used instead
-
       if (action === "apply-subtrees-immediate") {
         // Applies provided subtrees immediately and marks origin to suppress echo
         const subtrees = (((body as any) || {}).subtrees || {}) as Record<
