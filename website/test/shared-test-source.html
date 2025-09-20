@@ -103,25 +103,25 @@
         filter: brightness(1.2) saturate(1.6)
           drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
       }
-      
+
       .guestbook-form {
         background: #f8f9fa;
         padding: 1rem;
         border-radius: 8px;
         margin-bottom: 1rem;
       }
-      
+
       .form-group {
         margin-bottom: 1rem;
       }
-      
+
       .form-group label {
         display: block;
         margin-bottom: 0.25rem;
         font-weight: bold;
         color: #333;
       }
-      
+
       .form-group input {
         width: 100%;
         padding: 0.5rem;
@@ -130,7 +130,7 @@
         font-size: 1rem;
         box-sizing: border-box;
       }
-      
+
       .guestbook-messages {
         max-height: 300px;
         overflow-y: auto;
@@ -139,34 +139,34 @@
         padding: 1rem;
         background: white;
       }
-      
+
       .guestbook-entry {
         padding: 0.75rem;
         border-bottom: 1px solid #eee;
         margin-bottom: 0.5rem;
       }
-      
+
       .guestbook-entry:last-child {
         border-bottom: none;
         margin-bottom: 0;
       }
-      
+
       .guestbook-entry-timestamp {
         font-size: 0.8em;
         color: #666;
         margin-right: 0.5rem;
       }
-      
+
       .guestbook-entry-name {
         font-weight: bold;
         color: #007acc;
         margin-right: 0.5rem;
       }
-      
+
       .guestbook-entry-message {
         color: #333;
       }
-      
+
       .test-button {
         background: #007acc;
         color: white;
@@ -178,11 +178,11 @@
         margin: 0.5rem;
         transition: background 0.2s;
       }
-      
+
       .test-button:hover {
         background: #005a9d;
       }
-      
+
       .test-button:disabled {
         background: #ccc;
         cursor: not-allowed;
@@ -264,11 +264,23 @@
         <form id="shared-guestbook" shared can-post class="guestbook-form">
           <div class="form-group">
             <label for="name">Name:</label>
-            <input type="text" name="name" placeholder="Your name" required maxlength="50" />
+            <input
+              type="text"
+              name="name"
+              placeholder="Your name"
+              required
+              maxlength="50"
+            />
           </div>
           <div class="form-group">
             <label for="message">Message:</label>
-            <input type="text" name="message" placeholder="Your message" required maxlength="200" />
+            <input
+              type="text"
+              name="message"
+              placeholder="Your message"
+              required
+              maxlength="200"
+            />
           </div>
           <button type="submit">Post Message</button>
         </form>
@@ -279,13 +291,42 @@
 
       <div class="container">
         <h2>🧪 Dynamic Discovery Test</h2>
-        <p>Test that shared elements are properly discovered when added dynamically after playhtml initialization:</p>
-        <button class="test-button" id="add-dynamic-source-btn">Add Dynamic Shared Element</button>
-        <button class="test-button" id="remove-dynamic-source-btn" disabled>Remove Dynamic Element</button>
-        <div id="dynamic-source-container" style="margin-top: 1rem; min-height: 50px; border: 1px dashed #007acc; padding: 1rem; border-radius: 8px;">
+        <p>
+          Test that shared elements are properly discovered when added
+          dynamically after playhtml initialization:
+        </p>
+        <button class="test-button" id="add-dynamic-source-btn">
+          Add Dynamic Shared Element
+        </button>
+        <button class="test-button" id="remove-dynamic-source-btn" disabled>
+          Remove Dynamic Element
+        </button>
+        <div
+          id="dynamic-source-container"
+          style="
+            margin-top: 1rem;
+            min-height: 50px;
+            border: 1px dashed #007acc;
+            padding: 1rem;
+            border-radius: 8px;
+          "
+        >
           <em>Click "Add Dynamic Shared Element" to test dynamic discovery</em>
         </div>
-        <div id="source-log" style="max-height: 150px; overflow-y: auto; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; margin-top: 1rem; font-family: monospace; font-size: 0.85em;">
+        <div
+          id="source-log"
+          style="
+            max-height: 150px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 0.85em;
+          "
+        >
           <div>Waiting for dynamic discovery events...</div>
         </div>
       </div>
@@ -308,13 +349,15 @@
           </li>
           <li>
             <code
-              >data-source="<span id="current-domain-readonly">localhost:5173</span
+              >data-source="<span id="current-domain-readonly"
+                >localhost:5173</span
               >/shared-test-source#shared-readonly"</code
             >
           </li>
           <li>
             <code
-              >data-source="<span id="current-domain-guestbook">localhost:5173</span
+              >data-source="<span id="current-domain-guestbook"
+                >localhost:5173</span
               >/shared-test-source#shared-guestbook"</code
             >
           </li>
@@ -323,7 +366,7 @@
     </div>
 
     <script type="module">
-      import { playhtml } from "../packages/playhtml/";
+      import { playhtml } from "../../packages/playhtml/";
 
       console.log("🎯 Initializing PlayHTML...");
 
@@ -342,12 +385,14 @@
                 setLocalData,
               }) => {
                 const entriesToAdd = entries.filter(
-                  (entry) => !addedEntries.has(`${entry.name}-${entry.timestamp}`)
+                  (entry) =>
+                    !addedEntries.has(`${entry.name}-${entry.timestamp}`)
                 );
 
-                const guestbookDiv = document.getElementById("guestbookMessages");
+                const guestbookDiv =
+                  document.getElementById("guestbookMessages");
                 if (!guestbookDiv) return;
-                
+
                 entriesToAdd.forEach((entry) => {
                   const newEntry = document.createElement("div");
                   newEntry.classList.add("guestbook-entry");
@@ -378,7 +423,7 @@
                     <span class="guestbook-entry-timestamp">${dateString} at ${time}</span>
                     <span class="guestbook-entry-name">${entry.name}</span>
                     <span class="guestbook-entry-message">${entry.message}</span>`;
-                  
+
                   guestbookDiv.prepend(newEntry);
                   addedEntries.add(`${entry.name}-${entry.timestamp}`);
                 });
@@ -390,14 +435,14 @@
                 element.addEventListener("submit", (e) => {
                   e.preventDefault();
                   e.stopImmediatePropagation();
-                  
+
                   const formData = new FormData(e.target);
                   const inputData = Object.fromEntries(formData.entries());
-                  
+
                   if (!inputData.name || !inputData.message) {
                     return false;
                   }
-                  
+
                   const timestamp = Date.now();
                   const newEntry = {
                     name: inputData.name,
@@ -408,22 +453,24 @@
                   setData((d) => {
                     d.push(newEntry);
                   });
-                  
+
                   // Clear form
                   element.querySelector('input[name="message"]').value = "";
                   return false;
                 });
               },
-            }
-          }
+            },
+          },
         });
 
         // Update domain display
         const currentUrl = window.location.host + window.location.pathname;
         document.getElementById("current-domain").textContent = currentUrl;
         document.getElementById("current-domain-lamp").textContent = currentUrl;
-        document.getElementById("current-domain-readonly").textContent = currentUrl;
-        document.getElementById("current-domain-guestbook").textContent = currentUrl;
+        document.getElementById("current-domain-readonly").textContent =
+          currentUrl;
+        document.getElementById("current-domain-guestbook").textContent =
+          currentUrl;
 
         console.log(
           "🎯 Source page loaded - shared elements should be registered"
@@ -434,54 +481,73 @@
         function addSourceLog(message, type = "") {
           const entry = document.createElement("div");
           entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
-          if (type) entry.style.color = type === 'discovery' ? '#007acc' : '#dc3545';
+          if (type)
+            entry.style.color = type === "discovery" ? "#007acc" : "#dc3545";
           sourceLogContainer.appendChild(entry);
           sourceLogContainer.scrollTop = sourceLogContainer.scrollHeight;
         }
 
         // Dynamic test for source page
         let dynamicSourceAdded = false;
-        document.getElementById("add-dynamic-source-btn").addEventListener("click", () => {
-          if (dynamicSourceAdded) return;
-          
-          addSourceLog("Adding dynamic shared element (source)...", "discovery");
-          
-          const dynamicDiv = document.createElement("div");
-          dynamicDiv.id = "dynamic-shared-source";
-          dynamicDiv.setAttribute("shared", "");
-          dynamicDiv.setAttribute("can-move", "");
-          dynamicDiv.className = "moveable-box";
-          dynamicDiv.innerHTML = `
+        document
+          .getElementById("add-dynamic-source-btn")
+          .addEventListener("click", () => {
+            if (dynamicSourceAdded) return;
+
+            addSourceLog(
+              "Adding dynamic shared element (source)...",
+              "discovery"
+            );
+
+            const dynamicDiv = document.createElement("div");
+            dynamicDiv.id = "dynamic-shared-source";
+            dynamicDiv.setAttribute("shared", "");
+            dynamicDiv.setAttribute("can-move", "");
+            dynamicDiv.className = "moveable-box";
+            dynamicDiv.innerHTML = `
             <div style="color: white; font-size: 1.1em">🆕 Dynamic Source</div>
             <div style="font-size: 0.8em; margin-top: 0.5rem; color: white">
               ✨ Added after init
             </div>
           `;
-          
-          document.getElementById("dynamic-source-container").innerHTML = "";
-          document.getElementById("dynamic-source-container").appendChild(dynamicDiv);
-          
-          // This should register it as a new shared element
-          playhtml.setupPlayElement(dynamicDiv);
-          
-          dynamicSourceAdded = true;
-          document.getElementById("add-dynamic-source-btn").disabled = true;
-          document.getElementById("remove-dynamic-source-btn").disabled = false;
-          
-          addSourceLog("Dynamic shared source element added and setup called", "discovery");
-        });
 
-        document.getElementById("remove-dynamic-source-btn").addEventListener("click", () => {
-          document.getElementById("dynamic-source-container").innerHTML = 
-            '<em>Dynamic element removed</em>';
-          dynamicSourceAdded = false;
-          document.getElementById("add-dynamic-source-btn").disabled = false;
-          document.getElementById("remove-dynamic-source-btn").disabled = true;
-          addSourceLog("Dynamic shared source element removed", "discovery");
-        });
+            document.getElementById("dynamic-source-container").innerHTML = "";
+            document
+              .getElementById("dynamic-source-container")
+              .appendChild(dynamicDiv);
 
-        addSourceLog("Dynamic discovery test handlers initialized", "discovery");
+            // This should register it as a new shared element
+            playhtml.setupPlayElement(dynamicDiv);
 
+            dynamicSourceAdded = true;
+            document.getElementById("add-dynamic-source-btn").disabled = true;
+            document.getElementById(
+              "remove-dynamic-source-btn"
+            ).disabled = false;
+
+            addSourceLog(
+              "Dynamic shared source element added and setup called",
+              "discovery"
+            );
+          });
+
+        document
+          .getElementById("remove-dynamic-source-btn")
+          .addEventListener("click", () => {
+            document.getElementById("dynamic-source-container").innerHTML =
+              "<em>Dynamic element removed</em>";
+            dynamicSourceAdded = false;
+            document.getElementById("add-dynamic-source-btn").disabled = false;
+            document.getElementById(
+              "remove-dynamic-source-btn"
+            ).disabled = true;
+            addSourceLog("Dynamic shared source element removed", "discovery");
+          });
+
+        addSourceLog(
+          "Dynamic discovery test handlers initialized",
+          "discovery"
+        );
       } catch (error) {
         console.error("🎯 Failed to initialize PlayHTML:", error);
       }

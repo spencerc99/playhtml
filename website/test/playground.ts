@@ -1,6 +1,6 @@
 import "./home.scss";
 import "./playground.scss";
-import { playhtml } from "../packages/playhtml/src/";
+import { playhtml } from "../../packages/playhtml/src";
 
 playhtml.init({
   events: {

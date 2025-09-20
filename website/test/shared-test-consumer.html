@@ -275,13 +275,13 @@
         <h3>🔗 Referenced Shared Box</h3>
         <div class="element-info">
           <code
-            >data-source="localhost:5173/shared-test-source#shared-counter"
+            >data-source="localhost:5173/test/shared-test-source#shared-counter"
             can-move</code
           >
         </div>
         <div
           id="shared-counter"
-          data-source="localhost:5173/shared-test-source#shared-counter"
+          data-source="localhost:5173/test/shared-test-source#shared-counter"
           can-move
           class="moveable-box"
         >
@@ -296,12 +296,12 @@
         <h3>💡 Referenced Shared Lamp</h3>
         <div class="element-info">
           <code
-            >data-source="localhost:5173/shared-test-source#shared-lamp"
+            >data-source="localhost:5173/test/shared-test-source#shared-lamp"
             can-toggle</code
           >
         </div>
         <img
-          data-source="localhost:5173/shared-test-source#shared-lamp"
+          data-source="localhost:5173/test/shared-test-source#shared-lamp"
           can-toggle
           class="lamp"
           src="/noguchi-hanging-lamp.png"
@@ -314,13 +314,13 @@
         <h3>🔒 Referenced Read-Only Status</h3>
         <div class="element-info">
           <code
-            >data-source="localhost:5173/shared-test-source#shared-readonly"
+            >data-source="localhost:5173/test/shared-test-source#shared-readonly"
             data-source-read-only can-toggle</code
           >
         </div>
         <div
           id="shared-readonly"
-          data-source="localhost:5173/shared-test-source#shared-readonly"
+          data-source="localhost:5173/test/shared-test-source#shared-readonly"
           data-source-read-only
           can-move
           class="moveable-box"
@@ -335,13 +335,13 @@
         <h3>📝 Referenced Shared Guestbook</h3>
         <div class="element-info">
           <code
-            >data-source="localhost:5173/shared-test-source#shared-guestbook"
+            >data-source="localhost:5173/test/shared-test-source#shared-guestbook"
             can-post</code
           >
         </div>
         <form
           id="shared-guestbook-consumer"
-          data-source="localhost:5173/shared-test-source#shared-guestbook"
+          data-source="localhost:5173/test/shared-test-source#shared-guestbook"
           can-post
           class="guestbook-form"
         >
@@ -440,7 +440,7 @@
     </div>
 
     <script type="module">
-      import { playhtml } from "../packages/playhtml/";
+      import { playhtml } from "../../packages/playhtml/";
 
       console.log("📡 Initializing PlayHTML...");
 
@@ -466,7 +466,11 @@
         const message = args.join(" ");
         if (message.includes("[PLAYHTML] Discovered new shared reference")) {
           addConsumerLog(message, "discovery");
-        } else if (message.includes("[PLAYHTML] Successfully registered shared reference")) {
+        } else if (
+          message.includes(
+            "[PLAYHTML] Successfully registered shared reference"
+          )
+        ) {
           addConsumerLog(message, "discovery");
         } else if (message.includes("[PLAYHTML] Received permissions")) {
           addConsumerLog(message, "permission");
@@ -609,7 +613,7 @@
             dynamicDiv.id = "dynamic";
             dynamicDiv.setAttribute(
               "data-source",
-              "localhost:5173/shared-test-source#dynamic-shared-source"
+              "localhost:5173/test/shared-test-source#dynamic-shared-source"
             );
             dynamicDiv.setAttribute("can-move", "");
             dynamicDiv.className = "moveable-box";
