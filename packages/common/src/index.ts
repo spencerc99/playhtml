@@ -247,10 +247,21 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
 }
 
 // @ts-ignore
-export const TagTypeToElement: Record<
-  Exclude<TagType, "can-play">,
-  ElementInitializer
-> = {
+type MoveLocalData = { startMouseX: number; startMouseY: number };
+type SpinLocalData = { startMouseX: number };
+type GrowLocalData = { maxScale: number; isHovering: boolean };
+
+// Strongly-typed mapping of built-in tags to their initializer signatures
+export type DefaultTagInitializers = {
+  [TagType.CanMove]: ElementInitializer<MoveData, MoveLocalData>;
+  [TagType.CanSpin]: ElementInitializer<SpinData, SpinLocalData>;
+  [TagType.CanToggle]: ElementInitializer<{ on: boolean } | boolean>;
+  [TagType.CanGrow]: ElementInitializer<{ scale: number }, GrowLocalData>;
+  [TagType.CanDuplicate]: ElementInitializer<string[], string[]>;
+  [TagType.CanMirror]: ElementInitializer<ElementState>;
+};
+
+export const TagTypeToElement: DefaultTagInitializers = {
   [TagType.CanMove]: {
     defaultData: { x: 0, y: 0 },
     defaultLocalData: { startMouseX: 0, startMouseY: 0 },
@@ -284,7 +295,7 @@ export const TagTypeToElement: Record<
       setLocalData({ startMouseX: clientX, startMouseY: clientY });
     },
     resetShortcut: "shiftKey",
-  } as ElementInitializer<MoveData>,
+  },
   [TagType.CanSpin]: {
     defaultData: { rotation: 0 },
     defaultLocalData: { startMouseX: 0 },
@@ -319,7 +330,7 @@ export const TagTypeToElement: Record<
       setLocalData({ startMouseX: clientX });
     },
     resetShortcut: "shiftKey",
-  } as ElementInitializer<SpinData>,
+  },
   [TagType.CanToggle]: {
     defaultData: { on: false },
     updateElement: ({ element, data }) => {
@@ -375,7 +386,7 @@ export const TagTypeToElement: Record<
       });
     },
     resetShortcut: "shiftKey",
-  } as ElementInitializer<GrowData>,
+  },
   // TODO: add ability to add max # of duplicates
   // TODO: add lifespan to automatically prune
   // TODO: add limit per person / per timeframe.
@@ -453,7 +464,7 @@ export const TagTypeToElement: Record<
 
       return true;
     },
-  } as ElementInitializer<string[]>,
+  },
   [TagType.CanMirror]: {
     defaultData: (element: HTMLElement) => constructInitialState(element),
     onMount: ({ getElement, setData, getData }) => {
