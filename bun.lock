@@ -32,7 +32,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -41,7 +41,7 @@
     },
     "packages/extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/react": "workspace:*",
@@ -65,9 +65,9 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.4.0",
+      "version": "2.4.1",
       "dependencies": {
-        "@playhtml/common": "0.2.0",
+        "@playhtml/common": "0.2.1",
         "@syncedstore/core": "^0.6.0",
         "y-partykit": "^0.0.31",
         "yjs": "13.6.18",
@@ -83,11 +83,11 @@
     },
     "packages/react": {
       "name": "@playhtml/react",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
-        "@playhtml/common": "^0.2.0",
+        "@playhtml/common": "^0.2.1",
         "classnames": "^2.3.2",
-        "playhtml": "^2.4.0",
+        "playhtml": "^2.4.1",
         "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
         "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
       },
