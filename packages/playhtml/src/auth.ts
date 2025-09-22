@@ -187,13 +187,6 @@ export async function checkPermission(
     }
   }
 
-  // Check legacy per-element ownership (playhtml-owner attribute)
-  const ownerAttr = element.getAttribute("playhtml-owner");
-  if (ownerAttr && userIdentity) {
-    if (ownerAttr === userIdentity.publicKey) {
-      return true;
-    }
-  }
 
   // Check element-specific permissions (playhtml-permissions attribute)
   const permissionsAttr = element.getAttribute("playhtml-permissions");

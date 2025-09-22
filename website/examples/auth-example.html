@@ -97,13 +97,12 @@
     <div class="element-container authenticated">
       <h3>Authenticated Element (Owner Only)</h3>
       <p>
-        Only the owner can modify this element (using new simplified syntax):
+        Only the owner can modify this element (global roles configured in initPlayHTML):
       </p>
       <div
         id="authenticated-element"
         class="element"
         can-move
-        playhtml-owner="MCowBQYDK2VwAyEAMndQFsLmugJTh0yVF0somtpb9FVY91mTTmMXUB+Bzfc="
         playhtml-permissions="write:owner, delete:owner, admin:owner"
       >
         Owner Only
@@ -111,13 +110,12 @@
     </div>
 
     <div class="element-container authenticated">
-      <h3>Role-Based Element (Contributor (auto-added))</h3>
-      <p>Different actions require different roles:</p>
+      <h3>Role-Based Element (Contributor Access)</h3>
+      <p>Different actions require different roles (users auto-added as contributors):</p>
       <div
         id="role-based-element"
         class="element"
         can-move
-        playhtml-owner="MCowBQYDK2VwAyEAMndQFsLmugJTh0yVF0somtpb9FVY91mTTmMXUB+Bzfc="
         playhtml-permissions="read:everyone, write:contributors, delete:moderators, admin:owner"
       >
         Role-Based
@@ -276,14 +274,14 @@
             }
           }, 0);
 
-          // Update global roles to include this user as owner
+          // Update global roles to include this user as contributor (owners are pre-configured)
           playhtml.auth.configureGlobalPermissions(
             {
               owner: [
                 "MCowBQYDK2VwAyEAMndQFsLmugJTh0yVF0somtpb9FVY91mTTmMXUB+Bzfc=",
               ],
               moderators: [],
-              contributors: [auth.identity.publicKey], // Auto-add as contributor
+              contributors: [auth.identity.publicKey], // Auto-add new users as contributors
               visitors: { condition: "frequentVisitor" },
               earlyAccess: { condition: "workingHours" },
             },
@@ -351,17 +349,18 @@
 
         // Add permission explanations
         html += '<div style="margin-top: 20px; font-size: 12px; color: #666;">';
-        html += "<p><strong>Permission Legend:</strong></p>";
+        html += "<p><strong>Permission Legend (using global role configuration):</strong></p>";
         html += "<ul>";
         html +=
           "<li><strong>Public Element:</strong> No restrictions (everyone can do everything)</li>";
         html +=
-          "<li><strong>Owner Only:</strong> Only the owner can write, delete, or admin</li>";
+          "<li><strong>Owner Only:</strong> Only users with 'owner' global role can write, delete, or admin</li>";
         html +=
-          "<li><strong>Role-Based:</strong> Different actions require different roles</li>";
+          "<li><strong>Role-Based:</strong> Different actions require different global roles (contributors, moderators, etc.)</li>";
         html +=
-          "<li><strong>Conditional:</strong> Permissions based on visit count and time</li>";
+          "<li><strong>Conditional:</strong> Permissions based on custom conditions (visit count, time, etc.)</li>";
         html += "</ul>";
+        html += "<p><em>Note: Roles are configured globally in initPlayHTML, not per-element.</em></p>";
         html += "</div>";
 
         results.innerHTML = html;

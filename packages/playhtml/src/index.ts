@@ -713,11 +713,6 @@ async function initPlayHTML({
 async function autoRegisterAuthenticatedElements(
   identity: PlayHTMLIdentity
 ): Promise<void> {
-  // Find all elements this user owns (legacy per-element ownership)
-  const ownedElements = document.querySelectorAll(
-    `[playhtml-owner="${identity.publicKey}"]`
-  );
-
   // Check if user has global ownership/admin roles
   const userRoles = await getUserRolesForElement("", identity); // Empty elementId for global check
   const hasGlobalAccess = userRoles.includes("owner") || userRoles.includes("admin");
@@ -728,14 +723,16 @@ async function autoRegisterAuthenticatedElements(
     );
   }
 
-  if (ownedElements.length > 0) {
+  // Find all elements with specific permissions configured
+  const elementsWithPermissions = document.querySelectorAll("[playhtml-permissions]");
+  
+  if (elementsWithPermissions.length > 0) {
     console.log(
-      `[PLAYHTML AUTH]: Found ${ownedElements.length} legacy owned elements to register`
+      `[PLAYHTML AUTH]: Found ${elementsWithPermissions.length} elements with specific permissions`
     );
 
-    // For the simplified system, we just log owned elements
-    // The server will validate permissions based on the simple string format
-    for (const element of Array.from(ownedElements)) {
+    // Log elements with permissions for debugging
+    for (const element of Array.from(elementsWithPermissions)) {
       if (!(element instanceof HTMLElement) || !element.id) continue;
 
       const permissions = element.getAttribute("playhtml-permissions");
