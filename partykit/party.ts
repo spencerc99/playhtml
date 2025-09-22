@@ -2,17 +2,15 @@ import type * as Party from "partykit/server";
 import { onConnect, unstable_getYDoc } from "y-partykit";
 import { createClient } from "@supabase/supabase-js";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
-import { deepReplaceIntoProxy } from "@playhtml/common";
+import {
+  deepReplaceIntoProxy,
+  SessionAction,
+  SessionChallenge,
+  ValidatedSession,
+} from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { deriveRoomId, normalizePath } from "@playhtml/common";
-
-// Create a single supabase client for interacting with your database
-const supabase = createClient(
-  process.env.SUPABASE_URL as string,
-  process.env.SUPABASE_KEY as string,
-  { auth: { persistSession: false } }
-);
 
 // Storage key constants for consistency
 const STORAGE_KEYS = {
@@ -23,11 +21,74 @@ const STORAGE_KEYS = {
 const ORIGIN_S2C = "__bridge_s2c__";
 const ORIGIN_C2S = "__bridge_c2s__";
 
+// Create a single supabase client for interacting with your database
+const supabase = createClient(
+  process.env.SUPABASE_URL as string,
+  process.env.SUPABASE_KEY as string,
+  { auth: { persistSession: false } }
+);
+
+// Crypto utilities
+// TODO: merge with one in common
+async function verifySignature(
+  message: string,
+  signatureBase64: string,
+  publicKeyBase64: string,
+  algorithm: string = "Ed25519"
+): Promise<boolean> {
+  try {
+    console.log(`[PartyKit] Verifying signature with algorithm: ${algorithm}`);
+    console.log(`[PartyKit] Public key length: ${publicKeyBase64.length}`);
+    console.log(`[PartyKit] Signature length: ${signatureBase64.length}`);
+
+    const publicKeyBuffer = Buffer.from(publicKeyBase64, "base64");
+
+    const keyAlgorithm =
+      algorithm === "RSA-PSS"
+        ? { name: "RSA-PSS", hash: "SHA-256" }
+        : { name: "Ed25519" };
+
+    const publicKey = await crypto.subtle.importKey(
+      "spki",
+      publicKeyBuffer,
+      keyAlgorithm,
+      false,
+      ["verify"]
+    );
+
+    const messageBuffer = new TextEncoder().encode(message);
+    const signatureBuffer = Buffer.from(signatureBase64, "base64");
+
+    const verifyAlgorithm =
+      algorithm === "RSA-PSS" ? { name: "RSA-PSS", saltLength: 32 } : "Ed25519";
+
+    const result = await crypto.subtle.verify(
+      verifyAlgorithm,
+      publicKey,
+      signatureBuffer,
+      messageBuffer
+    );
+
+    console.log(`[PartyKit] Signature verification result: ${result}`);
+    return result;
+  } catch (error) {
+    console.error("Signature verification failed:", error);
+    return false;
+  }
+}
+
 export default class implements Party.Server {
-  constructor(public room: Party.Room) {}
   // Reuse the exact same options for all Y.Doc access
   private providerOptions: import("y-partykit").YPartyKitOptions | undefined;
   private observersAttached = false;
+  private validSessions = new Map<string, ValidatedSession>();
+  private pendingChallenges = new Map<string, SessionChallenge>();
+  private usedNonces = new Set<string>();
+
+  constructor(public room: Party.Room) {
+    // Cleanup expired sessions every hour
+    setInterval(() => this.cleanupExpiredSessions(), 60 * 60 * 1000);
+  }
 
   // --- Helper: normalize path used in room id derivation
   normalizePath(path: string): string {
@@ -233,7 +294,7 @@ export default class implements Party.Server {
     if (typeof message === "string") {
       try {
         const parsed = JSON.parse(message);
-
+        console.log(`[PartyKit] Received message type: ${parsed.type}`);
         if (parsed.type === "add-shared-reference") {
           // Handle dynamic addition of shared reference
           await this.handleAddSharedReference(parsed.reference, sender);
@@ -243,7 +304,22 @@ export default class implements Party.Server {
         } else if (parsed.type === "register-shared-element") {
           // Handle dynamic registration of shared source element
           await this.handleRegisterSharedElement(parsed.element, sender);
-        } else {
+        } else if (parsed.type === "session_establish") {
+            console.log(
+              `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
+                0,
+                8
+              )}...`
+            );
+            await this.handleSessionEstablishmentWS(parsed, sender);
+            return; // Don't broadcast session messages
+          } else if (parsed.type === "session_action") {
+            console.log(
+              `[PartyKit] Handling session action: ${parsed.action?.action}`
+            );
+            await this.handleSessionAction(parsed.action, sender);
+            return; // Don't broadcast session actions
+          }  else {
           // Broadcast other messages normally
           this.room.broadcast(message);
         }
@@ -251,6 +327,8 @@ export default class implements Party.Server {
         // If not valid JSON, broadcast as-is (existing behavior)
         this.room.broadcast(message);
       }
+    } catch (error) {
+      console.error(`[PartyKit] Message handling error:`, error);
     }
   }
 
@@ -310,6 +388,7 @@ export default class implements Party.Server {
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
     const room = this.room;
+    console.log(`[PartyKit] New connection established: ${connection.id}`);
 
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL
@@ -618,5 +697,178 @@ export default class implements Party.Server {
     });
 
     this.observersAttached = true;
+  }
+
+  // WebSocket-based session establishment
+  private async handleSessionEstablishmentWS(
+    request: any,
+    sender: Party.Connection
+  ) {
+    try {
+      const { challenge, signature, publicKey, algorithm } = request;
+
+      console.log(
+        `[PartyKit] Session request - algorithm: ${algorithm}, publicKey: ${publicKey?.slice(
+          0,
+          16
+        )}...`
+      );
+
+      // Validate signature first - use algorithm if provided, default to Ed25519
+      const isValidSignature = await verifySignature(
+        JSON.stringify(challenge),
+        signature,
+        publicKey,
+        algorithm || "Ed25519"
+      );
+
+      if (!isValidSignature) {
+        sender.send(
+          JSON.stringify({
+            type: "session_error",
+            message: "Invalid signature",
+          })
+        );
+        return;
+      }
+
+      // Check if this is a renewal (user already has active session)
+      const existingSession = this.findExistingSession(publicKey);
+
+      if (existingSession) {
+        // Extend existing session
+        existingSession.expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+        console.log(`🔄 Renewed session for ${publicKey.slice(0, 8)}...`);
+
+        sender.send(
+          JSON.stringify({
+            type: "session_renewed",
+            sessionId: existingSession.sessionId,
+            publicKey: existingSession.publicKey,
+            expiresAt: existingSession.expiresAt,
+          })
+        );
+      } else {
+        // Create new session
+        const session: ValidatedSession = {
+          sessionId: crypto.randomUUID(),
+          publicKey,
+          domain: challenge.domain || "localhost",
+          establishedAt: Date.now(),
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+        };
+
+        this.validSessions.set(session.sessionId, session);
+
+        console.log(
+          `✅ New session established for ${publicKey.slice(0, 8)}...`
+        );
+
+        sender.send(
+          JSON.stringify({
+            type: "session_established",
+            sessionId: session.sessionId,
+            publicKey: session.publicKey,
+            expiresAt: session.expiresAt,
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Session establishment error:", error);
+      sender.send(
+        JSON.stringify({
+          type: "session_error",
+          message: "Session establishment failed",
+        })
+      );
+    }
+  }
+
+  private findExistingSession(publicKey: string): ValidatedSession | null {
+    for (const session of this.validSessions.values()) {
+      if (session.publicKey === publicKey && session.expiresAt > Date.now()) {
+        return session;
+      }
+    }
+    return null;
+  }
+
+  // Handle session-based actions
+  private async handleSessionAction(
+    action: SessionAction,
+    sender: Party.Connection
+  ) {
+    try {
+      // Validate session exists and is not expired
+      const session = this.validSessions.get(action.sessionId);
+      if (!session || session.expiresAt < Date.now()) {
+        throw new Error("Invalid or expired session");
+      }
+
+      // Basic action validation
+      if (!this.isValidAction(action)) {
+        throw new Error("Invalid action format");
+      }
+
+      // Check nonce uniqueness (prevent replay attacks)
+      const nonceKey = `${action.sessionId}:${action.nonce}`;
+      if (this.usedNonces.has(nonceKey)) {
+        throw new Error("Duplicate action detected");
+      }
+
+      // Mark action as processed and broadcast validation
+      this.usedNonces.add(nonceKey);
+
+      this.room.broadcast(
+        JSON.stringify({
+          type: "session_action_validated",
+          action: {
+            elementId: action.elementId,
+            action: action.action,
+            appliedBy: session.publicKey,
+            appliedAt: Date.now(),
+          },
+        })
+      );
+
+      console.log(
+        `✅ Session action validated: ${action.action} on ${action.elementId}`
+      );
+
+      // Clean up old nonces (5 minute window)
+      setTimeout(() => this.usedNonces.delete(nonceKey), 5 * 60 * 1000);
+    } catch (error) {
+      console.error("Session action error:", error);
+      sender.send(
+        JSON.stringify({
+          type: "action_rejected",
+          reason: error.message,
+        })
+      );
+    }
+  }
+
+  private isValidAction(action: SessionAction): boolean {
+    return !!(
+      action.sessionId &&
+      action.action &&
+      action.elementId &&
+      action.timestamp &&
+      action.nonce &&
+      // Timestamp should be recent (within 5 minutes)
+      Date.now() - action.timestamp < 5 * 60 * 1000
+    );
+  }
+
+  // Cleanup expired sessions
+  private cleanupExpiredSessions(): void {
+    const now = Date.now();
+    for (const [sessionId, session] of this.validSessions.entries()) {
+      if (session.expiresAt < now) {
+        this.validSessions.delete(sessionId);
+        console.log(`🗑️ Cleaned up expired session: ${sessionId}`);
+      }
+    }
   }
 }
