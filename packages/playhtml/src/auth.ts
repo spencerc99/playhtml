@@ -168,7 +168,7 @@ export async function createNewIdentity(
   return identity;
 }
 
-// Check if user has permission for a specific action using new simplified model
+// Check if user has permission for a specific action using global roles first, then element-specific permissions
 export async function checkPermission(
   elementId: string,
   action: string,
@@ -177,9 +177,28 @@ export async function checkPermission(
   const element = document.getElementById(elementId);
   if (!element) return false;
 
+  // First check if this is a globally owned element (from InitOptions.roles)
+  if (userIdentity && Object.keys(globalRoles).length > 0) {
+    const userRoles = await getUserRolesForElement(elementId, userIdentity);
+    
+    // Check if user has "owner" or "admin" role globally - these have write access to all elements
+    if (userRoles.includes("owner") || userRoles.includes("admin")) {
+      return true;
+    }
+  }
+
+  // Check legacy per-element ownership (playhtml-owner attribute)
+  const ownerAttr = element.getAttribute("playhtml-owner");
+  if (ownerAttr && userIdentity) {
+    if (ownerAttr === userIdentity.publicKey) {
+      return true;
+    }
+  }
+
+  // Check element-specific permissions (playhtml-permissions attribute)
   const permissionsAttr = element.getAttribute("playhtml-permissions");
   if (!permissionsAttr) {
-    // No restrictions = everyone can do everything
+    // No element-specific restrictions = allow access
     return true;
   }
 
@@ -201,7 +220,7 @@ export async function checkPermission(
     return false;
   }
 
-  // Check if user has required role
+  // Check if user has required role for this specific element
   const userRoles = await getUserRolesForElement(elementId, userIdentity);
   return userRoles.includes(requiredRole);
 }

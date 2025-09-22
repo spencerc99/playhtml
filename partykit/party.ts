@@ -7,6 +7,7 @@ import {
   SessionAction,
   SessionChallenge,
   ValidatedSession,
+  verifySignature,
 } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
@@ -27,55 +28,6 @@ const supabase = createClient(
   process.env.SUPABASE_KEY as string,
   { auth: { persistSession: false } }
 );
-
-// Crypto utilities
-// TODO: merge with one in common
-async function verifySignature(
-  message: string,
-  signatureBase64: string,
-  publicKeyBase64: string,
-  algorithm: string = "Ed25519"
-): Promise<boolean> {
-  try {
-    console.log(`[PartyKit] Verifying signature with algorithm: ${algorithm}`);
-    console.log(`[PartyKit] Public key length: ${publicKeyBase64.length}`);
-    console.log(`[PartyKit] Signature length: ${signatureBase64.length}`);
-
-    const publicKeyBuffer = Buffer.from(publicKeyBase64, "base64");
-
-    const keyAlgorithm =
-      algorithm === "RSA-PSS"
-        ? { name: "RSA-PSS", hash: "SHA-256" }
-        : { name: "Ed25519" };
-
-    const publicKey = await crypto.subtle.importKey(
-      "spki",
-      publicKeyBuffer,
-      keyAlgorithm,
-      false,
-      ["verify"]
-    );
-
-    const messageBuffer = new TextEncoder().encode(message);
-    const signatureBuffer = Buffer.from(signatureBase64, "base64");
-
-    const verifyAlgorithm =
-      algorithm === "RSA-PSS" ? { name: "RSA-PSS", saltLength: 32 } : "Ed25519";
-
-    const result = await crypto.subtle.verify(
-      verifyAlgorithm,
-      publicKey,
-      signatureBuffer,
-      messageBuffer
-    );
-
-    console.log(`[PartyKit] Signature verification result: ${result}`);
-    return result;
-  } catch (error) {
-    console.error("Signature verification failed:", error);
-    return false;
-  }
-}
 
 export default class implements Party.Server {
   // Reuse the exact same options for all Y.Doc access
@@ -305,21 +257,21 @@ export default class implements Party.Server {
           // Handle dynamic registration of shared source element
           await this.handleRegisterSharedElement(parsed.element, sender);
         } else if (parsed.type === "session_establish") {
-            console.log(
-              `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
-                0,
-                8
-              )}...`
-            );
-            await this.handleSessionEstablishmentWS(parsed, sender);
-            return; // Don't broadcast session messages
-          } else if (parsed.type === "session_action") {
-            console.log(
-              `[PartyKit] Handling session action: ${parsed.action?.action}`
-            );
-            await this.handleSessionAction(parsed.action, sender);
-            return; // Don't broadcast session actions
-          }  else {
+          console.log(
+            `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
+              0,
+              8
+            )}...`
+          );
+          await this.handleSessionEstablishmentWS(parsed, sender);
+          return; // Don't broadcast session messages
+        } else if (parsed.type === "session_action") {
+          console.log(
+            `[PartyKit] Handling session action: ${parsed.action?.action}`
+          );
+          await this.handleSessionAction(parsed.action, sender);
+          return; // Don't broadcast session actions
+        } else {
           // Broadcast other messages normally
           this.room.broadcast(message);
         }
@@ -327,8 +279,6 @@ export default class implements Party.Server {
         // If not valid JSON, broadcast as-is (existing behavior)
         this.room.broadcast(message);
       }
-    } catch (error) {
-      console.error(`[PartyKit] Message handling error:`, error);
     }
   }
 

@@ -34,6 +34,7 @@ import {
   getCurrentSession,
   createSessionAction,
   establishSessionWithWS,
+  getUserRolesForElement,
 } from "./auth";
 import { createSignedAction, createAuthenticatedMessage } from "./crypto";
 import { setupDevUI } from "./development";
@@ -712,25 +713,37 @@ async function initPlayHTML({
 async function autoRegisterAuthenticatedElements(
   identity: PlayHTMLIdentity
 ): Promise<void> {
-  // Find all elements this user owns
+  // Find all elements this user owns (legacy per-element ownership)
   const ownedElements = document.querySelectorAll(
     `[playhtml-owner="${identity.publicKey}"]`
   );
 
-  console.log(
-    `[PLAYHTML AUTH]: Found ${ownedElements.length} owned elements to register`
-  );
+  // Check if user has global ownership/admin roles
+  const userRoles = await getUserRolesForElement("", identity); // Empty elementId for global check
+  const hasGlobalAccess = userRoles.includes("owner") || userRoles.includes("admin");
 
-  // For the simplified system, we just notify the server of owned elements
-  // The server will validate permissions based on the simple string format
-  for (const element of Array.from(ownedElements)) {
-    if (!(element instanceof HTMLElement) || !element.id) continue;
+  if (hasGlobalAccess) {
+    console.log(
+      `[PLAYHTML AUTH]: User has global ${userRoles.includes("owner") ? "owner" : "admin"} access`
+    );
+  }
 
-    const permissions = element.getAttribute("playhtml-permissions");
-    if (permissions) {
-      console.log(
-        `[PLAYHTML AUTH]: Element ${element.id} has permissions: ${permissions}`
-      );
+  if (ownedElements.length > 0) {
+    console.log(
+      `[PLAYHTML AUTH]: Found ${ownedElements.length} legacy owned elements to register`
+    );
+
+    // For the simplified system, we just log owned elements
+    // The server will validate permissions based on the simple string format
+    for (const element of Array.from(ownedElements)) {
+      if (!(element instanceof HTMLElement) || !element.id) continue;
+
+      const permissions = element.getAttribute("playhtml-permissions");
+      if (permissions) {
+        console.log(
+          `[PLAYHTML AUTH]: Element ${element.id} has permissions: ${permissions}`
+        );
+      }
     }
   }
 }
@@ -849,22 +862,17 @@ function createPlayElementData<T extends TagType>(
       if (isSharedReadOnly(element, elementIdFromAttr)) {
         return;
       }
-      // Check permissions if element has authentication attributes
+      // Check permissions for write operations
       const identity = getCurrentIdentity();
       const session = getCurrentSession();
 
-      if (element.hasAttribute("playhtml-owner")) {
-        const hasPermission = await checkPermission(
-          elementId,
-          "write",
-          identity
+      // Check permissions using global roles and element-specific permissions
+      const hasPermission = await checkPermission(elementId, "write", identity);
+      if (!hasPermission) {
+        console.warn(
+          `[PLAYHTML AUTH]: Permission denied for write action on element ${elementId}`
         );
-        if (!hasPermission) {
-          console.warn(
-            `[PLAYHTML AUTH]: Permission denied for write action on element ${elementId}`
-          );
-          return;
-        }
+        return;
       }
 
       // If we have a session, use session-based actions for server validation

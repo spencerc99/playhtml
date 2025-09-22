@@ -2,6 +2,7 @@
 // Implements Ed25519 key generation, signing, and verification
 
 import type { PlayHTMLIdentity, SignedAction, AuthenticatedMessage } from "@playhtml/common";
+import { verifySignature } from "@playhtml/common";
 
 // Utility functions for base64 encoding/decoding
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -127,33 +128,8 @@ export async function signMessage(message: string, privateKeyBase64: string, alg
   }
 }
 
-// Verify a signature using a public key
-export async function verifySignature(
-  message: string,
-  signatureBase64: string,
-  publicKeyBase64: string,
-  algorithm: string = "Ed25519"
-): Promise<boolean> {
-  try {
-    const publicKey = await importPublicKey(publicKeyBase64, algorithm);
-    const messageBuffer = new TextEncoder().encode(message);
-    const signatureBuffer = base64ToArrayBuffer(signatureBase64);
-    
-    const verifyAlgorithm = algorithm === "RSA-PSS" 
-      ? { name: "RSA-PSS", saltLength: 32 }
-      : "Ed25519";
-    
-    return await crypto.subtle.verify(
-      verifyAlgorithm,
-      publicKey,
-      signatureBuffer,
-      messageBuffer
-    );
-  } catch (error) {
-    console.error("Failed to verify signature:", error);
-    return false;
-  }
-}
+// Re-export verifySignature from common package for backward compatibility
+export { verifySignature };
 
 // Create a signed action for authenticated operations
 export async function createSignedAction(
@@ -173,12 +149,13 @@ export async function createSignedAction(
     ...payload,
     signature,
     publicKey: identity.publicKey,
+    algorithm: identity.algorithm,
   };
 }
 
 // Verify a signed action
 export async function verifySignedAction(signedAction: SignedAction): Promise<boolean> {
-  const { signature, publicKey, ...payload } = signedAction;
+  const { signature, publicKey, algorithm, ...payload } = signedAction;
   const message = JSON.stringify(payload);
   
   // Check timestamp freshness (5 minute window)
@@ -188,7 +165,7 @@ export async function verifySignedAction(signedAction: SignedAction): Promise<bo
     return false;
   }
   
-  return await verifySignature(message, signature, publicKey);
+  return await verifySignature(message, signature, publicKey, algorithm);
 }
 
 // Create an authenticated message for server communication
@@ -208,6 +185,7 @@ export async function createAuthenticatedMessage(
     ...payload,
     signature,
     publicKey: identity.publicKey,
+    algorithm: identity.algorithm,
   };
 }
 
@@ -215,7 +193,7 @@ export async function createAuthenticatedMessage(
 export async function verifyAuthenticatedMessage(
   message: AuthenticatedMessage
 ): Promise<boolean> {
-  const { signature, publicKey, ...payload } = message;
+  const { signature, publicKey, algorithm, ...payload } = message;
   const messageToVerify = JSON.stringify(payload);
   
   // Check timestamp freshness
@@ -224,7 +202,7 @@ export async function verifyAuthenticatedMessage(
     return false;
   }
   
-  return await verifySignature(messageToVerify, signature, publicKey);
+  return await verifySignature(messageToVerify, signature, publicKey, algorithm);
 }
 
 // Export/import identity with optional password encryption
