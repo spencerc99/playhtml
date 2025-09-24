@@ -14,17 +14,6 @@ export const ViewCount = withSharedState(
 
       setData({ count: data.count + 1 });
     }, [hasSynced]);
-    return (
-      <div
-        id="viewCount"
-        style={{
-          width: "200px",
-          border: "1px solid black",
-          background: "lightgray",
-        }}
-      >
-        {data.count}
-      </div>
-    );
+    return <div id="viewCount">{data.count}</div>;
   }
 );

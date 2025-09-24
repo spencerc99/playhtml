@@ -1,0 +1,317 @@
+// Features Grid Styles
+.features-section {
+  margin: 60px 0;
+  width: 100%;
+  max-width: 1200px;
+
+  h2 {
+    text-align: center;
+    margin-bottom: 40px;
+    font-family: "Carter One";
+    color: var(--color-text-accent);
+  }
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 30px;
+  padding: 0 20px;
+
+  @media screen and (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 0 10px;
+  }
+}
+
+.feature-card-wrapper {
+  position: relative;
+  // This allows the orbs to position relative to the wrapper
+}
+
+.feature-card {
+  background: var(--color-background-neutral);
+  border: 2px solid var(--color-text);
+  padding: 20px;
+  position: relative;
+  overflow: visible; // Key: allows elements to "poke out"
+  transition: none;
+  min-height: 150px;
+
+  // Retro inset shadow effect
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.5),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3), 2px 2px 0px rgba(0, 0, 0, 0.2);
+
+  &:hover {
+    // Slight press effect like old buttons
+    transform: translate(1px, 1px);
+    box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.5),
+      inset -1px -1px 0px rgba(0, 0, 0, 0.3), 1px 1px 0px rgba(0, 0, 0, 0.2);
+  }
+
+  &.coming-soon {
+    opacity: 0.8;
+    border: 2px dashed var(--color-text-translucent);
+    background: var(--color-background-neutral)
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(0, 0, 0, 0.05) 10px,
+        rgba(0, 0, 0, 0.05) 20px
+      );
+
+    .coming-soon-badge {
+      font-size: 0.7em;
+      background: var(--color-text);
+      color: var(--color-background-neutral);
+      padding: 2px 4px;
+      border: 1px solid var(--color-text);
+      margin-left: 8px;
+    }
+  }
+
+  // Title bar like old Mac windows
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, #f0f0f0, #d0d0d0);
+    border-bottom: 1px solid var(--color-text);
+
+    @media (prefers-color-scheme: dark) {
+      background: linear-gradient(to bottom, #404040, #202020);
+    }
+  }
+
+  h3 {
+    margin: 25px 0 8px 0; // Account for title bar
+    font-size: 1.1em;
+    color: var(--color-text);
+
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  p {
+    margin: 0 0 16px 0;
+    color: var(--color-text);
+    font-size: 0.85em;
+    line-height: 1.3;
+  }
+}
+
+.interactive-elements {
+  position: relative;
+  height: 80px; // Give space for interactive elements
+}
+
+// Shared Elements Card Styling
+.shared-elements-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+
+  h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.8em;
+    color: var(--color-text, #333);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+}
+
+.shared-section {
+  flex: 1;
+}
+
+.portal-section {
+  flex: 1;
+}
+
+// Shared color demo with transmission effect
+.shared-color-demo {
+  position: relative;
+  width: 100%;
+  height: 80px;
+  border: 2px solid var(--color-text, #333);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  overflow: visible;
+
+  // Retro computer styling
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.3),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3);
+}
+
+.sync-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: var(--color-text, #333);
+  color: var(--color-background-neutral, #f5f5f5);
+  padding: 2px 6px;
+  font-size: 0.6em;
+  border: 1px solid var(--color-text, #333);
+  z-index: 10;
+}
+
+.color-info {
+  text-align: center;
+  z-index: 5;
+
+  .color-value {
+    font-size: 1.1em;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .color-description {
+    font-size: 0.7em;
+    opacity: 0.8;
+  }
+}
+
+.transmission-lines {
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  .line {
+    position: absolute;
+    left: 0;
+    width: 8px;
+    height: 1px;
+    background: var(--color-text, #333);
+    opacity: 0.6;
+
+    &.line-1 {
+      top: -4px;
+      animation: transmission 2s infinite;
+    }
+
+    &.line-2 {
+      top: 0;
+      animation: transmission 2s infinite 0.3s;
+    }
+
+    &.line-3 {
+      top: 4px;
+      animation: transmission 2s infinite 0.6s;
+    }
+  }
+}
+
+@keyframes transmission {
+  0%,
+  70% {
+    opacity: 0.3;
+    transform: scaleX(1);
+  }
+  15%,
+  55% {
+    opacity: 0.8;
+    transform: scaleX(1.5);
+  }
+}
+
+// Portal window styling
+.portal-window {
+  width: 100%;
+  height: 100px;
+  border: 2px solid var(--color-text, #333);
+  background: var(--color-background-neutral, #f5f5f5);
+
+  // Retro computer styling
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.8),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3);
+}
+
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: linear-gradient(to bottom, #f0f0f0, #d0d0d0);
+  border-bottom: 1px solid var(--color-text, #333);
+  min-height: 16px;
+
+  @media (prefers-color-scheme: dark) {
+    background: linear-gradient(to bottom, #404040, #202020);
+  }
+}
+
+.portal-controls {
+  display: flex;
+  gap: 3px;
+
+  .control-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+
+    &.red {
+      background: #ff5f57;
+    }
+    &.yellow {
+      background: #ffbd2e;
+    }
+    &.green {
+      background: #28ca42;
+    }
+  }
+}
+
+.portal-url {
+  font-size: 0.6em;
+  color: var(--color-text, #333);
+  opacity: 0.8;
+}
+
+.portal-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: calc(100% - 24px);
+  text-align: center;
+}
+
+.placeholder-element {
+  .element-icon {
+    font-size: 1.5em;
+    margin-bottom: 4px;
+  }
+
+  .element-text {
+    font-size: 0.7em;
+    font-weight: bold;
+    margin-bottom: 2px;
+    color: var(--color-text, #333);
+  }
+
+  .element-note {
+    font-size: 0.6em;
+    opacity: 0.6;
+    font-style: italic;
+    color: var(--color-text, #333);
+  }
+}
+
+.sync-status {
+  margin-top: 8px;
+  font-size: 0.6em;
+  color: #28ca42; // Green to indicate ready status
+  font-weight: bold;
+}

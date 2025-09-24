@@ -1,9 +1,7 @@
 import React from "react";
 import { CanPlayElement } from "../src";
+import { formatSimpleNumber, pluralize } from "./utils";
 
-export function pluralize(word: string, count: number) {
-  return count > 1 ? `${word}s` : word;
-}
 export function LiveVisitorCount() {
   return (
     <CanPlayElement
@@ -12,9 +10,10 @@ export function LiveVisitorCount() {
       id="visitorCount"
     >
       {({ awareness }) => {
+        const count = awareness.length;
         return (
           <div className="visitorCount">
-            {awareness.length} {pluralize("visitor", awareness.length)}
+            {formatSimpleNumber(count)} {pluralize("visitor", count)}
           </div>
         );
       }}

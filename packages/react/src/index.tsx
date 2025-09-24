@@ -22,39 +22,19 @@ export interface LoadingOptions {
 }
 
 // Shared binding props for both generic and tag-specific React elements
-export type SharedBindingProps = {
+export type WithPlayOptionalProps = {
   dataSource?: string;
   shared?: boolean | string;
+  standalone?: boolean;
+  loading?: LoadingOptions;
 };
 
 export type WithPlayProps<T, V> =
-  | (Omit<ReactElementInitializer<T, V>, "children"> & {
-      loading?: LoadingOptions;
-      // Shared binding props for shared elements
-      dataSource?: SharedBindingProps["dataSource"];
-      shared?: SharedBindingProps["shared"];
-    })
-  | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
-      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
-      standalone?: boolean; // Allow standalone mode without provider
-      loading?: LoadingOptions;
-      dataSource?: SharedBindingProps["dataSource"];
-      shared?: SharedBindingProps["shared"];
-    });
-
-// Add standalone and loading to the ReactElementInitializer type
-export type ReactElementInitializerWithStandalone<T, V> =
-  | (ReactElementInitializer<T, V> & {
-      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
-      standalone?: boolean;
-      loading?: LoadingOptions;
-    })
+  | (ReactElementInitializer<T, V> & WithPlayOptionalProps)
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
-      defaultData: undefined;
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
-      standalone?: boolean;
-      loading?: LoadingOptions;
-    });
+      defaultData: undefined;
+    } & WithPlayOptionalProps);
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
@@ -64,7 +44,7 @@ export function CanPlayElement<T, V>({
   standalone = false,
   loading,
   ...restProps
-}: ReactElementInitializerWithStandalone<T, V>) {
+}: WithPlayProps<T, V>) {
   const playContext = useContext(PlayContext);
 
   if (playContext.isProviderMissing && !standalone) {
@@ -105,8 +85,8 @@ export function CanPlayElement<T, V>({
     tagInfo: undefined,
     ...restProps,
   };
-  const dataSource = (restProps as any)?.dataSource as string | undefined;
-  const shared = (restProps as any)?.shared as boolean | string | undefined;
+  const dataSource = restProps?.dataSource;
+  const shared = restProps?.shared;
   const computedTagInfo = tagInfo
     ? Array.isArray(tagInfo)
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
@@ -291,7 +271,7 @@ export function withSharedState<T extends object, V = any, P = any>(
     playProps: ReactElementEventHandlerData<T, V>,
     props: P
   ) => React.ReactElement,
-  options?: { standalone?: boolean; loading?: LoadingOptions }
+  options?: WithPlayOptionalProps
 ): (props: P) => JSX.Element {
   const renderChildren = (props: P): JSX.Element => {
     const configForProps =
@@ -300,10 +280,10 @@ export function withSharedState<T extends object, V = any, P = any>(
     return (
       <CanPlayElement
         tagInfo={undefined}
-        defaultData={undefined}
         standalone={options?.standalone}
         loading={options?.loading || configForProps.loading}
         {...configForProps}
+        {...options}
       >
         {(playData) => component(playData, props)}
       </CanPlayElement>

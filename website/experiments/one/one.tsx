@@ -45,6 +45,7 @@ const ColorController = withSharedState(
       colors: [] as ColorChange[],
     },
     myDefaultAwareness: undefined as undefined | { color: string },
+    shared: true,
   },
   ({ data, setData, awareness, setMyAwareness }) => {
     const { colors } = data;
@@ -199,7 +200,11 @@ const ColorController = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider
+    initOptions={{
+      host: "http://localhost:1999",
+    }}
+  >
     <ColorController></ColorController>
   </PlayProvider>
 );

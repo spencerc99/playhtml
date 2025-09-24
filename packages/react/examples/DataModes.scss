@@ -1,0 +1,144 @@
+// Data Modes Card Styling
+.data-modes-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+}
+
+.data-mode-demo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px;
+  border: 2px solid var(--color-text, #333);
+  background: var(--color-background-neutral, #f5f5f5);
+  min-height: 70px;
+  position: relative;
+
+  // Retro computer styling
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.8),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3);
+
+  &.persistent {
+    border-color: #2e8b57; // Sea green
+
+    .mode-label {
+      color: #2e8b57;
+    }
+
+    .mode-value {
+      color: #2e8b57;
+    }
+  }
+
+  &.awareness {
+    border-color: #ff6b35; // Orange red
+
+    .mode-label {
+      color: #ff6b35;
+    }
+
+    .mode-value {
+      color: #ff6b35;
+    }
+  }
+
+  .mode-value {
+    font-size: 1.4em;
+    font-weight: bold;
+    line-height: 1;
+  }
+  
+  .large-number-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+    
+    .number-main {
+      font-size: 0.9em;
+    }
+    
+    .number-suffix {
+      font-size: 0.5em;
+      opacity: 0.8;
+    }
+  }
+}
+
+// Style ViewCount component when used in DataModes
+#viewCount {
+  width: auto !important;
+  border: none !important;
+  background: none !important;
+  font-size: 1.4em;
+  font-weight: bold;
+  line-height: 1;
+  color: #2e8b57; // Sea green to match persistent theme
+  text-align: center;
+
+  .mode-description {
+    font-size: 0.7em;
+    color: var(--color-text, #333);
+    margin-top: 2px;
+  }
+}
+
+.modes-separator {
+  font-size: 0.9em;
+  color: var(--color-text-translucent, rgba(51, 51, 51, 0.5));
+  font-weight: bold;
+}
+
+.user-dots {
+  display: flex;
+  gap: 3px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.user-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  animation: pulse-dot 2s infinite;
+
+  &:first-child {
+    border: 1px solid #000;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.user-dot-overflow {
+  width: 16px;
+  height: 8px;
+  background: var(--color-text-translucent, rgba(51, 51, 51, 0.5));
+  color: white;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5em;
+  font-family: "Courier New", monospace;
+  font-weight: bold;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
