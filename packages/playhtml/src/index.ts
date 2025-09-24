@@ -14,6 +14,7 @@ import {
   generatePersistentPlayerIdentity,
   deepReplaceIntoProxy,
 } from "@playhtml/common";
+import type { PlayerIdentity } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
@@ -59,7 +60,8 @@ const VERBOSE = 0;
 
 // Root SyncedStore for nested CRDT semantics while keeping plain API
 type StoreShape = {
-  play: Record<string, Record<string, any>>; // tag -> elementId -> data proxy
+  // tag -> elementId -> data proxy (value typed at usage sites)
+  play: Record<string, Record<string, unknown>>;
 };
 const store = syncedStore<StoreShape>({ play: {} });
 const doc = getYjsDoc(store);
@@ -106,7 +108,7 @@ function migrateTagFromYMapToSyncedStore(tag: string): void {
   try {
     // Batch all migration operations in a single transaction to prevent excessive broadcasts
     doc.transact(() => {
-      tagMap.forEach((elementData: any, elementId: string) => {
+      tagMap.forEach((elementData: unknown, elementId: string) => {
         try {
           // Log memory usage for large objects
           const dataSize = JSON.stringify(elementData).length;
@@ -305,24 +307,25 @@ function handleNewSharedElement(element: HTMLElement): void {
   }
 }
 
-function ensureElementProxy<T = any>(
+function ensureElementProxy<TData = unknown>(
   tag: string,
   elementId: string,
-  defaultData: T
-) {
+  defaultData: TData
+): TData {
   if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
   const tagMap = proxyByTagAndId.get(tag)!;
   if (!tagMap.has(elementId)) {
     store.play[tag] ??= {};
-    if (store.play[tag][elementId] === undefined) {
+    const tagRecord = store.play[tag];
+    if (tagRecord[elementId] === undefined) {
       // Always clone to avoid reusing the same object reference across multiple elements,
       // which SyncedStore forbids ("reassigning object that already occurs in the tree").
-      const initial = clonePlain(defaultData) as any;
-      store.play[tag][elementId] = initial;
+      const initial = clonePlain(defaultData);
+      tagRecord[elementId] = initial;
     }
-    tagMap.set(elementId, store.play[tag][elementId]);
+    tagMap.set(elementId, tagRecord[elementId]);
   }
-  return tagMap.get(elementId)!;
+  return tagMap.get(elementId)! as TData;
 }
 let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
@@ -339,12 +342,12 @@ const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
 export interface CursorOptions {
   enabled?: boolean;
-  playerIdentity?: any;
+  playerIdentity?: PlayerIdentity;
   proximityThreshold?: number;
   visibilityThreshold?: number;
   cursorStyle?: string;
   onProximityEntered?: (
-    playerIdentity?: any,
+    playerIdentity?: PlayerIdentity,
     positions?: {
       ours: { x: number; y: number };
       theirs: { x: number; y: number };
@@ -359,7 +362,7 @@ export interface CursorOptions {
   enableChat?: boolean;
 }
 
-export interface InitOptions<T = any> {
+export interface InitOptions<T = unknown> {
   /**
    * The room to connect users to (this should be a string that matches the other users
    * that you want a given user to connect with).
@@ -717,12 +720,12 @@ function markAllElementsAsReady(): void {
   }
 }
 
-function createPlayElementData<T extends TagType>(
+function createPlayElementData<T extends TagType, TData = any>(
   element: HTMLElement,
   tag: T,
-  tagInfo: ElementInitializer<T>,
+  tagInfo: ElementInitializer<TData>,
   elementId: string
-): ElementData<T> {
+): ElementData<TData> {
   if (VERBOSE) {
     console.log("registering element", elementId, "using SyncedStore data");
   }
@@ -733,7 +736,11 @@ function createPlayElementData<T extends TagType>(
       : tagInfo.defaultData;
 
   // Always use SyncedStore proxy
-  const dataProxy = ensureElementProxy(tag as string, elementId, initialData);
+  const dataProxy = ensureElementProxy<TData>(
+    tag,
+    elementId,
+    initialData as TData
+  );
 
   const elementData: ElementData = {
     ...tagInfo,
@@ -745,17 +752,17 @@ function createPlayElementData<T extends TagType>(
         ? [tagInfo.myDefaultAwareness]
         : undefined,
     element,
-    onChange: (newData) => {
+    onChange: (newData: TData) => {
       // Prevent writes for read-only shared consumer elements
       const elementIdFromAttr = getIdForElement(element);
       if (isSharedReadOnly(element, elementIdFromAttr)) {
         return;
       }
-      if (typeof (newData as any) === "function") {
+      if (typeof newData === "function") {
         // Mutator form support: onChange can accept function(draft)
         // Batch all nested mutations into a single Yjs transaction to coalesce events
         doc.transact(() => {
-          (newData as any)(dataProxy);
+          newData(dataProxy);
         });
       } else {
         // Value form: replace snapshot semantics
