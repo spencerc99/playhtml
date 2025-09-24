@@ -1,9 +1,14 @@
 import React from "react";
 import { RainSprinkler } from "../../packages/react/examples/RainSprinkler";
-import { ReactiveOrbs } from "../../packages/react/examples/ReactiveOrbs";
+import { ReactiveOrb } from "../../packages/react/examples/ReactiveOrb";
 import { DataModes } from "../../packages/react/examples/DataModes";
+import { ComponentStore } from "./ComponentStore";
+import { ScheduledBehaviors } from "./ScheduledBehaviors";
+import { Permissions } from "./Permissions";
 import "./FeaturesGrid.scss";
 import { withSharedState } from "@playhtml/react";
+import { invertColor } from "../utils/color";
+import { SharedLamp } from "../../packages/react/examples/SharedLamp";
 
 interface ColorChange {
   color: string;
@@ -22,30 +27,20 @@ const SharedColorProvider = withSharedState<
 >(
   {
     defaultData: { colors: [] as ColorChange[] },
-    dataSource: "localhost:5173/experiments/one#main", // Links to the same data source as experiments/one
+    dataSource: "localhost:5173/experiments/one/#main", // Links to the same data source as experiments/one
   },
   ({ data }, { children }) => {
-    console.log("data", data);
     // Get the latest color, fallback to white
     const latestColor = data.colors[data.colors.length - 1]?.color || "#ffffff";
 
-    // Pass the color data to children via React.cloneElement
-    return React.cloneElement(children as React.ReactElement, {
-      sharedColor: latestColor,
-    });
-  }
-);
-
-const SharedLamp = withSharedState(
-  { defaultData: { on: false }, dataSource: "localhost:4321#lamp-akari" },
-  ({ data }) => {
+    // Pass the color data to children via React.cloneElement and ensure a DOM wrapper
+    // so playhtml can attach `can-play` and `data-source` attributes.
     return (
-      <img
-        className={`lamp ${data.on ? "clicked" : ""}`}
-        id="lamp-akari"
-        src="/lamps/Akari-1N.png"
-        data-source="localhost:4321#lamp-akari"
-      />
+      <div>
+        {React.cloneElement(children as React.ReactElement, {
+          sharedColor: latestColor,
+        })}
+      </div>
     );
   }
 );
@@ -65,7 +60,11 @@ function PersonalSitePortal() {
         </div>
       </div>
       <div className="portal-content">
-        <SharedLamp />
+        <SharedLamp
+          dataSource="localhost:4321#lamp-akari"
+          src="/lamps/Akari-1N.png"
+          id="lamp-akari"
+        />
       </div>
     </div>
   );
@@ -74,9 +73,7 @@ function PersonalSitePortal() {
 export function SharedElements() {
   return (
     <div className="shared-elements-container">
-      <div className="portal-section">
-        <PersonalSitePortal />
-      </div>
+      <PersonalSitePortal />
     </div>
   );
 }
@@ -90,15 +87,16 @@ const FeatureCard = ({
   sharedColor,
 }: {
   title: string;
-  description: string;
+  description?: string;
   comingSoon?: boolean;
   children?: React.ReactNode;
   sharedColor?: string;
 }) => {
   const cardStyle = sharedColor
     ? {
-        backgroundColor: `${sharedColor}90`, // 20 = 12% opacity for subtle tint
+        backgroundColor: `${sharedColor}90`,
         position: "relative" as const,
+        color: `${invertColor(sharedColor, true)}`,
       }
     : {};
 
@@ -110,7 +108,12 @@ const FeatureCard = ({
       {sharedColor && (
         <>
           {/* Sync indicator in corner */}
-          <div className="sync-indicator">🔗 experiments/one</div>
+          <div className="sync-indicator">
+            color from{" "}
+            <a href="/experiments/one/" style={{ color: "inherit" }}>
+              experiments/one
+            </a>
+          </div>
         </>
       )}
       <div className="card-content">
@@ -118,19 +121,31 @@ const FeatureCard = ({
           {title}{" "}
           {comingSoon && <span className="coming-soon-badge">coming soon</span>}
         </h3>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
       <div className="interactive-elements">{children}</div>
     </div>
   );
 };
 
+function highlightElements(capability) {
+  document.querySelectorAll(`[${capability}]`).forEach((ele) => {
+    ele.classList.add("highlighted");
+  });
+}
+
+function unhighlightElements(capability) {
+  document.querySelectorAll(`[${capability}]`).forEach((ele) => {
+    ele.classList.remove("highlighted");
+  });
+}
+
 // Rain and orb components moved to examples package
 
 export default function FeaturesGrid() {
   return (
     <section className="features-section">
-      <h2>What makes playhtml special</h2>
+      <h2>features</h2>
       <div className="features-grid">
         {/* Reactive Data - Implemented */}
         <div className="feature-card-wrapper">
@@ -138,7 +153,29 @@ export default function FeaturesGrid() {
             title="Reactive Data"
             description="Live, persistent state per-element"
           >
-            <ReactiveOrbs />
+            <pre
+              style={{
+                margin: 0,
+              }}
+            >
+              {`{
+  defaultData: { clicks: 0 },
+  onClick: () => {
+    setData({ 
+      clicks: data.clicks + 1 
+    });
+  },
+}`}
+            </pre>
+            <p style={{ margin: 0 }}>
+              see{" "}
+              <a href="https://github.com/spencerc99/playhtml/blob/main/packages/react/examples/ReactiveOrb.tsx">
+                example
+              </a>
+            </p>
+            <ReactiveOrb className="orb-1" colorOffset={0} />
+            <ReactiveOrb className="orb-2" colorOffset={120} />
+            <ReactiveOrb className="orb-3" colorOffset={240} />
           </FeatureCard>
         </div>
 
@@ -146,9 +183,67 @@ export default function FeaturesGrid() {
         <div className="feature-card-wrapper">
           <FeatureCard
             title="Flexible Persistence"
-            description="Live presence and persistent data"
+            description="Real-time presence and persistent data"
           >
             <DataModes />
+            <p style={{ marginBottom: 0, marginTop: ".5em" }}>
+              see{" "}
+              <a href="https://github.com/spencerc99/playhtml/blob/main/packages/react/examples/DataModes.tsx">
+                example
+              </a>
+            </p>
+          </FeatureCard>
+        </div>
+
+        <div className="feature-card-wrapper">
+          <FeatureCard
+            title="plug-and-play capabilities"
+            description="If you want to write the least code, you can use our available templated capabilities to create shared elements with a single attribute on HTML."
+          >
+            <ol className="capabilities" style={{ marginBottom: 0 }}>
+              <li
+                onMouseEnter={() => highlightElements("can-play")}
+                onMouseLeave={() => unhighlightElements("can-play")}
+              >
+                can-play (custom capabilities{" "}
+                <a href="https://github.com/spencerc99/playhtml#can-play">
+                  with your code
+                </a>
+                !)
+              </li>
+              <li
+                onMouseEnter={() => highlightElements("can-move")}
+                onMouseLeave={() => unhighlightElements("can-move")}
+              >
+                can-move
+                <img className="code" src="/playhtml-sign.png" />
+              </li>
+              <li
+                onMouseEnter={() => highlightElements("can-toggle")}
+                onMouseLeave={() => unhighlightElements("can-toggle")}
+              >
+                can-toggle{" "}
+                <img className="code" src="/playhtml-can-toggle.png" />
+              </li>
+              <li>can-duplicate</li>
+              <li
+                onMouseEnter={() => highlightElements("can-spin")}
+                onMouseLeave={() => unhighlightElements("can-spin")}
+              >
+                can-spin <img className="code" src="/playhtml-can-spin.png" />
+              </li>
+              <li
+                onMouseEnter={() => highlightElements("can-grow")}
+                onMouseLeave={() => unhighlightElements("can-grow")}
+              >
+                can-grow
+              </li>
+              <li>
+                <a href="https://github.com/spencerc99/playhtml/pulls">
+                  add-your-own!
+                </a>
+              </li>
+            </ol>
           </FeatureCard>
         </div>
 
@@ -156,9 +251,39 @@ export default function FeaturesGrid() {
         <div className="feature-card-wrapper">
           <FeatureCard
             title="Custom Events"
-            description="Imperative logic with event system"
+            description="Trigger global events from anywhere"
           >
-            <RainSprinkler />
+            <div
+              className="rain-sprinkler-container"
+              style={{
+                position: "absolute",
+                top: "-50px",
+                right: "10px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <RainSprinkler
+                style={{
+                  height: "150px",
+                  width: "100%",
+                  backgroundImage: "url(/fire-hydrant.png)",
+                  backgroundSize: "contain",
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "center",
+                  cursor: "pointer",
+                }}
+              />
+              <span style={{ fontSize: "0.8em" }}>click to make it rain!</span>
+            </div>
+            <p style={{ marginTop: "auto", marginBottom: 0 }}>
+              see{" "}
+              <a href="https://github.com/spencerc99/playhtml/blob/main/packages/react/examples/RainSprinkler.tsx">
+                example
+              </a>
+            </p>
           </FeatureCard>
         </div>
 
@@ -176,10 +301,19 @@ export default function FeaturesGrid() {
         <div className="feature-card-wrapper">
           <SharedColorProvider>
             <FeatureCard
-              title="State Sharing"
-              description="Share state across pages and domains"
+              title="Shared Elements"
+              description="Create interconnected website networks that share element state across pages and domains."
             >
               <SharedElements />
+              <p style={{ marginBottom: 0, marginTop: ".5em" }}>
+                see{" "}
+                <a
+                  style={{ color: "inherit" }}
+                  href="https://github.com/spencerc99/playhtml/blob/main/packages/react/examples/SharedElements.tsx"
+                >
+                  example
+                </a>
+              </p>
             </FeatureCard>
           </SharedColorProvider>
         </div>
@@ -190,7 +324,7 @@ export default function FeaturesGrid() {
           description="Plug-and-play collaborative elements as web components"
           comingSoon={true}
         >
-          {/* a bunch of lamps / other objects all toggling various states */}
+          <ComponentStore />
         </FeatureCard>
 
         {/* Permissions - Coming Soon */}
@@ -199,7 +333,7 @@ export default function FeaturesGrid() {
           description="Fine-grained access control for behaviors"
           comingSoon={true}
         >
-          {/* TODO: Lock/key combinations */}
+          <Permissions />
         </FeatureCard>
 
         {/* Scheduled Behaviors - Coming Soon */}
@@ -208,16 +342,8 @@ export default function FeaturesGrid() {
           description="Cron-like triggering of behaviors"
           comingSoon={true}
         >
-          {/* TODO: a clock ticking up to number and ringing / shaking */}
+          <ScheduledBehaviors />
         </FeatureCard>
-
-        {/* Custom Data Sources - Coming Soon */}
-        {/* <FeatureCard
-          title="Custom Data Sources"
-          description="External APIs, databases, and file integrations"
-          comingSoon={true}
-        >
-        </FeatureCard> */}
       </div>
     </section>
   );

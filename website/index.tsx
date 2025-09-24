@@ -24,7 +24,7 @@ if (reactContentElement) {
   root.render(
     <PlayProvider
       initOptions={{
-        host: "http://localhost:1999",
+        host: "localhost:1999",
         cursors: {
           enableChat: true,
           enabled: true,
@@ -78,14 +78,14 @@ if (reactContentElement) {
                 guestbookDiv.prepend(newEntry);
                 if (newEntry.querySelector(".guestbook-entry-name")) {
                   // @ts-ignore
-                  newEntry.querySelector(".guestbook-entry-name")!.innerText =
+                  newEntry.querySelector(".guestbook-entry-name")!.textContent =
                     entry.name;
                 }
                 if (newEntry.querySelector(".guestbook-entry-message")) {
                   // @ts-ignore
                   newEntry.querySelector(
                     ".guestbook-entry-message"
-                  )!.innerText = entry.message;
+                  )!.textContent = entry.message;
                 }
                 addedEntries.add(getFormDataId(entry));
               });

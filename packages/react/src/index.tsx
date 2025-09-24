@@ -1,7 +1,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType } from "@playhtml/common";
+import { ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -187,24 +187,33 @@ export function CanPlayElement<T, V>({
       // console.log(
       //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
       // );
-      if (!ref.current?.id) {
-        console.warn(`[@playhtml/react] No id set for element ${ref.current}`);
+      const effectiveId = ref.current
+        ? getIdForElement(ref.current as unknown as HTMLElement)
+        : undefined;
+      if (!effectiveId) {
+        console.warn(
+          `[@playhtml/react] No effective id for element`,
+          ref.current
+        );
         return;
       }
-      const handler = getCurrentElementHandler(TagType.CanPlay, ref.current.id);
+      const handler = getCurrentElementHandler(TagType.CanPlay, effectiveId);
       if (!handler) {
         console.warn(
-          `[@playhtml/react] No handler found for element ${ref.current?.id}`
+          `[@playhtml/react] No handler found for element ${effectiveId}`
         );
         return;
       }
       handler.setData(newData);
     },
     setMyAwareness: (newLocalAwareness) => {
-      getCurrentElementHandler(
-        TagType.CanPlay,
-        ref.current?.id || ""
-      )?.setMyAwareness(newLocalAwareness);
+      const effectiveId = ref.current
+        ? getIdForElement(ref.current as unknown as HTMLElement)
+        : undefined;
+      if (!effectiveId) return;
+      getCurrentElementHandler(TagType.CanPlay, effectiveId)?.setMyAwareness(
+        newLocalAwareness
+      );
     },
     myAwareness,
     ref,

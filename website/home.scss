@@ -27,7 +27,6 @@ body {
   font-family: "Play";
   margin-bottom: 80px;
   color: var(--color-text);
-  font-size: 20px;
 }
 
 h1 {
@@ -406,7 +405,8 @@ kbd {
       .code {
         display: block;
         position: absolute;
-        right: 0;
+        right: -50%;
+        z-index: 1000;
         top: 0;
         @media screen and (max-width: 768px) {
           position: initial;

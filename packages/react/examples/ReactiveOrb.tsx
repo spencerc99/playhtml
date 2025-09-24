@@ -1,14 +1,14 @@
 import React from "react";
 import { withSharedState } from "@playhtml/react";
 import { formatLargeNumber } from "./utils";
-import "./ReactiveOrbs.scss";
+import "./ReactiveOrb.scss";
 
 interface OrbProps {
   className: string;
   colorOffset?: number;
 }
 
-const ReactiveOrb = withSharedState(
+export const ReactiveOrb = withSharedState(
   { defaultData: { clicks: 0 } },
   ({ data, setData }, props: OrbProps) => {
     const { className, colorOffset = 0 } = props;
@@ -57,13 +57,3 @@ const ReactiveOrb = withSharedState(
     );
   }
 );
-
-export function ReactiveOrbs() {
-  return (
-    <>
-      <ReactiveOrb className="orb-1" colorOffset={0} />
-      <ReactiveOrb className="orb-2" colorOffset={120} />
-      <ReactiveOrb className="orb-3" colorOffset={240} />
-    </>
-  );
-}

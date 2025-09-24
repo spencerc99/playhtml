@@ -113,40 +113,21 @@ function createRainEffect() {
 
 // No longer needed - using animated GIF background for rain effect
 
-export function RainSprinkler() {
+export function RainSprinkler({ style }: { style?: React.CSSProperties }) {
   const { triggerRain } = useRain();
 
   return (
-    <div id="rain-sprinkler">
+    <div
+      id="rain-sprinkler"
+      style={{
+        width: "100%",
+      }}
+    >
       {/* Fire hydrant that pokes out */}
       <div
         className="fire-hydrant"
         onClick={triggerRain}
-        style={{
-          position: "absolute",
-          top: "-100px",
-          right: "-50%",
-          width: "100%",
-          height: "200px",
-          backgroundImage: "url(/fire-hydrant.png)",
-          backgroundSize: "contain",
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center",
-          cursor: "pointer",
-          zIndex: 10,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "translateX(-50%) scale(1.05)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "translateX(-50%) scale(1)";
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.transform = "translateX(-50%) scale(0.95)";
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.transform = "translateX(-50%) scale(1.05)";
-        }}
+        style={style}
         title="Click to trigger rain!"
       />
     </div>

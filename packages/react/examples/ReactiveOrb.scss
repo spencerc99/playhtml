@@ -13,14 +13,12 @@
   cursor: pointer;
   transition: none;
   user-select: none;
-  
+
   // Retro computer button style
   border: 2px solid var(--color-text, #333);
   background: var(--color-background-neutral, #f5f5f5);
-  box-shadow: 
-    inset 1px 1px 0px rgba(255, 255, 255, 0.8),
-    inset -1px -1px 0px rgba(0, 0, 0, 0.3),
-    2px 2px 0px rgba(0, 0, 0, 0.2);
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.8),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3), 2px 2px 0px rgba(0, 0, 0, 0.2);
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -29,28 +27,7 @@
   &:active {
     // Pressed button effect
     transform: translate(1px, 1px);
-    box-shadow: 
-      inset -1px -1px 0px rgba(255, 255, 255, 0.8),
-      inset 1px 1px 0px rgba(0, 0, 0, 0.3),
-      1px 1px 0px rgba(0, 0, 0, 0.2);
-  }
-
-  // Position orbs to "poke out" of the card
-  &.orb-1 {
-    top: -15px;
-    right: 20px;
-    z-index: 10;
-  }
-
-  &.orb-2 {
-    top: 60px;
-    right: -20px; // Pokes out of the right edge
-    z-index: 10;
-  }
-
-  &.orb-3 {
-    bottom: -10px;
-    right: 50px;
-    z-index: 10;
+    box-shadow: inset -1px -1px 0px rgba(255, 255, 255, 0.8),
+      inset 1px 1px 0px rgba(0, 0, 0, 0.3), 1px 1px 0px rgba(0, 0, 0, 0.2);
   }
 }

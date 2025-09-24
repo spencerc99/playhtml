@@ -14,6 +14,8 @@ import {
   generatePersistentPlayerIdentity,
   deepReplaceIntoProxy,
 } from "@playhtml/common";
+import { normalizePath } from "@playhtml/common";
+import { listSharedElements as devListSharedElements } from "./development";
 import type { PlayerIdentity } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
@@ -487,6 +489,9 @@ let isDevelopmentMode = false;
 // This would proxy only specified paths in synced mode, keeping others as plain local React state.
 // This aligns with the common case where nested arrays need collaboration more than nested objects.
 
+let __currentRoomId = "";
+let __currentHost = "";
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
@@ -507,9 +512,12 @@ async function initPlayHTML({
   window.playhtml = playhtml;
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
-  const room = encodeURIComponent(window.location.host + "-" + inputRoom);
+  const normalizedPath = normalizePath(inputRoom || "/");
+  const room = encodeURIComponent(window.location.host + "-" + normalizedPath);
 
   const partykitHost = getPartykitHost(host);
+  __currentRoomId = room;
+  __currentHost = partykitHost;
 
   console.log(
     `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
@@ -937,6 +945,17 @@ export interface PlayHTMLComponents {
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
+  // Debug / Dev helpers
+  roomId: string;
+  host: string;
+  listSharedElements: () => Array<{
+    type: "source" | "consumer";
+    elementId: string;
+    dataSource: string;
+    normalized: string;
+    permissions?: "read-only" | "read-write";
+    element: HTMLElement;
+  }>;
 }
 
 // Expose big variables to the window object for debugging purposes.
@@ -957,6 +976,14 @@ export const playhtml: PlayHTMLComponents = {
   get cursorClient() {
     return cursorClient;
   },
+  // Filled after init
+  get roomId() {
+    return __currentRoomId;
+  },
+  get host() {
+    return __currentHost;
+  },
+  listSharedElements: devListSharedElements,
 };
 
 /**
