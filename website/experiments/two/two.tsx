@@ -109,8 +109,7 @@ const CursorController = withSharedState(
         </p>
         <p>
           add your own for others! some good sources:{" "}
-          <a href="https://gsgifcities.org/">gifcities.org</a> &{" "}
-          <a href="https://www.cursors-4u.com/">https://www.cursors-4u.com/</a>
+          <a href="https://gifcities.org/">gifcities.org</a>
         </p>
         <div className="actions">
           <div className="inputs">
@@ -182,6 +181,9 @@ ReactDOM.createRoot(
 ).render(
   <PlayProvider
     initOptions={{
+      cursors: {
+        enabled: true,
+      },
       events: {
         confetti: {
           type: "confetti",

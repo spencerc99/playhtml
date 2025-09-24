@@ -45,6 +45,7 @@ export type WithPlayProps<T, V> =
 // Add standalone and loading to the ReactElementInitializer type
 export type ReactElementInitializerWithStandalone<T, V> =
   | (ReactElementInitializer<T, V> & {
+      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       standalone?: boolean;
       loading?: LoadingOptions;
     })
@@ -125,12 +126,32 @@ export function CanPlayElement<T, V>({
   }
   const ref = useRef<HTMLElement>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
-  const [data, setData] = useState<T | undefined>(defaultData);
+  const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
+    typeof fnOrValue === "function"
+      ? // @ts-ignore
+        (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
+      : (fnOrValue as T);
+  const resolveDefaultAwareness = (
+    fnOrValue?: V | ((el: HTMLElement) => V)
+  ): V | undefined =>
+    typeof fnOrValue === "function"
+      ? // @ts-ignore
+        (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
+      : fnOrValue;
+
+  const [data, setData] = useState<T | undefined>(
+    defaultData !== undefined
+      ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
+      : undefined
+  );
+  const initialAwareness = resolveDefaultAwareness(
+    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined
+  );
   const [awareness, setAwareness] = useState<V[]>(
-    myDefaultAwareness ? [myDefaultAwareness] : []
+    initialAwareness ? [initialAwareness] : []
   );
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-    myDefaultAwareness
+    initialAwareness
   );
 
   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
@@ -154,13 +175,13 @@ export function CanPlayElement<T, V>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
-      
+
       // Setup the element, which will handle data-source discovery if needed
       try {
         playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-        
+
         // If playhtml isn't initialized yet, log a helpful message
         if (!playhtml.elementHandlers) {
           console.warn(

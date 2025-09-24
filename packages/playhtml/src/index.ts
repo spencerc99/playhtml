@@ -442,11 +442,6 @@ function onMessage(evt: MessageEvent) {
     return;
   }
 
-  console.log(
-    `[PLAYHTML] Received WebSocket message:`,
-    message.type || "unknown-type"
-  );
-
   // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
@@ -536,20 +531,6 @@ async function initPlayHTML({
     const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
     discoveredSharedReferences.add(referenceKey);
   });
-
-  if (sharedElements.length > 0) {
-    console.log(
-      `[PLAYHTML] Found ${sharedElements.length} shared elements:`,
-      sharedElements
-    );
-  }
-
-  if (sharedReferences.length > 0) {
-    console.log(
-      `[PLAYHTML] Found ${sharedReferences.length} shared references:`,
-      sharedReferences
-    );
-  }
 
   // Create provider with shared element parameters
   yprovider = new YPartyKitProvider(partykitHost, room, doc, {
@@ -1065,7 +1046,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
 
   const elementData = createPlayElementData(
     element,
-    tag,
+    tag as TagType,
     elementInitializerInfo,
     elementId
   );

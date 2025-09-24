@@ -49,7 +49,10 @@ export class CursorChat {
           } else if (event.key === "Backspace") {
             this.setMessage(this.message.slice(0, -1));
           } else if (event.key.length === 1) {
-            const newMessage = this.message.length < 42 ? this.message + event.key : this.message;
+            const newMessage =
+              this.message.length < 42
+                ? this.message + event.key
+                : this.message;
             this.setMessage(newMessage);
           }
 
@@ -78,6 +81,8 @@ export class CursorChat {
     if (this.chatElement) return;
 
     const style = document.createElement("style");
+    // TODO: make background color themed based on your cursor color
+    // TODO: allow customization from developers/users
     style.textContent = `
       .playhtml-chat-container {
         box-sizing: border-box;
@@ -149,7 +154,9 @@ export class CursorChat {
       this.chatElement.style.display = "flex";
 
       // Add click handler to close button
-      const closeButton = this.chatElement.querySelector(".playhtml-chat-button");
+      const closeButton = this.chatElement.querySelector(
+        ".playhtml-chat-button"
+      );
       closeButton?.addEventListener("click", () => {
         this.setListening(false);
         this.setMessage("");
@@ -161,7 +168,7 @@ export class CursorChat {
 
   public showCTA(): void {
     if (!this.chatElement) return;
-    
+
     if (!this.listening && !this.message) {
       this.chatElement.innerHTML = `<div class="playhtml-chat-input">Type / to reply</div>`;
       this.chatElement.style.display = "flex";
@@ -170,7 +177,7 @@ export class CursorChat {
 
   public hideCTA(): void {
     if (!this.chatElement) return;
-    
+
     if (!this.listening && !this.message) {
       this.chatElement.style.display = "none";
     }
@@ -184,7 +191,7 @@ export class CursorChat {
     if (this.timeout) {
       clearTimeout(this.timeout);
     }
-    
+
     if (this.chatElement) {
       this.chatElement.remove();
       this.chatElement = null;

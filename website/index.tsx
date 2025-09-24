@@ -16,6 +16,11 @@ function getFormDataId(formData: FormData) {
 }
 
 playhtml.init({
+  host: "https://staging.playhtml.spencerc99.partykit.dev",
+  cursors: {
+    enableChat: true,
+    enabled: true,
+  },
   events: {
     confetti: {
       type: "confetti",

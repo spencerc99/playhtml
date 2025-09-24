@@ -26,8 +26,8 @@ export type ReactElementInitializer<T = object, V = any> = Omit<
   | "myDefaultAwareness"
   | "updateElementAwareness"
 > & {
-  defaultData: T;
-  myDefaultAwareness?: V;
+  defaultData: T | ((element: HTMLElement) => T);
+  myDefaultAwareness?: V | ((element: HTMLElement) => V);
   id?: string;
 } & PlayableChildren<T, V>;
 
