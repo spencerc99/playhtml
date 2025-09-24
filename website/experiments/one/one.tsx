@@ -169,11 +169,7 @@ const ColorController = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider
-    initOptions={{
-      host: "localhost:1999",
-    }}
-  >
+  <PlayProvider initOptions={{}}>
     <ColorController></ColorController>
   </PlayProvider>
 );

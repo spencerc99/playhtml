@@ -27,7 +27,7 @@ const SharedColorProvider = withSharedState<
 >(
   {
     defaultData: { colors: [] as ColorChange[] },
-    dataSource: "localhost:5173/experiments/one/#main", // Links to the same data source as experiments/one
+    dataSource: "playhtml.fun/experiments/one/#main", // Links to the same data source as experiments/one
   },
   ({ data }, { children }) => {
     // Get the latest color, fallback to white
@@ -61,7 +61,7 @@ function PersonalSitePortal() {
       </div>
       <div className="portal-content">
         <SharedLamp
-          dataSource="localhost:4321#lamp-akari"
+          dataSource="spencer.place#lamp-akari"
           src="/lamps/Akari-1N.png"
           id="lamp-akari"
         />

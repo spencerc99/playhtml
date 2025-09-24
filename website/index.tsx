@@ -24,7 +24,6 @@ if (reactContentElement) {
   root.render(
     <PlayProvider
       initOptions={{
-        host: "localhost:1999",
         cursors: {
           enableChat: true,
           enabled: true,
