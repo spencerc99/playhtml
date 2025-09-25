@@ -25,6 +25,7 @@ export interface LoadingOptions {
 export type WithPlayOptionalProps = {
   dataSource?: string;
   shared?: boolean | string;
+  dataSourceReadOnly?: boolean;
   standalone?: boolean;
   loading?: LoadingOptions;
 };
@@ -94,6 +95,7 @@ export function CanPlayElement<T extends object, V = any>({
   };
   const dataSource = restProps?.dataSource;
   const shared = restProps?.shared;
+  const dataSourceReadOnly = restProps?.dataSourceReadOnly;
   const computedTagInfo = tagInfo
     ? Array.isArray(tagInfo)
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
@@ -240,6 +242,9 @@ export function CanPlayElement<T extends object, V = any>({
       ...computedTagInfo,
       ...loadingAttributes,
       ...(dataSource ? { "data-source": dataSource } : {}),
+      ...(dataSourceReadOnly
+        ? { "data-source-read-only": dataSourceReadOnly }
+        : {}),
       ...(shared
         ? typeof shared === "string"
           ? { shared: shared }

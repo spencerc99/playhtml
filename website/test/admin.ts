@@ -21,6 +21,13 @@ interface DebugLog {
   data?: any;
 }
 
+type EnvName = "production" | "staging" | "development";
+const HOSTS: Record<EnvName, string> = {
+  production: "https://playhtml.spencerc99.partykit.dev",
+  staging: "https://staging.playhtml.spencerc99.partykit.dev",
+  development: "http://localhost:1999",
+};
+
 // TODO: convert to react
 // TODO: back / forward not working for reloading data.
 class AdminConsole {
@@ -28,6 +35,11 @@ class AdminConsole {
   private currentRoomId: string | null = null;
   private currentRoomData: RoomData | null = null;
   private adminToken: string | null = null;
+  private hostEnv: EnvName =
+    (localStorage.getItem("playhtml-admin-host-env") as EnvName) ||
+    "production";
+  private envIndicatorBtn: HTMLButtonElement | null = null;
+  private envDropdown: HTMLDivElement | null = null;
 
   constructor() {
     this.initializeUI();
@@ -58,6 +70,96 @@ class AdminConsole {
     const compareDataBtn = document.getElementById(
       "compareDataMethods"
     ) as HTMLButtonElement;
+    // Environment selector UI
+    const header = document.querySelector(".admin-header");
+    if (header) {
+      const envControls = document.createElement("div");
+      envControls.style.display = "flex";
+      envControls.style.alignItems = "center";
+      envControls.style.gap = "8px";
+
+      const indicator = document.createElement("button");
+      indicator.id = "envIndicator";
+      indicator.style.padding = "6px 12px";
+      indicator.style.borderRadius = "16px";
+      indicator.style.fontWeight = "700";
+      indicator.style.border = "1px solid #e2e8f0";
+      indicator.style.cursor = "pointer";
+      indicator.style.fontSize = "0.9rem";
+      this.envIndicatorBtn = indicator;
+      this.updateEnvIndicator();
+
+      const dropdown = document.createElement("div");
+      dropdown.id = "envDropdown";
+      dropdown.style.position = "absolute";
+      dropdown.style.marginTop = "36px";
+      dropdown.style.background = "white";
+      dropdown.style.border = "1px solid #e2e8f0";
+      dropdown.style.borderRadius = "8px";
+      dropdown.style.boxShadow = "0 4px 10px rgba(0,0,0,0.08)";
+      dropdown.style.display = "none";
+      dropdown.style.zIndex = "1000";
+      dropdown.style.minWidth = "240px";
+      this.envDropdown = dropdown;
+
+      const mkItem = (name: EnvName, label: string, color: string) => {
+        const item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.gap = "8px";
+        item.style.padding = "10px 12px";
+        item.style.cursor = "pointer";
+        item.addEventListener("click", () => {
+          this.setHostEnv(name);
+          this.hideEnvDropdown();
+          if (this.currentRoomId && this.adminToken) {
+            this.loadRoom();
+          }
+        });
+        const dot = document.createElement("span");
+        dot.style.display = "inline-block";
+        dot.style.width = "10px";
+        dot.style.height = "10px";
+        dot.style.borderRadius = "50%";
+        dot.style.background = color;
+        const text = document.createElement("span");
+        text.textContent = label + " (" + HOSTS[name] + ")";
+        text.style.fontFamily = '"Monaco", "Menlo", monospace';
+        text.style.fontSize = "12px";
+        item.appendChild(dot);
+        item.appendChild(text);
+        item.addEventListener(
+          "mouseover",
+          () => (item.style.background = "#f7fafc")
+        );
+        item.addEventListener(
+          "mouseout",
+          () => (item.style.background = "white")
+        );
+        return item;
+      };
+
+      dropdown.appendChild(mkItem("production", "Production", "#e53e3e"));
+      dropdown.appendChild(mkItem("staging", "Staging", "#d69e2e"));
+      dropdown.appendChild(mkItem("development", "Development", "#3182ce"));
+
+      indicator.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!this.envDropdown) return;
+        const isOpen = this.envDropdown.style.display === "block";
+        if (isOpen) this.hideEnvDropdown();
+        else this.showEnvDropdown(indicator);
+      });
+      document.addEventListener("click", () => this.hideEnvDropdown());
+
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "relative";
+      wrapper.appendChild(indicator);
+      wrapper.appendChild(dropdown);
+      envControls.appendChild(wrapper);
+      header.appendChild(envControls);
+    }
 
     // Room loading
     loadRoomBtn.addEventListener("click", () => this.loadRoom());
@@ -76,6 +178,45 @@ class AdminConsole {
 
     // Log controls
     clearLogsBtn.addEventListener("click", () => this.clearLogs());
+  }
+  private getPartykitHost(): string {
+    return HOSTS[this.hostEnv];
+  }
+
+  private setHostEnv(env: EnvName): void {
+    this.hostEnv = env;
+    localStorage.setItem("playhtml-admin-host-env", env);
+    this.updateEnvIndicator();
+  }
+
+  private showEnvDropdown(anchor: HTMLElement): void {
+    if (!this.envDropdown) return;
+    this.envDropdown.style.display = "block";
+    // positioning can be enhanced later; keep left aligned for now
+    this.envDropdown.style.left = "0px";
+  }
+
+  private hideEnvDropdown(): void {
+    if (!this.envDropdown) return;
+    this.envDropdown.style.display = "none";
+  }
+
+  private updateEnvIndicator(): void {
+    if (!this.envIndicatorBtn) return;
+    const label = this.hostEnv.toUpperCase();
+    this.envIndicatorBtn.textContent = `ENV: ${label}`;
+    const colors: Record<
+      EnvName,
+      { bg: string; color: string; border: string }
+    > = {
+      production: { bg: "#FED7D7", color: "#9B2C2C", border: "#FEB2B2" },
+      staging: { bg: "#FEFCBF", color: "#744210", border: "#F6E05E" },
+      development: { bg: "#BEE3F8", color: "#2C5282", border: "#90CDF4" },
+    };
+    const c = colors[this.hostEnv];
+    this.envIndicatorBtn.style.background = c.bg;
+    this.envIndicatorBtn.style.color = c.color;
+    this.envIndicatorBtn.style.borderColor = c.border;
   }
 
   private setupLogging(): void {
@@ -128,8 +269,9 @@ class AdminConsole {
 
       this.displayRoomData(roomData);
       this.enableDebugTools();
-    } catch (error) {
-      this.showStatus(`Failed to load room: ${error.message}`, "error");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.showStatus(`Failed to load room: ${msg}`, "error");
       this.log("error", `Failed to load room ${roomId}`, error);
     }
   }
@@ -141,8 +283,7 @@ class AdminConsole {
       );
     }
 
-    const partyUrl = import.meta.env.VITE_PARTYKIT_HOST || "localhost:1999";
-    const baseUrl = `http://${partyUrl}/parties/main/${roomId}`;
+    const baseUrl = `${this.getPartykitHost()}/parties/main/${roomId}`;
 
     // Use the admin inspect endpoint with token
     const url = `${baseUrl}/admin/inspect?token=${encodeURIComponent(
@@ -358,8 +499,9 @@ class AdminConsole {
     }
 
     try {
-      const partyUrl = import.meta.env.VITE_PARTYKIT_HOST || "localhost:1999";
-      const baseUrl = `http://${partyUrl}/parties/main/${this.currentRoomId}`;
+      const baseUrl = `${this.getPartykitHost()}/parties/main/${
+        this.currentRoomId
+      }`;
       const url = `${baseUrl}/admin/remove-subscriber?token=${encodeURIComponent(
         this.adminToken
       )}`;
@@ -550,8 +692,9 @@ class AdminConsole {
     if (!this.currentRoomId || !this.adminToken) return;
 
     try {
-      const partyUrl = import.meta.env.VITE_PARTYKIT_HOST || "localhost:1999";
-      const baseUrl = `http://${partyUrl}/parties/main/${this.currentRoomId}`;
+      const baseUrl = `${this.getPartykitHost()}/parties/main/${
+        this.currentRoomId
+      }`;
       const url = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
         this.adminToken
       )}`;
@@ -572,8 +715,9 @@ class AdminConsole {
       const rawData = await response.json();
       this.displayRawData(rawData);
       this.log("info", "Loaded raw database data", rawData);
-    } catch (error) {
-      this.log("error", `Failed to load raw data: ${error.message}`, error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log("error", `Failed to load raw data: ${msg}`, error);
     }
   }
 
@@ -642,8 +786,9 @@ class AdminConsole {
 
       // Step 1: Get raw database data
       addStep("📁 Fetching raw database document...", "info");
-      const partyUrl = import.meta.env.VITE_PARTYKIT_HOST || "localhost:1999";
-      const baseUrl = `http://${partyUrl}/parties/main/${this.currentRoomId}`;
+      const baseUrl = `${this.getPartykitHost()}/parties/main/${
+        this.currentRoomId
+      }`;
       const rawUrl = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
         this.adminToken
       )}`;
@@ -718,12 +863,14 @@ class AdminConsole {
         this.attachJSONViewerListeners(reconstructedDoc);
 
         addStep("✅ Debug reconstruction complete!", "success");
-      } catch (error) {
-        addStep(`❌ Y.Doc reconstruction failed: ${error.message}`, "error");
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        addStep(`❌ Y.Doc reconstruction failed: ${msg}`, "error");
         this.log("error", "Y.Doc reconstruction error", error);
       }
-    } catch (error) {
-      addStep(`❌ Debug process failed: ${error.message}`, "error");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addStep(`❌ Debug process failed: ${msg}`, "error");
       this.log("error", "Debug Y.Doc loading error", error);
     }
   }
@@ -734,8 +881,9 @@ class AdminConsole {
     try {
       this.log("info", "Comparing data extraction methods...");
 
-      const partyUrl = import.meta.env.VITE_PARTYKIT_HOST || "localhost:1999";
-      const baseUrl = `http://${partyUrl}/parties/main/${this.currentRoomId}`;
+      const baseUrl = `${this.getPartykitHost()}/parties/main/${
+        this.currentRoomId
+      }`;
       const url = `${baseUrl}/admin/live-compare?token=${encodeURIComponent(
         this.adminToken
       )}`;
@@ -800,12 +948,9 @@ class AdminConsole {
 
       summary += "\nSee comparison section below for detailed view.";
       alert(summary);
-    } catch (error) {
-      this.log(
-        "error",
-        `Failed to compare data methods: ${error.message}`,
-        error
-      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log("error", `Failed to compare data methods: ${msg}`, error);
     }
   }
 

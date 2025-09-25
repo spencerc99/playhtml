@@ -20,6 +20,7 @@ interface ExperimentOneData {
 }
 
 // Component to fetch shared color data and make it available to parent
+// TODO: fix this, somehow it is clearing the data with the defaultData?
 const SharedColorProvider = withSharedState<
   ExperimentOneData,
   undefined,
@@ -28,6 +29,7 @@ const SharedColorProvider = withSharedState<
   {
     defaultData: { colors: [] as ColorChange[] },
     dataSource: "playhtml.fun/experiments/one/#main", // Links to the same data source as experiments/one
+    dataSourceReadOnly: true,
   },
   ({ data }, { children }) => {
     // Get the latest color, fallback to white
@@ -36,7 +38,7 @@ const SharedColorProvider = withSharedState<
     // Pass the color data to children via React.cloneElement and ensure a DOM wrapper
     // so playhtml can attach `can-play` and `data-source` attributes.
     return (
-      <div>
+      <div id="shared-color-provider">
         {React.cloneElement(children as React.ReactElement, {
           sharedColor: latestColor,
         })}
@@ -288,23 +290,23 @@ export default function FeaturesGrid() {
         {/* TODO: Traveling elements? like a cat wandeirng around & traveling between pages */}
 
         <div className="feature-card-wrapper">
-          <SharedColorProvider>
-            <FeatureCard
-              title="Shared Elements"
-              description="Create interconnected website networks that share element state across pages and domains."
-            >
-              <SharedElements />
-              <p style={{ marginBottom: 0, marginTop: ".5em" }}>
-                see{" "}
-                <a
-                  style={{ color: "inherit" }}
-                  href="https://github.com/spencerc99/playhtml/blob/main/packages/react/examples/SharedElements.tsx"
-                >
-                  example
-                </a>
-              </p>
-            </FeatureCard>
-          </SharedColorProvider>
+          {/* <SharedColorProvider> */}
+          <FeatureCard
+            title="Shared Elements"
+            description="Create interconnected website networks that share element state across pages and domains."
+          >
+            <SharedElements />
+            <p style={{ marginBottom: 0, marginTop: ".5em" }}>
+              see{" "}
+              <a
+                style={{ color: "inherit" }}
+                href="https://github.com/spencerc99/playhtml/blob/main/packages/react/examples/SharedElements.tsx"
+              >
+                example
+              </a>
+            </p>
+          </FeatureCard>
+          {/* </SharedColorProvider> */}
         </div>
 
         <FeatureCard
