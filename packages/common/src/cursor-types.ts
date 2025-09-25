@@ -24,6 +24,13 @@ export type CursorPresence = {
   message?: string | null;
 };
 
+// Event payloads for cursor-related global API updates
+export interface CursorEvents {
+  allColors: string[];
+  color: string;
+  name: string | undefined;
+}
+
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
 

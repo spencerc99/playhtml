@@ -322,7 +322,7 @@ const Main = withSharedState(
     id: "stellar-connections",
   },
   ({ data, setData, awareness, setMyAwareness }) => {
-    const { hasSynced, configureCursors, getMyPlayerIdentity, getCursors } =
+    const { hasSynced, configureCursors, getMyPlayerIdentity, cursors } =
       usePlayContext();
     const [proximityUsers, setProximityUsers] = useState<Set<string>>(
       new Set()
@@ -679,7 +679,7 @@ const Main = withSharedState(
         <div className="presence-indicator">
           <div className="presence-title">online now</div>
           <div className="presence-users">
-            {getCursors().allColors.map((userColor, index) => {
+            {cursors.allColors.map((userColor, index) => {
               const myIdentity = getMyPlayerIdentity();
               const isMe = userColor === myIdentity?.color;
 
@@ -695,7 +695,7 @@ const Main = withSharedState(
                 />
               );
             })}
-            {getCursors().allColors.length === 0 && (
+            {cursors.allColors.length === 0 && (
               <div className="presence-empty">waiting for others...</div>
             )}
           </div>

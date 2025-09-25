@@ -33,3 +33,19 @@ export function deepReplaceIntoProxy(target: any, src: any) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   target = src as any;
 }
+
+export function clonePlain<T>(value: T): T {
+  // Prefer structuredClone when available; fallback to JSON clone for plain data
+  try {
+    // @ts-ignore
+    if (typeof structuredClone === "function") {
+      // @ts-ignore
+      return structuredClone(value);
+    }
+  } catch {}
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") {
+    return JSON.parse(JSON.stringify(value));
+  }
+  return value;
+}

@@ -6,15 +6,14 @@ import "./DataModes.scss";
 
 // Awareness Data Mode - Current online users
 function AwarenessIndicator() {
-  const { getCursors } = usePlayContext();
-  const cursors = getCursors();
+  const { cursors } = usePlayContext();
   const currentUsers = cursors.allColors.length;
-  
+
   // Limit displayed dots to prevent overcrowding
   const maxDotsToShow = 12;
   const visibleColors = cursors.allColors.slice(0, maxDotsToShow);
   const hiddenCount = Math.max(0, currentUsers - maxDotsToShow);
-  
+
   const formatted = formatLargeNumber(currentUsers);
   const isLargeNumber = typeof formatted === "object";
 
@@ -34,7 +33,7 @@ function AwarenessIndicator() {
           />
         ))}
         {hiddenCount > 0 && (
-          <div 
+          <div
             className="user-dot-overflow"
             title={`+${hiddenCount} more users`}
           >
