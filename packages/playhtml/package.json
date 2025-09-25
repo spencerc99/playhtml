@@ -2,7 +2,7 @@
   "name": "playhtml",
   "title": "playhtml",
   "description": "Create interactive, collaborative html elements with a single attribute",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -60,7 +60,7 @@
     "jsdom": "^26.1.0"
   },
   "dependencies": {
-    "@playhtml/common": "0.2.1",
+    "@playhtml/common": "0.3.0",
     "@syncedstore/core": "^0.6.0",
     "y-partykit": "^0.0.31",
     "yjs": "13.6.18"
