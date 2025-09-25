@@ -184,7 +184,7 @@ function migrateAllDataFromYMapToSyncedStore(): void {
   );
 }
 
-function getDefaultRoom(includeSearch?: boolean): string {
+function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
   const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
 
@@ -364,6 +364,10 @@ export interface CursorOptions {
   enableChat?: boolean;
 }
 
+interface DefaultRoomOptions {
+  includeSearch?: boolean;
+}
+
 export interface InitOptions<T = unknown> {
   /**
    * The room to connect users to (this should be a string that matches the other users
@@ -395,12 +399,7 @@ export interface InitOptions<T = unknown> {
   /**
    * configuration for the default room which is based on the window's url
    */
-  defaultRoomOptions?: {
-    /**
-     * defaults to false
-     */
-    includeSearch?: boolean;
-  };
+  defaultRoomOptions?: DefaultRoomOptions;
   /**
    * Runs if playhtml fails to connect. Useful to show error messages and debugging.
    */
@@ -497,8 +496,8 @@ async function initPlayHTML({
   host,
   extraCapabilities,
   events,
-  defaultRoomOptions = {},
-  room: inputRoom = getDefaultRoom(defaultRoomOptions.includeSearch),
+  defaultRoomOptions = { includeSearch: false },
+  room: inputRoom = getDefaultRoom(defaultRoomOptions),
   onError,
   developmentMode = false,
   cursors = {},
@@ -1169,6 +1168,17 @@ function setupPlayElement(
   element: Element,
   { ignoreIfAlreadySetup }: { ignoreIfAlreadySetup?: boolean } = {}
 ) {
+  // Prevent invalid configuration: element cannot be both a source and a consumer
+  if (
+    (element as HTMLElement).hasAttribute?.("data-source") &&
+    (element as HTMLElement).hasAttribute?.("shared")
+  ) {
+    const id = (element as HTMLElement).id || "<no-id>";
+    console.error(
+      `[playhtml] Element ${id} has both 'data-source' and 'shared'. Ignoring. A single element cannot be both a consumer and a source.`
+    );
+    return;
+  }
   if (
     ignoreIfAlreadySetup &&
     Object.keys(elementHandlers || {}).some((tag) =>

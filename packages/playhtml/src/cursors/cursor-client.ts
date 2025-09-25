@@ -6,6 +6,7 @@ import {
   generatePersistentPlayerIdentity,
   PROXIMITY_THRESHOLD,
   PLAYER_IDENTITY_STORAGE_KEY,
+  CursorEvents,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions } from "..";
@@ -16,11 +17,6 @@ import randomColor from "randomcolor";
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 
 // Global cursor API interface (like cursor-party)
-interface CursorEvents {
-  allColors: string[];
-  color: string;
-  name: string | undefined;
-}
 
 export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
   return Math.sqrt(
@@ -41,11 +37,7 @@ interface CursorEventEmitter {
 
 declare global {
   interface Window {
-    cursors?: {
-      color: string;
-      name: string;
-      allColors: string[];
-      count: number;
+    cursors?: CursorEvents & {
       on: CursorEventEmitter["on"];
       off: CursorEventEmitter["off"];
     };
@@ -164,6 +156,9 @@ export class CursorClientAwareness {
     });
 
     // Initial sync of existing awareness states
+    // First, publish our own player identity so others (and us) see it immediately
+    this.updateCursorAwareness();
+    // Then, sync existing states (including ours) into local structures
     this.syncExistingAwareness();
   }
 
@@ -189,13 +184,6 @@ export class CursorClientAwareness {
         this.updateCursor(clientId.toString(), cursorData);
       }
 
-      // Track player colors
-      if (cursorData?.playerIdentity?.playerStyle?.colorPalette?.[0]) {
-        this.allPlayerColors.add(
-          cursorData.playerIdentity.playerStyle.colorPalette[0]
-        );
-      }
-
       // Track messages for chat CTA
       if (cursorData?.message) {
         this.otherUsersWithMessages.add(clientId.toString());
@@ -212,6 +200,14 @@ export class CursorClientAwareness {
 
     // Rebuild spatial grid with updated cursor data
     this.rebuildSpatialGrid();
+
+    // Recompute all player colors from current awareness states
+    this.allPlayerColors.clear();
+    states.forEach((clientState) => {
+      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
+      const color = cursorData?.playerIdentity?.playerStyle?.colorPalette?.[0];
+      if (color) this.allPlayerColors.add(color);
+    });
 
     this.updateGlobalColors();
     this.updateChatCTA();
@@ -655,16 +651,13 @@ export class CursorClientAwareness {
     const self = this;
 
     // Set the global API with direct getter/setter syntax
-    (window as any).cursors = {
+    window.cursors = {
       get allColors() {
         return Array.from(self.allPlayerColors);
       },
       set allColors(newColors: string[]) {
         self.allPlayerColors = new Set(newColors);
         self.emitGlobalEvent("allColors", newColors);
-      },
-      get count() {
-        return self.cursors.size;
       },
       get color() {
         return self.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
@@ -716,8 +709,8 @@ export class CursorClientAwareness {
 
   private updateGlobalColors(): void {
     if (window.cursors) {
-      window.cursors.allColors = Array.from(this.allPlayerColors);
-      this.emitGlobalEvent("allColors", window.cursors.allColors);
+      const colors = Array.from(this.allPlayerColors);
+      window.cursors.allColors = colors;
     }
   }
 
@@ -980,6 +973,36 @@ export class CursorClientAwareness {
       totalCursors,
       gridCells,
       avgCursorsPerCell: gridCells > 0 ? totalCursors / gridCells : 0,
+    };
+  }
+
+  // Instance-level subscription API (mirrors window.cursors.on/off)
+  on<K extends keyof CursorEvents>(
+    event: K,
+    callback: (value: CursorEvents[K]) => void
+  ): void {
+    if (!this.globalApiListeners.has(event)) {
+      this.globalApiListeners.set(event, new Set());
+    }
+    this.globalApiListeners.get(event)!.add(callback as any);
+  }
+
+  off<K extends keyof CursorEvents>(
+    event: K,
+    callback: (value: CursorEvents[K]) => void
+  ): void {
+    const listeners = this.globalApiListeners.get(event);
+    if (listeners) {
+      listeners.delete(callback as any);
+    }
+  }
+
+  // Snapshot of current cursor-related values for consumers
+  getSnapshot(): CursorEvents {
+    return {
+      allColors: Array.from(this.allPlayerColors),
+      color: this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6",
+      name: this.playerIdentity.name || "",
     };
   }
 }

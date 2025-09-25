@@ -3,8 +3,7 @@ import { usePlayContext } from "../src";
 import React from "react";
 
 export function CursorOnlineIndicator() {
-  const { getCursors } = usePlayContext();
-  const cursors = getCursors();
+  const { cursors } = usePlayContext();
   const visitors = cursors.allColors;
 
   return (

@@ -2,6 +2,7 @@ import { PropsWithChildren, createContext, useEffect, useState } from "react";
 import playhtml from "./playhtml-singleton";
 import { InitOptions, CursorOptions } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
+import { CursorEvents } from "@playhtml/common";
 
 export interface PlayContextInfo
   extends Pick<
@@ -15,12 +16,7 @@ export interface PlayContextInfo
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
   getMyPlayerIdentity: () => { color: string; name: string };
-  getCursors: () => {
-    allColors: string[];
-    count: number;
-    myColor: string;
-    myName: string;
-  };
+  cursors: CursorEvents;
 }
 
 export const PlayContext = createContext<PlayContextInfo>({
@@ -52,12 +48,11 @@ export const PlayContext = createContext<PlayContextInfo>({
       "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
     );
   },
-  getCursors: () => ({
+  cursors: {
     allColors: [],
-    count: 0,
-    myColor: "",
-    myName: "",
-  }),
+    color: "",
+    name: undefined,
+  },
 });
 
 interface Props {
@@ -108,16 +103,46 @@ export function PlayProvider({
     };
   };
 
-  const getCursors = () => {
-    // Direct access to current cursor information
-    const cursors = (window as any).cursors;
-    return {
-      allColors: cursors?.allColors || [],
-      count: cursors?.count || 0,
-      myColor: cursors?.color || "",
-      myName: cursors?.name || "",
+  // Reactive cursors state, subscribed to global cursor events
+  const [cursorsState, setCursorsState] = useState<CursorEvents>({
+    allColors: [] as string[],
+    color: "",
+    name: undefined,
+  });
+
+  useEffect(() => {
+    const client = playhtml.cursorClient;
+    if (!client || !initOptions?.cursors?.enabled) return;
+
+    // Initialize from current values
+    const snap = client.getSnapshot();
+    setCursorsState({
+      allColors: snap.allColors || [],
+      color: snap.color || "",
+      name: snap.name || "",
+    });
+
+    const handleAllColors = (allColors: string[]) => {
+      setCursorsState((prev) => ({ ...prev, allColors }));
     };
-  };
+    const handleColor = (myColor: string) => {
+      setCursorsState((prev) => ({ ...prev, color: myColor }));
+    };
+    const handleName = (myName?: string) => {
+      setCursorsState((prev) => ({ ...prev, name: myName }));
+    };
+    client.on("allColors", handleAllColors);
+    client.on("color", handleColor);
+    client.on("name", handleName);
+    // no count event subscription needed
+
+    return () => {
+      client.off("allColors", handleAllColors);
+      client.off("color", handleColor);
+      client.off("name", handleName);
+      // no count event subscription to remove
+    };
+  }, [hasSynced]);
 
   return (
     <PlayContext.Provider
@@ -130,7 +155,7 @@ export function PlayProvider({
         isProviderMissing: false,
         configureCursors,
         getMyPlayerIdentity,
-        getCursors,
+        cursors: cursorsState,
       }}
     >
       {children}
