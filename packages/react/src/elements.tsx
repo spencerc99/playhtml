@@ -1,7 +1,7 @@
 import { TagTypeToElement, TagType } from "@playhtml/common";
 import classNames from "classnames";
 import React, { useState } from "react";
-import { CanPlayElement, SharedBindingProps } from ".";
+import { CanPlayElement, WithPlayOptionalProps } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
 
@@ -9,9 +9,10 @@ export function CanMoveElement({
   children,
   dataSource,
   shared,
-}: { children: SingleChildOrPlayable } & SharedBindingProps) {
+}: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
+      // @ts-ignore
       tagInfo={[TagType.CanMove]}
       {...TagTypeToElement[TagType.CanMove]}
       {...(dataSource ? { dataSource } : {})}
@@ -32,11 +33,12 @@ export function CanToggleElement({
   dataSource,
   shared,
   readOnly,
-}: { children: SingleChildOrPlayable } & SharedBindingProps & {
+}: { children: SingleChildOrPlayable } & WithPlayOptionalProps & {
     readOnly?: boolean;
   }) {
   return (
     <CanPlayElement
+      // @ts-ignore
       tagInfo={[TagType.CanToggle]}
       {...TagTypeToElement[TagType.CanToggle]}
       {...(dataSource ? { dataSource } : {})}
@@ -57,9 +59,10 @@ export function CanSpinElement({
   children,
   dataSource,
   shared,
-}: { children: SingleChildOrPlayable } & SharedBindingProps) {
+}: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
+      // @ts-ignore
       tagInfo={[TagType.CanSpin]}
       {...TagTypeToElement[TagType.CanSpin]}
       {...(dataSource ? { dataSource } : {})}
@@ -79,9 +82,10 @@ export function CanGrowElement({
   children,
   dataSource,
   shared,
-}: { children: SingleChildOrPlayable } & SharedBindingProps) {
+}: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
+      // @ts-ignore
       tagInfo={[TagType.CanGrow]}
       {...TagTypeToElement[TagType.CanGrow]}
       {...(dataSource ? { dataSource } : {})}
@@ -110,6 +114,7 @@ export function CanDuplicateElement({
 
   return (
     <CanPlayElement
+      // @ts-ignore
       {...TagTypeToElement[TagType.CanDuplicate]}
       children={(renderData) => {
         const { data } = renderData;

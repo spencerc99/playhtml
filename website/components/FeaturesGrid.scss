@@ -1,0 +1,209 @@
+// Features Grid Styles
+.features-section {
+  width: 100%;
+  max-width: 1200px;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 30px;
+  padding: 0 20px;
+
+  @media screen and (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 0 10px;
+  }
+}
+
+.feature-card-wrapper {
+  position: relative;
+  // This allows the orbs to position relative to the wrapper
+}
+
+.feature-card {
+  background: var(--color-background-neutral);
+  border: 2px solid var(--color-text);
+  padding: 20px;
+  position: relative;
+  overflow: visible; // Key: allows elements to "poke out"
+  transition: none;
+  min-height: 150px;
+
+  // Retro inset shadow effect
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.5),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3), 2px 2px 0px rgba(0, 0, 0, 0.2);
+
+  &:hover {
+    // Slight press effect like old buttons
+    transform: translate(1px, 1px);
+    box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.5),
+      inset -1px -1px 0px rgba(0, 0, 0, 0.3), 1px 1px 0px rgba(0, 0, 0, 0.2);
+  }
+
+  &.coming-soon {
+    opacity: 0.8;
+    border: 2px dashed var(--color-text-translucent);
+    background: var(--color-background-neutral)
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(0, 0, 0, 0.05) 10px,
+        rgba(0, 0, 0, 0.05) 20px
+      );
+
+    .coming-soon-badge {
+      font-size: 0.7em;
+      background: var(--color-text);
+      color: var(--color-background-neutral);
+      padding: 2px 4px;
+      border: 1px solid var(--color-text);
+      margin-left: 8px;
+    }
+  }
+
+  // Title bar like old Mac windows
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, #f0f0f0, #d0d0d0);
+    border-bottom: 1px solid var(--color-text);
+
+    @media (prefers-color-scheme: dark) {
+      background: linear-gradient(to bottom, #404040, #202020);
+    }
+  }
+
+  h3 {
+    margin: 12px 0 8px 0; // Account for title bar
+    font-size: 1.1em;
+
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  p {
+    margin: 0 0 16px 0;
+    font-size: 0.85em;
+    line-height: 1.3;
+  }
+}
+
+.interactive-elements {
+  min-height: 80px; // Give space for interactive elements
+}
+
+// Shared Elements Card Styling
+.shared-elements-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.sync-indicator {
+  position: absolute;
+  bottom: 4px;
+  left: 2px;
+  padding: 2px 6px;
+  font-size: 0.6em;
+  z-index: 10;
+}
+
+// Portal window styling
+.portal-window {
+  position: absolute;
+  right: -40px;
+  width: 160px;
+  height: 120px;
+  border: 2px solid var(--color-text, #333);
+  background: var(--color-background-neutral, #f5f5f5);
+  z-index: 10;
+
+  // Retro computer styling
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.8),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.3), 2px 2px 4px rgba(0, 0, 0, 0.3); // Add external shadow for popping out
+}
+
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  background: linear-gradient(to bottom, #f0f0f0, #d0d0d0);
+  border-bottom: 1px solid var(--color-text, #333);
+  min-height: 12px;
+
+  @media (prefers-color-scheme: dark) {
+    background: linear-gradient(to bottom, #404040, #202020);
+  }
+}
+
+.portal-controls {
+  display: flex;
+  gap: 2px;
+
+  .control-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+
+    &.red {
+      background: #ff5f57;
+    }
+    &.yellow {
+      background: #ffbd2e;
+    }
+    &.green {
+      background: #28ca42;
+    }
+  }
+}
+
+.portal-url {
+  font-size: 0.5em;
+  color: var(--color-text, #333);
+  opacity: 0.8;
+}
+
+.portal-content {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: calc(100% - 16px);
+  text-align: center;
+}
+
+// Position orbs to "poke out" of the card
+.orb-1 {
+  top: -15px;
+  right: 20px;
+  z-index: 10;
+}
+
+.orb-2 {
+  top: 60px;
+  right: -20px; // Pokes out of the right edge
+  z-index: 10;
+}
+
+.orb-3 {
+  bottom: 20px;
+  right: 50px;
+  z-index: 10;
+}
+
+.fire-hydrant {
+  transition: transform 0.2s ease-in-out;
+  &:hover {
+    transform: scale(1.05);
+  }
+}

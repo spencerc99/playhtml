@@ -1,0 +1,246 @@
+.scheduled-behaviors {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  position: relative;
+}
+
+.clock-section {
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+.main-clock {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clock-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border: 2px solid var(--color-text);
+  border-radius: 50%;
+  background: var(--color-background-neutral);
+  position: relative;
+
+  // Retro inset styling
+  box-shadow: inset 1px 1px 2px rgba(255, 255, 255, 0.3),
+    inset -1px -1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.clock-time {
+  font-size: 0.6em;
+  font-weight: bold;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.clock-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+
+  &.triggered {
+    border-color: var(--color-text-accent);
+    animation: clockPulse 2s ease-out;
+  }
+}
+
+@keyframes clockPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+.tasks-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-text-translucent);
+  background: var(--color-background-neutral);
+  transition: all 0.3s ease;
+  position: relative;
+
+  // Retro inset styling
+  box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.2),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.2);
+
+  &.pending {
+    border-color: orange;
+    background: rgba(255, 165, 0, 0.1);
+    animation: taskPending 1s ease-in-out infinite alternate;
+  }
+
+  &.active {
+    border-color: green;
+    background: rgba(0, 255, 0, 0.1);
+    box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.3),
+      inset -1px -1px 0px rgba(0, 0, 0, 0.3), 0 0 4px rgba(0, 255, 0, 0.3);
+  }
+
+  &.triggering {
+    animation: taskTrigger 2s ease-out;
+  }
+}
+
+@keyframes taskPending {
+  0% {
+    box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.2),
+      inset -1px -1px 0px rgba(0, 0, 0, 0.2);
+  }
+  100% {
+    box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.3),
+      inset -1px -1px 0px rgba(0, 0, 0, 0.3), 0 0 6px rgba(255, 165, 0, 0.4);
+  }
+}
+
+@keyframes taskTrigger {
+  0% {
+    transform: scale(1);
+    background: rgba(0, 255, 0, 0.1);
+  }
+  20% {
+    transform: scale(1.05);
+    background: rgba(0, 255, 0, 0.3);
+  }
+  40% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+    background: rgba(0, 255, 0, 0.1);
+  }
+}
+
+.task-icon {
+  font-size: 1em;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.task-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.task-name {
+  font-size: 0.6em;
+  font-weight: bold;
+  color: var(--color-text);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-cron {
+  font-size: 0.45em;
+  color: var(--color-text-translucent);
+  line-height: 1;
+}
+
+.task-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  min-width: 30px;
+}
+
+.next-run {
+  font-size: 0.5em;
+  font-weight: bold;
+  color: var(--color-text);
+  text-align: center;
+  line-height: 1;
+
+  .active & {
+    color: green;
+    animation: activeTask 1s ease-in-out infinite alternate;
+  }
+
+  .pending & {
+    color: orange;
+    font-weight: bold;
+  }
+}
+
+@keyframes activeTask {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+.countdown-animation {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+}
+
+.countdown-dot {
+  width: 100%;
+  height: 100%;
+  background: orange;
+  border-radius: 50%;
+  animation: countdown 1s ease-in-out infinite;
+}
+
+@keyframes countdown {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.6;
+  }
+}

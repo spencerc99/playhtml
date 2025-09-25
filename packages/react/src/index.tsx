@@ -1,7 +1,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType } from "@playhtml/common";
+import { ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -22,38 +22,19 @@ export interface LoadingOptions {
 }
 
 // Shared binding props for both generic and tag-specific React elements
-export type SharedBindingProps = {
+export type WithPlayOptionalProps = {
   dataSource?: string;
   shared?: boolean | string;
+  standalone?: boolean;
+  loading?: LoadingOptions;
 };
 
 export type WithPlayProps<T, V> =
-  | (Omit<ReactElementInitializer<T, V>, "children"> & {
-      loading?: LoadingOptions;
-      // Shared binding props for shared elements
-      dataSource?: SharedBindingProps["dataSource"];
-      shared?: SharedBindingProps["shared"];
-    })
-  | (Omit<ReactElementInitializer<T, V>, "children" | "defaultData"> & {
-      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
-      standalone?: boolean; // Allow standalone mode without provider
-      loading?: LoadingOptions;
-      dataSource?: SharedBindingProps["dataSource"];
-      shared?: SharedBindingProps["shared"];
-    });
-
-// Add standalone and loading to the ReactElementInitializer type
-export type ReactElementInitializerWithStandalone<T, V> =
-  | (ReactElementInitializer<T, V> & {
-      standalone?: boolean;
-      loading?: LoadingOptions;
-    })
+  | (ReactElementInitializer<T, V> & WithPlayOptionalProps)
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
-      defaultData: undefined;
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
-      standalone?: boolean;
-      loading?: LoadingOptions;
-    });
+      defaultData: undefined;
+    } & WithPlayOptionalProps);
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
@@ -63,7 +44,7 @@ export function CanPlayElement<T, V>({
   standalone = false,
   loading,
   ...restProps
-}: ReactElementInitializerWithStandalone<T, V>) {
+}: WithPlayProps<T, V>) {
   const playContext = useContext(PlayContext);
 
   if (playContext.isProviderMissing && !standalone) {
@@ -104,8 +85,8 @@ export function CanPlayElement<T, V>({
     tagInfo: undefined,
     ...restProps,
   };
-  const dataSource = (restProps as any)?.dataSource as string | undefined;
-  const shared = (restProps as any)?.shared as boolean | string | undefined;
+  const dataSource = restProps?.dataSource;
+  const shared = restProps?.shared;
   const computedTagInfo = tagInfo
     ? Array.isArray(tagInfo)
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
@@ -125,12 +106,32 @@ export function CanPlayElement<T, V>({
   }
   const ref = useRef<HTMLElement>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
-  const [data, setData] = useState<T | undefined>(defaultData);
+  const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
+    typeof fnOrValue === "function"
+      ? // @ts-ignore
+        (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
+      : (fnOrValue as T);
+  const resolveDefaultAwareness = (
+    fnOrValue?: V | ((el: HTMLElement) => V)
+  ): V | undefined =>
+    typeof fnOrValue === "function"
+      ? // @ts-ignore
+        (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
+      : fnOrValue;
+
+  const [data, setData] = useState<T | undefined>(
+    defaultData !== undefined
+      ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
+      : undefined
+  );
+  const initialAwareness = resolveDefaultAwareness(
+    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined
+  );
   const [awareness, setAwareness] = useState<V[]>(
-    myDefaultAwareness ? [myDefaultAwareness] : []
+    initialAwareness ? [initialAwareness] : []
   );
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-    myDefaultAwareness
+    initialAwareness
   );
 
   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
@@ -154,13 +155,13 @@ export function CanPlayElement<T, V>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElement;
-      
+
       // Setup the element, which will handle data-source discovery if needed
       try {
         playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-        
+
         // If playhtml isn't initialized yet, log a helpful message
         if (!playhtml.elementHandlers) {
           console.warn(
@@ -186,24 +187,33 @@ export function CanPlayElement<T, V>({
       // console.log(
       //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
       // );
-      if (!ref.current?.id) {
-        console.warn(`[@playhtml/react] No id set for element ${ref.current}`);
+      const effectiveId = ref.current
+        ? getIdForElement(ref.current as unknown as HTMLElement)
+        : undefined;
+      if (!effectiveId) {
+        console.warn(
+          `[@playhtml/react] No effective id for element`,
+          ref.current
+        );
         return;
       }
-      const handler = getCurrentElementHandler(TagType.CanPlay, ref.current.id);
+      const handler = getCurrentElementHandler(TagType.CanPlay, effectiveId);
       if (!handler) {
         console.warn(
-          `[@playhtml/react] No handler found for element ${ref.current?.id}`
+          `[@playhtml/react] No handler found for element ${effectiveId}`
         );
         return;
       }
       handler.setData(newData);
     },
     setMyAwareness: (newLocalAwareness) => {
-      getCurrentElementHandler(
-        TagType.CanPlay,
-        ref.current?.id || ""
-      )?.setMyAwareness(newLocalAwareness);
+      const effectiveId = ref.current
+        ? getIdForElement(ref.current as unknown as HTMLElement)
+        : undefined;
+      if (!effectiveId) return;
+      getCurrentElementHandler(TagType.CanPlay, effectiveId)?.setMyAwareness(
+        newLocalAwareness
+      );
     },
     myAwareness,
     ref,
@@ -270,7 +280,7 @@ export function withSharedState<T extends object, V = any, P = any>(
     playProps: ReactElementEventHandlerData<T, V>,
     props: P
   ) => React.ReactElement,
-  options?: { standalone?: boolean; loading?: LoadingOptions }
+  options?: WithPlayOptionalProps
 ): (props: P) => JSX.Element {
   const renderChildren = (props: P): JSX.Element => {
     const configForProps =
@@ -279,10 +289,10 @@ export function withSharedState<T extends object, V = any, P = any>(
     return (
       <CanPlayElement
         tagInfo={undefined}
-        defaultData={undefined}
         standalone={options?.standalone}
         loading={options?.loading || configForProps.loading}
         {...configForProps}
+        {...options}
       >
         {(playData) => component(playData, props)}
       </CanPlayElement>

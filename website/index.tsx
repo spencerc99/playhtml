@@ -2,8 +2,10 @@ import { ElementInitializer } from "@playhtml/common";
 import words from "profane-words";
 import "./home.scss";
 // NOTE: this pins it to the working code so we can test out new library changes through this home page.
-import { playhtml } from "../packages/playhtml/src";
-import confetti from "canvas-confetti";
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { PlayProvider } from "@playhtml/react";
+import FeaturesGrid from "./components/FeaturesGrid";
 
 interface FormData {
   name: string;
@@ -15,163 +17,144 @@ function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
 }
 
-playhtml.init({
-  events: {
-    confetti: {
-      type: "confetti",
-      onEvent: (data) => {
-        const payload: any = { ...(data || {}) };
-        // NOTE: this serialization is needed because `slide` doesn't serialize to JSON properly.
-        if (payload.shapes && Array.isArray(payload.shapes)) {
-          payload.shapes = payload.shapes.map((shape: any) =>
-            shape === "slide" ? slide : shape
-          );
-        }
-        confetti(payload);
-      },
-    },
-  },
-  extraCapabilities: {
-    "can-post": {
-      defaultData: [],
-      defaultLocalData: { addedEntries: new Set() },
-      updateElement: ({
-        data: entries,
-        localData: { addedEntries },
-        setLocalData,
-      }) => {
-        const entriesToAdd = entries.filter(
-          (entry) => !addedEntries.has(getFormDataId(entry))
-        );
-
-        const guestbookDiv = document.getElementById("guestbookMessages")!;
-        entriesToAdd.forEach((entry) => {
-          const newEntry = document.createElement("div");
-          newEntry.classList.add("guestbook-entry");
-          const entryDate = new Date(entry.timestamp);
-          const time = entryDate.toTimeString().split(" ")[0];
-          const isToday =
-            entryDate.toDateString() === new Date().toDateString();
-
-          const dateString = (() => {
-            // TODO: this is naive and incorrect but works most of the time lol
-            const now = new Date();
-            if (
-              now.getFullYear() !== entryDate.getFullYear() ||
-              now.getMonth() !== entryDate.getMonth()
-            ) {
-              return "Sometime before";
-            } else if (isToday) {
-              return "Today";
-            } else if (now.getDate() - entryDate.getDate() === 1) {
-              return "Yesterday";
-            } else if (now.getDate() - entryDate.getDate() < 7) {
-              return "This week";
-            } else {
-              return "Sometime before";
-            }
-          })();
-
-          newEntry.innerHTML = `
-        <span class="guestbook-entry-timestamp">${dateString} at ${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
-          // TODO: add option to change order?
-          guestbookDiv.prepend(newEntry);
-          if (newEntry.querySelector(".guestbook-entry-name")) {
-            // @ts-ignore
-            newEntry.querySelector(".guestbook-entry-name")!.innerText =
-              entry.name;
-          }
-          if (newEntry.querySelector(".guestbook-entry-message")) {
-            // @ts-ignore
-            newEntry.querySelector(".guestbook-entry-message")!.innerText =
-              entry.message;
-          }
-          addedEntries.add(getFormDataId(entry));
-        });
-
-        setLocalData({ addedEntries });
-      },
-      onMount: ({ getElement, getData, setData }) => {
-        const element = getElement();
-        element.addEventListener("submit", (e: SubmitEvent) => {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          const entries = getData();
-
-          const formData = new FormData(e.target as HTMLFormElement);
-          // massage formData into new object
-
-          function clearMessage() {
-            const messageEle = element.querySelector('input[name="message"]');
-            if (!messageEle) {
-              return;
-            }
-            // @ts-ignore
-            messageEle.value = "";
-          }
-          // @ts-ignore
-          const inputData = Object.fromEntries(formData.entries());
-
-          if (!inputData.name || !inputData.message) {
-            clearMessage();
-            return false;
-          }
-
-          if (
-            words.some((word) => {
-              const regex = new RegExp(`\\b${word}\\b`, "gi");
-              return (
-                regex.test(String(inputData.message)) ||
-                regex.test(String(inputData.name))
+// Render React components
+const reactContentElement = document.getElementById("reactContent");
+if (reactContentElement) {
+  const root = createRoot(reactContentElement);
+  root.render(
+    <PlayProvider
+      initOptions={{
+        cursors: {
+          enableChat: true,
+          enabled: true,
+        },
+        // an event when someone opens the website?
+        extraCapabilities: {
+          "can-post": {
+            defaultData: [],
+            defaultLocalData: { addedEntries: new Set() },
+            updateElement: ({
+              data: entries,
+              localData: { addedEntries },
+              setLocalData,
+            }) => {
+              const entriesToAdd = entries.filter(
+                (entry) => !addedEntries.has(getFormDataId(entry))
               );
-            })
-          ) {
-            alert("now why would you try to do something like that?");
-            clearMessage();
-            return false;
-          }
 
-          // TODO: add length validation here
+              const guestbookDiv =
+                document.getElementById("guestbookMessages")!;
+              entriesToAdd.forEach((entry) => {
+                const newEntry = document.createElement("div");
+                newEntry.classList.add("guestbook-entry");
+                const entryDate = new Date(entry.timestamp);
+                const time = entryDate.toTimeString().split(" ")[0];
+                const isToday =
+                  entryDate.toDateString() === new Date().toDateString();
 
-          const timestamp = Date.now();
-          const newEntry: FormData = {
-            name: "someone",
-            message: "something",
-            ...inputData,
-            timestamp,
-          };
+                const dateString = (() => {
+                  // TODO: this is naive and incorrect but works most of the time lol
+                  const now = new Date();
+                  if (
+                    now.getFullYear() !== entryDate.getFullYear() ||
+                    now.getMonth() !== entryDate.getMonth()
+                  ) {
+                    return "Sometime before";
+                  } else if (isToday) {
+                    return "Today";
+                  } else if (now.getDate() - entryDate.getDate() === 1) {
+                    return "Yesterday";
+                  } else if (now.getDate() - entryDate.getDate() < 7) {
+                    return "This week";
+                  } else {
+                    return "Sometime before";
+                  }
+                })();
 
-          setData((d: FormData[]) => {
-            d.push(newEntry);
-          });
-          clearMessage();
-          return false;
-        });
-      },
-    } as ElementInitializer<FormData[]>,
-  },
-});
+                newEntry.innerHTML = `
+        <span class="guestbook-entry-timestamp">${dateString} at ${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
+                // TODO: add option to change order?
+                guestbookDiv.prepend(newEntry);
+                if (newEntry.querySelector(".guestbook-entry-name")) {
+                  // @ts-ignore
+                  newEntry.querySelector(".guestbook-entry-name")!.textContent =
+                    entry.name;
+                }
+                if (newEntry.querySelector(".guestbook-entry-message")) {
+                  // @ts-ignore
+                  newEntry.querySelector(
+                    ".guestbook-entry-message"
+                  )!.textContent = entry.message;
+                }
+                addedEntries.add(getFormDataId(entry));
+              });
 
-const slide = confetti.shapeFromText({ text: "🛝" });
+              setLocalData({ addedEntries });
+            },
+            onMount: ({ getElement, getData, setData }) => {
+              const element = getElement();
+              element.addEventListener("submit", (e: SubmitEvent) => {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                const entries = getData();
 
-document.body.addEventListener("click", (e) => {
-  // 1/4 clicks should trigger confetti
-  if (Math.random() > 0.33) {
-    return;
-  }
+                const formData = new FormData(e.target as HTMLFormElement);
+                // massage formData into new object
 
-  playhtml.dispatchPlayEvent({
-    type: "confetti",
-    eventPayload: {
-      origin: {
-        x: e.clientX / window.innerWidth,
-        y: e.clientY / window.innerHeight,
-      },
-      particleCount: 7,
-      startVelocity: 10,
-      spread: 70,
-      decay: 0.9,
-      shapes: ["slide", "circle"],
-    },
-  });
-});
+                function clearMessage() {
+                  const messageEle = element.querySelector(
+                    'input[name="message"]'
+                  );
+                  if (!messageEle) {
+                    return;
+                  }
+                  // @ts-ignore
+                  messageEle.value = "";
+                }
+                // @ts-ignore
+                const inputData = Object.fromEntries(formData.entries());
+
+                if (!inputData.name || !inputData.message) {
+                  clearMessage();
+                  return false;
+                }
+
+                if (
+                  words.some((word) => {
+                    const regex = new RegExp(`\\b${word}\\b`, "gi");
+                    return (
+                      regex.test(String(inputData.message)) ||
+                      regex.test(String(inputData.name))
+                    );
+                  })
+                ) {
+                  alert("now why would you try to do something like that?");
+                  clearMessage();
+                  return false;
+                }
+
+                // TODO: add length validation here
+
+                const timestamp = Date.now();
+                const newEntry: FormData = {
+                  name: "someone",
+                  message: "something",
+                  ...inputData,
+                  timestamp,
+                };
+
+                setData((d: FormData[]) => {
+                  d.push(newEntry);
+                });
+                clearMessage();
+                return false;
+              });
+            },
+          } as ElementInitializer<FormData[]>,
+        },
+      }}
+    >
+      <FeaturesGrid />
+    </PlayProvider>
+  );
+}

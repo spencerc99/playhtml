@@ -12,7 +12,7 @@ import {
   usePlayContext,
 } from "@playhtml/react";
 import { ReactionView } from "../../packages/react/examples/Reaction";
-import { Lamp } from "../../packages/react/examples/SharedLamp";
+import { SharedLamp } from "../../packages/react/examples/SharedLamp";
 import { OnlineIndicator } from "../../packages/react/examples/OnlineIndicator";
 import { ConfettiZone } from "../../packages/react/examples/Confetti";
 import { LiveVisitorCount } from "../../packages/react/examples/VisitorCount";
@@ -124,7 +124,7 @@ ReactDOM.createRoot(
       <LoadingStateTest />
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
-      <Lamp />
+      <SharedLamp />
       {/* Shared consumer test for React: toggle lamp from a source */}
       <CanToggleElement
         dataSource={"localhost:5173/shared-test-source#shared-lamp"}

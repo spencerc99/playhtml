@@ -62,7 +62,7 @@
             can-toggle
           />
         </div>
-        <img src="playhtml-logo.png" can-spin id="stamp" />
+        <img src="playhtml-logo.png" can-spin id="stamp" shared />
         <i
           >library-agnostic (<a href="https://github.com/spencerc99/playhtml/"
             >html</a
@@ -78,35 +78,22 @@
             >open-source library</a
           >
           for designing communal web experiences by enhancing web elements with
-          real-time, collaborative interactivity. Let's make more shared spaces
-          on the internet, where we can play and express ourselves.
+          real-time, collaborative interactivity. 
         </p>
         <p>
-          Why do websites feel lonely even though so much humanity is woven
-          through the internet these days? I think it's largely because most of
-          the internet is designed around a personal experience. We need new
-          imaginations and speculations for what the web could be and who we
-          could be on it.
+          Why does the internet feel lonely when we increasingly spend much of our time on it? I think it's because most of
+          the internet is a solitary experience, by design: personal algorithmic feeds, content-focused websites, no indicator of who else is here with us right now. 
           </p>
+          <p>We need new
+          imaginations and speculations for what the web could be and who we
+          could be on it.</p>
           
-          <p></p><i>playhtml</i> aims to provides infrastructure for
-          designing communal experiences that make the
+          <p>playhtml is designed as infrastructure for
+          designing communal internet experiences that make the
           <a href="https://spencerchang.substack.com/p/ti-08-aliving-the-web"
             >web feel alive</a
-          >. From
-          <a href="https://twitter.com/spencerc99/status/1630026043221479424"
-            >shared fingerprints on a letter</a
-          >
-          to <a href="https://campfire.we-b.site/">live reactions</a> to live
-          confetti with every click, I think we can reimagine the shape of
-          websites and how we can interact with each other on them. I hope this becomes a foundation for making diverse open forms of "social media."
+          >. Beyond individual experiences, and even the collaborative ones we are familiar with (shared cursors, canvases, etc.), there's so many more shapes for us to interact with each other online. I hope this makes it possible for anyone to create their own expressive social media "app" but via the open web rather than a closed platform.
         </p>
-        <img
-          class="lamp"
-          id="lamp-akari"
-          src="/noguchi-akari-a1.png"
-          can-toggle
-        />
 
         <p>
           Most of the elements on this page are live examples! Trying clicking,
@@ -115,7 +102,10 @@
           too.
           <!-- TODO: add a button that actives an AI cursor??? -->
         </p>
-        <h2>games & examples</h2>
+
+        <div id="reactContent"></div>
+
+         <h2>games & examples</h2>
         <ol>
           <li><a href="/fridge.html">fridge poetry</a></li>
           <li><a href="https://x.com/spencerc99/status/1825669162754355319"><a href="https://oil-wise-branch.glitch.me/">tug of war</a> (by <a href="https://github.com/chamod-gamage">Chamod</a>)</a></li>
@@ -129,12 +119,6 @@
           <li><a href="/candles.html">candle factory</a></li>
           <li>or view the <a href="https://www.are.na/spencer-chang/playhtml-sites">community example gallery</a></li>
         </ol>
-        <h2>plug-and-play capabilities</h2>
-        <p>
-          If you want to write the least code, you can use our available
-          templated capabilities to create shared elements with a single
-          attribute on HTML.
-        </p>
 
         <!-- candle credit: https://nyknck.itch.io/candle -->
         <img
@@ -158,64 +142,6 @@
           candle.resetShortcut = "shiftKey";
         </script>
 
-        <script>
-          function highlightElements(capability) {
-            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
-              ele.classList.add("highlighted");
-            });
-          }
-
-          function unhighlightElements(capability) {
-            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
-              ele.classList.remove("highlighted");
-            });
-          }
-        </script>
-
-        <ol class="capabilities">
-          <!-- TODO: move this into React to dynamically update -->
-          <li
-            onmouseenter="highlightElements('can-play')"
-            onmouseleave="unhighlightElements('can-play')"
-          >
-            can-play (custom capabilities
-            <a href="https://github.com/spencerc99/playhtml#can-play"
-              >with your code</a
-            >!)
-            <img class="code" src="/playhtml-can-play.png" />
-          </li>
-          <li
-            onmouseenter="highlightElements('can-move')"
-            onmouseleave="unhighlightElements('can-move')"
-          >
-            can-move
-            <img class="code" src="/playhtml-sign.png" />
-          </li>
-          <li
-            onmouseenter="highlightElements('can-toggle')"
-            onmouseleave="unhighlightElements('can-toggle')"
-          >
-            can-toggle <img class="code" src="/playhtml-can-toggle.png" />
-          </li>
-          <li>can-duplicate</li>
-          <li
-            onmouseenter="highlightElements('can-spin')"
-            onmouseleave="unhighlightElements('can-spin')"
-          >
-            can-spin <img class="code" src="/playhtml-can-spin.png" />
-          </li>
-          <li
-            onmouseenter="highlightElements('can-grow')"
-            onmouseleave="unhighlightElements('can-grow')"
-          >
-            can-grow
-          </li>
-          <li>
-            <a href="https://github.com/spencerc99/playhtml/pulls"
-              >yours-here</a
-            >
-          </li>
-        </ol>
         <p>
           I'd love for you to try this out and make your websites
           collaboratively interactive and feel <i>alive</i> like a lot of
@@ -245,7 +171,6 @@
           </p>
         </details>
         <hr />
-        <div id="reactContent"></div>
         <div id="guestbook">
           <form id="guestbookForm" can-post>
             <input
@@ -289,14 +214,12 @@
       </div>
     </div>
     <footer>
-      <div>
+      <div >
         an open-source library created and maintained by
         <a href="https://spencer.place/">spencer</a>
       </div>
     </footer>
 
     <script type="module" src="./index.tsx"></script>
-    <!-- import cursor chat -->
-    <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
   </body>
 </html>

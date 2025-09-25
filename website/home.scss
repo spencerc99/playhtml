@@ -150,13 +150,6 @@ i {
   }
 }
 
-#lamp-hanging {
-}
-
-#lamp-akari {
-  float: right;
-}
-
 @keyframes jiggle {
   0% {
     transform: rotate(0deg);
@@ -412,7 +405,8 @@ kbd {
       .code {
         display: block;
         position: absolute;
-        right: 0;
+        right: -50%;
+        z-index: 1000;
         top: 0;
         @media screen and (max-width: 768px) {
           position: initial;
