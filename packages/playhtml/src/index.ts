@@ -14,7 +14,6 @@ import {
   generatePersistentPlayerIdentity,
   deepReplaceIntoProxy,
 } from "@playhtml/common";
-import { normalizePath } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./development";
 import type { PlayerIdentity } from "@playhtml/common";
 import * as Y from "yjs";
