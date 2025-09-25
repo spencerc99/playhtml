@@ -15,7 +15,20 @@ import {
   ORIGIN_C2S,
   Subscriber,
   SharedRefEntry,
+  ensureExists,
 } from "./const";
+import {
+  PartyKitRequest,
+  SubscribeRequest,
+  ExportPermissionsRequest,
+  ApplySubtreesImmediateRequest,
+  SubscribeResponse,
+  ExportPermissionsResponse,
+  ApplySubtreesResponse,
+  isSubscribeRequest,
+  isExportPermissionsRequest,
+  isApplySubtreesImmediateRequest,
+} from "./request";
 
 export default class PartyServer implements Party.Server {
   constructor(public room: Party.Room) {}
@@ -229,14 +242,15 @@ export default class PartyServer implements Party.Server {
         if (!elementIds?.length) return;
         try {
           const sourceRoom = mainParty.get(sourceRoomId);
+          const subscribeRequest: SubscribeRequest = {
+            action: "subscribe",
+            consumerRoomId: this.room.id,
+            elementIds,
+          };
           await sourceRoom.fetch({
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              action: "subscribe",
-              consumerRoomId: this.room.id,
-              elementIds,
-            }),
+            body: JSON.stringify(subscribeRequest),
           });
         } catch {}
       })
@@ -405,7 +419,7 @@ export default class PartyServer implements Party.Server {
           subtreesForNew = { [tag]: { [element.elementId]: plain } };
         }
       });
-      if (!subtreesForNew) return;
+      if (subtreesForNew === null) return;
 
       const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
@@ -415,14 +429,16 @@ export default class PartyServer implements Party.Server {
           if (!elementIds || !elementIds.includes(element.elementId)) return;
           const consumerRoom = mainParty.get(consumerRoomId);
           try {
+            const applyRequest: ApplySubtreesImmediateRequest = {
+              action: "apply-subtrees-immediate",
+              subtrees: ensureExists(subtreesForNew),
+              sender: this.room.id,
+              originKind: "source",
+            };
             await consumerRoom.fetch({
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                action: "apply-subtrees-immediate",
-                subtrees: subtreesForNew,
-                originKind: "source",
-              }),
+              body: JSON.stringify(applyRequest),
             });
           } catch {}
         })
@@ -431,7 +447,6 @@ export default class PartyServer implements Party.Server {
   }
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
-    const room = this.room;
     // Opportunistically schedule an alarm if subscribers exist
     await this.ensureAlarmIfSubscribersPresent();
 
@@ -494,17 +509,12 @@ export default class PartyServer implements Party.Server {
       if (request.method !== "POST") {
         return new Response("Method Not Allowed", { status: 405 });
       }
-      const body = await request.json();
-      const action = (body && (body as any).action) as string;
 
-      if (action === "subscribe") {
+      const body: unknown = await request.json();
+
+      if (isSubscribeRequest(body)) {
         // Called on SOURCE room; registers a consumer room id
-        const consumerRoomId = (body && (body as any).consumerRoomId) as string;
-        const elementIdsRaw = (body && (body as any).elementIds) as
-          | string[]
-          | undefined;
-        if (!consumerRoomId)
-          return new Response("Bad Request", { status: 400 });
+        const { consumerRoomId, elementIds: elementIdsRaw } = body;
         const elementIds = Array.isArray(elementIdsRaw)
           ? Array.from(
               new Set(elementIdsRaw.filter((x) => typeof x === "string"))
@@ -532,49 +542,33 @@ export default class PartyServer implements Party.Server {
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            subscribed: true,
-            elementIds: requestedIds,
-          }),
-          {
-            headers: { "content-type": "application/json" },
-          }
-        );
+        const response: SubscribeResponse = {
+          ok: true,
+          subscribed: true,
+          elementIds: requestedIds,
+        };
+        return new Response(JSON.stringify(response), {
+          headers: { "content-type": "application/json" },
+        });
       }
 
-      if (action === "export-permissions") {
+      if (isExportPermissionsRequest(body)) {
         // Returns simple permissions (read-only/read-write) for requested elementIds
-        const elementIds: string[] = Array.isArray((body as any)?.elementIds)
-          ? (body as any).elementIds
-          : [];
+        const { elementIds } = body;
         const perms = await this.getSharedPermissions();
         const filtered: Record<string, "read-only" | "read-write"> = {};
         for (const id of elementIds) {
           if (perms[id]) filtered[id] = perms[id];
         }
-        return new Response(JSON.stringify({ permissions: filtered }), {
+        const response: ExportPermissionsResponse = { permissions: filtered };
+        return new Response(JSON.stringify(response), {
           headers: { "content-type": "application/json" },
         });
       }
 
-      if (action === "apply-subtrees-immediate") {
+      if (isApplySubtreesImmediateRequest(body)) {
         // Applies provided subtrees immediately and marks origin to suppress echo
-        const subtrees = (((body as any) || {}).subtrees || {}) as Record<
-          string,
-          Record<string, any>
-        >;
-        if (!subtrees || typeof subtrees !== "object") {
-          return new Response("Bad Request", { status: 400 });
-        }
-        const sender = (body && (body as any).sender) as string | undefined;
-        const originKind = (body && (body as any).originKind) as
-          | "consumer"
-          | "source";
-        if (!sender || !originKind) {
-          return new Response("Bad Request", { status: 400 });
-        }
+        const { subtrees, sender, originKind } = body;
 
         const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
         // Determine direction by inspecting our local state relative to sender
@@ -639,7 +633,8 @@ export default class PartyServer implements Party.Server {
           }
         }
         if (!Object.keys(subtreesToApply).length) {
-          return new Response(JSON.stringify({ ok: true }), {
+          const response: ApplySubtreesResponse = { ok: true };
+          return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
         }
@@ -677,20 +672,23 @@ export default class PartyServer implements Party.Server {
               }
               const consumerRoom = mainParty.get(consumerRoomId);
               try {
+                const applyRequest: ApplySubtreesImmediateRequest = {
+                  action: "apply-subtrees-immediate",
+                  subtrees: toSend,
+                  sender: this.room.id,
+                  originKind: "source",
+                };
                 await consumerRoom.fetch({
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({
-                    action: "apply-subtrees-immediate",
-                    originKind: "source",
-                    subtrees: toSend,
-                  }),
+                  body: JSON.stringify(applyRequest),
                 });
               } catch {}
             })
           );
         }
-        return new Response(JSON.stringify({ ok: true }), {
+        const response: ApplySubtreesResponse = { ok: true };
+        return new Response(JSON.stringify(response), {
           headers: { "content-type": "application/json" },
         });
       }
@@ -778,14 +776,15 @@ export default class PartyServer implements Party.Server {
           );
           if (!Object.keys(subtrees).length) return;
           const consumerRoom = mainParty.get(consumerRoomId);
+          const applyRequest: ApplySubtreesImmediateRequest = {
+            action: "apply-subtrees-immediate",
+            subtrees,
+            sender: this.room.id,
+            originKind: "consumer",
+          };
           await consumerRoom.fetch({
             method: "POST",
-            body: JSON.stringify({
-              action: "apply-subtrees-immediate",
-              subtrees,
-              sender: this.room.id,
-              originKind: "consumer",
-            }),
+            body: JSON.stringify(applyRequest),
           });
         })
       );
@@ -802,14 +801,15 @@ export default class PartyServer implements Party.Server {
         const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
         if (!Object.keys(subtrees).length) continue;
         const sourceRoom = mainParty.get(sourceRoomId);
+        const applyRequest: ApplySubtreesImmediateRequest = {
+          action: "apply-subtrees-immediate",
+          subtrees,
+          sender: this.room.id,
+          originKind: "consumer",
+        };
         await sourceRoom.fetch({
           method: "POST",
-          body: JSON.stringify({
-            action: "apply-subtrees-immediate",
-            originKind: "consumer",
-            subtrees,
-            sender: this.room.id,
-          }),
+          body: JSON.stringify(applyRequest),
         });
       }
     });
