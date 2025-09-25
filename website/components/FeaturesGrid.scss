@@ -182,41 +182,6 @@
   text-align: center;
 }
 
-.placeholder-element {
-  .element-icon {
-    font-size: 1.5em;
-    margin-bottom: 4px;
-  }
-
-  .element-text {
-    font-size: 0.7em;
-    font-weight: bold;
-    margin-bottom: 2px;
-    color: var(--color-text, #333);
-  }
-
-  .element-note {
-    font-size: 0.6em;
-    opacity: 0.6;
-    font-style: italic;
-    color: var(--color-text, #333);
-  }
-}
-
-.sync-status {
-  margin-top: 8px;
-  font-size: 0.6em;
-  color: #28ca42; // Green to indicate ready status
-  font-weight: bold;
-}
-
-.fire-hydrant {
-  transition: transform 0.2s ease-in-out;
-  &:hover {
-    transform: scale(1.05);
-  }
-}
-
 // Position orbs to "poke out" of the card
 .orb-1 {
   top: -15px;
@@ -234,4 +199,11 @@
   bottom: 20px;
   right: 50px;
   z-index: 10;
+}
+
+.fire-hydrant {
+  transition: transform 0.2s ease-in-out;
+  &:hover {
+    transform: scale(1.05);
+  }
 }

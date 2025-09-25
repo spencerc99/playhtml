@@ -111,8 +111,6 @@ function createRainEffect() {
   }, 6000);
 }
 
-// No longer needed - using animated GIF background for rain effect
-
 export function RainSprinkler({ style }: { style?: React.CSSProperties }) {
   const { triggerRain } = useRain();
 
@@ -123,7 +121,6 @@ export function RainSprinkler({ style }: { style?: React.CSSProperties }) {
         width: "100%",
       }}
     >
-      {/* Fire hydrant that pokes out */}
       <div
         className="fire-hydrant"
         onClick={triggerRain}

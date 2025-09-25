@@ -147,7 +147,6 @@ export default function FeaturesGrid() {
     <section className="features-section">
       <h2>features</h2>
       <div className="features-grid">
-        {/* Reactive Data - Implemented */}
         <div className="feature-card-wrapper">
           <FeatureCard
             title="Reactive Data"
@@ -179,7 +178,6 @@ export default function FeaturesGrid() {
           </FeatureCard>
         </div>
 
-        {/* Data Modes - Awareness vs Persistent */}
         <div className="feature-card-wrapper">
           <FeatureCard
             title="Flexible Persistence"
@@ -287,17 +285,8 @@ export default function FeaturesGrid() {
           </FeatureCard>
         </div>
 
-        {/* Plug-and-Play ↔ Customization */}
-        {/* <FeatureCard
-          title="Flexible Architecture"
-          description="From magical single attributes to full customization"
-        >
-          <div className="placeholder-visual">⚡ ⚙️</div>
-        </FeatureCard> */}
+        {/* TODO: Traveling elements? like a cat wandeirng around & traveling between pages */}
 
-        {/* Traveling elements? like a cat wandeirng around & traveling between pages */}
-
-        {/* Cross-Page State Sharing */}
         <div className="feature-card-wrapper">
           <SharedColorProvider>
             <FeatureCard
@@ -318,7 +307,6 @@ export default function FeaturesGrid() {
           </SharedColorProvider>
         </div>
 
-        {/* Web Components - Coming Soon */}
         <FeatureCard
           title="Component Store & Gallery"
           description="Plug-and-play collaborative elements as web components"
@@ -327,7 +315,6 @@ export default function FeaturesGrid() {
           <ComponentStore />
         </FeatureCard>
 
-        {/* Permissions - Coming Soon */}
         <FeatureCard
           title="Permissions"
           description="Fine-grained access control for behaviors"
@@ -336,7 +323,6 @@ export default function FeaturesGrid() {
           <Permissions />
         </FeatureCard>
 
-        {/* Scheduled Behaviors - Coming Soon */}
         <FeatureCard
           title="Scheduled Behaviors"
           description="Cron-like triggering of behaviors"
