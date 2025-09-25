@@ -1,5 +1,18 @@
 # Change Log
 
+## 2.5.0
+
+### Minor Changes
+
+- 60666b0: Handle shared elements. Declare a shared element via `shared` attribute, and reference it on other pages / domains via `data-source` attribute. Simple permissioning is supported for read-only and read-write.
+
+### Patch Changes
+
+- 325bfde: Make cursor handling reactive in react package, migrating from `getCursors` -> `cursors` in `PlayContext`.
+- Updated dependencies [325bfde]
+- Updated dependencies [60666b0]
+  - @playhtml/common@0.3.0
+
 ## 2.4.1
 
 ### Patch Changes
