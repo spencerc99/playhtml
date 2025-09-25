@@ -9,11 +9,11 @@ interface Props {
   name: string;
 }
 
-function color(
-  { data, setData }: CanPlayProps<{ colors: ColorChange[] }>,
-  props: Props
-) {
+function color({ data, setData }, props: Props) {
   props.name;
+  {
+    data;
+  }
   return <div></div>;
 }
 

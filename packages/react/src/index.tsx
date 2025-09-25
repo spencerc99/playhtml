@@ -30,6 +30,13 @@ export type WithPlayOptionalProps = {
 };
 
 export type WithPlayProps<T, V> =
+  | (Omit<ReactElementInitializer<T, V>, "children"> & WithPlayOptionalProps)
+  | (Omit<ReactElementInitializer<T, V>, "defaultData" | "children"> & {
+      tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
+      defaultData: undefined;
+    } & WithPlayOptionalProps);
+
+export type CanPlayProps<T extends object, V = any> =
   | (ReactElementInitializer<T, V> & WithPlayOptionalProps)
   | (Omit<ReactElementInitializer<T, V>, "defaultData"> & {
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
@@ -38,13 +45,13 @@ export type WithPlayProps<T, V> =
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
-export function CanPlayElement<T, V>({
+export function CanPlayElement<T extends object, V = any>({
   children,
   id,
   standalone = false,
   loading,
   ...restProps
-}: WithPlayProps<T, V>) {
+}: CanPlayProps<T, V>) {
   const playContext = useContext(PlayContext);
 
   if (playContext.isProviderMissing && !standalone) {
@@ -243,11 +250,6 @@ export function CanPlayElement<T, V>({
   );
 }
 
-export type CanPlayProps<
-  T extends object,
-  V = any
-> = ReactElementEventHandlerData<T, V>;
-
 /**
  * Wrapper to create a higher order component that passes down shared, global state to a component.
  * You can either pass in a named function or pass an inline one. See examples below:
@@ -288,7 +290,6 @@ export function withSharedState<T extends object, V = any, P = any>(
 
     return (
       <CanPlayElement
-        tagInfo={undefined}
         standalone={options?.standalone}
         loading={options?.loading || configForProps.loading}
         {...configForProps}
