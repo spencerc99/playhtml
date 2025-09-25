@@ -20,7 +20,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build-packages && changeset publish",
-    "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do if [ \"$(basename \"$dir\")\" != \"extension\" ]; then (cd \"$dir\" && bunx tsc); fi; done",
+    "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do if [ \"$(basename \"$dir\")\" != \"extension\" ]; then (cd \"$dir\" && bunx tsc); fi; done"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230518.0",
