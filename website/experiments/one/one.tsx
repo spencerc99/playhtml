@@ -169,7 +169,7 @@ const ColorController = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider initOptions={{}}>
+  <PlayProvider>
     <ColorController></ColorController>
   </PlayProvider>
 );
