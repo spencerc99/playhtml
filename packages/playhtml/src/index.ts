@@ -512,8 +512,8 @@ async function initPlayHTML({
   window.playhtml = playhtml;
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
-  const normalizedPath = normalizePath(inputRoom || "/");
-  const room = encodeURIComponent(window.location.host + "-" + normalizedPath);
+  // TODO: We want to normalize here but we can't without losing data.
+  const room = encodeURIComponent(window.location.host + "-" + inputRoom);
 
   const partykitHost = getPartykitHost(host);
   __currentRoomId = room;

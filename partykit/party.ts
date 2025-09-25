@@ -29,11 +29,6 @@ export default class implements Party.Server {
   private providerOptions: import("y-partykit").YPartyKitOptions | undefined;
   private observersAttached = false;
 
-  // --- Helper: normalize path used in room id derivation
-  normalizePath(path: string): string {
-    return normalizePath(path);
-  }
-
   private async isSourceRoom(): Promise<boolean> {
     return !!(await this.room.storage.get(STORAGE_KEYS.sharedPermissions));
   }
