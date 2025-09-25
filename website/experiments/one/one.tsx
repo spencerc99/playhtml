@@ -14,7 +14,7 @@ const ColorController = withSharedState(
       colors: [] as ColorChange[],
     },
     myDefaultAwareness: undefined as undefined | { color: string },
-    shared: true,
+    // shared: true,
   },
   ({ data, setData, awareness, setMyAwareness }) => {
     const { colors } = data;
