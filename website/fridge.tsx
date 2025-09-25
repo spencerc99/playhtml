@@ -553,7 +553,6 @@ function Main() {
       <PlayProvider
         initOptions={{
           room: wall,
-          cursors: { enabled: true },
           onError: () => {
             setHasError(true);
           },

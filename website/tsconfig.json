@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["./**.ts", "./**.tsx"],
+  "exclude": [
+    "src/__tests__",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
+  ],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "allowUmdGlobalAccess": true
+  }
+}
