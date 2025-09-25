@@ -4,7 +4,6 @@ import { syncedStore, getYjsValue } from "@syncedstore/core";
 import { deepReplaceIntoProxy } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
-import { deriveRoomId } from "@playhtml/common";
 import { supabase } from "./db";
 import { AdminHandler } from "./admin";
 import {
@@ -18,9 +17,7 @@ import {
   ensureExists,
 } from "./const";
 import {
-  PartyKitRequest,
   SubscribeRequest,
-  ExportPermissionsRequest,
   ApplySubtreesImmediateRequest,
   SubscribeResponse,
   ExportPermissionsResponse,
@@ -29,6 +26,12 @@ import {
   isExportPermissionsRequest,
   isApplySubtreesImmediateRequest,
 } from "./request";
+import {
+  getSourceRoomId,
+  parseSharedElementsFromUrl,
+  parseSharedReferencesFromUrl,
+  SharedElementPermissions,
+} from "./sharing";
 
 export default class PartyServer implements Party.Server {
   constructor(public room: Party.Room) {}
@@ -88,7 +91,6 @@ export default class PartyServer implements Party.Server {
   private observersAttached = false;
   private adminHandler = new AdminHandler(this);
 
-  // Storage getters and setters to clean up repeated STORAGE_KEYS patterns
   async getSubscribers(): Promise<Subscriber[]> {
     return (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
   }
@@ -106,13 +108,13 @@ export default class PartyServer implements Party.Server {
   }
 
   async getSharedPermissions(): Promise<
-    Record<string, "read-only" | "read-write">
+    Record<string, SharedElementPermissions>
   > {
     return (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
   }
 
   async setSharedPermissions(
-    permissions: Record<string, "read-only" | "read-write">
+    permissions: Record<string, SharedElementPermissions>
   ): Promise<void> {
     await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
   }
@@ -133,58 +135,13 @@ export default class PartyServer implements Party.Server {
     }
   }
 
-  async isSourceRoom(): Promise<boolean> {
-    const permissions = await this.getSharedPermissions();
-    return Object.keys(permissions).length > 0;
-  }
-
-  // --- Helper: compute source room id from domain and pathOrRoom
-  getSourceRoomId(domain: string, pathOrRoom: string): string {
-    return deriveRoomId(domain, pathOrRoom);
-  }
-
-  // --- Helper: parse shared references array from connection/request URL
-  parseSharedReferencesFromUrl(url: string): Array<{
-    domain: string;
-    path: string;
-    elementId: string;
-  }> {
-    try {
-      const u = new URL(url);
-      const raw = u.searchParams.get("sharedReferences");
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-      return [];
-    } catch {
-      return [];
-    }
-  }
-
-  // --- Helper: parse shared elements (declared on source) from URL params
-  parseSharedElementsFromUrl(url: string): Array<{
-    elementId: string;
-    permissions?: string; // 'read-only' | 'read-write'
-  }> {
-    try {
-      const u = new URL(url);
-      const raw = u.searchParams.get("sharedElements");
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-      return [];
-    } catch {
-      return [];
-    }
-  }
-
   // --- Helper: group SharedReferences into storage entries
   private groupRefsToEntries(
     refs: Array<{ domain: string; path: string; elementId: string }>
   ): Array<{ sourceRoomId: string; elementIds: string[] }> {
     const bySource = new Map<string, Set<string>>();
     for (const ref of refs) {
-      const srcId = this.getSourceRoomId(ref.domain, ref.path);
+      const srcId = getSourceRoomId(ref.domain, ref.path);
       const set = bySource.get(srcId) ?? new Set<string>();
       set.add(ref.elementId);
       bySource.set(srcId, set);
@@ -364,7 +321,7 @@ export default class PartyServer implements Party.Server {
   ): Promise<void> {
     if (!reference?.domain || !reference?.path || !reference?.elementId) return;
 
-    const sourceRoomId = this.getSourceRoomId(reference.domain, reference.path);
+    const sourceRoomId = getSourceRoomId(reference.domain, reference.path);
     const { entries, changed } = await this.mergeAndStoreSharedRefs([
       { sourceRoomId, elementIds: [reference.elementId] },
     ]);
@@ -376,7 +333,7 @@ export default class PartyServer implements Party.Server {
     sender: Party.Connection<unknown>
   ): Promise<void> {
     const perms = await this.getSharedPermissions();
-    const filtered: Record<string, "read-only" | "read-write"> = {};
+    const filtered: Record<string, SharedElementPermissions> = {};
 
     for (const id of elementIds) {
       if (perms[id]) filtered[id] = perms[id];
@@ -389,7 +346,7 @@ export default class PartyServer implements Party.Server {
   private async handleRegisterSharedElement(
     element: {
       elementId: string;
-      permissions: "read-only" | "read-write";
+      permissions: SharedElementPermissions;
       path?: string;
     },
     sender: Party.Connection<unknown>
@@ -452,7 +409,7 @@ export default class PartyServer implements Party.Server {
 
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL
-    const sharedReferences = this.parseSharedReferencesFromUrl(ctx.request.url);
+    const sharedReferences = parseSharedReferencesFromUrl(ctx.request.url);
 
     // Persist consumer interest mapping for later pulls/mirroring
     if (sharedReferences.length) {
@@ -462,9 +419,9 @@ export default class PartyServer implements Party.Server {
     }
 
     // Persist source-declared permissions for simple global read-only
-    const sharedElements = this.parseSharedElementsFromUrl(ctx.request.url);
+    const sharedElements = parseSharedElementsFromUrl(ctx.request.url);
     if (sharedElements.length) {
-      const permissionsByElementId: Record<string, "read-only" | "read-write"> =
+      const permissionsByElementId: Record<string, SharedElementPermissions> =
         {};
       for (const el of sharedElements) {
         const mode =
@@ -556,7 +513,7 @@ export default class PartyServer implements Party.Server {
         // Returns simple permissions (read-only/read-write) for requested elementIds
         const { elementIds } = body;
         const perms = await this.getSharedPermissions();
-        const filtered: Record<string, "read-only" | "read-write"> = {};
+        const filtered: Record<string, SharedElementPermissions> = {};
         for (const id of elementIds) {
           if (perms[id]) filtered[id] = perms[id];
         }
@@ -571,14 +528,12 @@ export default class PartyServer implements Party.Server {
         const { subtrees, sender, originKind } = body;
 
         const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
-        // Determine direction by inspecting our local state relative to sender
-        // - If 'sender' matches a subscriber.consumerRoomId, this room is a SOURCE receiving from a CONSUMER
-        // - If 'sender' matches a sharedReferences.sourceRoomId, this room is a CONSUMER receiving from a SOURCE
-        const subsForDirCheck = await this.getSubscribers();
+        const subscribers = await this.getSubscribers();
         const sharedRefs = await this.getSharedReferences();
+
         const receivingFromConsumer =
           originKind === "consumer" &&
-          subsForDirCheck.some((s) => s.consumerRoomId === sender);
+          subscribers.some((s) => s.consumerRoomId === sender);
         const receivingFromSource =
           originKind === "source" &&
           sharedRefs.some((r) => r.sourceRoomId === sender);
@@ -753,7 +708,7 @@ export default class PartyServer implements Party.Server {
     if (this.observersAttached) return;
     const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
 
-    // Source room: on change, push to each subscribed consumer immediately
+    // Handle source room updates for shared elements: on change, push to each subscribed consumer immediately
     yDoc.on("update", async (_update: Uint8Array, origin: any) => {
       // Ignore updates we just applied from a consumer pull to avoid echo
       if (origin === ORIGIN_C2S) return;
@@ -790,7 +745,7 @@ export default class PartyServer implements Party.Server {
       );
     });
 
-    // Consumer room: when our doc changes for tracked shared refs, push back to sources immediately
+    // Handle consumer room updates for shared references: when our doc changes for tracked shared refs, push back to sources immediately
     yDoc.on("update", async (_update: Uint8Array, origin: any) => {
       // Ignore updates we just applied from a source push to avoid echo
       if (origin === ORIGIN_S2C) return;
