@@ -103,7 +103,6 @@ export function PlayProvider({
     };
   };
 
-  // Reactive cursors state, subscribed to global cursor events
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
     allColors: [] as string[],
     color: "",
@@ -134,13 +133,11 @@ export function PlayProvider({
     client.on("allColors", handleAllColors);
     client.on("color", handleColor);
     client.on("name", handleName);
-    // no count event subscription needed
 
     return () => {
       client.off("allColors", handleAllColors);
       client.off("color", handleColor);
       client.off("name", handleName);
-      // no count event subscription to remove
     };
   }, [hasSynced]);
 

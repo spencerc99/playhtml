@@ -1,11 +1,11 @@
 import type * as Party from "partykit/server";
 import { onConnect, unstable_getYDoc, YPartyKitOptions } from "y-partykit";
-import { createClient } from "@supabase/supabase-js";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
-import { deepReplaceIntoProxy } from "@playhtml/common";
+import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { deriveRoomId } from "@playhtml/common";
+import { supabase } from "./db";
 
 type Subscriber = {
   consumerRoomId: string;
@@ -19,13 +19,6 @@ type SharedRefEntry = {
   elementIds: string[];
   lastSeen?: string;
 };
-
-// Create a single supabase client for interacting with your database
-const supabase = createClient(
-  process.env.SUPABASE_URL as string,
-  process.env.SUPABASE_KEY as string,
-  { auth: { persistSession: false } }
-);
 
 // Storage key constants for consistency
 const STORAGE_KEYS = {
@@ -47,6 +40,8 @@ const DEFAULT_PRUNE_INTERVAL_MS = (() => {
 const ORIGIN_S2C = "__bridge_s2c__";
 const ORIGIN_C2S = "__bridge_c2s__";
 
+// TODO: clean up all the storage retrieval with actual getters by the storage key
+// TODO: move the admin stuff into another class to clean up long file
 export default class implements Party.Server {
   constructor(public room: Party.Room) {}
   // Reuse the exact same options for all Y.Doc access
@@ -124,22 +119,6 @@ export default class implements Party.Server {
 
   private async isSourceRoom(): Promise<boolean> {
     return !!(await this.room.storage.get(STORAGE_KEYS.sharedPermissions));
-  }
-
-  private clonePlain<T>(value: T): T {
-    // Same cloning logic as PlayHTML
-    try {
-      // @ts-ignore
-      if (typeof structuredClone === "function") {
-        // @ts-ignore
-        return structuredClone(value);
-      }
-    } catch {}
-    if (value === null || value === undefined) return value;
-    if (typeof value === "object") {
-      return JSON.parse(JSON.stringify(value));
-    }
-    return value;
   }
 
   // --- Helper: compute source room id from domain and pathOrRoom
@@ -871,7 +850,7 @@ export default class implements Party.Server {
         );
 
         // Clone the store.play data to get a plain object
-        const playData = this.clonePlain(store.play);
+        const playData = clonePlain(store.play);
         const hasAnyData = Object.keys(playData).some(
           (tag) => Object.keys(playData[tag] || {}).length > 0
         );
@@ -1055,7 +1034,7 @@ export default class implements Party.Server {
           { play: {} },
           directYDoc
         );
-        directData = this.clonePlain(directStore.play);
+        directData = clonePlain(directStore.play);
       }
 
       // Method 2: Live server approach (using unstable_getYDoc like the running server)
@@ -1081,7 +1060,7 @@ export default class implements Party.Server {
           { play: {} },
           liveYDoc
         );
-        liveData = this.clonePlain(liveStore.play);
+        liveData = clonePlain(liveStore.play);
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error("Live data extraction failed:", msg);

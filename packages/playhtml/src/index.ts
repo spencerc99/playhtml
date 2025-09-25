@@ -13,6 +13,7 @@ import {
   RegisteredPlayEvent,
   generatePersistentPlayerIdentity,
   deepReplaceIntoProxy,
+  clonePlain,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./development";
 import type { PlayerIdentity } from "@playhtml/common";
@@ -774,22 +775,6 @@ function createPlayElementData<T extends TagType, TData = any>(
   };
 
   return elementData;
-}
-
-function clonePlain<T>(value: T): T {
-  // Prefer structuredClone when available; fallback to JSON clone for plain data
-  try {
-    // @ts-ignore
-    if (typeof structuredClone === "function") {
-      // @ts-ignore
-      return structuredClone(value);
-    }
-  } catch {}
-  if (value === null || value === undefined) return value;
-  if (typeof value === "object") {
-    return JSON.parse(JSON.stringify(value));
-  }
-  return value;
 }
 
 function isCorrectElementInitializer(
