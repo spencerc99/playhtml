@@ -229,7 +229,7 @@ export default class PartyServer implements Party.Server {
         if (!elementIds?.length) return;
         try {
           const sourceRoom = mainParty.get(sourceRoomId);
-          const res = await sourceRoom.fetch({
+          await sourceRoom.fetch({
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -238,44 +238,6 @@ export default class PartyServer implements Party.Server {
               elementIds,
             }),
           });
-          // technically we don't need this because we already check for the permissions
-          // when we apply permissions, but it's good to have extra protection!
-          let allowedIds: string[] = [];
-          if (res.ok) {
-            try {
-              const data = (await res.json()) as any;
-              if (data && data.subscribed && Array.isArray(data.elementIds)) {
-                allowedIds = data.elementIds.filter(
-                  (x: any) => typeof x === "string"
-                );
-              }
-            } catch {}
-          }
-          // Update this room's sharedReferences to reflect allowedIds only
-          const existing = await this.getSharedReferences();
-          const nowIso = new Date().toISOString();
-          const idx = existing.findIndex(
-            (e) => e.sourceRoomId === sourceRoomId
-          );
-          if (allowedIds.length) {
-            if (idx !== -1) {
-              existing[idx] = {
-                sourceRoomId,
-                elementIds: Array.from(new Set(allowedIds)),
-                lastSeen: nowIso,
-              };
-            } else {
-              existing.push({
-                sourceRoomId,
-                elementIds: Array.from(new Set(allowedIds)),
-                lastSeen: nowIso,
-              });
-            }
-          } else if (idx !== -1) {
-            // No allowed ids, remove the entry
-            existing.splice(idx, 1);
-          }
-          await this.setSharedReferences(existing);
         } catch {}
       })
     );
@@ -358,12 +320,14 @@ export default class PartyServer implements Party.Server {
 
         if (parsed.type === "add-shared-reference") {
           // Handle dynamic addition of shared reference
+          // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
           await this.handleAddSharedReference(parsed.reference, sender);
         } else if (parsed.type === "export-permissions") {
           // Handle individual permission requests
           await this.handleExportPermissions(parsed.elementIds, sender);
         } else if (parsed.type === "register-shared-element") {
           // Handle dynamic registration of shared source element
+          // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
           await this.handleRegisterSharedElement(parsed.element, sender);
         } else {
           // Broadcast other messages normally
@@ -426,6 +390,44 @@ export default class PartyServer implements Party.Server {
         : "read-write";
     existingPerms[element.elementId] = mode;
     await this.setSharedPermissions(existingPerms);
+
+    // If new shared element just registered, proactively fanout to subscribers who requested it
+    try {
+      const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const play = yDoc.getMap("play") as Y.Map<any>;
+      // Find the tag containing this elementId
+      let subtreesForNew: Record<string, Record<string, any>> | null = null;
+      play.forEach((tagMap: any, tag: string) => {
+        if (!(tagMap instanceof Y.Map)) return;
+        if (tagMap.has(element.elementId)) {
+          const val = tagMap.get(element.elementId);
+          const plain = typeof val?.toJSON === "function" ? val.toJSON() : val;
+          subtreesForNew = { [tag]: { [element.elementId]: plain } };
+        }
+      });
+      if (!subtreesForNew) return;
+
+      const subscribers = await this.getSubscribers();
+      if (!subscribers.length) return;
+      const mainParty = this.room.context.parties.main;
+      await Promise.all(
+        subscribers.map(async ({ consumerRoomId, elementIds }) => {
+          if (!elementIds || !elementIds.includes(element.elementId)) return;
+          const consumerRoom = mainParty.get(consumerRoomId);
+          try {
+            await consumerRoom.fetch({
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "apply-subtrees-immediate",
+                subtrees: subtreesForNew,
+                originKind: "source",
+              }),
+            });
+          } catch {}
+        })
+      );
+    } catch {}
   }
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
@@ -456,10 +458,9 @@ export default class PartyServer implements Party.Server {
             : "read-write";
         permissionsByElementId[el.elementId] = mode;
       }
-      await room.storage.put(
-        STORAGE_KEYS.sharedPermissions,
-        permissionsByElementId
-      );
+      // TODO: instead of overriding, maybe we should merge and also do pruning of permissions that aren't present anymore to handle dynamic elements?
+      // OR we should stop with all this pruning and instead enforce that these are declared globally in the client even for dynamically rendered elements (they have to be registered in init?)
+      await this.setSharedPermissions(permissionsByElementId);
     }
 
     await onConnect(connection, this.room, this.providerOptions);
@@ -509,42 +510,25 @@ export default class PartyServer implements Party.Server {
               new Set(elementIdsRaw.filter((x) => typeof x === "string"))
             )
           : undefined;
-        // Validate requested elementIds against sharedPermissions of this SOURCE room
-        const sharedPerms = await this.getSharedPermissions();
-        const allowedIds = (elementIds || []).filter((id) => !!sharedPerms[id]);
+        // IMPORTANT: Do NOT filter out unknown/not-yet-shared ids at subscribe time.
+        // Keep the requested ids so that when the source registers those elements later,
+        // existing subscribers will start receiving data automatically.
+        const requestedIds = elementIds || [];
         const existing = await this.getSubscribers();
         const nowIso = new Date().toISOString();
         const leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS;
         const found = existing.find((s) => s.consumerRoomId === consumerRoomId);
-        // If there are no allowed elementIds, do not add/update a subscriber entry
-        if (!allowedIds.length) {
-          if (found) {
-            const next = existing.filter(
-              (s) => s.consumerRoomId !== consumerRoomId
-            );
-            await this.setSubscribers(next);
-          }
-          return new Response(
-            JSON.stringify({
-              ok: true,
-              subscribed: false,
-              reason: "no-shared-elements",
-            }),
-            { headers: { "content-type": "application/json" } }
-          );
-        }
-
         if (!found) {
           existing.push({
             consumerRoomId,
-            elementIds: allowedIds,
+            elementIds: requestedIds,
             createdAt: nowIso,
             lastSeen: nowIso,
             leaseMs,
           });
         } else {
           // Update elementIds (filtered) and lastSeen
-          found.elementIds = allowedIds;
+          found.elementIds = requestedIds;
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
@@ -552,7 +536,7 @@ export default class PartyServer implements Party.Server {
           JSON.stringify({
             ok: true,
             subscribed: true,
-            elementIds: allowedIds,
+            elementIds: requestedIds,
           }),
           {
             headers: { "content-type": "application/json" },
@@ -582,15 +566,31 @@ export default class PartyServer implements Party.Server {
           Record<string, any>
         >;
         if (!subtrees || typeof subtrees !== "object") {
-          return new Response(JSON.stringify({ ok: true }), {
-            headers: { "content-type": "application/json" },
-          });
+          return new Response("Bad Request", { status: 400 });
         }
         const sender = (body && (body as any).sender) as string | undefined;
+        const originKind = (body && (body as any).originKind) as
+          | "consumer"
+          | "source";
+        if (!sender || !originKind) {
+          return new Response("Bad Request", { status: 400 });
+        }
+
         const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
-        const isSourceRoom = await this.isSourceRoom();
+        // Determine direction by inspecting our local state relative to sender
+        // - If 'sender' matches a subscriber.consumerRoomId, this room is a SOURCE receiving from a CONSUMER
+        // - If 'sender' matches a sharedReferences.sourceRoomId, this room is a CONSUMER receiving from a SOURCE
+        const subsForDirCheck = await this.getSubscribers();
+        const sharedRefs = await this.getSharedReferences();
+        const receivingFromConsumer =
+          originKind === "consumer" &&
+          subsForDirCheck.some((s) => s.consumerRoomId === sender);
+        const receivingFromSource =
+          originKind === "source" &&
+          sharedRefs.some((r) => r.sourceRoomId === sender);
+
         let subtreesToApply: Record<string, Record<string, any>> = subtrees;
-        if (isSourceRoom) {
+        if (receivingFromConsumer) {
           // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
           // the source of truth is derived from the source room and not consumer-added capabilities.
           const play = yDoc.getMap("play") as Y.Map<any>;
@@ -620,28 +620,61 @@ export default class PartyServer implements Party.Server {
             if (Object.keys(kept).length) filteredByPerms[tag] = kept;
           });
           subtreesToApply = filteredByPerms;
+        } else if (receivingFromSource) {
+          // Consumer: apply only the elementIds we are subscribed to for this sender/source
+          const ref = sharedRefs.find((r) => r.sourceRoomId === sender);
+          const allowed = new Set(ref?.elementIds || []);
+          if (allowed.size > 0) {
+            const filteredByRefs: Record<string, Record<string, any>> = {};
+            Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+              const kept: Record<string, any> = {};
+              Object.entries(elements).forEach(([elementId, data]) => {
+                if (allowed.has(elementId)) kept[elementId] = data;
+              });
+              if (Object.keys(kept).length) filteredByRefs[tag] = kept;
+            });
+            subtreesToApply = filteredByRefs;
+          } else {
+            subtreesToApply = {};
+          }
         }
         if (!Object.keys(subtreesToApply).length) {
           return new Response(JSON.stringify({ ok: true }), {
             headers: { "content-type": "application/json" },
           });
         }
-        const hasSharedRefs = !!(await this.room.storage.get(
-          STORAGE_KEYS.sharedReferences
-        ));
-        const ORIGIN = hasSharedRefs ? ORIGIN_S2C : ORIGIN_C2S;
+        const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
         yDoc.transact(
           () => this.assignPlaySubtrees(yDoc, subtreesToApply),
           ORIGIN
         );
 
-        // If this is a SOURCE room, immediately fanout to other consumers (excluding sender if provided)
-        const subscribers = await this.getSubscribers();
-        if (isSourceRoom && subscribers.length) {
+        // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
+        if (receivingFromConsumer) {
+          const subscribers = await this.getSubscribers();
           const mainParty = this.room.context.parties.main;
           await Promise.all(
-            subscribers.map(async ({ consumerRoomId }) => {
+            subscribers.map(async ({ consumerRoomId, elementIds }) => {
               if (sender && consumerRoomId === sender) return;
+              // Per-subscriber filtering by their subscribed elementIds
+              let toSend = subtreesToApply;
+              if (elementIds && elementIds.length) {
+                const allowedElementIds = new Set(elementIds);
+                const filteredSubtrees: Record<
+                  string,
+                  Record<string, any>
+                > = {};
+                Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+                  const kept: Record<string, any> = {};
+                  Object.entries(elements).forEach(([elementId, data]) => {
+                    if (allowedElementIds.has(elementId))
+                      kept[elementId] = data;
+                  });
+                  if (Object.keys(kept).length) filteredSubtrees[tag] = kept;
+                });
+                toSend = filteredSubtrees;
+                if (!Object.keys(toSend).length) return;
+              }
               const consumerRoom = mainParty.get(consumerRoomId);
               try {
                 await consumerRoom.fetch({
@@ -649,7 +682,8 @@ export default class PartyServer implements Party.Server {
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({
                     action: "apply-subtrees-immediate",
-                    subtrees: subtreesToApply,
+                    originKind: "source",
+                    subtrees: toSend,
                   }),
                 });
               } catch {}
@@ -690,9 +724,7 @@ export default class PartyServer implements Party.Server {
       }
 
       // Prune shared references by TTL on consumer rooms
-      const refsRaw = await this.room.storage.get(
-        STORAGE_KEYS.sharedReferences
-      );
+      const refsRaw = await this.getSharedReferences();
       const refs: Array<SharedRefEntry> = Array.isArray(refsRaw) ? refsRaw : [];
       if (refs.length) {
         const now = Date.now();
@@ -728,16 +760,22 @@ export default class PartyServer implements Party.Server {
       // Ignore updates we just applied from a consumer pull to avoid echo
       if (origin === ORIGIN_C2S) return;
 
-      const subscribers: Array<Subscriber> =
-        (await this.room.storage.get("subscribers")) || [];
+      const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
 
+      const permissions = await this.getSharedPermissions();
       const mainParty = this.room.context.parties.main;
       // Export all subtrees of interest and push immediately
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.length) return;
-          const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
+          const sharedElementIds = elementIds.filter((id) => {
+            return Boolean(permissions[id]);
+          });
+          const subtrees = this.extractPlaySubtrees(
+            yDoc,
+            new Set(sharedElementIds)
+          );
           if (!Object.keys(subtrees).length) return;
           const consumerRoom = mainParty.get(consumerRoomId);
           await consumerRoom.fetch({
@@ -746,6 +784,7 @@ export default class PartyServer implements Party.Server {
               action: "apply-subtrees-immediate",
               subtrees,
               sender: this.room.id,
+              originKind: "consumer",
             }),
           });
         })
@@ -767,6 +806,7 @@ export default class PartyServer implements Party.Server {
           method: "POST",
           body: JSON.stringify({
             action: "apply-subtrees-immediate",
+            originKind: "consumer",
             subtrees,
             sender: this.room.id,
           }),
