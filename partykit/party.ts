@@ -1,51 +1,26 @@
 import type * as Party from "partykit/server";
 import { onConnect, unstable_getYDoc, YPartyKitOptions } from "y-partykit";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
-import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
+import { deepReplaceIntoProxy } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { deriveRoomId } from "@playhtml/common";
 import { supabase } from "./db";
+import { AdminHandler } from "./admin";
+import {
+  STORAGE_KEYS,
+  DEFAULT_PRUNE_INTERVAL_MS,
+  DEFAULT_SUBSCRIBER_LEASE_MS,
+  ORIGIN_S2C,
+  ORIGIN_C2S,
+  Subscriber,
+  SharedRefEntry,
+} from "./const";
 
-type Subscriber = {
-  consumerRoomId: string;
-  elementIds?: string[];
-  createdAt?: string;
-  lastSeen?: string;
-  leaseMs?: number;
-};
-type SharedRefEntry = {
-  sourceRoomId: string;
-  elementIds: string[];
-  lastSeen?: string;
-};
-
-// Storage key constants for consistency
-const STORAGE_KEYS = {
-  // Stores consumer room ids and the elementIds they are interested in
-  subscribers: "subscribers",
-  // Stores references out to other source rooms that this source room is interested in
-  sharedReferences: "sharedReferences",
-  sharedPermissions: "sharedPermissions",
-};
-// Subscriber lease configuration (default 12 hours)
-const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
-  return 60 * 60 * 1000 * 12;
-})();
-// Prune interval configuration (default 6 hours). See PartyKit alarms guide:
-// https://docs.partykit.io/guides/scheduling-tasks-with-alarms/
-const DEFAULT_PRUNE_INTERVAL_MS = (() => {
-  return 60 * 60 * 1000 * 4;
-})();
-const ORIGIN_S2C = "__bridge_s2c__";
-const ORIGIN_C2S = "__bridge_c2s__";
-
-// TODO: clean up all the storage retrieval with actual getters by the storage key
-// TODO: move the admin stuff into another class to clean up long file
-export default class implements Party.Server {
+export default class PartyServer implements Party.Server {
   constructor(public room: Party.Room) {}
   // Reuse the exact same options for all Y.Doc access
-  private providerOptions: YPartyKitOptions = {
+  readonly providerOptions: YPartyKitOptions = {
     load: async () => {
       // This is called once per "room" when the first user connects
 
@@ -98,13 +73,41 @@ export default class implements Party.Server {
     },
   };
   private observersAttached = false;
+  private adminHandler = new AdminHandler(this);
+
+  // Storage getters and setters to clean up repeated STORAGE_KEYS patterns
+  async getSubscribers(): Promise<Subscriber[]> {
+    return (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+  }
+
+  async setSubscribers(subscribers: Subscriber[]): Promise<void> {
+    await this.room.storage.put(STORAGE_KEYS.subscribers, subscribers);
+  }
+
+  async getSharedReferences(): Promise<SharedRefEntry[]> {
+    return (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+  }
+
+  async setSharedReferences(references: SharedRefEntry[]): Promise<void> {
+    await this.room.storage.put(STORAGE_KEYS.sharedReferences, references);
+  }
+
+  async getSharedPermissions(): Promise<
+    Record<string, "read-only" | "read-write">
+  > {
+    return (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+  }
+
+  async setSharedPermissions(
+    permissions: Record<string, "read-only" | "read-write">
+  ): Promise<void> {
+    await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+  }
 
   // Ensure an alarm is set if subscribers exist; avoids rescheduling if one is set sooner
   private async ensureAlarmIfSubscribersPresent(): Promise<void> {
-    const subs: Array<any> =
-      (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
-    const refs: Array<any> =
-      (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+    const subs = await this.getSubscribers();
+    const refs = await this.getSharedReferences();
     if (!subs.length && !refs.length) return;
     const nextAlarm = Date.now() + DEFAULT_PRUNE_INTERVAL_MS;
     const previousAlarm = await this.room.storage.getAlarm?.();
@@ -117,8 +120,9 @@ export default class implements Party.Server {
     }
   }
 
-  private async isSourceRoom(): Promise<boolean> {
-    return !!(await this.room.storage.get(STORAGE_KEYS.sharedPermissions));
+  async isSourceRoom(): Promise<boolean> {
+    const permissions = await this.getSharedPermissions();
+    return Object.keys(permissions).length > 0;
   }
 
   // --- Helper: compute source room id from domain and pathOrRoom
@@ -185,8 +189,7 @@ export default class implements Party.Server {
     entries: Array<{ sourceRoomId: string; elementIds: string[] }>;
     changed: boolean;
   }> {
-    const existing: Array<SharedRefEntry> =
-      (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+    const existing = await this.getSharedReferences();
     const bySource = new Map<string, Set<string>>();
     for (const e of existing)
       bySource.set(e.sourceRoomId, new Set(e.elementIds));
@@ -209,7 +212,7 @@ export default class implements Party.Server {
           };
         }
       );
-      await this.room.storage.put(STORAGE_KEYS.sharedReferences, merged);
+      await this.setSharedReferences(merged);
       return { entries: merged, changed: true };
     }
     return { entries: existing, changed: false };
@@ -249,8 +252,7 @@ export default class implements Party.Server {
             } catch {}
           }
           // Update this room's sharedReferences to reflect allowedIds only
-          const existing: Array<SharedRefEntry> =
-            (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+          const existing = await this.getSharedReferences();
           const nowIso = new Date().toISOString();
           const idx = existing.findIndex(
             (e) => e.sourceRoomId === sourceRoomId
@@ -273,7 +275,7 @@ export default class implements Party.Server {
             // No allowed ids, remove the entry
             existing.splice(idx, 1);
           }
-          await this.room.storage.put(STORAGE_KEYS.sharedReferences, existing);
+          await this.setSharedReferences(existing);
         } catch {}
       })
     );
@@ -395,8 +397,7 @@ export default class implements Party.Server {
     elementIds: string[],
     sender: Party.Connection<unknown>
   ): Promise<void> {
-    const perms: Record<string, "read-only" | "read-write"> =
-      (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    const perms = await this.getSharedPermissions();
     const filtered: Record<string, "read-only" | "read-write"> = {};
 
     for (const id of elementIds) {
@@ -418,14 +419,13 @@ export default class implements Party.Server {
     if (!element || !element.elementId) return;
 
     // Update shared permissions for this source room
-    const existingPerms: Record<string, "read-only" | "read-write"> =
-      (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    const existingPerms = await this.getSharedPermissions();
     const mode =
       element.permissions && element.permissions === "read-only"
         ? "read-only"
         : "read-write";
     existingPerms[element.elementId] = mode;
-    await this.room.storage.put(STORAGE_KEYS.sharedPermissions, existingPerms);
+    await this.setSharedPermissions(existingPerms);
   }
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
@@ -482,24 +482,12 @@ export default class implements Party.Server {
         });
       }
 
-      // Admin endpoints
-      if (request.method === "GET" && request.url.includes("admin/inspect")) {
-        return this.handleAdminInspect(request);
-      }
-      if (request.method === "GET" && request.url.includes("admin/raw-data")) {
-        return this.handleAdminRawData(request);
-      }
-      if (
-        request.method === "POST" &&
-        request.url.includes("admin/remove-subscriber")
-      ) {
-        return this.handleAdminRemoveSubscriber(request);
-      }
-      if (
-        request.method === "GET" &&
-        request.url.includes("admin/live-compare")
-      ) {
-        return this.handleAdminLiveCompare(request);
+      const url = new URL(request.url);
+
+      // Route admin requests to admin handler
+      // PartyKit paths are like /parties/main/room-id/admin/inspect
+      if (url.pathname.includes("/admin")) {
+        return this.adminHandler.handleRequest(request);
       }
 
       if (request.method !== "POST") {
@@ -522,11 +510,9 @@ export default class implements Party.Server {
             )
           : undefined;
         // Validate requested elementIds against sharedPermissions of this SOURCE room
-        const sharedPerms: Record<string, "read-only" | "read-write"> =
-          (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+        const sharedPerms = await this.getSharedPermissions();
         const allowedIds = (elementIds || []).filter((id) => !!sharedPerms[id]);
-        const existing: Array<Subscriber> =
-          (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+        const existing = await this.getSubscribers();
         const nowIso = new Date().toISOString();
         const leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS;
         const found = existing.find((s) => s.consumerRoomId === consumerRoomId);
@@ -536,7 +522,7 @@ export default class implements Party.Server {
             const next = existing.filter(
               (s) => s.consumerRoomId !== consumerRoomId
             );
-            await this.room.storage.put(STORAGE_KEYS.subscribers, next);
+            await this.setSubscribers(next);
           }
           return new Response(
             JSON.stringify({
@@ -561,7 +547,7 @@ export default class implements Party.Server {
           found.elementIds = allowedIds;
           found.lastSeen = nowIso;
         }
-        await this.room.storage.put(STORAGE_KEYS.subscribers, existing);
+        await this.setSubscribers(existing);
         return new Response(
           JSON.stringify({
             ok: true,
@@ -579,8 +565,7 @@ export default class implements Party.Server {
         const elementIds: string[] = Array.isArray((body as any)?.elementIds)
           ? (body as any).elementIds
           : [];
-        const perms: Record<string, "read-only" | "read-write"> =
-          (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+        const perms = await this.getSharedPermissions();
         const filtered: Record<string, "read-only" | "read-write"> = {};
         for (const id of elementIds) {
           if (perms[id]) filtered[id] = perms[id];
@@ -620,8 +605,7 @@ export default class implements Party.Server {
             if (Object.keys(kept).length) filtered[tag] = kept;
           });
           // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
-          const perms: Record<string, "read-only" | "read-write"> =
-            (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+          const perms = await this.getSharedPermissions();
           const filteredByPerms: Record<string, Record<string, any>> = {};
           Object.entries(filtered).forEach(([tag, elements]) => {
             const kept: Record<string, any> = {};
@@ -652,8 +636,7 @@ export default class implements Party.Server {
         );
 
         // If this is a SOURCE room, immediately fanout to other consumers (excluding sender if provided)
-        const subscribers: Array<Subscriber> =
-          (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+        const subscribers = await this.getSubscribers();
         if (isSourceRoom && subscribers.length) {
           const mainParty = this.room.context.parties.main;
           await Promise.all(
@@ -688,8 +671,7 @@ export default class implements Party.Server {
   // PartyKit Alarm: invoked when storage alarm rings
   async onAlarm(): Promise<void> {
     try {
-      const subscribers: Array<Subscriber> =
-        (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+      const subscribers = await this.getSubscribers();
 
       if (subscribers.length) {
         const now = Date.now();
@@ -703,7 +685,7 @@ export default class implements Party.Server {
 
         const prunedForLease = subscribers.filter(withinLease);
         if (prunedForLease.length !== subscribers.length) {
-          await this.room.storage.put(STORAGE_KEYS.subscribers, prunedForLease);
+          await this.setSubscribers(prunedForLease);
         }
       }
 
@@ -721,15 +703,13 @@ export default class implements Party.Server {
           return now - t <= leaseMs;
         });
         if (kept.length !== refs.length) {
-          await this.room.storage.put(STORAGE_KEYS.sharedReferences, kept);
+          await this.setSharedReferences(kept);
         }
       }
     } finally {
       // Reschedule the next alarm only if there are subscribers or refs remaining
-      const subs: Array<any> =
-        (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
-      const refs: Array<any> =
-        (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+      const subs = await this.getSubscribers();
+      const refs = await this.getSharedReferences();
       if (subs.length || refs.length) {
         await this.room.storage.setAlarm?.(
           Date.now() + DEFAULT_PRUNE_INTERVAL_MS
@@ -777,8 +757,7 @@ export default class implements Party.Server {
       // Ignore updates we just applied from a source push to avoid echo
       if (origin === ORIGIN_S2C) return;
       const mainParty = this.room.context.parties.main;
-      const refs: Array<{ sourceRoomId: string; elementIds: string[] }> =
-        (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+      const refs = await this.getSharedReferences();
       for (const { sourceRoomId, elementIds } of refs) {
         if (!elementIds?.length) continue;
         const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
@@ -796,405 +775,5 @@ export default class implements Party.Server {
     });
 
     this.observersAttached = true;
-  }
-
-  /*********************************
-   *        ADMIN ENDPOINTS        *
-   *********************************/
-  private async handleAdminInspect(request: Party.Request): Promise<Response> {
-    // Check admin token
-    const adminToken = process.env.ADMIN_TOKEN;
-    if (adminToken) {
-      const url = new URL(request.url);
-      const token =
-        url.searchParams.get("token") ||
-        request.headers.get("Authorization")?.replace("Bearer ", "");
-
-      if (!token || token !== adminToken) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-    }
-    try {
-      const subscribers =
-        (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
-      const sharedReferences =
-        (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
-      const sharedPermissions =
-        (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
-
-      // Get Y.Doc data if available - use direct approach for consistency
-      let ydocData: any = null;
-      try {
-        // Create fresh Y.Doc and load data directly (same as debug reconstruction)
-        const yDoc = new Y.Doc();
-        const { data: docData } = await supabase
-          .from("documents")
-          .select("name, document, created_at")
-          .eq("name", this.room.id)
-          .maybeSingle();
-
-        if (docData?.document) {
-          const buffer = new Uint8Array(
-            Buffer.from(docData.document, "base64")
-          );
-          Y.applyUpdate(yDoc, buffer);
-        }
-
-        // Extract Y.Doc data using SyncedStore exactly like PlayHTML does
-        const store = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          yDoc
-        );
-
-        // Clone the store.play data to get a plain object
-        const playData = clonePlain(store.play);
-        const hasAnyData = Object.keys(playData).some(
-          (tag) => Object.keys(playData[tag] || {}).length > 0
-        );
-
-        // Return 404-like response if no actual play data exists
-        if (!hasAnyData) {
-          return new Response(
-            JSON.stringify({
-              error: "No Y.Doc play data found",
-              message: "Room exists but contains no PlayHTML data",
-              roomId: this.room.id,
-            }),
-            {
-              status: 404,
-              headers: {
-                "content-type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-              },
-            }
-          );
-        }
-
-        ydocData = {
-          play: playData,
-          awareness: {
-            clientCount: Array.from(this.room.getConnections()).length,
-          },
-        };
-      } catch (error: unknown) {
-        console.warn("Failed to extract Y.Doc data:", error);
-        ydocData = {
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-
-      const roomData = {
-        roomId: this.room.id,
-        subscribers,
-        sharedReferences,
-        sharedPermissions,
-        ydoc: ydocData,
-        connections: Array.from(this.room.getConnections()).length,
-        timestamp: new Date().toISOString(),
-      };
-
-      return new Response(JSON.stringify(roomData, null, 2), {
-        headers: {
-          "content-type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET",
-          "Access-Control-Allow-Headers": "Content-Type",
-        },
-      });
-    } catch (error: unknown) {
-      console.error("Admin inspect error:", error);
-      return new Response(
-        JSON.stringify({
-          error: "Failed to inspect room",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-        {
-          status: 500,
-          headers: { "content-type": "application/json" },
-        }
-      );
-    }
-  }
-
-  private async handleAdminRawData(request: Party.Request): Promise<Response> {
-    // Check admin token
-    const adminToken = process.env.ADMIN_TOKEN;
-    if (adminToken) {
-      const url = new URL(request.url);
-      const token =
-        url.searchParams.get("token") ||
-        request.headers.get("Authorization")?.replace("Bearer ", "");
-
-      if (!token || token !== adminToken) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-    }
-
-    try {
-      // Get raw document from Supabase
-      const { data, error } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("name", this.room.id)
-        .maybeSingle();
-
-      if (error) {
-        return new Response(
-          JSON.stringify({
-            error: "Failed to fetch raw data",
-            message: error.message,
-          }),
-          {
-            status: 500,
-            headers: { "content-type": "application/json" },
-          }
-        );
-      }
-
-      const rawData = {
-        roomId: this.room.id,
-        exists: !!data,
-        document: data
-          ? {
-              name: data.name,
-              document: data.document,
-              base64Length: data.document?.length || 0,
-              created_at: data.created_at,
-              // First 100 chars for quick inspection
-              documentPreview:
-                data.document?.substring(0, 100) +
-                (data.document?.length > 100 ? "..." : ""),
-            }
-          : null,
-        timestamp: new Date().toISOString(),
-      };
-
-      return new Response(JSON.stringify(rawData, null, 2), {
-        headers: {
-          "content-type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET",
-          "Access-Control-Allow-Headers": "Content-Type",
-        },
-      });
-    } catch (error: unknown) {
-      console.error("Admin raw data error:", error);
-      return new Response(
-        JSON.stringify({
-          error: "Failed to fetch raw data",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-        {
-          status: 500,
-          headers: { "content-type": "application/json" },
-        }
-      );
-    }
-  }
-
-  private async handleAdminLiveCompare(
-    request: Party.Request
-  ): Promise<Response> {
-    // Check admin token
-    const adminToken = process.env.ADMIN_TOKEN;
-    if (adminToken) {
-      const url = new URL(request.url);
-      const token =
-        url.searchParams.get("token") ||
-        request.headers.get("Authorization")?.replace("Bearer ", "");
-
-      if (!token || token !== adminToken) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-    }
-
-    try {
-      // Method 1: Direct Y.Doc approach (what admin console uses)
-      const directYDoc = new Y.Doc();
-      const { data: docData } = await supabase
-        .from("documents")
-        .select("document")
-        .eq("name", this.room.id)
-        .maybeSingle();
-
-      let directData: any = null;
-      if (docData?.document) {
-        const buffer = new Uint8Array(Buffer.from(docData.document, "base64"));
-        Y.applyUpdate(directYDoc, buffer);
-        const directStore = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          directYDoc
-        );
-        directData = clonePlain(directStore.play);
-      }
-
-      // Method 2: Live server approach (using unstable_getYDoc like the running server)
-      let liveData: any = null;
-      let liveDebugInfo: any = {};
-      try {
-        const liveYDoc = await unstable_getYDoc(
-          this.room,
-          this.providerOptions
-        );
-
-        // Debug the raw Y.Doc state
-        const playMap = liveYDoc.getMap("play");
-        liveDebugInfo = {
-          hasPlayMap: !!playMap,
-          playMapSize: playMap ? playMap.size : 0,
-          docClientId: liveYDoc.clientID,
-          docGuid: liveYDoc.guid,
-          stateVectorLength: Y.encodeStateVector(liveYDoc).length,
-        };
-
-        const liveStore = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          liveYDoc
-        );
-        liveData = clonePlain(liveStore.play);
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        console.error("Live data extraction failed:", msg);
-        liveData = { error: `Failed to get live data: ${msg}` };
-        liveDebugInfo.error = msg;
-      }
-
-      const comparison = {
-        roomId: this.room.id,
-        timestamp: new Date().toISOString(),
-        methods: {
-          direct: {
-            description:
-              "Direct Y.Doc creation + database load (admin console method)",
-            data: directData,
-            hasData: directData && Object.keys(directData).length > 0,
-          },
-          live: {
-            description:
-              "unstable_getYDoc from y-partykit (live server method)",
-            data: liveData,
-            hasData:
-              liveData && !liveData.error && Object.keys(liveData).length > 0,
-            debugInfo: liveDebugInfo,
-          },
-        },
-        differences: {
-          sameKeys: this.compareKeys(directData, liveData),
-          dataMatch: JSON.stringify(directData) === JSON.stringify(liveData),
-        },
-      };
-
-      return new Response(JSON.stringify(comparison, null, 2), {
-        headers: {
-          "content-type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET",
-          "Access-Control-Allow-Headers": "Content-Type",
-        },
-      });
-    } catch (error: unknown) {
-      console.error("Admin live compare error:", error);
-      return new Response(
-        JSON.stringify({
-          error: "Failed to compare data methods",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-        {
-          status: 500,
-          headers: { "content-type": "application/json" },
-        }
-      );
-    }
-  }
-
-  private compareKeys(
-    obj1: any,
-    obj2: any
-  ): { directOnly: string[]; liveOnly: string[]; common: string[] } {
-    if (!obj1 || !obj2) return { directOnly: [], liveOnly: [], common: [] };
-
-    const keys1 = new Set(Object.keys(obj1));
-    const keys2 = new Set(Object.keys(obj2));
-
-    return {
-      directOnly: [...keys1].filter((k) => !keys2.has(k)),
-      liveOnly: [...keys2].filter((k) => !keys1.has(k)),
-      common: [...keys1].filter((k) => keys2.has(k)),
-    };
-  }
-
-  // --- Admin: remove a subscriber entry by consumerRoomId
-  private async handleAdminRemoveSubscriber(
-    request: Party.Request
-  ): Promise<Response> {
-    // Check admin token
-    const adminToken = process.env.ADMIN_TOKEN;
-    if (adminToken) {
-      const url = new URL(request.url);
-      const token =
-        url.searchParams.get("token") ||
-        request.headers.get("Authorization")?.replace("Bearer ", "");
-
-      if (!token || token !== adminToken) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-    }
-
-    if (request.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
-    }
-
-    try {
-      const body = (await request.json()) as any;
-      const consumerRoomId = String(body?.consumerRoomId || "").trim();
-      if (!consumerRoomId) {
-        return new Response(
-          JSON.stringify({ error: "Missing consumerRoomId" }),
-          {
-            status: 400,
-            headers: { "content-type": "application/json" },
-          }
-        );
-      }
-
-      const subscribers: Array<Subscriber> =
-        (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
-      const next = subscribers.filter(
-        (s) => s.consumerRoomId !== consumerRoomId
-      );
-      await this.room.storage.put(STORAGE_KEYS.subscribers, next);
-
-      return new Response(
-        JSON.stringify({ ok: true, removed: subscribers.length - next.length }),
-        {
-          headers: {
-            "content-type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-          },
-        }
-      );
-    } catch (error: unknown) {
-      return new Response(
-        JSON.stringify({
-          error: "Failed to remove subscriber",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-        { status: 500, headers: { "content-type": "application/json" } }
-      );
-    }
   }
 }

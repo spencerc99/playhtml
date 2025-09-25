@@ -663,11 +663,72 @@ class AdminConsole {
       "debugYDoc",
       "compareDataMethods",
       "removeSubscriber",
+      "forceSaveLive",
+      "forceReloadLive",
     ];
     tools.forEach((id) => {
       const btn = document.getElementById(id) as HTMLButtonElement;
       if (btn) btn.disabled = false;
     });
+
+    const saveBtn = document.getElementById(
+      "forceSaveLive"
+    ) as HTMLButtonElement | null;
+    const reloadBtn = document.getElementById(
+      "forceReloadLive"
+    ) as HTMLButtonElement | null;
+    saveBtn?.addEventListener("click", () => this.handleForceSaveLive());
+    reloadBtn?.addEventListener("click", () => this.handleForceReloadLive());
+  }
+
+  private async handleForceSaveLive(): Promise<void> {
+    if (!this.currentRoomId || !this.adminToken) return;
+    const ok = confirm(
+      "Force save LIVE doc to DB? This will overwrite the DB snapshot."
+    );
+    if (!ok) return;
+    try {
+      const baseUrl = `${this.getPartykitHost()}/parties/main/${
+        this.currentRoomId
+      }`;
+      const url = `${baseUrl}/admin/force-save-live?token=${encodeURIComponent(
+        this.adminToken
+      )}`;
+      const res = await fetch(url, { method: "POST" });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      this.log("info", "Force-saved live doc to DB");
+      alert("✅ Live doc saved to DB. Re-running comparison.");
+      await this.compareDataMethods();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log("error", `Force save failed: ${msg}`);
+      alert(`❌ Force save failed: ${msg}`);
+    }
+  }
+
+  private async handleForceReloadLive(): Promise<void> {
+    if (!this.currentRoomId || !this.adminToken) return;
+    const ok = confirm(
+      "Force reload LIVE doc from DB? This merges DB snapshot into memory."
+    );
+    if (!ok) return;
+    try {
+      const baseUrl = `${this.getPartykitHost()}/parties/main/${
+        this.currentRoomId
+      }`;
+      const url = `${baseUrl}/admin/force-reload-live?token=${encodeURIComponent(
+        this.adminToken
+      )}`;
+      const res = await fetch(url, { method: "POST" });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      this.log("info", "Force-reloaded live doc from DB");
+      alert("✅ Live doc reloaded from DB. Re-running comparison.");
+      await this.compareDataMethods();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log("error", `Force reload failed: ${msg}`);
+      alert(`❌ Force reload failed: ${msg}`);
+    }
   }
 
   private async exportRoomData(): Promise<void> {
