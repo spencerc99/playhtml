@@ -1,5 +1,12 @@
 # Change Log
 
+## 2.5.1
+
+### Patch Changes
+
+- Updated dependencies [8580d25]
+  - @playhtml/common@0.3.1
+
 ## 2.5.0
 
 ### Minor Changes

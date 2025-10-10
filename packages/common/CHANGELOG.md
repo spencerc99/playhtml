@@ -1,5 +1,11 @@
 # @playhtml/common
 
+## 0.3.1
+
+### Patch Changes
+
+- 8580d25: Fix move bounds.
+
 ## 0.3.0
 
 ### Minor Changes
