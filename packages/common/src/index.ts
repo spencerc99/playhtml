@@ -281,9 +281,11 @@ export const TagTypeToElement: DefaultTagInitializers = {
     ) => {
       const { clientX, clientY } = getClientCoordinates(e);
       const { top, left, bottom, right } = element.getBoundingClientRect();
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
       if (
-        (right > window.outerWidth && clientX > localData.startMouseX) ||
-        (bottom > window.innerHeight && clientY > localData.startMouseY) ||
+        (right > viewportWidth && clientX > localData.startMouseX) ||
+        (bottom > viewportHeight && clientY > localData.startMouseY) ||
         (left < 0 && clientX < localData.startMouseX) ||
         (top < 0 && clientY < localData.startMouseY)
       )
