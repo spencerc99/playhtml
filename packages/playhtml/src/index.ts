@@ -16,7 +16,7 @@ import {
   clonePlain,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./development";
-import type { PlayerIdentity } from "@playhtml/common";
+import type { PlayerIdentity, CursorPresence } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
@@ -193,7 +193,32 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
     : transformedPathname;
 }
 
+function resolveCursorRoom(room: CursorRoom, hostname: string): string {
+  const context = {
+    domain: hostname,
+    pathname: window.location.pathname,
+    search: window.location.search,
+  };
+
+  if (typeof room === "function") {
+    return room(context);
+  }
+
+  switch (room) {
+    case "page":
+      return `${hostname}${context.pathname}`;
+    case "domain":
+      return hostname;
+    case "section":
+      const firstSegment = context.pathname.split('/').filter(Boolean)[0] || '';
+      return `${hostname}-${firstSegment}`;
+    default:
+      return `${hostname}${context.pathname}`;
+  }
+}
+
 let yprovider: YPartyKitProvider;
+let cursorProvider: YPartyKitProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -342,6 +367,8 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
 const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
+export type CursorRoom = "page" | "domain" | "section" | ((context: { domain: string; pathname: string; search: string }) => string);
+
 export interface CursorOptions {
   enabled?: boolean;
   playerIdentity?: PlayerIdentity;
@@ -362,6 +389,9 @@ export interface CursorOptions {
     element: HTMLElement
   ) => HTMLElement | null;
   enableChat?: boolean;
+  room?: CursorRoom;
+  shouldRenderCursor?: (presence: CursorPresence) => boolean;
+  getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
 interface DefaultRoomOptions {
@@ -560,7 +590,25 @@ async function initPlayHTML({
       cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
     }
 
-    cursorClient = new CursorClientAwareness(yprovider, cursorOptions);
+    // Check if cursors need a separate room
+    let providerForCursors = yprovider;
+    if (cursorOptions.room) {
+      const cursorRoom = encodeURIComponent(
+        resolveCursorRoom(cursorOptions.room, window.location.host)
+      );
+
+      // Only create separate provider if cursor room is different from element room
+      if (cursorRoom !== room) {
+        const cursorDoc = new Y.Doc();
+        cursorProvider = new YPartyKitProvider(partykitHost, cursorRoom, cursorDoc);
+        cursorProvider.on("error", () => {
+          onError?.();
+        });
+        providerForCursors = cursorProvider;
+      }
+    }
+
+    cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
   }
 
   if (extraCapabilities) {

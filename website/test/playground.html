@@ -26,6 +26,10 @@
   </head>
   <body>
     <div id="app">
+      <div style="position: fixed; top: 10px; right: 10px; padding: 10px; background: rgba(0,0,0,0.8); color: white; border-radius: 8px; font-family: monospace; z-index: 999999;">
+        <div>👥 Total users online: <span id="userCount">0</span></div>
+        <div style="font-size: 12px; opacity: 0.7; margin-top: 5px;">Page: /test/playground</div>
+      </div>
       <!-- <div class="example">
         <p id="helloDescription"></p>
         <input can-mirror id="hello" />
@@ -187,6 +191,21 @@
     </footer>
 
     <script type="module" src="./playground.ts"></script>
+    <script type="module">
+      // Update user count from cursor awareness
+      setTimeout(() => {
+        if (window.playhtml?.cursorClient) {
+          const updateCount = () => {
+            const colors = window.cursors?.allColors || [];
+            document.getElementById('userCount').textContent = colors.length;
+          };
+
+          // Update on changes
+          window.cursors?.on('allColors', updateCount);
+          updateCount();
+        }
+      }, 1000);
+    </script>
     <style>
       #tasks1 button {
         width: 120px;

@@ -1,8 +1,15 @@
-import "./home.scss";
+import "../home.scss";
 import "./playground.scss";
 import { playhtml } from "../../packages/playhtml/src";
 
 playhtml.init({
+  cursors: {
+    enabled: true,
+    room: "domain",
+    shouldRenderCursor: (presence) => {
+      return presence.page === window.location.pathname;
+    },
+  },
   events: {
     confetti: {
       type: "confetti",
