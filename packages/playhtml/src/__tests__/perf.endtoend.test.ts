@@ -53,7 +53,7 @@ async function freshPlayhtml() {
   vi.resetModules();
   // @ts-ignore
   delete (globalThis as any).playhtml;
-  const mod = await import("../main");
+  const mod = await import("../index");
   return mod.playhtml;
 }
 
@@ -76,35 +76,39 @@ async function runPerfCase(
   if (mode === "yjs-baseline") {
     // Pure Y.Map baseline: simulate the original "plain" dataMode
     // This should bypass SyncedStore entirely like the old system
-    
+
     // Create a minimal Y.Map-only setup that mimics the old plain mode
     const { ElementHandler } = await import("../elements");
-    
+
     // Simulate the old initialization without SyncedStore
     play.elementHandlers = new Map();
     play.elementHandlers.set("can-play", new Map());
-    
+
     // Create a Y.Doc and setup like the old system (without SyncedStore)
     const yjsDoc = new Y.Doc();
     const globalData = yjsDoc.getMap<Y.Map<any>>("playhtml-global");
     const tagMap = new Y.Map();
     globalData.set("can-play", tagMap);
-    
+
     // Create real ElementHandler instances but with Y.Map data source
     for (let i = 0; i < count; i++) {
-      const el = document.getElementById(`${mode}_${complex ? "complex_" : ""}${i}`);
+      const el = document.getElementById(
+        `${mode}_${complex ? "complex_" : ""}${i}`
+      );
       if (el) {
         const elementId = el.id;
-        const defaultData = complex ? {
-          profile: { name: `user-${i}`, flags: { a: true, b: false } },
-          lists: { todos: [] },
-          counters: { clicks: 0, hovers: 0 },
-          nested: { a: { b: { c: { values: [i] } } } },
-        } : { list: [], meta: { i } };
-        
+        const defaultData = complex
+          ? {
+              profile: { name: `user-${i}`, flags: { a: true, b: false } },
+              lists: { todos: [] },
+              counters: { clicks: 0, hovers: 0 },
+              nested: { a: { b: { c: { values: [i] } } } },
+            }
+          : { list: [], meta: { i } };
+
         // Initialize Y.Map with default data
         tagMap.set(elementId, defaultData);
-        
+
         // Create ElementHandler with Y.Map onChange (old system pattern)
         const elementData = {
           element: el,
@@ -113,7 +117,7 @@ async function runPerfCase(
           data: defaultData,
           onChange: (newData: any) => {
             // Y.Map onChange: only handle value form (no mutator support)
-            if (typeof newData === 'function') {
+            if (typeof newData === "function") {
               // Mutator form not supported in Y.Map mode
               return;
             }
@@ -125,16 +129,16 @@ async function runPerfCase(
           updateElement: () => {},
           updateElementAwareness: () => {},
         };
-        
+
         const handler = new ElementHandler(elementData as any);
         play.elementHandlers.get("can-play")!.set(elementId, handler);
       }
     }
   } else {
     // Full SyncedStore initialization (unchanged)
-    await play.init({ 
+    await play.init({
       room: `test-${mode}-${Date.now()}`, // Unique room per test
-      host: "localhost:1999" // Use localhost for tests
+      host: "localhost:1999", // Use localhost for tests
     });
   }
   const t1 = performance.now();
@@ -147,7 +151,7 @@ async function runPerfCase(
   const u0 = performance.now();
   for (let k = 0; k < updates; k++) {
     const h = handlers[k % handlers.length];
-    
+
     if (mode === "yjs-baseline") {
       // Y.Map approach: full replacement semantics (old system)
       const data = (h.data as any) || {};
@@ -260,9 +264,21 @@ describe("end-to-end performance (SyncedStore vs Y.Map baseline)", () => {
   });
 
   it("complex nested data - Y.Map vs SyncedStore", async () => {
-    await runPerfCase("yjs-baseline", { count: 100, updates: 600, complex: true });
-    await runPerfCase("syncedstore-mutator", { count: 100, updates: 600, complex: true });
-    await runPerfCase("syncedstore-value", { count: 100, updates: 600, complex: true });
+    await runPerfCase("yjs-baseline", {
+      count: 100,
+      updates: 600,
+      complex: true,
+    });
+    await runPerfCase("syncedstore-mutator", {
+      count: 100,
+      updates: 600,
+      complex: true,
+    });
+    await runPerfCase("syncedstore-value", {
+      count: 100,
+      updates: 600,
+      complex: true,
+    });
   });
 
   it("scale-up elements - Y.Map vs SyncedStore overhead", async () => {
@@ -324,11 +340,11 @@ afterAll(() => {
     [
       "scenario",
       "elems",
-      "updates", 
+      "updates",
       "yjs:init",
       "yjs:update",
       "mutator:init",
-      "mutator:update", 
+      "mutator:update",
       "value:init",
       "value:update",
       "best-sync",
@@ -341,12 +357,13 @@ afterAll(() => {
     const mutator = recs.find((r) => r.mode === "syncedstore-mutator");
     const value = recs.find((r) => r.mode === "syncedstore-value");
     if (!yjs || !mutator || !value) continue;
-    
+
     // Determine best SyncedStore pattern
     const bestUpdate = mutator.updateMs < value.updateMs ? "mutator" : "value";
     const bestInit = mutator.initMs < value.initMs ? "mutator" : "value";
-    const bestSync = bestUpdate === bestInit ? bestUpdate : `${bestInit}/${bestUpdate}`;
-    
+    const bestSync =
+      bestUpdate === bestInit ? bestUpdate : `${bestInit}/${bestUpdate}`;
+
     // Compare best SyncedStore vs Y.Map
     const bestSyncedStore = bestUpdate === "mutator" ? mutator : value;
     const updateRatio = (bestSyncedStore.updateMs / yjs.updateMs).toFixed(1);
@@ -378,12 +395,16 @@ afterAll(() => {
     const maxUpd = Math.max(yjs.updateMs, mutator.updateMs, value.updateMs);
     lines.push(
       `  init   🔵 ${bar(yjs.initMs, maxInit)} ${yjs.initMs}ms (Y.Map)\n` +
-        `         🟠 ${bar(mutator.initMs, maxInit)} ${mutator.initMs}ms (mutator)\n` +
+        `         🟠 ${bar(mutator.initMs, maxInit)} ${
+          mutator.initMs
+        }ms (mutator)\n` +
         `         🟡 ${bar(value.initMs, maxInit)} ${value.initMs}ms (value)`
     );
     lines.push(
       `  update 🔵 ${bar(yjs.updateMs, maxUpd)} ${yjs.updateMs}ms (Y.Map)\n` +
-        `         🟠 ${bar(mutator.updateMs, maxUpd)} ${mutator.updateMs}ms (mutator)\n` +
+        `         🟠 ${bar(mutator.updateMs, maxUpd)} ${
+          mutator.updateMs
+        }ms (mutator)\n` +
         `         🟡 ${bar(value.updateMs, maxUpd)} ${value.updateMs}ms (value)`
     );
     lines.push("");

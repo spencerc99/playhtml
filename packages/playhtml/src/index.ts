@@ -193,28 +193,65 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
     : transformedPathname;
 }
 
-function resolveCursorRoom(room: CursorRoom, hostname: string): string {
+/**
+ * Normalizes a pathname by stripping filename extensions, consistent with getDefaultRoom
+ */
+function normalizePathname(pathname: string): string {
+  return pathname.replace(/\.[^/.]+$/, "");
+}
+
+/**
+ * Resolves cursor room configuration to a room string (without host prefix).
+ * The returned string will be normalized with the same logic as the main room
+ * (filename extension stripping, etc.)
+ */
+function resolveCursorRoom(room: CursorRoom): string {
   const context = {
-    domain: hostname,
+    domain: window.location.host,
     pathname: window.location.pathname,
     search: window.location.search,
   };
 
   if (typeof room === "function") {
-    return room(context);
+    const result = room(context);
+    // If the function returns a pathname-like string, normalize it (strip filename extension)
+    // If it returns an empty string (domain-only) or special value, use as-is
+    if (result && result.startsWith("/")) {
+      return normalizePathname(result);
+    }
+    return result;
   }
 
   switch (room) {
     case "page":
-      return `${hostname}${context.pathname}`;
+      // Match the normalization used by getDefaultRoom (strip filename extension)
+      return normalizePathname(context.pathname);
     case "domain":
-      return hostname;
+      // Return empty string to match the domain-only case
+      // The host will be prefixed in normalizeRoomId
+      return "";
     case "section":
-      const firstSegment = context.pathname.split('/').filter(Boolean)[0] || '';
-      return `${hostname}-${firstSegment}`;
+      const firstSegment =
+        normalizePathname(context.pathname).split("/").filter(Boolean)[0] || "";
+      return `/${firstSegment}`;
     default:
-      return `${hostname}${context.pathname}`;
+      return normalizePathname(context.pathname);
   }
+}
+
+/**
+ * Normalizes a room ID by prefixing with host and encoding.
+ * This ensures consistent format for both main room and cursor room comparisons.
+ *
+ * @param host - The hostname (e.g., "example.com")
+ * @param roomString - The room string path (e.g., "/test/playground" or "" for domain-only)
+ * @returns Encoded room ID in format: host or host-{roomString}
+ */
+function normalizeRoomId(host: string, roomString: string): string {
+  // If roomString is empty (domain case), just use host without separator
+  // Otherwise use host + "-" + roomString format to match main room construction
+  const normalized = roomString === "" ? host : `${host}-${roomString}`;
+  return encodeURIComponent(normalized);
 }
 
 let yprovider: YPartyKitProvider;
@@ -367,7 +404,11 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
 const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
-export type CursorRoom = "page" | "domain" | "section" | ((context: { domain: string; pathname: string; search: string }) => string);
+export type CursorRoom =
+  | "page"
+  | "domain"
+  | "section"
+  | ((context: { domain: string; pathname: string; search: string }) => string);
 
 export interface CursorOptions {
   enabled?: boolean;
@@ -391,7 +432,9 @@ export interface CursorOptions {
   enableChat?: boolean;
   room?: CursorRoom;
   shouldRenderCursor?: (presence: CursorPresence) => boolean;
-  getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
+  getCursorStyle?: (
+    presence: CursorPresence
+  ) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
 interface DefaultRoomOptions {
@@ -542,7 +585,7 @@ async function initPlayHTML({
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   // TODO: We want to normalize here but we can't without losing data.
-  const room = encodeURIComponent(window.location.host + "-" + inputRoom);
+  const room = normalizeRoomId(window.location.host, inputRoom);
 
   const partykitHost = getPartykitHost(host);
   __currentRoomId = room;
@@ -593,14 +636,22 @@ async function initPlayHTML({
     // Check if cursors need a separate room
     let providerForCursors = yprovider;
     if (cursorOptions.room) {
-      const cursorRoom = encodeURIComponent(
-        resolveCursorRoom(cursorOptions.room, window.location.host)
+      // Resolve cursor room to a normalized room string (without host)
+      const cursorRoomString = resolveCursorRoom(cursorOptions.room);
+      // Normalize using the same function as main room to ensure consistent comparison
+      const cursorRoom = normalizeRoomId(
+        window.location.host,
+        cursorRoomString
       );
 
       // Only create separate provider if cursor room is different from element room
       if (cursorRoom !== room) {
         const cursorDoc = new Y.Doc();
-        cursorProvider = new YPartyKitProvider(partykitHost, cursorRoom, cursorDoc);
+        cursorProvider = new YPartyKitProvider(
+          partykitHost,
+          cursorRoom,
+          cursorDoc
+        );
         cursorProvider.on("error", () => {
           onError?.();
         });
