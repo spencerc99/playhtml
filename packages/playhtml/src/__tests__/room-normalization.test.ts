@@ -1,70 +1,67 @@
+/**
+ * @vitest-environment happy-dom
+ *
+ * This test file uses happy-dom instead of jsdom because:
+ * - happy-dom allows proper mocking of window.location properties
+ * - jsdom's Location object has non-configurable properties that prevent mocking
+ * - These tests need to verify room normalization with different URLs/pathnames
+ */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// Helper to mock window.location using a Proxy
-// This intercepts all property access on window.location
-let mockedLocationValues: {
-  host: string;
-  hostname: string;
-  pathname: string;
-  search: string;
-  href: string;
-  origin: string;
-  protocol: string;
-  port: string;
-} | null = null;
-
+// Helper to mock window.location
+// In happy-dom, location properties are more easily mockable than jsdom
+// We use Object.defineProperty to override individual properties
 function mockLocation(host: string, pathname: string, search: string = "") {
   const hostname = host.split(":")[0];
   const port = host.includes(":") ? host.split(":")[1] : "";
   const href = `http://${host}${pathname}${search}`;
   const origin = `http://${hostname}${port ? `:${port}` : ""}`;
 
-  // Store mocked values
-  mockedLocationValues = {
+  // In happy-dom, we can directly override location properties
+  // Delete and redefine to ensure clean mock
+  try {
+    delete (window as any).location;
+  } catch (e) {
+    // Ignore if can't delete
+  }
+
+  // Create a new location object with our mocked values
+  const locationMock = {
     host,
     hostname,
     pathname,
     search,
     href,
     origin,
-    protocol: "http:",
+    protocol: "http:" as const,
     port,
+    hash: "",
+    assign: vi.fn(),
+    replace: vi.fn(),
+    reload: vi.fn(),
+    toString: () => href,
   };
 
-  // Get the original location
-  const originalLocation = window.location;
-
-  // Create a Proxy that intercepts property access
-  // We only use the 'get' trap to avoid descriptor incompatibility issues
-  const locationProxy = new Proxy(originalLocation, {
-    get(target, prop: string | symbol) {
-      // If we have a mocked value for this property, return it
-      if (mockedLocationValues && typeof prop === "string") {
-        if (prop in mockedLocationValues) {
-          return mockedLocationValues[
-            prop as keyof typeof mockedLocationValues
-          ];
-        }
-      }
-      // Otherwise, return the original property value
-      const value = (target as any)[prop];
-      // If it's a function, bind it to the original target
-      if (typeof value === "function") {
-        return value.bind(target);
-      }
-      return value;
-    },
+  // Use Object.defineProperty to set location
+  Object.defineProperty(window, "location", {
+    value: locationMock,
+    writable: true,
+    configurable: true,
+    enumerable: true,
   });
-
-  // Replace window.location with our proxy using vi.stubGlobal
-  // This works better with vitest's test environment
-  vi.stubGlobal("location", locationProxy);
 }
 
 async function freshPlayhtml() {
   // Ensure a clean module instance and clear global window guard
   // @ts-ignore
   delete (globalThis as any).playhtml;
+  // @ts-ignore
+  delete (window as any).playhtml;
+
+  // Reset vitest module cache to get fresh module state
+  // This ensures module-level variables like `firstSetup` are reset
+  vi.resetModules();
+
   const mod = await import("../index");
   return mod.playhtml;
 }
@@ -74,19 +71,12 @@ describe("Room normalization and cursor room matching", () => {
     if (typeof document !== "undefined") {
       document.body.innerHTML = "";
     }
-    // Reset location mock
-    mockedLocationValues = null;
-  });
-
-  afterEach(() => {
-    // Reset location mock
-    mockedLocationValues = null;
   });
 
   describe("Main room construction", () => {
     it("should construct main room with host and pathname", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({ room: "/test/playground" });
 
       // Main room should be encoded as: host + "-" + room
@@ -95,8 +85,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should strip filename extensions from default room", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground.html");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({});
 
       // Default room should strip .html extension
@@ -105,8 +95,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should include search params when defaultRoomOptions.includeSearch is true", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground", "?query=test");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({ defaultRoomOptions: { includeSearch: true } });
 
       const expectedRoom = encodeURIComponent(
@@ -118,8 +108,8 @@ describe("Room normalization and cursor room matching", () => {
 
   describe("Cursor room matching with main room", () => {
     it("should reuse main provider when cursor room is 'page' and matches default room", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -135,8 +125,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should match when cursor 'page' room matches custom main room", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         room: "/test/playground",
         cursors: {
@@ -151,8 +141,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should create separate provider when cursor room is 'domain'", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -172,9 +162,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should create separate provider when cursor room is 'section'", async () => {
-      const playhtml = await freshPlayhtml();
-      // Mock location with the pathname we want to test AFTER module import
       mockLocation("example.com", "/test/playground/page");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -194,8 +183,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should handle custom function cursor room", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -209,8 +198,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should strip filename extensions from cursor room pathnames", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/test/playground.html");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -224,9 +213,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should handle root pathname correctly", async () => {
-      const playhtml = await freshPlayhtml();
-      // Mock location with root pathname AFTER module import
       mockLocation("example.com", "/");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -240,9 +228,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should handle section room with root pathname", async () => {
-      const playhtml = await freshPlayhtml();
-      // Mock location with root pathname AFTER module import
       mockLocation("example.com", "/");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -259,8 +246,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should handle pathname with port in host", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com:8080", "/test/playground");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -276,8 +263,8 @@ describe("Room normalization and cursor room matching", () => {
     });
 
     it("should normalize nested pathname for section room", async () => {
-      const playhtml = await freshPlayhtml();
       mockLocation("example.com", "/section/subsection/page.html");
+      const playhtml = await freshPlayhtml();
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -300,9 +287,7 @@ describe("Room normalization and cursor room matching", () => {
   describe("Edge cases", () => {
     it("should handle custom room string that matches cursor page room", async () => {
       mockLocation("example.com", "/test/playground");
-
       const playhtml = await freshPlayhtml();
-      mockLocation("example.com", "/test/playground");
       await playhtml.init({
         room: "/test/playground",
         cursors: {
@@ -318,9 +303,7 @@ describe("Room normalization and cursor room matching", () => {
 
     it("should handle function that returns empty string (domain case)", async () => {
       mockLocation("example.com", "/test/playground");
-
       const playhtml = await freshPlayhtml();
-      mockLocation("example.com", "/test/playground");
       await playhtml.init({
         cursors: {
           enabled: true,
@@ -339,9 +322,7 @@ describe("Room normalization and cursor room matching", () => {
 
     it("should normalize function-returned pathname with extension", async () => {
       mockLocation("example.com", "/test/playground");
-
       const playhtml = await freshPlayhtml();
-      mockLocation("example.com", "/test/playground");
       await playhtml.init({
         room: "/test/playground",
         cursors: {

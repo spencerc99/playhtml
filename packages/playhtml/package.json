@@ -57,7 +57,8 @@
     "vite": "^7.1.2",
     "vite-plugin-dts": "^3.0.3",
     "vitest": "^3.1.1",
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "happy-dom": "^15.11.6"
   },
   "dependencies": {
     "@playhtml/common": "0.3.0",
