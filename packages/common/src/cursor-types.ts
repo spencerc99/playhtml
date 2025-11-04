@@ -22,6 +22,7 @@ export type CursorPresence = {
   playerIdentity?: PlayerIdentity;
   lastSeen?: number;
   message?: string | null;
+  page?: string;
 };
 
 // Event payloads for cursor-related global API updates

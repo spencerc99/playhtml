@@ -117,6 +117,10 @@ ReactDOM.createRoot(
     initOptions={{
       cursors: {
         enabled: true,
+        room: "domain",
+        shouldRenderCursor: (presence) => {
+          return presence.page === window.location.pathname;
+        },
       },
     }}
   >

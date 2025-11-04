@@ -31,6 +31,7 @@ vi.mock("y-partykit/provider", () => {
       };
       awareness: any;
       private listeners: Record<string, Function[]> = {};
+      private clientId: number = 1;
       constructor() {
         this.ws = {
           send: vi.fn(),
@@ -39,10 +40,17 @@ vi.mock("y-partykit/provider", () => {
         const states = new Map<number, any>();
         const local = { state: {} as any };
         this.awareness = {
+          clientID: this.clientId,
           getLocalState: () => local.state,
           setLocalStateField: (key: string, value: any) => {
             local.state = { ...local.state, [key]: value };
-            this.emit("change", true);
+            // Emit change event with proper structure expected by cursor-client
+            // When local state changes, it's considered an "update" for our own client
+            this.emit("change", {
+              added: [],
+              updated: [this.clientId],
+              removed: [],
+            });
           },
           getStates: () => states,
           on: (t: string, cb: any) => this.on(t, cb),

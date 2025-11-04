@@ -430,6 +430,7 @@ export class CursorClientAwareness {
       playerIdentity: this.playerIdentity,
       lastSeen: Date.now(),
       message: this.currentMessage,
+      page: window.location.pathname,
     };
 
     // Set cursor data in awareness using reserved field
@@ -441,6 +442,12 @@ export class CursorClientAwareness {
 
   private updateCursor(clientId: string, cursorData: CursorPresence): void {
     if (!cursorData.cursor) {
+      this.removeCursor(clientId);
+      return;
+    }
+
+    // Check if this cursor should be rendered
+    if (this.options.shouldRenderCursor && !this.options.shouldRenderCursor(cursorData)) {
       this.removeCursor(clientId);
       return;
     }
@@ -460,7 +467,8 @@ export class CursorClientAwareness {
         cursorData.playerIdentity,
         cursor.pointer,
         cursorData.message,
-        clientId
+        clientId,
+        cursorData
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(clientId, cursorElement);
@@ -518,7 +526,8 @@ export class CursorClientAwareness {
     playerIdentity?: PlayerIdentity,
     pointer: string = "mouse",
     message?: string | null,
-    connectionId?: string
+    connectionId?: string,
+    cursorData?: CursorPresence
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
@@ -556,6 +565,12 @@ export class CursorClientAwareness {
     // Add message and name if present
     this.updateCursorMessage(element, playerIdentity, message);
     this.updateCursorName(element, playerIdentity);
+
+    // Apply custom cursor styles if provided
+    if (this.options.getCursorStyle && cursorData) {
+      const customStyles = this.options.getCursorStyle(cursorData);
+      Object.assign(element.style, customStyles);
+    }
 
     return element;
   }
