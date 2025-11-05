@@ -215,6 +215,66 @@ export function ConfettiZone() {
 
 https://github.com/spencerc99/playhtml/assets/14796580/bd8ecfaf-73ab-4aa2-9312-8917809f52a2
 
+### Cursors
+
+Playhtml includes built-in cursor tracking and presence awareness. Enable cursors through `PlayProvider`:
+
+```tsx
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      room: "domain",  // Show cursors across entire site
+      shouldRenderCursor: (presence) => {
+        // Only render cursors from same page
+        return presence.page === window.location.pathname;
+      }
+    }
+  }}
+>
+  {/* your app */}
+</PlayProvider>
+```
+
+Access cursor data in your components using `usePlayContext()`:
+
+```tsx
+import { usePlayContext } from "@playhtml/react";
+
+function UserCount() {
+  const { cursors } = usePlayContext();
+
+  return (
+    <div>👥 {cursors.allColors.length} users online</div>
+  );
+}
+```
+
+The `cursors` object provides:
+- `cursors.allColors` - Array of all user colors in the room
+- `cursors.color` - Your current cursor color
+- `cursors.name` - Your current name
+
+You can also access the global `window.cursors` API for setting values:
+
+```tsx
+function CursorSettings() {
+  const { getMyPlayerIdentity } = usePlayContext();
+
+  return (
+    <input
+      type="color"
+      value={getMyPlayerIdentity().color}
+      onChange={(e) => {
+        window.cursors.color = e.target.value;
+      }}
+    />
+  );
+}
+```
+
+For full cursor configuration options, see the [cursor documentation](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
+
 For full configuration, see the interface below.
 
 ```tsx

@@ -290,6 +290,30 @@ https://github.com/user-attachments/assets/5f20b7b4-0d53-43e6-add1-754afba52e12
 
 See the guide on referencing shared elements for more details [shared-elements.md](https://github.com/spencerc99/playhtml/blob/main/docs/shared-elements.md).
 
+## Cursors
+
+Playhtml includes built-in cursor tracking and presence awareness. When enabled, users can see each other's cursors in real-time, with customizable scoping, filtering, and styling.
+
+```javascript
+playhtml.init({
+  cursors: {
+    enabled: true,
+    room: "domain",  // Show cursors across entire site
+    shouldRenderCursor: (presence) => {
+      // Only render cursors from same page
+      return presence.page === window.location.pathname;
+    }
+  }
+});
+
+// Access global presence data
+const userCount = window.cursors.allColors.length;
+```
+
+Cursors can be scoped to a page, domain, section, or custom room. You can filter which cursors render and style them dynamically (e.g., fade cross-page cursors). Perfect for showing domain-wide user counts while keeping cursor movements page-specific.
+
+See the full cursor documentation for configuration options and patterns [cursors.md](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
+
 ## Help & Community
 
 Join our [Discord community](https://discord.gg/SKbsSf4ptU) to get help and show off what you've built!
