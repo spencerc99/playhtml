@@ -6,12 +6,13 @@ import "./ReactiveOrb.scss";
 interface OrbProps {
   className: string;
   colorOffset?: number;
+  id: string;
 }
 
 export const ReactiveOrb = withSharedState(
   { defaultData: { clicks: 0 } },
   ({ data, setData }, props: OrbProps) => {
-    const { className, colorOffset = 0 } = props;
+    const { className, colorOffset = 0, id } = props;
 
     // Scale based on magnitude but cap it
     const magnitude = Math.floor(Math.log10(Math.max(data.clicks, 1)));
@@ -27,6 +28,7 @@ export const ReactiveOrb = withSharedState(
 
     return (
       <div
+        id={id}
         className={`floating-orb ${className}`}
         onClick={() => setData({ clicks: data.clicks + 1 })}
         style={{

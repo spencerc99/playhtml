@@ -86,4 +86,39 @@ describe("playhtml basic setup with SyncedStore", () => {
       on: false,
     });
   });
+
+  it("removeElementData cleans up all data and handlers", async () => {
+    const el = document.createElement("div");
+    el.id = "cleanup-test";
+    el.setAttribute("can-move", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-move");
+
+    // Verify element is set up
+    const handler = playhtml.elementHandlers!.get("can-move")!.get("cleanup-test");
+    expect(handler).toBeTruthy();
+    expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toEqual({
+      x: 0,
+      y: 0,
+    });
+
+    // Move the element to create some data
+    handler!.setData({ x: 100, y: 200 });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toEqual({
+      x: 100,
+      y: 200,
+    });
+
+    // Remove the element data
+    playhtml.removeElementData("can-move", "cleanup-test");
+
+    // Verify handler is removed
+    expect(playhtml.elementHandlers!.get("can-move")!.has("cleanup-test")).toBe(
+      false
+    );
+
+    // Verify data is removed from SyncedStore
+    expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
+  });
 });

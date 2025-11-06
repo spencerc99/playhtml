@@ -717,7 +717,11 @@ async function initPlayHTML({
           yprovider.ws?.send(
             JSON.stringify({ type: "export-permissions", elementIds })
           );
-        } catch {}
+        } catch (error) {
+          console.error("[PLAYHTML] Error during post-sync setup:", error);
+          // Still mark elements as ready even if migration/setup failed
+          markAllElementsAsReady();
+        }
       }
 
       resolve(true);
@@ -1017,6 +1021,7 @@ export interface PlayHTMLComponents {
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
+  removeElementData: typeof removeElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
   syncedStore: (typeof store)["play"];
   // TODO: REMOVE AFTER MIGRATION VALIDATED
@@ -1318,6 +1323,100 @@ function removePlayElement(element: Element | null) {
     if (tagElementHandler.has(element.id)) {
       tagElementHandler.delete(element.id);
     }
+  }
+}
+
+/**
+ * Removes all data associated with an element ID for a specific tag.
+ * This includes:
+ * - SyncedStore data (store.play[tag][elementId])
+ * - Observer subscriptions
+ * - Element handlers
+ * - Legacy globalData entries (if migration hasn't completed)
+ *
+ * Use this when you want to completely clean up data for a deleted element,
+ * preventing orphaned data from accumulating in the database.
+ *
+ * @param tag - The tag type (e.g., "can-move", "can-play")
+ * @param elementId - The element ID to remove
+ */
+function removeElementData(tag: string, elementId: string): void {
+  if (!hasSynced) {
+    console.warn(
+      `[PLAYHTML] Cannot remove element data before sync: ${tag}:${elementId}`
+    );
+    return;
+  }
+
+  const key = `${tag}:${elementId}`;
+
+  // 1. Remove observer
+  const yVal = getYjsValue(store.play[tag]?.[elementId]);
+  if (yVal && typeof (yVal as any).observeDeep === "function") {
+    const observer = yObserverByKey.get(key);
+    if (observer) {
+      try {
+        // @ts-ignore
+        (yVal as any).unobserveDeep(observer);
+      } catch (error) {
+        console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
+      }
+      yObserverByKey.delete(key);
+    }
+  }
+
+  // 2. Remove from SyncedStore
+  if (store.play[tag] && elementId in store.play[tag]) {
+    try {
+      doc.transact(() => {
+        delete store.play[tag]![elementId];
+      });
+    } catch (error) {
+      console.warn(
+        `[PLAYHTML] Failed to remove SyncedStore data for ${key}:`,
+        error
+      );
+    }
+  }
+
+  // 3. Remove from proxy cache
+  const tagMap = proxyByTagAndId.get(tag);
+  if (tagMap) {
+    tagMap.delete(elementId);
+    if (tagMap.size === 0) {
+      proxyByTagAndId.delete(tag);
+    }
+  }
+
+  // 4. Remove element handler
+  const tagElementHandlers = elementHandlers.get(tag);
+  if (tagElementHandlers) {
+    tagElementHandlers.delete(elementId);
+  }
+
+  // 5. Remove from legacy globalData if migration hasn't completed
+  // This is a safety net for cleanup during migration or if migration is disabled
+  const migrationComplete = globalData.get("__migration_complete__");
+  if (!migrationComplete) {
+    const legacyTagMap = globalData.get(tag);
+    if (legacyTagMap && legacyTagMap instanceof Y.Map) {
+      try {
+        legacyTagMap.delete(elementId);
+      } catch (error) {
+        console.warn(
+          `[PLAYHTML] Failed to remove legacy data for ${key}:`,
+          error
+        );
+      }
+    }
+  }
+
+  // 6. Clean up shared reference tracking
+  sharedUpdateSeen.delete(key);
+  const timerId = sharedHydrationTimers.get(key);
+  if (timerId !== undefined) {
+    clearTimeout(timerId);
+    sharedHydrationTimers.delete(key);
   }
 }
 

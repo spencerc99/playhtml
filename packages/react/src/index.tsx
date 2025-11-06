@@ -426,3 +426,8 @@ export {
   CanDuplicateElement,
   CanHoverElement,
 } from "./elements";
+
+// Re-export removeElementData for convenience
+export const removeElementData = (tag: string, elementId: string) => {
+  return playhtml.removeElementData(tag, elementId);
+};

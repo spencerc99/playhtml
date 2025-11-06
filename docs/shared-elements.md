@@ -95,7 +95,7 @@ export const Status = withSharedState(
 
 #### Troubleshooting
 
-- **Nothing shows up / stays local only**: ensure `data-source` is correct and the capability matches the source element’s capability.
-- **Consumer doesn’t update the source**: check if the source is `shared="read-only"` or the consumer has `data-source-read-only`.
+- **Nothing shows up / stays local only**: ensure `data-source` is correct and the capability matches the source element's capability.
+- **Consumer doesn't update the source**: check if the source is `shared="read-only"` or the consumer has `data-source-read-only`.
 - **Styling looks off**: capabilities only manage behavior/data; bring your own CSS/layout on consumers.
 - **Multiple consumers**: all consumers receive updates from the source; local-only capabilities remain local.

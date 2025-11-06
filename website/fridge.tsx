@@ -2,7 +2,7 @@ import "./fridge.scss";
 import profaneWords from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
-import { withSharedState } from "../packages/react/src";
+import { withSharedState, removeElementData } from "../packages/react/src";
 import React, { useContext, useEffect, useState } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
@@ -272,6 +272,15 @@ const WordControls = withSharedState<FridgeWordType[]>(
           wall: wall,
         },
       });
+
+      // Clean up can-move data for this element to prevent orphaned data
+      if (id) {
+        try {
+          removeElementData("can-move", id);
+        } catch (error) {
+          console.warn("[FRIDGE] Failed to cleanup can-move data:", error);
+        }
+      }
 
       setData((d) => {
         d.splice(idxToDelete, 1);

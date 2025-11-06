@@ -174,9 +174,9 @@ export default function FeaturesGrid() {
                 example
               </a>
             </p>
-            <ReactiveOrb className="orb-1" colorOffset={0} />
-            <ReactiveOrb className="orb-2" colorOffset={120} />
-            <ReactiveOrb className="orb-3" colorOffset={240} />
+            <ReactiveOrb id="orb-1" className="orb-1" colorOffset={0} />
+            <ReactiveOrb id="orb-2" className="orb-2" colorOffset={120} />
+            <ReactiveOrb id="orb-3" className="orb-3" colorOffset={240} />
           </FeatureCard>
         </div>
 

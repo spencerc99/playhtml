@@ -1,11 +1,16 @@
 import type * as Party from "partykit/server";
 import { unstable_getYDoc } from "y-partykit";
 import { syncedStore } from "@syncedstore/core";
-import { clonePlain } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
 import PartyServer from "./party";
+import {
+  docToJson,
+  replaceDocState,
+  replaceDocFromSnapshot,
+  encodeDocToBase64,
+} from "./docUtils";
 
 function compareKeys(
   obj1: any,
@@ -23,6 +28,16 @@ function compareKeys(
   };
 }
 
+/**
+ * AdminHandler provides endpoints for inspecting and managing PlayHTML rooms.
+ *
+ * Data Flow:
+ * - Normal admin edits (save-edited-data, cleanup-orphans) mutate the live Y.Doc directly,
+ *   then persist to database. The background autosave will naturally keep DB in sync.
+ * - Force-reload-live is an escape hatch for when DB was modified externally (e.g., scripts)
+ *   and we need to sync the live doc to match the database state.
+ * - All Y.Doc conversions use shared utilities in docUtils.ts for consistency.
+ */
 export class AdminHandler {
   constructor(private context: PartyServer) {}
 
@@ -67,6 +82,15 @@ export class AdminHandler {
         request.method === "POST"
       ) {
         return this.handleAdminForceReloadLive(request);
+      }
+      if (
+        path.includes("admin/save-edited-data") &&
+        request.method === "POST"
+      ) {
+        return this.handleAdminSaveEditedData(request);
+      }
+      if (path.includes("admin/cleanup-orphans") && request.method === "POST") {
+        return this.handleAdminCleanupOrphans(request);
       }
 
       return new Response("Admin endpoint not found", { status: 404 });
@@ -121,20 +145,11 @@ export class AdminHandler {
           Y.applyUpdate(yDoc, buffer);
         }
 
-        // Extract Y.Doc data using SyncedStore exactly like PlayHTML does
-        const store = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          yDoc
-        );
-
-        // Clone the store.play data to get a plain object
-        const playData = clonePlain(store.play);
-        const hasAnyData = Object.keys(playData).some(
-          (tag) => Object.keys(playData[tag] || {}).length > 0
-        );
+        // Extract Y.Doc data using shared utility
+        const playData = docToJson(yDoc);
 
         // Return 404-like response if no actual play data exists
-        if (!hasAnyData) {
+        if (!playData) {
           return new Response(
             JSON.stringify({
               error: "No Y.Doc play data found",
@@ -282,11 +297,7 @@ export class AdminHandler {
       if (docData?.document) {
         const buffer = new Uint8Array(Buffer.from(docData.document, "base64"));
         Y.applyUpdate(directYDoc, buffer);
-        const directStore = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          directYDoc
-        );
-        directData = clonePlain(directStore.play);
+        directData = docToJson(directYDoc);
       }
 
       // Method 2: Live server approach (using unstable_getYDoc like the running server)
@@ -308,11 +319,7 @@ export class AdminHandler {
           stateVectorLength: Y.encodeStateVector(liveYDoc).length,
         };
 
-        const liveStore = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          liveYDoc
-        );
-        liveData = clonePlain(liveStore.play);
+        liveData = docToJson(liveYDoc);
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error("Live data extraction failed:", msg);
@@ -368,6 +375,10 @@ export class AdminHandler {
     }
   }
 
+  /**
+   * Force save the current live Y.Doc state to database.
+   * This manually triggers a save without waiting for the background autosave.
+   */
   private async handleAdminForceSaveLive(
     request: Party.Request
   ): Promise<Response> {
@@ -379,11 +390,11 @@ export class AdminHandler {
         this.context.room,
         this.context.providerOptions
       );
-      const content = Y.encodeStateAsUpdate(liveYDoc);
+      const base64 = encodeDocToBase64(liveYDoc);
       const { error } = await supabase.from("documents").upsert(
         {
           name: this.context.room.id,
-          document: Buffer.from(content).toString("base64"),
+          document: base64,
         },
         { onConflict: "name" }
       );
@@ -401,6 +412,11 @@ export class AdminHandler {
     }
   }
 
+  /**
+   * Force reload the live Y.Doc from database snapshot.
+   * This is an escape hatch for when the database was modified externally
+   * (e.g., via Supabase console or scripts) and we need to sync the live doc.
+   */
   private async handleAdminForceReloadLive(
     request: Party.Request
   ): Promise<Response> {
@@ -428,9 +444,8 @@ export class AdminHandler {
           }
         );
       }
-      const buffer = new Uint8Array(Buffer.from(data.document, "base64"));
-      // Apply DB snapshot onto live doc (merge)
-      Y.applyUpdate(liveYDoc, buffer);
+      // Replace live doc state with DB snapshot
+      replaceDocFromSnapshot(liveYDoc, data.document);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -438,6 +453,85 @@ export class AdminHandler {
       return new Response(
         JSON.stringify({
           error: error instanceof Error ? error.message : String(error),
+        }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  /**
+   * Save edited JSON data to the live Y.Doc and persist to database.
+   * This mutates the live doc directly, so the background autosave will
+   * naturally persist the same state. No force-reload needed.
+   */
+  private async handleAdminSaveEditedData(
+    request: Party.Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    try {
+      const body = (await request.json()) as any;
+      const editedData = body?.data;
+
+      if (!editedData || typeof editedData !== "object") {
+        return new Response(
+          JSON.stringify({ error: "Invalid or missing data field" }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
+      // Get the live Y.Doc and mutate it directly
+      const liveYDoc = await unstable_getYDoc(
+        this.context.room,
+        this.context.providerOptions
+      );
+
+      console.log(
+        `[Admin] Saving edited data for room ${this.context.room.id}`
+      );
+      console.log(
+        `[Admin] Edited data keys: ${Object.keys(editedData).length}`
+      );
+
+      // Replace live doc state with edited data
+      replaceDocState(liveYDoc, editedData);
+
+      // Persist immediately to database
+      const base64 = encodeDocToBase64(liveYDoc);
+      console.log(`[Admin] Encoded content length: ${base64.length}`);
+
+      const { error } = await supabase.from("documents").upsert(
+        {
+          name: this.context.room.id,
+          document: base64,
+        },
+        { onConflict: "name" }
+      );
+
+      if (error) {
+        console.error(`[Admin] Database error:`, error);
+        throw new Error(error.message);
+      }
+
+      console.log(`[Admin] Successfully saved to database and live doc`);
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    } catch (error: unknown) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to save edited data",
+          message: error instanceof Error ? error.message : String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } }
       );
@@ -488,6 +582,171 @@ export class AdminHandler {
       return new Response(
         JSON.stringify({
           error: "Failed to remove subscriber",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  /**
+   * Cleanup orphaned element data for a specific tag.
+   * Removes entries that are not in the provided list of active element IDs.
+   *
+   * Request body:
+   * {
+   *   tag: string, // e.g., "can-move"
+   *   activeIds: string[], // Array of element IDs that should be kept
+   *   dryRun?: boolean // If true, only report what would be removed without actually removing
+   * }
+   */
+  private async handleAdminCleanupOrphans(
+    request: Party.Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    try {
+      const body = (await request.json()) as {
+        tag?: string;
+        activeIds?: string[];
+        dryRun?: boolean;
+      };
+
+      const tag = body?.tag;
+      const activeIds = body?.activeIds;
+      const dryRun = body?.dryRun ?? false;
+
+      if (!tag || typeof tag !== "string") {
+        return new Response(
+          JSON.stringify({ error: "Missing or invalid 'tag' field" }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
+      if (!Array.isArray(activeIds)) {
+        return new Response(
+          JSON.stringify({ error: "Missing or invalid 'activeIds' field" }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
+      const activeIdSet = new Set(activeIds);
+
+      // Load the room document
+      const yDoc = await unstable_getYDoc(
+        this.context.room,
+        this.context.providerOptions
+      );
+      const store = syncedStore<{ play: Record<string, any> }>(
+        { play: {} },
+        yDoc
+      );
+
+      // Get all entries for the specified tag
+      const tagData = store.play[tag];
+      if (!tagData || typeof tagData !== "object") {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            tag,
+            removed: 0,
+            total: 0,
+            message: `No data found for tag '${tag}'`,
+            dryRun,
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      }
+
+      const allElementIds = Object.keys(tagData);
+      const orphanedIds = allElementIds.filter((id) => !activeIdSet.has(id));
+
+      if (dryRun) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            tag,
+            total: allElementIds.length,
+            active: activeIds.length,
+            orphaned: orphanedIds.length,
+            orphanedIds,
+            message: `Dry run: Would remove ${orphanedIds.length} orphaned entries`,
+            dryRun: true,
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      }
+
+      // Remove orphaned entries (mutates live doc directly)
+      let removedCount = 0;
+      for (const orphanedId of orphanedIds) {
+        try {
+          delete tagData[orphanedId];
+          removedCount++;
+        } catch (error) {
+          console.error(
+            `Failed to remove ${tag}:${orphanedId}:`,
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      }
+
+      // Persist the updated live doc to database
+      const base64 = encodeDocToBase64(yDoc);
+      const { error: saveError } = await supabase.from("documents").upsert(
+        {
+          name: this.context.room.id,
+          document: base64,
+        },
+        { onConflict: "name" }
+      );
+
+      if (saveError) {
+        throw new Error(
+          `Failed to save cleaned document: ${saveError.message}`
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          tag,
+          total: allElementIds.length,
+          active: activeIds.length,
+          removed: removedCount,
+          orphanedIds,
+          message: `Removed ${removedCount} orphaned entries`,
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error: unknown) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to cleanup orphans",
           message: error instanceof Error ? error.message : String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } }

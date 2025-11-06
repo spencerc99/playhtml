@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
+import { Buffer } from "buffer";
+import { useStickyState } from "../hooks/useStickyState";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -156,21 +158,24 @@ const JSONViewer: React.FC<{
   data: any;
   depth?: number;
 }> = ({ data, depth = 0 }) => {
-  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
+  // Track explicitly toggled items: true = collapsed, false = expanded
+  const [toggledItems, setToggledItems] = useState<Map<string, boolean>>(
+    new Map()
+  );
 
-  const toggleCollapsed = (id: string) => {
-    setCollapsedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+  const toggleCollapsed = (id: string, currentState: boolean) => {
+    setToggledItems((prev) => {
+      const next = new Map(prev);
+      next.set(id, !currentState);
       return next;
     });
   };
 
-  const renderValue = (obj: any, currentDepth: number = 0): React.ReactNode => {
+  const renderValue = (
+    obj: any,
+    currentDepth: number = 0,
+    path: string = "root"
+  ): React.ReactNode => {
     if (obj === null) {
       return <span className="json-null">null</span>;
     }
@@ -206,17 +211,18 @@ const JSONViewer: React.FC<{
         return <span className="json-bracket">[]</span>;
       }
 
-      const id = `array-${Math.random().toString(36).substr(2, 9)}`;
+      const id = `array-${path}`;
       const shouldAutoExpand = obj.length <= 7 && currentDepth <= 4;
-      const isCollapsed =
-        collapsedItems.has(id) ||
-        (!shouldAutoExpand && !collapsedItems.has(id));
+      // If user has toggled, use that; otherwise use auto-expand logic
+      const isCollapsed = toggledItems.has(id)
+        ? toggledItems.get(id)!
+        : !shouldAutoExpand;
 
       return (
         <>
           <span
             className={`json-expandable ${isCollapsed ? "collapsed" : ""}`}
-            onClick={() => toggleCollapsed(id)}
+            onClick={() => toggleCollapsed(id, isCollapsed)}
             style={{ cursor: "pointer" }}
           >
             <span className="json-bracket">[</span>
@@ -231,7 +237,7 @@ const JSONViewer: React.FC<{
               obj.map((item, index) => (
                 <div key={index} style={{ marginLeft: "20px" }}>
                   <span className="json-index">{index}:</span>{" "}
-                  {renderValue(item, currentDepth + 1)}
+                  {renderValue(item, currentDepth + 1, `${path}[${index}]`)}
                 </div>
               ))}
           </div>
@@ -245,17 +251,18 @@ const JSONViewer: React.FC<{
         return <span className="json-bracket">{}</span>;
       }
 
-      const id = `object-${Math.random().toString(36).substr(2, 9)}`;
+      const id = `object-${path}`;
       const shouldAutoExpand = keys.length <= 7 && currentDepth <= 4;
-      const isCollapsed =
-        collapsedItems.has(id) ||
-        (!shouldAutoExpand && !collapsedItems.has(id));
+      // If user has toggled, use that; otherwise use auto-expand logic
+      const isCollapsed = toggledItems.has(id)
+        ? toggledItems.get(id)!
+        : !shouldAutoExpand;
 
       return (
         <>
           <span
             className={`json-expandable ${isCollapsed ? "collapsed" : ""}`}
-            onClick={() => toggleCollapsed(id)}
+            onClick={() => toggleCollapsed(id, isCollapsed)}
             style={{ cursor: "pointer" }}
           >
             <span className="json-bracket">{"{"}</span>
@@ -271,7 +278,7 @@ const JSONViewer: React.FC<{
                 <div key={key} style={{ marginLeft: "20px" }}>
                   <span className="json-key">"{key}"</span>
                   <span className="json-colon">:</span>{" "}
-                  {renderValue(obj[key], currentDepth + 1)}
+                  {renderValue(obj[key], currentDepth + 1, `${path}.${key}`)}
                 </div>
               ))}
           </div>
@@ -284,6 +291,41 @@ const JSONViewer: React.FC<{
 
   return (
     <div className="interactive-json-viewer">{renderValue(data, depth)}</div>
+  );
+};
+
+// Collapsible Section Header Component
+const SectionHeader: React.FC<{
+  title: string;
+  sectionKey: string;
+  isExpanded: boolean;
+  onToggle: (key: string) => void;
+  actions?: React.ReactNode;
+}> = ({ title, sectionKey, isExpanded, onToggle, actions }) => {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: "10px",
+        cursor: "pointer",
+      }}
+      onClick={() => onToggle(sectionKey)}
+    >
+      <h3
+        style={{
+          margin: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+        }}
+      >
+        <span style={{ fontSize: "0.9em" }}>{isExpanded ? "▼" : "▶"}</span>
+        {title}
+      </h3>
+      {actions && <div onClick={(e) => e.stopPropagation()}>{actions}</div>}
+    </div>
   );
 };
 
@@ -350,6 +392,28 @@ const AdminConsole: React.FC = () => {
   const [showRawDbData, setShowRawDbData] = useState(false);
   const [showYDocDebug, setShowYDocDebug] = useState(false);
   const [showDataComparison, setShowDataComparison] = useState(false);
+  const [showBackupComparison, setShowBackupComparison] = useState(false);
+
+  // Section collapse/expand state
+  const [sectionsExpanded, setSectionsExpanded] = useState<
+    Record<string, boolean>
+  >({
+    ydocData: true,
+    roomMetadata: true,
+    sharedData: true,
+    rawDbData: true,
+    yDocDebug: true,
+    dataComparison: true,
+    backupComparison: true,
+    cleanupTools: false, // Collapsed by default
+  });
+
+  const toggleSection = (section: string) => {
+    setSectionsExpanded((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
 
   // Debug data
   const [rawDbData, setRawDbData] = useState<any>(null);
@@ -358,8 +422,25 @@ const AdminConsole: React.FC = () => {
   >([]);
   const [reconstructedDoc, setReconstructedDoc] = useState<any>(null);
   const [comparisonData, setComparisonData] = useState<any>(null);
+  const [backupComparisonData, setBackupComparisonData] = useState<any>(null);
 
   const [debugToolsEnabled, setDebugToolsEnabled] = useState(false);
+  const [editableJson, setEditableJson] = useState<string>("");
+  const [jsonError, setJsonError] = useState<string>("");
+  const [currentBackupFile, setCurrentBackupFile] = useState<File | null>(null);
+  const [backupBase64, setBackupBase64] = useState<string | null>(null);
+  const [savedBackupPath, setSavedBackupPath] = useStickyState<string | null>(
+    "playhtml-admin-backup-path",
+    null
+  );
+
+  // Cleanup section state
+  const [selectedCleanupTag, setSelectedCleanupTag] =
+    useState<string>("can-move");
+  const [cleanupSourceElementId, setCleanupSourceElementId] =
+    useState<string>("newWords");
+  const [cleanupDryRunResult, setCleanupDryRunResult] = useState<any>(null);
+  const [isCleanupRunning, setIsCleanupRunning] = useState(false);
 
   // Utility functions
   const addLog = useCallback(
@@ -436,6 +517,19 @@ const AdminConsole: React.FC = () => {
     }
   };
 
+  const validateAndFormatJson = (
+    jsonStr: string
+  ): { valid: boolean; formatted?: string; error?: string } => {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      const formatted = JSON.stringify(parsed, null, 2);
+      return { valid: true, formatted };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return { valid: false, error: msg };
+    }
+  };
+
   // Load stored auth on mount and handle browser navigation
   useEffect(() => {
     const stored = localStorage.getItem("playhtml-admin-token");
@@ -463,27 +557,33 @@ const AdminConsole: React.FC = () => {
         setShowRawDbData(false);
         setShowYDocDebug(false);
         setShowDataComparison(false);
+        setShowBackupComparison(false);
+        setBackupComparisonData(null);
+        setBackupBase64(null);
         setDebugToolsEnabled(false);
         // Load new room data if authenticated
         if (stored || adminToken) {
           loadRoom(roomId);
         }
       } else {
-        setCurrentRoomId('');
+        setCurrentRoomId("");
         setRoomData(null);
         setRoomStatus(null);
         setShowRawDbData(false);
         setShowYDocDebug(false);
         setShowDataComparison(false);
+        setShowBackupComparison(false);
+        setBackupComparisonData(null);
+        setBackupBase64(null);
         setDebugToolsEnabled(false);
       }
     };
 
-    window.addEventListener('popstate', handlePopState);
+    window.addEventListener("popstate", handlePopState);
     addLog("info", "Admin console initialized");
 
     return () => {
-      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, [addLog]); // Remove adminToken dependency to avoid infinite loops
 
@@ -495,6 +595,107 @@ const AdminConsole: React.FC = () => {
       loadRoom(roomId);
     }
   }, [adminToken, roomData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // OPFS helper functions for storing backup files
+  const saveBackupToOPFS = async (file: File): Promise<void> => {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const fileHandle = await root.getFileHandle("backup-file", {
+        create: true,
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(file);
+      await writable.close();
+      setSavedBackupPath(file.name);
+      addLog("info", `Backup file saved to OPFS: ${file.name}`);
+    } catch (error) {
+      addLog(
+        "error",
+        `Failed to save backup to OPFS: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      throw error;
+    }
+  };
+
+  const loadBackupFromOPFS = async (): Promise<File | null> => {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const fileHandle = await root.getFileHandle("backup-file");
+      const file = await fileHandle.getFile();
+      return file;
+    } catch (error) {
+      // File doesn't exist or other error
+      return null;
+    }
+  };
+
+  const clearBackupFromOPFS = async (): Promise<void> => {
+    try {
+      const root = await navigator.storage.getDirectory();
+      await root.removeEntry("backup-file");
+      setSavedBackupPath(null);
+      addLog("info", "Backup file removed from OPFS");
+    } catch (error) {
+      // File doesn't exist, that's fine
+      console.warn("Failed to remove backup from OPFS:", error);
+    }
+  };
+
+  // Auto-load backup from OPFS when room data loads, or re-process when room changes
+  useEffect(() => {
+    const autoLoadBackup = async () => {
+      // If we have room data and a backup file, process it for the current room
+      if (roomData && currentRoomId) {
+        const roomId = roomData.roomId || currentRoomId;
+        if (roomId) {
+          // If we have a backup file already loaded, re-process it for the new room
+          if (currentBackupFile) {
+            addLog(
+              "info",
+              `Re-processing backup for new room: ${decodeRoomId(roomId)}`
+            );
+            try {
+              const text = await currentBackupFile.text();
+              await processBackupText(text, currentBackupFile.name, roomId);
+            } catch (error) {
+              addLog(
+                "error",
+                `Failed to re-process backup: ${
+                  error instanceof Error ? error.message : String(error)
+                }`
+              );
+            }
+          } else if (savedBackupPath) {
+            // First time loading: load from OPFS
+            addLog(
+              "info",
+              `Attempting to auto-load backup: ${savedBackupPath}`
+            );
+            const file = await loadBackupFromOPFS();
+            if (file) {
+              addLog(
+                "info",
+                `Auto-loading backup from OPFS: ${file.name} (${(
+                  file.size /
+                  1024 /
+                  1024
+                ).toFixed(2)} MB)`
+              );
+              const text = await file.text();
+              setCurrentBackupFile(file);
+              await processBackupText(text, file.name, roomId);
+            } else {
+              addLog("warn", "Saved backup path found but file not in OPFS");
+              setSavedBackupPath(null);
+            }
+          }
+        }
+      }
+    };
+    autoLoadBackup();
+  }, [roomData, currentRoomId, savedBackupPath, currentBackupFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEnvChange = (env: EnvName) => {
     setHostEnv(env);
@@ -555,12 +756,15 @@ const AdminConsole: React.FC = () => {
     setShowRawDbData(false);
     setShowYDocDebug(false);
     setShowDataComparison(false);
-    
+    setShowBackupComparison(false);
+    setBackupComparisonData(null);
+    setBackupBase64(null);
+
     setRoomStatus({ message: "Loading room data...", type: "loading" });
-    
+
     // Always ensure room ID is properly encoded for URL
     const encodedRoomId = ensureEncodedRoomId(targetRoomId);
-    
+
     if (!roomId) {
       // Only update if called from button, not from effect
       setCurrentRoomId(encodedRoomId);
@@ -897,6 +1101,405 @@ const AdminConsole: React.FC = () => {
     }
   };
 
+  const saveEditedDataToDb = async (editedJson: string) => {
+    if (!currentRoomId || !adminToken) return;
+
+    try {
+      addLog("info", "Parsing edited JSON...");
+      const parsedData = JSON.parse(editedJson);
+
+      addLog("info", "Saving to database via admin endpoint...");
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/save-edited-data?token=${encodeURIComponent(
+        adminToken
+      )}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: parsedData }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      addLog("info", "Successfully saved edited data to live doc and database");
+
+      alert(
+        "✅ Edited data saved! The live doc has been updated and persisted to the database."
+      );
+
+      // Reload room data to show updated state
+      await loadRoom(currentRoomId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Failed to save edited data: ${msg}`, error);
+      alert(`❌ Failed to save edited data: ${msg}`);
+    }
+  };
+
+  // Extract active IDs from room data
+  const extractActiveIds = (): string[] => {
+    if (!roomData?.ydoc?.play) return [];
+
+    // For fridge: extract IDs from can-play["newWords"] array
+    const sourceTag = "can-play";
+    const sourceElementId = cleanupSourceElementId;
+
+    const sourceData = roomData.ydoc.play[sourceTag]?.[sourceElementId];
+    if (!sourceData) {
+      addLog("warn", `No data found for ${sourceTag}:${sourceElementId}`);
+      return [];
+    }
+
+    // Handle array of objects with id property
+    if (Array.isArray(sourceData)) {
+      const ids = sourceData
+        .map((item) => (typeof item === "object" && item?.id ? item.id : null))
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+      addLog(
+        "info",
+        `Extracted ${ids.length} active IDs from ${sourceTag}:${sourceElementId}`
+      );
+      return ids;
+    }
+
+    // Handle other data structures if needed
+    addLog(
+      "warn",
+      `Unexpected data structure for ${sourceTag}:${sourceElementId}`
+    );
+    return [];
+  };
+
+  // Perform dry run cleanup
+  const performCleanupDryRun = async () => {
+    if (!currentRoomId || !adminToken || !roomData) {
+      alert("Please load a room first");
+      return;
+    }
+
+    setIsCleanupRunning(true);
+    setCleanupDryRunResult(null);
+
+    try {
+      const activeIds = extractActiveIds();
+      if (activeIds.length === 0) {
+        alert("No active IDs found. Check your source element configuration.");
+        setIsCleanupRunning(false);
+        return;
+      }
+
+      addLog("info", `Running dry run cleanup for ${selectedCleanupTag}...`);
+
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/cleanup-orphans?token=${encodeURIComponent(
+        adminToken
+      )}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tag: selectedCleanupTag,
+          activeIds,
+          dryRun: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      setCleanupDryRunResult(result);
+      addLog(
+        "info",
+        `Dry run completed: ${result.orphaned} orphaned entries found`,
+        result
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Dry run failed: ${msg}`, error);
+      alert(`❌ Dry run failed: ${msg}`);
+    } finally {
+      setIsCleanupRunning(false);
+    }
+  };
+
+  // Execute actual cleanup
+  const executeCleanup = async () => {
+    if (!currentRoomId || !adminToken || !roomData) {
+      alert("Please load a room first");
+      return;
+    }
+
+    if (!cleanupDryRunResult) {
+      alert("Please run a dry run first to see what will be removed");
+      return;
+    }
+
+    const confirmed = confirm(
+      `Are you sure you want to remove ${cleanupDryRunResult.orphaned} orphaned entries?\n\n` +
+        `This will permanently delete data for tag "${selectedCleanupTag}".` +
+        (cleanupDryRunResult.orphanedIds?.length > 0
+          ? `\n\nFirst 5 IDs to be removed:\n${cleanupDryRunResult.orphanedIds
+              .slice(0, 5)
+              .join("\n")}`
+          : "")
+    );
+
+    if (!confirmed) return;
+
+    setIsCleanupRunning(true);
+
+    try {
+      const activeIds = extractActiveIds();
+
+      addLog("info", `Executing cleanup for ${selectedCleanupTag}...`);
+
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/cleanup-orphans?token=${encodeURIComponent(
+        adminToken
+      )}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tag: selectedCleanupTag,
+          activeIds,
+          dryRun: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      addLog(
+        "info",
+        `Cleanup completed: ${result.removed} entries removed`,
+        result
+      );
+      alert(
+        `✅ Cleanup completed!\n\nRemoved ${result.removed} orphaned entries.`
+      );
+
+      // Clear dry run result and reload room data
+      setCleanupDryRunResult(null);
+      await loadRoom(currentRoomId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Cleanup failed: ${msg}`, error);
+      alert(`❌ Cleanup failed: ${msg}`);
+    } finally {
+      setIsCleanupRunning(false);
+    }
+  };
+
+  const compareWithBackup = async (file: File) => {
+    if (!currentRoomId) {
+      addLog("error", "No room ID set");
+      return;
+    }
+
+    try {
+      addLog(
+        "info",
+        `Processing backup file: ${file.name} (${(
+          file.size /
+          1024 /
+          1024
+        ).toFixed(2)} MB)`
+      );
+
+      // Read backup file
+      const text = await file.text();
+
+      // Store the file for re-processing on reload
+      setCurrentBackupFile(file);
+
+      // Process the backup
+      await processBackupText(text, file.name, currentRoomId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Failed to load backup file: ${msg}`, error);
+      alert(`❌ Failed to load backup file: ${msg}`);
+    }
+  };
+
+  const handleUploadBackup = async () => {
+    try {
+      // Use File System Access API to get a file handle
+      const [handle] = await (window as any).showOpenFilePicker({
+        types: [
+          {
+            description: "Database Backup Files",
+            accept: {
+              "application/octet-stream": [".backup"],
+              "application/sql": [".sql"],
+            },
+          },
+        ],
+        multiple: false,
+      });
+
+      if (handle) {
+        const file = await handle.getFile();
+
+        // Save to OPFS for auto-loading on refresh
+        try {
+          await saveBackupToOPFS(file);
+          addLog(
+            "info",
+            "Backup file saved to browser storage - will auto-load on page refresh"
+          );
+        } catch (saveError) {
+          addLog(
+            "warn",
+            "Could not save backup for auto-load. File will still be processed this session."
+          );
+        }
+
+        // Process the backup
+        await compareWithBackup(file);
+      }
+    } catch (error) {
+      if ((error as any).name !== "AbortError") {
+        addLog(
+          "error",
+          `Failed to open file: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+  };
+
+  const processBackupText = async (
+    text: string,
+    fileName: string,
+    targetRoomId: string
+  ) => {
+    try {
+      setShowBackupComparison(true);
+      addLog("info", "Searching for documents section in backup...");
+
+      // Find COPY public.documents section
+      const copyMatch = text.match(
+        /COPY public\.documents \(id, created_at, document, name\) FROM stdin;\n([\s\S]*?)\n\\\.\n/
+      );
+      if (!copyMatch) {
+        throw new Error(
+          "Could not find COPY public.documents section in backup file"
+        );
+      }
+
+      addLog("info", "Found documents section, searching for room...");
+
+      // Split into lines and find matching room
+      const lines = copyMatch[1].split("\n").filter((l) => l.trim());
+      const encodedRoomId = ensureEncodedRoomId(targetRoomId);
+      const roomLine = lines.find((line) => {
+        const cols = line.split("\t");
+        return cols[3] === encodedRoomId;
+      });
+
+      if (!roomLine) {
+        throw new Error(
+          `Room ${decodeRoomId(encodedRoomId)} not found in backup file`
+        );
+      }
+
+      addLog("info", `Found room data in backup`);
+
+      // Parse the line: id, created_at, document (base64), name
+      const cols = roomLine.split("\t");
+      const backupTimestamp = cols[1];
+      const base64Doc = cols[2];
+
+      // Store the base64 for copy functionality
+      setBackupBase64(base64Doc);
+
+      addLog(
+        "info",
+        `Backup timestamp: ${new Date(backupTimestamp).toLocaleString()}`
+      );
+      addLog("info", `Decoding YJS data (${base64Doc.length} chars)...`);
+
+      // Decode and extract YJS data
+      const Y = await import("yjs");
+      const backupDoc = new Y.Doc();
+      const buffer = Uint8Array.from(atob(base64Doc), (c) => c.charCodeAt(0));
+      Y.applyUpdate(backupDoc, buffer);
+
+      const { syncedStore } = await import("@syncedstore/core");
+      const backupStore = syncedStore<{ play: Record<string, any> }>(
+        { play: {} },
+        backupDoc
+      );
+      let backupData = JSON.parse(JSON.stringify(backupStore.play)).value;
+
+      // Use already-loaded room data (current DB state)
+      // Note: roomData is loaded from admin/inspect which returns both current DB and live data
+      let currentData = null;
+      let liveData = null;
+
+      if (roomData && roomData.ydoc?.play) {
+        // The inspect endpoint returns the current DB data
+        currentData = {
+          data: roomData.ydoc.play,
+          timestamp: roomData.timestamp || new Date().toISOString(),
+        };
+        // For now, treat current and live as the same since inspect returns DB data
+        liveData = roomData.ydoc.play;
+      } else {
+        addLog("warn", "No room data loaded, cannot compare with backup");
+      }
+
+      const comparison = {
+        roomId: targetRoomId,
+        backup: {
+          data: backupData,
+          timestamp: backupTimestamp,
+          hasData: Object.keys(backupData).length > 0,
+        },
+        current: currentData
+          ? {
+              data: currentData.data,
+              timestamp: currentData.timestamp,
+              hasData: Object.keys(currentData.data).length > 0,
+            }
+          : null,
+        live: liveData
+          ? {
+              data: liveData,
+              hasData: Object.keys(liveData).length > 0,
+            }
+          : null,
+      };
+
+      setBackupComparisonData(comparison);
+      addLog("info", "Backup comparison complete", comparison);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Backup comparison failed: ${msg}`, error);
+      alert(`❌ Backup comparison failed: ${msg}`);
+    }
+  };
+
   const removeSubscriberById = async (consumerRoomId: string) => {
     if (!currentRoomId || !adminToken) return;
 
@@ -1059,8 +1662,13 @@ const AdminConsole: React.FC = () => {
             {roomData && (
               <>
                 <div className="data-section">
-                  <h3>Y.Doc Data</h3>
-                  {roomData.ydoc?.play ? (
+                  <SectionHeader
+                    title="Y.Doc Data"
+                    sectionKey="ydocData"
+                    isExpanded={sectionsExpanded.ydocData}
+                    onToggle={toggleSection}
+                  />
+                  {sectionsExpanded.ydocData && roomData.ydoc?.play ? (
                     <div>
                       <div className="ydoc-debug-info">
                         <div className="debug-stats">
@@ -1084,219 +1692,600 @@ const AdminConsole: React.FC = () => {
                   ) : (
                     <div className="empty">No Y.Doc play data available</div>
                   )}
+                  {!sectionsExpanded.ydocData && (
+                    <div style={{ color: "#666", fontSize: "0.9em" }}>
+                      Click to expand
+                    </div>
+                  )}
                 </div>
 
                 <div className="data-section">
-                  <h3>Room Metadata</h3>
-                  <div className="metadata-list">
-                    <div className="metadata-item">
-                      <strong>Room ID (Encoded):</strong>{" "}
-                      <code>{roomData.roomId || currentRoomId}</code>
+                  <SectionHeader
+                    title="Room Metadata"
+                    sectionKey="roomMetadata"
+                    isExpanded={sectionsExpanded.roomMetadata}
+                    onToggle={toggleSection}
+                  />
+                  {sectionsExpanded.roomMetadata && (
+                    <div className="metadata-list">
+                      <div className="metadata-item">
+                        <strong>Room ID (Encoded):</strong>{" "}
+                        <code>{roomData.roomId || currentRoomId}</code>
+                      </div>
+                      <div className="metadata-item">
+                        <strong>Room ID (Readable):</strong>{" "}
+                        <code>
+                          {decodeRoomId(roomData.roomId || currentRoomId)}
+                        </code>
+                      </div>
+                      <div className="metadata-item">
+                        <strong>Active Connections:</strong>{" "}
+                        <span className="connection-count">
+                          {roomData.connections || 0}
+                        </span>
+                      </div>
+                      <div className="metadata-item">
+                        <strong>Created At:</strong>{" "}
+                        <time>
+                          {roomData.timestamp
+                            ? new Date(roomData.timestamp).toLocaleString()
+                            : "Unknown"}
+                        </time>
+                      </div>
                     </div>
-                    <div className="metadata-item">
-                      <strong>Room ID (Readable):</strong>{" "}
-                      <code>{decodeRoomId(roomData.roomId || currentRoomId)}</code>
-                    </div>
-                    <div className="metadata-item">
-                      <strong>Active Connections:</strong>{" "}
-                      <span className="connection-count">
-                        {roomData.connections || 0}
-                      </span>
-                    </div>
-                    <div className="metadata-item">
-                      <strong>Created At:</strong>{" "}
-                      <time>
-                        {roomData.timestamp
-                          ? new Date(roomData.timestamp).toLocaleString()
-                          : "Unknown"}
-                      </time>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="data-section">
-                  <h3>Shared Data</h3>
-                  <div className="shared-data-grid">
-                    <div className="shared-section">
-                      <h4>Subscribers</h4>
-                      <div className="data-viewer">
-                        {roomData.subscribers?.length ? (
-                          formatSharedDataList(
-                            roomData.subscribers,
-                            "subscriber"
-                          )
-                        ) : (
-                          <div className="empty">No subscribers</div>
-                        )}
+                  <SectionHeader
+                    title="Shared Data"
+                    sectionKey="sharedData"
+                    isExpanded={sectionsExpanded.sharedData}
+                    onToggle={toggleSection}
+                  />
+                  {sectionsExpanded.sharedData && (
+                    <div className="shared-data-grid">
+                      <div className="shared-section">
+                        <h4>Subscribers</h4>
+                        <div className="data-viewer">
+                          {roomData.subscribers?.length ? (
+                            formatSharedDataList(
+                              roomData.subscribers,
+                              "subscriber"
+                            )
+                          ) : (
+                            <div className="empty">No subscribers</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shared-section">
+                        <h4>Shared References</h4>
+                        <div className="data-viewer">
+                          {roomData.sharedReferences?.length ? (
+                            formatSharedDataList(
+                              roomData.sharedReferences,
+                              "reference"
+                            )
+                          ) : (
+                            <div className="empty">No shared references</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shared-section">
+                        <h4>Permissions</h4>
+                        <div className="data-viewer">
+                          {roomData.sharedPermissions &&
+                          Object.keys(roomData.sharedPermissions).length ? (
+                            formatPermissionsList(roomData.sharedPermissions)
+                          ) : (
+                            <div className="empty">No permissions set</div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="shared-section">
-                      <h4>Shared References</h4>
-                      <div className="data-viewer">
-                        {roomData.sharedReferences?.length ? (
-                          formatSharedDataList(
-                            roomData.sharedReferences,
-                            "reference"
-                          )
-                        ) : (
-                          <div className="empty">No shared references</div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="shared-section">
-                      <h4>Permissions</h4>
-                      <div className="data-viewer">
-                        {roomData.sharedPermissions &&
-                        Object.keys(roomData.sharedPermissions).length ? (
-                          formatPermissionsList(roomData.sharedPermissions)
-                        ) : (
-                          <div className="empty">No permissions set</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </>
             )}
 
             {showRawDbData && rawDbData && (
               <div className="data-section">
-                <h3>Raw Database Data</h3>
-                <div className="debug-info">
-                  <div className="debug-item">
-                    <strong>Document Size:</strong>
-                    <span>
-                      {rawDbData.document
-                        ? `${
-                            Math.round(
-                              (rawDbData.document.base64Length / 1024) * 100
-                            ) / 100
-                          } KB`
-                        : "No data"}
-                    </span>
-                  </div>
-                  <div className="debug-item">
-                    <strong>Base64 Length:</strong>
-                    <span>
-                      {rawDbData.document
-                        ? rawDbData.document.base64Length.toLocaleString()
-                        : "0"}
-                    </span>
-                  </div>
-                  <div className="debug-item">
-                    <strong>Last Updated:</strong>
-                    <span>
-                      {rawDbData.document
-                        ? new Date(
-                            rawDbData.document.created_at
-                          ).toLocaleString()
-                        : "Never"}
-                    </span>
-                  </div>
-                </div>
-                <JSONViewer data={rawDbData} />
+                <SectionHeader
+                  title="Raw Database Data"
+                  sectionKey="rawDbData"
+                  isExpanded={sectionsExpanded.rawDbData}
+                  onToggle={toggleSection}
+                />
+                {sectionsExpanded.rawDbData && (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Document Size:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? `${
+                                Math.round(
+                                  (rawDbData.document.base64Length / 1024) * 100
+                                ) / 100
+                              } KB`
+                            : "No data"}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Base64 Length:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? rawDbData.document.base64Length.toLocaleString()
+                            : "0"}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Last Updated:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? new Date(
+                                rawDbData.document.created_at
+                              ).toLocaleString()
+                            : "Never"}
+                        </span>
+                      </div>
+                    </div>
+                    <JSONViewer data={rawDbData} />
+                  </>
+                )}
               </div>
             )}
 
             {showYDocDebug && (
               <div className="data-section">
-                <h3>Y.Doc Loading Debug</h3>
-                <div className="debug-steps">
-                  {debugSteps.map((step, index) => (
-                    <div key={index} className={`debug-step ${step.type}`}>
-                      {step.message}
+                <SectionHeader
+                  title="Y.Doc Loading Debug"
+                  sectionKey="yDocDebug"
+                  isExpanded={sectionsExpanded.yDocDebug}
+                  onToggle={toggleSection}
+                />
+                {sectionsExpanded.yDocDebug && (
+                  <>
+                    <div className="debug-steps">
+                      {debugSteps.map((step, index) => (
+                        <div key={index} className={`debug-step ${step.type}`}>
+                          {step.message}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                {reconstructedDoc && <JSONViewer data={reconstructedDoc} />}
+                    {reconstructedDoc && <JSONViewer data={reconstructedDoc} />}
+                  </>
+                )}
               </div>
             )}
 
             {showDataComparison && comparisonData && (
               <div className="data-section">
-                <h3>Live vs Admin Data Comparison</h3>
-                <div className="debug-info">
-                  <div className="debug-item">
-                    <strong>Direct Method Keys:</strong>
-                    <span>
-                      {Object.keys(
-                        comparisonData.methods?.direct?.data || {}
-                      ).reduce(
-                        (sum, tag) =>
-                          sum +
-                          Object.keys(
-                            comparisonData.methods.direct.data[tag] || {}
-                          ).length,
-                        0
-                      )}
-                    </span>
-                  </div>
-                  <div className="debug-item">
-                    <strong>Live Method Keys:</strong>
-                    <span>
-                      {Object.keys(
-                        comparisonData.methods?.live?.data || {}
-                      ).reduce(
-                        (sum, tag) =>
-                          sum +
-                          Object.keys(
-                            comparisonData.methods.live.data[tag] || {}
-                          ).length,
-                        0
-                      )}
-                    </span>
-                  </div>
-                  <div className="debug-item">
-                    <strong>Data Match:</strong>
-                    <span
+                <SectionHeader
+                  title="Live vs Admin Data Comparison"
+                  sectionKey="dataComparison"
+                  isExpanded={sectionsExpanded.dataComparison}
+                  onToggle={toggleSection}
+                />
+                {sectionsExpanded.dataComparison && (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Direct Method Keys:</strong>
+                        <span>
+                          {Object.keys(
+                            comparisonData.methods?.direct?.data || {}
+                          ).reduce(
+                            (sum, tag) =>
+                              sum +
+                              Object.keys(
+                                comparisonData.methods.direct.data[tag] || {}
+                              ).length,
+                            0
+                          )}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Live Method Keys:</strong>
+                        <span>
+                          {Object.keys(
+                            comparisonData.methods?.live?.data || {}
+                          ).reduce(
+                            (sum, tag) =>
+                              sum +
+                              Object.keys(
+                                comparisonData.methods.live.data[tag] || {}
+                              ).length,
+                            0
+                          )}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Data Match:</strong>
+                        <span
+                          style={{
+                            color: comparisonData.differences?.dataMatch
+                              ? "#38a169"
+                              : "#e53e3e",
+                          }}
+                        >
+                          {comparisonData.differences?.dataMatch
+                            ? "✅ Yes"
+                            : "❌ No"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="tool-grid" style={{ marginBottom: "10px" }}>
+                      <button
+                        className="tool-btn destructive"
+                        disabled={!debugToolsEnabled}
+                        onClick={handleForceReloadLive}
+                      >
+                        Force DB → Live
+                      </button>
+                      <button
+                        className="tool-btn"
+                        disabled={!debugToolsEnabled}
+                        onClick={handleForceSaveLive}
+                      >
+                        Force Save DB ← Live
+                      </button>
+                    </div>
+                    <div className="shared-data-grid">
+                      <div className="shared-section">
+                        <h4>Direct Method Data (Admin Console)</h4>
+                        <JSONViewer
+                          data={comparisonData.methods?.direct?.data || {}}
+                        />
+                      </div>
+                      <div className="shared-section">
+                        <h4>Live Method Data (unstable_getYDoc)</h4>
+                        {comparisonData.methods?.live?.data?.error ? (
+                          <div className="empty">
+                            Error: {comparisonData.methods.live.data.error}
+                          </div>
+                        ) : (
+                          <JSONViewer
+                            data={comparisonData.methods?.live?.data || {}}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {showBackupComparison && backupComparisonData && (
+              <div className="data-section">
+                <SectionHeader
+                  title="Backup Comparison"
+                  sectionKey="backupComparison"
+                  isExpanded={sectionsExpanded.backupComparison}
+                  onToggle={toggleSection}
+                  actions={
+                    <div
                       style={{
-                        color: comparisonData.differences?.dataMatch
-                          ? "#38a169"
-                          : "#e53e3e",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        fontSize: "0.9em",
                       }}
                     >
-                      {comparisonData.differences?.dataMatch
-                        ? "✅ Yes"
-                        : "❌ No"}
-                    </span>
-                  </div>
-                </div>
-                <div className="tool-grid" style={{ marginBottom: "10px" }}>
-                  <button
-                    className="tool-btn destructive"
-                    disabled={!debugToolsEnabled}
-                    onClick={handleForceReloadLive}
-                  >
-                    Force DB → Live
-                  </button>
-                  <button
-                    className="tool-btn"
-                    disabled={!debugToolsEnabled}
-                    onClick={handleForceSaveLive}
-                  >
-                    Force Save DB ← Live
-                  </button>
-                </div>
-                <div className="shared-data-grid">
-                  <div className="shared-section">
-                    <h4>Direct Method Data (Admin Console)</h4>
-                    <JSONViewer
-                      data={comparisonData.methods?.direct?.data || {}}
-                    />
-                  </div>
-                  <div className="shared-section">
-                    <h4>Live Method Data (unstable_getYDoc)</h4>
-                    {comparisonData.methods?.live?.data?.error ? (
-                      <div className="empty">
-                        Error: {comparisonData.methods.live.data.error}
+                      {currentBackupFile ? (
+                        <>
+                          <span style={{ color: "#666" }}>
+                            📁 {currentBackupFile.name}
+                          </span>
+                          {savedBackupPath && (
+                            <span style={{ fontSize: "0.85em", color: "#999" }}>
+                              (auto-saved)
+                            </span>
+                          )}
+                          <button
+                            className="tool-btn"
+                            style={{
+                              padding: "4px 8px",
+                              fontSize: "0.85em",
+                            }}
+                            onClick={() => {
+                              setCurrentBackupFile(null);
+                              setShowBackupComparison(false);
+                              setBackupComparisonData(null);
+                              setEditableJson("");
+                              setBackupBase64(null);
+                            }}
+                          >
+                            Clear Backup
+                          </button>
+                          {savedBackupPath && (
+                            <button
+                              className="tool-btn"
+                              style={{
+                                padding: "4px 8px",
+                                fontSize: "0.85em",
+                              }}
+                              onClick={async () => {
+                                if (
+                                  confirm(
+                                    `Remove saved backup "${savedBackupPath}" from browser storage?`
+                                  )
+                                ) {
+                                  await clearBackupFromOPFS();
+                                  alert("✅ Auto-saved backup cleared");
+                                }
+                              }}
+                              title="Remove backup file from browser storage (OPFS)"
+                            >
+                              🗑️ Clear Auto-Save
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          className="tool-btn"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "0.85em",
+                          }}
+                          onClick={handleUploadBackup}
+                          disabled={!debugToolsEnabled}
+                        >
+                          📤 Upload Backup
+                        </button>
+                      )}
+                    </div>
+                  }
+                />
+                {sectionsExpanded.backupComparison && (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Backup Timestamp:</strong>
+                        <span>
+                          {backupComparisonData.backup?.timestamp
+                            ? new Date(
+                                backupComparisonData.backup.timestamp
+                              ).toLocaleString()
+                            : "Unknown"}
+                        </span>
                       </div>
-                    ) : (
-                      <JSONViewer
-                        data={comparisonData.methods?.live?.data || {}}
+                      <div className="debug-item">
+                        <strong>Backup Elements:</strong>
+                        <span>
+                          {Object.values(
+                            backupComparisonData.backup?.data || {}
+                          ).reduce(
+                            (sum: number, tagData: any) =>
+                              sum + Object.keys(tagData || {}).length,
+                            0
+                          )}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Current DB Elements:</strong>
+                        <span>
+                          {backupComparisonData.current
+                            ? Object.values(
+                                backupComparisonData.current.data || {}
+                              ).reduce(
+                                (sum: number, tagData: any) =>
+                                  sum + Object.keys(tagData || {}).length,
+                                0
+                              )
+                            : "N/A"}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Live Elements:</strong>
+                        <span>
+                          {backupComparisonData.live
+                            ? Object.values(
+                                backupComparisonData.live.data || {}
+                              ).reduce(
+                                (sum: number, tagData: any) =>
+                                  sum + Object.keys(tagData || {}).length,
+                                0
+                              )
+                            : "N/A"}
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="shared-data-grid"
+                      style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
+                    >
+                      <div className="shared-section">
+                        <h4>
+                          Backup Data (
+                          {new Date(
+                            backupComparisonData.backup?.timestamp
+                          ).toLocaleDateString()}
+                          )
+                        </h4>
+                        <JSONViewer
+                          data={backupComparisonData.backup?.data || {}}
+                        />
+                      </div>
+                      <div className="shared-section">
+                        <h4>Current DB Data</h4>
+                        {backupComparisonData.current ? (
+                          <>
+                            <div
+                              style={{
+                                fontSize: "0.85em",
+                                color: "#666",
+                                marginBottom: "8px",
+                              }}
+                            >
+                              Last updated:{" "}
+                              {new Date(
+                                backupComparisonData.current.timestamp
+                              ).toLocaleString()}
+                            </div>
+                            <JSONViewer
+                              data={backupComparisonData.current.data || {}}
+                            />
+                          </>
+                        ) : (
+                          <div className="empty">No current DB data</div>
+                        )}
+                      </div>
+                      <div className="shared-section">
+                        <h4>Live Data</h4>
+                        {backupComparisonData.live ? (
+                          <JSONViewer
+                            data={backupComparisonData.live.data || {}}
+                          />
+                        ) : (
+                          <div className="empty">No live data</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "20px" }}>
+                      <h4>Manual Reconciliation</h4>
+                      <p
+                        style={{
+                          fontSize: "0.9em",
+                          color: "#666",
+                          marginBottom: "10px",
+                        }}
+                      >
+                        Edit the JSON below to manually reconcile data, then
+                        save to database.
+                      </p>
+                      <div style={{ marginBottom: "10px" }}>
+                        <button
+                          className="tool-btn"
+                          onClick={() => {
+                            const json = JSON.stringify(
+                              backupComparisonData.backup?.data || {},
+                              null,
+                              2
+                            );
+                            setEditableJson(json);
+                            setJsonError("");
+                          }}
+                          style={{ marginRight: "10px" }}
+                        >
+                          Load Backup Data
+                        </button>
+                        <button
+                          className="tool-btn"
+                          onClick={() => {
+                            const json = JSON.stringify(
+                              backupComparisonData.current?.data || {},
+                              null,
+                              2
+                            );
+                            setEditableJson(json);
+                            setJsonError("");
+                          }}
+                          style={{ marginRight: "10px" }}
+                          disabled={!backupComparisonData.current}
+                        >
+                          Load Current DB Data
+                        </button>
+                        <button
+                          className="tool-btn"
+                          onClick={() => {
+                            const json = JSON.stringify(
+                              backupComparisonData.live?.data || {},
+                              null,
+                              2
+                            );
+                            setEditableJson(json);
+                            setJsonError("");
+                          }}
+                          disabled={!backupComparisonData.live}
+                        >
+                          Load Live Data
+                        </button>
+                      </div>
+                      <div style={{ marginBottom: "10px" }}>
+                        <button
+                          className="tool-btn"
+                          onClick={() => {
+                            const result = validateAndFormatJson(editableJson);
+                            if (result.valid && result.formatted) {
+                              setEditableJson(result.formatted);
+                              setJsonError("");
+                              alert("✅ JSON is valid and has been formatted");
+                            } else {
+                              setJsonError(result.error || "Invalid JSON");
+                              alert(`❌ Invalid JSON: ${result.error}`);
+                            }
+                          }}
+                          disabled={!editableJson.trim()}
+                        >
+                          ✓ Validate & Format JSON
+                        </button>
+                      </div>
+                      {jsonError && (
+                        <div
+                          style={{
+                            padding: "10px",
+                            background: "#fee",
+                            border: "1px solid #fcc",
+                            borderRadius: "4px",
+                            marginBottom: "10px",
+                            color: "#c00",
+                            fontSize: "0.9em",
+                          }}
+                        >
+                          <strong>JSON Error:</strong> {jsonError}
+                        </div>
+                      )}
+                      <textarea
+                        value={editableJson}
+                        onChange={(e) => {
+                          setEditableJson(e.target.value);
+                          setJsonError("");
+                        }}
+                        style={{
+                          width: "100%",
+                          minHeight: "300px",
+                          fontFamily: "monospace",
+                          fontSize: "12px",
+                          padding: "10px",
+                          border: jsonError
+                            ? "1px solid #fcc"
+                            : "1px solid #ccc",
+                          borderRadius: "4px",
+                          marginBottom: "10px",
+                          backgroundColor: jsonError ? "#fff5f5" : "white",
+                        }}
+                        placeholder="Load data from one of the buttons above, or paste JSON here..."
                       />
-                    )}
-                  </div>
-                </div>
+                      <button
+                        className="tool-btn"
+                        onClick={() => {
+                          if (!editableJson.trim()) {
+                            alert("Please enter JSON data first");
+                            return;
+                          }
+                          // Validate before saving
+                          const result = validateAndFormatJson(editableJson);
+                          if (!result.valid) {
+                            setJsonError(result.error || "Invalid JSON");
+                            alert(
+                              `❌ Cannot save invalid JSON: ${result.error}`
+                            );
+                            return;
+                          }
+                          setJsonError("");
+                          const ok = confirm(
+                            "Save this edited data to the database? This will overwrite the current database state."
+                          );
+                          if (ok) saveEditedDataToDb(editableJson);
+                        }}
+                        disabled={!editableJson.trim()}
+                      >
+                        💾 Save Edited Data to Database
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </section>
@@ -1334,6 +2323,221 @@ const AdminConsole: React.FC = () => {
               </button>
             </div>
           </section>
+
+          {roomData && (
+            <section className="cleanup-tools">
+              <div className="data-section">
+                <SectionHeader
+                  title="🧹 Cleanup Orphaned Data"
+                  sectionKey="cleanupTools"
+                  isExpanded={sectionsExpanded.cleanupTools}
+                  onToggle={toggleSection}
+                />
+                {sectionsExpanded.cleanupTools && (
+                  <>
+                    <p style={{ color: "#666", marginBottom: "16px" }}>
+                      Remove orphaned element data that accumulates when
+                      elements are deleted. This is especially useful for tags
+                      like <code>can-move</code> that store per-element state.
+                    </p>
+
+                    <div style={{ marginBottom: "20px" }}>
+                      <div style={{ marginBottom: "12px" }}>
+                        <label
+                          htmlFor="cleanup-tag"
+                          style={{ display: "block", marginBottom: "4px" }}
+                        >
+                          Tag to Clean Up:
+                        </label>
+                        <select
+                          id="cleanup-tag"
+                          value={selectedCleanupTag}
+                          onChange={(e) => {
+                            setSelectedCleanupTag(e.target.value);
+                            setCleanupDryRunResult(null);
+                          }}
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: "14px",
+                            borderRadius: "4px",
+                            border: "1px solid #ccc",
+                            width: "200px",
+                          }}
+                        >
+                          <option value="can-move">can-move</option>
+                          <option value="can-play">can-play</option>
+                          <option value="can-toggle">can-toggle</option>
+                          <option value="can-spin">can-spin</option>
+                          <option value="can-grow">can-grow</option>
+                          <option value="can-duplicate">can-duplicate</option>
+                        </select>
+                      </div>
+
+                      <div style={{ marginBottom: "12px" }}>
+                        <label
+                          htmlFor="cleanup-source"
+                          style={{ display: "block", marginBottom: "4px" }}
+                        >
+                          Source Element ID (for extracting active IDs):
+                        </label>
+                        <input
+                          id="cleanup-source"
+                          type="text"
+                          value={cleanupSourceElementId}
+                          onChange={(e) => {
+                            setCleanupSourceElementId(e.target.value);
+                            setCleanupDryRunResult(null);
+                          }}
+                          placeholder="e.g., newWords"
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: "14px",
+                            borderRadius: "4px",
+                            border: "1px solid #ccc",
+                            width: "200px",
+                          }}
+                        />
+                        <span
+                          style={{
+                            marginLeft: "8px",
+                            color: "#666",
+                            fontSize: "12px",
+                          }}
+                        >
+                          (should be an element in can-play tag that contains an
+                          array with id fields)
+                        </span>
+                      </div>
+
+                      <div style={{ marginBottom: "16px" }}>
+                        <button
+                          className="tool-btn"
+                          onClick={performCleanupDryRun}
+                          disabled={!roomData || isCleanupRunning}
+                          style={{ marginRight: "8px" }}
+                        >
+                          {isCleanupRunning ? "Running..." : "🔍 Dry Run"}
+                        </button>
+                        {cleanupDryRunResult && (
+                          <button
+                            className="tool-btn destructive"
+                            onClick={executeCleanup}
+                            disabled={
+                              isCleanupRunning ||
+                              cleanupDryRunResult.orphaned === 0
+                            }
+                          >
+                            {isCleanupRunning
+                              ? "Cleaning..."
+                              : `🗑️ Remove ${cleanupDryRunResult.orphaned} Orphaned`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {cleanupDryRunResult && (
+                      <div
+                        style={{
+                          padding: "16px",
+                          background:
+                            cleanupDryRunResult.orphaned === 0
+                              ? "#F0F9FF"
+                              : "#FEF3C7",
+                          border: `1px solid ${
+                            cleanupDryRunResult.orphaned === 0
+                              ? "#BAE6FD"
+                              : "#FDE68A"
+                          }`,
+                          borderRadius: "8px",
+                          marginTop: "16px",
+                        }}
+                      >
+                        <h3 style={{ marginTop: 0 }}>Dry Run Results</h3>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(3, 1fr)",
+                            gap: "12px",
+                            marginBottom: "12px",
+                          }}
+                        >
+                          <div>
+                            <strong>Total Entries:</strong>{" "}
+                            {cleanupDryRunResult.total}
+                          </div>
+                          <div>
+                            <strong>Active Entries:</strong>{" "}
+                            {cleanupDryRunResult.active}
+                          </div>
+                          <div>
+                            <strong>Orphaned Entries:</strong>{" "}
+                            <span
+                              style={{
+                                color:
+                                  cleanupDryRunResult.orphaned > 0
+                                    ? "#D97706"
+                                    : "#059669",
+                              }}
+                            >
+                              {cleanupDryRunResult.orphaned}
+                            </span>
+                          </div>
+                        </div>
+                        {cleanupDryRunResult.message && (
+                          <div style={{ marginBottom: "12px", color: "#666" }}>
+                            {cleanupDryRunResult.message}
+                          </div>
+                        )}
+                        {cleanupDryRunResult.orphanedIds &&
+                          cleanupDryRunResult.orphanedIds.length > 0 && (
+                            <details style={{ marginTop: "12px" }}>
+                              <summary
+                                style={{
+                                  cursor: "pointer",
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                View Orphaned IDs (
+                                {cleanupDryRunResult.orphanedIds.length})
+                              </summary>
+                              <div
+                                style={{
+                                  marginTop: "8px",
+                                  maxHeight: "200px",
+                                  overflowY: "auto",
+                                  background: "white",
+                                  padding: "8px",
+                                  borderRadius: "4px",
+                                  fontFamily: "monospace",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                {cleanupDryRunResult.orphanedIds
+                                  .slice(0, 100)
+                                  .map((id: string, idx: number) => (
+                                    <div key={idx}>{id}</div>
+                                  ))}
+                                {cleanupDryRunResult.orphanedIds.length >
+                                  100 && (
+                                  <div
+                                    style={{ color: "#666", marginTop: "8px" }}
+                                  >
+                                    ... and{" "}
+                                    {cleanupDryRunResult.orphanedIds.length -
+                                      100}{" "}
+                                    more
+                                  </div>
+                                )}
+                              </div>
+                            </details>
+                          )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </section>
+          )}
 
           <DebugLogs logs={logs} onClearLogs={() => setLogs([])} />
         </div>
