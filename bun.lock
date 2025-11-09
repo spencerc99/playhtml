@@ -32,7 +32,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -41,7 +41,7 @@
     },
     "packages/extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/react": "workspace:*",
@@ -65,9 +65,9 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "dependencies": {
-        "@playhtml/common": "0.3.0",
+        "@playhtml/common": "0.3.1",
         "@syncedstore/core": "^0.6.0",
         "y-partykit": "^0.0.31",
         "yjs": "13.6.18",
@@ -96,7 +96,7 @@
         "@testing-library/dom": "^10.4.0",
         "@testing-library/jest-dom": "^6.6.3",
         "@testing-library/react": "^16.3.0",
-        "@types/react": "^18.2.21 || ^19.0.0",
+        "@types/react": "^18.2.48",
         "@vitejs/plugin-react": "^4.0.4",
         "jsdom": "^26.1.0",
         "react-resizable": "^3.0.5",
@@ -1603,8 +1603,6 @@
     "@playhtml/extension/react": ["react@19.1.1", "", {}, "sha512-w8nqGImo45dmMIfljjMwOGtbmC/mk4CMYhWIicdSflH91J9TyCyczcPFXJzrZ/ZXcgGRFeP6BU0BEJTw6tZdfQ=="],
 
     "@playhtml/extension/react-dom": ["react-dom@19.1.1", "", { "dependencies": { "scheduler": "^0.26.0" }, "peerDependencies": { "react": "^19.1.1" } }, "sha512-Dlq/5LAZgF0Gaz6yiqZCf6VCcZs1ghAJyrsu84Q/GT0gV+mCxbfmKNoGRKBYMJ8IEdGPqu49YWXD02GCknEDkw=="],
-
-    "@playhtml/react/@types/react": ["@types/react@19.1.11", "", { "dependencies": { "csstype": "^3.0.2" } }, "sha512-lr3jdBw/BGj49Eps7EvqlUaoeA0xpj3pc0RoJkHpYaCHkVK7i28dKyImLQb3JVlqs3aYSXf7qYuWOW/fgZnTXQ=="],
 
     "@playhtml/react/react": ["react@19.1.1", "", {}, "sha512-w8nqGImo45dmMIfljjMwOGtbmC/mk4CMYhWIicdSflH91J9TyCyczcPFXJzrZ/ZXcgGRFeP6BU0BEJTw6tZdfQ=="],
 

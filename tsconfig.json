@@ -19,6 +19,7 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
+    "typeRoots": ["./node_modules/@types"],
     "paths": {
       "playhtml": ["packages/playhtml/src"],
       "@playhtml/react": ["packages/react/src"],

@@ -2,11 +2,10 @@ import "./fridge.scss";
 import profaneWords from "profane-words";
 import { TagType } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
-import { withSharedState, removeElementData } from "../packages/react/src";
+import { PlayContext, withSharedState } from "../packages/react/src";
 import React, { useContext, useEffect, useState } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
-import { PlayContext } from "../packages/react/src";
 
 // Add Plausible analytics type definition
 declare global {
@@ -15,7 +14,6 @@ declare global {
       eventName: string,
       options?: { props?: Record<string, any> }
     ) => void;
-    cursors?: { color: string };
   }
 }
 
@@ -179,7 +177,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
-
+    const { removeElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
 

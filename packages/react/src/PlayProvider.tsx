@@ -11,6 +11,7 @@ export interface PlayContextInfo
     | "dispatchPlayEvent"
     | "registerPlayEventListener"
     | "removePlayEventListener"
+    | "removeElementData"
   > {
   hasSynced: boolean;
   isProviderMissing: boolean;
@@ -44,6 +45,11 @@ export const PlayContext = createContext<PlayContextInfo>({
     );
   },
   getMyPlayerIdentity: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  removeElementData: () => {
     throw new Error(
       "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
     );
@@ -148,6 +154,7 @@ export function PlayProvider({
         dispatchPlayEvent: playhtml.dispatchPlayEvent,
         registerPlayEventListener: playhtml.registerPlayEventListener,
         removePlayEventListener: playhtml.removePlayEventListener,
+        removeElementData: playhtml.removeElementData,
         hasSynced,
         isProviderMissing: false,
         configureCursors,
