@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- 
+      This is an HTML comment
+      You can write text in a comment and the content won't be visible in the page
+    -->
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="https://glitch.com/favicon.ico" />
+
+    <!--
+      This is the page head - it contains info the browser uses
+      Like the title, which appears on the browser tab but not inside the page
+      Further down you'll see the content that displays in the page
+    -->
+    <title>playhtml x glitch starter</title>
+
+    <!-- The website stylesheet -->
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!--
+      The body includes the content you see in the page
+      Each element is defined using tags, like this <div></div>
+      The attributes like class="wrapper" let us style elements in the CSS
+    -->
+    <div class="wrapper">
+      <div class="content" role="main">
+        <h1 class="title" id="title">Hello World!</h1>
+        <img
+          src="https://cdn.glitch.com/a9975ea6-8949-4bab-addb-8a95021dc2da%2Fillustration.svg?v=1618177344016"
+          class="illustration"
+          alt="Editor illustration"
+          title="Click the image!"
+             id="illustration"
+             can-spin
+        />
+        
+        <div class="instructions">
+          
+          
+          <img
+            src="https://media2.giphy.com/media/lL7A3Li0YtFHq/giphy.gif?cid=ecf05e47ah89o71gzz7ke7inrgb1ai1xcbrjnqdf7o890118&ep=v1_stickers_search&rid=giphy.gif"
+            can-move
+               id="openSign"
+          />
+          <img src="https://png.pngtree.com/png-vector/20230909/ourmid/pngtree-paper-lamp-paper-png-image_9211580.png"
+               style="width: 200px; position: absolute; top:0; right: -16px"
+               id="lamp" can-toggle />
+          
+          <div style="margin-bottom: 2em; gap: 2em; display: flex; flex-wrap: wrap; align-items: center;">
+            <img id="catOrDog" src="https://media.istockphoto.com/id/1443562748/photo/cute-ginger-cat.jpg?s=612x612&w=0&k=20&c=vvM97wWz-hMj7DLzfpYRmY2VswTqcFEKkC437hxm3Cg=" can-toggle/>
+            <img id="plant" can-grow src="https://cdn.glitch.global/c493b77a-3c7d-4240-9aee-94519099c30c/44a715b5-bdb1-4e2e-b4ee-ea1b0821178b.image.png?v=1727411734991"/>
+            <div id="hoverBox" can-hover style="width: 100px; height: 100px; background: red; border-radius: 8px;"></div>
+            <button id="duplicateBtn" can-duplicate style="font-size: 24px; padding: 10px 20px;">🌟 Click to clone me!</button>
+          </div>
+                
+
+          
+
+          <input id="colorBox" can-mirror/>
+          <button id="btn" can-mirror>
+            CHANGE COLOR
+          </button>
+          <script>
+          function changeColor() {
+            const colorBox = document.getElementById('colorBox')
+            if (colorBox.style.backgroundColor === 'red') 
+              colorBox.style.backgroundColor = 'green';
+            else
+              colorBox.style.backgroundColor = 'red';
+          }
+          document.getElementById('btn').addEventListener('click', changeColor)
+          </script>
+          
+          
+            <h2>playhtml getting started</h2>
+          <p>
+            This is the Glitch x playhtml starter. You can
+            use it to build your own tiny social network. Check out the code in the editor and
+            hover over the capabilities below to see which of these things are collaborative elements.
+          </p>
+            <script>
+          function highlightElements(capability) {
+            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
+              ele.classList.add("highlighted");
+            });
+          }
+
+          function unhighlightElements(capability) {
+            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
+              ele.classList.remove("highlighted");
+            });
+          }
+              
+        </script>
+
+        <ol class="capabilities">
+          <!-- TODO: move this into React to dynamically update -->
+          <li
+            onmouseenter="highlightElements('can-play')"
+            onmouseleave="unhighlightElements('can-play')"
+          >
+            can-play (custom capabilities
+            <a href="https://github.com/spencerc99/playhtml#can-play"
+              >with your code</a
+            >!)
+            
+          </li>
+          <!-- TODO: spotlight elements on the page that match these on hover -->
+          <li
+            onmouseenter="highlightElements('can-move')"
+            onmouseleave="unhighlightElements('can-move')"
+          >
+            can-move
+          
+          </li>
+            <li
+            onmouseenter="highlightElements('can-mirror')"
+            onmouseleave="unhighlightElements('can-mirror')"
+          >
+            can-mirror
+          </li>
+         
+          <li
+            onmouseenter="highlightElements('can-toggle')"
+            onmouseleave="unhighlightElements('can-toggle')"
+          >
+            can-toggle 
+          </li>
+          <li>can-duplicate</li>
+          <li
+            onmouseenter="highlightElements('can-spin')"
+            onmouseleave="unhighlightElements('can-spin')"
+          >
+            can-spin 
+          </li>
+          <li
+            onmouseenter="highlightElements('can-grow')"
+            onmouseleave="unhighlightElements('can-grow')"
+          >
+            can-grow
+          </li>
+          <li
+            onmouseenter="highlightElements('can-duplicate')"
+            onmouseleave="unhighlightElements('can-duplicate')"
+          >
+            can-duplicate
+          </li>
+          <li
+            onmouseenter="highlightElements('can-hover')"
+            onmouseleave="unhighlightElements('can-hover')"
+          >
+            can-hover
+          </li>
+        </ol>
+
+          <p>
+            For all the details about these capabilities and more, see the <a href="https://github.com/spencerc99/playhtml#plug-and-play-capabilities">playhtml docs</a
+          </p>
+        </div>
+      </div>
+      <div id="shootingStar">
+        💫
+      </div>
+      <br/>
+      <div>
+        Here's a playhtml event. it triggers a shooting star for everyone
+        <button onclick="shootStar()">
+        shooting star!
+      </button>
+      </div>
+      <br/>
+        <div>
+          here's a custom guestbook made with `can-mirror`.
+        </div>
+        <div >
+        <input id="guestbookValue" placeholder="i love you..."/>
+        <button onclick="addGuestbook()">
+           say hi
+        </button>
+        </div>
+        <ul id="guestbook">
+        </ul>
+        <br/>
+        <div>
+          here's a reaction button! everyone can see how many people have reacted
+        </div>
+        <button id="reactionBtn" can-play class="reaction" style="font-size: 24px; padding: 10px 20px; margin: 10px 0;">
+          💖 <span id="reactionCount">0</span>
+        </button>
+    </div>
+    <footer class="footer">
+      <div class="links"></div>
+      
+      <a
+        class="btn--remix"
+        target="_top"
+        href="https://glitch.com/edit/#!/remix/honored-cubic-arthropod"
+      >
+        <img
+          src="https://cdn.glitch.com/605e2a51-d45f-4d87-a285-9410ad350515%2FLogo_Color.svg?v=1618199565140"
+          alt=""
+        />
+        Remix on Glitch
+      </a>
+    </footer>
+  
+        <!-- Option 1 (simplest, no customization) -->
+    <script type="module">
+      import { playhtml } from "https://unpkg.com/playhtml@latest/dist/init.es.js";
+
+      // Initialize with cursor tracking
+      playhtml.init({
+        cursors: {
+          enabled: true,
+          room: "page"
+        }
+      });
+
+      // Make playhtml available globally for script.js
+      window.playhtml = playhtml;
+    </script>
+    <!-- The website JavaScript file -->
+    <script src="/script.js" defer></script>
+  </body>
+</html>

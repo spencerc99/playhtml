@@ -181,6 +181,30 @@ The only required properties are `defaultData`, `updateElement` and some kind of
 
 If you make something fun, please show me! This is designed as an open library for anyone to add on new interactions and capabilities, so we [welcome contributions](https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md) for new built-in capabilities.
 
+#### Data performance tips
+
+- Keep data shapes simple and flat (avoid deep nesting)
+- Don't store computed/derived values - calculate them in render/updateElement
+- Use events for ephemeral actions (confetti, notifications), not persistent data
+- Use awareness for temporary presence (who's online, typing indicators), not defaultData
+- Don't update data on high-frequency events (mousemove, scroll) - debounce or use local state
+- For growing lists (messages, history), consider limiting size or implementing cleanup
+- Store only what needs to sync - use component state or variables for UI-only state
+- Use localStorage for per-user preferences that shouldn't sync across users
+
+See [data-structure-design.md](https://github.com/spencerc99/playhtml/blob/main/docs/data-structure-design.md) for detailed guidance on designing efficient data structures.
+
+#### Data cleanup
+
+When deleting elements at runtime, clean up their playhtml data to prevent accumulation:
+
+```javascript
+// When removing an element
+playhtml.removeElementData("can-move", elementId);
+```
+
+This removes all associated data (SyncedStore, observers, handlers). For bulk cleanup of orphaned data, use the admin cleanup endpoint. See [data-cleanup.md](https://github.com/spencerc99/playhtml/blob/main/docs/data-cleanup.md) for details.
+
 #### Data updates: mutator vs replacement
 
 playhtml supports two ways to update an element's `data` via `setData`, and they have different semantics:
@@ -298,12 +322,12 @@ Playhtml includes built-in cursor tracking and presence awareness. When enabled,
 playhtml.init({
   cursors: {
     enabled: true,
-    room: "domain",  // Show cursors across entire site
+    room: "domain", // Show cursors across entire site
     shouldRenderCursor: (presence) => {
       // Only render cursors from same page
       return presence.page === window.location.pathname;
-    }
-  }
+    },
+  },
 });
 
 // Access global presence data
