@@ -52,7 +52,7 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      window.cursors?.name = newName;
+      window.cursors!.name = newName;
     }
   );
 
@@ -61,7 +61,7 @@ export function UserSetup() {
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    window.cursors?.color = newColor;
+    window.cursors!.color = newColor;
   };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
@@ -215,6 +215,22 @@ export const URLChat = withSharedState(
           />
           <button type="submit">Share</button>
         </form>
+        <h3>links!</h3>
+        <ul style={{ marginTop: "0" }}>
+          <li>
+            <a href="https://github.com/spencerc99/playhtml">playhtml docs</a>
+          </li>
+          <li>
+            <a href="https://www.are.na/spencer-chang/playhtml-sites">
+              playhtml examples
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/spencerc99/playhtml/blob/main/docs/llm-prompting-guide.md">
+              llm prompting guide
+            </a>
+          </li>
+        </ul>
       </div>
     );
   }

@@ -1,0 +1,92 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Courier Prime", "Courier New", monospace;
+  background: white;
+  overflow: hidden;
+}
+
+#main {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.color-indicator {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  z-index: 10;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(60, 1fr);
+  grid-template-rows: repeat(40, 1fr);
+  gap: 0;
+  background: white;
+  background-image:
+    repeating-linear-gradient(#e0e0e0 0 1px, transparent 1px 100%),
+    repeating-linear-gradient(90deg, #e0e0e0 0 1px, transparent 1px 100%);
+  background-size: calc(100% / 60) calc(100% / 40);
+  width: min(90vw, calc(90vh * 1.5));
+  height: min(60vw, 90vh);
+  aspect-ratio: 3 / 2;
+}
+
+.grid-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(10px, 1.5vw, 20px);
+  font-weight: 700;
+  transition: all 0.1s ease;
+  user-select: none;
+  background: transparent;
+  font-family: "Courier Prime", "Courier New", monospace;
+
+  &.my-cursor {
+    background: rgba(0, 0, 0, 0.1);
+    animation: pulse 1s infinite;
+    outline: 2px solid;
+    outline-color: inherit;
+    outline-offset: -2px;
+  }
+
+  &.other-cursor {
+    animation: pulse-slow 2s infinite;
+    outline: 1px solid;
+    outline-color: inherit;
+    outline-offset: -1px;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
