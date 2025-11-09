@@ -317,7 +317,7 @@ export default function FeaturesGrid() {
           <ComponentStore />
         </FeatureCard>
 
-        <FeatureCard
+        {/* <FeatureCard
           title="Permissions"
           description="Fine-grained access control for behaviors"
           comingSoon={true}
@@ -331,7 +331,7 @@ export default function FeaturesGrid() {
           comingSoon={true}
         >
           <ScheduledBehaviors />
-        </FeatureCard>
+        </FeatureCard> */}
       </div>
     </section>
   );

@@ -166,6 +166,14 @@
         <h1>IM A TITLE</h1>
         <p>CONTENT EDITABLE WITH CHILDREN</p>
       </div>
+
+      <h2>Can-mirror with image translate test</h2>
+      <div can-mirror id="mirrorContainer" style="transform: translate(50px, 50px); padding: 20px; background: lightblue; display: inline-block;">
+        <img src="/candle-gif.gif" alt="Test Image" style="width: 100px; height: 100px;" />
+      </div>
+      <button onclick="moveContainer()">Move Container</button>
+      <button onclick="resetContainer()">Reset Position</button>
+
       <script>
         const tasks = document.getElementById("tasks1");
         function addTask() {
@@ -180,6 +188,22 @@
 
         function changeText() {
           t6.textContent = t6.textContent === "red" ? "blue" : "red";
+        }
+
+        function moveContainer() {
+          const container = document.getElementById("mirrorContainer");
+          const currentTransform = container.style.transform;
+          const match = currentTransform.match(/translate\((\d+)px, (\d+)px\)/);
+          if (match) {
+            const x = parseInt(match[1]);
+            const y = parseInt(match[2]);
+            container.style.transform = `translate(${x + 50}px, ${y + 50}px)`;
+          }
+        }
+
+        function resetContainer() {
+          const container = document.getElementById("mirrorContainer");
+          container.style.transform = "translate(50px, 50px)";
         }
       </script>
     </div>

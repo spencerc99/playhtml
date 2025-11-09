@@ -1,8 +1,9 @@
 .admin-container {
-  max-width: 1200px;
+  max-width: min(1200px, 100vw);
   margin: 0 auto;
   padding: 20px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
 }
 
 .admin-header {
@@ -12,6 +13,8 @@
   margin-bottom: 30px;
   padding-bottom: 15px;
   border-bottom: 2px solid #e1e5e9;
+  flex-wrap: wrap;
+  gap: 16px;
 
   h1 {
     color: #2d3748;
@@ -138,6 +141,8 @@ section {
   border-radius: 4px;
   margin-bottom: 15px;
   font-weight: 500;
+  word-break: break-word;
+  overflow-wrap: break-word;
 
   &.loading {
     background: #bee3f8;
@@ -179,6 +184,7 @@ section {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 20px;
   margin-bottom: 20px;
+  overflow-x: auto;
 }
 
 .shared-section {
@@ -186,6 +192,7 @@ section {
   border: 1px solid #e9ecef;
   border-radius: 6px;
   padding: 15px;
+  min-width: 0;
 
   h4 {
     margin: 0 0 10px 0;
@@ -207,6 +214,7 @@ section {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 12px;
   line-height: 1.4;
+  overflow-wrap: break-word;
 
   &.empty {
     color: #6c757d;
@@ -500,6 +508,7 @@ section {
       font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
       font-size: 0.85rem;
       color: #e36209;
+      word-break: break-all;
     }
 
     .connection-count {
@@ -563,6 +572,8 @@ section {
   .debug-step {
     margin-bottom: 8px;
     padding: 4px 0;
+    word-break: break-word;
+    overflow-wrap: break-word;
 
     &.success {
       color: #28a745;
@@ -653,6 +664,7 @@ section {
   border-radius: 4px;
   height: 200px;
   overflow-y: auto;
+  overflow-x: auto;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -660,6 +672,8 @@ section {
   .log-entry {
     margin-bottom: 4px;
     word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
 
     &.error {
       color: #fc8181;

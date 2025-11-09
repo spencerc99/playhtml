@@ -290,7 +290,9 @@ const JSONViewer: React.FC<{
   };
 
   return (
-    <div className="interactive-json-viewer">{renderValue(data, depth)}</div>
+    <div className="interactive-json-viewer">
+      {renderValue(data, depth)}
+    </div>
   );
 };
 
@@ -1418,9 +1420,8 @@ const AdminConsole: React.FC = () => {
       });
 
       if (!roomLine) {
-        throw new Error(
-          `Room ${decodeRoomId(encodedRoomId)} not found in backup file`
-        );
+        addLog("warn", `Room ${decodeRoomId(encodedRoomId)} not found in backup file`);
+        return;
       }
 
       addLog("info", `Found room data in backup`);
@@ -1615,7 +1616,7 @@ const AdminConsole: React.FC = () => {
     <div className="admin-container">
       <header className="admin-header">
         <h1>🛠️ PlayHTML Admin Console</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div>
           <EnvironmentSelector
             currentEnv={hostEnv}
             onEnvChange={handleEnvChange}
