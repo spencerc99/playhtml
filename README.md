@@ -24,7 +24,7 @@ At a glance, playhtml supports:
 
 https://github.com/spencerc99/playhtml/assets/14796580/00e84e15-2c1c-4b4b-8e15-2af22f39db7a
 
-playhtml is still in beta and active development. Join our [Discord community](https://discord.gg/h7sABTv8) to get help and show off what you've built!
+playhtml is still in beta and active development. Join our [Discord community](https://discord.com/invite/SKbsSf4ptU) to get help and show off what you've built!
 
 ## Usage
 
