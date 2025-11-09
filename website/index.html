@@ -114,41 +114,117 @@
 
         <div id="reactContent"></div>
 
-        <h2>games & examples</h2>
-        <ol>
-          <li><a href="/fridge.html">fridge poetry</a></li>
-          <li>
-            <a href="https://x.com/spencerc99/status/1825669162754355319"
-              >tug of war</a
-            >
-            (by <a href="https://github.com/chamod-gamage">Chamod</a>)
-          </li>
-          <li>
-            <a href="/experiments/5/"
-              >every minute of the day colored by someone at that minute</a
-            >
-          </li>
-          <li>
-            <a href="/experiments/4/"
-              >a website with every color added by someone</a
-            >
-          </li>
-          <li>
-            <a href="/experiments/one/"
-              >a website with a single color set by someone</a
-            >
-          </li>
-          <li><a href="/experiments/two/">a cursor party</a></li>
-          <li>
-            a <a href="https://www.annie.ooo/derby">horse race</a> (by Annie Oh)
-          </li>
-          <li>
-            or view the
-            <a href="https://www.are.na/spencer-chang/playhtml-sites"
-              >community example gallery</a
-            >
-          </li>
-        </ol>
+        <div class="example-roulette">
+          <div id="exampleSlot" class="example-slot">
+            <h2>games & examples</h2>
+            <img
+              id="slotHandle"
+              src="/slot-machine-handle.png"
+              class="slot-handle"
+              can-play
+              alt="Pull the lever!"
+              title="Pull the lever to spin!"
+            />
+            <div class="browser-window">
+              <div class="browser-chrome">
+                <div class="browser-dots">
+                  <span class="dot red"></span>
+                  <span class="dot yellow"></span>
+                  <span class="dot green"></span>
+                </div>
+                <div class="browser-url">
+                  <a id="exampleLink" href="" target="_blank">
+                    <span id="exampleTitle"></span>
+                  </a>
+                </div>
+              </div>
+              <iframe id="exampleFrame" class="example-frame"></iframe>
+            </div>
+            <div class="example-info">
+              <p id="exampleDescription"></p>
+              <p>
+                or view everything on the
+                <a href="https://www.are.na/spencer-chang/playhtml-sites"
+                  >community example gallery</a
+                >
+              </p>
+            </div>
+          </div>
+        </div>
+        <script>
+          const examples = [
+            {
+              title: "fridge poetry",
+              description: "Create poetry with strangers together in real-time",
+              url: "/fridge.html",
+            },
+            {
+              title: "every color [playhtml experiment 04]",
+              description: "A website with every color added by someone",
+              url: "/experiments/4/",
+            },
+            {
+              title: "one color [playhtml experiment 01]",
+              description: "A website with a single color set by someone",
+              url: "/experiments/one/",
+            },
+            {
+              title: "cursor party [playhtml experiment 02]",
+              description: "See everyone's cursors dancing together",
+              url: "/experiments/two/",
+            },
+            {
+              title: "minute faces (together) [playhtml experiment 05]",
+              description:
+                "Every minute of the day colored by someone at that minute",
+              url: "/experiments/5/",
+            },
+          ];
+
+          let currentIndex = -1;
+
+          function spinRoulette() {
+            const frame = document.getElementById("exampleFrame");
+            const title = document.getElementById("exampleTitle");
+            const description = document.getElementById("exampleDescription");
+            const link = document.getElementById("exampleLink");
+            const slot = document.getElementById("exampleSlot");
+
+            // Add spinning animation
+            slot.classList.add("spinning");
+
+            setTimeout(() => {
+              // Pick a different example than current
+              let newIndex;
+              do {
+                newIndex = Math.floor(Math.random() * examples.length);
+              } while (newIndex === currentIndex && examples.length > 1);
+
+              currentIndex = newIndex;
+              const example = examples[currentIndex];
+
+              frame.src = example.url;
+              title.textContent = example.title;
+              description.textContent = example.description;
+              link.href = example.url;
+
+              slot.classList.remove("spinning");
+            }, 600);
+          }
+
+          const slotHandle = document.getElementById("slotHandle");
+          slotHandle.onclick = () => {
+            // Animate handle pull with rotation
+            slotHandle.classList.add("pulling");
+            setTimeout(() => {
+              slotHandle.classList.remove("pulling");
+            }, 300);
+            spinRoulette();
+          };
+
+          // Load first example on page load
+          spinRoulette();
+        </script>
 
         <!-- candle credit: https://nyknck.itch.io/candle -->
         <img
