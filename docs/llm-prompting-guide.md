@@ -109,17 +109,6 @@ DOCUMENTATION:
 - React: https://github.com/spencerc99/playhtml/tree/main/packages/react
 - Examples: https://github.com/spencerc99/playhtml/tree/main/packages/react/examples
 
-### Array Mutations
-
-When using `setData((draft) => ...)` with arrays:
-
-- ✅ `draft.items.push(item)`
-- ✅ `draft.items.splice(index, deleteCount, ...items)`
-- ✅ `draft.items[0].property = value`
-- ❌ `draft.items.shift()` - use `splice(0, 1)` instead
-- ❌ `draft.items.pop()` - use `splice(-1, 1)` instead
-- ❌ `draft.items[i] = value` - use `splice(i, 1, value)` instead
-
 ### Vanilla HTML Configuration Order
 
 ```javascript
