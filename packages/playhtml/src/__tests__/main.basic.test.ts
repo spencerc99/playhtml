@@ -87,7 +87,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     });
   });
 
-  it("removeElementData cleans up all data and handlers", async () => {
+  it("deleteElementData cleans up all data and handlers", async () => {
     const el = document.createElement("div");
     el.id = "cleanup-test";
     el.setAttribute("can-move", "");
@@ -111,7 +111,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     });
 
     // Remove the element data
-    playhtml.removeElementData("can-move", "cleanup-test");
+    playhtml.deleteElementData("can-move", "cleanup-test");
 
     // Verify handler is removed
     expect(playhtml.elementHandlers!.get("can-move")!.has("cleanup-test")).toBe(

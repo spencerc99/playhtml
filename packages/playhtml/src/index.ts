@@ -1021,7 +1021,7 @@ export interface PlayHTMLComponents {
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
-  removeElementData: typeof removeElementData;
+  deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
   syncedStore: (typeof store)["play"];
   // TODO: REMOVE AFTER MIGRATION VALIDATED
@@ -1051,6 +1051,7 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElements: setupElements,
   setupPlayElement,
   removePlayElement,
+  deleteElementData,
   setupPlayElementForTag,
   syncedStore: store.play,
   // TODO: REMOVE AFTER MIGRATION VALIDATED
@@ -1313,6 +1314,13 @@ function setupPlayElement(
   );
 }
 
+/**
+ * Removes the element handler for a DOM element from local state.
+ * This unregisters the element but preserves all shared collaborative data.
+ * Use this when a DOM element is removed/unmounted but you want to keep the data.
+ *
+ * @param element - The DOM element to unregister
+ */
 function removePlayElement(element: Element | null) {
   if (!element || !element.id) {
     return;
@@ -1327,20 +1335,21 @@ function removePlayElement(element: Element | null) {
 }
 
 /**
- * Removes all data associated with an element ID for a specific tag.
+ * Completely deletes all shared collaborative data for an element.
+ * This is a destructive operation that removes data across all clients.
  * This includes:
  * - SyncedStore data (store.play[tag][elementId])
  * - Observer subscriptions
  * - Element handlers
  * - Legacy globalData entries (if migration hasn't completed)
  *
- * Use this when you want to completely clean up data for a deleted element,
- * preventing orphaned data from accumulating in the database.
+ * Use this when you want to permanently delete an element's data.
+ * For just removing a DOM element while keeping data, use removePlayElement instead.
  *
- * @param tag - The tag type (e.g., "can-move", "can-play")
- * @param elementId - The element ID to remove
+ * @param tag - The capability tag (e.g., "can-move", "can-toggle")
+ * @param elementId - The element ID
  */
-function removeElementData(tag: string, elementId: string): void {
+function deleteElementData(tag: string, elementId: string): void {
   if (!hasSynced) {
     console.warn(
       `[PLAYHTML] Cannot remove element data before sync: ${tag}:${elementId}`

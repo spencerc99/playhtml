@@ -20,6 +20,7 @@ const mockedPlayhtml = {
   setupPlayElements: vi.fn(),
   setupPlayElement: vi.fn(),
   removePlayElement: vi.fn(),
+  deleteElementData: vi.fn(),
   elementHandlers: {},
   globalData: new Map(),
   dispatchPlayEvent: vi.fn(),
