@@ -6,6 +6,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { PlayProvider } from "@playhtml/react";
 import FeaturesGrid from "./components/FeaturesGrid";
+import ExampleSlotMachine from "./components/ExampleSlotMachine";
 
 interface FormData {
   name: string;
@@ -155,6 +156,7 @@ if (reactContentElement) {
       }}
     >
       <FeaturesGrid />
+      <ExampleSlotMachine />
     </PlayProvider>
   );
 }
