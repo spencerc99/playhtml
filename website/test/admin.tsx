@@ -378,6 +378,7 @@ const DebugLogs: React.FC<{
 const AdminConsole: React.FC = () => {
   const [logs, setLogs] = useState<DebugLog[]>([]);
   const [currentRoomId, setCurrentRoomId] = useState<string>("");
+  const [urlInput, setUrlInput] = useState<string>("");
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [hostEnv, setHostEnv] = useState<EnvName>(
@@ -519,6 +520,54 @@ const AdminConsole: React.FC = () => {
     }
   };
 
+  // Derive room ID from URL
+  const deriveRoomIdFromUrl = (urlString: string): string | null => {
+    if (!urlString || urlString.trim() === "") {
+      return null;
+    }
+
+    try {
+      // Add protocol if missing
+      let urlToParse = urlString.trim();
+      if (!urlToParse.match(/^https?:\/\//i)) {
+        urlToParse = `https://${urlToParse}`;
+      }
+
+      const url = new URL(urlToParse);
+      const host = url.host;
+      const pathname = url.pathname;
+
+      // Normalize pathname: strip file extension and ensure it starts with /
+      const normalizePath = (path: string): string => {
+        if (!path) return "/";
+        const cleaned = path.replace(/\.[^/.]+$/, "");
+        return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+      };
+
+      const normalizedPath = normalizePath(pathname);
+      const roomId = normalizedPath === "/" ? host : `${host}-${normalizedPath}`;
+      return encodeURIComponent(roomId);
+    } catch (error) {
+      // Silently fail if URL is incomplete - user might still be typing
+      return null;
+    }
+  };
+
+  const handleUrlChange = (url: string) => {
+    setUrlInput(url);
+    const derivedRoomId = deriveRoomIdFromUrl(url);
+    if (derivedRoomId) {
+      setCurrentRoomId(derivedRoomId);
+      addLog("info", `Derived room ID from URL: ${decodeRoomId(derivedRoomId)}`);
+      // Auto-load room if authenticated
+      if (adminToken) {
+        // Call loadRoom directly with the derived room ID
+        // Note: loadRoom and updateURLWithRoom are defined later but will be available when this is called
+        loadRoom(derivedRoomId);
+      }
+    }
+  };
+
   const validateAndFormatJson = (
     jsonStr: string
   ): { valid: boolean; formatted?: string; error?: string } => {
@@ -645,6 +694,29 @@ const AdminConsole: React.FC = () => {
     }
   };
 
+  // Populate backupComparisonData from roomData when roomData is available
+  useEffect(() => {
+    if (roomData && roomData.ydoc?.play) {
+      const currentData = {
+        data: roomData.ydoc.play,
+        timestamp: roomData.timestamp || new Date().toISOString(),
+        hasData: Object.keys(roomData.ydoc.play).length > 0,
+      };
+      const liveData = {
+        data: roomData.ydoc.play,
+        hasData: Object.keys(roomData.ydoc.play).length > 0,
+      };
+
+      // Update or create backupComparisonData, preserving backup if it exists
+      setBackupComparisonData((prev: any) => ({
+        roomId: currentRoomId,
+        backup: prev?.backup || null,
+        current: currentData,
+        live: liveData,
+      }));
+    }
+  }, [roomData, currentRoomId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-load backup from OPFS when room data loads, or re-process when room changes
   useEffect(() => {
     const autoLoadBackup = async () => {
@@ -770,8 +842,9 @@ const AdminConsole: React.FC = () => {
     if (!roomId) {
       // Only update if called from button, not from effect
       setCurrentRoomId(encodedRoomId);
-      updateURLWithRoom(encodedRoomId);
     }
+    // Always update URL when loading (whether from button or programmatic call)
+    updateURLWithRoom(encodedRoomId);
 
     try {
       // Always use the encoded room ID for API calls
@@ -1642,6 +1715,17 @@ const AdminConsole: React.FC = () => {
           <section className="room-inspector">
             <h2>Room Inspector</h2>
             <div className="input-group">
+              <label htmlFor="urlInput">URL:</label>
+              <input
+                type="text"
+                id="urlInput"
+                placeholder="Enter URL to derive room ID..."
+                value={urlInput}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && urlInput && loadRoom()}
+              />
+            </div>
+            <div className="input-group">
               <label htmlFor="roomId">Room ID:</label>
               <input
                 type="text"
@@ -1957,10 +2041,10 @@ const AdminConsole: React.FC = () => {
               </div>
             )}
 
-            {showBackupComparison && backupComparisonData && (
+            {roomData && (
               <div className="data-section">
                 <SectionHeader
-                  title="Backup Comparison"
+                  title="Backup Comparison & Data Editor"
                   sectionKey="backupComparison"
                   isExpanded={sectionsExpanded.backupComparison}
                   onToggle={toggleSection}
@@ -1989,12 +2073,21 @@ const AdminConsole: React.FC = () => {
                               padding: "4px 8px",
                               fontSize: "0.85em",
                             }}
-                            onClick={() => {
+                            onClick={async () => {
                               setCurrentBackupFile(null);
-                              setShowBackupComparison(false);
-                              setBackupComparisonData(null);
+                              setBackupComparisonData((prev: any) => {
+                                if (prev) {
+                                  return { ...prev, backup: null };
+                                }
+                                return prev;
+                              });
                               setEditableJson("");
                               setBackupBase64(null);
+                              // Clear saved backup path to prevent auto-reload
+                              setSavedBackupPath(null);
+                              // Also clear from OPFS
+                              await clearBackupFromOPFS();
+                              addLog("info", "Backup cleared");
                             }}
                           >
                             Clear Backup
@@ -2044,31 +2137,35 @@ const AdminConsole: React.FC = () => {
                       <div className="debug-item">
                         <strong>Backup Timestamp:</strong>
                         <span>
-                          {backupComparisonData.backup?.timestamp
+                          {backupComparisonData?.backup?.timestamp
                             ? new Date(
                                 backupComparisonData.backup.timestamp
                               ).toLocaleString()
-                            : "Unknown"}
+                            : "No backup loaded"}
                         </span>
                       </div>
                       <div className="debug-item">
                         <strong>Backup Elements:</strong>
                         <span>
-                          {Object.values(
-                            backupComparisonData.backup?.data || {}
-                          ).reduce(
-                            (sum: number, tagData: any) =>
-                              sum + Object.keys(tagData || {}).length,
-                            0
-                          )}
+                          {backupComparisonData?.backup
+                            ? Object.values(
+                                backupComparisonData.backup.data || {}
+                              ).reduce(
+                                (sum: number, tagData: any) =>
+                                  sum + Object.keys(tagData || {}).length,
+                                0
+                              )
+                            : "N/A"}
                         </span>
                       </div>
                       <div className="debug-item">
                         <strong>Current DB Elements:</strong>
                         <span>
-                          {backupComparisonData.current
+                          {backupComparisonData?.current || roomData?.ydoc?.play
                             ? Object.values(
-                                backupComparisonData.current.data || {}
+                                backupComparisonData?.current?.data ||
+                                  roomData?.ydoc?.play ||
+                                  {}
                               ).reduce(
                                 (sum: number, tagData: any) =>
                                   sum + Object.keys(tagData || {}).length,
@@ -2080,9 +2177,11 @@ const AdminConsole: React.FC = () => {
                       <div className="debug-item">
                         <strong>Live Elements:</strong>
                         <span>
-                          {backupComparisonData.live
+                          {backupComparisonData?.live || roomData?.ydoc?.play
                             ? Object.values(
-                                backupComparisonData.live.data || {}
+                                backupComparisonData?.live?.data ||
+                                  roomData?.ydoc?.play ||
+                                  {}
                               ).reduce(
                                 (sum: number, tagData: any) =>
                                   sum + Object.keys(tagData || {}).length,
@@ -2098,34 +2197,43 @@ const AdminConsole: React.FC = () => {
                     >
                       <div className="shared-section">
                         <h4>
-                          Backup Data (
-                          {new Date(
-                            backupComparisonData.backup?.timestamp
-                          ).toLocaleDateString()}
-                          )
+                          Backup Data
+                          {backupComparisonData?.backup?.timestamp && (
+                            <> ({new Date(backupComparisonData.backup.timestamp).toLocaleDateString()})</>
+                          )}
                         </h4>
-                        <JSONViewer
-                          data={backupComparisonData.backup?.data || {}}
-                        />
+                        {backupComparisonData?.backup ? (
+                          <JSONViewer
+                            data={backupComparisonData.backup.data || {}}
+                          />
+                        ) : (
+                          <div className="empty">No backup file loaded</div>
+                        )}
                       </div>
                       <div className="shared-section">
                         <h4>Current DB Data</h4>
-                        {backupComparisonData.current ? (
+                        {backupComparisonData?.current || roomData?.ydoc?.play ? (
                           <>
-                            <div
-                              style={{
-                                fontSize: "0.85em",
-                                color: "#666",
-                                marginBottom: "8px",
-                              }}
-                            >
-                              Last updated:{" "}
-                              {new Date(
-                                backupComparisonData.current.timestamp
-                              ).toLocaleString()}
-                            </div>
+                            {backupComparisonData?.current?.timestamp && (
+                              <div
+                                style={{
+                                  fontSize: "0.85em",
+                                  color: "#666",
+                                  marginBottom: "8px",
+                                }}
+                              >
+                                Last updated:{" "}
+                                {new Date(
+                                  backupComparisonData.current.timestamp
+                                ).toLocaleString()}
+                              </div>
+                            )}
                             <JSONViewer
-                              data={backupComparisonData.current.data || {}}
+                              data={
+                                backupComparisonData?.current?.data ||
+                                roomData?.ydoc?.play ||
+                                {}
+                              }
                             />
                           </>
                         ) : (
@@ -2134,9 +2242,13 @@ const AdminConsole: React.FC = () => {
                       </div>
                       <div className="shared-section">
                         <h4>Live Data</h4>
-                        {backupComparisonData.live ? (
+                        {backupComparisonData?.live || roomData?.ydoc?.play ? (
                           <JSONViewer
-                            data={backupComparisonData.live.data || {}}
+                            data={
+                              backupComparisonData?.live?.data ||
+                              roomData?.ydoc?.play ||
+                              {}
+                            }
                           />
                         ) : (
                           <div className="empty">No live data</div>
@@ -2174,31 +2286,35 @@ const AdminConsole: React.FC = () => {
                         <button
                           className="tool-btn"
                           onClick={() => {
-                            const json = JSON.stringify(
-                              backupComparisonData.current?.data || {},
-                              null,
-                              2
-                            );
+                            const data =
+                              backupComparisonData?.current?.data ||
+                              roomData?.ydoc?.play ||
+                              {};
+                            const json = JSON.stringify(data, null, 2);
                             setEditableJson(json);
                             setJsonError("");
                           }}
                           style={{ marginRight: "10px" }}
-                          disabled={!backupComparisonData.current}
+                          disabled={
+                            !backupComparisonData?.current && !roomData?.ydoc?.play
+                          }
                         >
                           Load Current DB Data
                         </button>
                         <button
                           className="tool-btn"
                           onClick={() => {
-                            const json = JSON.stringify(
-                              backupComparisonData.live?.data || {},
-                              null,
-                              2
-                            );
+                            const data =
+                              backupComparisonData?.live?.data ||
+                              roomData?.ydoc?.play ||
+                              {};
+                            const json = JSON.stringify(data, null, 2);
                             setEditableJson(json);
                             setJsonError("");
                           }}
-                          disabled={!backupComparisonData.live}
+                          disabled={
+                            !backupComparisonData?.live && !roomData?.ydoc?.play
+                          }
                         >
                           Load Live Data
                         </button>

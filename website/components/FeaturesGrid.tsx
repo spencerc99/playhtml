@@ -1,7 +1,7 @@
 import React from "react";
 import { RainSprinkler } from "../../packages/react/examples/RainSprinkler";
 import { ReactiveOrb } from "../../packages/react/examples/ReactiveOrb";
-import { DataModes } from "../../packages/react/examples/DataModes";
+import { DataModes } from "./DataModes";
 import { ComponentStore } from "./ComponentStore";
 import { ScheduledBehaviors } from "./ScheduledBehaviors";
 import { Permissions } from "./Permissions";

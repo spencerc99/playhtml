@@ -1,11 +1,11 @@
 import React from "react";
 import { usePlayContext } from "@playhtml/react";
-import { ViewCount } from "./ViewCount";
-import { formatLargeNumber } from "./utils";
+import { ViewCount } from "../../packages/react/examples/ViewCount";
+import { formatLargeNumber } from "../../packages/react/examples/utils";
 import "./DataModes.scss";
 
 // Awareness Data Mode - Current online users
-function AwarenessIndicator() {
+export function OnlineNowIndicator() {
   const { cursors } = usePlayContext();
   const currentUsers = cursors.allColors.length;
 
@@ -59,7 +59,7 @@ function AwarenessIndicator() {
 export function DataModes() {
   return (
     <div className="data-modes-container">
-      <AwarenessIndicator />
+      <OnlineNowIndicator />
       <div className="data-mode-demo persistent">
         <ViewCount />
         <div className="mode-description">total visits</div>

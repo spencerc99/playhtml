@@ -1,59 +1,50 @@
+$cell-size: 32px;
+
 body {
   margin: 0;
   padding: 0;
   font-family: "Courier Prime", "Courier New", monospace;
   background: white;
-  overflow: hidden;
+  overflow: auto;
+  --cell-size: #{$cell-size};
 }
 
-#main {
+#experiment-8 {
   width: 100vw;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-height: 100vh;
   position: relative;
-}
-
-.color-indicator {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  color: white;
-  font-weight: bold;
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  z-index: 10;
+  padding-bottom: 60px; // Make room for bottom bar
 }
 
 .grid-container {
   display: grid;
-  grid-template-columns: repeat(60, 1fr);
-  grid-template-rows: repeat(40, 1fr);
   gap: 0;
   background: white;
-  background-image:
-    repeating-linear-gradient(#e0e0e0 0 1px, transparent 1px 100%),
+  background-image: repeating-linear-gradient(
+      #e0e0e0 0 1px,
+      transparent 1px 100%
+    ),
     repeating-linear-gradient(90deg, #e0e0e0 0 1px, transparent 1px 100%);
-  background-size: calc(100% / 60) calc(100% / 40);
-  width: min(90vw, calc(90vh * 1.5));
-  height: min(60vw, 90vh);
-  aspect-ratio: 3 / 2;
+  background-size: $cell-size $cell-size;
+  background-position: 0 0;
+  width: 100%;
+  min-height: 100vh;
 }
 
 .grid-cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(10px, 1.5vw, 20px);
+  font-size: calc($cell-size - 2px);
   font-weight: 700;
   transition: all 0.1s ease;
   user-select: none;
   background: transparent;
   font-family: "Courier Prime", "Courier New", monospace;
+  width: $cell-size;
+  height: $cell-size;
+  flex-shrink: 0;
+  flex-grow: 0;
 
   &.my-cursor {
     background: rgba(0, 0, 0, 0.1);
@@ -88,5 +79,82 @@ body {
   }
   50% {
     opacity: 0.8;
+  }
+}
+
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid #e0e0e0;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+
+  .data-mode-demo {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    min-height: auto;
+    padding: 0;
+  }
+}
+
+.active-players {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.player-indicator {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+  text-transform: lowercase;
+  letter-spacing: 1px;
+  min-width: 60px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.me {
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.9;
+    }
+
+    span {
+      cursor: text;
+    }
+  }
+
+  .name-input {
+    background: transparent;
+    border: none;
+    color: white;
+    font-weight: bold;
+    font-size: 0.9rem;
+    text-transform: lowercase;
+    letter-spacing: 1px;
+    text-align: center;
+    outline: none;
+    min-width: 2ch;
+    width: auto;
+    font-family: inherit;
+
+    &::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
   }
 }

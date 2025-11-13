@@ -1,13 +1,10 @@
 // ABOUTME: Experiment 8 - Collaborative grid paper typing interface
 // ABOUTME: Every grid cell is filled with typed letters, colored by user
 import "./8.scss";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import ReactDOM from "react-dom/client";
-import { PlayProvider, withSharedState } from "@playhtml/react";
-
-const GRID_COLS = 60;
-const GRID_ROWS = 40;
-const TOTAL_CELLS = GRID_COLS * GRID_ROWS;
+import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
+import { OnlineNowIndicator } from "../../components/DataModes";
 
 interface CellData {
   letter: string;
@@ -15,41 +12,50 @@ interface CellData {
   timestamp: number;
 }
 
-function generateRandomColor(): string {
-  const hue = Math.floor(Math.random() * 360);
-  const saturation = Math.floor(Math.random() * 30) + 70; // 70-100%
-  const lightness = Math.floor(Math.random() * 30) + 40; // 40-70%
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-}
-
 const Main = withSharedState(
   {
     defaultData: {
-      grid: Array(TOTAL_CELLS).fill(null) as (CellData | null)[],
+      letters: [] as CellData[],
     },
-    myDefaultAwareness: undefined as undefined | { color: string; cursorPos: number },
-    id: "main",
   },
-  ({ data, setData, awareness, setMyAwareness }) => {
-    const [myColor] = useState(generateRandomColor());
+  ({ data, setData, awareness }) => {
+    const { cursors } = usePlayContext();
+    const myColor = cursors.color;
     const gridRef = useRef<HTMLDivElement>(null);
+    const [gridDimensions, setGridDimensions] = useState({
+      cols: 60,
+      rows: 40,
+    });
 
-    // Find the next available cell (first empty cell going left-to-right, top-to-bottom)
-    const getNextAvailableCell = (): number => {
-      for (let i = 0; i < TOTAL_CELLS; i++) {
-        if (!data.grid[i]) {
-          return i;
-        }
-      }
-      return TOTAL_CELLS - 1; // Grid is full
-    };
-
-    const cursorPosition = getNextAvailableCell();
-
-    // Initialize awareness with color
+    // Calculate grid dimensions based on window size
     useEffect(() => {
-      setMyAwareness({ color: myColor, cursorPos: cursorPosition });
-    }, [myColor, cursorPosition, setMyAwareness]);
+      const calculateDimensions = () => {
+        // Use a fixed cell size for square aspect ratio
+        // Get value from CSS variable (e.g., "32px" -> 32)
+        const cellSizeValue = getComputedStyle(document.body)
+          .getPropertyValue("--cell-size")
+          .trim();
+
+        const cellWidth = parseFloat(cellSizeValue) || 32; // Fallback to 32 if parsing fails
+        const cellHeight = cellWidth; // Match width for square cells
+        const cols = Math.floor(window.innerWidth / cellWidth);
+        const rows = Math.floor(window.innerHeight / cellHeight);
+        setGridDimensions({ cols, rows });
+      };
+
+      calculateDimensions();
+      window.addEventListener("resize", calculateDimensions);
+      return () => window.removeEventListener("resize", calculateDimensions);
+    }, []);
+
+    // Minimum cells to fill the page
+    const minCells = gridDimensions.cols * gridDimensions.rows;
+
+    // Total cells needed: 1 empty at top-left + all letters
+    const totalCells = Math.max(minCells, data.letters.length + 1);
+
+    // Cursor is always at position 0 (top-left)
+    const cursorPosition = 0;
 
     // Handle keyboard input
     useEffect(() => {
@@ -62,86 +68,91 @@ const Main = withSharedState(
           return;
         }
 
-        // Handle backspace - remove the most recent letter
-        if (e.key === "Backspace") {
-          e.preventDefault();
-
-          // Find the most recently added cell by this user
-          let lastIndex = -1;
-          let lastTimestamp = 0;
-
-          for (let i = 0; i < TOTAL_CELLS; i++) {
-            const cell = data.grid[i];
-            if (cell && cell.color === myColor && cell.timestamp > lastTimestamp) {
-              lastTimestamp = cell.timestamp;
-              lastIndex = i;
-            }
-          }
-
-          if (lastIndex >= 0) {
-            setData((draft) => {
-              draft.grid[lastIndex] = null;
-            });
-          }
-          return;
-        }
-
-        // Handle printable characters - always add to next available cell
+        // Handle all printable characters, space, and special characters
+        // Accept any single character key
         if (e.key.length === 1) {
           e.preventDefault();
-          const char = e.key.toUpperCase();
+          const char = e.key;
 
-          // Only add if there's an available cell
-          if (cursorPosition < TOTAL_CELLS && !data.grid[cursorPosition]) {
-            setData((draft) => {
-              draft.grid[cursorPosition] = {
-                letter: char,
-                color: myColor,
-                timestamp: Date.now(),
-              };
+          setData((draft) => {
+            draft.letters.push({
+              letter: char,
+              color: myColor,
+              timestamp: Date.now(),
             });
-          }
+          });
         }
       };
 
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [cursorPosition, myColor, setData, data.grid]);
+    }, [myColor, setData]);
 
     // Get other users' cursor positions
     const otherCursors = Object.entries(awareness || {})
       .filter(([clientId]) => clientId !== "local")
       .map(([, data]) => data as { color: string; cursorPos: number });
 
-    // Count filled cells
-    const filledCells = data.grid.filter((cell) => cell !== null).length;
-    const percentageFilled = ((filledCells / TOTAL_CELLS) * 100).toFixed(1);
+    // Get all active players from cursor awareness
+    const activePlayers = cursors.allColors.map((color, index) => ({
+      color,
+      isMe: color === myColor,
+    }));
+
+    const [editingName, setEditingName] = useState(false);
+    const [nameInput, setNameInput] = useState(cursors.name || "");
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const handleNameSubmit = () => {
+      if (nameInput.trim()) {
+        window.cursors.name = nameInput.trim();
+      }
+      setEditingName(false);
+    };
+
+    // Update input width to match content
+    useEffect(() => {
+      if (inputRef.current && editingName) {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (context) {
+          const styles = window.getComputedStyle(inputRef.current);
+          context.font = `${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+          const text = nameInput || cursors.name || "you";
+          const width = context.measureText(text).width;
+          // Add some padding for letter-spacing and safety
+          inputRef.current.style.width = `${width + 20}px`;
+        }
+      }
+    }, [nameInput, editingName, cursors.name]);
 
     return (
-      <div id="main">
+      <div id="experiment-8">
         <div
-          className="color-indicator"
-          style={{ backgroundColor: myColor }}
-          title="Your color"
+          ref={gridRef}
+          className="grid-container"
+          style={{
+            gridTemplateColumns: `repeat(${gridDimensions.cols}, 32px)`,
+          }}
         >
-          you
-        </div>
-        <div ref={gridRef} className="grid-container">
-          {Array.from({ length: TOTAL_CELLS }, (_, index) => {
-            const cell = data.grid[index];
+          {Array.from({ length: totalCells }, (_, index) => {
+            // Index 0 is always empty, letters start at index 1
+            const letterIndex = index - 1;
+            const letter = letterIndex >= 0 ? data.letters[letterIndex] : null;
             const isMyCursor = index === cursorPosition;
             const otherUserCursor = otherCursors.find(
               (c) => c.cursorPos === index
             );
+            const isEmpty = index === 0;
 
             return (
               <div
                 key={index}
                 className={`grid-cell ${isMyCursor ? "my-cursor" : ""} ${
                   otherUserCursor ? "other-cursor" : ""
-                } ${cell ? "filled" : "empty"}`}
+                } ${letter ? "filled" : "empty"}`}
                 style={{
-                  color: cell?.color || "transparent",
+                  color: letter?.color || "transparent",
                   borderColor: isMyCursor
                     ? myColor
                     : otherUserCursor
@@ -149,10 +160,51 @@ const Main = withSharedState(
                     : undefined,
                 }}
               >
-                {cell?.letter || "\u00A0"}
+                {isEmpty ? "\u00A0" : letter?.letter || "\u00A0"}
               </div>
             );
           })}
+        </div>
+
+        <div className="bottom-bar">
+          <div className="active-players">
+            {activePlayers.map((player, index) => (
+              <div
+                key={index}
+                className={`player-indicator ${player.isMe ? "me" : ""}`}
+                style={{ backgroundColor: player.color }}
+              >
+                {player.isMe ? (
+                  editingName ? (
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onBlur={handleNameSubmit}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleNameSubmit();
+                        } else if (e.key === "Escape") {
+                          setNameInput(cursors.name || "");
+                          setEditingName(false);
+                        }
+                      }}
+                      autoFocus
+                      className="name-input"
+                    />
+                  ) : (
+                    <span onClick={() => setEditingName(true)}>
+                      {cursors.name || "you"}
+                    </span>
+                  )
+                ) : (
+                  <span>{"·"}</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <OnlineNowIndicator />
         </div>
       </div>
     );
@@ -162,7 +214,13 @@ const Main = withSharedState(
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider
+    initOptions={{
+      cursors: {
+        enabled: true,
+      },
+    }}
+  >
     <Main />
   </PlayProvider>
 );
