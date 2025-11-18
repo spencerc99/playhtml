@@ -24,6 +24,7 @@ body,
   box-shadow: 3px 3px 0px 0px var(--word-color);
   cursor: pointer;
   position: relative;
+  white-space: nowrap;
 
   &.custom {
     position: absolute;
