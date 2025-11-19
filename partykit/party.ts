@@ -35,6 +35,12 @@ import {
 
 export default class PartyServer implements Party.Server {
   constructor(public room: Party.Room) {}
+
+  // Public flag to pause autosave during administrative resets
+  // This prevents the server from overwriting the clean DB state with
+  // in-memory state while we are performing a reset.
+  public isSkippingSave = false;
+
   // Reuse the exact same options for all Y.Doc access
   readonly providerOptions: YPartyKitOptions = {
     load: async () => {
@@ -68,6 +74,12 @@ export default class PartyServer implements Party.Server {
     },
     callback: {
       handler: async (doc: Y.Doc) => {
+        // Skip autosave if we are performing a reset operation
+        if (this.isSkippingSave) {
+          console.log("[PartyServer] Skipping autosave due to active reset operation");
+          return;
+        }
+
         // This is called every few seconds if the document has changed
 
         // convert the Yjs document to a Uint8Array

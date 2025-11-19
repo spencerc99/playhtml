@@ -791,6 +791,9 @@ export class AdminHandler {
     const roomId = this.context.room.id;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
+    // Pause autosave to prevent overwriting clean DB state with in-memory state
+    this.context.isSkippingSave = true;
+
     try {
       // Get current live doc state
       console.log(`[Hard Reset] Fetching live Y.Doc for room: ${roomId}`);
@@ -925,6 +928,28 @@ export class AdminHandler {
       replaceDocFromSnapshot(liveYDoc, freshBase64);
       console.log(`[Hard Reset] Successfully reloaded live server`);
 
+      // Broadcast a "room-reset" message to all connected clients
+      // This tells them to reload their page/state to sync with the new clean doc
+      this.context.room.broadcast(
+        JSON.stringify({
+          type: "room-reset",
+          timestamp: Date.now(),
+        })
+      );
+      console.log(`[Hard Reset] Broadcasted room-reset signal to all clients`);
+
+      // FORCE DISCONNECT: Iterate and close all connections to ensure no lingering clients
+      // push their old state back to the server. They will reconnect and fetch the new state.
+      const connections = [...this.context.room.getConnections()];
+      connections.forEach((conn) => {
+        try {
+          conn.close(4000, "Room Reset by Admin");
+        } catch (e) {
+          console.error("[Hard Reset] Failed to close connection:", e);
+        }
+      });
+      console.log(`[Hard Reset] Closed ${connections.length} connections`);
+
       const sizeReduction = beforeSize - afterSize;
       const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(
         1
@@ -971,6 +996,12 @@ export class AdminHandler {
         }),
         { status: 500, headers: { "content-type": "application/json" } }
       );
+    } finally {
+      // Re-enable autosave after a short delay to let the dust settle
+      setTimeout(() => {
+        this.context.isSkippingSave = false;
+        console.log("[Hard Reset] Autosave re-enabled");
+      }, 2000);
     }
   }
 
@@ -988,6 +1019,12 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+
+    const roomId = this.context.room.id;
+    console.log(`[Restore Raw] Starting for room: ${roomId}`);
+
+    // Pause autosave to prevent overwriting clean DB state with in-memory state
+    this.context.isSkippingSave = true;
 
     try {
       const body = (await request.json()) as { base64Document?: string };
@@ -1029,6 +1066,7 @@ export class AdminHandler {
       }
 
       // Save to database
+      console.log(`[Restore Raw] Saving document to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
           name: this.context.room.id,
@@ -1038,15 +1076,49 @@ export class AdminHandler {
       );
 
       if (saveError) {
+        console.error(
+          `[Restore Raw] Database save failed:`,
+          saveError.message,
+          saveError
+        );
         throw new Error(`Failed to restore document: ${saveError.message}`);
       }
+      console.log(`[Restore Raw] Successfully saved document to database`);
 
       // Reload the live server from the restored snapshot
+      console.log(`[Restore Raw] Reloading live server from snapshot...`);
       const liveYDoc = await unstable_getYDoc(
         this.context.room,
         this.context.providerOptions
       );
       replaceDocFromSnapshot(liveYDoc, body.base64Document);
+      console.log(`[Restore Raw] Successfully reloaded live server`);
+
+      // Broadcast a "room-reset" message to all connected clients
+      // This tells them to reload their page/state to sync with the restored doc
+      this.context.room.broadcast(
+        JSON.stringify({
+          type: "room-reset",
+          timestamp: Date.now(),
+        })
+      );
+      console.log(`[Restore Raw] Broadcasted room-reset signal to all clients`);
+
+      // FORCE DISCONNECT: Iterate and close all connections to ensure no lingering clients
+      // push their old state back to the server. They will reconnect and fetch the new state.
+      const connections = [...this.context.room.getConnections()];
+      connections.forEach((conn) => {
+        try {
+          conn.close(4000, "Room Restored by Admin");
+        } catch (e) {
+          console.error("[Restore Raw] Failed to close connection:", e);
+        }
+      });
+      console.log(`[Restore Raw] Closed ${connections.length} connections`);
+
+      console.log(
+        `[Restore Raw] Completed successfully: ${body.base64Document.length} bytes`
+      );
 
       return new Response(
         JSON.stringify({
@@ -1064,13 +1136,30 @@ export class AdminHandler {
         }
       );
     } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error(
+        `[Restore Raw] Failed for room ${roomId}:`,
+        errorMessage,
+        errorStack || error
+      );
+
       return new Response(
         JSON.stringify({
           error: "Failed to restore raw document",
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage,
+          roomId,
         }),
         { status: 500, headers: { "content-type": "application/json" } }
       );
+    } finally {
+      // Re-enable autosave after a short delay to let the dust settle
+      setTimeout(() => {
+        this.context.isSkippingSave = false;
+        console.log("[Restore Raw] Autosave re-enabled");
+      }, 2000);
     }
   }
 }

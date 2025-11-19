@@ -516,6 +516,14 @@ function onMessage(evt: MessageEvent) {
     return;
   }
 
+  // Handle system messages
+  if (message.type === "room-reset") {
+    console.warn("[playhtml] Room was reset by admin. Reloading to sync...");
+    // Force reload to fetch fresh state
+    window.location.reload();
+    return;
+  }
+
   // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
