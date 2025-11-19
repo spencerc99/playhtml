@@ -788,27 +788,41 @@ export class AdminHandler {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
+    const roomId = this.context.room.id;
+    console.log(`[Hard Reset] Starting for room: ${roomId}`);
+
     try {
       // Get current live doc state
+      console.log(`[Hard Reset] Fetching live Y.Doc for room: ${roomId}`);
       const liveYDoc = await unstable_getYDoc(
         this.context.room,
         this.context.providerOptions
       );
+      console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       // Extract current state as JSON
+      console.log(`[Hard Reset] Extracting play data as JSON...`);
       const currentPlayData = docToJson(liveYDoc);
-      
+      console.log(
+        `[Hard Reset] Extracted play data: ${currentPlayData ? "has data" : "empty"}`
+      );
+
       // Get size before reset (for reporting)
+      console.log(`[Hard Reset] Calculating before size...`);
       const beforeSize = encodeDocToBase64(liveYDoc).length;
+      console.log(`[Hard Reset] Before size: ${beforeSize} bytes (${(beforeSize / 1024 / 1024).toFixed(2)} MB)`);
 
       // Handle empty room case - create empty fresh doc
       if (!currentPlayData) {
+        console.log(`[Hard Reset] Room is empty, creating empty fresh doc...`);
         // Create an empty fresh Y.Doc
         const emptyDoc = new Y.Doc();
         const emptyBase64 = encodeDocToBase64(emptyDoc);
         const emptyAfterSize = emptyBase64.length;
+        console.log(`[Hard Reset] Empty doc size: ${emptyAfterSize} bytes`);
 
         // Save empty doc to database
+        console.log(`[Hard Reset] Saving empty doc to database...`);
         const { error: saveError } = await supabase.from("documents").upsert(
           {
             name: this.context.room.id,
@@ -818,11 +832,19 @@ export class AdminHandler {
         );
 
         if (saveError) {
+          console.error(
+            `[Hard Reset] Database save failed:`,
+            saveError.message,
+            saveError
+          );
           throw new Error(`Failed to save reset document: ${saveError.message}`);
         }
+        console.log(`[Hard Reset] Successfully saved empty doc to database`);
 
         // Reload the live server from the new snapshot
+        console.log(`[Hard Reset] Reloading live server from snapshot...`);
         replaceDocFromSnapshot(liveYDoc, emptyBase64);
+        console.log(`[Hard Reset] Successfully reloaded live server`);
 
         return new Response(
           JSON.stringify({
@@ -848,13 +870,20 @@ export class AdminHandler {
       }
 
       // Create a fresh Y.Doc with the current state (no history/tombstones)
+      console.log(`[Hard Reset] Creating fresh Y.Doc from play data...`);
       const freshDoc = jsonToDoc(currentPlayData);
+      console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
 
       // Encode the fresh doc
+      console.log(`[Hard Reset] Encoding fresh doc to base64...`);
       const freshBase64 = encodeDocToBase64(freshDoc);
       const afterSize = freshBase64.length;
+      console.log(
+        `[Hard Reset] After size: ${afterSize} bytes (${(afterSize / 1024 / 1024).toFixed(2)} MB)`
+      );
 
       // Save to database
+      console.log(`[Hard Reset] Saving fresh doc to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
           name: this.context.room.id,
@@ -864,14 +893,26 @@ export class AdminHandler {
       );
 
       if (saveError) {
+        console.error(
+          `[Hard Reset] Database save failed:`,
+          saveError.message,
+          saveError
+        );
         throw new Error(`Failed to save reset document: ${saveError.message}`);
       }
+      console.log(`[Hard Reset] Successfully saved fresh doc to database`);
 
       // Reload the live server from the new snapshot
+      console.log(`[Hard Reset] Reloading live server from snapshot...`);
       replaceDocFromSnapshot(liveYDoc, freshBase64);
+      console.log(`[Hard Reset] Successfully reloaded live server`);
 
       const sizeReduction = beforeSize - afterSize;
       const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(1);
+
+      console.log(
+        `[Hard Reset] Completed successfully: ${beforeSize} -> ${afterSize} bytes (${sizeReductionPercent}% reduction)`
+      );
 
       return new Response(
         JSON.stringify({
@@ -892,10 +933,21 @@ export class AdminHandler {
         }
       );
     } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error(
+        `[Hard Reset] Failed for room ${roomId}:`,
+        errorMessage,
+        errorStack || error
+      );
+
       return new Response(
         JSON.stringify({
           error: "Failed to perform hard reset",
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage,
+          roomId,
         }),
         { status: 500, headers: { "content-type": "application/json" } }
       );

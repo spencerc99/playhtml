@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Buffer } from "buffer";
-import { useStickyState } from "../hooks/useStickyState";
+import { useStickyState } from "./hooks/useStickyState";
 
 // Types from the original admin.ts
 interface RoomData {

@@ -80,14 +80,42 @@ export function replaceDocFromSnapshot(
   snapshotBase64: string
 ): void {
   const buffer = new Uint8Array(Buffer.from(snapshotBase64, "base64"));
+
+  // Use a specific origin to help distinguish this "system" update if needed
+  const origin = "hard-reset";
+
   doc.transact(() => {
-    // Clear all existing shared types before applying snapshot
-    // This ensures we don't merge stale data
-    for (const key of Array.from(doc.share.keys())) {
-      doc.share.delete(key);
+    // NUCLEAR OPTION: Deep clean the Y.Doc internals to remove history/tombstones.
+    // This is required because standard delete() operations leave tombstones.
+    // Accessing private API (doc.store) is necessary for this.
+
+    try {
+      // @ts-ignore - Accessing internal store
+      const store = doc.store;
+      if (store) {
+        // Clear clients (history vector)
+        // @ts-ignore
+        if (store.clients) store.clients.clear();
+        // Clear pending structs
+        // @ts-ignore
+        store.pendingStructs = null;
+        // @ts-ignore
+        store.pendingDs = null;
+      }
+
+      // Clear shared types map
+      doc.share.clear();
+    } catch (e) {
+      console.error("Failed to deep clean doc store:", e);
+      // Fallback to standard clear if internals change
+      for (const key of Array.from(doc.share.keys())) {
+        doc.share.delete(key);
+      }
     }
+
+    // Apply the snapshot. Since the store is empty, this is effectively a fresh load.
     Y.applyUpdate(doc, buffer);
-  });
+  }, origin);
 }
 
 /**
