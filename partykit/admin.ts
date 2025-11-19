@@ -152,7 +152,7 @@ export class AdminHandler {
         if (docData?.document) {
           // Calculate document size (base64 length)
           documentSize = docData.document.length;
-          
+
           const buffer = new Uint8Array(
             Buffer.from(docData.document, "base64")
           );
@@ -804,13 +804,21 @@ export class AdminHandler {
       console.log(`[Hard Reset] Extracting play data as JSON...`);
       const currentPlayData = docToJson(liveYDoc);
       console.log(
-        `[Hard Reset] Extracted play data: ${currentPlayData ? "has data" : "empty"}`
+        `[Hard Reset] Extracted play data: ${
+          currentPlayData ? "has data" : "empty"
+        }`
       );
 
       // Get size before reset (for reporting)
       console.log(`[Hard Reset] Calculating before size...`);
       const beforeSize = encodeDocToBase64(liveYDoc).length;
-      console.log(`[Hard Reset] Before size: ${beforeSize} bytes (${(beforeSize / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(
+        `[Hard Reset] Before size: ${beforeSize} bytes (${(
+          beforeSize /
+          1024 /
+          1024
+        ).toFixed(2)} MB)`
+      );
 
       // Handle empty room case - create empty fresh doc
       if (!currentPlayData) {
@@ -837,7 +845,9 @@ export class AdminHandler {
             saveError.message,
             saveError
           );
-          throw new Error(`Failed to save reset document: ${saveError.message}`);
+          throw new Error(
+            `Failed to save reset document: ${saveError.message}`
+          );
         }
         console.log(`[Hard Reset] Successfully saved empty doc to database`);
 
@@ -853,9 +863,13 @@ export class AdminHandler {
             beforeSize,
             afterSize: emptyAfterSize,
             sizeReduction: beforeSize - emptyAfterSize,
-            sizeReductionPercent: beforeSize > 0 
-              ? `${(((beforeSize - emptyAfterSize) / beforeSize) * 100).toFixed(1)}%`
-              : "0%",
+            sizeReductionPercent:
+              beforeSize > 0
+                ? `${(
+                    ((beforeSize - emptyAfterSize) / beforeSize) *
+                    100
+                  ).toFixed(1)}%`
+                : "0%",
             wasEmpty: true,
           }),
           {
@@ -879,7 +893,11 @@ export class AdminHandler {
       const freshBase64 = encodeDocToBase64(freshDoc);
       const afterSize = freshBase64.length;
       console.log(
-        `[Hard Reset] After size: ${afterSize} bytes (${(afterSize / 1024 / 1024).toFixed(2)} MB)`
+        `[Hard Reset] After size: ${afterSize} bytes (${(
+          afterSize /
+          1024 /
+          1024
+        ).toFixed(2)} MB)`
       );
 
       // Save to database
@@ -908,7 +926,9 @@ export class AdminHandler {
       console.log(`[Hard Reset] Successfully reloaded live server`);
 
       const sizeReduction = beforeSize - afterSize;
-      const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(1);
+      const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(
+        1
+      );
 
       console.log(
         `[Hard Reset] Completed successfully: ${beforeSize} -> ${afterSize} bytes (${sizeReductionPercent}% reduction)`
@@ -1018,9 +1038,7 @@ export class AdminHandler {
       );
 
       if (saveError) {
-        throw new Error(
-          `Failed to restore document: ${saveError.message}`
-        );
+        throw new Error(`Failed to restore document: ${saveError.message}`);
       }
 
       // Reload the live server from the restored snapshot

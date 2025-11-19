@@ -1803,12 +1803,99 @@ const AdminConsole: React.FC = () => {
       const buffer = Uint8Array.from(atob(base64Doc), (c) => c.charCodeAt(0));
       Y.applyUpdate(backupDoc, buffer);
 
-      const { syncedStore } = await import("@syncedstore/core");
-      const backupStore = syncedStore<{ play: Record<string, any> }>(
-        { play: {} },
-        backupDoc
-      );
-      let backupData = JSON.parse(JSON.stringify(backupStore.play)).value;
+      // Safely extract backup data, ensuring it's always an object
+      let backupData: Record<string, any> = {};
+      try {
+        const { syncedStore } = await import("@syncedstore/core");
+        const backupStore = syncedStore<{ play: Record<string, any> }>(
+          { play: {} },
+          backupDoc
+        );
+
+        // Wait a tick to ensure syncedStore has initialized
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // Try to extract from syncedStore
+        if (
+          backupStore &&
+          typeof backupStore === "object" &&
+          "play" in backupStore
+        ) {
+          const playData = backupStore.play;
+          if (playData !== null && playData !== undefined) {
+            try {
+              const stringified = JSON.stringify(playData);
+              if (
+                stringified &&
+                stringified !== "null" &&
+                stringified !== "undefined"
+              ) {
+                const parsed = JSON.parse(stringified);
+                // Handle both { value: {...} } and direct object formats
+                if (parsed && typeof parsed === "object") {
+                  backupData = parsed.value || parsed;
+                }
+              }
+            } catch (stringifyError) {
+              addLog(
+                "warn",
+                "Failed to stringify backup store data, trying direct access"
+              );
+              // Fallback: try to access directly if it's already a plain object
+              if (typeof playData === "object" && !Array.isArray(playData)) {
+                backupData = playData as Record<string, any>;
+              }
+            }
+          }
+        }
+
+        // Fallback: if syncedStore didn't work, try reading directly from Y.Doc
+        if (!backupData || Object.keys(backupData).length === 0) {
+          const playMap = backupDoc.getMap("play");
+          if (playMap && playMap.size > 0) {
+            backupData = {};
+            playMap.forEach((value, key) => {
+              try {
+                // Try to convert Y.Map to plain object
+                const valueAny = value as any;
+                if (valueAny && typeof valueAny.toJSON === "function") {
+                  backupData[key] = valueAny.toJSON();
+                } else if (valueAny instanceof Y.Map) {
+                  const tagData: Record<string, any> = {};
+                  valueAny.forEach((v: any, k: string) => {
+                    tagData[k] =
+                      v && typeof v.toJSON === "function" ? v.toJSON() : v;
+                  });
+                  backupData[key] = tagData;
+                } else {
+                  backupData[key] = value;
+                }
+              } catch (e) {
+                addLog("warn", `Failed to extract tag ${key} from Y.Doc`);
+              }
+            });
+          }
+        }
+      } catch (extractError) {
+        const errorMsg =
+          extractError instanceof Error
+            ? extractError.message
+            : String(extractError);
+        addLog(
+          "warn",
+          `Failed to extract backup data: ${errorMsg}, using empty object`
+        );
+        backupData = {};
+      }
+
+      // Ensure backupData is always an object
+      if (
+        !backupData ||
+        typeof backupData !== "object" ||
+        Array.isArray(backupData)
+      ) {
+        backupData = {};
+      }
 
       // Use already-loaded room data (current DB state)
       // Note: roomData is loaded from admin/inspect which returns both current DB and live data
@@ -1830,9 +1917,9 @@ const AdminConsole: React.FC = () => {
       const comparison = {
         roomId: targetRoomId,
         backup: {
-          data: backupData,
+          data: backupData || {},
           timestamp: backupTimestamp,
-          hasData: Object.keys(backupData).length > 0,
+          hasData: backupData && Object.keys(backupData).length > 0,
         },
         current: currentData
           ? {
@@ -2047,7 +2134,7 @@ const AdminConsole: React.FC = () => {
                   isExpanded={sectionsExpanded.ydocData}
                   onToggle={toggleSection}
                 />
-                {sectionsExpanded.ydocData && roomData.ydoc?.play ? (
+                {sectionsExpanded.ydocData && roomData.ydoc?.play && (
                   <div>
                     <div className="ydoc-debug-info">
                       <div className="debug-stats">
@@ -2067,13 +2154,6 @@ const AdminConsole: React.FC = () => {
                       </div>
                     </div>
                     <JSONViewer data={roomData.ydoc.play} />
-                  </div>
-                ) : (
-                  <div className="empty">No Y.Doc play data available</div>
-                )}
-                {!sectionsExpanded.ydocData && (
-                  <div style={{ color: "#666", fontSize: "0.9em" }}>
-                    Click to expand
                   </div>
                 )}
               </div>
