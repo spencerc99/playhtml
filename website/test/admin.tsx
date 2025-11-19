@@ -18,6 +18,7 @@ interface RoomData {
   connections?: number;
   timestamp?: string;
   roomId?: string;
+  documentSize?: number;
 }
 
 interface DebugLog {
@@ -925,6 +926,134 @@ const AdminConsole: React.FC = () => {
     addLog("info", `Exported data for room ${currentRoomId}`);
   };
 
+  const exportRawDocument = async () => {
+    if (!currentRoomId || !adminToken) return;
+
+    try {
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
+        adminToken
+      )}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch raw data: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+      if (!data.document?.document) {
+        alert("No raw document found to export");
+        return;
+      }
+
+      // Export the base64 document as a text file
+      const blob = new Blob([data.document.document], {
+        type: "text/plain",
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `room-${currentRoomId}-raw-document-${
+        new Date().toISOString().split("T")[0]
+      }.txt`;
+      a.click();
+      URL.revokeObjectURL(downloadUrl);
+
+      addLog(
+        "info",
+        `Exported raw document (${data.document.base64Length} chars)`
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Failed to export raw document: ${msg}`, error);
+      alert(`❌ Failed to export raw document: ${msg}`);
+    }
+  };
+
+  const restoreRawDocument = async () => {
+    if (!currentRoomId || !adminToken) return;
+
+    const ok = confirm(
+      "⚠️ Restore Raw Document\n\n" +
+        "This will replace the current room's document with the uploaded base64 document.\n\n" +
+        "This is a DESTRUCTIVE operation that will:\n" +
+        "- Overwrite the current database document\n" +
+        "- Replace the live server's document\n" +
+        "- May cause data loss if the uploaded document is incorrect\n\n" +
+        "Continue?"
+    );
+    if (!ok) return;
+
+    try {
+      // Use File System Access API to get a file handle
+      const [handle] = await (window as any).showOpenFilePicker({
+        types: [
+          {
+            description: "Raw Base64 Document Files",
+            accept: {
+              "text/plain": [".txt"],
+            },
+          },
+        ],
+        multiple: false,
+      });
+
+      if (handle) {
+        const file = await handle.getFile();
+        const base64Document = await file.text();
+
+        addLog("info", `Restoring raw document (${base64Document.length} chars)...`);
+
+        const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+          currentRoomId
+        )}`;
+        const url = `${baseUrl}/admin/restore-raw-document?token=${encodeURIComponent(
+          adminToken
+        )}`;
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64Document }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(
+            errorData.message || `${response.status} ${response.statusText}`
+          );
+        }
+
+        const result = await response.json();
+        addLog("info", "Raw document restored successfully", result);
+        alert(
+          `✅ Raw document restored!\n\n` +
+            `Document size: ${(result.documentSize / 1024 / 1024).toFixed(2)}MB\n\n` +
+            `Reloading room data...`
+        );
+
+        // Reload room data to show updated state
+        await loadRoom(currentRoomId);
+      }
+    } catch (error: unknown) {
+      if ((error as any).name === "AbortError") {
+        // User cancelled file picker
+        return;
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Failed to restore raw document: ${msg}`, error);
+      alert(`❌ Failed to restore raw document: ${msg}`);
+    }
+  };
+
   const loadRawDatabaseData = async () => {
     if (!currentRoomId || !adminToken) return;
 
@@ -1173,6 +1302,63 @@ const AdminConsole: React.FC = () => {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Force reload failed: ${msg}`);
       alert(`❌ Force reload failed: ${msg}`);
+    }
+  };
+
+  const handleHardReset = async () => {
+    if (!currentRoomId || !adminToken) return;
+    const ok = confirm(
+      "⚠️ Hard Reset (Garbage Collection)\n\n" +
+        "This will recreate the Y.Doc from scratch, removing all history and tombstones.\n\n" +
+        "This is a DESTRUCTIVE operation that:\n" +
+        "- Strips all YJS deletion history\n" +
+        "- Reduces document size significantly\n" +
+        "- May cause offline clients to need a refresh\n\n" +
+        "Continue?"
+    );
+    if (!ok) return;
+
+    try {
+      addLog("info", "Starting Hard Reset (GC)...");
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/hard-reset?token=${encodeURIComponent(
+        adminToken
+      )}`;
+      const res = await fetch(url, { method: "POST" });
+      if (!res.ok) {
+        let errorMessage = `${res.status} ${res.statusText}`;
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          // If response isn't JSON, use status text
+          const text = await res.text();
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
+      }
+      const result = await res.json();
+      const beforeMB = (result.beforeSize / 1024 / 1024).toFixed(2);
+      const afterMB = (result.afterSize / 1024 / 1024).toFixed(2);
+      addLog(
+        "info",
+        `Hard Reset completed: ${beforeMB}MB -> ${afterMB}MB (${result.sizeReductionPercent} reduction)`,
+        result
+      );
+      alert(
+        `✅ Hard Reset completed!\n\n` +
+          `Size: ${beforeMB}MB -> ${afterMB}MB\n` +
+          `Reduction: ${result.sizeReductionPercent}\n\n` +
+          `Reloading room data...`
+      );
+      // Reload room data to show updated state
+      await loadRoom(currentRoomId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Hard Reset failed: ${msg}`, error);
+      alert(`❌ Hard Reset failed: ${msg}`);
     }
   };
 
@@ -1817,6 +2003,61 @@ const AdminConsole: React.FC = () => {
                             : "Unknown"}
                         </time>
                       </div>
+                      <div className="metadata-item">
+                        <strong>Document Size:</strong>{" "}
+                        {roomData.documentSize !== undefined ? (
+                          (() => {
+                            const sizeMB = roomData.documentSize / 1024 / 1024;
+                            const isDangerous = roomData.documentSize > 5 * 1024 * 1024;
+                            const isWarning = roomData.documentSize > 3 * 1024 * 1024;
+                            const isCaution = roomData.documentSize > 1 * 1024 * 1024;
+
+                            let color = "inherit";
+                            let fontWeight = "normal";
+                            let warningIcon = "";
+                            let tooltip = "";
+
+                            if (isDangerous) {
+                              color = "#e53e3e"; // Red
+                              fontWeight = "bold";
+                              warningIcon = "⚠️";
+                              tooltip =
+                                "⚠️ Document size is dangerously large. Consider running Hard Reset (GC) to clean up history/tombstones.";
+                            } else if (isWarning) {
+                              color = "#d69e2e"; // Orange
+                              fontWeight = "500";
+                              warningIcon = "⚡";
+                              tooltip =
+                                "⚡ Document size is getting large. Consider running Hard Reset (GC) soon to prevent performance issues.";
+                            } else if (isCaution) {
+                              color = "#c05621"; // Lighter amber/yellow
+                              fontWeight = "normal";
+                              warningIcon = "💡";
+                              tooltip =
+                                "💡 Document size is moderate. Monitor and consider Hard Reset (GC) if it continues to grow.";
+                            }
+
+                            return (
+                              <span
+                                style={{
+                                  color,
+                                  fontWeight,
+                                }}
+                                title={tooltip || undefined}
+                              >
+                                {sizeMB.toFixed(2)} MB
+                                {warningIcon && (
+                                  <span style={{ marginLeft: "8px" }}>
+                                    {warningIcon}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span style={{ color: "#999" }}>Unknown</span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2420,9 +2661,25 @@ const AdminConsole: React.FC = () => {
               <button
                 className="tool-btn"
                 disabled={!debugToolsEnabled}
+                onClick={exportRawDocument}
+                title="Export the raw base64-encoded YJS document (includes all history/tombstones)"
+              >
+                Export Raw Document
+              </button>
+              <button
+                className="tool-btn"
+                disabled={!debugToolsEnabled}
                 onClick={loadRawDatabaseData}
               >
                 Load Raw DB Data
+              </button>
+              <button
+                className="tool-btn destructive"
+                disabled={!debugToolsEnabled}
+                onClick={restoreRawDocument}
+                title="Restore from a raw base64-encoded YJS document file"
+              >
+                Restore Raw Document
               </button>
               <button
                 className="tool-btn"
@@ -2437,6 +2694,14 @@ const AdminConsole: React.FC = () => {
                 onClick={compareDataMethods}
               >
                 Compare Live vs Admin Data
+              </button>
+              <button
+                className="tool-btn destructive"
+                disabled={!debugToolsEnabled}
+                onClick={handleHardReset}
+                title="Recreate Y.Doc from scratch to remove all history/tombstones (Garbage Collection)"
+              >
+                🔄 Hard Reset (GC)
               </button>
             </div>
           </section>

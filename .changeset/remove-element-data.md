@@ -16,15 +16,3 @@ import { removeElementData } from "@playhtml/react";
 import { playhtml } from "@playhtml/react";
 playhtml.removeElementData("can-move", elementId);
 ```
-
-**What it removes:**
-- SyncedStore data
-- Observer subscriptions  
-- Element handlers
-- Legacy globalData entries (if applicable)
-- Shared reference tracking
-
-This is especially useful for tags like `can-move` that store per-element state, where deleted elements can leave orphaned data behind.
-
-
-

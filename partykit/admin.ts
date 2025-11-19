@@ -10,6 +10,7 @@ import {
   replaceDocState,
   replaceDocFromSnapshot,
   encodeDocToBase64,
+  jsonToDoc,
 } from "./docUtils";
 
 function compareKeys(
@@ -92,6 +93,15 @@ export class AdminHandler {
       if (path.includes("admin/cleanup-orphans") && request.method === "POST") {
         return this.handleAdminCleanupOrphans(request);
       }
+      if (path.includes("admin/hard-reset") && request.method === "POST") {
+        return this.handleAdminHardReset(request);
+      }
+      if (
+        path.includes("admin/restore-raw-document") &&
+        request.method === "POST"
+      ) {
+        return this.handleAdminRestoreRawDocument(request);
+      }
 
       return new Response("Admin endpoint not found", { status: 404 });
     } catch (err) {
@@ -129,6 +139,7 @@ export class AdminHandler {
 
       // Get Y.Doc data if available - use direct approach for consistency
       let ydocData = null;
+      let documentSize = null;
       try {
         // Create fresh Y.Doc and load data directly (same as debug reconstruction)
         const yDoc = new Y.Doc();
@@ -139,6 +150,9 @@ export class AdminHandler {
           .maybeSingle();
 
         if (docData?.document) {
+          // Calculate document size (base64 length)
+          documentSize = docData.document.length;
+          
           const buffer = new Uint8Array(
             Buffer.from(docData.document, "base64")
           );
@@ -155,6 +169,7 @@ export class AdminHandler {
               error: "No Y.Doc play data found",
               message: "Room exists but contains no PlayHTML data",
               roomId: this.context.room.id,
+              documentSize: documentSize || 0,
             }),
             {
               status: 404,
@@ -187,6 +202,7 @@ export class AdminHandler {
         ydoc: ydocData,
         connections: Array.from(this.context.room.getConnections()).length,
         timestamp: new Date().toISOString(),
+        documentSize: documentSize || 0,
       };
 
       return new Response(JSON.stringify(roomData, null, 2), {
@@ -747,6 +763,240 @@ export class AdminHandler {
       return new Response(
         JSON.stringify({
           error: "Failed to cleanup orphans",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  /**
+   * Hard Reset / Garbage Collection: Recreates the Y.Doc from scratch,
+   * stripping all history and tombstones. This is the only way to remove
+   * YJS deletion metadata that accumulates over time.
+   *
+   * Process:
+   * 1. Extract current live doc state as plain JSON
+   * 2. Create a fresh Y.Doc and populate it with the JSON
+   * 3. Encode the fresh doc (now history-free) to base64
+   * 4. Save to Supabase, replacing the bloated blob
+   * 5. Reload the live server from this new snapshot
+   */
+  private async handleAdminHardReset(
+    request: Party.Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    try {
+      // Get current live doc state
+      const liveYDoc = await unstable_getYDoc(
+        this.context.room,
+        this.context.providerOptions
+      );
+
+      // Extract current state as JSON
+      const currentPlayData = docToJson(liveYDoc);
+      
+      // Get size before reset (for reporting)
+      const beforeSize = encodeDocToBase64(liveYDoc).length;
+
+      // Handle empty room case - create empty fresh doc
+      if (!currentPlayData) {
+        // Create an empty fresh Y.Doc
+        const emptyDoc = new Y.Doc();
+        const emptyBase64 = encodeDocToBase64(emptyDoc);
+        const emptyAfterSize = emptyBase64.length;
+
+        // Save empty doc to database
+        const { error: saveError } = await supabase.from("documents").upsert(
+          {
+            name: this.context.room.id,
+            document: emptyBase64,
+          },
+          { onConflict: "name" }
+        );
+
+        if (saveError) {
+          throw new Error(`Failed to save reset document: ${saveError.message}`);
+        }
+
+        // Reload the live server from the new snapshot
+        replaceDocFromSnapshot(liveYDoc, emptyBase64);
+
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            message: "Hard reset completed successfully (room was empty)",
+            beforeSize,
+            afterSize: emptyAfterSize,
+            sizeReduction: beforeSize - emptyAfterSize,
+            sizeReductionPercent: beforeSize > 0 
+              ? `${(((beforeSize - emptyAfterSize) / beforeSize) * 100).toFixed(1)}%`
+              : "0%",
+            wasEmpty: true,
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "POST, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            },
+          }
+        );
+      }
+
+      // Create a fresh Y.Doc with the current state (no history/tombstones)
+      const freshDoc = jsonToDoc(currentPlayData);
+
+      // Encode the fresh doc
+      const freshBase64 = encodeDocToBase64(freshDoc);
+      const afterSize = freshBase64.length;
+
+      // Save to database
+      const { error: saveError } = await supabase.from("documents").upsert(
+        {
+          name: this.context.room.id,
+          document: freshBase64,
+        },
+        { onConflict: "name" }
+      );
+
+      if (saveError) {
+        throw new Error(`Failed to save reset document: ${saveError.message}`);
+      }
+
+      // Reload the live server from the new snapshot
+      replaceDocFromSnapshot(liveYDoc, freshBase64);
+
+      const sizeReduction = beforeSize - afterSize;
+      const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(1);
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          message: "Hard reset completed successfully",
+          beforeSize,
+          afterSize,
+          sizeReduction,
+          sizeReductionPercent: `${sizeReductionPercent}%`,
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error: unknown) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to perform hard reset",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  /**
+   * Restore a room's document from a raw base64-encoded YJS document.
+   * This allows restoring the exact database state including all history/tombstones.
+   *
+   * Request body:
+   * {
+   *   base64Document: string // The base64-encoded YJS document
+   * }
+   */
+  private async handleAdminRestoreRawDocument(
+    request: Party.Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    try {
+      const body = (await request.json()) as { base64Document?: string };
+
+      if (!body?.base64Document || typeof body.base64Document !== "string") {
+        return new Response(
+          JSON.stringify({
+            error: "Missing or invalid 'base64Document' field",
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
+      // Validate it's valid base64
+      try {
+        const buffer = new Uint8Array(
+          Buffer.from(body.base64Document, "base64")
+        );
+        // Try to decode a Y.Doc to validate it's a valid YJS document
+        const testDoc = new Y.Doc();
+        Y.applyUpdate(testDoc, buffer);
+      } catch (validationError) {
+        return new Response(
+          JSON.stringify({
+            error: "Invalid base64 document or not a valid YJS document",
+            message:
+              validationError instanceof Error
+                ? validationError.message
+                : String(validationError),
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
+      // Save to database
+      const { error: saveError } = await supabase.from("documents").upsert(
+        {
+          name: this.context.room.id,
+          document: body.base64Document,
+        },
+        { onConflict: "name" }
+      );
+
+      if (saveError) {
+        throw new Error(
+          `Failed to restore document: ${saveError.message}`
+        );
+      }
+
+      // Reload the live server from the restored snapshot
+      const liveYDoc = await unstable_getYDoc(
+        this.context.room,
+        this.context.providerOptions
+      );
+      replaceDocFromSnapshot(liveYDoc, body.base64Document);
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          message: "Raw document restored successfully",
+          documentSize: body.base64Document.length,
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error: unknown) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to restore raw document",
           message: error instanceof Error ? error.message : String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } }
