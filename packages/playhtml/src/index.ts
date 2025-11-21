@@ -519,6 +519,11 @@ function onMessage(evt: MessageEvent) {
   // Handle system messages
   if (message.type === "room-reset") {
     console.warn("[playhtml] Room was reset by admin. Reloading to sync...");
+    // Store the reset epoch if provided
+    if (message.resetEpoch) {
+      const storageKey = `playhtml_resetEpoch_${__currentRoomId}`;
+      localStorage.setItem(storageKey, String(message.resetEpoch));
+    }
     // Force reload to fetch fresh state
     window.location.reload();
     return;
@@ -620,11 +625,20 @@ async function initPlayHTML({
     discoveredSharedReferences.add(referenceKey);
   });
 
+  // Get stored reset epoch from localStorage to send to server
+  const storageKey = `playhtml_resetEpoch_${room}`;
+  const storedResetEpoch = localStorage.getItem(storageKey);
+  const clientResetEpoch = storedResetEpoch
+    ? parseInt(storedResetEpoch, 10)
+    : null;
+
   // Create provider with shared element parameters
   yprovider = new YPartyKitProvider(partykitHost, room, doc, {
     params: {
       sharedElements: JSON.stringify(sharedElements),
       sharedReferences: JSON.stringify(sharedReferences),
+      clientResetEpoch:
+        clientResetEpoch !== null ? String(clientResetEpoch) : null,
     },
   });
   yprovider.on("error", () => {

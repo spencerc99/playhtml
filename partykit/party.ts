@@ -7,6 +7,12 @@ import * as Y from "yjs";
 import { supabase } from "./db";
 import { AdminHandler } from "./admin";
 import {
+  docToJson,
+  jsonToDoc,
+  encodeDocToBase64,
+  replaceDocFromSnapshot,
+} from "./docUtils";
+import {
   STORAGE_KEYS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -84,18 +90,34 @@ export default class PartyServer implements Party.Server {
 
         // convert the Yjs document to a Uint8Array
         const content = Y.encodeStateAsUpdate(doc);
+        const base64Document = Buffer.from(content).toString("base64");
+        const documentSize = base64Document.length;
+
+        // Get current reset epoch for logging
+        const resetEpoch = await this.getResetEpoch();
+
+        // Log structured information about the save
+        console.log(
+          `[PartyServer] Autosave: room=${this.room.id}, size=${documentSize} bytes (${(
+            documentSize /
+            1024 /
+            1024
+          ).toFixed(2)} MB), resetEpoch=${resetEpoch || "none"}`
+        );
 
         // Save the document to the database
         const { data: _data, error } = await supabase.from("documents").upsert(
           {
             name: this.room.id,
-            document: Buffer.from(content).toString("base64"),
+            document: base64Document,
           },
           { onConflict: "name" }
         );
 
         if (error) {
-          console.error("failed to save:", error);
+          console.error(`[PartyServer] Autosave failed for room ${this.room.id}:`, error);
+        } else {
+          console.log(`[PartyServer] Autosave succeeded for room ${this.room.id}`);
         }
       },
     },
@@ -129,6 +151,127 @@ export default class PartyServer implements Party.Server {
     permissions: Record<string, SharedElementPermissions>
   ): Promise<void> {
     await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+  }
+
+  async getResetEpoch(): Promise<number | null> {
+    return (await this.room.storage.get(STORAGE_KEYS.resetEpoch)) || null;
+  }
+
+  async setResetEpoch(epoch: number): Promise<void> {
+    await this.room.storage.put(STORAGE_KEYS.resetEpoch, epoch);
+  }
+
+  /**
+   * Restore the room's Y.Doc from a base64 snapshot.
+   * This is used for restore-raw-document and force-reload-live operations.
+   * 
+   * Steps:
+   * 1. Lock autosave
+   * 2. Save snapshot to database
+   * 3. Replace live doc with snapshot
+   * 4. Set resetEpoch
+   * 5. Broadcast room-reset signal
+   * 6. Close all connections
+   * 7. Flush microtasks and release lock
+   * 
+   * @param snapshotBase64 Base64-encoded Y.Doc snapshot
+   * @returns Object with documentSize and resetEpoch
+   */
+  async restoreFromSnapshot(snapshotBase64: string): Promise<{
+    documentSize: number;
+    resetEpoch: number;
+  }> {
+    const roomId = this.room.id;
+    console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
+
+    // Lock autosave immediately
+    this.isSkippingSave = true;
+
+    try {
+      const documentSize = snapshotBase64.length;
+
+      // Save to database
+      console.log(`[Restore Snapshot] Saving snapshot to database...`);
+      const { error: saveError } = await supabase.from("documents").upsert(
+        {
+          name: this.room.id,
+          document: snapshotBase64,
+        },
+        { onConflict: "name" }
+      );
+
+      if (saveError) {
+        console.error(
+          `[Restore Snapshot] Database save failed:`,
+          saveError.message,
+          saveError
+        );
+        throw new Error(`Failed to save snapshot: ${saveError.message}`);
+      }
+      console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
+
+      // Reload the live server from the snapshot
+      console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
+      const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      replaceDocFromSnapshot(liveYDoc, snapshotBase64);
+      console.log(`[Restore Snapshot] Successfully reloaded live server`);
+
+      // Set reset epoch for client detection
+      const resetEpoch = Date.now();
+      await this.setResetEpoch(resetEpoch);
+      console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
+
+      // Broadcast a "room-reset" message to all connected clients
+      this.room.broadcast(
+        JSON.stringify({
+          type: "room-reset",
+          timestamp: resetEpoch,
+          resetEpoch: resetEpoch,
+        })
+      );
+      console.log(`[Restore Snapshot] Broadcasted room-reset signal to all clients`);
+
+      // FORCE DISCONNECT: Close all connections
+      const connections = [...this.room.getConnections()];
+      connections.forEach((conn) => {
+        try {
+          conn.close(4000, "Room Restored by Admin");
+        } catch (e) {
+          console.error("[Restore Snapshot] Failed to close connection:", e);
+        }
+      });
+      console.log(`[Restore Snapshot] Closed ${connections.length} connections`);
+
+      console.log(
+        `[Restore Snapshot] Completed successfully: ${documentSize} bytes`
+      );
+
+      // Flush pending microtasks
+      await Promise.resolve();
+
+      return {
+        documentSize,
+        resetEpoch,
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error(
+        `[Restore Snapshot] Failed for room ${roomId}:`,
+        errorMessage,
+        errorStack || error
+      );
+
+      throw error;
+    } finally {
+      // Re-enable autosave after a short delay
+      setTimeout(() => {
+        this.isSkippingSave = false;
+        console.log("[Restore Snapshot] Autosave re-enabled");
+      }, 1000);
+    }
   }
 
   // Ensure an alarm is set if subscribers exist; avoids rescheduling if one is set sooner
@@ -416,6 +559,41 @@ export default class PartyServer implements Party.Server {
   }
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
+    // Check reset epoch from client params and enforce if stale
+    let shouldForceReset = false;
+    let serverResetEpoch: number | null = null;
+    try {
+      const url = new URL(ctx.request.url);
+      const clientResetEpochParam = url.searchParams.get("clientResetEpoch");
+      const clientResetEpoch =
+        clientResetEpochParam !== null
+          ? parseInt(clientResetEpochParam, 10)
+          : null;
+
+      serverResetEpoch = await this.getResetEpoch();
+
+      // If server has a reset epoch and client's is stale (or missing), mark for reset
+      if (
+        serverResetEpoch !== null &&
+        (clientResetEpoch === null || clientResetEpoch < serverResetEpoch)
+      ) {
+        console.log(
+          `[PartyServer] Client reset epoch (${clientResetEpoch}) is stale compared to server (${serverResetEpoch}). Will force reload.`
+        );
+        shouldForceReset = true;
+      } else if (clientResetEpoch !== null && serverResetEpoch !== null) {
+        console.log(
+          `[PartyServer] Client reset epoch (${clientResetEpoch}) matches server (${serverResetEpoch}). Connection allowed.`
+        );
+      }
+    } catch (error) {
+      // If epoch check fails, log but don't block connection (fail open for backwards compatibility)
+      console.warn(
+        `[PartyServer] Failed to check reset epoch on connect:`,
+        error
+      );
+    }
+
     // Opportunistically schedule an alarm if subscribers exist
     await this.ensureAlarmIfSubscribersPresent();
 
@@ -448,6 +626,21 @@ export default class PartyServer implements Party.Server {
     }
 
     await onConnect(connection, this.room, this.providerOptions);
+
+    // If reset is needed, send the message after connection is established
+    if (shouldForceReset && serverResetEpoch !== null) {
+      // Send room-reset message - client will reload when it receives this
+      connection.send(
+        JSON.stringify({
+          type: "room-reset",
+          timestamp: serverResetEpoch,
+          resetEpoch: serverResetEpoch,
+        })
+      );
+      console.log(
+        `[PartyServer] Sent room-reset message to client with stale epoch`
+      );
+    }
 
     // Attach immediate-update observers once
     await this.attachImmediateBridgeObservers();
@@ -664,6 +857,177 @@ export default class PartyServer implements Party.Server {
     } catch (err) {
       console.error("onRequest error", err);
       return new Response("Internal Server Error", { status: 500 });
+    }
+  }
+
+  /**
+   * Perform a hard reset (garbage collection) of the room's Y.Doc.
+   * This creates a fresh document from the current state, removing all history/tombstones.
+   * 
+   * Steps:
+   * 1. Lock autosave to prevent overwriting clean DB state
+   * 2. Extract current state as JSON
+   * 3. Create fresh Y.Doc from JSON (no history)
+   * 4. Save to database
+   * 5. Replace live doc with snapshot
+   * 6. Set resetEpoch for client detection
+   * 7. Broadcast room-reset signal
+   * 8. Close all connections
+   * 9. Flush microtasks and release lock
+   * 
+   * @returns Object with beforeSize, afterSize, and resetEpoch
+   */
+  async performHardReset(): Promise<{
+    beforeSize: number;
+    afterSize: number;
+    resetEpoch: number;
+  }> {
+    const roomId = this.room.id;
+    console.log(`[Hard Reset] Starting for room: ${roomId}`);
+
+    // Lock autosave immediately
+    this.isSkippingSave = true;
+
+    try {
+      // Get current live doc state
+      const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
+
+      // Extract current state as JSON
+      const currentPlayData = docToJson(liveYDoc);
+      console.log(
+        `[Hard Reset] Extracted play data: ${
+          currentPlayData ? "has data" : "empty"
+        }`
+      );
+
+      // Calculate before size
+      const beforeSize = encodeDocToBase64(liveYDoc).length;
+      console.log(
+        `[Hard Reset] Before size: ${beforeSize} bytes (${(
+          beforeSize /
+          1024 /
+          1024
+        ).toFixed(2)} MB)`
+      );
+
+      let freshBase64: string;
+      let afterSize: number;
+
+      // Handle empty room case
+      if (!currentPlayData) {
+        console.log(`[Hard Reset] Room is empty, creating empty fresh doc...`);
+        const emptyDoc = new Y.Doc();
+        freshBase64 = encodeDocToBase64(emptyDoc);
+        afterSize = freshBase64.length;
+        console.log(`[Hard Reset] Empty doc size: ${afterSize} bytes`);
+      } else {
+        // Create a fresh Y.Doc with the current state (no history/tombstones)
+        console.log(`[Hard Reset] Creating fresh Y.Doc from play data...`);
+        const freshDoc = jsonToDoc(currentPlayData);
+        console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
+
+        // Encode the fresh doc
+        freshBase64 = encodeDocToBase64(freshDoc);
+        afterSize = freshBase64.length;
+        console.log(
+          `[Hard Reset] After size: ${afterSize} bytes (${(
+            afterSize /
+            1024 /
+            1024
+          ).toFixed(2)} MB)`
+        );
+      }
+
+      // Save to database
+      console.log(`[Hard Reset] Saving fresh doc to database...`);
+      const { error: saveError } = await supabase.from("documents").upsert(
+        {
+          name: this.room.id,
+          document: freshBase64,
+        },
+        { onConflict: "name" }
+      );
+
+      if (saveError) {
+        console.error(
+          `[Hard Reset] Database save failed:`,
+          saveError.message,
+          saveError
+        );
+        throw new Error(`Failed to save reset document: ${saveError.message}`);
+      }
+      console.log(`[Hard Reset] Successfully saved fresh doc to database`);
+
+      // Reload the live server from the new snapshot
+      console.log(`[Hard Reset] Reloading live server from snapshot...`);
+      replaceDocFromSnapshot(liveYDoc, freshBase64);
+      console.log(`[Hard Reset] Successfully reloaded live server`);
+
+      // Set reset epoch for client detection
+      const resetEpoch = Date.now();
+      await this.setResetEpoch(resetEpoch);
+      console.log(`[Hard Reset] Set resetEpoch: ${resetEpoch}`);
+
+      // Broadcast a "room-reset" message to all connected clients
+      this.room.broadcast(
+        JSON.stringify({
+          type: "room-reset",
+          timestamp: resetEpoch,
+          resetEpoch: resetEpoch,
+        })
+      );
+      console.log(`[Hard Reset] Broadcasted room-reset signal to all clients`);
+
+      // FORCE DISCONNECT: Close all connections to ensure no lingering clients
+      // push their old state back to the server
+      const connections = [...this.room.getConnections()];
+      connections.forEach((conn) => {
+        try {
+          conn.close(4000, "Room Reset by Admin");
+        } catch (e) {
+          console.error("[Hard Reset] Failed to close connection:", e);
+        }
+      });
+      console.log(`[Hard Reset] Closed ${connections.length} connections`);
+
+      const sizeReduction = beforeSize - afterSize;
+      const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(
+        1
+      );
+
+      console.log(
+        `[Hard Reset] Completed successfully: ${beforeSize} -> ${afterSize} bytes (${sizeReductionPercent}% reduction)`
+      );
+
+      // Flush pending microtasks to ensure any queued autosave callbacks are processed
+      // before we release the lock
+      await Promise.resolve();
+
+      return {
+        beforeSize,
+        afterSize,
+        resetEpoch,
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error(
+        `[Hard Reset] Failed for room ${roomId}:`,
+        errorMessage,
+        errorStack || error
+      );
+
+      throw error;
+    } finally {
+      // Re-enable autosave after a short delay to let the dust settle
+      // Use setTimeout to ensure any pending callbacks have been processed
+      setTimeout(() => {
+        this.isSkippingSave = false;
+        console.log("[Hard Reset] Autosave re-enabled");
+      }, 1000);
     }
   }
 

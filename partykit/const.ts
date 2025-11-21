@@ -5,6 +5,8 @@ export const STORAGE_KEYS = {
   // Stores references out to other source rooms that this source room is interested in
   sharedReferences: "sharedReferences",
   sharedPermissions: "sharedPermissions",
+  // Stores the reset epoch timestamp to detect when a room was reset
+  resetEpoch: "resetEpoch",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
