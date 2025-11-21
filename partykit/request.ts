@@ -14,6 +14,7 @@ export interface ApplySubtreesImmediateRequest {
   subtrees: Record<string, Record<string, any>>;
   sender: string;
   originKind: "consumer" | "source";
+  resetEpoch?: number | null;
 }
 
 export type PartyKitRequest = 

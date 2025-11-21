@@ -455,8 +455,10 @@ export class AdminHandler {
         );
       }
 
-      // Use the centralized restoreFromSnapshot method
-      const result = await this.context.restoreFromSnapshot(data.document);
+      // Use the centralized restoreFromSnapshot method without bumping epoch
+      const result = await this.context.restoreFromSnapshot(data.document, {
+        bumpEpoch: false,
+      });
 
       return new Response(
         JSON.stringify({
@@ -903,9 +905,10 @@ export class AdminHandler {
         );
       }
 
-      // Use the centralized restoreFromSnapshot method
+      // Use the centralized restoreFromSnapshot method (bump epoch)
       const result = await this.context.restoreFromSnapshot(
-        body.base64Document
+        body.base64Document,
+        { bumpEpoch: true }
       );
 
       return new Response(

@@ -9,6 +9,8 @@ import { syncedStore } from "@syncedstore/core";
 import { clonePlain } from "@playhtml/common";
 import { Buffer } from "node:buffer";
 
+const META_MAP_NAME = "__playhtml_meta";
+
 /**
  * Extract plain JSON data from a Y.Doc's play structure.
  * Uses SyncedStore to access the data exactly as PlayHTML clients do.
@@ -116,6 +118,31 @@ export function replaceDocFromSnapshot(
     // Apply the snapshot. Since the store is empty, this is effectively a fresh load.
     Y.applyUpdate(doc, buffer);
   }, origin);
+}
+
+/**
+ * Set the reset epoch metadata on a Y.Doc.
+ *
+ * We mirror the authoritative epoch (stored in PartyKit room storage) inside
+ * the Y.Doc itself so that autosave can tell whether the in-memory doc is
+ * allowed to write back to the database. Without this, a hibernated or stale
+ * PartyKit instance could wake up with pre-reset data and overwrite the clean
+ * snapshot. By baking the epoch into the doc, every autosave can compare the
+ * doc's view of history against the server's view and skip writes when they
+ * diverge.
+ */
+export function setDocResetEpoch(doc: Y.Doc, epoch: number): void {
+  const meta = doc.getMap(META_MAP_NAME);
+  meta.set("resetEpoch", epoch);
+}
+
+/**
+ * Get the reset epoch metadata from a Y.Doc, if present.
+ */
+export function getDocResetEpoch(doc: Y.Doc): number | null {
+  const meta = doc.getMap(META_MAP_NAME);
+  const value = meta.get("resetEpoch");
+  return typeof value === "number" ? value : null;
 }
 
 /**

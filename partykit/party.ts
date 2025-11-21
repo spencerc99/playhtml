@@ -11,6 +11,8 @@ import {
   jsonToDoc,
   encodeDocToBase64,
   replaceDocFromSnapshot,
+  setDocResetEpoch,
+  getDocResetEpoch,
 } from "./docUtils";
 import {
   STORAGE_KEYS,
@@ -82,7 +84,9 @@ export default class PartyServer implements Party.Server {
       handler: async (doc: Y.Doc) => {
         // Skip autosave if we are performing a reset operation
         if (this.isSkippingSave) {
-          console.log("[PartyServer] Skipping autosave due to active reset operation");
+          console.log(
+            "[PartyServer] Skipping autosave due to active reset operation"
+          );
           return;
         }
 
@@ -93,16 +97,39 @@ export default class PartyServer implements Party.Server {
         const base64Document = Buffer.from(content).toString("base64");
         const documentSize = base64Document.length;
 
-        // Get current reset epoch for logging
-        const resetEpoch = await this.getResetEpoch();
+        // Get current reset epoch for logging and validation
+        const serverResetEpoch = await this.getResetEpoch();
+        const docResetEpoch = getDocResetEpoch(doc);
+
+        if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
+          const reason =
+            docResetEpoch === null
+              ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
+              : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
+          console.warn(
+            `[PartyServer] Autosave skipped for room ${this.room.id}: ${reason}`
+          );
+          return;
+        }
+
+        if (
+          docResetEpoch !== null &&
+          serverResetEpoch !== null &&
+          docResetEpoch > serverResetEpoch
+        ) {
+          console.warn(
+            `[PartyServer] Autosave skipped for room ${this.room.id}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
+          );
+          return;
+        }
 
         // Log structured information about the save
         console.log(
-          `[PartyServer] Autosave: room=${this.room.id}, size=${documentSize} bytes (${(
-            documentSize /
-            1024 /
-            1024
-          ).toFixed(2)} MB), resetEpoch=${resetEpoch || "none"}`
+          `[PartyServer] Autosave: room=${
+            this.room.id
+          }, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(
+            2
+          )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
         );
 
         // Save the document to the database
@@ -115,9 +142,14 @@ export default class PartyServer implements Party.Server {
         );
 
         if (error) {
-          console.error(`[PartyServer] Autosave failed for room ${this.room.id}:`, error);
+          console.error(
+            `[PartyServer] Autosave failed for room ${this.room.id}:`,
+            error
+          );
         } else {
-          console.log(`[PartyServer] Autosave succeeded for room ${this.room.id}`);
+          console.log(
+            `[PartyServer] Autosave succeeded for room ${this.room.id}`
+          );
         }
       },
     },
@@ -162,9 +194,31 @@ export default class PartyServer implements Party.Server {
   }
 
   /**
+   * Determine whether a candidate epoch (from a doc, client, or bridge message)
+   * is stale relative to the authoritative epoch stored in room storage.
+   *
+   * When we perform a hard reset or raw restore, we bump the room's
+   * `resetEpoch`. Every autosave and bridge request checks that the data it is
+   * about to persist is tagged with the same epoch so that stale PartyKit
+   * instances (which might still hold the pre-reset Y.Doc in memory) cannot
+   * overwrite the clean snapshot. Without this guard, autosave from a hibernated
+   * worker could reintroduce the old, bloated state even if no clients are
+   * connected.
+   */
+  private isEpochStale(
+    candidateEpoch: number | null,
+    serverEpoch: number | null
+  ): boolean {
+    return (
+      serverEpoch !== null &&
+      (candidateEpoch === null || candidateEpoch < serverEpoch)
+    );
+  }
+
+  /**
    * Restore the room's Y.Doc from a base64 snapshot.
    * This is used for restore-raw-document and force-reload-live operations.
-   * 
+   *
    * Steps:
    * 1. Lock autosave
    * 2. Save snapshot to database
@@ -173,11 +227,14 @@ export default class PartyServer implements Party.Server {
    * 5. Broadcast room-reset signal
    * 6. Close all connections
    * 7. Flush microtasks and release lock
-   * 
+   *
    * @param snapshotBase64 Base64-encoded Y.Doc snapshot
    * @returns Object with documentSize and resetEpoch
    */
-  async restoreFromSnapshot(snapshotBase64: string): Promise<{
+  async restoreFromSnapshot(
+    snapshotBase64: string,
+    options?: { bumpEpoch?: boolean }
+  ): Promise<{
     documentSize: number;
     resetEpoch: number;
   }> {
@@ -188,14 +245,31 @@ export default class PartyServer implements Party.Server {
     this.isSkippingSave = true;
 
     try {
-      const documentSize = snapshotBase64.length;
+      // Decode snapshot to Y.Doc so we can ensure metadata is present
+      const snapshotDoc = new Y.Doc();
+      Y.applyUpdate(
+        snapshotDoc,
+        new Uint8Array(Buffer.from(snapshotBase64, "base64"))
+      );
+
+      const storedEpoch = await this.getResetEpoch();
+      let resetEpoch = getDocResetEpoch(snapshotDoc);
+      if (options?.bumpEpoch) {
+        resetEpoch = Date.now();
+      } else if (resetEpoch === null) {
+        resetEpoch = storedEpoch ?? Date.now();
+      }
+      setDocResetEpoch(snapshotDoc, resetEpoch);
+
+      const updatedBase64 = encodeDocToBase64(snapshotDoc);
+      const documentSize = updatedBase64.length;
 
       // Save to database
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
           name: this.room.id,
-          document: snapshotBase64,
+          document: updatedBase64,
         },
         { onConflict: "name" }
       );
@@ -213,11 +287,11 @@ export default class PartyServer implements Party.Server {
       // Reload the live server from the snapshot
       console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
       const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
-      replaceDocFromSnapshot(liveYDoc, snapshotBase64);
+      replaceDocFromSnapshot(liveYDoc, updatedBase64);
+      setDocResetEpoch(liveYDoc, resetEpoch);
       console.log(`[Restore Snapshot] Successfully reloaded live server`);
 
       // Set reset epoch for client detection
-      const resetEpoch = Date.now();
       await this.setResetEpoch(resetEpoch);
       console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
 
@@ -229,7 +303,9 @@ export default class PartyServer implements Party.Server {
           resetEpoch: resetEpoch,
         })
       );
-      console.log(`[Restore Snapshot] Broadcasted room-reset signal to all clients`);
+      console.log(
+        `[Restore Snapshot] Broadcasted room-reset signal to all clients`
+      );
 
       // FORCE DISCONNECT: Close all connections
       const connections = [...this.room.getConnections()];
@@ -240,7 +316,9 @@ export default class PartyServer implements Party.Server {
           console.error("[Restore Snapshot] Failed to close connection:", e);
         }
       });
-      console.log(`[Restore Snapshot] Closed ${connections.length} connections`);
+      console.log(
+        `[Restore Snapshot] Closed ${connections.length} connections`
+      );
 
       console.log(
         `[Restore Snapshot] Completed successfully: ${documentSize} bytes`
@@ -536,6 +614,7 @@ export default class PartyServer implements Party.Server {
       const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
       const mainParty = this.room.context.parties.main;
+      const currentEpoch = await this.getResetEpoch();
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.includes(element.elementId)) return;
@@ -546,6 +625,7 @@ export default class PartyServer implements Party.Server {
               subtrees: ensureExists(subtreesForNew),
               sender: this.room.id,
               originKind: "source",
+              resetEpoch: currentEpoch ?? null,
             };
             await consumerRoom.fetch({
               method: "POST",
@@ -573,10 +653,7 @@ export default class PartyServer implements Party.Server {
       serverResetEpoch = await this.getResetEpoch();
 
       // If server has a reset epoch and client's is stale (or missing), mark for reset
-      if (
-        serverResetEpoch !== null &&
-        (clientResetEpoch === null || clientResetEpoch < serverResetEpoch)
-      ) {
+      if (this.isEpochStale(clientResetEpoch, serverResetEpoch)) {
         console.log(
           `[PartyServer] Client reset epoch (${clientResetEpoch}) is stale compared to server (${serverResetEpoch}). Will force reload.`
         );
@@ -735,6 +812,19 @@ export default class PartyServer implements Party.Server {
         const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
         const subscribers = await this.getSubscribers();
         const sharedRefs = await this.getSharedReferences();
+        const senderResetEpoch =
+          typeof body.resetEpoch === "number" ? body.resetEpoch : null;
+        const serverResetEpoch = await this.getResetEpoch();
+
+        if (this.isEpochStale(senderResetEpoch, serverResetEpoch)) {
+          console.warn(
+            `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch (sender=${senderResetEpoch}, server=${serverResetEpoch})`
+          );
+          const response: ApplySubtreesResponse = { ok: true };
+          return new Response(JSON.stringify(response), {
+            headers: { "content-type": "application/json" },
+          });
+        }
 
         const receivingFromConsumer =
           originKind === "consumer" &&
@@ -798,16 +888,22 @@ export default class PartyServer implements Party.Server {
             headers: { "content-type": "application/json" },
           });
         }
+        const beforeSize = encodeDocToBase64(yDoc).length;
         const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
         yDoc.transact(
           () => this.assignPlaySubtrees(yDoc, subtreesToApply),
           ORIGIN
+        );
+        const afterSize = encodeDocToBase64(yDoc).length;
+        console.log(
+          `[Bridge] Applied subtrees from ${sender} (${originKind}). Size: ${beforeSize} -> ${afterSize}`
         );
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
           const subscribers = await this.getSubscribers();
           const mainParty = this.room.context.parties.main;
+          const currentEpoch = await this.getResetEpoch();
           await Promise.all(
             subscribers.map(async ({ consumerRoomId, elementIds }) => {
               if (sender && consumerRoomId === sender) return;
@@ -837,6 +933,7 @@ export default class PartyServer implements Party.Server {
                   subtrees: toSend,
                   sender: this.room.id,
                   originKind: "source",
+                  resetEpoch: currentEpoch ?? null,
                 };
                 await consumerRoom.fetch({
                   method: "POST",
@@ -863,7 +960,7 @@ export default class PartyServer implements Party.Server {
   /**
    * Perform a hard reset (garbage collection) of the room's Y.Doc.
    * This creates a fresh document from the current state, removing all history/tombstones.
-   * 
+   *
    * Steps:
    * 1. Lock autosave to prevent overwriting clean DB state
    * 2. Extract current state as JSON
@@ -874,7 +971,7 @@ export default class PartyServer implements Party.Server {
    * 7. Broadcast room-reset signal
    * 8. Close all connections
    * 9. Flush microtasks and release lock
-   * 
+   *
    * @returns Object with beforeSize, afterSize, and resetEpoch
    */
   async performHardReset(): Promise<{
@@ -911,6 +1008,7 @@ export default class PartyServer implements Party.Server {
         ).toFixed(2)} MB)`
       );
 
+      const resetEpoch = Date.now();
       let freshBase64: string;
       let afterSize: number;
 
@@ -918,6 +1016,7 @@ export default class PartyServer implements Party.Server {
       if (!currentPlayData) {
         console.log(`[Hard Reset] Room is empty, creating empty fresh doc...`);
         const emptyDoc = new Y.Doc();
+        setDocResetEpoch(emptyDoc, resetEpoch);
         freshBase64 = encodeDocToBase64(emptyDoc);
         afterSize = freshBase64.length;
         console.log(`[Hard Reset] Empty doc size: ${afterSize} bytes`);
@@ -925,6 +1024,7 @@ export default class PartyServer implements Party.Server {
         // Create a fresh Y.Doc with the current state (no history/tombstones)
         console.log(`[Hard Reset] Creating fresh Y.Doc from play data...`);
         const freshDoc = jsonToDoc(currentPlayData);
+        setDocResetEpoch(freshDoc, resetEpoch);
         console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
 
         // Encode the fresh doc
@@ -962,10 +1062,10 @@ export default class PartyServer implements Party.Server {
       // Reload the live server from the new snapshot
       console.log(`[Hard Reset] Reloading live server from snapshot...`);
       replaceDocFromSnapshot(liveYDoc, freshBase64);
+      setDocResetEpoch(liveYDoc, resetEpoch);
       console.log(`[Hard Reset] Successfully reloaded live server`);
 
       // Set reset epoch for client detection
-      const resetEpoch = Date.now();
       await this.setResetEpoch(resetEpoch);
       console.log(`[Hard Reset] Set resetEpoch: ${resetEpoch}`);
 
@@ -1095,6 +1195,7 @@ export default class PartyServer implements Party.Server {
       const permissions = await this.getSharedPermissions();
       const mainParty = this.room.context.parties.main;
       // Export all subtrees of interest and push immediately
+      const currentEpoch = await this.getResetEpoch();
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.length) return;
@@ -1111,7 +1212,8 @@ export default class PartyServer implements Party.Server {
             action: "apply-subtrees-immediate",
             subtrees,
             sender: this.room.id,
-            originKind: "consumer",
+            originKind: "source",
+            resetEpoch: currentEpoch ?? null,
           };
           await consumerRoom.fetch({
             method: "POST",
@@ -1127,6 +1229,7 @@ export default class PartyServer implements Party.Server {
       if (origin === ORIGIN_S2C) return;
       const mainParty = this.room.context.parties.main;
       const refs = await this.getSharedReferences();
+      const currentEpoch = await this.getResetEpoch();
       for (const { sourceRoomId, elementIds } of refs) {
         if (!elementIds?.length) continue;
         const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
@@ -1137,6 +1240,7 @@ export default class PartyServer implements Party.Server {
           subtrees,
           sender: this.room.id,
           originKind: "consumer",
+          resetEpoch: currentEpoch ?? null,
         };
         await sourceRoom.fetch({
           method: "POST",
