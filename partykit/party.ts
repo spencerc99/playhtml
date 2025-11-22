@@ -49,6 +49,49 @@ export default class PartyServer implements Party.Server {
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
 
+  // Cache for resolved room ID (to avoid repeated database lookups)
+  private resolvedRoomId: string | null = null;
+
+  /**
+   * Resolves the actual room ID by checking for redirects in the database.
+   * If a redirect exists, returns the new room ID. Otherwise returns the original.
+   */
+  private async getResolvedRoomId(): Promise<string> {
+    // Return cached value if available
+    if (this.resolvedRoomId !== null) {
+      return this.resolvedRoomId;
+    }
+
+    // Check for redirect in database
+    const { data, error } = await supabase
+      .from("room_redirects")
+      .select("new_name")
+      .eq("old_name", this.room.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(
+        `[PartyServer] Error checking room redirect for ${this.room.id}:`,
+        error
+      );
+      // Fall back to original room ID on error
+      this.resolvedRoomId = this.room.id;
+      return this.room.id;
+    }
+
+    if (data?.new_name) {
+      console.log(
+        `[PartyServer] Room redirect: ${this.room.id} → ${data.new_name}`
+      );
+      this.resolvedRoomId = data.new_name;
+      return data.new_name;
+    }
+
+    // No redirect found, use original room ID
+    this.resolvedRoomId = this.room.id;
+    return this.room.id;
+  }
+
   // Reuse the exact same options for all Y.Doc access
   readonly providerOptions: YPartyKitOptions = {
     load: async () => {
@@ -57,11 +100,14 @@ export default class PartyServer implements Party.Server {
       // Let's make a Yjs document
       const doc = new Y.Doc();
 
+      // Resolve the room ID (checking for redirects)
+      const roomId = await this.getResolvedRoomId();
+
       // Load the document from the database
       const { data, error } = await supabase
         .from("documents")
         .select("document")
-        .eq("name", this.room.id)
+        .eq("name", roomId)
         .maybeSingle();
 
       if (error) {
@@ -123,33 +169,33 @@ export default class PartyServer implements Party.Server {
           return;
         }
 
+        // Resolve the room ID (checking for redirects)
+        const roomId = await this.getResolvedRoomId();
+
         // Log structured information about the save
         console.log(
-          `[PartyServer] Autosave: room=${
-            this.room.id
-          }, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(
-            2
-          )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
+          `[PartyServer] Autosave: room=${roomId}, size=${documentSize} bytes (${(
+            documentSize /
+            1024 /
+            1024
+          ).toFixed(2)} MB), resetEpoch=${
+            docResetEpoch ?? serverResetEpoch ?? "none"
+          }`
         );
 
         // Save the document to the database
         const { data: _data, error } = await supabase.from("documents").upsert(
           {
-            name: this.room.id,
+            name: roomId,
             document: base64Document,
           },
           { onConflict: "name" }
         );
 
         if (error) {
-          console.error(
-            `[PartyServer] Autosave failed for room ${this.room.id}:`,
-            error
-          );
+          console.error(`[PartyServer] Autosave failed for room ${roomId}:`, error);
         } else {
-          console.log(
-            `[PartyServer] Autosave succeeded for room ${this.room.id}`
-          );
+          console.log(`[PartyServer] Autosave succeeded for room ${roomId}`);
         }
       },
     },
@@ -238,7 +284,7 @@ export default class PartyServer implements Party.Server {
     documentSize: number;
     resetEpoch: number;
   }> {
-    const roomId = this.room.id;
+    const roomId = await this.getResolvedRoomId();
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
     // Lock autosave immediately
@@ -268,7 +314,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.room.id,
+          name: roomId,
           document: updatedBase64,
         },
         { onConflict: "name" }
@@ -979,7 +1025,7 @@ export default class PartyServer implements Party.Server {
     afterSize: number;
     resetEpoch: number;
   }> {
-    const roomId = this.room.id;
+    const roomId = await this.getResolvedRoomId();
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
     // Lock autosave immediately
@@ -1043,7 +1089,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Saving fresh doc to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.room.id,
+          name: roomId,
           document: freshBase64,
         },
         { onConflict: "name" }

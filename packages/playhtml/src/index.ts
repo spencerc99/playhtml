@@ -14,6 +14,8 @@ import {
   generatePersistentPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
+  createRoomId,
+  normalizePath as normalizePathUtil,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./development";
 import type { PlayerIdentity, CursorPresence } from "@playhtml/common";
@@ -185,8 +187,7 @@ function migrateAllDataFromYMapToSyncedStore(): void {
 }
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
-  // TODO: Strip filename extension
-  const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
+  const transformedPathname = normalizePathUtil(window.location.pathname);
 
   return includeSearch
     ? transformedPathname + window.location.search
@@ -197,7 +198,7 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
  * Normalizes a pathname by stripping filename extensions, consistent with getDefaultRoom
  */
 function normalizePathname(pathname: string): string {
-  return pathname.replace(/\.[^/.]+$/, "");
+  return normalizePathUtil(pathname);
 }
 
 /**
@@ -248,10 +249,7 @@ function resolveCursorRoom(room: CursorRoom): string {
  * @returns Encoded room ID in format: host or host-{roomString}
  */
 function normalizeRoomId(host: string, roomString: string): string {
-  // If roomString is empty (domain case), just use host without separator
-  // Otherwise use host + "-" + roomString format to match main room construction
-  const normalized = roomString === "" ? host : `${host}-${roomString}`;
-  return encodeURIComponent(normalized);
+  return createRoomId(host, roomString);
 }
 
 let yprovider: YPartyKitProvider;
