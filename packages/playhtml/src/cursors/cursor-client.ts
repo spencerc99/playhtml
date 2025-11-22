@@ -175,13 +175,45 @@ export class CursorClientAwareness {
   ): void {
     const states = this.provider.awareness.getStates();
 
+    // De-duplicate cursors: group by publicKey and keep only the most recent one
+    const cursorsByPublicKey = new Map<string, Array<{clientId: number, cursorData: CursorPresence}>>();
+
+    states.forEach((clientState: any, clientId: number) => {
+      if (clientId === this.provider.awareness.clientID) return;
+
+      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
+      if (!cursorData?.playerIdentity?.publicKey) return;
+
+      const publicKey = cursorData.playerIdentity.publicKey;
+      if (!cursorsByPublicKey.has(publicKey)) {
+        cursorsByPublicKey.set(publicKey, []);
+      }
+      cursorsByPublicKey.get(publicKey)!.push({ clientId, cursorData });
+    });
+
+    // For each user (publicKey), find the most recently active cursor
+    const activeCursorIds = new Set<number>();
+    cursorsByPublicKey.forEach((cursors) => {
+      // Sort by lastSeen (most recent first)
+      cursors.sort((a, b) => (b.cursorData.lastSeen || 0) - (a.cursorData.lastSeen || 0));
+      // Keep only the most recent cursor
+      const mostRecent = cursors[0];
+      activeCursorIds.add(mostRecent.clientId);
+    });
+
     // Handle added and updated cursors
     [...added, ...updated].forEach((clientId) => {
       const clientState = states.get(clientId);
       const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
 
       if (cursorData && clientId !== this.provider.awareness.clientID) {
-        this.updateCursor(clientId.toString(), cursorData);
+        // Only update cursor if it's the most recent one for this user
+        if (activeCursorIds.has(clientId)) {
+          this.updateCursor(clientId.toString(), cursorData);
+        } else {
+          // Remove duplicate/older cursors from the same user
+          this.removeCursor(clientId.toString());
+        }
       }
 
       // Track messages for chat CTA
