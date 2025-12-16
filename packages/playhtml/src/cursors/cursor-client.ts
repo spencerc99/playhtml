@@ -40,6 +40,11 @@ declare global {
     cursors?: CursorEvents & {
       on: CursorEventEmitter["on"];
       off: CursorEventEmitter["off"];
+      position: { x: number; y: number };
+      animateMyCursor: (
+        animation: (progress: number) => { x: number; y: number },
+        durationMs?: number
+      ) => Promise<void>;
     };
   }
 }
@@ -192,8 +197,29 @@ export class CursorClientAwareness {
       }
     });
 
+    // Trigger onUserJoined callback for newly added users
+    if (this.options.onUserJoined) {
+      added.forEach((clientId) => {
+        const clientState = states.get(clientId);
+        const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
+        if (cursorData?.playerIdentity) {
+          this.options.onUserJoined!(cursorData.playerIdentity, {
+            isMe: clientId === this.provider.awareness.clientID,
+          });
+        }
+      });
+    }
+
     // Handle removed cursors
     removed.forEach((clientId) => {
+      const clientState = states.get(clientId);
+      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
+
+      // Trigger onUserLeft callback before removing cursor
+      if (this.options.onUserLeft && cursorData?.playerIdentity) {
+        this.options.onUserLeft(cursorData.playerIdentity);
+      }
+
       this.removeCursor(clientId.toString());
       this.otherUsersWithMessages.delete(clientId.toString());
     });
@@ -709,6 +735,18 @@ export class CursorClientAwareness {
           listeners.delete(callback);
         }
       },
+      get position() {
+        return {
+          x: self.currentCursor?.x ?? 0,
+          y: self.currentCursor?.y ?? 0,
+        };
+      },
+      animateMyCursor: (
+        animation: (progress: number) => { x: number; y: number },
+        durationMs?: number
+      ) => {
+        return self.animateMyCursor(animation, durationMs);
+      },
     };
   }
 
@@ -957,6 +995,40 @@ export class CursorClientAwareness {
     if (cursorElement) {
       cursorElement.style.display = "block";
     }
+  }
+
+  async animateMyCursor(
+    animation: (progress: number) => { x: number; y: number },
+    durationMs: number = 2000
+  ): Promise<void> {
+    if (!this.currentCursor) return;
+
+    const startCursor = { ...this.currentCursor };
+    const startTime = Date.now();
+
+    return new Promise<void>((resolve) => {
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / durationMs, 1);
+
+        const newPos = animation(progress);
+        this.currentCursor = {
+          ...this.currentCursor!,
+          x: newPos.x,
+          y: newPos.y,
+        };
+        this.updateCursorAwareness();
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          this.currentCursor = startCursor;
+          this.updateCursorAwareness();
+          resolve();
+        }
+      };
+      animate();
+    });
   }
 
   destroy(): void {

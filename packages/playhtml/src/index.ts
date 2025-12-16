@@ -435,6 +435,11 @@ export interface CursorOptions {
   getCursorStyle?: (
     presence: CursorPresence
   ) => Partial<CSSStyleDeclaration> | Record<string, string>;
+  onUserJoined?: (
+    playerIdentity: PlayerIdentity,
+    meta: { isMe: boolean }
+  ) => void | Promise<void>;
+  onUserLeft?: (playerIdentity: PlayerIdentity) => void;
 }
 
 interface DefaultRoomOptions {

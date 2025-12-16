@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spencer Arrival Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: system-ui, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: white;
+      }
+
+      .controls {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+      }
+
+      .controls h2 {
+        margin-top: 0;
+      }
+
+      button {
+        background: white;
+        color: #667eea;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      input {
+        padding: 10px;
+        border-radius: 8px;
+        border: none;
+        font-size: 16px;
+        margin-right: 10px;
+      }
+
+      #log {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 20px;
+        border-radius: 12px;
+        max-height: 400px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 14px;
+      }
+
+      .log-entry {
+        margin-bottom: 8px;
+        padding: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+      }
+
+      .log-entry.event {
+        background: rgba(103, 126, 234, 0.3);
+        border-left: 4px solid #667eea;
+      }
+
+      .notification {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 16px 32px;
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 600;
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+
+      .notification.show {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <h2>Spencer Arrival Test</h2>
+      <div>
+        <input type="text" id="nameInput" placeholder="Enter your name" />
+        <button id="setNameBtn">Set Name</button>
+      </div>
+      <div style="margin-top: 10px">
+        <button id="waveBtn">Wave Animation</button>
+        <button id="danceBtn">Dance Animation</button>
+        <button id="simulateSpencerBtn">Simulate Spencer Arrival</button>
+      </div>
+      <div style="margin-top: 10px">
+        <strong>Current name:</strong> <span id="currentName">none</span>
+      </div>
+    </div>
+
+    <div id="log">
+      <h3 style="margin-top: 0">Event Log</h3>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script type="module">
+      import { playhtml } from "../../packages/playhtml/src/index.ts";
+
+      const logEl = document.getElementById("log");
+      const notificationEl = document.getElementById("notification");
+      const currentNameEl = document.getElementById("currentName");
+
+      function log(message, isEvent = false) {
+        const entry = document.createElement("div");
+        entry.className = `log-entry${isEvent ? " event" : ""}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logEl.appendChild(entry);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function showNotification(message, duration = 3000) {
+        notificationEl.textContent = message;
+        notificationEl.classList.add("show");
+        setTimeout(() => {
+          notificationEl.classList.remove("show");
+        }, duration);
+      }
+
+      // Register notification event listener
+      playhtml.registerPlayEventListener("spencer-arrived", {
+        onEvent: () => {
+          log("📢 Spencer arrived event received", true);
+          showNotification("👑 spencer has arrived", 4000);
+        },
+      });
+
+      // Initialize playhtml
+      await playhtml.init({
+        cursors: {
+          enabled: true,
+
+          onUserJoined: async (playerIdentity, { isMe }) => {
+            log(
+              `✅ User joined: ${
+                playerIdentity.name || "anonymous"
+              } (isMe: ${isMe})`,
+              true
+            );
+
+            if (playerIdentity.name?.toLowerCase() === "spencer") {
+              log("🎉 Spencer detected! Triggering special events...", true);
+
+              // Dispatch notification event to all users
+              playhtml.dispatchPlayEvent({ type: "spencer-arrived" });
+
+              // Remove blur/opacity from all cursors
+              document.querySelectorAll(".playhtml-cursor").forEach((el) => {
+                el.style.filter = "none";
+                el.style.opacity = "1";
+                log("👁️ Cursor visibility enhanced");
+              });
+
+              // Restore after 5 seconds
+              setTimeout(() => {
+                log("🔄 Restoring normal cursor styles");
+              }, 5000);
+
+              // If I'm Spencer, do welcome animation
+              if (isMe) {
+                log("💃 Starting Spencer welcome animation...");
+                const startX = window.cursors.position.x;
+                const startY = window.cursors.position.y;
+
+                // Wave
+                await window.cursors.animateMyCursor(
+                  (progress) => ({
+                    x: startX + Math.sin(progress * Math.PI * 4) * 30,
+                    y: startY - Math.sin(progress * Math.PI * 2) * 20,
+                  }),
+                  1500
+                );
+
+                // Dance
+                await window.cursors.animateMyCursor(
+                  (progress) => ({
+                    x: startX + Math.sin(progress * Math.PI * 8) * 40,
+                    y: startY + Math.cos(progress * Math.PI * 8) * 40,
+                  }),
+                  2500
+                );
+
+                log("✨ Animation complete!");
+              }
+            }
+          },
+
+          onUserLeft: (playerIdentity) => {
+            log(`❌ User left: ${playerIdentity.name || "anonymous"}`, true);
+          },
+        },
+      });
+
+      log("🚀 Playhtml initialized with Spencer arrival feature");
+
+      // Update current name display
+      function updateNameDisplay() {
+        currentNameEl.textContent = window.cursors.name || "none";
+      }
+      updateNameDisplay();
+
+      // Set name button
+      document.getElementById("setNameBtn").addEventListener("click", () => {
+        const name = document.getElementById("nameInput").value.trim();
+        if (name) {
+          window.cursors.name = name;
+          updateNameDisplay();
+          log(`📝 Name set to: ${name}`);
+          document.getElementById("nameInput").value = "";
+        }
+      });
+
+      // Wave animation button
+      document.getElementById("waveBtn").addEventListener("click", async () => {
+        log("👋 Starting wave animation...");
+        const startX = window.cursors.position.x;
+        const startY = window.cursors.position.y;
+
+        await window.cursors.animateMyCursor(
+          (progress) => ({
+            x: startX + Math.sin(progress * Math.PI * 4) * 30,
+            y: startY - Math.sin(progress * Math.PI * 2) * 20,
+          }),
+          1500
+        );
+
+        log("✅ Wave complete!");
+      });
+
+      // Dance animation button
+      document
+        .getElementById("danceBtn")
+        .addEventListener("click", async () => {
+          log("💃 Starting dance animation...");
+          const startX = window.cursors.position.x;
+          const startY = window.cursors.position.y;
+
+          await window.cursors.animateMyCursor(
+            (progress) => ({
+              x: startX + Math.sin(progress * Math.PI * 8) * 40,
+              y: startY + Math.cos(progress * Math.PI * 8) * 40,
+            }),
+            2500
+          );
+
+          log("✅ Dance complete!");
+        });
+
+      // Simulate Spencer arrival button
+      document
+        .getElementById("simulateSpencerBtn")
+        .addEventListener("click", () => {
+          log("🎭 Simulating Spencer arrival...");
+          window.cursors.name = "spencer";
+          updateNameDisplay();
+          log(
+            "💡 Name changed to 'spencer' - onUserJoined won't fire for name change, but you can test with another tab"
+          );
+        });
+
+      log("ℹ️ Instructions:");
+      log("1. Open this page in multiple tabs");
+      log("2. Set your name to 'spencer' in one tab");
+      log("3. Watch the other tabs receive the arrival event!");
+    </script>
+  </body>
+</html>

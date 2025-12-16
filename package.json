@@ -41,7 +41,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "canvas-confetti": "^1.9.2",
     "partykit": "0.0.108",
-    "profane-words": "^1.5.11",
+    "profane-words": "^2.1.0",
     "randomcolor": "^0.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
