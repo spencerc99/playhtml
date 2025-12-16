@@ -95,7 +95,9 @@ const GridGame = withSharedState(
     } as GameState,
   },
   ({ data, setData }) => {
-    const [myPlayerId] = useState(() => `player-${Date.now()}-${Math.random()}`);
+    const [myPlayerId] = useState(
+      () => `player-${Date.now()}-${Math.random()}`
+    );
     const [selectedHole, setSelectedHole] = useState<Position | null>(null);
 
     // Initialize current player
@@ -179,7 +181,7 @@ const GridGame = withSharedState(
     const myPlayer = data.players[myPlayerId];
 
     return (
-      <div style={{ padding: "20px", fontFamily: "monospace" }}>
+      <div style={{ padding: "20px", fontFamily: "monospace" }} id="grid-game">
         <h1>Multiplayer Gold Dig Game</h1>
         <div style={{ marginBottom: "20px" }}>
           <p>
