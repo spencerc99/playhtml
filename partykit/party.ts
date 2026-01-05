@@ -1,7 +1,9 @@
-import type * as Party from "partykit/server";
-import { onConnect, unstable_getYDoc, YPartyKitOptions } from "y-partykit";
+import type * as Party from "partyserver";
+import { getServerByName, routePartykitRequest } from "partyserver";
+import { YServer } from "y-partyserver";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
 import { deepReplaceIntoProxy } from "@playhtml/common";
+import { env } from "cloudflare:workers";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
@@ -41,9 +43,7 @@ import {
   SharedElementPermissions,
 } from "./sharing";
 
-export default class PartyServer implements Party.Server {
-  constructor(public room: Party.Room) {}
-
+export class PartyServer extends YServer {
   // Public flag to pause autosave during administrative resets
   // This prevents the server from overwriting the clean DB state with
   // in-memory state while we are performing a reset.
@@ -60,19 +60,15 @@ export default class PartyServer implements Party.Server {
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly BRIDGE_DEBOUNCE_MS = 500;
 
-  // Reuse the exact same options for all Y.Doc access
-  readonly providerOptions: YPartyKitOptions = {
-    load: async () => {
+  private static Persistence = {
+    load: async function (doc: Y.Doc): Promise<void> {
       // This is called once per "room" when the first user connects
-
-      // Let's make a Yjs document
-      const doc = new Y.Doc();
 
       // Load the document from the database
       const { data, error } = await supabase
         .from("documents")
         .select("document")
-        .eq("name", this.room.id)
+        .eq("name", this.name)
         .maybeSingle();
 
       if (error) {
@@ -87,14 +83,9 @@ export default class PartyServer implements Party.Server {
           new Uint8Array(Buffer.from(data.document, "base64"))
         );
       }
-
-      // Return the Yjs document
-      return doc;
     },
-    callback: {
-      debounceWait: 3000,
-      debounceMaxWait: 15000,
-      handler: async (doc: Y.Doc) => {
+    save: async function (doc: Y.Doc): Promise<void> {
+      {
         // Skip autosave if we are performing a reset operation
         if (this.isSkippingSave) {
           console.log(
@@ -115,7 +106,7 @@ export default class PartyServer implements Party.Server {
               ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
               : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
           console.warn(
-            `[PartyServer] Autosave skipped for room ${this.room.id}: ${reason}`
+            `[PartyServer] Autosave skipped for room ${this.name}: ${reason}`
           );
           return;
         }
@@ -126,7 +117,7 @@ export default class PartyServer implements Party.Server {
           docResetEpoch > serverResetEpoch
         ) {
           console.warn(
-            `[PartyServer] Autosave skipped for room ${this.room.id}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
+            `[PartyServer] Autosave skipped for room ${this.name}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
           );
           return;
         }
@@ -145,10 +136,15 @@ export default class PartyServer implements Party.Server {
             docResetEpoch ?? serverResetEpoch ?? Date.now()
           );
           compactedBase64 = encodeDocToBase64(compactDoc);
-          const compactedSize = Math.ceil(compactedBase64.length * 3 / 4);
+          const compactedSize = Math.ceil((compactedBase64.length * 3) / 4);
           if (compactedSize < rawSize) {
             console.log(
-              `[PartyServer] Compacted: room=${this.room.id}, ${rawSize} -> ${compactedSize} bytes (${((1 - compactedSize / rawSize) * 100).toFixed(1)}% reduction)`
+              `[PartyServer] Compacted: room=${
+                this.name
+              }, ${rawSize} -> ${compactedSize} bytes (${(
+                (1 - compactedSize / rawSize) *
+                100
+              ).toFixed(1)}% reduction)`
             );
           }
         } else {
@@ -161,7 +157,7 @@ export default class PartyServer implements Party.Server {
         // Log structured information about the save
         console.log(
           `[PartyServer] Autosave: room=${
-            this.room.id
+            this.name
           }, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(
             2
           )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
@@ -170,7 +166,7 @@ export default class PartyServer implements Party.Server {
         // Save the compacted document to the database
         const { data: _data, error } = await supabase.from("documents").upsert(
           {
-            name: this.room.id,
+            name: this.name,
             document: compactedBase64,
           },
           { onConflict: "name" }
@@ -178,15 +174,13 @@ export default class PartyServer implements Party.Server {
 
         if (error) {
           console.error(
-            `[PartyServer] Autosave failed for room ${this.room.id}:`,
+            `[PartyServer] Autosave failed for room ${this.name}:`,
             error
           );
         } else {
-          console.log(
-            `[PartyServer] Autosave succeeded for room ${this.room.id}`
-          );
+          console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
         }
-      },
+      }
     },
   };
   private observersAttached = false;
@@ -195,7 +189,7 @@ export default class PartyServer implements Party.Server {
   async getSubscribers(): Promise<Subscriber[]> {
     if (this.cachedSubscribers !== null) return this.cachedSubscribers;
     const subs =
-      ((await this.room.storage.get(STORAGE_KEYS.subscribers)) as
+      ((await this.ctx.storage.get(STORAGE_KEYS.subscribers)) as
         | Subscriber[]
         | undefined) || [];
     this.cachedSubscribers = subs;
@@ -204,13 +198,13 @@ export default class PartyServer implements Party.Server {
 
   async setSubscribers(subscribers: Subscriber[]): Promise<void> {
     this.cachedSubscribers = subscribers;
-    await this.room.storage.put(STORAGE_KEYS.subscribers, subscribers);
+    await this.ctx.storage.put(STORAGE_KEYS.subscribers, subscribers);
   }
 
   async getSharedReferences(): Promise<SharedRefEntry[]> {
     if (this.cachedSharedRefs !== null) return this.cachedSharedRefs;
     const refs =
-      ((await this.room.storage.get(STORAGE_KEYS.sharedReferences)) as
+      ((await this.ctx.storage.get(STORAGE_KEYS.sharedReferences)) as
         | SharedRefEntry[]
         | undefined) || [];
     this.cachedSharedRefs = refs;
@@ -219,7 +213,7 @@ export default class PartyServer implements Party.Server {
 
   async setSharedReferences(references: SharedRefEntry[]): Promise<void> {
     this.cachedSharedRefs = references;
-    await this.room.storage.put(STORAGE_KEYS.sharedReferences, references);
+    await this.ctx.storage.put(STORAGE_KEYS.sharedReferences, references);
   }
 
   async getSharedPermissions(): Promise<
@@ -227,7 +221,7 @@ export default class PartyServer implements Party.Server {
   > {
     if (this.cachedSharedPerms !== null) return this.cachedSharedPerms;
     const perms =
-      ((await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) as
+      ((await this.ctx.storage.get(STORAGE_KEYS.sharedPermissions)) as
         | Record<string, SharedElementPermissions>
         | undefined) || {};
     this.cachedSharedPerms = perms;
@@ -238,15 +232,15 @@ export default class PartyServer implements Party.Server {
     permissions: Record<string, SharedElementPermissions>
   ): Promise<void> {
     this.cachedSharedPerms = permissions;
-    await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+    await this.ctx.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
   }
 
   async getResetEpoch(): Promise<number | null> {
-    return (await this.room.storage.get(STORAGE_KEYS.resetEpoch)) || null;
+    return (await this.ctx.storage.get(STORAGE_KEYS.resetEpoch)) || null;
   }
 
   async setResetEpoch(epoch: number): Promise<void> {
-    await this.room.storage.put(STORAGE_KEYS.resetEpoch, epoch);
+    await this.ctx.storage.put(STORAGE_KEYS.resetEpoch, epoch);
   }
 
   /**
@@ -294,7 +288,7 @@ export default class PartyServer implements Party.Server {
     documentSize: number;
     resetEpoch: number;
   }> {
-    const roomId = this.room.id;
+    const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
     // Lock autosave immediately
@@ -324,7 +318,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.room.id,
+          name: this.name,
           document: updatedBase64,
         },
         { onConflict: "name" }
@@ -342,7 +336,7 @@ export default class PartyServer implements Party.Server {
 
       // Reload the live server from the snapshot
       console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
-      const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const liveYDoc = this.document;
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
       console.log(`[Restore Snapshot] Successfully reloaded live server`);
@@ -352,7 +346,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
 
       // Broadcast a "room-reset" message to all connected clients
-      this.room.broadcast(
+      this.broadcastCustomMessage(
         JSON.stringify({
           type: "room-reset",
           timestamp: resetEpoch,
@@ -364,7 +358,7 @@ export default class PartyServer implements Party.Server {
       );
 
       // FORCE DISCONNECT: Close all connections
-      const connections = [...this.room.getConnections()];
+      const connections = [...this.getConnections()];
       connections.forEach((conn) => {
         try {
           conn.close(4000, "Room Restored by Admin");
@@ -414,13 +408,13 @@ export default class PartyServer implements Party.Server {
     const refs = await this.getSharedReferences();
     if (!subs.length && !refs.length) return;
     const nextAlarm = Date.now() + DEFAULT_PRUNE_INTERVAL_MS;
-    const previousAlarm = await this.room.storage.getAlarm?.();
+    const previousAlarm = await this.ctx.storage.getAlarm?.();
     if (
       previousAlarm === null ||
       previousAlarm === undefined ||
       nextAlarm < previousAlarm
     ) {
-      await this.room.storage.setAlarm?.(nextAlarm);
+      await this.ctx.storage.setAlarm?.(nextAlarm);
     }
   }
 
@@ -481,16 +475,15 @@ export default class PartyServer implements Party.Server {
   private async subscribeAndHydrate(
     entries: Array<{ sourceRoomId: string; elementIds: string[] }>
   ): Promise<void> {
-    const mainParty = this.room.context.parties.main;
     // Subscribe and cache allowedIds per source in sharedReferences
     await Promise.all(
       entries.map(async ({ sourceRoomId, elementIds }) => {
         if (!elementIds?.length) return;
         try {
-          const sourceRoom = mainParty.get(sourceRoomId);
+          const sourceRoom = await getServerByName(env.Main, sourceRoomId);
           const subscribeRequest: SubscribeRequest = {
             action: "subscribe",
-            consumerRoomId: this.room.id,
+            consumerRoomId: this.name,
             elementIds,
           };
           await sourceRoom.fetch({
@@ -570,9 +563,9 @@ export default class PartyServer implements Party.Server {
     });
   }
 
-  async onMessage(
-    message: string | ArrayBuffer | ArrayBufferView,
-    sender: Party.Connection<unknown>
+  override async onCustomMessage(
+    sender: Party.Connection<unknown>,
+    message: string
   ): Promise<void> {
     if (typeof message === "string") {
       try {
@@ -591,11 +584,11 @@ export default class PartyServer implements Party.Server {
           await this.handleRegisterSharedElement(parsed.element, sender);
         } else {
           // Broadcast other messages normally
-          this.room.broadcast(message);
+          this.broadcastCustomMessage(message);
         }
       } catch (error) {
         // If not valid JSON, broadcast as-is (existing behavior)
-        this.room.broadcast(message);
+        this.broadcastCustomMessage(message);
       }
     }
   }
@@ -629,7 +622,7 @@ export default class PartyServer implements Party.Server {
     }
 
     // Send permissions back to the requesting client
-    sender.send(JSON.stringify({ permissions: filtered }));
+    this.sendCustomMessage(sender, JSON.stringify({ permissions: filtered }));
   }
 
   private async handleRegisterSharedElement(
@@ -653,7 +646,7 @@ export default class PartyServer implements Party.Server {
 
     // If new shared element just registered, proactively fanout to subscribers who requested it
     try {
-      const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const yDoc = this.document;
       const play = yDoc.getMap("play") as Y.Map<any>;
       // Find the tag containing this elementId
       let subtreesForNew: Record<string, Record<string, any>> | null = null;
@@ -669,17 +662,16 @@ export default class PartyServer implements Party.Server {
 
       const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
-      const mainParty = this.room.context.parties.main;
       const currentEpoch = await this.getResetEpoch();
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.includes(element.elementId)) return;
-          const consumerRoom = mainParty.get(consumerRoomId);
+          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
           try {
             const applyRequest: ApplySubtreesImmediateRequest = {
               action: "apply-subtrees-immediate",
               subtrees: ensureExists(subtreesForNew),
-              sender: this.room.id,
+              sender: this.name,
               originKind: "source",
               resetEpoch: currentEpoch ?? null,
             };
@@ -694,11 +686,14 @@ export default class PartyServer implements Party.Server {
     } catch {}
   }
 
-  async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
+  override async onConnect(
+    connection: Party.Connection,
+    ctx: Party.ConnectionContext
+  ) {
     const url = new URL(ctx.request.url);
     const connectionId = connection.id;
     console.log(
-      `[PartyServer] onConnect: connectionId=${connectionId}, room=${this.room.id}`
+      `[PartyServer] onConnect: connectionId=${connectionId}, room=${this.name}`
     );
 
     // Check reset epoch from client params and enforce if stale
@@ -795,13 +790,21 @@ export default class PartyServer implements Party.Server {
       await this.setSharedPermissions(permissionsByElementId);
     }
 
-    await onConnect(connection, this.room, this.providerOptions);
+    await super.onConnect(connection, ctx);
 
     // Attach immediate-update observers once
     await this.attachImmediateBridgeObservers();
   }
 
-  async onRequest(request: Party.Request): Promise<Response> {
+  override async onLoad(): Promise<void> {
+    await PartyServer.Persistence.load(this.document);
+  }
+
+  override async onSave(): Promise<void> {
+    await PartyServer.Persistence.save(this.document);
+  }
+
+  override async onRequest(request: Party.Request): Promise<Response> {
     try {
       // Handle CORS preflight requests
       if (request.method === "OPTIONS") {
@@ -887,7 +890,7 @@ export default class PartyServer implements Party.Server {
         // Applies provided subtrees immediately and marks origin to suppress echo
         const { subtrees, sender, originKind } = body;
 
-        const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+        const yDoc = this.document;
         const subscribers = await this.getSubscribers();
         const sharedRefs = await this.getSharedReferences();
         const senderResetEpoch =
@@ -980,7 +983,6 @@ export default class PartyServer implements Party.Server {
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
           const subscribers = await this.getSubscribers();
-          const mainParty = this.room.context.parties.main;
           const currentEpoch = await this.getResetEpoch();
           await Promise.all(
             subscribers.map(async ({ consumerRoomId, elementIds }) => {
@@ -1004,12 +1006,15 @@ export default class PartyServer implements Party.Server {
                 toSend = filteredSubtrees;
                 if (!Object.keys(toSend).length) return;
               }
-              const consumerRoom = mainParty.get(consumerRoomId);
+              const consumerRoom = await getServerByName(
+                env.Main,
+                consumerRoomId
+              );
               try {
                 const applyRequest: ApplySubtreesImmediateRequest = {
                   action: "apply-subtrees-immediate",
                   subtrees: toSend,
-                  sender: this.room.id,
+                  sender: this.name,
                   originKind: "source",
                   resetEpoch: currentEpoch ?? null,
                 };
@@ -1057,7 +1062,7 @@ export default class PartyServer implements Party.Server {
     afterSize: number;
     resetEpoch: number;
   }> {
-    const roomId = this.room.id;
+    const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
     // Lock autosave immediately
@@ -1065,7 +1070,7 @@ export default class PartyServer implements Party.Server {
 
     try {
       // Get current live doc state
-      const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const liveYDoc = this.document;
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       // Extract current state as JSON
@@ -1156,7 +1161,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Saving fresh doc to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.room.id,
+          name: this.name,
           document: freshBase64,
         },
         { onConflict: "name" }
@@ -1183,7 +1188,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Set resetEpoch: ${resetEpoch}`);
 
       // Broadcast a "room-reset" message to all connected clients
-      this.room.broadcast(
+      this.broadcastCustomMessage(
         JSON.stringify({
           type: "room-reset",
           timestamp: resetEpoch,
@@ -1194,7 +1199,7 @@ export default class PartyServer implements Party.Server {
 
       // FORCE DISCONNECT: Close all connections to ensure no lingering clients
       // push their old state back to the server
-      const connections = [...this.room.getConnections()];
+      const connections = [...this.getConnections()];
       connections.forEach((conn) => {
         try {
           conn.close(4000, "Room Reset by Admin");
@@ -1245,7 +1250,7 @@ export default class PartyServer implements Party.Server {
   }
 
   // PartyKit Alarm: invoked when storage alarm rings
-  async onAlarm(): Promise<void> {
+  override async onAlarm(): Promise<void> {
     try {
       const subscribers = await this.getSubscribers();
 
@@ -1285,7 +1290,7 @@ export default class PartyServer implements Party.Server {
       const subs = await this.getSubscribers();
       const refs = await this.getSharedReferences();
       if (subs.length || refs.length) {
-        await this.room.storage.setAlarm?.(
+        await this.ctx.storage.setAlarm?.(
           Date.now() + DEFAULT_PRUNE_INTERVAL_MS
         );
       }
@@ -1294,7 +1299,6 @@ export default class PartyServer implements Party.Server {
 
   // Flush batched bridge updates to subscribers and source rooms
   private async flushBridgeUpdates(yDoc: Y.Doc): Promise<void> {
-    const mainParty = this.room.context.parties.main;
     const currentEpoch = await this.getResetEpoch();
 
     // Push to subscribers (source -> consumer direction)
@@ -1312,11 +1316,11 @@ export default class PartyServer implements Party.Server {
             new Set(sharedElementIds)
           );
           if (!Object.keys(subtrees).length) return;
-          const consumerRoom = mainParty.get(consumerRoomId);
+          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
           const applyRequest: ApplySubtreesImmediateRequest = {
             action: "apply-subtrees-immediate",
             subtrees,
-            sender: this.room.id,
+            sender: this.name,
             originKind: "source",
             resetEpoch: currentEpoch ?? null,
           };
@@ -1334,11 +1338,11 @@ export default class PartyServer implements Party.Server {
       if (!elementIds?.length) continue;
       const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
       if (!Object.keys(subtrees).length) continue;
-      const sourceRoom = mainParty.get(sourceRoomId);
+      const sourceRoom = await getServerByName(env.Main, sourceRoomId);
       const applyRequest: ApplySubtreesImmediateRequest = {
         action: "apply-subtrees-immediate",
         subtrees,
-        sender: this.room.id,
+        sender: this.name,
         originKind: "consumer",
         resetEpoch: currentEpoch ?? null,
       };
@@ -1366,7 +1370,7 @@ export default class PartyServer implements Party.Server {
   // Updates are debounced to avoid flooding subscribers with per-keystroke HTTP calls.
   private async attachImmediateBridgeObservers(): Promise<void> {
     if (this.observersAttached) return;
-    const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+    const yDoc = this.document;
 
     yDoc.on("update", (_update: Uint8Array, origin: any) => {
       // Ignore echoed updates from bridge apply operations
@@ -1388,3 +1392,13 @@ export default class PartyServer implements Party.Server {
     this.observersAttached = true;
   }
 }
+
+export default {
+  // Set up your fetch handler to use configured Servers
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return (
+      (await routePartykitRequest(request, env)) ||
+      new Response("Not Found", { status: 404 })
+    );
+  },
+} satisfies ExportedHandler<Env>;
