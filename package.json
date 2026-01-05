@@ -20,6 +20,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build-packages && changeset publish",
+    "generate-types": "bunx wrangler types --include-runtime=false",
     "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do if [ \"$(basename \"$dir\")\" != \"extension\" ]; then (cd \"$dir\" && bunx tsc); fi; done"
   },
   "devDependencies": {
