@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "playhtml",
+  "main": "partykit/party.ts",
+  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2024-01-27",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Main",
+        "class_name": "PartyServer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PartyServer"]
+    }
+  ]
+}

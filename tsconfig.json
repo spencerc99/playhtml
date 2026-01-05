@@ -6,7 +6,7 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "module": "esnext",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,

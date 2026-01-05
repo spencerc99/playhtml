@@ -1,4 +1,4 @@
-import type YPartyKitProvider from "y-partykit/provider";
+import type YProvider from "y-partyserver/provider";
 import {
   CursorPresence,
   PlayerIdentity,
@@ -117,7 +117,7 @@ export class CursorClientAwareness {
   private otherUsersWithMessages: Set<string> = new Set();
 
   constructor(
-    private provider: YPartyKitProvider,
+    private provider: YProvider,
     private options: CursorOptions = {}
   ) {
     this.playerIdentity =
