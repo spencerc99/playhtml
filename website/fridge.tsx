@@ -1,6 +1,6 @@
 import "./fridge.scss";
 import profaneWords from "profane-words";
-import { TagType } from "@playhtml/common";
+import { MoveData } from "@playhtml/common";
 import ReactDOM from "react-dom/client";
 import { PlayContext, withSharedState } from "../packages/react/src";
 import React, { useContext, useEffect, useState } from "react";
@@ -21,6 +21,8 @@ interface FridgeWordType {
   id?: string;
   word: string;
   color?: string;
+  x?: number;
+  y?: number;
 }
 
 interface Props extends FridgeWordType {
@@ -37,19 +39,64 @@ const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
 const DeleteLimitReachedKey = "fridge-lastDeleteTime";
 const RestrictedWords = [...profaneWords];
 
-const FridgeWord = withSharedState(
-  {
-    tagInfo: [TagType.CanMove],
-  },
-  ({}, props: Props) => {
+type MoveLocalData = { startMouseX: number; startMouseY: number };
+
+function getClientCoordinates(e: MouseEvent | TouchEvent): {
+  clientX: number;
+  clientY: number;
+} {
+  if ("touches" in e) {
+    const { clientX, clientY } = e.touches[0];
+    return { clientX, clientY };
+  }
+  return { clientX: e.clientX, clientY: e.clientY };
+}
+
+const FridgeWord = withSharedState<MoveData, any, Props>(
+  (props: Props) => ({
+    defaultData: { x: props.x ?? 0, y: props.y ?? 0 },
+    id: props.id,
+    resetShortcut: "shiftKey",
+    onDragStart: (e, { setLocalData }) => {
+      const { clientX, clientY } = getClientCoordinates(e);
+      setLocalData({
+        startMouseX: clientX,
+        startMouseY: clientY,
+      });
+    },
+    onDrag: (e, { data, localData, setData, setLocalData, element }) => {
+      const { clientX, clientY } = getClientCoordinates(e);
+      const { top, left, bottom, right } = element.getBoundingClientRect();
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      if (
+        (right > viewportWidth && clientX > localData.startMouseX) ||
+        (bottom > viewportHeight && clientY > localData.startMouseY) ||
+        (left < 0 && clientX < localData.startMouseX) ||
+        (top < 0 && clientY < localData.startMouseY)
+      )
+        return;
+      setData({
+        x: data.x + clientX - localData.startMouseX,
+        y: data.y + clientY - localData.startMouseY,
+      });
+      setLocalData({ startMouseX: clientX, startMouseY: clientY });
+    },
+  }),
+  ({ data, setData }, props: Props) => {
     const { id, word, deleteMode, onDeleteWord, className, userColor, wall } =
       props;
+    // Custom words use absolute positioning, default words use transform
+    const isCustom = className === "custom";
+    const positionStyle = isCustom
+      ? { position: "absolute" as const, left: data.x, top: data.y }
+      : { transform: `translate(${data.x}px, ${data.y}px)` };
     return (
       <div
         id={id}
         selector-id="#fridge .fridgeWordHolder"
         className="fridgeWordHolder"
-        // TODO: this is a hack since we dont support a callback for TagType.CanMove
+        style={positionStyle}
         onPointerDown={() => {
           if (!userColor || !wall) return;
           window.plausible?.("MovedWord", {
@@ -177,9 +224,54 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
+    const [cursorPos, setCursorPos] = React.useState<{ x: number; y: number } | null>(null);
     const { removeElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
+
+    // Track cursor position for desktop
+    useEffect(() => {
+      const handleMouseMove = (e: MouseEvent) => {
+        setCursorPos({ x: e.clientX, y: e.clientY });
+      };
+      window.addEventListener("mousemove", handleMouseMove);
+      return () => window.removeEventListener("mousemove", handleMouseMove);
+    }, []);
+
+    // Get the fridge container's position to calculate relative coordinates
+    function getFridgeOffset(): { left: number; top: number } {
+      const fridge = document.getElementById("fridge");
+      if (!fridge) return { left: 0, top: 0 };
+      const rect = fridge.getBoundingClientRect();
+      return { left: rect.left + window.scrollX, top: rect.top + window.scrollY };
+    }
+
+    // Get center of viewport position (relative to fridge container)
+    function getCenterPosition(): { x: number; y: number } {
+      const fridgeOffset = getFridgeOffset();
+      const viewportCenterX = window.scrollX + window.innerWidth / 2;
+      const viewportCenterY = window.scrollY + window.innerHeight / 2;
+      return {
+        x: viewportCenterX - fridgeOffset.left - 50,
+        y: viewportCenterY - fridgeOffset.top - 20,
+      };
+    }
+
+    // Get position for new word based on how it was submitted
+    function getNewWordPosition(useCursor: boolean): { x: number; y: number } {
+      const isMobile = "ontouchstart" in window || window.innerWidth < 768;
+      // Use center for mobile, button clicks, or if no cursor position
+      if (isMobile || !useCursor || !cursorPos) {
+        return getCenterPosition();
+      }
+      // Use cursor position with slight offset (for Enter key submission)
+      // Convert viewport coordinates to fridge-relative coordinates
+      const fridgeOffset = getFridgeOffset();
+      return {
+        x: cursorPos.x + window.scrollX - fridgeOffset.left + 10,
+        y: cursorPos.y + window.scrollY - fridgeOffset.top + 10,
+      };
+    }
 
     function clearMessage() {
       setInput("");
@@ -198,7 +290,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
       }
     }, []);
 
-    function onSubmit() {
+    function onSubmit(useCursor: boolean = false) {
       if (!input) {
         return;
       }
@@ -230,8 +322,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
         },
       });
 
+      const pos = getNewWordPosition(useCursor);
       setData((d) => {
-        d.push({ word: input, color: userColor, id: Date.now().toString() });
+        d.push({ word: input, color: userColor, id: Date.now().toString(), x: pos.x, y: pos.y });
       });
       clearMessage();
     }
@@ -271,12 +364,12 @@ const WordControls = withSharedState<FridgeWordType[]>(
         },
       });
 
-      // Clean up can-move data for this element to prevent orphaned data
+      // Clean up can-play data for this element to prevent orphaned data
       if (id) {
         try {
-          removeElementData("can-move", id);
+          removeElementData("can-play", id);
         } catch (error) {
-          console.warn("[FRIDGE] Failed to cleanup can-move data:", error);
+          console.warn("[FRIDGE] Failed to cleanup can-play data:", error);
         }
       }
 
@@ -291,12 +384,14 @@ const WordControls = withSharedState<FridgeWordType[]>(
 
     return (
       <>
-        {data.map(({ word, color, id }) => (
+        {data.map(({ word, color, id, x, y }) => (
           <FridgeWord
             id={id}
             key={id}
             word={word}
             color={color}
+            x={x}
+            y={y}
             deleteMode={deleteMode}
             className="custom"
             onDeleteWord={() => {
@@ -327,13 +422,13 @@ const WordControls = withSharedState<FridgeWordType[]>(
               placeholder="New word..."
               value={input}
               onKeyDown={(e) => {
-                if (e.key === "Enter") onSubmit();
+                if (e.key === "Enter") onSubmit(true);
               }}
               maxLength={30}
               onChange={(e) => setInput(e.target.value.trim())}
             ></input>
             <button
-              onClick={onSubmit}
+              onClick={() => onSubmit(false)}
               disabled={!Boolean(input) || data.length >= MaxWords}
               style={{
                 padding: ".5em 1em",
