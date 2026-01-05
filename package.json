@@ -24,7 +24,8 @@
     "release": "bun run build-packages && changeset publish",
     "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do (cd \"$dir\" && bunx tsc); done && cd extension && bunx tsc",
     "load-test": "bun load-test/src/runner.ts",
-    "load-test:full": "bun load-test/src/runner.ts --config full-suite"
+    "load-test:full": "bun load-test/src/runner.ts --config full-suite",
+    "generate-types": "bunx wrangler types --include-runtime=false"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
