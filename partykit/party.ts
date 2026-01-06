@@ -52,9 +52,6 @@ export class PartyServer extends YServer {
   override async onLoad(): Promise<void> {
     // This is called once per "room" when the first user connects
 
-    // Let's make a Yjs document
-    const doc = new Y.Doc();
-
     // Load the document from the database
     const { data, error } = await supabase
       .from("documents")
@@ -70,7 +67,7 @@ export class PartyServer extends YServer {
       // If the document exists on the database,
       // apply it to the Yjs document
       Y.applyUpdate(
-        doc,
+        this.document,
         new Uint8Array(Buffer.from(data.document, "base64"))
       );
     }
