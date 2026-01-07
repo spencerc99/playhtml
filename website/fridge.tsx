@@ -1,11 +1,100 @@
 import "./fridge.scss";
 import profaneWords from "profane-words";
-import { MoveData } from "@playhtml/common";
-import ReactDOM from "react-dom/client";
+import { MoveData, TagType } from "@playhtml/common";
+import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 import { PlayContext, withSharedState } from "../packages/react/src";
-import React, { useContext, useEffect, useState } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
+
+// Detect mobile viewport
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768
+  );
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
+
+// Hook to handle visual viewport positioning with smooth DOM updates (no React re-renders)
+function useVisualViewportToolbar(
+  toolbarRef: React.RefObject<HTMLDivElement | null>,
+  isMobile: boolean
+) {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !isMobile) return;
+
+    let rafId: number;
+    let lastScale = 1;
+    let lastBottom = 0;
+    let lastLeft = 0;
+
+    const update = () => {
+      const el = toolbarRef.current;
+      if (!el) return;
+
+      const scale = vv.scale;
+      const bottom = window.innerHeight - (vv.offsetTop + vv.height);
+      const left = vv.offsetLeft;
+
+      // Only update if values changed significantly
+      if (
+        Math.abs(scale - lastScale) < 0.001 &&
+        Math.abs(bottom - lastBottom) < 0.5 &&
+        Math.abs(left - lastLeft) < 0.5
+      ) {
+        return;
+      }
+
+      lastScale = scale;
+      lastBottom = bottom;
+      lastLeft = left;
+
+      // Apply inverse scale to maintain visual size when zoomed
+      const inverseScale = 1 / scale;
+
+      // Calculate width to fill viewport (accounting for inverse scale)
+      const width = vv.width * scale;
+
+      // Use transform for GPU-accelerated smooth positioning
+      el.style.transform = `scale(${inverseScale})`;
+      el.style.transformOrigin = "bottom left";
+      el.style.bottom = `${bottom}px`;
+      el.style.left = `${left}px`;
+      el.style.width = `${width}px`;
+    };
+
+    const onViewportChange = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(update);
+    };
+
+    // Listen to viewport changes
+    vv.addEventListener("resize", onViewportChange);
+    vv.addEventListener("scroll", onViewportChange);
+
+    // Initial update
+    update();
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      vv.removeEventListener("resize", onViewportChange);
+      vv.removeEventListener("scroll", onViewportChange);
+    };
+  }, [toolbarRef, isMobile]);
+}
 
 // Add Plausible analytics type definition
 declare global {
@@ -29,8 +118,8 @@ interface Props extends FridgeWordType {
   deleteMode?: boolean;
   onDeleteWord?: () => void;
   className?: string;
-  userColor: string;
-  wall: string;
+  userColor?: string;
+  wall?: string;
 }
 
 const DefaultRoom = "fridge";
@@ -52,21 +141,30 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
   return { clientX: e.clientX, clientY: e.clientY };
 }
 
-// Migration helper: check for old "can-move" data
-function getOldMoveData(elementId?: string): MoveData | undefined {
+// Migration helper: check for "can-play" data that needs to be migrated to "can-move"
+function getCanPlayData(elementId?: string): MoveData | undefined {
   if (!elementId) return undefined;
   const playhtml = (window as any).playhtml;
-  return playhtml?.syncedStore?.["can-move"]?.[elementId];
+  return playhtml?.syncedStore?.["can-play"]?.[elementId];
 }
 
 const FridgeWord = withSharedState<MoveData, any, Props>(
   (props: Props) => {
-    // Check for old "can-move" data to migrate
-    const oldData = getOldMoveData(props.id);
-    const initialX = oldData?.x ?? props.x ?? 0;
-    const initialY = oldData?.y ?? props.y ?? 0;
+    // Check for "can-play" data to migrate to "can-move" (reverse migration)
+    const canPlayData = getCanPlayData(props.id);
+    // Use can-play data if it exists and has non-zero position, otherwise use props
+    const initialX =
+      canPlayData && (canPlayData.x !== 0 || canPlayData.y !== 0)
+        ? canPlayData.x
+        : props.x ?? 0;
+    const initialY =
+      canPlayData && (canPlayData.x !== 0 || canPlayData.y !== 0)
+        ? canPlayData.y
+        : props.y ?? 0;
 
     return {
+      // Use can-move tag to store data under "can-move" instead of "can-play"
+      tagInfo: [TagType.CanMove],
       defaultData: { x: initialX, y: initialY },
       id: props.id,
       resetShortcut: "shiftKey",
@@ -96,22 +194,31 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
         });
         setLocalData({ startMouseX: clientX, startMouseY: clientY });
       },
+      // onMount: (_, { setData, element }) => {
+      //   // Reverse migration: if can-play data exists, copy it to can-move and delete can-play
+      //   const canPlayData = getCanPlayData(element.id);
+      //   if (canPlayData && (canPlayData.x !== 0 || canPlayData.y !== 0)) {
+      //     setData({ x: canPlayData.x, y: canPlayData.y });
+      //     // Clean up old can-play data
+      //     try {
+      //       const playhtml = (window as any).playhtml;
+      //       playhtml?.deleteElementData?.("can-play", element.id);
+      //     } catch (e) {
+      //       console.warn("[FRIDGE] Failed to cleanup old can-play data:", e);
+      //     }
+      //   }
+      // },
     };
   },
   ({ data, setData }, props: Props) => {
     const { id, word, deleteMode, onDeleteWord, className, userColor, wall } =
       props;
-    // Custom words use absolute positioning, default words use transform
-    const isCustom = className === "custom";
-    const positionStyle = isCustom
-      ? { position: "absolute" as const, left: data.x, top: data.y }
-      : { transform: `translate(${data.x}px, ${data.y}px)` };
     return (
       <div
         id={id}
         selector-id="#fridge .fridgeWordHolder"
         className="fridgeWordHolder"
-        style={positionStyle}
+        style={{ transform: `translate(${data.x}px, ${data.y}px)` }}
         onPointerDown={() => {
           if (!userColor || !wall) return;
           window.plausible?.("MovedWord", {
@@ -229,13 +336,19 @@ const Words = [
 const MaxWords = 1000;
 const MaxWordLength = 40;
 
+interface ToolboxProps {
+  wall: string;
+  onChangeWall: (wall: string | null) => void;
+  isDefaultWall: boolean;
+}
+
 const WordControls = withSharedState<FridgeWordType[]>(
   {
     defaultData: [] as FridgeWordType[],
     id: "newWords",
   },
-  ({ data, setData }, props: { wall: string }) => {
-    const { wall } = props;
+  ({ data, setData }, props: ToolboxProps) => {
+    const { wall, onChangeWall, isDefaultWall } = props;
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
@@ -243,9 +356,16 @@ const WordControls = withSharedState<FridgeWordType[]>(
       x: number;
       y: number;
     } | null>(null);
+    const [wallInputValue, setWallInputValue] = React.useState(wall);
+    const [showWallControls, setShowWallControls] = React.useState(false);
     const { removeElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
+    const isMobile = useIsMobile();
+    const toolbarRef = useRef<HTMLDivElement>(null);
+
+    // Use direct DOM manipulation for smooth viewport tracking
+    useVisualViewportToolbar(toolbarRef, isMobile);
 
     // Track cursor position for desktop
     useEffect(() => {
@@ -391,12 +511,14 @@ const WordControls = withSharedState<FridgeWordType[]>(
         },
       });
 
-      // Clean up can-play data for this element to prevent orphaned data
+      // Clean up element data to prevent orphaned data
       if (id) {
         try {
+          removeElementData("can-move", id);
+          // Also clean up any leftover can-play data from migration period
           removeElementData("can-play", id);
         } catch (error) {
-          console.warn("[FRIDGE] Failed to cleanup can-play data:", error);
+          console.warn("[FRIDGE] Failed to cleanup element data:", error);
         }
       }
 
@@ -408,6 +530,273 @@ const WordControls = withSharedState<FridgeWordType[]>(
         localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
       }
     }
+
+    const toolboxStyles: React.CSSProperties = isMobile
+      ? {
+          position: "fixed",
+          // Base positioning - hook will override for zoom handling
+          bottom: 0,
+          left: 0,
+          width: "100%",
+          background: "#efefef",
+          borderTop: "2px solid #333",
+          padding: "10px 12px",
+          paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
+          zIndex: 9999,
+          boxShadow: "0 -3px 0 0 rgba(50, 50, 50, 1)",
+          boxSizing: "border-box",
+          // Hint for GPU acceleration
+          willChange: "transform",
+        }
+      : {
+          position: "fixed",
+          bottom: "24px",
+          right: "24px",
+          background: "#efefef",
+          padding: "12px",
+          zIndex: 9999,
+          boxShadow: "4px 4px 0px 0px rgba(50, 50, 50, 1)",
+          minWidth: "280px",
+          border: "2px solid #333",
+        };
+
+    // Shared button style for fridge magnet look
+    const magnetButtonStyle: React.CSSProperties = {
+      padding: "0.4em 0.6em",
+      background: "#efefef",
+      color: "#333",
+      border: "none",
+      boxShadow: "2px 2px 0px 0px rgba(50, 50, 50, 1)",
+      fontSize: "14px",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    };
+
+    const toolbox = (
+      <div ref={toolbarRef} style={toolboxStyles} className="fridge-toolbox">
+        {/* Main row: input + buttons */}
+        <div
+          style={{
+            display: "flex",
+            gap: "6px",
+            alignItems: "center",
+          }}
+        >
+          <input
+            placeholder="New word..."
+            value={input}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSubmit(true);
+            }}
+            maxLength={30}
+            onChange={(e) => setInput(e.target.value.trim())}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "0.4em",
+              border: "2px solid #333",
+              fontSize: isMobile ? "16px" : "14px",
+              background: "white",
+              color: "#333",
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={() => onSubmit(false)}
+            disabled={!Boolean(input) || data.length >= MaxWords}
+            style={{
+              ...magnetButtonStyle,
+              background: input ? "#efefef" : "#ccc",
+              color: input ? "#333" : "#888",
+              cursor: input ? "pointer" : "not-allowed",
+              opacity: input ? 1 : 0.7,
+            }}
+          >
+            Add
+          </button>
+          <button
+            onClick={() => setDeleteMode(!deleteMode)}
+            style={{
+              ...magnetButtonStyle,
+              background: deleteMode ? "#333" : "#ff6b6b",
+              color: deleteMode ? "white" : "white",
+              boxShadow: deleteMode
+                ? "1px 1px 0px 0px rgba(50, 50, 50, 1)"
+                : "2px 2px 0px 0px rgba(50, 50, 50, 1)",
+            }}
+            title={deleteMode ? "Stop deleting" : "Delete words"}
+          >
+            {deleteMode ? "Done" : "Delete"}
+          </button>
+        </div>
+
+        {/* Status text - only show when fridge is full */}
+        {data.length >= MaxWords && (
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#666",
+              marginTop: "6px",
+              textAlign: "center",
+              fontStyle: "italic",
+            }}
+          >
+            Fridge full! Delete words or change walls.
+          </div>
+        )}
+
+        {/* Wall stats & info - single row */}
+        <div
+          style={{
+            marginTop: "8px",
+            paddingTop: "8px",
+            borderTop: "2px dashed #999",
+          }}
+        >
+          <button
+            onClick={() => setShowWallControls(!showWallControls)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+              padding: "4px 0",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "14px",
+              color: "#333",
+              gap: "8px",
+            }}
+          >
+            {/* Wall name - truncate if needed */}
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                minWidth: 0,
+                overflow: "hidden",
+              }}
+            >
+              <span style={{ flexShrink: 0 }}>▣</span>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {wall === DefaultRoom ? "main" : wall}
+              </span>
+            </span>
+
+            {/* Stats - compact */}
+            <span
+              style={{
+                display: "flex",
+                gap: "10px",
+                fontSize: "13px",
+                color: "#666",
+                flexShrink: 0,
+              }}
+            >
+              <span title="words">¶{Words.length + data.length}</span>
+              <span title="contributors" style={{ display: "flex", alignItems: "center", gap: "1px" }}>
+                <svg viewBox="0 0 880 1000" style={{ width: "1em", height: "1em", fill: "currentColor" }}>
+                  <path transform="translate(0, 900) scale(1,-1)" d="M440 137L310-87L228-39L390 241L390 331L146 472L193 553L390 439L390 475Q345 489 316.50 525.50Q288 562 288 610L288 610Q288 652 308 685Q328 718 362.50 737.50Q397 757 440 757L440 757Q483 757 517.50 737.50Q552 718 572 685Q592 652 592 610L592 610Q592 562 563.50 525.50Q535 489 490 475L490 475L490 439L687 553L734 472L490 331L490 241L652-39L570-87L440 137ZM440 554L440 554Q464 554 480 570Q496 586 496 610L496 610Q496 634 480 650Q464 666 440 666L440 666Q416 666 400 650Q384 634 384 610L384 610Q384 586 400 570Q416 554 440 554Z" />
+                </svg>
+                {new Set(data.map((w) => w.color).filter(Boolean)).size}
+              </span>
+              <span style={{ color: "#999" }}>[{showWallControls ? "−" : "+"}]</span>
+            </span>
+          </button>
+
+          {/* Expandable wall controls */}
+          {showWallControls && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "row" : "column",
+                gap: "6px",
+                alignItems: isMobile ? "center" : "stretch",
+                flexWrap: "wrap",
+                marginTop: "6px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  flex: 1,
+                  minWidth: isMobile ? "auto" : "100%",
+                }}
+              >
+                <input
+                  placeholder="Wall name..."
+                  value={wallInputValue}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      wallInputValue &&
+                      wallInputValue !== wall
+                    ) {
+                      onChangeWall(wallInputValue);
+                    }
+                  }}
+                  onChange={(e) => setWallInputValue(e.target.value.trim())}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: "0.3em",
+                    border: "2px solid #333",
+                    fontSize: isMobile ? "16px" : "13px",
+                    background: "white",
+                    color: "#333",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={() => onChangeWall(wallInputValue)}
+                  disabled={!wallInputValue || wallInputValue === wall}
+                  style={{
+                    ...magnetButtonStyle,
+                    padding: "0.3em 0.5em",
+                    fontSize: "13px",
+                    background:
+                      wallInputValue && wallInputValue !== wall
+                        ? "#4a7c59"
+                        : "#ccc",
+                    color:
+                      wallInputValue && wallInputValue !== wall
+                        ? "white"
+                        : "#888",
+                    cursor:
+                      wallInputValue && wallInputValue !== wall
+                        ? "pointer"
+                        : "not-allowed",
+                  }}
+                >
+                  Go
+                </button>
+              </div>
+              {!isDefaultWall && (
+                <button
+                  onClick={() => onChangeWall(null)}
+                  style={{
+                    ...magnetButtonStyle,
+                    padding: "0.3em 0.5em",
+                    fontSize: "12px",
+                  }}
+                >
+                  &larr; back to main
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
 
     return (
       <>
@@ -428,85 +817,8 @@ const WordControls = withSharedState<FridgeWordType[]>(
             wall={wall}
           />
         ))}
-        <div
-          style={{
-            position: "fixed",
-            bottom: "20%",
-            right: "20%",
-            display: "flex",
-            flexDirection: "column",
-            gap: ".5em",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: ".5em",
-              justifyContent: "flex-end",
-            }}
-          >
-            <input
-              placeholder="New word..."
-              value={input}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSubmit(true);
-              }}
-              maxLength={30}
-              onChange={(e) => setInput(e.target.value.trim())}
-            ></input>
-            <button
-              onClick={() => onSubmit(false)}
-              disabled={!Boolean(input) || data.length >= MaxWords}
-              style={{
-                padding: ".5em 1em",
-              }}
-            >
-              Add
-            </button>
-          </div>
-          {data.length >= MaxWords ? (
-            <div
-              style={{
-                textAlign: "right",
-                color: "slategray",
-                fontSize: ".8em",
-              }}
-            >
-              The fridge is at its limit.
-              <br />
-              Remove some words to add more or
-              <br />
-              try changing to a different wall!
-            </div>
-          ) : (
-            <div
-              style={{
-                textAlign: "right",
-                color: "slategray",
-                fontSize: ".8em",
-              }}
-            >
-              p.s. you can hit "enter" to add, too
-            </div>
-          )}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-            }}
-          >
-            <button
-              onClick={() => setDeleteMode(!deleteMode)}
-              style={{
-                background: !deleteMode ? "red" : undefined,
-                padding: ".5em 1em",
-                width: "fit-content",
-              }}
-            >
-              {deleteMode ? "Stop" : "Delete"}
-            </button>
-          </div>
-        </div>
+        {/* Render toolbox via portal to ensure fixed positioning works */}
+        {createPortal(toolbox, document.body)}
       </>
     );
   }
@@ -552,6 +864,8 @@ const AdminSettings = ({
 interface FridgeWordsProps {
   hasError: boolean;
   wall: string;
+  onChangeWall: (wall: string | null) => void;
+  isDefaultWall: boolean;
 }
 
 const FridgeWordsContent = withSharedState(
@@ -560,7 +874,7 @@ const FridgeWordsContent = withSharedState(
     id: "adminSettings",
   },
   ({ data, setData }, props: FridgeWordsProps) => {
-    const { hasError, wall } = props;
+    const { hasError, wall, onChangeWall, isDefaultWall } = props;
     const { hasSynced } = useContext(PlayContext);
     const { search } = useLocation();
     const params = new URLSearchParams(search);
@@ -599,7 +913,11 @@ const FridgeWordsContent = withSharedState(
       <>
         {data.showDefaultWords &&
           Words.map((w, i) => <FridgeWord key={i} word={w} />)}
-        <WordControls wall={wall} />
+        <WordControls
+          wall={wall}
+          onChangeWall={onChangeWall}
+          isDefaultWall={isDefaultWall}
+        />
         {isAdmin && <AdminSettings data={data} setData={setData} />}
       </>
     );
@@ -616,9 +934,8 @@ function Main() {
   const params = new URLSearchParams(search);
   const wall = params.get("wall") || DefaultRoom;
   const isDefaultWall = DefaultRoom === wall;
-  const [newRoom, setNewRoom] = useState(wall);
+
   function setRoom(room: string | null) {
-    // change "wall" search query param to "room"
     const url = new URL(window.location.href);
     if (room === null) url.searchParams.delete("wall");
     else url.searchParams.set("wall", room);
@@ -626,73 +943,22 @@ function Main() {
   }
 
   return (
-    <>
-      <div
-        style={{
-          position: "absolute",
-          top: "-200px",
-          left: "60%",
-          display: "flex",
-          flexDirection: "column",
-          gap: ".5em",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: ".5em",
-          }}
-        >
-          <input
-            placeholder="Room..."
-            value={newRoom}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") setRoom(newRoom);
-            }}
-            onChange={(e) => setNewRoom(e.target.value.trim())}
-          ></input>
-          <button
-            onClick={() => setRoom(newRoom)}
-            disabled={!Boolean(newRoom) || newRoom === wall}
-            style={{
-              padding: ".5em 1em",
-            }}
-          >
-            Change Wall
-          </button>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <button
-            onClick={() => setRoom(null)}
-            style={{
-              padding: ".5em 1em",
-              width: "fit-content",
-            }}
-            disabled={isDefaultWall}
-          >
-            Back to Main Wall
-          </button>
-        </div>
-      </div>
-      <PlayProvider
-        initOptions={{
-          room: wall,
-          onError: () => {
-            setHasError(true);
-          },
-        }}
-      >
-        <FridgeWords hasError={hasError} wall={wall} />
-      </PlayProvider>
-    </>
+    <PlayProvider
+      initOptions={{
+        room: wall,
+        onError: () => {
+          setHasError(true);
+        },
+      }}
+    >
+      <FridgeWords
+        hasError={hasError}
+        wall={wall}
+        onChangeWall={setRoom}
+        isDefaultWall={isDefaultWall}
+      />
+    </PlayProvider>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("fridge") as HTMLElement).render(
-  <Main />
-);
+createRoot(document.getElementById("fridge") as HTMLElement).render(<Main />);
