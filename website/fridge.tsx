@@ -52,37 +52,52 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
   return { clientX: e.clientX, clientY: e.clientY };
 }
 
+// Migration helper: check for old "can-move" data
+function getOldMoveData(elementId?: string): MoveData | undefined {
+  if (!elementId) return undefined;
+  const playhtml = (window as any).playhtml;
+  return playhtml?.syncedStore?.["can-move"]?.[elementId];
+}
+
 const FridgeWord = withSharedState<MoveData, any, Props>(
-  (props: Props) => ({
-    defaultData: { x: props.x ?? 0, y: props.y ?? 0 },
-    id: props.id,
-    resetShortcut: "shiftKey",
-    onDragStart: (e, { setLocalData }) => {
-      const { clientX, clientY } = getClientCoordinates(e);
-      setLocalData({
-        startMouseX: clientX,
-        startMouseY: clientY,
-      });
-    },
-    onDrag: (e, { data, localData, setData, setLocalData, element }) => {
-      const { clientX, clientY } = getClientCoordinates(e);
-      const { top, left, bottom, right } = element.getBoundingClientRect();
-      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-      if (
-        (right > viewportWidth && clientX > localData.startMouseX) ||
-        (bottom > viewportHeight && clientY > localData.startMouseY) ||
-        (left < 0 && clientX < localData.startMouseX) ||
-        (top < 0 && clientY < localData.startMouseY)
-      )
-        return;
-      setData({
-        x: data.x + clientX - localData.startMouseX,
-        y: data.y + clientY - localData.startMouseY,
-      });
-      setLocalData({ startMouseX: clientX, startMouseY: clientY });
-    },
-  }),
+  (props: Props) => {
+    // Check for old "can-move" data to migrate
+    const oldData = getOldMoveData(props.id);
+    const initialX = oldData?.x ?? props.x ?? 0;
+    const initialY = oldData?.y ?? props.y ?? 0;
+
+    return {
+      defaultData: { x: initialX, y: initialY },
+      id: props.id,
+      resetShortcut: "shiftKey",
+      onDragStart: (e, { setLocalData }) => {
+        const { clientX, clientY } = getClientCoordinates(e);
+        setLocalData({
+          startMouseX: clientX,
+          startMouseY: clientY,
+        });
+      },
+      onDrag: (e, { data, localData, setData, setLocalData, element }) => {
+        const { clientX, clientY } = getClientCoordinates(e);
+        const { top, left, bottom, right } = element.getBoundingClientRect();
+        const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+        const viewportHeight =
+          window.visualViewport?.height ?? window.innerHeight;
+        if (
+          (right > viewportWidth && clientX > localData.startMouseX) ||
+          (bottom > viewportHeight && clientY > localData.startMouseY) ||
+          (left < 0 && clientX < localData.startMouseX) ||
+          (top < 0 && clientY < localData.startMouseY)
+        )
+          return;
+        setData({
+          x: data.x + clientX - localData.startMouseX,
+          y: data.y + clientY - localData.startMouseY,
+        });
+        setLocalData({ startMouseX: clientX, startMouseY: clientY });
+      },
+    };
+  },
   ({ data, setData }, props: Props) => {
     const { id, word, deleteMode, onDeleteWord, className, userColor, wall } =
       props;
@@ -224,7 +239,10 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
-    const [cursorPos, setCursorPos] = React.useState<{ x: number; y: number } | null>(null);
+    const [cursorPos, setCursorPos] = React.useState<{
+      x: number;
+      y: number;
+    } | null>(null);
     const { removeElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
@@ -243,7 +261,10 @@ const WordControls = withSharedState<FridgeWordType[]>(
       const fridge = document.getElementById("fridge");
       if (!fridge) return { left: 0, top: 0 };
       const rect = fridge.getBoundingClientRect();
-      return { left: rect.left + window.scrollX, top: rect.top + window.scrollY };
+      return {
+        left: rect.left + window.scrollX,
+        top: rect.top + window.scrollY,
+      };
     }
 
     // Get center of viewport position (relative to fridge container)
@@ -324,7 +345,13 @@ const WordControls = withSharedState<FridgeWordType[]>(
 
       const pos = getNewWordPosition(useCursor);
       setData((d) => {
-        d.push({ word: input, color: userColor, id: Date.now().toString(), x: pos.x, y: pos.y });
+        d.push({
+          word: input,
+          color: userColor,
+          id: Date.now().toString(),
+          x: pos.x,
+          y: pos.y,
+        });
       });
       clearMessage();
     }
