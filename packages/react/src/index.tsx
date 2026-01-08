@@ -280,6 +280,28 @@ export function CanPlayElement<T extends object, V = any>({
  *      return <div>...</div>;
  *   }
  * );
+ *
+ * @warning DATA STORAGE: The `tagInfo` property determines where element data is stored.
+ * - `tagInfo: [TagType.CanMove]` → stores under "can-move"
+ * - `tagInfo: [TagType.CanToggle]` → stores under "can-toggle"
+ * - No `tagInfo` (default) → stores under "can-play"
+ *
+ * NEVER change the tagInfo of an existing element without implementing data migration,
+ * or existing user data will be lost/orphaned.
+ *
+ * When customizing built-in capabilities (e.g., adding initial position to CanMove),
+ * KEEP the tagInfo to preserve data storage location:
+ *
+ * // CORRECT - keeps data under "can-move"
+ * withSharedState<MoveData>((props) => ({
+ *   tagInfo: [TagType.CanMove],  // KEEP THIS
+ *   defaultData: { x: props.x ?? 0, y: props.y ?? 0 },
+ * }), renderFn);
+ *
+ * // WRONG - orphans existing "can-move" data, now stores under "can-play"
+ * withSharedState<MoveData>((props) => ({
+ *   defaultData: { x: props.x ?? 0, y: props.y ?? 0 },  // Missing tagInfo!
+ * }), renderFn);
  */
 export function withSharedState<T extends object, V = any, P = any>(
   playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),

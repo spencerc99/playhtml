@@ -4,13 +4,7 @@ import { MoveData, TagType } from "@playhtml/common";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { PlayContext, withSharedState } from "../packages/react/src";
-import React, {
-  useContext,
-  useEffect,
-  useState,
-  useRef,
-  useCallback,
-} from "react";
+import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
 
@@ -27,73 +21,120 @@ function useIsMobile() {
   return isMobile;
 }
 
-// Hook to handle visual viewport positioning with smooth DOM updates (no React re-renders)
-function useVisualViewportToolbar(
-  toolbarRef: React.RefObject<HTMLDivElement | null>,
-  isMobile: boolean
-) {
+// Custom pinch-to-zoom for page content (browser zoom is disabled)
+// Applies transform directly to .content element (which contains all page content)
+function usePinchZoom() {
+  const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const stateRef = useRef({ scale: 1, x: 0, y: 0 });
+  const gestureRef = useRef({
+    initialDistance: 0,
+    initialScale: 1,
+    isPinching: false,
+    lastX: 0,
+    lastY: 0,
+  });
+
+  // Keep ref in sync with state
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv || !isMobile) return;
+    stateRef.current = transform;
+  }, [transform]);
 
-    let rafId: number;
-    let lastScale = 1;
-    let lastBottom = 0;
-    let lastLeft = 0;
+  // Apply transform directly to .content element
+  useEffect(() => {
+    const content = document.querySelector(".content") as HTMLElement;
+    if (content) {
+      content.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
+      content.style.transformOrigin = "0 0";
+    }
+  }, [transform]);
 
-    const update = () => {
-      const el = toolbarRef.current;
-      if (!el) return;
+  useEffect(() => {
+    const getDistance = (touches: TouchList) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
 
-      const scale = vv.scale;
-      const bottom = window.innerHeight - (vv.offsetTop + vv.height);
-      const left = vv.offsetLeft;
+    const getCenter = (touches: TouchList) => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    });
 
-      // Only update if values changed significantly
-      if (
-        Math.abs(scale - lastScale) < 0.001 &&
-        Math.abs(bottom - lastBottom) < 0.5 &&
-        Math.abs(left - lastLeft) < 0.5
-      ) {
-        return;
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const gesture = gestureRef.current;
+        gesture.isPinching = true;
+        gesture.initialDistance = getDistance(e.touches);
+        gesture.initialScale = stateRef.current.scale;
+        const center = getCenter(e.touches);
+        gesture.lastX = center.x;
+        gesture.lastY = center.y;
       }
-
-      lastScale = scale;
-      lastBottom = bottom;
-      lastLeft = left;
-
-      // Apply inverse scale to maintain visual size when zoomed
-      const inverseScale = 1 / scale;
-
-      // Calculate width to fill viewport (accounting for inverse scale)
-      const width = vv.width * scale;
-
-      // Use transform for GPU-accelerated smooth positioning
-      el.style.transform = `scale(${inverseScale})`;
-      el.style.transformOrigin = "bottom left";
-      el.style.bottom = `${bottom}px`;
-      el.style.left = `${left}px`;
-      el.style.width = `${width}px`;
     };
 
-    const onViewportChange = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(update);
+    const handleTouchMove = (e: TouchEvent) => {
+      const gesture = gestureRef.current;
+      if (e.touches.length === 2 && gesture.isPinching) {
+        e.preventDefault();
+        const distance = getDistance(e.touches);
+        const center = getCenter(e.touches);
+
+        // Calculate new scale
+        const scaleChange = distance / gesture.initialDistance;
+        let newScale = gesture.initialScale * scaleChange;
+        newScale = Math.max(0.5, Math.min(4, newScale)); // Clamp between 0.5x and 4x
+
+        // Calculate pan
+        const dx = center.x - gesture.lastX;
+        const dy = center.y - gesture.lastY;
+
+        setTransform((prev) => ({
+          scale: newScale,
+          x: prev.x + dx,
+          y: prev.y + dy,
+        }));
+
+        gesture.lastX = center.x;
+        gesture.lastY = center.y;
+      }
     };
 
-    // Listen to viewport changes
-    vv.addEventListener("resize", onViewportChange);
-    vv.addEventListener("scroll", onViewportChange);
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        gestureRef.current.isPinching = false;
+      }
+    };
 
-    // Initial update
-    update();
+    // Also support mouse wheel zoom for desktop
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        setTransform((prev) => ({
+          ...prev,
+          scale: Math.max(0.5, Math.min(4, prev.scale * delta)),
+        }));
+      }
+    };
+
+    // Attach to document for global capture
+    document.addEventListener("touchstart", handleTouchStart, { passive: false });
+    document.addEventListener("touchmove", handleTouchMove, { passive: false });
+    document.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
-      cancelAnimationFrame(rafId);
-      vv.removeEventListener("resize", onViewportChange);
-      vv.removeEventListener("scroll", onViewportChange);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("wheel", handleWheel);
     };
-  }, [toolbarRef, isMobile]);
+  }, []);
+
+  const resetZoom = () => setTransform({ scale: 1, x: 0, y: 0 });
+
+  return { transform, resetZoom };
 }
 
 // Add Plausible analytics type definition
@@ -340,6 +381,8 @@ interface ToolboxProps {
   wall: string;
   onChangeWall: (wall: string | null) => void;
   isDefaultWall: boolean;
+  resetZoom?: () => void;
+  currentZoom?: number;
 }
 
 const WordControls = withSharedState<FridgeWordType[]>(
@@ -348,7 +391,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     id: "newWords",
   },
   ({ data, setData }, props: ToolboxProps) => {
-    const { wall, onChangeWall, isDefaultWall } = props;
+    const { wall, onChangeWall, isDefaultWall, resetZoom, currentZoom } = props;
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
@@ -362,10 +405,6 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
-    const toolbarRef = useRef<HTMLDivElement>(null);
-
-    // Use direct DOM manipulation for smooth viewport tracking
-    useVisualViewportToolbar(toolbarRef, isMobile);
 
     // Track cursor position for desktop
     useEffect(() => {
@@ -534,10 +573,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const toolboxStyles: React.CSSProperties = isMobile
       ? {
           position: "fixed",
-          // Base positioning - hook will override for zoom handling
           bottom: 0,
           left: 0,
-          width: "100%",
+          right: 0,
           background: "#efefef",
           borderTop: "2px solid #333",
           padding: "10px 12px",
@@ -545,8 +583,6 @@ const WordControls = withSharedState<FridgeWordType[]>(
           zIndex: 9999,
           boxShadow: "0 -3px 0 0 rgba(50, 50, 50, 1)",
           boxSizing: "border-box",
-          // Hint for GPU acceleration
-          willChange: "transform",
         }
       : {
           position: "fixed",
@@ -573,7 +609,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     };
 
     const toolbox = (
-      <div ref={toolbarRef} style={toolboxStyles} className="fridge-toolbox">
+      <div style={toolboxStyles} className="fridge-toolbox">
         {/* Main row: input + buttons */}
         <div
           style={{
@@ -708,6 +744,18 @@ const WordControls = withSharedState<FridgeWordType[]>(
                 </svg>
                 {new Set(data.map((w) => w.color).filter(Boolean)).size}
               </span>
+              {currentZoom && currentZoom !== 1 && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetZoom?.();
+                  }}
+                  title="Reset zoom"
+                  style={{ cursor: "pointer", color: "#4a7c59" }}
+                >
+                  {Math.round(currentZoom * 100)}% [reset]
+                </span>
+              )}
               <span style={{ color: "#999" }}>[{showWallControls ? "−" : "+"}]</span>
             </span>
           </button>
@@ -866,6 +914,8 @@ interface FridgeWordsProps {
   wall: string;
   onChangeWall: (wall: string | null) => void;
   isDefaultWall: boolean;
+  resetZoom?: () => void;
+  currentZoom?: number;
 }
 
 const FridgeWordsContent = withSharedState(
@@ -874,7 +924,7 @@ const FridgeWordsContent = withSharedState(
     id: "adminSettings",
   },
   ({ data, setData }, props: FridgeWordsProps) => {
-    const { hasError, wall, onChangeWall, isDefaultWall } = props;
+    const { hasError, wall, onChangeWall, isDefaultWall, resetZoom, currentZoom } = props;
     const { hasSynced } = useContext(PlayContext);
     const { search } = useLocation();
     const params = new URLSearchParams(search);
@@ -917,6 +967,8 @@ const FridgeWordsContent = withSharedState(
           wall={wall}
           onChangeWall={onChangeWall}
           isDefaultWall={isDefaultWall}
+          resetZoom={resetZoom}
+          currentZoom={currentZoom}
         />
         {isAdmin && <AdminSettings data={data} setData={setData} />}
       </>
@@ -934,6 +986,7 @@ function Main() {
   const params = new URLSearchParams(search);
   const wall = params.get("wall") || DefaultRoom;
   const isDefaultWall = DefaultRoom === wall;
+  const { transform, resetZoom } = usePinchZoom();
 
   function setRoom(room: string | null) {
     const url = new URL(window.location.href);
@@ -956,6 +1009,8 @@ function Main() {
         wall={wall}
         onChangeWall={setRoom}
         isDefaultWall={isDefaultWall}
+        resetZoom={resetZoom}
+        currentZoom={transform.scale}
       />
     </PlayProvider>
   );
