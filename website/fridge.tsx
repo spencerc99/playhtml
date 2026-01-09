@@ -21,15 +21,16 @@ function useIsMobile() {
   return isMobile;
 }
 
-// Custom pinch-to-zoom for page content (browser zoom is disabled)
+// Custom pinch-to-zoom and two-finger pan for mobile
 // Applies transform directly to .content element (which contains all page content)
+// Allows mobile users to pan to see words placed off-screen by desktop users
 function usePinchZoom() {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const stateRef = useRef({ scale: 1, x: 0, y: 0 });
   const gestureRef = useRef({
     initialDistance: 0,
     initialScale: 1,
-    isPinching: false,
+    isTwoFinger: false,
     lastX: 0,
     lastY: 0,
   });
@@ -64,7 +65,7 @@ function usePinchZoom() {
       if (e.touches.length === 2) {
         e.preventDefault();
         const gesture = gestureRef.current;
-        gesture.isPinching = true;
+        gesture.isTwoFinger = true;
         gesture.initialDistance = getDistance(e.touches);
         gesture.initialScale = stateRef.current.scale;
         const center = getCenter(e.touches);
@@ -75,17 +76,17 @@ function usePinchZoom() {
 
     const handleTouchMove = (e: TouchEvent) => {
       const gesture = gestureRef.current;
-      if (e.touches.length === 2 && gesture.isPinching) {
+      if (e.touches.length === 2 && gesture.isTwoFinger) {
         e.preventDefault();
         const distance = getDistance(e.touches);
         const center = getCenter(e.touches);
 
-        // Calculate new scale
+        // Calculate new scale from pinch
         const scaleChange = distance / gesture.initialDistance;
         let newScale = gesture.initialScale * scaleChange;
         newScale = Math.max(0.5, Math.min(4, newScale)); // Clamp between 0.5x and 4x
 
-        // Calculate pan
+        // Calculate pan from two-finger drag
         const dx = center.x - gesture.lastX;
         const dy = center.y - gesture.lastY;
 
@@ -102,24 +103,35 @@ function usePinchZoom() {
 
     const handleTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
-        gestureRef.current.isPinching = false;
+        gestureRef.current.isTwoFinger = false;
       }
     };
 
-    // Also support mouse wheel zoom for desktop
+    // Desktop: ctrl/cmd + wheel = zoom, regular wheel/trackpad = pan
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
+        // Zoom with ctrl/cmd + scroll
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
         setTransform((prev) => ({
           ...prev,
           scale: Math.max(0.5, Math.min(4, prev.scale * delta)),
         }));
+      } else {
+        // Pan with regular scroll/trackpad
+        e.preventDefault();
+        setTransform((prev) => ({
+          ...prev,
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY,
+        }));
       }
     };
 
     // Attach to document for global capture
-    document.addEventListener("touchstart", handleTouchStart, { passive: false });
+    document.addEventListener("touchstart", handleTouchStart, {
+      passive: false,
+    });
     document.addEventListener("touchmove", handleTouchMove, { passive: false });
     document.addEventListener("touchend", handleTouchEnd);
     document.addEventListener("wheel", handleWheel, { passive: false });
@@ -132,9 +144,11 @@ function usePinchZoom() {
     };
   }, []);
 
-  const resetZoom = () => setTransform({ scale: 1, x: 0, y: 0 });
+  const resetZoom = () => setTransform((prev) => ({ ...prev, scale: 1 }));
+  const resetPan = () => setTransform((prev) => ({ ...prev, x: 0, y: 0 }));
+  const resetAll = () => setTransform({ scale: 1, x: 0, y: 0 });
 
-  return { transform, resetZoom };
+  return { transform, resetZoom, resetPan, resetAll };
 }
 
 // Add Plausible analytics type definition
@@ -382,7 +396,9 @@ interface ToolboxProps {
   onChangeWall: (wall: string | null) => void;
   isDefaultWall: boolean;
   resetZoom?: () => void;
+  resetPan?: () => void;
   currentZoom?: number;
+  currentPan?: { x: number; y: number };
 }
 
 const WordControls = withSharedState<FridgeWordType[]>(
@@ -391,7 +407,15 @@ const WordControls = withSharedState<FridgeWordType[]>(
     id: "newWords",
   },
   ({ data, setData }, props: ToolboxProps) => {
-    const { wall, onChangeWall, isDefaultWall, resetZoom, currentZoom } = props;
+    const {
+      wall,
+      onChangeWall,
+      isDefaultWall,
+      resetZoom,
+      resetPan,
+      currentZoom,
+      currentPan,
+    } = props;
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
@@ -738,12 +762,22 @@ const WordControls = withSharedState<FridgeWordType[]>(
               }}
             >
               <span title="words">¶{Words.length + data.length}</span>
-              <span title="contributors" style={{ display: "flex", alignItems: "center", gap: "1px" }}>
-                <svg viewBox="0 0 880 1000" style={{ width: "1em", height: "1em", fill: "currentColor" }}>
-                  <path transform="translate(0, 900) scale(1,-1)" d="M440 137L310-87L228-39L390 241L390 331L146 472L193 553L390 439L390 475Q345 489 316.50 525.50Q288 562 288 610L288 610Q288 652 308 685Q328 718 362.50 737.50Q397 757 440 757L440 757Q483 757 517.50 737.50Q552 718 572 685Q592 652 592 610L592 610Q592 562 563.50 525.50Q535 489 490 475L490 475L490 439L687 553L734 472L490 331L490 241L652-39L570-87L440 137ZM440 554L440 554Q464 554 480 570Q496 586 496 610L496 610Q496 634 480 650Q464 666 440 666L440 666Q416 666 400 650Q384 634 384 610L384 610Q384 586 400 570Q416 554 440 554Z" />
+              <span
+                title="contributors"
+                style={{ display: "flex", alignItems: "center", gap: "1px" }}
+              >
+                <svg
+                  viewBox="0 0 880 1000"
+                  style={{ width: "1em", height: "1em", fill: "currentColor" }}
+                >
+                  <path
+                    transform="translate(0, 900) scale(1,-1)"
+                    d="M440 137L310-87L228-39L390 241L390 331L146 472L193 553L390 439L390 475Q345 489 316.50 525.50Q288 562 288 610L288 610Q288 652 308 685Q328 718 362.50 737.50Q397 757 440 757L440 757Q483 757 517.50 737.50Q552 718 572 685Q592 652 592 610L592 610Q592 562 563.50 525.50Q535 489 490 475L490 475L490 439L687 553L734 472L490 331L490 241L652-39L570-87L440 137ZM440 554L440 554Q464 554 480 570Q496 586 496 610L496 610Q496 634 480 650Q464 666 440 666L440 666Q416 666 400 650Q384 634 384 610L384 610Q384 586 400 570Q416 554 440 554Z"
+                  />
                 </svg>
                 {new Set(data.map((w) => w.color).filter(Boolean)).size}
               </span>
+              {/* Zoom indicator with magnifying glass */}
               {currentZoom && currentZoom !== 1 && (
                 <span
                   onClick={(e) => {
@@ -751,12 +785,70 @@ const WordControls = withSharedState<FridgeWordType[]>(
                     resetZoom?.();
                   }}
                   title="Reset zoom"
-                  style={{ cursor: "pointer", color: "#4a7c59" }}
+                  style={{
+                    cursor: "pointer",
+                    color: "#4a7c59",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
                 >
-                  {Math.round(currentZoom * 100)}% [reset]
+                  <svg
+                    viewBox="0 0 24 24"
+                    style={{
+                      width: "1em",
+                      height: "1em",
+                      fill: "none",
+                      stroke: "currentColor",
+                      strokeWidth: 2,
+                    }}
+                  >
+                    <circle cx="10" cy="10" r="6" />
+                    <line x1="14.5" y1="14.5" x2="20" y2="20" />
+                  </svg>
+                  {Math.round(currentZoom * 100)}%
                 </span>
               )}
-              <span style={{ color: "#999" }}>[{showWallControls ? "−" : "+"}]</span>
+              {/* Pan indicator with four-directional arrows */}
+              {currentPan && (currentPan.x !== 0 || currentPan.y !== 0) && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetPan?.();
+                  }}
+                  title="Reset pan"
+                  style={{
+                    cursor: "pointer",
+                    color: "#4a7c59",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    style={{
+                      width: "1em",
+                      height: "1em",
+                      fill: "none",
+                      stroke: "currentColor",
+                      strokeWidth: 2,
+                    }}
+                  >
+                    <line x1="12" y1="2" x2="12" y2="22" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <polyline points="8,6 12,2 16,6" />
+                    <polyline points="8,18 12,22 16,18" />
+                    <polyline points="6,8 2,12 6,16" />
+                    <polyline points="18,8 22,12 18,16" />
+                  </svg>
+                  {-Math.round(currentPan.x / 10)},
+                  {-Math.round(currentPan.y / 10)}
+                </span>
+              )}
+              <span style={{ color: "#999" }}>
+                [{showWallControls ? "−" : "+"}]
+              </span>
             </span>
           </button>
 
@@ -915,7 +1007,9 @@ interface FridgeWordsProps {
   onChangeWall: (wall: string | null) => void;
   isDefaultWall: boolean;
   resetZoom?: () => void;
+  resetPan?: () => void;
   currentZoom?: number;
+  currentPan?: { x: number; y: number };
 }
 
 const FridgeWordsContent = withSharedState(
@@ -924,7 +1018,16 @@ const FridgeWordsContent = withSharedState(
     id: "adminSettings",
   },
   ({ data, setData }, props: FridgeWordsProps) => {
-    const { hasError, wall, onChangeWall, isDefaultWall, resetZoom, currentZoom } = props;
+    const {
+      hasError,
+      wall,
+      onChangeWall,
+      isDefaultWall,
+      resetZoom,
+      resetPan,
+      currentZoom,
+      currentPan,
+    } = props;
     const { hasSynced } = useContext(PlayContext);
     const { search } = useLocation();
     const params = new URLSearchParams(search);
@@ -968,7 +1071,9 @@ const FridgeWordsContent = withSharedState(
           onChangeWall={onChangeWall}
           isDefaultWall={isDefaultWall}
           resetZoom={resetZoom}
+          resetPan={resetPan}
           currentZoom={currentZoom}
+          currentPan={currentPan}
         />
         {isAdmin && <AdminSettings data={data} setData={setData} />}
       </>
@@ -986,7 +1091,7 @@ function Main() {
   const params = new URLSearchParams(search);
   const wall = params.get("wall") || DefaultRoom;
   const isDefaultWall = DefaultRoom === wall;
-  const { transform, resetZoom } = usePinchZoom();
+  const { transform, resetZoom, resetPan } = usePinchZoom();
 
   function setRoom(room: string | null) {
     const url = new URL(window.location.href);
@@ -1010,7 +1115,9 @@ function Main() {
         onChangeWall={setRoom}
         isDefaultWall={isDefaultWall}
         resetZoom={resetZoom}
+        resetPan={resetPan}
         currentZoom={transform.scale}
+        currentPan={{ x: transform.x, y: transform.y }}
       />
     </PlayProvider>
   );
