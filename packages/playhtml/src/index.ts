@@ -68,122 +68,6 @@ type StoreShape = {
 const store = syncedStore<StoreShape>({ play: {} });
 const doc = getYjsDoc(store);
 
-// MIGRATION: Flags and infrastructure for transitioning to SyncedStore-only
-const MIGRATION_FLAGS = {
-  // TESTING: Re-enabled for production data volume testing
-  enableMigration: true,
-  // Log migration progress - ENABLED for testing
-  logMigration: false,
-};
-
-function migrateTagFromYMapToSyncedStore(tag: string): void {
-  if (!MIGRATION_FLAGS.enableMigration) return;
-
-  const startTime = performance.now();
-  console.debug(`[MIGRATION] Starting migration for tag: ${tag}`);
-
-  const tagMap = globalData.get(tag);
-  if (!tagMap) {
-    console.debug(`[MIGRATION] No data found for tag: ${tag}`);
-    return;
-  }
-
-  // Log the size of data we're about to migrate
-  let mapSize = 0;
-  try {
-    tagMap.forEach(() => mapSize++);
-    console.debug(`[MIGRATION] Found ${mapSize} entries for tag: ${tag}`);
-  } catch (error) {
-    console.error(
-      `[MIGRATION ERROR] Failed to count entries for tag ${tag}:`,
-      error
-    );
-    return;
-  }
-
-  // Ensure tag exists in SyncedStore
-  store.play[tag] ??= {};
-
-  let migratedCount = 0;
-  let errorCount = 0;
-
-  try {
-    // Batch all migration operations in a single transaction to prevent excessive broadcasts
-    doc.transact(() => {
-      tagMap.forEach((elementData: unknown, elementId: string) => {
-        try {
-          // Log memory usage for large objects
-          const dataSize = JSON.stringify(elementData).length;
-          if (dataSize > 10000) {
-            console.debug(
-              `[MIGRATION] Large data entry: ${tag}:${elementId} (${dataSize} chars)`
-            );
-          }
-
-          const clonedData = clonePlain(elementData);
-          store.play[tag]![elementId] = clonedData;
-          migratedCount++;
-
-          // Log progress every 1000 items for large datasets
-          if (migratedCount % 1000 === 0) {
-            console.debug(
-              `[MIGRATION] Progress: ${migratedCount}/${mapSize} migrated for ${tag}`
-            );
-          }
-        } catch (error) {
-          errorCount++;
-          console.error(
-            `[MIGRATION ERROR] Failed to migrate ${tag}:${elementId}:`,
-            error
-          );
-        }
-      });
-    });
-  } catch (error) {
-    console.error(`[MIGRATION FATAL] forEach failed for tag ${tag}:`, error);
-    return;
-  }
-
-  const endTime = performance.now();
-  const duration = endTime - startTime;
-
-  if (MIGRATION_FLAGS.logMigration) {
-    console.debug(
-      `[MIGRATION] Completed ${tag}: ${migratedCount} migrated, ${errorCount} errors, ${duration.toFixed(
-        2
-      )}ms`
-    );
-  }
-}
-
-function migrateAllDataFromYMapToSyncedStore(): void {
-  if (!MIGRATION_FLAGS.enableMigration) return;
-
-  // Check if migration has already been completed
-  const migrationComplete = globalData.get("__migration_complete__");
-  if (migrationComplete) {
-    console.debug("[MIGRATION] Migration already completed, skipping");
-    return;
-  }
-
-  console.debug("[MIGRATION] Starting migration from Y.Map to SyncedStore");
-
-  // Migrate all tags (excluding our migration flag)
-  globalData.forEach((_, tag) => {
-    if (tag !== "__migration_complete__") {
-      migrateTagFromYMapToSyncedStore(tag);
-    }
-  });
-
-  // Mark migration as complete so other clients don't run it
-  globalData.set("__migration_complete__", true);
-
-  console.debug(
-    "[MIGRATION] Migration completed. SyncedStore state:",
-    clonePlain(store.play)
-  );
-}
-
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
   const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
@@ -725,8 +609,6 @@ async function initPlayHTML({
       hasSynced = true;
       console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
-      migrateAllDataFromYMapToSyncedStore();
-
       setupElements();
 
       // Mark all elements as ready after sync completes and elements are set up
@@ -741,8 +623,6 @@ async function initPlayHTML({
           );
         } catch (error) {
           console.error("[PLAYHTML] Error during post-sync setup:", error);
-          // Still mark elements as ready even if migration/setup failed
-          markAllElementsAsReady();
         }
       }
 
@@ -1046,8 +926,6 @@ export interface PlayHTMLComponents {
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
   syncedStore: (typeof store)["play"];
-  // TODO: REMOVE AFTER MIGRATION VALIDATED
-  globalData: typeof globalData;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -1076,8 +954,6 @@ export const playhtml: PlayHTMLComponents = {
   deleteElementData,
   setupPlayElementForTag,
   syncedStore: store.play,
-  // TODO: REMOVE AFTER MIGRATION VALIDATED
-  globalData,
   elementHandlers,
   eventHandlers,
   dispatchPlayEvent,
@@ -1363,7 +1239,6 @@ function removePlayElement(element: Element | null) {
  * - SyncedStore data (store.play[tag][elementId])
  * - Observer subscriptions
  * - Element handlers
- * - Legacy globalData entries (if migration hasn't completed)
  *
  * Use this when you want to permanently delete an element's data.
  * For just removing a DOM element while keeping data, use removePlayElement instead.
@@ -1423,23 +1298,6 @@ function deleteElementData(tag: string, elementId: string): void {
   const tagElementHandlers = elementHandlers.get(tag);
   if (tagElementHandlers) {
     tagElementHandlers.delete(elementId);
-  }
-
-  // 5. Remove from legacy globalData if migration hasn't completed
-  // This is a safety net for cleanup during migration or if migration is disabled
-  const migrationComplete = globalData.get("__migration_complete__");
-  if (!migrationComplete) {
-    const legacyTagMap = globalData.get(tag);
-    if (legacyTagMap && legacyTagMap instanceof Y.Map) {
-      try {
-        legacyTagMap.delete(elementId);
-      } catch (error) {
-        console.warn(
-          `[PLAYHTML] Failed to remove legacy data for ${key}:`,
-          error
-        );
-      }
-    }
   }
 
   // 6. Clean up shared reference tracking
