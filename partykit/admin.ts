@@ -1,10 +1,9 @@
-import type * as Party from "partykit/server";
-import { unstable_getYDoc } from "y-partykit";
 import { syncedStore } from "@syncedstore/core";
 import { Buffer } from "node:buffer";
+import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
-import PartyServer from "./party";
+import { PartyServer } from "./party";
 import { docToJson, replaceDocState, encodeDocToBase64 } from "./docUtils";
 
 function compareKeys(
@@ -36,7 +35,7 @@ function compareKeys(
 export class AdminHandler {
   constructor(private context: PartyServer) {}
 
-  async handleRequest(request: Party.Request): Promise<Response> {
+  async handleRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -104,8 +103,8 @@ export class AdminHandler {
     }
   }
 
-  private checkAdminAuth(request: Party.Request): Response | null {
-    const adminToken = process.env.ADMIN_TOKEN;
+  private checkAdminAuth(request: Request): Response | null {
+    const adminToken = env.ADMIN_TOKEN;
     if (adminToken) {
       const url = new URL(request.url);
       const token =
@@ -122,7 +121,7 @@ export class AdminHandler {
     return null;
   }
 
-  private async handleAdminInspect(request: Party.Request): Promise<Response> {
+  private async handleAdminInspect(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
@@ -140,7 +139,7 @@ export class AdminHandler {
         const { data: docData } = await supabase
           .from("documents")
           .select("name, document, created_at")
-          .eq("name", this.context.room.id)
+          .eq("name", this.context.name)
           .maybeSingle();
 
         if (docData?.document) {
@@ -162,7 +161,7 @@ export class AdminHandler {
             JSON.stringify({
               error: "No Y.Doc play data found",
               message: "Room exists but contains no PlayHTML data",
-              roomId: this.context.room.id,
+              roomId: this.context.name,
               documentSize: documentSize || 0,
             }),
             {
@@ -178,7 +177,7 @@ export class AdminHandler {
         ydocData = {
           play: playData,
           awareness: {
-            clientCount: Array.from(this.context.room.getConnections()).length,
+            clientCount: Array.from(this.context.getConnections()).length,
           },
         };
       } catch (error: unknown) {
@@ -192,12 +191,12 @@ export class AdminHandler {
       const resetEpoch = await this.context.getResetEpoch();
 
       const roomData = {
-        roomId: this.context.room.id,
+        roomId: this.context.name,
         subscribers,
         sharedReferences,
         sharedPermissions,
         ydoc: ydocData,
-        connections: Array.from(this.context.room.getConnections()).length,
+        connections: Array.from(this.context.getConnections()).length,
         timestamp: new Date().toISOString(),
         documentSize: documentSize || 0,
         resetEpoch: resetEpoch,
@@ -226,7 +225,7 @@ export class AdminHandler {
     }
   }
 
-  private async handleAdminRawData(request: Party.Request): Promise<Response> {
+  private async handleAdminRawData(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
@@ -235,7 +234,7 @@ export class AdminHandler {
       const { data, error } = await supabase
         .from("documents")
         .select("*")
-        .eq("name", this.context.room.id)
+        .eq("name", this.context.name)
         .maybeSingle();
 
       if (error) {
@@ -252,7 +251,7 @@ export class AdminHandler {
       }
 
       const rawData = {
-        roomId: this.context.room.id,
+        roomId: this.context.name,
         exists: !!data,
         document: data
           ? {
@@ -292,9 +291,7 @@ export class AdminHandler {
     }
   }
 
-  private async handleAdminLiveCompare(
-    request: Party.Request
-  ): Promise<Response> {
+  private async handleAdminLiveCompare(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
@@ -304,7 +301,7 @@ export class AdminHandler {
       const { data: docData } = await supabase
         .from("documents")
         .select("document")
-        .eq("name", this.context.room.id)
+        .eq("name", this.context.name)
         .maybeSingle();
 
       let directData = null;
@@ -314,14 +311,11 @@ export class AdminHandler {
         directData = docToJson(directYDoc);
       }
 
-      // Method 2: Live server approach (using unstable_getYDoc like the running server)
+      // Method 2: Live server approach (using document from the running server)
       let liveData = null;
       let liveDebugInfo: any = {};
       try {
-        const liveYDoc = await unstable_getYDoc(
-          this.context.room,
-          this.context.providerOptions
-        );
+        const liveYDoc = this.context.document;
 
         // Debug the raw Y.Doc state
         const playMap = liveYDoc.getMap("play");
@@ -342,7 +336,7 @@ export class AdminHandler {
       }
 
       const comparison = {
-        roomId: this.context.room.id,
+        roomId: this.context.name,
         timestamp: new Date().toISOString(),
         methods: {
           direct: {
@@ -352,8 +346,7 @@ export class AdminHandler {
             hasData: directData && Object.keys(directData).length > 0,
           },
           live: {
-            description:
-              "unstable_getYDoc from y-partykit (live server method)",
+            description: "Document from y-partykit (live server method)",
             data: liveData,
             hasData:
               liveData && !liveData.error && Object.keys(liveData).length > 0,
@@ -393,21 +386,16 @@ export class AdminHandler {
    * Force save the current live Y.Doc state to database.
    * This manually triggers a save without waiting for the background autosave.
    */
-  private async handleAdminForceSaveLive(
-    request: Party.Request
-  ): Promise<Response> {
+  private async handleAdminForceSaveLive(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
-      const liveYDoc = await unstable_getYDoc(
-        this.context.room,
-        this.context.providerOptions
-      );
+      const liveYDoc = this.context.document;
       const base64 = encodeDocToBase64(liveYDoc);
       const { error } = await supabase.from("documents").upsert(
         {
-          name: this.context.room.id,
+          name: this.context.name,
           document: base64,
         },
         { onConflict: "name" }
@@ -432,7 +420,7 @@ export class AdminHandler {
    * (e.g., via Supabase console or scripts) and we need to sync the live doc.
    */
   private async handleAdminForceReloadLive(
-    request: Party.Request
+    request: Request
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
@@ -442,7 +430,7 @@ export class AdminHandler {
       const { data, error } = await supabase
         .from("documents")
         .select("document")
-        .eq("name", this.context.room.id)
+        .eq("name", this.context.name)
         .maybeSingle();
       if (error) throw new Error(error.message);
       if (!data?.document) {
@@ -486,9 +474,7 @@ export class AdminHandler {
    * This mutates the live doc directly, so the background autosave will
    * naturally persist the same state. No force-reload needed.
    */
-  private async handleAdminSaveEditedData(
-    request: Party.Request
-  ): Promise<Response> {
+  private async handleAdminSaveEditedData(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
@@ -507,14 +493,9 @@ export class AdminHandler {
       }
 
       // Get the live Y.Doc and mutate it directly
-      const liveYDoc = await unstable_getYDoc(
-        this.context.room,
-        this.context.providerOptions
-      );
+      const liveYDoc = this.context.document;
 
-      console.log(
-        `[Admin] Saving edited data for room ${this.context.room.id}`
-      );
+      console.log(`[Admin] Saving edited data for room ${this.context.name}`);
       console.log(
         `[Admin] Edited data keys: ${Object.keys(editedData).length}`
       );
@@ -528,7 +509,7 @@ export class AdminHandler {
 
       const { error } = await supabase.from("documents").upsert(
         {
-          name: this.context.room.id,
+          name: this.context.name,
           document: base64,
         },
         { onConflict: "name" }
@@ -561,7 +542,7 @@ export class AdminHandler {
   }
 
   private async handleAdminRemoveSubscriber(
-    request: Party.Request
+    request: Request
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
@@ -622,9 +603,7 @@ export class AdminHandler {
    *   dryRun?: boolean // If true, only report what would be removed without actually removing
    * }
    */
-  private async handleAdminCleanupOrphans(
-    request: Party.Request
-  ): Promise<Response> {
+  private async handleAdminCleanupOrphans(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
@@ -662,10 +641,7 @@ export class AdminHandler {
       const activeIdSet = new Set(activeIds);
 
       // Load the room document
-      const yDoc = await unstable_getYDoc(
-        this.context.room,
-        this.context.providerOptions
-      );
+      const yDoc = this.context.document;
       const store = syncedStore<{ play: Record<string, any> }>(
         { play: {} },
         yDoc
@@ -734,7 +710,7 @@ export class AdminHandler {
       const base64 = encodeDocToBase64(yDoc);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.context.room.id,
+          name: this.context.name,
           document: base64,
         },
         { onConflict: "name" }
@@ -788,13 +764,11 @@ export class AdminHandler {
    * 4. Save to Supabase, replacing the bloated blob
    * 5. Reload the live server from this new snapshot
    */
-  private async handleAdminHardReset(
-    request: Party.Request
-  ): Promise<Response> {
+  private async handleAdminHardReset(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
-    const roomId = this.context.room.id;
+    const roomId = this.context.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
     try {
@@ -858,12 +832,12 @@ export class AdminHandler {
    * }
    */
   private async handleAdminRestoreRawDocument(
-    request: Party.Request
+    request: Request
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
-    const roomId = this.context.room.id;
+    const roomId = this.context.name;
     console.log(`[Restore Raw] Starting for room: ${roomId}`);
 
     try {

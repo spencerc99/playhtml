@@ -1,7 +1,9 @@
-import type * as Party from "partykit/server";
-import { onConnect, unstable_getYDoc, YPartyKitOptions } from "y-partykit";
+import type * as Party from "partyserver";
+import { getServerByName, routePartykitRequest } from "partyserver";
+import { YServer } from "y-partyserver";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
 import { deepReplaceIntoProxy } from "@playhtml/common";
+import { env } from "cloudflare:workers";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
@@ -41,156 +43,143 @@ import {
   SharedElementPermissions,
 } from "./sharing";
 
-export default class PartyServer implements Party.Server {
-  constructor(public room: Party.Room) {}
-
+export class PartyServer extends YServer {
   // Public flag to pause autosave during administrative resets
   // This prevents the server from overwriting the clean DB state with
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
 
-  // Reuse the exact same options for all Y.Doc access
-  readonly providerOptions: YPartyKitOptions = {
-    load: async () => {
-      // This is called once per "room" when the first user connects
+  override async onLoad(): Promise<void> {
+    // This is called once per "room" when the first user connects
 
-      // Let's make a Yjs document
-      const doc = new Y.Doc();
+    // Load the document from the database
+    const { data, error } = await supabase
+      .from("documents")
+      .select("document")
+      .eq("name", this.name)
+      .maybeSingle();
 
-      // Load the document from the database
-      const { data, error } = await supabase
-        .from("documents")
-        .select("document")
-        .eq("name", this.room.id)
-        .maybeSingle();
+    if (error) {
+      throw new Error(error.message);
+    }
 
-      if (error) {
-        throw new Error(error.message);
-      }
+    if (data) {
+      // If the document exists on the database,
+      // apply it to the Yjs document
+      Y.applyUpdate(
+        this.document,
+        new Uint8Array(Buffer.from(data.document, "base64"))
+      );
+    }
+  }
 
-      if (data) {
-        // If the document exists on the database,
-        // apply it to the Yjs document
-        Y.applyUpdate(
-          doc,
-          new Uint8Array(Buffer.from(data.document, "base64"))
-        );
-      }
+  override async onSave(): Promise<void> {
+    // Skip autosave if we are performing a reset operation
+    if (this.isSkippingSave) {
+      console.log(
+        "[PartyServer] Skipping autosave due to active reset operation"
+      );
+      return;
+    }
 
-      // Return the Yjs document
-      return doc;
-    },
-    callback: {
-      handler: async (doc: Y.Doc) => {
-        // Skip autosave if we are performing a reset operation
-        if (this.isSkippingSave) {
-          console.log(
-            "[PartyServer] Skipping autosave due to active reset operation"
-          );
-          return;
-        }
+    // This is called every few seconds if the document has changed
 
-        // This is called every few seconds if the document has changed
+    // convert the Yjs document to a Uint8Array
+    const content = Y.encodeStateAsUpdate(this.document);
+    const base64Document = Buffer.from(content).toString("base64");
+    const documentSize = base64Document.length;
 
-        // convert the Yjs document to a Uint8Array
-        const content = Y.encodeStateAsUpdate(doc);
-        const base64Document = Buffer.from(content).toString("base64");
-        const documentSize = base64Document.length;
+    // Get current reset epoch for logging and validation
+    const serverResetEpoch = await this.getResetEpoch();
+    const docResetEpoch = getDocResetEpoch(this.document);
 
-        // Get current reset epoch for logging and validation
-        const serverResetEpoch = await this.getResetEpoch();
-        const docResetEpoch = getDocResetEpoch(doc);
+    if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
+      const reason =
+        docResetEpoch === null
+          ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
+          : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
+      console.warn(
+        `[PartyServer] Autosave skipped for room ${this.name}: ${reason}`
+      );
+      return;
+    }
 
-        if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
-          const reason =
-            docResetEpoch === null
-              ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
-              : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
-          console.warn(
-            `[PartyServer] Autosave skipped for room ${this.room.id}: ${reason}`
-          );
-          return;
-        }
+    if (
+      docResetEpoch !== null &&
+      serverResetEpoch !== null &&
+      docResetEpoch > serverResetEpoch
+    ) {
+      console.warn(
+        `[PartyServer] Autosave skipped for room ${this.name}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
+      );
+      return;
+    }
 
-        if (
-          docResetEpoch !== null &&
-          serverResetEpoch !== null &&
-          docResetEpoch > serverResetEpoch
-        ) {
-          console.warn(
-            `[PartyServer] Autosave skipped for room ${this.room.id}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
-          );
-          return;
-        }
+    // Log structured information about the save
+    console.log(
+      `[PartyServer] Autosave: room=${
+        this.name
+      }, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(
+        2
+      )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
+    );
 
-        // Log structured information about the save
-        console.log(
-          `[PartyServer] Autosave: room=${
-            this.room.id
-          }, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(
-            2
-          )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
-        );
-
-        // Save the document to the database
-        const { data: _data, error } = await supabase.from("documents").upsert(
-          {
-            name: this.room.id,
-            document: base64Document,
-          },
-          { onConflict: "name" }
-        );
-
-        if (error) {
-          console.error(
-            `[PartyServer] Autosave failed for room ${this.room.id}:`,
-            error
-          );
-        } else {
-          console.log(
-            `[PartyServer] Autosave succeeded for room ${this.room.id}`
-          );
-        }
+    // Save the document to the database
+    const { data: _data, error } = await supabase.from("documents").upsert(
+      {
+        name: this.name,
+        document: base64Document,
       },
-    },
-  };
+      { onConflict: "name" }
+    );
+
+    if (error) {
+      console.error(
+        `[PartyServer] Autosave failed for room ${this.name}:`,
+        error
+      );
+    } else {
+      console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
+    }
+  }
+
   private observersAttached = false;
   private adminHandler = new AdminHandler(this);
 
   async getSubscribers(): Promise<Subscriber[]> {
-    return (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+    return (await this.ctx.storage.get(STORAGE_KEYS.subscribers)) || [];
   }
 
   async setSubscribers(subscribers: Subscriber[]): Promise<void> {
-    await this.room.storage.put(STORAGE_KEYS.subscribers, subscribers);
+    await this.ctx.storage.put(STORAGE_KEYS.subscribers, subscribers);
   }
 
   async getSharedReferences(): Promise<SharedRefEntry[]> {
-    return (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+    return (await this.ctx.storage.get(STORAGE_KEYS.sharedReferences)) || [];
   }
 
   async setSharedReferences(references: SharedRefEntry[]): Promise<void> {
-    await this.room.storage.put(STORAGE_KEYS.sharedReferences, references);
+    await this.ctx.storage.put(STORAGE_KEYS.sharedReferences, references);
   }
 
   async getSharedPermissions(): Promise<
     Record<string, SharedElementPermissions>
   > {
-    return (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    return (await this.ctx.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
   }
 
   async setSharedPermissions(
     permissions: Record<string, SharedElementPermissions>
   ): Promise<void> {
-    await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+    await this.ctx.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
   }
 
   async getResetEpoch(): Promise<number | null> {
-    return (await this.room.storage.get(STORAGE_KEYS.resetEpoch)) || null;
+    return (await this.ctx.storage.get(STORAGE_KEYS.resetEpoch)) || null;
   }
 
   async setResetEpoch(epoch: number): Promise<void> {
-    await this.room.storage.put(STORAGE_KEYS.resetEpoch, epoch);
+    await this.ctx.storage.put(STORAGE_KEYS.resetEpoch, epoch);
   }
 
   /**
@@ -238,7 +227,7 @@ export default class PartyServer implements Party.Server {
     documentSize: number;
     resetEpoch: number;
   }> {
-    const roomId = this.room.id;
+    const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
     // Lock autosave immediately
@@ -268,7 +257,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.room.id,
+          name: this.name,
           document: updatedBase64,
         },
         { onConflict: "name" }
@@ -286,7 +275,7 @@ export default class PartyServer implements Party.Server {
 
       // Reload the live server from the snapshot
       console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
-      const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const liveYDoc = this.document;
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
       console.log(`[Restore Snapshot] Successfully reloaded live server`);
@@ -296,7 +285,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
 
       // Broadcast a "room-reset" message to all connected clients
-      this.room.broadcast(
+      this.broadcastCustomMessage(
         JSON.stringify({
           type: "room-reset",
           timestamp: resetEpoch,
@@ -308,7 +297,7 @@ export default class PartyServer implements Party.Server {
       );
 
       // FORCE DISCONNECT: Close all connections
-      const connections = [...this.room.getConnections()];
+      const connections = [...this.getConnections()];
       connections.forEach((conn) => {
         try {
           conn.close(4000, "Room Restored by Admin");
@@ -358,13 +347,13 @@ export default class PartyServer implements Party.Server {
     const refs = await this.getSharedReferences();
     if (!subs.length && !refs.length) return;
     const nextAlarm = Date.now() + DEFAULT_PRUNE_INTERVAL_MS;
-    const previousAlarm = await this.room.storage.getAlarm?.();
+    const previousAlarm = await this.ctx.storage.getAlarm?.();
     if (
       previousAlarm === null ||
       previousAlarm === undefined ||
       nextAlarm < previousAlarm
     ) {
-      await this.room.storage.setAlarm?.(nextAlarm);
+      await this.ctx.storage.setAlarm?.(nextAlarm);
     }
   }
 
@@ -425,16 +414,15 @@ export default class PartyServer implements Party.Server {
   private async subscribeAndHydrate(
     entries: Array<{ sourceRoomId: string; elementIds: string[] }>
   ): Promise<void> {
-    const mainParty = this.room.context.parties.main;
     // Subscribe and cache allowedIds per source in sharedReferences
     await Promise.all(
       entries.map(async ({ sourceRoomId, elementIds }) => {
         if (!elementIds?.length) return;
         try {
-          const sourceRoom = mainParty.get(sourceRoomId);
+          const sourceRoom = await getServerByName(env.Main, sourceRoomId);
           const subscribeRequest: SubscribeRequest = {
             action: "subscribe",
-            consumerRoomId: this.room.id,
+            consumerRoomId: this.name,
             elementIds,
           };
           await sourceRoom.fetch({
@@ -514,33 +502,31 @@ export default class PartyServer implements Party.Server {
     });
   }
 
-  async onMessage(
-    message: string | ArrayBuffer | ArrayBufferView,
-    sender: Party.Connection<unknown>
+  override async onCustomMessage(
+    sender: Party.Connection<unknown>,
+    message: string
   ): Promise<void> {
-    if (typeof message === "string") {
-      try {
-        const parsed = JSON.parse(message);
+    try {
+      const parsed = JSON.parse(message);
 
-        if (parsed.type === "add-shared-reference") {
-          // Handle dynamic addition of shared reference
-          // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
-          await this.handleAddSharedReference(parsed.reference, sender);
-        } else if (parsed.type === "export-permissions") {
-          // Handle individual permission requests
-          await this.handleExportPermissions(parsed.elementIds, sender);
-        } else if (parsed.type === "register-shared-element") {
-          // Handle dynamic registration of shared source element
-          // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
-          await this.handleRegisterSharedElement(parsed.element, sender);
-        } else {
-          // Broadcast other messages normally
-          this.room.broadcast(message);
-        }
-      } catch (error) {
-        // If not valid JSON, broadcast as-is (existing behavior)
-        this.room.broadcast(message);
+      if (parsed.type === "add-shared-reference") {
+        // Handle dynamic addition of shared reference
+        // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
+        await this.handleAddSharedReference(parsed.reference, sender);
+      } else if (parsed.type === "export-permissions") {
+        // Handle individual permission requests
+        await this.handleExportPermissions(parsed.elementIds, sender);
+      } else if (parsed.type === "register-shared-element") {
+        // Handle dynamic registration of shared source element
+        // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
+        await this.handleRegisterSharedElement(parsed.element, sender);
+      } else {
+        // Broadcast other messages normally
+        this.broadcastCustomMessage(message);
       }
+    } catch (error) {
+      // If not valid JSON, broadcast as-is (existing behavior)
+      this.broadcastCustomMessage(message);
     }
   }
 
@@ -573,7 +559,7 @@ export default class PartyServer implements Party.Server {
     }
 
     // Send permissions back to the requesting client
-    sender.send(JSON.stringify({ permissions: filtered }));
+    this.sendCustomMessage(sender, JSON.stringify({ permissions: filtered }));
   }
 
   private async handleRegisterSharedElement(
@@ -597,7 +583,7 @@ export default class PartyServer implements Party.Server {
 
     // If new shared element just registered, proactively fanout to subscribers who requested it
     try {
-      const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const yDoc = this.document;
       const play = yDoc.getMap("play") as Y.Map<any>;
       // Find the tag containing this elementId
       let subtreesForNew: Record<string, Record<string, any>> | null = null;
@@ -613,17 +599,16 @@ export default class PartyServer implements Party.Server {
 
       const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
-      const mainParty = this.room.context.parties.main;
       const currentEpoch = await this.getResetEpoch();
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.includes(element.elementId)) return;
-          const consumerRoom = mainParty.get(consumerRoomId);
+          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
           try {
             const applyRequest: ApplySubtreesImmediateRequest = {
               action: "apply-subtrees-immediate",
               subtrees: ensureExists(subtreesForNew),
-              sender: this.room.id,
+              sender: this.name,
               originKind: "source",
               resetEpoch: currentEpoch ?? null,
             };
@@ -638,7 +623,10 @@ export default class PartyServer implements Party.Server {
     } catch {}
   }
 
-  async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
+  override async onConnect(
+    connection: Party.Connection,
+    ctx: Party.ConnectionContext
+  ) {
     // Check reset epoch from client params and enforce if stale
     let shouldForceReset = false;
     let serverResetEpoch: number | null = null;
@@ -702,12 +690,13 @@ export default class PartyServer implements Party.Server {
       await this.setSharedPermissions(permissionsByElementId);
     }
 
-    await onConnect(connection, this.room, this.providerOptions);
+    await super.onConnect(connection, ctx);
 
     // If reset is needed, send the message after connection is established
     if (shouldForceReset && serverResetEpoch !== null) {
       // Send room-reset message - client will reload when it receives this
-      connection.send(
+      this.sendCustomMessage(
+        connection,
         JSON.stringify({
           type: "room-reset",
           timestamp: serverResetEpoch,
@@ -723,7 +712,7 @@ export default class PartyServer implements Party.Server {
     await this.attachImmediateBridgeObservers();
   }
 
-  async onRequest(request: Party.Request): Promise<Response> {
+  override async onRequest(request: Request): Promise<Response> {
     try {
       // Handle CORS preflight requests
       if (request.method === "OPTIONS") {
@@ -809,7 +798,7 @@ export default class PartyServer implements Party.Server {
         // Applies provided subtrees immediately and marks origin to suppress echo
         const { subtrees, sender, originKind } = body;
 
-        const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+        const yDoc = this.document;
         const subscribers = await this.getSubscribers();
         const sharedRefs = await this.getSharedReferences();
         const senderResetEpoch =
@@ -902,7 +891,6 @@ export default class PartyServer implements Party.Server {
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
           const subscribers = await this.getSubscribers();
-          const mainParty = this.room.context.parties.main;
           const currentEpoch = await this.getResetEpoch();
           await Promise.all(
             subscribers.map(async ({ consumerRoomId, elementIds }) => {
@@ -926,12 +914,15 @@ export default class PartyServer implements Party.Server {
                 toSend = filteredSubtrees;
                 if (!Object.keys(toSend).length) return;
               }
-              const consumerRoom = mainParty.get(consumerRoomId);
+              const consumerRoom = await getServerByName(
+                env.Main,
+                consumerRoomId
+              );
               try {
                 const applyRequest: ApplySubtreesImmediateRequest = {
                   action: "apply-subtrees-immediate",
                   subtrees: toSend,
-                  sender: this.room.id,
+                  sender: this.name,
                   originKind: "source",
                   resetEpoch: currentEpoch ?? null,
                 };
@@ -979,7 +970,7 @@ export default class PartyServer implements Party.Server {
     afterSize: number;
     resetEpoch: number;
   }> {
-    const roomId = this.room.id;
+    const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
     // Lock autosave immediately
@@ -987,7 +978,7 @@ export default class PartyServer implements Party.Server {
 
     try {
       // Get current live doc state
-      const liveYDoc = await unstable_getYDoc(this.room, this.providerOptions);
+      const liveYDoc = this.document;
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       // Extract current state as JSON
@@ -1043,7 +1034,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Saving fresh doc to database...`);
       const { error: saveError } = await supabase.from("documents").upsert(
         {
-          name: this.room.id,
+          name: this.name,
           document: freshBase64,
         },
         { onConflict: "name" }
@@ -1070,7 +1061,7 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Set resetEpoch: ${resetEpoch}`);
 
       // Broadcast a "room-reset" message to all connected clients
-      this.room.broadcast(
+      this.broadcastCustomMessage(
         JSON.stringify({
           type: "room-reset",
           timestamp: resetEpoch,
@@ -1081,7 +1072,7 @@ export default class PartyServer implements Party.Server {
 
       // FORCE DISCONNECT: Close all connections to ensure no lingering clients
       // push their old state back to the server
-      const connections = [...this.room.getConnections()];
+      const connections = [...this.getConnections()];
       connections.forEach((conn) => {
         try {
           conn.close(4000, "Room Reset by Admin");
@@ -1132,7 +1123,7 @@ export default class PartyServer implements Party.Server {
   }
 
   // PartyKit Alarm: invoked when storage alarm rings
-  async onAlarm(): Promise<void> {
+  override async onAlarm(): Promise<void> {
     try {
       const subscribers = await this.getSubscribers();
 
@@ -1172,7 +1163,7 @@ export default class PartyServer implements Party.Server {
       const subs = await this.getSubscribers();
       const refs = await this.getSharedReferences();
       if (subs.length || refs.length) {
-        await this.room.storage.setAlarm?.(
+        await this.ctx.storage.setAlarm?.(
           Date.now() + DEFAULT_PRUNE_INTERVAL_MS
         );
       }
@@ -1182,7 +1173,7 @@ export default class PartyServer implements Party.Server {
   // Attach immediate observers to this room's doc to bridge changes without waiting for save callback
   private async attachImmediateBridgeObservers(): Promise<void> {
     if (this.observersAttached) return;
-    const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+    const yDoc = this.document;
 
     // Handle source room updates for shared elements: on change, push to each subscribed consumer immediately
     yDoc.on("update", async (_update: Uint8Array, origin: any) => {
@@ -1193,7 +1184,6 @@ export default class PartyServer implements Party.Server {
       if (!subscribers.length) return;
 
       const permissions = await this.getSharedPermissions();
-      const mainParty = this.room.context.parties.main;
       // Export all subtrees of interest and push immediately
       const currentEpoch = await this.getResetEpoch();
       await Promise.all(
@@ -1207,11 +1197,11 @@ export default class PartyServer implements Party.Server {
             new Set(sharedElementIds)
           );
           if (!Object.keys(subtrees).length) return;
-          const consumerRoom = mainParty.get(consumerRoomId);
+          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
           const applyRequest: ApplySubtreesImmediateRequest = {
             action: "apply-subtrees-immediate",
             subtrees,
-            sender: this.room.id,
+            sender: this.name,
             originKind: "source",
             resetEpoch: currentEpoch ?? null,
           };
@@ -1227,18 +1217,17 @@ export default class PartyServer implements Party.Server {
     yDoc.on("update", async (_update: Uint8Array, origin: any) => {
       // Ignore updates we just applied from a source push to avoid echo
       if (origin === ORIGIN_S2C) return;
-      const mainParty = this.room.context.parties.main;
       const refs = await this.getSharedReferences();
       const currentEpoch = await this.getResetEpoch();
       for (const { sourceRoomId, elementIds } of refs) {
         if (!elementIds?.length) continue;
         const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
         if (!Object.keys(subtrees).length) continue;
-        const sourceRoom = mainParty.get(sourceRoomId);
+        const sourceRoom = await getServerByName(env.Main, sourceRoomId);
         const applyRequest: ApplySubtreesImmediateRequest = {
           action: "apply-subtrees-immediate",
           subtrees,
-          sender: this.room.id,
+          sender: this.name,
           originKind: "consumer",
           resetEpoch: currentEpoch ?? null,
         };
@@ -1252,3 +1241,13 @@ export default class PartyServer implements Party.Server {
     this.observersAttached = true;
   }
 }
+
+export default {
+  // Set up your fetch handler to use configured Servers
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return (
+      (await routePartykitRequest(request, env)) ||
+      new Response("Not Found", { status: 404 })
+    );
+  },
+} satisfies ExportedHandler<Env>;

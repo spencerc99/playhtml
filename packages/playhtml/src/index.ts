@@ -1,6 +1,6 @@
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
-import YPartyKitProvider from "y-partykit/provider";
+import YProvider from "y-partyserver/provider";
 import "./style.scss";
 import {
   ElementData,
@@ -138,8 +138,8 @@ function normalizeRoomId(host: string, roomString: string): string {
   return encodeURIComponent(normalized);
 }
 
-let yprovider: YPartyKitProvider;
-let cursorProvider: YPartyKitProvider | null = null;
+let yprovider: YProvider;
+let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -185,11 +185,11 @@ function handleNewSharedReference(element: HTMLElement): void {
   discoveredSharedReferences.add(referenceKey);
 
   // Send updated shared references to the server if we're connected
-  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+  if (yprovider?.wsconnected) {
     try {
       const newReference = { domain, path, elementId };
       // Send individual reference update
-      yprovider.ws.send(
+      yprovider.sendMessage(
         JSON.stringify({
           type: "add-shared-reference",
           reference: newReference,
@@ -197,7 +197,7 @@ function handleNewSharedReference(element: HTMLElement): void {
       );
 
       // Request permissions for this specific element
-      yprovider.ws.send(
+      yprovider.sendMessage(
         JSON.stringify({
           type: "export-permissions",
           elementIds: [elementId],
@@ -231,7 +231,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   sharedPermissions.set(elementId, permissionMode);
 
   // Send to server if connected
-  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+  if (yprovider?.wsconnected) {
     try {
       // Register this element as shared with the server
       const sharedElement = {
@@ -240,7 +240,7 @@ function handleNewSharedElement(element: HTMLElement): void {
         path: window.location.pathname,
       };
 
-      yprovider.ws.send(
+      yprovider.sendMessage(
         JSON.stringify({
           type: "register-shared-element",
           element: sharedElement,
@@ -381,21 +381,13 @@ function getTagTypes(): (TagType | string)[] {
 }
 
 function sendPlayEvent(eventMessage: EventMessage) {
-  if (!yprovider.ws) {
-    return;
-  }
-  yprovider.ws.send(JSON.stringify(eventMessage));
+  yprovider.sendMessage(JSON.stringify(eventMessage));
 }
 
-function onMessage(evt: MessageEvent) {
-  // ignore non-relevant events
-  if (evt.data instanceof Blob) {
-    return;
-  }
-
+function onMessage(data: string) {
   let message: any;
   try {
-    message = JSON.parse(evt.data);
+    message = JSON.parse(data);
   } catch (err) {
     return;
   }
@@ -517,7 +509,7 @@ async function initPlayHTML({
     : null;
 
   // Create provider with shared element parameters
-  yprovider = new YPartyKitProvider(partykitHost, room, doc, {
+  yprovider = new YProvider(partykitHost, room, doc, {
     params: {
       sharedElements: JSON.stringify(sharedElements),
       sharedReferences: JSON.stringify(sharedReferences),
@@ -553,7 +545,7 @@ async function initPlayHTML({
       // Only create separate provider if cursor room is different from element room
       if (cursorRoom !== room) {
         const cursorDoc = new Y.Doc();
-        cursorProvider = new YPartyKitProvider(
+        cursorProvider = new YProvider(
           partykitHost,
           cursorRoom,
           cursorDoc
@@ -601,7 +593,7 @@ async function initPlayHTML({
       if (!connected) {
         console.error("Issue connecting to yjs...");
       } else if (connected) {
-        yprovider.ws!.addEventListener("message", onMessage);
+        yprovider.on("custom-message", onMessage);
       }
       if (hasSynced) {
         return;
@@ -618,7 +610,7 @@ async function initPlayHTML({
       if (sharedReferences.length > 0) {
         try {
           const elementIds = sharedReferences.map((r) => r.elementId);
-          yprovider.ws?.send(
+          yprovider.sendMessage(
             JSON.stringify({ type: "export-permissions", elementIds })
           );
         } catch (error) {

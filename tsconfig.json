@@ -6,7 +6,7 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "module": "esnext",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -26,7 +26,7 @@
       "@playhtml/common": ["packages/common/src"]
     }
   },
-  "include": ["partykit"],
+  "include": ["partykit", "worker-configuration.d.ts"],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",
