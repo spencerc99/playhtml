@@ -402,11 +402,16 @@ function onMessage(evt: MessageEvent) {
 
   // Handle system messages
   if (message.type === "room-reset") {
-    console.warn("[playhtml] Room was reset by admin. Reloading to sync...");
+    console.warn(
+      `[PLAYHTML] Received room-reset message with epoch=${message.resetEpoch}. Storing and reloading...`
+    );
     // Store the reset epoch if provided
     if (message.resetEpoch) {
       const storageKey = `playhtml_resetEpoch_${__currentRoomId}`;
       localStorage.setItem(storageKey, String(message.resetEpoch));
+      console.log(
+        `[PLAYHTML] Stored resetEpoch=${message.resetEpoch} in localStorage key=${storageKey}`
+      );
     }
     // Force reload to fetch fresh state
     window.location.reload();
@@ -516,6 +521,10 @@ async function initPlayHTML({
     ? parseInt(storedResetEpoch, 10)
     : null;
 
+  console.log(
+    `[PLAYHTML] Connecting with clientResetEpoch=${clientResetEpoch} (stored: ${storedResetEpoch}) to room=${room}`
+  );
+
   // Create provider with shared element parameters
   yprovider = new YPartyKitProvider(partykitHost, room, doc, {
     params: {
@@ -537,6 +546,13 @@ async function initPlayHTML({
   queueMicrotask(() => {
     if (yprovider.ws) {
       yprovider.ws.addEventListener("message", onMessage);
+      console.log(
+        `[PLAYHTML] Attached onMessage handler to WebSocket, readyState=${yprovider.ws.readyState}`
+      );
+    } else {
+      console.warn(
+        "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached"
+      );
     }
   });
 

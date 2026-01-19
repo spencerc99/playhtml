@@ -639,11 +639,16 @@ export default class PartyServer implements Party.Server {
   }
 
   async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
+    const url = new URL(ctx.request.url);
+    const connectionId = connection.id;
+    console.log(
+      `[PartyServer] onConnect: connectionId=${connectionId}, room=${this.room.id}`
+    );
+
     // Check reset epoch from client params and enforce if stale
     let shouldForceReset = false;
     let serverResetEpoch: number | null = null;
     try {
-      const url = new URL(ctx.request.url);
       const clientResetEpochParam = url.searchParams.get("clientResetEpoch");
       const clientResetEpoch =
         clientResetEpochParam !== null
@@ -652,24 +657,56 @@ export default class PartyServer implements Party.Server {
 
       serverResetEpoch = await this.getResetEpoch();
 
+      console.log(
+        `[PartyServer] Epoch check: client=${clientResetEpoch}, server=${serverResetEpoch}, connectionId=${connectionId}`
+      );
+
       // If server has a reset epoch and client's is stale (or missing), mark for reset
       if (this.isEpochStale(clientResetEpoch, serverResetEpoch)) {
         console.log(
-          `[PartyServer] Client reset epoch (${clientResetEpoch}) is stale compared to server (${serverResetEpoch}). Will force reload.`
+          `[PartyServer] Client reset epoch (${clientResetEpoch}) is stale compared to server (${serverResetEpoch}). Will force reload. connectionId=${connectionId}`
         );
         shouldForceReset = true;
       } else if (clientResetEpoch !== null && serverResetEpoch !== null) {
         console.log(
-          `[PartyServer] Client reset epoch (${clientResetEpoch}) matches server (${serverResetEpoch}). Connection allowed.`
+          `[PartyServer] Client reset epoch (${clientResetEpoch}) matches server (${serverResetEpoch}). Connection allowed. connectionId=${connectionId}`
+        );
+      } else {
+        console.log(
+          `[PartyServer] No epoch validation needed (server=${serverResetEpoch}). Connection allowed. connectionId=${connectionId}`
         );
       }
     } catch (error) {
       // If epoch check fails, log but don't block connection (fail open for backwards compatibility)
       console.warn(
-        `[PartyServer] Failed to check reset epoch on connect:`,
+        `[PartyServer] Failed to check reset epoch on connect (connectionId=${connectionId}):`,
         error
       );
     }
+
+    // If client epoch is stale, immediately send reset message and return early
+    // Do NOT attempt Y.js sync with stale clients as it may fail or sync incorrect state
+    if (shouldForceReset && serverResetEpoch !== null) {
+      console.log(
+        `[PartyServer] Rejecting stale client connection (connectionId=${connectionId}), sending room-reset message with epoch=${serverResetEpoch}`
+      );
+      const resetMessage = JSON.stringify({
+        type: "room-reset",
+        timestamp: serverResetEpoch,
+        resetEpoch: serverResetEpoch,
+      });
+      connection.send(resetMessage);
+      console.log(
+        `[PartyServer] Sent room-reset message to connectionId=${connectionId}, returning early (no Y.js sync). Client will reload and reconnect.`
+      );
+      // Don't proceed with normal Y.js connection setup
+      // Client will reload after receiving the message, closing the connection naturally
+      return;
+    }
+
+    console.log(
+      `[PartyServer] Proceeding with normal Y.js connection setup for connectionId=${connectionId}`
+    );
 
     // Opportunistically schedule an alarm if subscribers exist
     await this.ensureAlarmIfSubscribersPresent();
@@ -703,21 +740,6 @@ export default class PartyServer implements Party.Server {
     }
 
     await onConnect(connection, this.room, this.providerOptions);
-
-    // If reset is needed, send the message after connection is established
-    if (shouldForceReset && serverResetEpoch !== null) {
-      // Send room-reset message - client will reload when it receives this
-      connection.send(
-        JSON.stringify({
-          type: "room-reset",
-          timestamp: serverResetEpoch,
-          resetEpoch: serverResetEpoch,
-        })
-      );
-      console.log(
-        `[PartyServer] Sent room-reset message to client with stale epoch`
-      );
-    }
 
     // Attach immediate-update observers once
     await this.attachImmediateBridgeObservers();
