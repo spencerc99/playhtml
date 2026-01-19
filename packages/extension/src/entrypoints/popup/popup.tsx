@@ -5,6 +5,7 @@ import { Inventory } from "../../components/Inventory";
 import { PlayerIdentityCard } from "../../components/PlayerIdentityCard";
 import { SiteStatus } from "../../components/SiteStatus";
 import { QuickActions } from "../../components/QuickActions";
+import { Collections } from "../../components/Collections";
 import { PlayerIdentity, GameInventory, InventoryItem, PlayHTMLStatus } from "../../types";
 
 function PlayHTMLPopup() {
@@ -23,7 +24,7 @@ function PlayHTMLPopup() {
     totalItems: 0,
     lastUpdated: 0,
   });
-  const [currentView, setCurrentView] = useState<"main" | "inventory">("main");
+  const [currentView, setCurrentView] = useState<"main" | "inventory" | "collections">("main");
 
   useEffect(() => {
     loadPlayerData();
@@ -208,6 +209,14 @@ function PlayHTMLPopup() {
     );
   }
 
+  if (currentView === "collections") {
+    return (
+      <Collections
+        onBack={() => setCurrentView("main")}
+      />
+    );
+  }
+
   return (
     <div
       style={{
@@ -240,6 +249,7 @@ function PlayHTMLPopup() {
           onTestConnection={pingContentScript}
           onPickElement={activateElementPicker}
           onViewInventory={() => setCurrentView("inventory")}
+          onViewCollections={() => setCurrentView("collections")}
           inventory={inventory}
         />
       </main>
