@@ -549,6 +549,7 @@ const AdminConsole: React.FC = () => {
     "playhtml-admin-backup-path",
     null
   );
+  const [previewUrl, setPreviewUrl] = useState<string>("");
 
   // Cleanup section state
   const [selectedCleanupTag, setSelectedCleanupTag] =
@@ -696,6 +697,49 @@ const AdminConsole: React.FC = () => {
       const msg = error instanceof Error ? error.message : String(error);
       return { valid: false, error: msg };
     }
+  };
+
+  // Derive page URL from room ID
+  const derivePageUrlFromRoomId = (roomId: string): string => {
+    const decoded = decodeURIComponent(roomId);
+    const dashIndex = decoded.indexOf("-/");
+    if (dashIndex === -1) {
+      // Domain-only room (no path)
+      return `https://${decoded}/`;
+    }
+    const host = decoded.substring(0, dashIndex);
+    const path = decoded.substring(dashIndex + 1); // Skip the "-" separator
+    const protocol = host.includes("localhost") ? "http" : "https";
+    return `${protocol}://${host}${path}`;
+  };
+
+  // Handle preview button click
+  const handlePreview = () => {
+    const result = validateAndFormatJson(editableJson);
+    if (!result.valid) {
+      alert(`Cannot preview invalid JSON: ${result.error}`);
+      return;
+    }
+
+    // Store preview data in localStorage
+    localStorage.setItem(
+      "playhtml-preview-data",
+      JSON.stringify({
+        roomId: currentRoomId,
+        data: JSON.parse(editableJson),
+        timestamp: Date.now(),
+      })
+    );
+
+    // Determine target URL
+    const targetUrl = previewUrl || derivePageUrlFromRoomId(currentRoomId);
+    const url = new URL(targetUrl);
+    url.searchParams.set("__playhtml_preview__", "true");
+
+    // Open in popup window
+    window.open(url.toString(), "_blank", "width=1200,height=800");
+
+    addLog("info", `Opened preview window for: ${targetUrl}`);
   };
 
   // Load stored auth on mount and handle browser navigation
@@ -2812,30 +2856,85 @@ const AdminConsole: React.FC = () => {
                       }}
                       placeholder="Load data from one of the buttons above, or paste JSON here..."
                     />
-                    <button
-                      className="tool-btn"
-                      onClick={() => {
-                        if (!editableJson.trim()) {
-                          alert("Please enter JSON data first");
-                          return;
-                        }
-                        // Validate before saving
-                        const result = validateAndFormatJson(editableJson);
-                        if (!result.valid) {
-                          setJsonError(result.error || "Invalid JSON");
-                          alert(`❌ Cannot save invalid JSON: ${result.error}`);
-                          return;
-                        }
-                        setJsonError("");
-                        const ok = confirm(
-                          "Save this edited data to the database? This will overwrite the current database state."
-                        );
-                        if (ok) saveEditedDataToDb(editableJson);
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        alignItems: "flex-start",
+                        marginBottom: "10px",
                       }}
-                      disabled={!editableJson.trim()}
                     >
-                      💾 Save Edited Data to Database
-                    </button>
+                      <div style={{ flex: 1 }}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: "0.85em",
+                            color: "#666",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          Preview URL (optional - auto-derived from room if
+                          empty):
+                        </label>
+                        <input
+                          type="text"
+                          value={previewUrl}
+                          onChange={(e) => setPreviewUrl(e.target.value)}
+                          placeholder={
+                            currentRoomId
+                              ? derivePageUrlFromRoomId(currentRoomId)
+                              : "e.g., https://example.com/page"
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "8px",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                            fontSize: "0.9em",
+                            fontFamily: "monospace",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        className="tool-btn"
+                        onClick={handlePreview}
+                        disabled={!editableJson.trim()}
+                        style={{
+                          background: "#4299e1",
+                          color: "white",
+                        }}
+                      >
+                        👁️ Preview in New Window
+                      </button>
+                      <button
+                        className="tool-btn"
+                        onClick={() => {
+                          if (!editableJson.trim()) {
+                            alert("Please enter JSON data first");
+                            return;
+                          }
+                          // Validate before saving
+                          const result = validateAndFormatJson(editableJson);
+                          if (!result.valid) {
+                            setJsonError(result.error || "Invalid JSON");
+                            alert(
+                              `❌ Cannot save invalid JSON: ${result.error}`
+                            );
+                            return;
+                          }
+                          setJsonError("");
+                          const ok = confirm(
+                            "Save this edited data to the database? This will overwrite the current database state."
+                          );
+                          if (ok) saveEditedDataToDb(editableJson);
+                        }}
+                        disabled={!editableJson.trim()}
+                      >
+                        💾 Save Edited Data to Database
+                      </button>
+                    </div>
                   </div>
                 </>
               )}

@@ -447,6 +447,7 @@ function onMessage(evt: MessageEvent) {
 let hasSynced = false;
 let firstSetup = true;
 let isDevelopmentMode = false;
+let isPreviewMode = false;
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -460,6 +461,63 @@ let isDevelopmentMode = false;
 
 let __currentRoomId = "";
 let __currentHost = "";
+
+/**
+ * Initialize playhtml in preview mode with static data (no server connection).
+ * Used by the admin console to preview data changes before saving.
+ * 
+ * @param previewData - The data to populate the store with, in format: { tag: { elementId: data } }
+ */
+async function initPreviewMode(
+  previewData: Record<string, Record<string, unknown>>
+): Promise<void> {
+  if (!firstSetup || "playhtml" in window) {
+    console.error("playhtml already set up! ignoring");
+    return;
+  }
+
+  // @ts-ignore
+  window.playhtml = playhtml;
+
+  console.log(
+    `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
+࿂࿂࿂࿂  ࿂    ࿂    ࿂    ࿂    ࿂  ࿂࿂࿂࿂
+࿂࿂࿂࿂ PLAYHTML PREVIEW MODE    ࿂࿂࿂࿂
+࿂࿂࿂࿂  Read-only, no server    ࿂࿂࿂࿂
+࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
+࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
+  );
+
+  console.log("[PLAYHTML PREVIEW MODE] - Data is read-only");
+
+  // Populate SyncedStore directly with preview data (no server connection)
+  for (const [tag, tagData] of Object.entries(previewData)) {
+    store.play[tag] = {};
+    for (const [elementId, data] of Object.entries(
+      tagData as Record<string, unknown>
+    )) {
+      // Clone to avoid reference issues
+      store.play[tag]![elementId] = clonePlain(data);
+    }
+  }
+
+  // Mark as synced so elements can be set up
+  hasSynced = true;
+
+  // Import default styles
+  const playStyles = document.createElement("link");
+  playStyles.rel = "stylesheet";
+  playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
+  document.head.appendChild(playStyles);
+
+  // Set up elements with the preview data
+  setupElements();
+
+  // Mark all elements as ready
+  markAllElementsAsReady();
+
+  firstSetup = false;
+}
 
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
@@ -920,6 +978,7 @@ function setupElements(): void {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
+  initPreviewMode: typeof initPreviewMode;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
@@ -948,6 +1007,7 @@ export interface PlayHTMLComponents {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  initPreviewMode,
   setupPlayElements: setupElements,
   setupPlayElement,
   removePlayElement,

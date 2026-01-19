@@ -76,8 +76,43 @@ export function PlayProvider({
   }, [pathname, search]);
 
   const [hasSynced, setHasSynced] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   useEffect(() => {
+    // Check for preview mode
+    const params = new URLSearchParams(window.location.search);
+    const isPreview = params.get("__playhtml_preview__") === "true";
+
+    if (isPreview) {
+      // Preview mode: load data from localStorage
+      const previewJson = localStorage.getItem("playhtml-preview-data");
+      if (previewJson) {
+        try {
+          const { data } = JSON.parse(previewJson);
+          setIsPreviewMode(true);
+          playhtml.initPreviewMode(data).then(
+            () => {
+              setHasSynced(true);
+            },
+            (err) => {
+              console.error("[PlayProvider] Preview mode init failed:", err);
+              setHasSynced(true);
+            }
+          );
+          return;
+        } catch (e) {
+          console.error("[PlayProvider] Failed to parse preview data:", e);
+          // Fall through to normal initialization
+        }
+      } else {
+        console.warn(
+          "[PlayProvider] Preview mode requested but no preview data found in localStorage"
+        );
+        // Fall through to normal initialization
+      }
+    }
+
+    // Normal initialization
     playhtml.init(initOptions).then(
       () => {
         setHasSynced(true);
@@ -162,6 +197,27 @@ export function PlayProvider({
         cursors: cursorsState,
       }}
     >
+      {isPreviewMode && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: "#ff6b35",
+            color: "white",
+            padding: "12px 20px",
+            textAlign: "center",
+            fontWeight: "bold",
+            fontSize: "14px",
+            zIndex: 999999,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+          }}
+        >
+          👁️ PREVIEW MODE - Read-only, not connected to server
+        </div>
+      )}
       {children}
     </PlayContext.Provider>
   );
