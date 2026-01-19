@@ -1,4 +1,6 @@
 import browser from "webextension-polyfill";
+import { CollectorManager } from "../collectors/CollectorManager";
+import { CursorCollector } from "../collectors/CursorCollector";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -869,15 +871,29 @@ export default defineContentScript({
 
     // Initialize extension when DOM is ready
     let extensionInstance: PlayHTMLExtension | null = null;
+    let collectorManager: CollectorManager | null = null;
+
+    const initializeCollectors = async () => {
+      collectorManager = new CollectorManager();
+      
+      // Register collectors
+      const cursorCollector = new CursorCollector();
+      collectorManager.registerCollector(cursorCollector);
+      
+      // Initialize manager (loads saved enabled state)
+      await collectorManager.init();
+    };
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
         extensionInstance = new PlayHTMLExtension();
         extensionInstance.init();
+        initializeCollectors().catch(console.error);
       });
     } else {
       extensionInstance = new PlayHTMLExtension();
       extensionInstance.init();
+      initializeCollectors().catch(console.error);
     }
 
     // Listen for messages from popup/devtools
@@ -902,6 +918,31 @@ export default defineContentScript({
           extensionInstance?.activateElementPicker();
           sendResponse({ success: true });
           return true; // Keep message channel open for async response
+        }
+
+        // Collector management messages
+        if (message.type === "GET_COLLECTOR_STATUSES") {
+          const statuses = collectorManager?.getCollectorStatuses() || [];
+          sendResponse({ statuses });
+          return true;
+        }
+
+        if (message.type === "ENABLE_COLLECTOR") {
+          collectorManager?.enableCollector(message.collectorType).then(() => {
+            sendResponse({ success: true });
+          }).catch((error) => {
+            sendResponse({ success: false, error: error.message });
+          });
+          return true;
+        }
+
+        if (message.type === "DISABLE_COLLECTOR") {
+          collectorManager?.disableCollector(message.collectorType).then(() => {
+            sendResponse({ success: true });
+          }).catch((error) => {
+            sendResponse({ success: false, error: error.message });
+          });
+          return true;
         }
 
         return; // Don't keep the channel open for other message types

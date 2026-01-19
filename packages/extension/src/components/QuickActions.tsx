@@ -5,13 +5,15 @@ interface QuickActionsProps {
   onTestConnection: () => void;
   onPickElement: () => void;
   onViewInventory: () => void;
+  onViewCollections: () => void;
   inventory: GameInventory;
 }
 
 export function QuickActions({ 
   onTestConnection, 
   onPickElement, 
-  onViewInventory, 
+  onViewInventory,
+  onViewCollections,
   inventory 
 }: QuickActionsProps) {
   return (
@@ -63,6 +65,20 @@ export function QuickActions({
           }}
         >
           View Inventory ({inventory.totalItems})
+        </button>
+        <button
+          onClick={onViewCollections}
+          style={{
+            padding: "8px 12px",
+            background: "#10b981",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            fontSize: "12px",
+            cursor: "pointer",
+          }}
+        >
+          Collections
         </button>
       </div>
     </section>
