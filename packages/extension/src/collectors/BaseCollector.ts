@@ -82,6 +82,8 @@ export abstract class BaseCollector<T = unknown> {
     // Emit to buffer for archival
     if (this.onEmitCallback) {
       this.onEmitCallback(data);
+    } else {
+      console.warn(`[BaseCollector] No emit callback set for ${this.type}`);
     }
     
     // Emit to real-time stream (if applicable)

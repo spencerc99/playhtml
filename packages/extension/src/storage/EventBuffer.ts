@@ -1,11 +1,12 @@
 import type { CollectionEvent, CollectionEventType } from '../collectors/types';
 import { getParticipantId, getSessionId, getTimezone } from './participant';
+import { VERBOSE } from '../config';
 
 const DB_NAME = 'collection_events_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'events';
 const BATCH_SIZE = 100;
-const BATCH_INTERVAL_MS = 5000; // 5 seconds
+const BATCH_INTERVAL_MS = 3000; // 3 seconds
 
 /**
  * EventBuffer manages event storage and batching
@@ -77,9 +78,20 @@ export class EventBuffer {
       const store = transaction.objectStore(STORE_NAME);
       const request = store.add(event);
       
-      request.onsuccess = () => {
+      request.onsuccess = async () => {
         resolve();
-        this.scheduleBatch();
+        
+        // Check if we should flush immediately (hit batch size)
+        const pendingCount = await this.getPendingCount();
+        if (pendingCount >= BATCH_SIZE) {
+          if (VERBOSE) {
+            console.log(`[EventBuffer] Batch size reached (${pendingCount}), flushing immediately`);
+          }
+          this.flushBatch().catch(console.error);
+        } else {
+          // Otherwise schedule a delayed flush
+          this.scheduleBatch();
+        }
       };
       
       request.onerror = () => reject(request.error);
@@ -104,6 +116,9 @@ export class EventBuffer {
     }
     
     this.batchTimer = window.setTimeout(() => {
+      if (VERBOSE) {
+        console.log(`[EventBuffer] Batch timer fired (${BATCH_INTERVAL_MS}ms)`);
+      }
       this.flushBatch().catch(console.error);
     }, BATCH_INTERVAL_MS);
   }
@@ -113,7 +128,7 @@ export class EventBuffer {
    */
   async flushBatch(): Promise<void> {
     if (!this.uploadCallback) {
-      console.warn('No upload callback set for EventBuffer');
+      console.warn('[EventBuffer] No upload callback set');
       return;
     }
     
@@ -122,7 +137,14 @@ export class EventBuffer {
     const events = await this.getPendingEvents(BATCH_SIZE);
     
     if (events.length === 0) {
+      if (VERBOSE) {
+        console.log('[EventBuffer] No pending events to flush');
+      }
       return;
+    }
+    
+    if (VERBOSE) {
+      console.log(`[EventBuffer] Flushing ${events.length} events...`);
     }
     
     try {
@@ -130,8 +152,11 @@ export class EventBuffer {
       
       // Remove uploaded events from IndexedDB
       await this.removeEvents(events.map(e => e.id));
+      if (VERBOSE) {
+        console.log(`[EventBuffer] Successfully uploaded and removed ${events.length} events`);
+      }
     } catch (error) {
-      console.error('Failed to upload events:', error);
+      console.error('[EventBuffer] Failed to upload events:', error);
       // Events remain in IndexedDB for retry later
     }
   }
@@ -251,5 +276,15 @@ export class EventBuffer {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+  }
+  
+  /**
+   * Manually trigger a flush (for testing/debugging)
+   */
+  async manualFlush(): Promise<void> {
+    if (VERBOSE) {
+      console.log('[EventBuffer] Manual flush triggered');
+    }
+    await this.flushBatch();
   }
 }

@@ -3,20 +3,25 @@ import { createSupabaseClient, type Env } from '../lib/supabase';
 /**
  * GET /events/stats
  * Get statistics for admin dashboard
- * Requires API key authentication
+ * 
+ * SECURITY: Requires ADMIN_KEY authentication.
+ * Even though data is anonymous, we protect access to aggregated stats
+ * because we're collecting data from real users.
+ * 
+ * TODO: Consider adding CORS restrictions as additional security layer.
  */
 export async function handleStats(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // Check authentication
+  // Authenticate with ADMIN_KEY (server-side only, never from browser extension)
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return new Response('Unauthorized', { status: 401 });
   }
   
   const token = authHeader.substring(7);
-  if (token !== env.API_KEY) {
+  if (token !== env.ADMIN_KEY) {
     return new Response('Unauthorized', { status: 401 });
   }
   

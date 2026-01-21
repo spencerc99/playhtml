@@ -1,13 +1,32 @@
-name = "collection-api"
+name = "playhtml-game-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
-# Environment variables (set via `wrangler secret put`)
-# SUPABASE_URL - Your Supabase project URL
-# SUPABASE_SERVICE_ROLE_KEY - Your Supabase service role key (private)
-# API_KEY - API key for authenticating extension requests
+# Environment variables
+# 
+# For LOCAL DEVELOPMENT:
+#   Create a .dev.vars file (see .dev.vars.example)
+#   wrangler dev will automatically load variables from .dev.vars
+#
+# For PRODUCTION:
+#   Set secrets via: wrangler secret put SUPABASE_URL
+#   Set secrets via: wrangler secret put SUPABASE_SECRET_KEY
+#   Set secrets via: wrangler secret put ADMIN_KEY
+#
+# Required variables:
+# - SUPABASE_URL - Your Supabase project URL
+# - SUPABASE_SECRET_KEY - Your Supabase "secret" API key (full database access)
+# - ADMIN_KEY - Required for admin endpoints (stats, export) - protects user data
+#
+# Security model:
+# - POST /events: Public (validated + rate limited)
+# - GET /events/recent: Public (for artwork rendering)
+# - GET /events/stats: ADMIN_KEY required
+# - POST /events/export: ADMIN_KEY required
+#
+# TODO: Consider adding CORS restrictions to admin endpoints
 
 [env.production]
 routes = [
-  { pattern = "collection-api.*.workers.dev", zone_name = "your-domain.com" }
+  { pattern = "playhtml-game-api.*.workers.dev", zone_name = "your-domain.com" }
 ]

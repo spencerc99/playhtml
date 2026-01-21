@@ -3,20 +3,24 @@ import { createSupabaseClient, type Env } from '../lib/supabase';
 /**
  * POST /events/export
  * Export edition data to JSON format
- * Requires API key authentication
+ * 
+ * SECURITY: Requires ADMIN_KEY authentication.
+ * Protects bulk export of user-collected data.
+ * 
+ * TODO: Consider adding CORS restrictions as additional security layer.
  */
 export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // Check authentication
+  // Authenticate with ADMIN_KEY (server-side only, never from browser extension)
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return new Response('Unauthorized', { status: 401 });
   }
   
   const token = authHeader.substring(7);
-  if (token !== env.API_KEY) {
+  if (token !== env.ADMIN_KEY) {
     return new Response('Unauthorized', { status: 401 });
   }
   
