@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS collection_events (
   id TEXT PRIMARY KEY,           -- ULID (sortable, unique)
-  type TEXT NOT NULL,            -- 'cursor', 'click', etc.
+  type TEXT NOT NULL,            -- 'cursor', 'navigation', 'viewport'
   ts TIMESTAMPTZ NOT NULL,       -- Event timestamp
   participant_id TEXT NOT NULL,  -- Anonymous participant ID
   session_id TEXT NOT NULL,      -- Browser session ID

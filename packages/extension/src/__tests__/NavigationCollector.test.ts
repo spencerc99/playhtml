@@ -41,55 +41,102 @@ describe("NavigationCollector", () => {
     });
 
     it("removes event listeners when disabled", () => {
-      const removeSpy = vi.spyOn(window, "removeEventListener");
+      const docRemoveSpy = vi.spyOn(document, "removeEventListener");
+      const winRemoveSpy = vi.spyOn(window, "removeEventListener");
       collector.enable();
       collector.disable();
 
-      expect(removeSpy).toHaveBeenCalledWith("focus", expect.any(Function));
-      expect(removeSpy).toHaveBeenCalledWith("blur", expect.any(Function));
-      expect(removeSpy).toHaveBeenCalledWith("popstate", expect.any(Function));
-      expect(removeSpy).toHaveBeenCalledWith(
+      expect(docRemoveSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+      expect(winRemoveSpy).toHaveBeenCalledWith("popstate", expect.any(Function));
+      expect(winRemoveSpy).toHaveBeenCalledWith(
         "beforeunload",
         expect.any(Function)
       );
 
-      removeSpy.mockRestore();
+      docRemoveSpy.mockRestore();
+      winRemoveSpy.mockRestore();
     });
   });
 
-  describe("focus event", () => {
-    it("emits focus event when window gains focus", () => {
+  describe("visibility change (tab switching)", () => {
+    beforeEach(() => {
+      // Mock document.hidden and visibilityState
+      Object.defineProperty(document, "hidden", {
+        writable: true,
+        configurable: true,
+        value: false,
+      });
+      Object.defineProperty(document, "visibilityState", {
+        writable: true,
+        configurable: true,
+        value: "visible",
+      });
+    });
+
+    it("emits blur event when tab becomes hidden", () => {
       collector.enable();
 
-      const focusEvent = new Event("focus", { bubbles: true });
-      window.dispatchEvent(focusEvent);
+      // Simulate tab switch away
+      Object.defineProperty(document, "hidden", { value: true });
+      Object.defineProperty(document, "visibilityState", { value: "hidden" });
+      
+      const visibilityEvent = new Event("visibilitychange", { bubbles: true });
+      document.dispatchEvent(visibilityEvent);
+
+      expect(emitCallback).toHaveBeenCalledTimes(1);
+      const call = emitCallback.mock.calls[0][0] as NavigationEventData;
+      expect(call.event).toBe("blur");
+      expect(call.visibility_state).toBe("hidden");
+    });
+
+    it("emits focus event when tab becomes visible", () => {
+      collector.enable();
+
+      // Simulate tab switch back
+      Object.defineProperty(document, "hidden", { value: false });
+      Object.defineProperty(document, "visibilityState", { value: "visible" });
+      
+      const visibilityEvent = new Event("visibilitychange", { bubbles: true });
+      document.dispatchEvent(visibilityEvent);
 
       expect(emitCallback).toHaveBeenCalledTimes(1);
       const call = emitCallback.mock.calls[0][0] as NavigationEventData;
       expect(call.event).toBe("focus");
+      expect(call.visibility_state).toBe("visible");
+    });
+
+    it("deduplicates events within 2 second window", () => {
+      vi.useFakeTimers();
+      collector.enable();
+
+      // First blur
+      Object.defineProperty(document, "hidden", { value: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(emitCallback).toHaveBeenCalledTimes(1);
+      expect((emitCallback.mock.calls[0][0] as NavigationEventData).quantity).toBe(1);
+
+      // Second blur within 500ms - should be ignored
+      vi.advanceTimersByTime(500);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(emitCallback).toHaveBeenCalledTimes(1); // Still 1
+
+      // Third blur after 2100ms - should emit
+      vi.advanceTimersByTime(1600);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(emitCallback).toHaveBeenCalledTimes(2);
+      expect((emitCallback.mock.calls[1][0] as NavigationEventData).quantity).toBe(1);
+
+      vi.useRealTimers();
     });
 
     it("does not emit when disabled", () => {
       collector.enable();
       collector.disable();
 
-      const focusEvent = new Event("focus", { bubbles: true });
-      window.dispatchEvent(focusEvent);
+      const visibilityEvent = new Event("visibilitychange", { bubbles: true });
+      document.dispatchEvent(visibilityEvent);
 
       expect(emitCallback).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("blur event", () => {
-    it("emits blur event when window loses focus", () => {
-      collector.enable();
-
-      const blurEvent = new Event("blur", { bubbles: true });
-      window.dispatchEvent(blurEvent);
-
-      expect(emitCallback).toHaveBeenCalledTimes(1);
-      const call = emitCallback.mock.calls[0][0] as NavigationEventData;
-      expect(call.event).toBe("blur");
     });
   });
 

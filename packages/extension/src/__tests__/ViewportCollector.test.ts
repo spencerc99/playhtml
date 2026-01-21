@@ -213,7 +213,7 @@ describe("ViewportCollector", () => {
 
       // Trigger resize (which checks zoom)
       simulateResize(1024, 768);
-      await advanceTime(200);
+      await advanceTime(2000); // Wait for resize debounce
 
       expect(emitCallback).toHaveBeenCalled();
       const zoomCall = emitCallback.mock.calls.find(
@@ -225,6 +225,8 @@ describe("ViewportCollector", () => {
         const data = zoomCall[0] as ViewportEventData;
         expect(data.event).toBe("zoom");
         expect(data.zoom).toBe(1.5);
+        expect(data.previous_zoom).toBe(1);
+        expect(data.quantity).toBe(1); // Single zoom change
       }
     });
 
@@ -233,7 +235,7 @@ describe("ViewportCollector", () => {
 
       // Zoom stays at 1
       simulateResize(1024, 768);
-      await advanceTime(200);
+      await advanceTime(2000); // Wait for resize debounce
 
       // Should only emit resize, not zoom
       const zoomCalls = emitCallback.mock.calls.filter(
@@ -242,10 +244,10 @@ describe("ViewportCollector", () => {
       expect(zoomCalls.length).toBe(0);
     });
 
-    it("tracks zoom level across multiple resizes", async () => {
+    it("debounces rapid zoom changes within 2 seconds and tracks quantity", async () => {
       collector.enable();
 
-      // First resize - zoom changes from 1 to 1.25
+      // First zoom: 1 -> 1.25
       Object.defineProperty(window, "visualViewport", {
         value: {
           scale: 1.25,
@@ -255,11 +257,18 @@ describe("ViewportCollector", () => {
         writable: true,
         configurable: true,
       });
-
       simulateResize(1024, 768);
-      await advanceTime(200);
+      await advanceTime(2000); // Wait for resize debounce
 
-      // Second resize - zoom changes from 1.25 to 1.5
+      // Should emit first zoom
+      let zoomCalls = emitCallback.mock.calls.filter(
+        (call) => (call[0] as ViewportEventData).event === "zoom"
+      );
+      expect(zoomCalls.length).toBe(1);
+      expect((zoomCalls[0][0] as ViewportEventData).quantity).toBe(1);
+
+      // Second zoom: 1.25 -> 1.5 (within 500ms - should increment quantity)
+      await advanceTime(300); // Total 300ms since first zoom
       Object.defineProperty(window, "visualViewport", {
         value: {
           scale: 1.5,
@@ -269,14 +278,54 @@ describe("ViewportCollector", () => {
         writable: true,
         configurable: true,
       });
-
       simulateResize(1024, 768);
-      await advanceTime(200);
+      await advanceTime(2000); // Wait for resize debounce
 
-      const zoomCalls = emitCallback.mock.calls.filter(
+      // Third zoom: 1.5 -> 1.75 (within 2s window - should still increment)
+      await advanceTime(300);
+      Object.defineProperty(window, "visualViewport", {
+        value: {
+          scale: 1.75,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        },
+        writable: true,
+        configurable: true,
+      });
+      simulateResize(1024, 768);
+      await advanceTime(2000);
+
+      // Still only 1 zoom event (within debounce window)
+      zoomCalls = emitCallback.mock.calls.filter(
+        (call) => (call[0] as ViewportEventData).event === "zoom"
+      );
+      expect(zoomCalls.length).toBe(1);
+
+      // Fourth zoom: 1.75 -> 2.0 (after 2600ms total - should emit new event)
+      await advanceTime(600); // Total 2600ms since first zoom
+      Object.defineProperty(window, "visualViewport", {
+        value: {
+          scale: 2.0,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        },
+        writable: true,
+        configurable: true,
+      });
+      simulateResize(1024, 768);
+      await advanceTime(2000); // Wait for resize debounce
+
+      // Should now have 2 zoom events
+      zoomCalls = emitCallback.mock.calls.filter(
         (call) => (call[0] as ViewportEventData).event === "zoom"
       );
       expect(zoomCalls.length).toBe(2);
+
+      // Check the second zoom event has previous_zoom and quantity
+      const secondZoom = zoomCalls[1][0] as ViewportEventData;
+      expect(secondZoom.zoom).toBe(2.0);
+      expect(secondZoom.previous_zoom).toBe(1.75);
+      expect(secondZoom.quantity).toBe(1); // New debounce window
     });
   });
 
