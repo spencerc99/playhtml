@@ -2,10 +2,15 @@ import type { CollectionEventType } from './types';
 
 /**
  * Abstract base class for all collectors
- * 
+ *
  * Collectors capture browsing behaviors and emit events.
  * They can stream to real-time systems (PartyKit) and/or
  * buffer for archival (Supabase via Worker).
+ *
+ * Real-time streaming pattern:
+ * - Currently only CursorCollector streams to PartyKit for live visualization
+ * - To add real-time to other collectors, use emitRealTime() in addition to emit()
+ * - Example: Navigation/viewport events could stream real-time for collaborative viewing
  */
 export abstract class BaseCollector<T = unknown> {
   abstract readonly type: CollectionEventType;
@@ -27,12 +32,16 @@ export abstract class BaseCollector<T = unknown> {
    * Stop collecting data
    */
   abstract stop(): void;
-  
+
   /**
    * Sample current state (for periodic collectors)
    * Returns null if no sample should be taken
+   * Override this in continuous collectors (cursor, scroll, etc.)
+   * Discrete event collectors (navigation, clicks) can ignore this
    */
-  protected abstract sample(): T | null;
+  protected sample(): T | null {
+    return null;
+  }
   
   /**
    * Enable this collector
