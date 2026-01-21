@@ -143,6 +143,10 @@ export function generateULID(): string {
 
 /**
  * Normalize cursor position to 0-1 range (viewport-independent)
+ * Rounds to 4 decimal places for storage efficiency while maintaining sub-pixel accuracy
+ * 
+ * Precision: 0.0001 ≈ 0.38px on 4K display (3840px), 0.77px on 8K
+ * Storage savings: ~6 bytes per event (significant at scale)
  */
 export function normalizePosition(
   x: number, 
@@ -150,14 +154,18 @@ export function normalizePosition(
   viewportWidth: number, 
   viewportHeight: number
 ): { x: number; y: number } {
+  const normalizedX = x / viewportWidth;
+  const normalizedY = y / viewportHeight;
+  
   return {
-    x: Math.max(0, Math.min(1, x / viewportWidth)),
-    y: Math.max(0, Math.min(1, y / viewportHeight)),
+    x: Math.round(Math.max(0, Math.min(1, normalizedX)) * 10000) / 10000,
+    y: Math.round(Math.max(0, Math.min(1, normalizedY)) * 10000) / 10000,
   };
 }
 
 /**
  * Normalize scroll position to 0-1 range
+ * Rounds to 4 decimal places for storage efficiency
  */
 export function normalizeScroll(
   scrollLeft: number,
@@ -170,9 +178,12 @@ export function normalizeScroll(
   const maxScrollX = Math.max(0, scrollWidth - clientWidth);
   const maxScrollY = Math.max(0, scrollHeight - clientHeight);
 
+  const normalizedX = maxScrollX > 0 ? scrollLeft / maxScrollX : 0;
+  const normalizedY = maxScrollY > 0 ? scrollTop / maxScrollY : 0;
+
   return {
-    scrollX: maxScrollX > 0 ? Math.max(0, Math.min(1, scrollLeft / maxScrollX)) : 0,
-    scrollY: maxScrollY > 0 ? Math.max(0, Math.min(1, scrollTop / maxScrollY)) : 0,
+    scrollX: Math.round(Math.max(0, Math.min(1, normalizedX)) * 10000) / 10000,
+    scrollY: Math.round(Math.max(0, Math.min(1, normalizedY)) * 10000) / 10000,
   };
 }
 

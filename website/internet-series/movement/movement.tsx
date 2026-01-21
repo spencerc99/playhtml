@@ -1,6 +1,7 @@
 import "./movement.scss";
 import React, { useState, useEffect, useRef, useMemo, memo } from "react";
 import ReactDOM from "react-dom/client";
+import { getCursorComponent } from "./cursors";
 
 // RISO-inspired color palette
 const RISO_COLORS = [
@@ -40,7 +41,7 @@ interface CollectionEvent {
 }
 
 interface Trail {
-  points: Array<{ x: number; y: number; ts: number }>;
+  points: Array<{ x: number; y: number; ts: number; cursor?: string }>;
   color: string;
   opacity: number;
   // Calculate angle for cursor direction
@@ -141,17 +142,7 @@ const SETTINGS_STORAGE_KEY = 'internet-movement-settings';
 
 // Load settings from localStorage with defaults
 const loadSettings = () => {
-  try {
-    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (err) {
-    console.error('Failed to load settings from localStorage:', err);
-  }
-  
-  // Default settings
-  return {
+  const defaults = {
     trailOpacity: 0.7,
     strokeWidth: 5,
     pointSize: 4,
@@ -175,8 +166,141 @@ const loadSettings = () => {
     clickRingDelayMs: 360,
     clickExpansionDuration: 12300,
     clickAnimationStopPoint: 0.45,
+    // Event filter settings
+    eventFilter: {
+      move: true,
+      click: true,
+      hold: true,
+      cursor_change: true,
+    },
   };
+
+  try {
+    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Merge with defaults to ensure new settings are always present
+      return {
+        ...defaults,
+        ...parsed,
+        // Ensure eventFilter exists and has all properties
+        eventFilter: {
+          ...defaults.eventFilter,
+          ...(parsed.eventFilter || {}),
+        },
+      };
+    }
+  } catch (err) {
+    console.error('Failed to load settings from localStorage:', err);
+  }
+  
+  return defaults;
 };
+
+// Define RippleSettings type for the RippleEffect component
+interface RippleSettings {
+  clickMinRadius: number;
+  clickMaxRadius: number;
+  clickMinDuration: number;
+  clickMaxDuration: number;
+  clickExpansionDuration: number;
+  clickStrokeWidth: number;
+  clickOpacity: number;
+  clickNumRings: number;
+  clickRingDelayMs: number;
+  clickAnimationStopPoint: number;
+}
+
+// Ripple Effect Component for clicks - MUST be defined outside InternetMovement
+// to prevent recreation on every parent render
+const RippleEffect = memo(
+  ({
+    effect,
+    settings: rippleSettings,
+  }: {
+    effect: ClickEffect;
+    settings: RippleSettings;
+  }) => {
+    const [now, setNow] = useState(Date.now());
+    const [isAnimating, setIsAnimating] = useState(true);
+
+    // Calculate actual radius and duration from factors
+    const effectMaxRadius = rippleSettings.clickMinRadius + effect.radiusFactor * (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
+    const effectTotalDuration = rippleSettings.clickMinDuration + effect.durationFactor * (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
+
+    useEffect(() => {
+      let animationFrameId: number;
+
+      const animate = () => {
+        setNow(Date.now());
+        animationFrameId = requestAnimationFrame(animate);
+      };
+
+      if (isAnimating) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+
+      return () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+      };
+    }, [isAnimating]);
+
+    // Easing function
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    // Check if all rings complete or total duration elapsed
+    const totalElapsed = now - effect.startTime;
+    const allRingsComplete = totalElapsed >= effectTotalDuration || Array.from({ length: rippleSettings.clickNumRings }).every((_, i) => {
+      const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
+      const elapsed = now - ringStartTime;
+      const ringProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
+      return ringProgress >= rippleSettings.clickAnimationStopPoint;
+    });
+
+    if (isAnimating && allRingsComplete) {
+      setIsAnimating(false);
+    }
+
+    const rings = Array.from({ length: rippleSettings.clickNumRings }, (_, i) => {
+      const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
+      const elapsed = now - ringStartTime;
+      
+      if (elapsed < 0) return null;
+      
+      // Calculate raw progress (0 to 1 over expansionDuration)
+      const rawProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
+      
+      // Clamp to stop point BEFORE easing
+      const clampedProgress = Math.min(rawProgress, rippleSettings.clickAnimationStopPoint);
+      
+      // Apply easing to get radius (normalized to 0-1 range based on stop point)
+      // This ensures the ring expands smoothly to stopPoint% of maxRadius and stops there
+      const normalizedProgress = clampedProgress / rippleSettings.clickAnimationStopPoint;
+      const ringRadius = effectMaxRadius * rippleSettings.clickAnimationStopPoint * easeOutCubic(normalizedProgress);
+      
+      // No fade-in - appear instantly at full opacity for perfect sync with cursor
+      const ringOpacity = rippleSettings.clickOpacity;
+
+      return (
+        <circle
+          key={i}
+          cx={effect.x}
+          cy={effect.y}
+          r={ringRadius}
+          fill="none"
+          stroke={effect.color}
+          strokeWidth={rippleSettings.clickStrokeWidth}
+          opacity={Math.max(0, ringOpacity)}
+          style={{ mixBlendMode: "multiply" }}
+        />
+      );
+    });
+
+    return <g>{rings}</g>;
+  }
+);
 
 const InternetMovement = () => {
   const [settings, setSettings] = useState(loadSettings());
@@ -378,14 +502,23 @@ const InternetMovement = () => {
       }
 
       // Group consecutive events into trails based on time proximity
-      let currentTrail: Array<{ x: number; y: number; ts: number }> = [];
+      let currentTrail: Array<{ x: number; y: number; ts: number; cursor?: string }> = [];
       let currentClicks: Array<{ x: number; y: number; ts: number; button?: number }> = [];
       let lastTimestamp = 0;
 
       groupEvents.forEach((event) => {
+        const eventType = event.data.event || 'move'; // Default to 'move' if not specified
+        
+        // Skip this event if its type is filtered out
+        if (eventType === 'move' && !settings.eventFilter.move) return;
+        if (eventType === 'click' && !settings.eventFilter.click) return;
+        if (eventType === 'hold' && !settings.eventFilter.hold) return;
+        if (eventType === 'cursor_change' && !settings.eventFilter.cursor_change) return;
+        
         const x = event.data.x * sizeToUse.width;
         const y = event.data.y * sizeToUse.height;
-        const isClick = event.data.event === 'click';
+        const isClick = eventType === 'click';
+        const cursorType = event.data.cursor;
 
         // Start a new trail if:
         // 1. This is the first point, or
@@ -409,7 +542,7 @@ const InternetMovement = () => {
             });
           }
           // Start new trail
-          currentTrail = [{ x, y, ts: event.ts }];
+          currentTrail = [{ x, y, ts: event.ts, cursor: cursorType }];
           currentClicks = [];
           
           if (isClick) {
@@ -417,7 +550,7 @@ const InternetMovement = () => {
           }
         } else {
           // Continue current trail
-          currentTrail.push({ x, y, ts: event.ts });
+          currentTrail.push({ x, y, ts: event.ts, cursor: cursorType });
           
           if (isClick) {
             currentClicks.push({ x, y, ts: event.ts, button: event.data.button });
@@ -443,6 +576,14 @@ const InternetMovement = () => {
       }
     });
 
+    // Show all trails (remove filter to see everything)
+    // return trails;
+    
+    // DEBUG: Show only trails with clicks for testing
+    const trailWithClicks = trails.filter(t => t.clicks.length > 2);
+    if (trailWithClicks.length > 0) {
+      return trailWithClicks;
+    }
     return trails;
   }, [events, settings.trailOpacity, settings.randomizeColors]);
 
@@ -456,7 +597,22 @@ const InternetMovement = () => {
     const times = trails.flatMap(t => [t.startTime, t.endTime]);
     const min = Math.min(...times);
     const max = Math.max(...times);
-    const duration = max - min;
+    const dataDuration = max - min;
+    
+    // Calculate animation cycle duration based on stagger choreography
+    // This ensures trails don't animate too fast relative to the cycle
+    const avgDuration = trails.reduce((sum, t) => sum + (t.endTime - t.startTime), 0) / trails.length;
+    const minGapMs = settings.minGapBetweenTrails * 1000;
+    const overlapMultiplier = 1 - settings.overlapFactor * 0.8;
+    const baseSpacing = (avgDuration / settings.maxConcurrentTrails) * overlapMultiplier;
+    const actualSpacing = Math.max(minGapMs, baseSpacing);
+    
+    // Total cycle time = time needed for all trails with spacing
+    const totalTimeNeeded = trails.length * actualSpacing;
+    
+    // Use choreographed time for animation cycle (not raw data duration)
+    // This prevents trails from animating too fast
+    const cycleDuration = Math.max(totalTimeNeeded, dataDuration > 0 ? dataDuration : 60000);
     
     // Group trails by color to prioritize showing different colors
     const trailsByColor = new Map<string, number[]>();
@@ -484,12 +640,13 @@ const InternetMovement = () => {
     // Create schedule for each trail based on mode
     const schedule = trails.map((trail, originalIndex) => {
       if (settings.trailAnimationMode === 'natural') {
-        // Use actual timestamps
+        // Use actual timestamps - no adjustment needed
         return {
           index: originalIndex,
           startTime: trail.startTime,
           endTime: trail.endTime,
           duration: trail.endTime - trail.startTime,
+          adjustedClicks: trail.clicks, // Clicks keep original timestamps
         };
       } else {
         // Stagger mode: create a continuous choreography of trails
@@ -498,42 +655,44 @@ const InternetMovement = () => {
         // Find position of this trail in the color-interleaved order
         const scheduledPosition = orderedIndices.indexOf(originalIndex);
         
-        // Calculate spacing between trail starts
-        // minGapBetweenTrails is in seconds, convert to ms
-        const minGapMs = settings.minGapBetweenTrails * 1000;
-        
-        // Calculate base spacing from concurrency and overlap
-        const avgDuration = trails.reduce((sum, t) => sum + (t.endTime - t.startTime), 0) / trails.length;
-        
-        // Apply overlap factor first, then enforce minimum gap
-        // Lower overlap = more spacing between trails
-        const overlapMultiplier = 1 - settings.overlapFactor * 0.8;
-        const baseSpacing = (avgDuration / settings.maxConcurrentTrails) * overlapMultiplier;
-        
-        // Ensure we never go below the minimum gap
-        const actualSpacing = Math.max(minGapMs, baseSpacing);
-        
-        // Calculate total time needed for all trails with this spacing
-        const totalTimeNeeded = trails.length * actualSpacing;
-        
-        // Use either the data duration or the calculated time needed, whichever fits better
-        // This ensures trails loop properly and don't have huge gaps
-        const cycleTime = Math.max(duration > 0 ? duration : 60000, totalTimeNeeded);
-        
         // Use the scheduled position (color-interleaved) instead of original index
-        const startOffset = (scheduledPosition * actualSpacing) % cycleTime;
+        // actualSpacing was calculated above in the cycle duration logic
+        const startOffset = (scheduledPosition * actualSpacing) % cycleDuration;
+        
+        // Calculate the time offset applied to this trail
+        const timeOffset = (min + startOffset) - trail.startTime;
+        
+        // Adjust all click timestamps by the same offset
+        const adjustedClicks = trail.clicks.map(click => ({
+          ...click,
+          ts: click.ts + timeOffset,
+        }));
+        
+        // DEBUG: Log schedule details
+        if (originalIndex === 0) {
+          console.log('📅 Schedule created for trail 0:', {
+            originalStartTime: trail.startTime,
+            originalEndTime: trail.endTime,
+            scheduledStartTime: min + startOffset,
+            scheduledEndTime: min + startOffset + trailDuration,
+            timeOffset,
+            originalClicks: trail.clicks.map(c => c.ts),
+            adjustedClicks: adjustedClicks.map(c => c.ts),
+          });
+        }
         
         return {
           index: originalIndex,
           startTime: min + startOffset,
           endTime: min + startOffset + trailDuration,
           duration: trailDuration,
+          adjustedClicks, // Store adjusted click timestamps
         };
       }
     });
     
     return { 
-      timeRange: { min, max, duration: duration > 0 ? duration : 60000 },
+      timeRange: { min, max, duration: cycleDuration },
       trailSchedule: schedule
     };
   }, [trails, settings.trailAnimationMode, settings.maxConcurrentTrails, settings.overlapFactor, settings.minGapBetweenTrails]);
@@ -566,28 +725,124 @@ const InternetMovement = () => {
     };
   }, [trails, timeRange, settings.animationSpeed]);
 
-  // Track which clicks have been spawned to avoid duplicates
-  const spawnedClicks = useRef<Set<string>>(new Set());
+  // Track which clicks have been spawned per trail - use Map to store last spawned progress
+  const lastSpawnedProgress = useRef<Map<string, number>>(new Map());
+  
+  // Store stable references to avoid effect re-running
+  const trailsRef = useRef(trails);
+  const timeRangeRef = useRef(timeRange);
+  const trailScheduleRef = useRef(trailSchedule);
+  
+  // Update refs when values change
+  useEffect(() => {
+    trailsRef.current = trails;
+    timeRangeRef.current = timeRange;
+    trailScheduleRef.current = trailSchedule;
+  }, [trails, timeRange, trailSchedule]);
 
   // Spawn click effects based on animation progress
   useEffect(() => {
-    if (trails.length === 0 || !timeRange) return;
+    const currentTrails = trailsRef.current;
+    const currentTimeRange = timeRangeRef.current;
+    const currentSchedule = trailScheduleRef.current;
+    
+    if (currentTrails.length === 0 || !currentTimeRange || !currentSchedule) return;
 
-    const currentTimeMs = timeRange.min + (animationProgress * timeRange.duration);
+    currentTrails.forEach((trail, trailIndex) => {
+      const schedule = currentSchedule[trailIndex];
+      if (!schedule || trail.points.length < 2) return;
 
-    trails.forEach((trail, trailIndex) => {
-      trail.clicks.forEach((click) => {
-        const clickKey = `${trailIndex}-${click.ts}`;
+      // Check if this trail is currently visible/animating
+      const normalizedStart = (schedule.startTime - currentTimeRange.min) / currentTimeRange.duration;
+      const normalizedEnd = (schedule.endTime - currentTimeRange.min) / currentTimeRange.duration;
+      const wrappedStart = normalizedStart % 1;
+      const wrappedEnd = normalizedEnd % 1;
+
+      // Determine if trail is currently active
+      let trailIsActive = false;
+      if (wrappedEnd > wrappedStart) {
+        trailIsActive = animationProgress >= wrappedStart && animationProgress <= wrappedEnd;
+      } else {
+        trailIsActive = animationProgress >= wrappedStart || animationProgress <= wrappedEnd;
+      }
+
+      if (!trailIsActive) return;
+
+      // Calculate trail progress
+      let trailProgress: number;
+      if (wrappedEnd > wrappedStart) {
+        if (animationProgress >= wrappedEnd) {
+          trailProgress = 1;
+        } else {
+          trailProgress = Math.max(0, Math.min(1, (animationProgress - wrappedStart) / (wrappedEnd - wrappedStart)));
+        }
+      } else {
+        const adjustedProgress = animationProgress >= wrappedStart 
+          ? animationProgress - wrappedStart 
+          : 1 - wrappedStart + animationProgress;
+        trailProgress = Math.max(0, Math.min(1, adjustedProgress / (normalizedEnd - normalizedStart)));
+      }
+      
+      // Calculate cursor position for this progress
+      const seed = trail.points[0]?.x + trail.points[0]?.y || 0;
+      const variedTrailPoints = applyStyleVariations(trail.points, settings.trailStyle, seed, settings.chaosIntensity || 1.0);
+      
+      const totalVariedPoints = variedTrailPoints.length;
+      const originalToVariedRatio = totalVariedPoints / trail.points.length;
+      const exactVariedPosition = (trail.points.length - 1) * trailProgress * originalToVariedRatio;
+      const currentVariedIndex = Math.floor(exactVariedPosition);
+      const variedProgressFraction = exactVariedPosition - currentVariedIndex;
+      
+      const pointsToDraw: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= Math.min(currentVariedIndex, totalVariedPoints - 1); i++) {
+        pointsToDraw.push(variedTrailPoints[i]);
+      }
+      
+      if (currentVariedIndex < totalVariedPoints - 1 && variedProgressFraction > 0) {
+        const p1 = variedTrailPoints[currentVariedIndex];
+        const p2 = variedTrailPoints[currentVariedIndex + 1];
+        const interpolatedPoint = {
+          x: p1.x + (p2.x - p1.x) * variedProgressFraction,
+          y: p1.y + (p2.y - p1.y) * variedProgressFraction,
+        };
+        pointsToDraw.push(interpolatedPoint);
+      }
+      
+      const cursorPosition = pointsToDraw.length > 0 
+        ? pointsToDraw[pointsToDraw.length - 1]
+        : variedTrailPoints[0] || { x: 0, y: 0 };
+
+      // Check each click to see if we should spawn it
+      trail.clicks.forEach((click, clickIndex) => {
+        // Find where in the trail (0-1) this click should appear
+        let clickPointIndex = 0;
+        let minTimeDiff = Math.abs(trail.points[0]?.ts - click.ts);
         
-        // Check if this click should be visible now and hasn't been spawned yet
-        if (click.ts <= currentTimeMs && !spawnedClicks.current.has(clickKey)) {
-          spawnedClicks.current.add(clickKey);
+        for (let i = 1; i < trail.points.length; i++) {
+          const timeDiff = Math.abs(trail.points[i].ts - click.ts);
+          if (timeDiff < minTimeDiff) {
+            minTimeDiff = timeDiff;
+            clickPointIndex = i;
+          }
+        }
+        
+        const clickProgress = trail.points.length > 1 
+          ? clickPointIndex / (trail.points.length - 1) 
+          : 0;
+        
+        const clickKey = `${trailIndex}-${clickIndex}`;
+        const lastProgress = lastSpawnedProgress.current.get(clickKey) ?? -1;
+        
+        // Spawn if we just crossed the click's progress threshold
+        if (lastProgress < clickProgress && trailProgress >= clickProgress) {
+          // Update Map BEFORE spawning to prevent duplicates in same frame
+          lastSpawnedProgress.current.set(clickKey, trailProgress);
           
-          // Create click effect
+          // Create click effect at cursor's current position
           const newEffect: ClickEffect = {
-            id: `${trailIndex}-${click.ts}-${Math.random()}`,
-            x: click.x,
-            y: click.y,
+            id: `${trailIndex}-${clickIndex}-${Date.now()}`,
+            x: cursorPosition.x,
+            y: cursorPosition.y,
             color: trail.color,
             radiusFactor: Math.random(),
             durationFactor: Math.random(),
@@ -600,26 +855,17 @@ const InternetMovement = () => {
       });
     });
 
-    // Clean up old spawned clicks when animation loops
+    // Reset tracking when animation loops
     if (animationProgress < 0.01) {
-      spawnedClicks.current.clear();
+      lastSpawnedProgress.current.clear();
+      setActiveClickEffects([]);
     }
-  }, [animationProgress, trails, timeRange]);
+  }, [animationProgress, settings.trailStyle, settings.chaosIntensity]); 
+  // NOTE: Removed trails, timeRange, trailSchedule to prevent infinite re-runs
+  // These are accessed via closure and are stable enough for click spawning
 
-  // Clean up old click effects
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setActiveClickEffects((prev) =>
-        prev.filter((effect) => {
-          const effectDuration = settings.clickMinDuration + effect.durationFactor * (settings.clickMaxDuration - settings.clickMinDuration);
-          return now - effect.startTime < effectDuration + 500;
-        })
-      );
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [settings.clickMinDuration, settings.clickMaxDuration]);
+  // Don't clean up click effects - let them stay visible forever
+  // They will naturally stop animating once they reach the animationStopPoint
 
   // Generate path with straight lines between points - like chalk drawing
   // Once drawn, lines NEVER change. This is the only truly stable approach.
@@ -918,105 +1164,6 @@ const InternetMovement = () => {
     return path;
   };
 
-  // Ripple Effect Component for clicks
-  const RippleEffect = memo(
-    ({
-      effect,
-      settings: rippleSettings,
-    }: {
-      effect: ClickEffect;
-      settings: {
-        clickMinRadius: number;
-        clickMaxRadius: number;
-        clickMinDuration: number;
-        clickMaxDuration: number;
-        clickExpansionDuration: number;
-        clickStrokeWidth: number;
-        clickOpacity: number;
-        clickNumRings: number;
-        clickRingDelayMs: number;
-        clickAnimationStopPoint: number;
-      };
-    }) => {
-      const [now, setNow] = useState(Date.now());
-      const [isAnimating, setIsAnimating] = useState(true);
-
-      // Calculate actual radius and duration from factors
-      const effectMaxRadius = rippleSettings.clickMinRadius + effect.radiusFactor * (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
-      const effectTotalDuration = rippleSettings.clickMinDuration + effect.durationFactor * (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
-
-      useEffect(() => {
-        let animationFrameId: number;
-
-        const animate = () => {
-          setNow(Date.now());
-          animationFrameId = requestAnimationFrame(animate);
-        };
-
-        if (isAnimating) {
-          animationFrameId = requestAnimationFrame(animate);
-        }
-
-        return () => {
-          if (animationFrameId) {
-            cancelAnimationFrame(animationFrameId);
-          }
-        };
-      }, [isAnimating]);
-
-      // Easing function
-      const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
-      // Check if all rings complete or total duration elapsed
-      const totalElapsed = now - effect.startTime;
-      const allRingsComplete = totalElapsed >= effectTotalDuration || Array.from({ length: rippleSettings.clickNumRings }).every((_, i) => {
-        const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
-        const elapsed = now - ringStartTime;
-        const ringProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
-        return ringProgress >= rippleSettings.clickAnimationStopPoint;
-      });
-
-      if (isAnimating && allRingsComplete) {
-        setIsAnimating(false);
-      }
-
-      const rings = Array.from({ length: rippleSettings.clickNumRings }, (_, i) => {
-        const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
-        const elapsed = now - ringStartTime;
-        
-        if (elapsed < 0) return null;
-        
-        let ringProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
-        ringProgress = Math.min(ringProgress, rippleSettings.clickAnimationStopPoint);
-        
-        const ringRadius = effectMaxRadius * easeOutCubic(ringProgress);
-        
-        let ringOpacity: number;
-        if (ringProgress < 0.05) {
-          ringOpacity = rippleSettings.clickOpacity * (ringProgress / 0.05);
-        } else {
-          ringOpacity = rippleSettings.clickOpacity;
-        }
-
-        return (
-          <circle
-            key={i}
-            cx={effect.x}
-            cy={effect.y}
-            r={ringRadius}
-            fill="none"
-            stroke={effect.color}
-            strokeWidth={rippleSettings.clickStrokeWidth}
-            opacity={Math.max(0, ringOpacity)}
-            style={{ mixBlendMode: "multiply" }}
-          />
-        );
-      });
-
-      return <g>{rings}</g>;
-    }
-  );
-
   // Memoized Trail Component to prevent unnecessary re-renders
   const Trail = memo(({ 
     trail, 
@@ -1115,7 +1262,17 @@ const InternetMovement = () => {
       ? generatePathFromVariedPoints(pointsToDraw, settings.trailStyle) 
       : "";
     
-    const visiblePoints = trail.points.slice(0, Math.floor((trail.points.length - 1) * trailProgress) + 1);
+    // Use pointsToDraw for dots so they match the cursor and path exactly
+    // Don't use trail.points because that doesn't account for style variations
+    const visibleDots = pointsToDraw.slice(0, -1); // Exclude last point (cursor is there)
+    
+    // Get cursor type at current position
+    const currentPointIndex = Math.min(
+      Math.floor((trail.points.length - 1) * trailProgress),
+      trail.points.length - 1
+    );
+    const currentCursorType = trail.points[currentPointIndex]?.cursor;
+    const CursorComponent = getCursorComponent(currentCursorType);
 
     return (
       <g key={`trail-${trailIndex}`}>
@@ -1132,7 +1289,7 @@ const InternetMovement = () => {
           />
         )}
         
-        {settings.pointSize > 0 && visiblePoints.map((point, pointIndex) => (
+        {settings.pointSize > 0 && visibleDots.map((point, pointIndex) => (
           <circle
             key={`point-${trailIndex}-${pointIndex}`}
             cx={point.x}
@@ -1145,22 +1302,11 @@ const InternetMovement = () => {
         ))}
 
         {trailProgress > 0 && trailProgress < 1 && (
-          <g
-            transform={`translate(${cursorPosition.x}, ${cursorPosition.y}) scale(${cursorSize / 32}) translate(-12, -4)`}
-          >
-            <path
-              d="M12 4 L12 20 L16 16 L20 23 L23 21 L19 14 L24 14 Z"
-              fill="white"
-              stroke="none"
-            />
-            <path
-              d="M12 4 L12 20 L16 16 L20 23 L23 21 L19 14 L24 14 Z"
-              fill={trail.color}
-              stroke="white"
-              strokeWidth="0.5"
-              strokeLinejoin="round"
-              transform="translate(-0.5, -0.5)"
-            />
+          <g transform={`translate(${cursorPosition.x}, ${cursorPosition.y})`}>
+            {/* Offset to align cursor tip with position - Default cursor tip is at (12, 4) in 24px system, scaled to 32px */}
+            <g transform={`translate(${-12 * (cursorSize / 24)}, ${-4 * (cursorSize / 24)})`}>
+              <CursorComponent color={trail.color} size={cursorSize} />
+            </g>
           </g>
         )}
       </g>
@@ -1375,6 +1521,68 @@ const InternetMovement = () => {
         )}
 
         <div className="control-group">
+          <label>Event Filter</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 'normal', textTransform: 'none' }}>
+              <input
+                type="checkbox"
+                checked={settings.eventFilter.move}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    eventFilter: { ...s.eventFilter, move: e.target.checked },
+                  }))
+                }
+                style={{ marginRight: '6px' }}
+              />
+              Move Events
+            </label>
+            <label style={{ fontSize: '12px', fontWeight: 'normal', textTransform: 'none' }}>
+              <input
+                type="checkbox"
+                checked={settings.eventFilter.click}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    eventFilter: { ...s.eventFilter, click: e.target.checked },
+                  }))
+                }
+                style={{ marginRight: '6px' }}
+              />
+              Click Events
+            </label>
+            <label style={{ fontSize: '12px', fontWeight: 'normal', textTransform: 'none' }}>
+              <input
+                type="checkbox"
+                checked={settings.eventFilter.hold}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    eventFilter: { ...s.eventFilter, hold: e.target.checked },
+                  }))
+                }
+                style={{ marginRight: '6px' }}
+              />
+              Hold Events
+            </label>
+            <label style={{ fontSize: '12px', fontWeight: 'normal', textTransform: 'none' }}>
+              <input
+                type="checkbox"
+                checked={settings.eventFilter.cursor_change}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    eventFilter: { ...s.eventFilter, cursor_change: e.target.checked },
+                  }))
+                }
+                style={{ marginRight: '6px' }}
+              />
+              Cursor Change Events
+            </label>
+          </div>
+        </div>
+
+        <div className="control-group">
           <label htmlFor="randomize-colors">
             <input
               id="randomize-colors"
@@ -1405,6 +1613,12 @@ const InternetMovement = () => {
           <div className="info">
             {events.length.toLocaleString()} events, {trails.length.toLocaleString()} trails
             <br />
+            <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
+              Move: {events.filter(e => !e.data.event || e.data.event === 'move').length} | 
+              Click: {events.filter(e => e.data.event === 'click').length} | 
+              Hold: {events.filter(e => e.data.event === 'hold').length} | 
+              Cursor Change: {events.filter(e => e.data.event === 'cursor_change').length}
+            </div>
             <span style={{ fontSize: "11px" }}>
               Progress: {(animationProgress * 100).toFixed(0)}%
             </span>
