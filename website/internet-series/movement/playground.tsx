@@ -1,6 +1,7 @@
 import "./playground.scss";
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
+import { DefaultCursor, PointerCursor, TextCursor, GrabCursor, GrabbingCursor, MoveCursor } from "./cursors";
 
 // RISO-inspired color palette (same as main)
 const RISO_COLORS = [
@@ -369,6 +370,33 @@ const ClickEffectPlayground = () => {
         >
           {copySuccess ? '✓ Copied!' : 'Copy Settings JSON'}
         </button>
+
+        <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #eee' }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '12px' }}>Cursor Shapes</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+            {RISO_COLORS.slice(0, 6).map((color, idx) => {
+              const cursors = [
+                { name: 'Default', Component: DefaultCursor },
+                { name: 'Pointer', Component: PointerCursor },
+                { name: 'Text', Component: TextCursor },
+                { name: 'Grab', Component: GrabCursor },
+                { name: 'Grabbing', Component: GrabbingCursor },
+                { name: 'Move', Component: MoveCursor },
+              ];
+              const cursor = cursors[idx];
+              return (
+                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', background: '#f5f5f5', borderRadius: '4px' }}>
+                  <svg width="48" height="48" viewBox="0 0 48 48" style={{ overflow: 'visible' }}>
+                    <g transform="translate(8, 8)">
+                      <cursor.Component color={color} size={32} />
+                    </g>
+                  </svg>
+                  <span style={{ fontSize: '10px', marginTop: '4px', color: '#666' }}>{cursor.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="canvas-container" ref={containerRef} onClick={handleClick}>

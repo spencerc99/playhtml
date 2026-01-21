@@ -37,24 +37,23 @@ export const DefaultCursor = ({ color, size = 24 }: CursorProps) => {
 
 // Pointer hand cursor (for clickable elements)
 export const PointerCursor = ({ color, size = 24 }: CursorProps) => {
-  const scale = size / 24;
+  const scale = size / 32;
   return (
     <g transform={`scale(${scale})`}>
-      {/* Hand with pointing finger */}
-      {/* White outline */}
+      {/* Based on pointinghand.svg */}
       <path
-        d="M12 4 L12 10 L14 10 L14 6 L16 6 L16 10 L18 10 L18 7 L20 7 L20 12 L20 16 C20 17 19 18 18 18 L14 18 L10 14 L10 10 L12 10 Z"
-        fill="white"
-        stroke="none"
-      />
-      {/* Colored fill */}
-      <path
-        d="M12 4 L12 10 L14 10 L14 6 L16 6 L16 10 L18 10 L18 7 L20 7 L20 12 L20 16 C20 17 19 18 18 18 L14 18 L10 14 L10 10 L12 10 Z"
+        d="M11.3,20.4c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1.2-1.5-1.5-1.9c-0.2-0.4-0.2-0.6-0.1-1c0.1-0.6,0.7-1.1,1.4-1.1c0.5,0,1,0.4,1.4,0.7c0.2,0.2,0.5,0.6,0.7,0.8c0.2,0.2,0.2,0.3,0.4,0.5c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.5-0.2-1.3-0.4-2.1c-0.1-0.6-0.2-0.7-0.3-1.1c-0.1-0.5-0.2-0.8-0.3-1.3c-0.1-0.3-0.2-1.1-0.3-1.5c-0.1-0.5-0.1-1.4,0.3-1.8c0.3-0.3,0.9-0.4,1.3-0.2c0.5,0.3,0.8,1,0.9,1.3c0.2,0.5,0.4,1.2,0.5,2c0.2,1,0.5,2.5,0.5,2.8c0-0.4-0.1-1.1,0-1.5c0.1-0.3,0.3-0.7,0.7-0.8c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.4,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1L11.3,20.4z"
         fill={color}
-        stroke="white"
-        strokeWidth="0.5"
+        fillOpacity="0.85"
+        stroke="black"
+        strokeWidth="0.75"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {/* Finger detail lines */}
+      <line x1="19.6" y1="20.7" x2="19.6" y2="17.3" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
+      <line x1="17.6" y1="20.7" x2="17.5" y2="17.3" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
+      <line x1="15.6" y1="17.3" x2="15.6" y2="20.7" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
     </g>
   );
 };
@@ -64,98 +63,84 @@ export const TextCursor = ({ color, size = 24 }: CursorProps) => {
   const scale = size / 24;
   return (
     <g transform={`scale(${scale})`}>
-      {/* I-beam shape */}
-      {/* White outline */}
-      <g transform="translate(12, 12)">
-        <path
-          d="M-3 -8 L3 -8 M0 -8 L0 8 M-3 8 L3 8"
-          stroke="white"
-          strokeWidth="3"
-          strokeLinecap="round"
-          fill="none"
-        />
-        {/* Colored stroke */}
-        <path
-          d="M-3 -8 L3 -8 M0 -8 L0 8 M-3 8 L3 8"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </g>
+      {/* Based on text-cursor.svg */}
+      <path
+        d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1M7 22h1a4 4 0 0 0 4-4v-1M7 2h1a4 4 0 0 1 4 4v1"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fillOpacity="0.85"
+      />
     </g>
   );
 };
 
 // Grab/hand cursor (open hand)
 export const GrabCursor = ({ color, size = 24 }: CursorProps) => {
-  const scale = size / 24;
+  const scale = size / 32;
   return (
     <g transform={`scale(${scale})`}>
-      {/* Open hand */}
-      {/* White outline */}
+      {/* Based on openhand (1).svg */}
       <path
-        d="M8 10 L8 6 L10 6 L10 10 M10 10 L10 5 L12 5 L12 10 M12 10 L12 4 L14 4 L14 10 M14 10 L14 6 L16 6 L16 11 L16 15 C16 17 14 18 12 18 L10 18 L6 14 L6 11 L8 11 Z"
-        fill="white"
-        stroke="none"
-      />
-      {/* Colored fill */}
-      <path
-        d="M8 10 L8 6 L10 6 L10 10 M10 10 L10 5 L12 5 L12 10 M12 10 L12 4 L14 4 L14 10 M14 10 L14 6 L16 6 L16 11 L16 15 C16 17 14 18 12 18 L10 18 L6 14 L6 11 L8 11 Z"
+        d="M12.6,16.6c-0.1-0.4-0.2-0.8-0.4-1.6c-0.2-0.6-0.3-0.9-0.5-1.2c-0.2-0.5-0.3-0.7-0.5-1.2c-0.1-0.3-0.4-1-0.5-1.4c-0.1-0.5,0-0.9,0.2-1.2c0.3-0.3,1-0.5,1.4-0.4c0.4,0.1,0.7,0.5,0.9,0.8c0.3,0.5,0.4,0.6,0.7,1.5c0.4,1,0.6,1.9,0.6,2.2l0.1,0.5c0,0,0-1.1,0-1.2c0-1-0.1-1.8,0-2.9c0-0.1,0.1-0.6,0.1-0.7c0.1-0.5,0.3-0.8,0.7-1c0.4-0.2,0.9-0.2,1.4,0c0.4,0.2,0.6,0.5,0.7,1c0,0.1,0.1,1,0.1,1.1c0,1,0,1.6,0,2.2c0,0.2,0,1.6,0,1.5c0.1-0.7,0.1-3.2,0.3-3.9c0.1-0.4,0.4-0.7,0.8-0.9c0.4-0.2,1.1-0.1,1.4,0.2c0.3,0.3,0.4,0.7,0.5,1.2c0,0.4,0,0.9,0,1.2c0,0.9,0,1.3,0,2.1c0,0,0,0.3,0,0.2c0.1-0.3,0.2-0.5,0.3-0.7c0-0.1,0.2-0.6,0.4-0.9c0.1-0.2,0.2-0.4,0.4-0.7c0.2-0.3,0.4-0.4,0.7-0.6c0.5-0.2,1.1,0.1,1.3,0.6c0.1,0.2,0,0.7,0,1.1c-0.1,0.6-0.3,1.3-0.4,1.6c-0.1,0.4-0.3,1.2-0.3,1.6c-0.1,0.4-0.2,1.4-0.4,1.8c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1-1.1-1.3-1.6c-0.2-0.4-0.3-1-0.2-1.3c0.2-0.6,0.7-0.9,1.4-0.8c0.5,0,0.8,0.2,1.2,0.5c0.2,0.2,0.6,0.5,0.8,0.7c0.2,0.2,0.2,0.3,0.4,0.5C12.6,16.8,12.6,16.9,12.6,16.6"
         fill={color}
-        stroke="white"
-        strokeWidth="0.5"
+        fillOpacity="0.7"
+        stroke="black"
+        strokeWidth="0.75"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {/* Finger detail lines */}
+      <line x1="19.6" y1="20.7" x2="19.6" y2="17.3" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
+      <line x1="17.6" y1="20.7" x2="17.5" y2="17.3" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
+      <line x1="15.6" y1="17.3" x2="15.6" y2="20.7" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
     </g>
   );
 };
 
 // Grabbing cursor (closed hand)
 export const GrabbingCursor = ({ color, size = 24 }: CursorProps) => {
-  const scale = size / 24;
+  const scale = size / 32;
   return (
     <g transform={`scale(${scale})`}>
-      {/* Closed fist */}
-      {/* White outline */}
+      {/* Based on closedhand.svg */}
       <path
-        d="M8 12 L8 10 L10 10 L10 11 L12 11 L12 10 L14 10 L14 11 L16 11 L16 13 L16 16 C16 17.5 14.5 19 13 19 L11 19 L7 15 L7 13 L8 13 Z"
-        fill="white"
-        stroke="none"
-      />
-      {/* Colored fill */}
-      <path
-        d="M8 12 L8 10 L10 10 L10 11 L12 11 L12 10 L14 10 L14 11 L16 11 L16 13 L16 16 C16 17.5 14.5 19 13 19 L11 19 L7 15 L7 13 L8 13 Z"
+        d="M12.6,13c0.5-0.2,1.4-0.1,1.7,0.5c0.2,0.5,0.4,1.2,0.4,1.1c0-0.4,0-1.2,0.1-1.6c0.1-0.3,0.3-0.6,0.7-0.7c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.3,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-1-0.9-1.2-2c-0.2-0.9-0.2-1.4,0-1.8c0.2-0.4,0.7-0.6,0.9-0.6c0.2,0,0.7,0,0.9,0.1c0.2,0.1,0.3,0.2,0.5,0.4c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.3-0.3-0.6-0.4-1c-0.1-0.4-0.4-0.9-0.4-1.5C11.7,13.9,11.8,13.3,12.6,13"
         fill={color}
-        stroke="white"
-        strokeWidth="0.5"
+        fillOpacity="0.7"
+        stroke="black"
+        strokeWidth="0.75"
         strokeLinejoin="round"
       />
+      {/* Finger detail lines */}
+      <line x1="19.6" y1="20.7" x2="19.6" y2="17.3" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
+      <line x1="17.6" y1="20.7" x2="17.5" y2="17.3" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
+      <line x1="15.6" y1="17.3" x2="15.6" y2="20.7" stroke="black" strokeWidth="0.75" strokeLinecap="round" />
     </g>
   );
 };
 
 // Move cursor (four-way arrows)
 export const MoveCursor = ({ color, size = 24 }: CursorProps) => {
-  const scale = size / 24;
+  const scale = size / 18;
   return (
     <g transform={`scale(${scale})`}>
-      {/* Four-way arrows */}
-      {/* White outline */}
-      <g transform="translate(12, 12)">
-        <path
-          d="M0 -8 L-2 -6 L-1 -6 L-1 -1 L-6 -1 L-6 -2 L-8 0 L-6 2 L-6 1 L-1 1 L-1 6 L-2 6 L0 8 L2 6 L1 6 L1 1 L6 1 L6 2 L8 0 L6 -2 L6 -1 L1 -1 L1 -6 L2 -6 Z"
-          fill="white"
-          stroke="none"
-        />
-        {/* Colored fill */}
-        <path
-          d="M0 -8 L-2 -6 L-1 -6 L-1 -1 L-6 -1 L-6 -2 L-8 0 L-6 2 L-6 1 L-1 1 L-1 6 L-2 6 L0 8 L2 6 L1 6 L1 1 L6 1 L6 2 L8 0 L6 -2 L6 -1 L1 -1 L1 -6 L2 -6 Z"
-          fill={color}
-          stroke="white"
-          strokeWidth="0.3"
-        />
-      </g>
+      {/* Based on move.svg */}
+      <path
+        d="M9,1L1,9l5.2,5.2L9,17l8-8L9,1z M7,12H6v-1h1V12z M7,7H6V6h1V7z M12,12h-1v-1h1V12z M11,6h1v1h-1V6z"
+        fill="white"
+        fillOpacity="0.85"
+      />
+      <polygon
+        points="15.6,9 13,6.2 13,8 9,8 5,8 5,6.2 2.4,9 5,11.8 5,10 9,10 13,10 13,11.8"
+        fill={color}
+      />
+      <polygon
+        points="10,9 10,9 10,5 11.8,5 9,2.4 6.2,5 8,5 8,9 8,9 8,13 6.2,13 9,15.6 11.8,13 10,13"
+        fill={color}
+      />
     </g>
   );
 };
