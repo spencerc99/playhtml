@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
+import { VERBOSE } from "../config";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -874,14 +875,24 @@ export default defineContentScript({
     let collectorManager: CollectorManager | null = null;
 
     const initializeCollectors = async () => {
-      collectorManager = new CollectorManager();
-      
-      // Register collectors
-      const cursorCollector = new CursorCollector();
-      collectorManager.registerCollector(cursorCollector);
-      
-      // Initialize manager (loads saved enabled state)
-      await collectorManager.init();
+      try {
+        if (VERBOSE) {
+          console.log("[Collections] Initializing collector manager...");
+        }
+        collectorManager = new CollectorManager();
+        
+        // Register collectors
+        const cursorCollector = new CursorCollector();
+        collectorManager.registerCollector(cursorCollector);
+        
+        // Initialize manager (loads saved enabled state)
+        await collectorManager.init();
+        if (VERBOSE) {
+          console.log("[Collections] Collector manager initialized successfully");
+        }
+      } catch (error) {
+        console.error("[Collections] Failed to initialize collector manager:", error);
+      }
     };
 
     if (document.readyState === "loading") {
@@ -922,25 +933,64 @@ export default defineContentScript({
 
         // Collector management messages
         if (message.type === "GET_COLLECTOR_STATUSES") {
-          const statuses = collectorManager?.getCollectorStatuses() || [];
+          if (!collectorManager) {
+            sendResponse({ statuses: [], error: "Collector manager not initialized" });
+            return true;
+          }
+          const statuses = collectorManager.getCollectorStatuses();
           sendResponse({ statuses });
           return true;
         }
 
         if (message.type === "ENABLE_COLLECTOR") {
-          collectorManager?.enableCollector(message.collectorType).then(() => {
+          if (!collectorManager) {
+            sendResponse({ success: false, error: "Collector manager not initialized" });
+            return true;
+          }
+          if (!message.collectorType) {
+            sendResponse({ success: false, error: "Missing collectorType" });
+            return true;
+          }
+          collectorManager.enableCollector(message.collectorType).then(() => {
             sendResponse({ success: true });
           }).catch((error) => {
-            sendResponse({ success: false, error: error.message });
+            console.error("Failed to enable collector:", error);
+            sendResponse({ success: false, error: error.message || String(error) });
           });
           return true;
         }
 
         if (message.type === "DISABLE_COLLECTOR") {
-          collectorManager?.disableCollector(message.collectorType).then(() => {
+          if (!collectorManager) {
+            sendResponse({ success: false, error: "Collector manager not initialized" });
+            return true;
+          }
+          if (!message.collectorType) {
+            sendResponse({ success: false, error: "Missing collectorType" });
+            return true;
+          }
+          collectorManager.disableCollector(message.collectorType).then(() => {
             sendResponse({ success: true });
           }).catch((error) => {
-            sendResponse({ success: false, error: error.message });
+            console.error("Failed to disable collector:", error);
+            sendResponse({ success: false, error: error.message || String(error) });
+          });
+          return true;
+        }
+
+        if (message.type === "FLUSH_EVENTS") {
+          if (!collectorManager) {
+            sendResponse({ success: false, error: "Collector manager not initialized" });
+            return true;
+          }
+          collectorManager.flushEvents().then(() => {
+            const buffer = collectorManager?.getEventBuffer();
+            buffer?.getPendingCount().then((count) => {
+              sendResponse({ success: true, pendingCount: count });
+            });
+          }).catch((error) => {
+            console.error("Failed to flush events:", error);
+            sendResponse({ success: false, error: error.message || String(error) });
           });
           return true;
         }

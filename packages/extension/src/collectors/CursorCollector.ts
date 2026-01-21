@@ -1,6 +1,7 @@
 import { BaseCollector } from './BaseCollector';
 import type { CursorEventData } from './types';
 import { normalizePosition } from './types';
+import { VERBOSE } from '../config';
 
 /**
  * CursorCollector captures cursor movement with dual-layer approach:
@@ -15,9 +16,10 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private mouseMoveHandler?: (e: MouseEvent) => void;
   private animationFrameId?: number;
   private lastSampleTime = 0;
-  private sampleRate = 100; // ms between samples for archival
+  protected sampleRate = 250; // ms between samples for archival
   private realTimeRate = 16; // ~60fps for real-time (16ms)
   private lastRealTimeTime = 0;
+  private minMovementThreshold = 15; // pixels - minimum movement to trigger a sample
   
   // Rolling buffer for recent cursor positions (for archival)
   private recentPositions: Array<{ x: number; y: number; time: number }> = [];
@@ -27,13 +29,44 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private currentX = 0;
   private currentY = 0;
   private currentTarget: string | undefined;
+  private currentCursorStyle: string | undefined;
+  private lastCursorStyle: string | undefined;
+  
+  // Last sampled position (for movement threshold)
+  private lastSampledX = 0;
+  private lastSampledY = 0;
+  
+  // Mouse event handlers
+  private mouseDownHandler?: (e: MouseEvent) => void;
+  private mouseUpHandler?: (e: MouseEvent) => void;
+  private dragStartHandler?: (e: DragEvent) => void;
+  private dragEndHandler?: (e: DragEvent) => void;
+  
+  // Click vs hold tracking
+  private mouseDownTime: number = 0;
+  private mouseDownButton: number = -1;
+  private mouseDownX: number = 0;
+  private mouseDownY: number = 0;
+  private holdThreshold = 250; // ms to distinguish click vs hold
   
   start(): void {
-    if (this.enabled) return;
-    
-    this.enabled = true;
+    // Note: enable() already checks if enabled, so we don't need to check here
+    if (VERBOSE) {
+      console.log('[CursorCollector] Starting cursor collection...');
+    }
     this.lastSampleTime = Date.now();
     this.lastRealTimeTime = Date.now();
+    
+    // Initialize last sampled position to current position
+    // This prevents the first sample from being triggered immediately
+    if (this.currentX === 0 && this.currentY === 0) {
+      // Wait for first mouse move to set initial position
+      this.lastSampledX = -9999;
+      this.lastSampledY = -9999;
+    } else {
+      this.lastSampledX = this.currentX;
+      this.lastSampledY = this.currentY;
+    }
     
     // Set up mouse move handler
     this.mouseMoveHandler = (e: MouseEvent) => {
@@ -45,6 +78,17 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       if (target) {
         // Create a simple selector (tag + id/class if available)
         this.currentTarget = this.getElementSelector(target);
+        
+        // Detect cursor style changes
+        const computedStyle = window.getComputedStyle(target);
+        const cursorStyle = computedStyle.cursor || 'auto';
+        this.currentCursorStyle = cursorStyle;
+        
+        // Emit cursor change event if style changed
+        if (this.lastCursorStyle !== undefined && this.lastCursorStyle !== cursorStyle) {
+          this.emitCursorChangeEvent();
+        }
+        this.lastCursorStyle = cursorStyle;
       }
       
       // Schedule real-time update
@@ -53,15 +97,123 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       // Check if we should sample for archival
       const now = Date.now();
       if (now - this.lastSampleTime >= this.sampleRate) {
-        this.sample();
-        this.lastSampleTime = now;
+        // Check if movement is significant enough
+        const dx = Math.abs(this.currentX - this.lastSampledX);
+        const dy = Math.abs(this.currentY - this.lastSampledY);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance >= this.minMovementThreshold) {
+          const sampled = this.sample();
+          if (sampled) {
+            // Update last sampled position
+            this.lastSampledX = this.currentX;
+            this.lastSampledY = this.currentY;
+          }
+          this.lastSampleTime = now;
+        } else {
+          // Movement too small, just update the timer
+          this.lastSampleTime = now;
+        }
       }
     };
     
     document.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
+    if (VERBOSE) {
+      console.log('[CursorCollector] Mouse move listener attached');
+    }
+    
+    // Set up mouse down handler (for click/hold detection)
+    this.mouseDownHandler = (e: MouseEvent) => {
+      this.mouseDownTime = Date.now();
+      this.mouseDownButton = e.button;
+      this.mouseDownX = e.clientX;
+      this.mouseDownY = e.clientY;
+    };
+    
+    // Set up mouse up handler (for click/hold detection)
+    this.mouseUpHandler = (e: MouseEvent) => {
+      const duration = Date.now() - this.mouseDownTime;
+      const normalized = normalizePosition(
+        this.mouseDownX,
+        this.mouseDownY,
+        window.innerWidth,
+        window.innerHeight
+      );
+      
+      const target = e.target as HTMLElement;
+      const targetSelector = target ? this.getElementSelector(target) : undefined;
+      
+      if (duration >= this.holdThreshold) {
+        // Emit hold event
+        this.emitDiscreteEvent({
+          ...normalized,
+          t: targetSelector,
+          event: 'hold',
+          button: this.mouseDownButton,
+          duration: duration,
+        });
+      } else {
+        // Emit click event
+        this.emitDiscreteEvent({
+          ...normalized,
+          t: targetSelector,
+          event: 'click',
+          button: this.mouseDownButton,
+        });
+      }
+      
+      this.mouseDownTime = 0;
+      this.mouseDownButton = -1;
+    };
+    
+    // Set up drag handlers
+    this.dragStartHandler = (e: DragEvent) => {
+      const normalized = normalizePosition(
+        e.clientX,
+        e.clientY,
+        window.innerWidth,
+        window.innerHeight
+      );
+      
+      const target = e.target as HTMLElement;
+      const targetSelector = target ? this.getElementSelector(target) : undefined;
+      
+      this.emitDiscreteEvent({
+        ...normalized,
+        t: targetSelector,
+        event: 'drag_start',
+      });
+    };
+    
+    this.dragEndHandler = (e: DragEvent) => {
+      const normalized = normalizePosition(
+        e.clientX,
+        e.clientY,
+        window.innerWidth,
+        window.innerHeight
+      );
+      
+      const target = e.target as HTMLElement;
+      const targetSelector = target ? this.getElementSelector(target) : undefined;
+      
+      this.emitDiscreteEvent({
+        ...normalized,
+        t: targetSelector,
+        event: 'drag_end',
+      });
+    };
+    
+    // Attach event listeners
+    document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
+    document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
+    document.addEventListener('dragstart', this.dragStartHandler, { passive: true });
+    document.addEventListener('dragend', this.dragEndHandler, { passive: true });
     
     // Start animation frame loop for real-time updates
     this.startRealTimeLoop();
+    if (VERBOSE) {
+      console.log('[CursorCollector] Started successfully');
+    }
   }
   
   stop(): void {
@@ -139,7 +291,10 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
    * Sample current cursor state for archival
    */
   protected sample(): CursorEventData | null {
-    if (!this.enabled) return null;
+    if (!this.enabled) {
+      console.warn('[CursorCollector] Sample called but collector is not enabled');
+      return null;
+    }
     
     const normalized = normalizePosition(
       this.currentX,
@@ -167,6 +322,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     };
     
     // Emit to buffer for archival
+    if (VERBOSE) {
+      console.log('[CursorCollector] Sampling cursor position:', data);
+    }
     this.emit(data);
     
     return data;

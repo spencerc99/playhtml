@@ -27,14 +27,17 @@ dist-ssr
 
 # dev persisted state
 .partykit
+.wrangler
 
 # secrets
 .env
+.dev.vars
 
 .claude
 
 
 .wxt
 .output
+packages/extension/build
 
 internal-docs

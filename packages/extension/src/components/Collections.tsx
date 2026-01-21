@@ -9,6 +9,7 @@ interface CollectionsProps {
 export function Collections({ onBack }: CollectionsProps) {
   const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadCollectors();
@@ -22,17 +23,45 @@ export function Collections({ onBack }: CollectionsProps) {
         currentWindow: true,
       });
 
-      if (tab?.id) {
-        const response = await browser.tabs.sendMessage(tab.id, {
-          type: "GET_COLLECTOR_STATUSES",
-        });
-
-        if (response && Array.isArray(response.statuses)) {
-          setCollectors(response.statuses);
-        }
+      if (!tab?.id) {
+        throw new Error("No active tab found");
       }
-    } catch (error) {
+
+      // Check if tab URL is accessible (not chrome:// or extension://)
+      if (tab.url && (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("moz-extension://"))) {
+        throw new Error("Content script not available on this page");
+      }
+
+      const response = await browser.tabs.sendMessage(tab.id, {
+        type: "GET_COLLECTOR_STATUSES",
+      });
+
+      if (response && Array.isArray(response.statuses) && response.statuses.length > 0) {
+        setCollectors(response.statuses);
+      } else if (response?.error) {
+        console.warn("Collector manager not initialized:", response.error);
+        // Fallback to default collectors
+        setCollectors([
+          {
+            type: "cursor",
+            enabled: false,
+            description: "Captures cursor movement, clicks, hovers, drags, and zoom",
+          },
+        ]);
+      } else {
+        // No collectors registered yet, show default
+        setCollectors([
+          {
+            type: "cursor",
+            enabled: false,
+            description: "Captures cursor movement, clicks, hovers, drags, and zoom",
+          },
+        ]);
+      }
+      setError(null);
+    } catch (error: any) {
       console.error("Failed to load collectors:", error);
+      setError("Unable to connect to content script. Make sure you're on a regular webpage (not chrome:// pages).");
       // Fallback to default collectors
       setCollectors([
         {
@@ -53,19 +82,40 @@ export function Collections({ onBack }: CollectionsProps) {
         currentWindow: true,
       });
 
-      if (tab?.id) {
-        await browser.tabs.sendMessage(tab.id, {
-          type: enabled ? "ENABLE_COLLECTOR" : "DISABLE_COLLECTOR",
-          collectorType: type,
-        });
+      if (!tab?.id) {
+        console.error("No active tab found");
+        return;
+      }
 
-        // Update local state
+      // Optimistically update UI
+      setCollectors((prev) =>
+        prev.map((c) => (c.type === type ? { ...c, enabled } : c))
+      );
+
+      // Send message and wait for response
+      const response = await browser.tabs.sendMessage(tab.id, {
+        type: enabled ? "ENABLE_COLLECTOR" : "DISABLE_COLLECTOR",
+        collectorType: type,
+      });
+
+      if (response && !response.success) {
+        console.error("Failed to toggle collector:", response.error);
+        // Revert optimistic update
         setCollectors((prev) =>
-          prev.map((c) => (c.type === type ? { ...c, enabled } : c))
+          prev.map((c) => (c.type === type ? { ...c, enabled: !enabled } : c))
         );
+        alert(`Failed to ${enabled ? "enable" : "disable"} collector: ${response.error || "Unknown error"}`);
+      } else {
+        // Reload collector statuses to ensure sync
+        await loadCollectors();
       }
     } catch (error) {
       console.error("Failed to toggle collector:", error);
+      // Revert optimistic update
+      setCollectors((prev) =>
+        prev.map((c) => (c.type === type ? { ...c, enabled: !enabled } : c))
+      );
+      alert(`Failed to toggle collector. Make sure you're on a webpage (not chrome:// pages).`);
     }
   };
 
@@ -123,6 +173,24 @@ export function Collections({ onBack }: CollectionsProps) {
       </header>
 
       <main style={{ flex: 1, overflow: "auto" }}>
+        {error && (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "12px",
+              background: "#fee2e2",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "#991b1b",
+            }}
+          >
+            <strong>⚠️ {error}</strong>
+            <br />
+            <span style={{ fontSize: "11px" }}>
+              Try refreshing the page or navigating to a regular website.
+            </span>
+          </div>
+        )}
         <div
           style={{
             marginBottom: "16px",

@@ -1,0 +1,7 @@
+# Local development environment variables
+# Copy this file to .dev.vars and fill in your values
+# .dev.vars is gitignored and used by `wrangler dev`
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=your-secret-key-here
+ADMIN_KEY=your-admin-key-here

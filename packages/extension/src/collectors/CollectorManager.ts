@@ -3,6 +3,7 @@ import { BaseCollector } from './BaseCollector';
 import type { CollectionEventType, CollectorStatus } from './types';
 import { EventBuffer } from '../storage/EventBuffer';
 import { uploadEvents } from '../storage/sync';
+import { VERBOSE } from '../config';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
 
@@ -40,13 +41,27 @@ export class CollectorManager {
    * Register a collector
    */
   registerCollector(collector: BaseCollector): void {
+    if (VERBOSE) {
+      console.log(`[CollectorManager] Registering collector: ${collector.type}`);
+    }
     this.collectors.set(collector.type, collector);
     
     // Set up event emission callback
     collector.setEmitCallback(async (data) => {
-      const event = await this.eventBuffer.createEvent(collector.type, data);
-      await this.eventBuffer.addEvent(event);
+      try {
+        const event = await this.eventBuffer.createEvent(collector.type, data);
+        await this.eventBuffer.addEvent(event);
+        if (VERBOSE) {
+          console.log(`[CollectorManager] Event collected: ${collector.type}`, event.id);
+        }
+      } catch (error) {
+        console.error(`[CollectorManager] Failed to add event:`, error);
+      }
     });
+    
+    if (VERBOSE) {
+      console.log(`[CollectorManager] Emit callback set for ${collector.type}`);
+    }
     
     // Check if this collector should be enabled
     this.checkCollectorState(collector);
@@ -69,10 +84,18 @@ export class CollectorManager {
    * Enable a collector
    */
   async enableCollector(type: CollectionEventType): Promise<void> {
+    if (VERBOSE) {
+      console.log(`[CollectorManager] Enabling collector: ${type}`);
+    }
     const collector = this.collectors.get(type);
     if (collector) {
       collector.enable();
       await this.saveCollectorState(type, true);
+      if (VERBOSE) {
+        console.log(`[CollectorManager] Collector ${type} enabled successfully`);
+      }
+    } else {
+      console.error(`[CollectorManager] Collector ${type} not found`);
     }
   }
   
