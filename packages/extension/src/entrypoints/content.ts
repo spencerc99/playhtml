@@ -1,6 +1,8 @@
 import browser from "webextension-polyfill";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
+import { NavigationCollector } from "../collectors/NavigationCollector";
+import { ViewportCollector } from "../collectors/ViewportCollector";
 import { VERBOSE } from "../config";
 
 export default defineContentScript({
@@ -884,6 +886,12 @@ export default defineContentScript({
         // Register collectors
         const cursorCollector = new CursorCollector();
         collectorManager.registerCollector(cursorCollector);
+        
+        const navigationCollector = new NavigationCollector();
+        collectorManager.registerCollector(navigationCollector);
+        
+        const viewportCollector = new ViewportCollector();
+        collectorManager.registerCollector(viewportCollector);
         
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();

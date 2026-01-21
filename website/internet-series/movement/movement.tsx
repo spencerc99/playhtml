@@ -146,13 +146,14 @@ const loadSettings = () => {
     overlapFactor: 0.5,
     randomizeColors: false,
     minGapBetweenTrails: 0.5,
+    chaosIntensity: 1.0, // Multiplier for chaotic style variations (0.5 = subtle, 2.0 = extreme)
   };
 };
 
 const InternetMovement = () => {
   const [settings, setSettings] = useState(loadSettings());
   
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
   
   // Save settings to localStorage whenever they change
   useEffect(() => {
@@ -180,6 +181,25 @@ const InternetMovement = () => {
   const fetchEvents = async () => {
     setLoading(true);
     setError(null);
+    
+    // Reset animation progress to restart from beginning
+    setAnimationProgress(0);
+    
+    // Cancel any ongoing animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = undefined;
+    }
+    
+    // Reset initial viewport size to current size when refreshing data
+    // This ensures trails are recalculated based on the current window size
+    if (containerRef.current) {
+      initialViewportSize.current = {
+        width: containerRef.current.clientWidth,
+        height: containerRef.current.clientHeight,
+      };
+    }
+    
     try {
       const response = await fetch(
         `${API_URL}?type=cursor&limit=5000`
@@ -202,20 +222,31 @@ const InternetMovement = () => {
     fetchEvents();
   }, []);
 
-  // Keyboard shortcut to toggle controls (double-tap 'D')
+  // Keyboard shortcuts (double-tap 'D' for controls, double-tap 'R' for refresh)
   useEffect(() => {
     let lastDKeyTime = 0;
+    let lastRKeyTime = 0;
     const DOUBLE_TAP_THRESHOLD = 300; // ms
 
     const handleKeyPress = (e: KeyboardEvent) => {
+      const now = Date.now();
+      
       if (e.key === 'd' || e.key === 'D') {
-        const now = Date.now();
         if (now - lastDKeyTime < DOUBLE_TAP_THRESHOLD) {
-          // Double tap detected
+          // Double tap detected - toggle controls
           setControlsVisible(prev => !prev);
           lastDKeyTime = 0; // Reset to prevent triple-tap
         } else {
           lastDKeyTime = now;
+        }
+      } else if (e.key === 'r' || e.key === 'R') {
+        if (now - lastRKeyTime < DOUBLE_TAP_THRESHOLD) {
+          // Double tap detected - refresh data
+          console.log('Refreshing data...');
+          fetchEvents();
+          lastRKeyTime = 0; // Reset to prevent triple-tap
+        } else {
+          lastRKeyTime = now;
         }
       }
     };
@@ -669,14 +700,16 @@ const InternetMovement = () => {
   const applyStyleVariations = (
     points: Array<{ x: number; y: number }>,
     style: string,
-    seed: number
+    seed: number,
+    chaosIntensity: number = 1.0
   ): Array<{ x: number; y: number }> => {
     if (points.length < 2 || style === 'straight' || style === 'smooth') {
       return points;
     }
     
     // Check cache first (only cache for organic/chaotic which are expensive)
-    const cacheKey = `${seed}-${style}-${points.length}`;
+    // Include chaos intensity in cache key
+    const cacheKey = `${seed}-${style}-${points.length}-${chaosIntensity.toFixed(2)}`;
     const cached = variedPointsCache.current.get(cacheKey);
     if (cached) return cached;
 
@@ -721,11 +754,14 @@ const InternetMovement = () => {
           const baseX = p1.x + dx * t;
           const baseY = p1.y + dy * t;
 
-          // Large random offsets
-          const offsetX = (seededRandom(i * 10 + j, 0) - 0.5) * 15;
-          const offsetY = (seededRandom(i * 10 + j, 1) - 0.5) * 15;
+          // Random offsets scaled by chaos intensity
+          // Base values: offsetRange = 15, wobble = 8
+          const offsetRange = 15 * chaosIntensity;
+          const wobble = 8 * chaosIntensity;
+          
+          const offsetX = (seededRandom(i * 10 + j, 0) - 0.5) * offsetRange;
+          const offsetY = (seededRandom(i * 10 + j, 1) - 0.5) * offsetRange;
           const angle = seededRandom(i * 10 + j, 2) * Math.PI * 2;
-          const wobble = 8;
 
           variedPoints.push({
             x: baseX + offsetX + Math.cos(angle) * wobble,
@@ -817,6 +853,7 @@ const InternetMovement = () => {
       strokeWidth: number;
       pointSize: number;
       trailOpacity: number;
+      chaosIntensity?: number;
     };
   }) => {
     if (trail.points.length < 2 || !schedule) return null;
@@ -846,7 +883,7 @@ const InternetMovement = () => {
 
     // Pre-calculate varied points based on style (seed from first point)
     const seed = trail.points[0]?.x + trail.points[0]?.y || 0;
-    const variedTrailPoints = applyStyleVariations(trail.points, settings.trailStyle, seed);
+    const variedTrailPoints = applyStyleVariations(trail.points, trailSettings.trailStyle, seed, trailSettings.chaosIntensity || 1.0);
     
     const cursorSize = 32;
 
@@ -984,8 +1021,8 @@ const InternetMovement = () => {
           <input
             id="stroke-width"
             type="range"
-            min="1"
-            max="6"
+            min="0.5"
+            max="20"
             step="0.5"
             value={settings.strokeWidth}
             onChange={(e) =>
@@ -1004,7 +1041,7 @@ const InternetMovement = () => {
             id="point-size"
             type="range"
             min="0"
-            max="6"
+            max="20"
             step="0.5"
             value={settings.pointSize}
             onChange={(e) =>
@@ -1054,6 +1091,27 @@ const InternetMovement = () => {
             <option value="chaotic">Chaotic (Sketchy)</option>
           </select>
         </div>
+
+        {settings.trailStyle === 'chaotic' && (
+          <div className="control-group">
+            <label htmlFor="chaos-intensity">Chaos Intensity</label>
+            <input
+              id="chaos-intensity"
+              type="range"
+              min="0.1"
+              max="3"
+              step="0.1"
+              value={settings.chaosIntensity || 1.0}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  chaosIntensity: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.chaosIntensity || 1.0).toFixed(1)}x</span>
+          </div>
+        )}
 
         <div className="control-group">
           <label htmlFor="max-concurrent">Max Concurrent Trails</label>

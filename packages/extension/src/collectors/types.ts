@@ -21,10 +21,6 @@ export interface CollectionEvent {
  */
 export type CollectionEventType = 
   | 'cursor' 
-  | 'click' 
-  | 'scroll' 
-  | 'screenshot' 
-  | 'love'
   | 'navigation'
   | 'viewport';
 
@@ -41,6 +37,11 @@ export interface EventMeta {
 }
 
 /**
+ * Cursor event types
+ */
+export type CursorEventType = 'move' | 'click' | 'hold' | 'cursor_change';
+
+/**
  * Cursor-specific payload (compact format)
  */
 export interface CursorEventData {
@@ -48,7 +49,7 @@ export interface CursorEventData {
   y: number;           // 0-1 normalized position
   t?: string;          // Target element selector (optional)
   cursor?: string;     // CSS cursor style (pointer, grab, text, etc.)
-  event?: 'move' | 'click' | 'hold' | 'drag_start' | 'drag_end' | 'cursor_change';
+  event?: CursorEventType;
   button?: number;      // for click/hold: 0=left, 1=middle, 2=right
   duration?: number;   // for hold: ms held
 }
@@ -74,20 +75,30 @@ export interface ScrollEventData {
 }
 
 /**
+ * Navigation event types
+ */
+export type NavigationEventType = 'focus' | 'blur' | 'popstate' | 'beforeunload';
+
+/**
  * Navigation-specific payload
  */
 export interface NavigationEventData {
-  event: 'focus' | 'blur' | 'popstate' | 'beforeunload';
+  event: NavigationEventType;
   url?: string;        // for popstate: new URL
   from_url?: string;   // for beforeunload: URL being left
   state?: unknown;     // for popstate: history state
 }
 
 /**
+ * Viewport event types
+ */
+export type ViewportEventType = 'scroll' | 'resize' | 'zoom';
+
+/**
  * Viewport-specific payload
  */
 export interface ViewportEventData {
-  event: 'scroll' | 'resize' | 'zoom';
+  event: ViewportEventType;
   // For scroll
   scrollX?: number;    // 0-1 normalized (scrollLeft / scrollWidth)
   scrollY?: number;    // 0-1 normalized (scrollTop / scrollHeight)
@@ -154,9 +165,31 @@ export function normalizeScroll(
 ): { scrollX: number; scrollY: number } {
   const maxScrollX = Math.max(0, scrollWidth - clientWidth);
   const maxScrollY = Math.max(0, scrollHeight - clientHeight);
-  
+
   return {
     scrollX: maxScrollX > 0 ? Math.max(0, Math.min(1, scrollLeft / maxScrollX)) : 0,
     scrollY: maxScrollY > 0 ? Math.max(0, Math.min(1, scrollTop / maxScrollY)) : 0,
   };
+}
+
+/**
+ * Get a simple CSS selector for an element
+ * Prefers ID, falls back to first class, then tag name
+ */
+export function getElementSelector(element: HTMLElement): string {
+  // Prefer ID
+  if (element.id) {
+    return `#${element.id}`;
+  }
+
+  // Fall back to first class
+  if (element.className && typeof element.className === 'string') {
+    const classes = element.className.split(' ').filter(Boolean);
+    if (classes.length > 0) {
+      return `.${classes[0]}`;
+    }
+  }
+
+  // Fall back to tag name
+  return element.tagName.toLowerCase();
 }

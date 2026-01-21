@@ -1,6 +1,6 @@
 import { BaseCollector } from './BaseCollector';
 import type { CursorEventData } from './types';
-import { normalizePosition } from './types';
+import { normalizePosition, getElementSelector } from './types';
 import { VERBOSE } from '../config';
 
 /**
@@ -11,7 +11,7 @@ import { VERBOSE } from '../config';
  */
 export class CursorCollector extends BaseCollector<CursorEventData> {
   readonly type = 'cursor' as const;
-  readonly description = 'Captures cursor movement, clicks, hovers, drags, and zoom';
+  readonly description = 'Captures cursor movement, clicks, holds, and cursor style changes';
   
   private mouseMoveHandler?: (e: MouseEvent) => void;
   private animationFrameId?: number;
@@ -20,11 +20,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private realTimeRate = 16; // ~60fps for real-time (16ms)
   private lastRealTimeTime = 0;
   private minMovementThreshold = 15; // pixels - minimum movement to trigger a sample
-  
-  // Rolling buffer for recent cursor positions (for archival)
-  private recentPositions: Array<{ x: number; y: number; time: number }> = [];
-  private maxBufferSize = 500;
-  
+
   // Current cursor state
   private currentX = 0;
   private currentY = 0;
@@ -39,8 +35,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   // Mouse event handlers
   private mouseDownHandler?: (e: MouseEvent) => void;
   private mouseUpHandler?: (e: MouseEvent) => void;
-  private dragStartHandler?: (e: DragEvent) => void;
-  private dragEndHandler?: (e: DragEvent) => void;
   
   // Click vs hold tracking
   private mouseDownTime: number = 0;
@@ -77,8 +71,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       const target = e.target as HTMLElement;
       if (target) {
         // Create a simple selector (tag + id/class if available)
-        this.currentTarget = this.getElementSelector(target);
-        
+        this.currentTarget = getElementSelector(target);
+
         // Detect cursor style changes
         const computedStyle = window.getComputedStyle(target);
         const cursorStyle = computedStyle.cursor || 'auto';
@@ -139,9 +133,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         window.innerWidth,
         window.innerHeight
       );
-      
+
       const target = e.target as HTMLElement;
-      const targetSelector = target ? this.getElementSelector(target) : undefined;
+      const targetSelector = target ? getElementSelector(target) : undefined;
       
       if (duration >= this.holdThreshold) {
         // Emit hold event
@@ -166,48 +160,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.mouseDownButton = -1;
     };
     
-    // Set up drag handlers
-    this.dragStartHandler = (e: DragEvent) => {
-      const normalized = normalizePosition(
-        e.clientX,
-        e.clientY,
-        window.innerWidth,
-        window.innerHeight
-      );
-      
-      const target = e.target as HTMLElement;
-      const targetSelector = target ? this.getElementSelector(target) : undefined;
-      
-      this.emitDiscreteEvent({
-        ...normalized,
-        t: targetSelector,
-        event: 'drag_start',
-      });
-    };
-    
-    this.dragEndHandler = (e: DragEvent) => {
-      const normalized = normalizePosition(
-        e.clientX,
-        e.clientY,
-        window.innerWidth,
-        window.innerHeight
-      );
-      
-      const target = e.target as HTMLElement;
-      const targetSelector = target ? this.getElementSelector(target) : undefined;
-      
-      this.emitDiscreteEvent({
-        ...normalized,
-        t: targetSelector,
-        event: 'drag_end',
-      });
-    };
-    
     // Attach event listeners
     document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
     document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
-    document.addEventListener('dragstart', this.dragStartHandler, { passive: true });
-    document.addEventListener('dragend', this.dragEndHandler, { passive: true });
     
     // Start animation frame loop for real-time updates
     this.startRealTimeLoop();
@@ -217,22 +172,25 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   }
   
   stop(): void {
-    if (!this.enabled) return;
-    
-    this.enabled = false;
-    
     if (this.mouseMoveHandler) {
       document.removeEventListener('mousemove', this.mouseMoveHandler);
       this.mouseMoveHandler = undefined;
     }
-    
+
+    if (this.mouseDownHandler) {
+      document.removeEventListener('mousedown', this.mouseDownHandler);
+      this.mouseDownHandler = undefined;
+    }
+
+    if (this.mouseUpHandler) {
+      document.removeEventListener('mouseup', this.mouseUpHandler);
+      this.mouseUpHandler = undefined;
+    }
+
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = undefined;
     }
-    
-    // Clear buffers
-    this.recentPositions = [];
   }
   
   /**
@@ -281,10 +239,49 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       x: normalized.x,
       y: normalized.y,
       t: this.currentTarget,
+      cursor: this.currentCursorStyle,
+      event: 'move',
     };
     
     // Emit to real-time stream (PartyKit)
     this.emitRealTime(data);
+  }
+  
+  /**
+   * Emit a discrete event (click, hold, cursor_change)
+   * These are emitted immediately to the buffer (not throttled)
+   */
+  private emitDiscreteEvent(data: CursorEventData): void {
+    if (!this.enabled) return;
+    
+    if (VERBOSE) {
+      console.log('[CursorCollector] Emitting discrete event:', data);
+    }
+    
+    // Emit to buffer for archival
+    this.emit(data);
+    
+    // Also emit to real-time stream for live visualization
+    this.emitRealTime(data);
+  }
+  
+  /**
+   * Emit cursor style change event
+   */
+  private emitCursorChangeEvent(): void {
+    const normalized = normalizePosition(
+      this.currentX,
+      this.currentY,
+      window.innerWidth,
+      window.innerHeight
+    );
+    
+    this.emitDiscreteEvent({
+      ...normalized,
+      t: this.currentTarget,
+      cursor: this.currentCursorStyle,
+      event: 'cursor_change',
+    });
   }
   
   /**
@@ -295,66 +292,28 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       console.warn('[CursorCollector] Sample called but collector is not enabled');
       return null;
     }
-    
+
     const normalized = normalizePosition(
       this.currentX,
       this.currentY,
       window.innerWidth,
       window.innerHeight
     );
-    
-    // Add to rolling buffer
-    this.recentPositions.push({
-      x: normalized.x,
-      y: normalized.y,
-      time: Date.now(),
-    });
-    
-    // Keep buffer size manageable
-    if (this.recentPositions.length > this.maxBufferSize) {
-      this.recentPositions.shift();
-    }
-    
+
     const data: CursorEventData = {
       x: normalized.x,
       y: normalized.y,
       t: this.currentTarget,
+      cursor: this.currentCursorStyle,
+      event: 'move',
     };
-    
+
     // Emit to buffer for archival
     if (VERBOSE) {
       console.log('[CursorCollector] Sampling cursor position:', data);
     }
     this.emit(data);
-    
+
     return data;
-  }
-  
-  /**
-   * Get a simple selector for an element
-   */
-  private getElementSelector(element: HTMLElement): string {
-    // Prefer ID
-    if (element.id) {
-      return `#${element.id}`;
-    }
-    
-    // Fall back to class
-    if (element.className && typeof element.className === 'string') {
-      const classes = element.className.split(' ').filter(Boolean);
-      if (classes.length > 0) {
-        return `.${classes[0]}`;
-      }
-    }
-    
-    // Fall back to tag name
-    return element.tagName.toLowerCase();
-  }
-  
-  /**
-   * Get recent cursor positions (for debugging/stats)
-   */
-  getRecentPositions(): Array<{ x: number; y: number; time: number }> {
-    return [...this.recentPositions];
   }
 }

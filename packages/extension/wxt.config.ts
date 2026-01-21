@@ -19,4 +19,5 @@ export default defineConfig({
     ],
   },
   modules: ["@wxt-dev/module-react"],
+  outDir: "dist",
 });

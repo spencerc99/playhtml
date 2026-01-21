@@ -45,7 +45,7 @@ export function Collections({ onBack }: CollectionsProps) {
           {
             type: "cursor",
             enabled: false,
-            description: "Captures cursor movement, clicks, hovers, drags, and zoom",
+            description: "Captures cursor movement, clicks, holds, and cursor style changes",
           },
         ]);
       } else {
@@ -54,7 +54,7 @@ export function Collections({ onBack }: CollectionsProps) {
           {
             type: "cursor",
             enabled: false,
-            description: "Captures cursor movement, clicks, hovers, drags, and zoom",
+            description: "Captures cursor movement, clicks, holds, and cursor style changes",
           },
         ]);
       }
