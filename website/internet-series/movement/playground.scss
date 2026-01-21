@@ -1,0 +1,97 @@
+.playground {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  background-color: #fdf8f5;
+  overflow: hidden;
+
+  .controls {
+    width: 300px;
+    background: white;
+    padding: 20px;
+    overflow-y: auto;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+
+    h2 {
+      margin: 0 0 20px 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .control-group {
+      margin-bottom: 16px;
+
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+
+        input[type="checkbox"] {
+          margin-right: 8px;
+        }
+      }
+
+      input[type="range"] {
+        width: 100%;
+        margin-bottom: 4px;
+      }
+
+      span {
+        font-size: 11px;
+        color: #666;
+      }
+    }
+
+    .info {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid #eee;
+      font-size: 12px;
+      color: #666;
+
+      p {
+        margin: 4px 0;
+      }
+    }
+
+    .copy-button {
+      width: 100%;
+      padding: 12px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: background 0.2s;
+
+      &:hover {
+        background: #555;
+      }
+
+      &:active {
+        background: #222;
+      }
+    }
+  }
+
+  .canvas-container {
+    flex: 1;
+    position: relative;
+    cursor: crosshair;
+
+    svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+  }
+}

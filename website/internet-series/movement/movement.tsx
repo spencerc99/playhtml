@@ -24,6 +24,10 @@ interface CollectionEvent {
   data: {
     x: number;
     y: number;
+    event?: 'move' | 'click' | 'hold' | 'cursor_change';
+    cursor?: string;
+    button?: number;
+    duration?: number;
   };
   meta: {
     pid: string; // participant ID
@@ -36,7 +40,7 @@ interface CollectionEvent {
 }
 
 interface Trail {
-  points: Array<{ x: number; y: number }>;
+  points: Array<{ x: number; y: number; ts: number }>;
   color: string;
   opacity: number;
   // Calculate angle for cursor direction
@@ -44,6 +48,19 @@ interface Trail {
   // Timestamps for animation
   startTime: number;
   endTime: number;
+  // Track click events within this trail
+  clicks: Array<{ x: number; y: number; ts: number; button?: number }>;
+}
+
+interface ClickEffect {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  radiusFactor: number;
+  durationFactor: number;
+  startTime: number;
+  trailIndex: number;
 }
 
 // Time threshold for grouping points into the same trail (in milliseconds)
@@ -147,6 +164,17 @@ const loadSettings = () => {
     randomizeColors: false,
     minGapBetweenTrails: 0.5,
     chaosIntensity: 1.0, // Multiplier for chaotic style variations (0.5 = subtle, 2.0 = extreme)
+    // Click ripple settings
+    clickMinRadius: 10,
+    clickMaxRadius: 80,
+    clickMinDuration: 500,
+    clickMaxDuration: 2500,
+    clickStrokeWidth: 4,
+    clickOpacity: 0.3,
+    clickNumRings: 6,
+    clickRingDelayMs: 360,
+    clickExpansionDuration: 12300,
+    clickAnimationStopPoint: 0.45,
   };
 };
 
@@ -172,6 +200,7 @@ const InternetMovement = () => {
   const initialViewportSize = useRef({ width: 0, height: 0 }); // Store initial size for trail calculations
   const [animationProgress, setAnimationProgress] = useState(0);
   const animationRef = useRef<number>();
+  const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>([]);
   
   // Cache for generated paths - keyed by trailIndex-progress-style
   const pathCache = useRef<Map<string, string>>(new Map());
@@ -349,14 +378,14 @@ const InternetMovement = () => {
       }
 
       // Group consecutive events into trails based on time proximity
-      let currentTrail: Array<{ x: number; y: number }> = [];
-      let currentTrailTimestamps: number[] = [];
+      let currentTrail: Array<{ x: number; y: number; ts: number }> = [];
+      let currentClicks: Array<{ x: number; y: number; ts: number; button?: number }> = [];
       let lastTimestamp = 0;
 
       groupEvents.forEach((event) => {
         const x = event.data.x * sizeToUse.width;
         const y = event.data.y * sizeToUse.height;
-        const point = { x, y };
+        const isClick = event.data.event === 'click';
 
         // Start a new trail if:
         // 1. This is the first point, or
@@ -366,9 +395,9 @@ const InternetMovement = () => {
           event.ts - lastTimestamp > TRAIL_TIME_THRESHOLD
         ) {
           // Save previous trail if it has at least 2 points
-          if (currentTrail.length >= 2 && currentTrailTimestamps.length >= 2) {
-            const startTime = currentTrailTimestamps[0];
-            const endTime = currentTrailTimestamps[currentTrailTimestamps.length - 1];
+          if (currentTrail.length >= 2) {
+            const startTime = currentTrail[0].ts;
+            const endTime = currentTrail[currentTrail.length - 1].ts;
             
             trails.push({
               points: [...currentTrail],
@@ -376,40 +405,40 @@ const InternetMovement = () => {
               opacity: settings.trailOpacity,
               startTime,
               endTime,
+              clicks: [...currentClicks],
             });
           }
           // Start new trail
-          currentTrail = [point];
-          currentTrailTimestamps = [event.ts];
+          currentTrail = [{ x, y, ts: event.ts }];
+          currentClicks = [];
+          
+          if (isClick) {
+            currentClicks.push({ x, y, ts: event.ts, button: event.data.button });
+          }
         } else {
           // Continue current trail
-          currentTrail.push(point);
-          currentTrailTimestamps.push(event.ts);
+          currentTrail.push({ x, y, ts: event.ts });
+          
+          if (isClick) {
+            currentClicks.push({ x, y, ts: event.ts, button: event.data.button });
+          }
         }
 
         lastTimestamp = event.ts;
       });
 
       // Don't forget the last trail
-      if (currentTrail.length >= 2 && currentTrailTimestamps.length >= 2) {
-        // Calculate angle for cursor direction (using last two points)
-        const lastPoint = currentTrail[currentTrail.length - 1];
-        const secondLastPoint = currentTrail[currentTrail.length - 2];
-        const angle = Math.atan2(
-          lastPoint.y - secondLastPoint.y,
-          lastPoint.x - secondLastPoint.x
-        );
-
-        const startTime = currentTrailTimestamps[0];
-        const endTime = currentTrailTimestamps[currentTrailTimestamps.length - 1];
+      if (currentTrail.length >= 2) {
+        const startTime = currentTrail[0].ts;
+        const endTime = currentTrail[currentTrail.length - 1].ts;
 
         trails.push({
           points: currentTrail,
           color,
           opacity: settings.trailOpacity,
-          angle,
           startTime,
           endTime,
+          clicks: [...currentClicks],
         });
       }
     });
@@ -536,6 +565,61 @@ const InternetMovement = () => {
       }
     };
   }, [trails, timeRange, settings.animationSpeed]);
+
+  // Track which clicks have been spawned to avoid duplicates
+  const spawnedClicks = useRef<Set<string>>(new Set());
+
+  // Spawn click effects based on animation progress
+  useEffect(() => {
+    if (trails.length === 0 || !timeRange) return;
+
+    const currentTimeMs = timeRange.min + (animationProgress * timeRange.duration);
+
+    trails.forEach((trail, trailIndex) => {
+      trail.clicks.forEach((click) => {
+        const clickKey = `${trailIndex}-${click.ts}`;
+        
+        // Check if this click should be visible now and hasn't been spawned yet
+        if (click.ts <= currentTimeMs && !spawnedClicks.current.has(clickKey)) {
+          spawnedClicks.current.add(clickKey);
+          
+          // Create click effect
+          const newEffect: ClickEffect = {
+            id: `${trailIndex}-${click.ts}-${Math.random()}`,
+            x: click.x,
+            y: click.y,
+            color: trail.color,
+            radiusFactor: Math.random(),
+            durationFactor: Math.random(),
+            startTime: Date.now(),
+            trailIndex,
+          };
+          
+          setActiveClickEffects(prev => [...prev, newEffect]);
+        }
+      });
+    });
+
+    // Clean up old spawned clicks when animation loops
+    if (animationProgress < 0.01) {
+      spawnedClicks.current.clear();
+    }
+  }, [animationProgress, trails, timeRange]);
+
+  // Clean up old click effects
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setActiveClickEffects((prev) =>
+        prev.filter((effect) => {
+          const effectDuration = settings.clickMinDuration + effect.durationFactor * (settings.clickMaxDuration - settings.clickMinDuration);
+          return now - effect.startTime < effectDuration + 500;
+        })
+      );
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [settings.clickMinDuration, settings.clickMaxDuration]);
 
   // Generate path with straight lines between points - like chalk drawing
   // Once drawn, lines NEVER change. This is the only truly stable approach.
@@ -833,6 +917,105 @@ const InternetMovement = () => {
     
     return path;
   };
+
+  // Ripple Effect Component for clicks
+  const RippleEffect = memo(
+    ({
+      effect,
+      settings: rippleSettings,
+    }: {
+      effect: ClickEffect;
+      settings: {
+        clickMinRadius: number;
+        clickMaxRadius: number;
+        clickMinDuration: number;
+        clickMaxDuration: number;
+        clickExpansionDuration: number;
+        clickStrokeWidth: number;
+        clickOpacity: number;
+        clickNumRings: number;
+        clickRingDelayMs: number;
+        clickAnimationStopPoint: number;
+      };
+    }) => {
+      const [now, setNow] = useState(Date.now());
+      const [isAnimating, setIsAnimating] = useState(true);
+
+      // Calculate actual radius and duration from factors
+      const effectMaxRadius = rippleSettings.clickMinRadius + effect.radiusFactor * (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
+      const effectTotalDuration = rippleSettings.clickMinDuration + effect.durationFactor * (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
+
+      useEffect(() => {
+        let animationFrameId: number;
+
+        const animate = () => {
+          setNow(Date.now());
+          animationFrameId = requestAnimationFrame(animate);
+        };
+
+        if (isAnimating) {
+          animationFrameId = requestAnimationFrame(animate);
+        }
+
+        return () => {
+          if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+          }
+        };
+      }, [isAnimating]);
+
+      // Easing function
+      const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+      // Check if all rings complete or total duration elapsed
+      const totalElapsed = now - effect.startTime;
+      const allRingsComplete = totalElapsed >= effectTotalDuration || Array.from({ length: rippleSettings.clickNumRings }).every((_, i) => {
+        const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
+        const elapsed = now - ringStartTime;
+        const ringProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
+        return ringProgress >= rippleSettings.clickAnimationStopPoint;
+      });
+
+      if (isAnimating && allRingsComplete) {
+        setIsAnimating(false);
+      }
+
+      const rings = Array.from({ length: rippleSettings.clickNumRings }, (_, i) => {
+        const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
+        const elapsed = now - ringStartTime;
+        
+        if (elapsed < 0) return null;
+        
+        let ringProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
+        ringProgress = Math.min(ringProgress, rippleSettings.clickAnimationStopPoint);
+        
+        const ringRadius = effectMaxRadius * easeOutCubic(ringProgress);
+        
+        let ringOpacity: number;
+        if (ringProgress < 0.05) {
+          ringOpacity = rippleSettings.clickOpacity * (ringProgress / 0.05);
+        } else {
+          ringOpacity = rippleSettings.clickOpacity;
+        }
+
+        return (
+          <circle
+            key={i}
+            cx={effect.x}
+            cy={effect.y}
+            r={ringRadius}
+            fill="none"
+            stroke={effect.color}
+            strokeWidth={rippleSettings.clickStrokeWidth}
+            opacity={Math.max(0, ringOpacity)}
+            style={{ mixBlendMode: "multiply" }}
+          />
+        );
+      });
+
+      return <g>{rings}</g>;
+    }
+  );
 
   // Memoized Trail Component to prevent unnecessary re-renders
   const Trail = memo(({ 
@@ -1274,6 +1457,24 @@ const InternetMovement = () => {
               animationProgress={animationProgress}
               timeRange={timeRange}
               settings={settings}
+            />
+          ))}
+          {activeClickEffects.map((effect) => (
+            <RippleEffect
+              key={effect.id}
+              effect={effect}
+              settings={{
+                clickMinRadius: settings.clickMinRadius,
+                clickMaxRadius: settings.clickMaxRadius,
+                clickMinDuration: settings.clickMinDuration,
+                clickMaxDuration: settings.clickMaxDuration,
+                clickExpansionDuration: settings.clickExpansionDuration,
+                clickStrokeWidth: settings.clickStrokeWidth,
+                clickOpacity: settings.clickOpacity,
+                clickNumRings: settings.clickNumRings,
+                clickRingDelayMs: settings.clickRingDelayMs,
+                clickAnimationStopPoint: settings.clickAnimationStopPoint,
+              }}
             />
           ))}
         </svg>

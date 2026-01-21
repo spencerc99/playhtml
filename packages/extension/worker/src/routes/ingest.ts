@@ -71,7 +71,7 @@ export async function handleIngest(
       }
       
       // Validate event type
-      const validTypes = ['cursor', 'click', 'scroll', 'screenshot', 'love'];
+      const validTypes = ['cursor', 'navigation', 'viewport'];
       if (!validTypes.includes(event.type)) {
         return new Response(
           JSON.stringify({ error: `Invalid event type: ${event.type}` }),

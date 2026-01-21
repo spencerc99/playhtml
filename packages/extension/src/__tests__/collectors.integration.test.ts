@@ -28,7 +28,7 @@ describe("Collector Integration", () => {
 
     // Mock browser.storage.local
     vi.mocked(browser.storage.local.get).mockImplementation((keys) => {
-      const result: Record<string, any> = {};
+      let result: Record<string, any> = {};
       if (Array.isArray(keys)) {
         keys.forEach((key) => {
           result[key] = storageData[key];

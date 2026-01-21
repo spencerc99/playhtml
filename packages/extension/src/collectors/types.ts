@@ -84,9 +84,10 @@ export type NavigationEventType = 'focus' | 'blur' | 'popstate' | 'beforeunload'
  */
 export interface NavigationEventData {
   event: NavigationEventType;
-  url?: string;        // for popstate: new URL
-  from_url?: string;   // for beforeunload: URL being left
-  state?: unknown;     // for popstate: history state
+  url?: string;              // for popstate: new URL
+  from_url?: string;         // for beforeunload: URL being left
+  state?: unknown;           // for popstate: history state
+  visibility_state?: string; // for focus/blur: 'visible' or 'hidden'
 }
 
 /**
@@ -100,13 +101,16 @@ export type ViewportEventType = 'scroll' | 'resize' | 'zoom';
 export interface ViewportEventData {
   event: ViewportEventType;
   // For scroll
-  scrollX?: number;    // 0-1 normalized (scrollLeft / scrollWidth)
-  scrollY?: number;    // 0-1 normalized (scrollTop / scrollHeight)
+  scrollX?: number;       // 0-1 normalized (scrollLeft / scrollWidth)
+  scrollY?: number;       // 0-1 normalized (scrollTop / scrollHeight)
   // For resize
-  width?: number;      // viewport width
-  height?: number;     // viewport height
+  width?: number;         // viewport width
+  height?: number;        // viewport height
   // For zoom
-  zoom?: number;       // zoom level (e.g., 1.0, 1.25, 1.5)
+  zoom?: number;          // current zoom level (e.g., 1.0, 1.25, 1.5)
+  previous_zoom?: number; // previous zoom level (for tracking zoom delta)
+  // Quantity tracking (for resize and zoom)
+  quantity?: number;      // number of events that occurred during debounce window
 }
 
 /**
