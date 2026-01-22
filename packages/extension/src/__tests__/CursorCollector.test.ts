@@ -141,11 +141,14 @@ describe("CursorCollector", () => {
   });
 
   describe("click detection", () => {
-    it("emits click event for quick mousedown/mouseup", async () => {
+    it("emits click event for quick mousedown/mouseup (debounced)", async () => {
       collector.enable();
 
       const element = createTestElement("button", { id: "click-target" });
       await simulateClick(100, 100, 100, 0, element); // 100ms hold
+
+      // Click is debounced, so wait for debounce period (2s)
+      await advanceTime(2000);
 
       // Should emit click (not hold, since < 250ms)
       expect(emitCallback).toHaveBeenCalled();
@@ -153,20 +156,76 @@ describe("CursorCollector", () => {
       expect(call.event).toBe("click");
       expect(call.button).toBe(0);
       expect(call.duration).toBeUndefined();
+      expect(call.quantity).toBe(1); // Single click
     });
 
-    it("emits hold event for long mousedown/mouseup", async () => {
+    it("emits hold event for long mousedown/mouseup (not debounced)", async () => {
       collector.enable();
 
       const element = createTestElement("button", { id: "hold-target" });
       await simulateClick(100, 100, 300, 0, element); // 300ms hold
 
-      // Should emit hold (>= 250ms)
+      // Hold events are emitted immediately (not debounced)
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as CursorEventData;
       expect(call.event).toBe("hold");
       expect(call.button).toBe(0);
       expect(call.duration).toBeGreaterThanOrEqual(250);
+      expect(call.quantity).toBeUndefined(); // Hold events don't have quantity
+    });
+    
+    it("debounces rapid clicks within 2 second window and tracks quantity", async () => {
+      collector.enable();
+
+      const element = createTestElement("button", { id: "rapid-click" });
+      
+      // First click
+      await simulateClick(100, 100, 50, 0, element);
+      await advanceTime(300);
+      
+      // Second click (within 2s window)
+      await simulateClick(150, 150, 50, 0, element);
+      await advanceTime(500);
+      
+      // Third click (within 2s window)
+      await simulateClick(200, 200, 50, 0, element);
+      await advanceTime(2000); // Wait for debounce
+
+      // Should only emit once with quantity 3
+      const clickCalls = emitCallback.mock.calls.filter(
+        (call) => (call[0] as CursorEventData).event === "click"
+      );
+      expect(clickCalls.length).toBe(1);
+      
+      const call = clickCalls[0][0] as CursorEventData;
+      expect(call.event).toBe("click");
+      expect(call.quantity).toBe(3);
+      // Should use the last click's position
+      expect(call.x).toBeCloseTo(200 / 1024, 4);
+      expect(call.y).toBeCloseTo(200 / 768, 4);
+    });
+    
+    it("emits separate click events if clicks are spaced out", async () => {
+      collector.enable();
+
+      const element = createTestElement("button", { id: "spaced-clicks" });
+      
+      // First click
+      await simulateClick(100, 100, 50, 0, element);
+      await advanceTime(2500); // Past 2s debounce
+
+      // Second click (after debounce window)
+      await simulateClick(200, 200, 50, 0, element);
+      await advanceTime(2500); // Past 2s debounce
+
+      const clickCalls = emitCallback.mock.calls.filter(
+        (call) => (call[0] as CursorEventData).event === "click"
+      );
+      expect(clickCalls.length).toBe(2);
+      
+      // Each should have quantity of 1
+      expect((clickCalls[0][0] as CursorEventData).quantity).toBe(1);
+      expect((clickCalls[1][0] as CursorEventData).quantity).toBe(1);
     });
 
     it("tracks button type (left, middle, right)", async () => {
@@ -176,6 +235,9 @@ describe("CursorCollector", () => {
       simulateMouseDown(100, 100, 2);
       await advanceTime(100);
       simulateMouseUp(100, 100, 2);
+      
+      // Wait for debounce
+      await advanceTime(2000);
 
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as CursorEventData;
@@ -187,6 +249,9 @@ describe("CursorCollector", () => {
 
       // Click at (512, 384) in 1024x768 viewport = (0.5, 0.5)
       await simulateClick(512, 384, 100);
+      
+      // Wait for debounce
+      await advanceTime(2000);
 
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as CursorEventData;
