@@ -52,6 +52,7 @@ export interface CursorEventData {
   event?: CursorEventType;
   button?: number;      // for click/hold: 0=left, 1=middle, 2=right
   duration?: number;   // for hold: ms held
+  quantity?: number;   // number of events that occurred during debounce window (for clicks)
 }
 
 /**

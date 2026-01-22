@@ -31,6 +31,7 @@ body {
   flex-direction: column;
   gap: 12px;
   min-width: 200px;
+  pointer-events: auto; // Ensure controls are fully interactive
 
   .control-group {
     display: flex;
