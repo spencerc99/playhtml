@@ -122,7 +122,18 @@ const InternetMovement = () => {
     }
 
     try {
-      const response = await fetch(`${API_URL}?type=cursor&limit=5000`);
+      // Build query params
+      const params = new URLSearchParams({
+        type: 'cursor',
+        limit: '5000',
+      });
+
+      // Add domain filter if set
+      if (settings.domainFilter) {
+        params.append('domain', settings.domainFilter);
+      }
+
+      const response = await fetch(`${API_URL}?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch events: ${response.status}`);
       }
@@ -278,7 +289,7 @@ const InternetMovement = () => {
       }
 
       let currentTrail: Array<{ x: number; y: number; ts: number; cursor?: string }> = [];
-      let currentClicks: Array<{ x: number; y: number; ts: number; button?: number }> = [];
+      let currentClicks: Array<{ x: number; y: number; ts: number; button?: number; duration?: number }> = [];
       let lastTimestamp = 0;
 
       groupEvents.forEach((event) => {
@@ -289,9 +300,19 @@ const InternetMovement = () => {
         if (eventType === 'hold' && !settings.eventFilter.hold) return;
         if (eventType === 'cursor_change' && !settings.eventFilter.cursor_change) return;
 
+        // Convert normalized coordinates (0-1) to pixel coordinates
+        // Normalized coordinates are relative to the viewport when the event was captured
+        // We scale them to the current canvas size to preserve relative positions
+        // 
+        // IMPORTANT: event.data.x and event.data.y are normalized (0-1), so we multiply
+        // by the current canvas width/height to get pixel positions
+        // 
+        // If the original viewport (vw/vh) differs from current canvas, this preserves
+        // relative positioning (e.g., 0.5 = 50% across regardless of viewport size)
         const x = event.data.x * sizeToUse.width;
         const y = event.data.y * sizeToUse.height;
         const isClick = eventType === 'click';
+        const isHold = eventType === 'hold';
         const cursorType = event.data.cursor;
 
         if (
@@ -316,12 +337,16 @@ const InternetMovement = () => {
 
           if (isClick) {
             currentClicks.push({ x, y, ts: event.ts, button: event.data.button });
+          } else if (isHold) {
+            currentClicks.push({ x, y, ts: event.ts, button: event.data.button, duration: event.data.duration });
           }
         } else {
           currentTrail.push({ x, y, ts: event.ts, cursor: cursorType });
 
           if (isClick) {
             currentClicks.push({ x, y, ts: event.ts, button: event.data.button });
+          } else if (isHold) {
+            currentClicks.push({ x, y, ts: event.ts, button: event.data.button, duration: event.data.duration });
           }
         }
 
@@ -344,7 +369,7 @@ const InternetMovement = () => {
     });
 
     return trails;
-  }, [events, settings.trailOpacity, settings.randomizeColors, settings.domainFilter, settings.eventFilter, viewportSize]);
+  }, [events, settings.randomizeColors, settings.domainFilter, settings.eventFilter, viewportSize]);
 
   const { timeRange, trailSchedule } = useMemo(() => {
     if (trails.length === 0) return {
@@ -536,6 +561,7 @@ const InternetMovement = () => {
           y: click.y,
           ts: click.ts,
           progress,
+          duration: click.duration,
         };
       });
 
@@ -618,6 +644,7 @@ const InternetMovement = () => {
         settings={{
           strokeWidth: settings.strokeWidth,
           pointSize: settings.pointSize,
+          trailOpacity: settings.trailOpacity,
           animationSpeed: settings.animationSpeed,
           clickMinRadius: settings.clickMinRadius,
           clickMaxRadius: settings.clickMaxRadius,

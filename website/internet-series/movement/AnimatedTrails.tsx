@@ -82,8 +82,15 @@ const RippleEffect = memo(
     const [now, setNow] = useState(Date.now());
     const [isAnimating, setIsAnimating] = useState(true);
 
-    const effectMaxRadius = rippleSettings.clickMinRadius + effect.radiusFactor * (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
-    const effectTotalDuration = rippleSettings.clickMinDuration + effect.durationFactor * (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
+    // Scale by hold duration if present (250ms is minimum hold threshold)
+    // Formula: multiplier = 1 + (holdDuration / 1000) so 250ms = 1.25x, 1000ms = 2x, 2000ms = 3x
+    const holdMultiplier = effect.holdDuration ? (1 + effect.holdDuration / 1000) : 1;
+    
+    const baseMaxRadius = rippleSettings.clickMinRadius + effect.radiusFactor * (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
+    const effectMaxRadius = baseMaxRadius * holdMultiplier;
+    
+    const baseTotalDuration = rippleSettings.clickMinDuration + effect.durationFactor * (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
+    const effectTotalDuration = baseTotalDuration * holdMultiplier;
 
     useEffect(() => {
       let animationFrameId: number;
@@ -106,11 +113,13 @@ const RippleEffect = memo(
 
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
+    const expansionDuration = rippleSettings.clickExpansionDuration * holdMultiplier;
+    
     const totalElapsed = now - effect.startTime;
     const allRingsComplete = totalElapsed >= effectTotalDuration || Array.from({ length: rippleSettings.clickNumRings }).every((_, i) => {
       const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
       const elapsed = now - ringStartTime;
-      const ringProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
+      const ringProgress = Math.min(1, elapsed / expansionDuration);
       return ringProgress >= rippleSettings.clickAnimationStopPoint;
     });
 
@@ -124,7 +133,7 @@ const RippleEffect = memo(
 
       if (elapsed < 0) return null;
 
-      const rawProgress = Math.min(1, elapsed / rippleSettings.clickExpansionDuration);
+      const rawProgress = Math.min(1, elapsed / expansionDuration);
       const clampedProgress = Math.min(rawProgress, rippleSettings.clickAnimationStopPoint);
       const normalizedProgress = clampedProgress / rippleSettings.clickAnimationStopPoint;
       const ringRadius = effectMaxRadius * rippleSettings.clickAnimationStopPoint * easeOutCubic(normalizedProgress);
@@ -156,6 +165,7 @@ interface AnimatedTrailsProps {
   settings: {
     strokeWidth: number;
     pointSize: number;
+    trailOpacity: number;
     animationSpeed: number;
     clickMinRadius: number;
     clickMaxRadius: number;
@@ -170,7 +180,7 @@ interface AnimatedTrailsProps {
   };
 }
 
-export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
+export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
   trailStates,
   containerRef,
   timeRange,
@@ -182,18 +192,35 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
   const pathCache = useRef<Map<string, string>>(new Map());
   const spawnedClicksRef = useRef<Map<string, Set<number>>>(new Map());
 
+  // Use refs for all settings that should update without re-rendering
+  const animationSpeedRef = useRef(settings.animationSpeed);
+  const strokeWidthRef = useRef(settings.strokeWidth);
+  const pointSizeRef = useRef(settings.pointSize);
+  const trailOpacityRef = useRef(settings.trailOpacity);
+
+  // Update refs without restarting animation
+  useEffect(() => {
+    animationSpeedRef.current = settings.animationSpeed;
+    strokeWidthRef.current = settings.strokeWidth;
+    pointSizeRef.current = settings.pointSize;
+    trailOpacityRef.current = settings.trailOpacity;
+  }, [settings.animationSpeed, settings.strokeWidth, settings.pointSize, settings.trailOpacity]);
+
   // Animation loop - elapsedTimeMs stays internal, never passed to parent
   useEffect(() => {
     if (trailStates.length === 0) return;
 
-    const cycleDurationMs = timeRange.duration / settings.animationSpeed;
     let startTime: number | null = null;
 
     const animate = (timestamp: number) => {
       if (startTime === null) startTime = timestamp;
 
-      const elapsed = timestamp - startTime;
-      const loopedElapsed = elapsed % cycleDurationMs;
+      const realElapsed = timestamp - startTime;
+      // Scale elapsed time by animation speed to make animation faster/slower
+      // e.g., if speed = 2, after 1 second real time, 2 seconds of animation have passed
+      const scaledElapsed = realElapsed * animationSpeedRef.current;
+      // Loop within the original timeRange duration
+      const loopedElapsed = scaledElapsed % timeRange.duration;
 
       setElapsedTimeMs(loopedElapsed);
       animationRef.current = requestAnimationFrame(animate);
@@ -206,7 +233,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [trailStates, timeRange.duration, settings.animationSpeed]);
+  }, [trailStates, timeRange.duration]);
 
   const handleSpawnClick = useCallback((click: ClickEffect) => {
     setActiveClickEffects(prev => [...prev, click]);
@@ -258,15 +285,16 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
     trailIndex,
     elapsedTimeMs,
     onSpawnClick,
-    settings: trailSettings
+    settingsRefs
   }: {
     trailState: TrailState;
     trailIndex: number;
     elapsedTimeMs: number;
     onSpawnClick: (click: ClickEffect) => void;
-    settings: {
-      strokeWidth: number;
-      pointSize: number;
+    settingsRefs: {
+      strokeWidth: React.MutableRefObject<number>;
+      pointSize: React.MutableRefObject<number>;
+      trailOpacity: React.MutableRefObject<number>;
     };
   }) => {
     const { trail, startOffsetMs, durationMs, variedPoints, clicksWithProgress } = trailState;
@@ -276,6 +304,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
 
     const trailElapsedMs = elapsedTimeMs - startOffsetMs;
     const trailProgress = Math.min(1, trailElapsedMs / durationMs);
+
+    // Read current settings from refs
+    const strokeWidth = settingsRefs.strokeWidth.current!;
+    const pointSize = settingsRefs.pointSize.current!;
+    const trailOpacity = settingsRefs.trailOpacity.current!;
 
     const cursorSize = 32;
 
@@ -323,6 +356,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
             durationFactor: Math.random(),
             startTime: Date.now(),
             trailIndex,
+            holdDuration: click.duration, // Pass through hold duration if present
           });
         }
       });
@@ -348,22 +382,22 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
             d={visiblePathData}
             fill="none"
             stroke={trail.color}
-            strokeWidth={trailSettings.strokeWidth}
-            opacity={trail.opacity}
+            strokeWidth={strokeWidth}
+            opacity={trailOpacity}
             style={{ mixBlendMode: "multiply" }}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         )}
 
-        {trailSettings.pointSize > 0 && visibleDots.map((point, pointIndex) => (
+        {pointSize > 0 && visibleDots.map((point, pointIndex) => (
           <circle
             key={`point-${trailIndex}-${pointIndex}`}
             cx={point.x}
             cy={point.y}
-            r={trailSettings.pointSize / 2}
+            r={pointSize / 2}
             fill={trail.color}
-            opacity={trail.opacity * 0.6}
+            opacity={trailOpacity * 0.6}
             style={{ mixBlendMode: "multiply" }}
           />
         ))}
@@ -402,9 +436,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
             trailIndex={trailIndex}
             elapsedTimeMs={elapsedTimeMs}
             onSpawnClick={handleSpawnClick}
-            settings={{
-              strokeWidth: settings.strokeWidth,
-              pointSize: settings.pointSize,
+            settingsRefs={{
+              strokeWidth: strokeWidthRef,
+              pointSize: pointSizeRef,
+              trailOpacity: trailOpacityRef,
             }}
           />
         ))}
@@ -429,4 +464,22 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = ({
       </svg>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Only re-render if trail states, time range, or click settings change
+  // Visual settings (strokeWidth, pointSize, trailOpacity, animationSpeed) are handled via refs
+  return (
+    prevProps.trailStates === nextProps.trailStates &&
+    prevProps.timeRange === nextProps.timeRange &&
+    prevProps.containerRef === nextProps.containerRef &&
+    prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
+    prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
+    prevProps.settings.clickMinDuration === nextProps.settings.clickMinDuration &&
+    prevProps.settings.clickMaxDuration === nextProps.settings.clickMaxDuration &&
+    prevProps.settings.clickExpansionDuration === nextProps.settings.clickExpansionDuration &&
+    prevProps.settings.clickStrokeWidth === nextProps.settings.clickStrokeWidth &&
+    prevProps.settings.clickOpacity === nextProps.settings.clickOpacity &&
+    prevProps.settings.clickNumRings === nextProps.settings.clickNumRings &&
+    prevProps.settings.clickRingDelayMs === nextProps.settings.clickRingDelayMs &&
+    prevProps.settings.clickAnimationStopPoint === nextProps.settings.clickAnimationStopPoint
+  );
+});
