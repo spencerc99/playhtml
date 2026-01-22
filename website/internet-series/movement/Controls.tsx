@@ -32,8 +32,6 @@ export const Controls: React.FC<ControlsProps> = memo(({
     appearance: true,
     animation: true,
     filters: true,
-    clickEffects: false,
-    info: false,
   });
 
   const toggleSection = (section: string) => {
@@ -82,7 +80,7 @@ export const Controls: React.FC<ControlsProps> = memo(({
   if (!visible) return null;
 
   return (
-    <div className="controls">
+    <div className="controls" style={{ maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
       <CollapsibleSection title="Appearance" sectionKey="appearance">
         <div className="control-group">
           <label htmlFor="trail-opacity">Trail Opacity</label>
@@ -384,41 +382,45 @@ export const Controls: React.FC<ControlsProps> = memo(({
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Click Effects" sectionKey="clickEffects">
-        <div style={{ fontSize: '12px', opacity: 0.7, fontStyle: 'italic' }}>
-          Click effects are configured in the playground
+      <div style={{ borderBottom: '1px solid #eee', paddingBottom: '8px', marginBottom: '8px' }}>
+        <div style={{
+          padding: '8px 0',
+          fontSize: '13px',
+          fontWeight: '600',
+          color: '#333',
+        }}>
+          Info
         </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Info" sectionKey="info">
-        <div style={{ fontSize: '10px', opacity: 0.5, marginTop: '8px', fontStyle: 'italic', marginBottom: '8px' }}>
-          Tip: Double-tap 'D' to hide/show controls
-        </div>
-
-        <button onClick={fetchEvents} disabled={loading}>
-          {loading ? "Loading..." : "Refresh Data"}
-        </button>
-
-        {error && <div className="error">{error}</div>}
-        {!loading && events.length > 0 && (
-          <div className="info">
-            {events.length.toLocaleString()} events, {trails.length.toLocaleString()} trails
-            <br />
-            <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
-              Move: {events.filter(e => !e.data.event || e.data.event === 'move').length} |
-              Click: {events.filter(e => e.data.event === 'click').length} |
-              Hold: {events.filter(e => e.data.event === 'hold').length} |
-              Cursor Change: {events.filter(e => e.data.event === 'cursor_change').length}
-            </div>
-            {timeRange.duration > 0 && (
-              <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
-                Cycle: {(timeRange.duration / 1000 / 60).toFixed(1)} min
-                {settings.animationSpeed !== 1 && ` (${settings.animationSpeed}x speed)`}
-              </div>
-            )}
+        <div style={{ marginTop: '8px' }}>
+          <div style={{ fontSize: '10px', opacity: 0.5, marginTop: '8px', fontStyle: 'italic', marginBottom: '8px' }}>
+            Tip: Double-tap 'D' to hide/show controls
           </div>
-        )}
-      </CollapsibleSection>
+
+          <button onClick={fetchEvents} disabled={loading}>
+            {loading ? "Loading..." : "Refresh Data"}
+          </button>
+
+          {error && <div className="error">{error}</div>}
+          {!loading && events.length > 0 && (
+            <div className="info">
+              {events.length.toLocaleString()} events, {trails.length.toLocaleString()} trails
+              <br />
+              <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
+                Move: {events.filter(e => !e.data.event || e.data.event === 'move').length} |
+                Click: {events.filter(e => e.data.event === 'click').length} |
+                Hold: {events.filter(e => e.data.event === 'hold').length} |
+                Cursor Change: {events.filter(e => e.data.event === 'cursor_change').length}
+              </div>
+              {timeRange.duration > 0 && (
+                <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
+                  Cycle: {(timeRange.duration / 1000 / 60).toFixed(1)} min
+                  {settings.animationSpeed !== 1 && ` (${settings.animationSpeed}x speed)`}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 });

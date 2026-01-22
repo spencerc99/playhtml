@@ -30,7 +30,7 @@ export interface Trail {
   angle?: number;
   startTime: number;
   endTime: number;
-  clicks: Array<{ x: number; y: number; ts: number; button?: number }>;
+  clicks: Array<{ x: number; y: number; ts: number; button?: number; duration?: number }>;
 }
 
 export interface TrailState {
@@ -43,6 +43,7 @@ export interface TrailState {
     y: number;
     ts: number;
     progress: number;
+    duration?: number;
   }>;
 }
 
@@ -55,4 +56,5 @@ export interface ClickEffect {
   durationFactor: number;
   startTime: number;
   trailIndex: number;
+  holdDuration?: number; // If present, this is a hold event - scale size and duration by this
 }

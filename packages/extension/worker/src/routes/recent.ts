@@ -1,9 +1,28 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
 
 /**
+ * Extract domain from URL, matching frontend logic
+ * Removes 'www.' prefix and returns hostname
+ */
+function extractDomain(url: string | null): string {
+  if (!url) return '';
+  try {
+    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return urlObj.hostname.replace('www.', '');
+  } catch {
+    return '';
+  }
+}
+
+/**
  * GET /events/recent
  * Get recent events for live artwork rendering
  * Public endpoint (no auth required)
+ * 
+ * Query parameters:
+ * - type: Event type filter (default: 'cursor')
+ * - limit: Maximum number of events (default: 1000, max: 5000)
+ * - domain: Domain filter (optional) - filters events by URL domain
  */
 export async function handleRecent(
   request: Request,
@@ -13,6 +32,7 @@ export async function handleRecent(
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || 'cursor';
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 5000);
+    const domainFilter = url.searchParams.get('domain') || null;
     
     const supabase = createSupabaseClient(env);
     const { data, error } = await supabase
@@ -31,7 +51,7 @@ export async function handleRecent(
     }
     
     // Transform back to CollectionEvent format
-    const events = (data || []).map((row) => ({
+    let events = (data || []).map((row) => ({
       id: row.id,
       type: row.type,
       ts: new Date(row.ts).getTime(),
@@ -45,6 +65,14 @@ export async function handleRecent(
         tz: row.timezone,
       },
     }));
+    
+    // Filter by domain if provided
+    if (domainFilter) {
+      events = events.filter((event) => {
+        const eventDomain = extractDomain(event.meta.url || '');
+        return eventDomain === domainFilter;
+      });
+    }
     
     return new Response(
       JSON.stringify(events),
