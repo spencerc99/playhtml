@@ -4,59 +4,6 @@ import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { TrailState, ClickEffect } from "./types";
 import { getCursorComponent } from "./cursors";
 
-// RISO pattern overlay component
-const RisoPattern = React.memo(() => (
-  <svg
-    width="100%"
-    height="100%"
-    className="riso-pattern"
-    style={{
-      position: "absolute",
-      inset: 0,
-      opacity: 0.7,
-      pointerEvents: "none",
-      mixBlendMode: "multiply",
-    }}
-  >
-    <defs>
-      <filter id="noise">
-        <feTurbulence
-          type="fractalNoise"
-          baseFrequency="0.9"
-          numOctaves="3"
-          stitchTiles="stitch"
-        />
-        <feColorMatrix
-          type="matrix"
-          values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 2 -1"
-        />
-      </filter>
-      <filter id="grain">
-        <feTurbulence
-          type="turbulence"
-          baseFrequency="0.5"
-          numOctaves="2"
-          stitchTiles="stitch"
-        />
-        <feColorMatrix type="saturate" values="0" />
-        <feComponentTransfer>
-          <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
-        </feComponentTransfer>
-      </filter>
-      <filter id="smoothing">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" />
-      </filter>
-    </defs>
-    <rect width="100%" height="100%" filter="url(#noise)" />
-    <rect
-      width="100%"
-      height="100%"
-      filter="url(#grain)"
-      style={{ opacity: 0.3 }}
-    />
-  </svg>
-));
-
 interface RippleSettings {
   clickMinRadius: number;
   clickMaxRadius: number;
@@ -160,7 +107,6 @@ const RippleEffect = memo(
 
 interface AnimatedTrailsProps {
   trailStates: TrailState[];
-  containerRef: React.RefObject<HTMLDivElement>;
   timeRange: { min: number; max: number; duration: number };
   settings: {
     strokeWidth: number;
@@ -182,7 +128,6 @@ interface AnimatedTrailsProps {
 
 export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
   trailStates,
-  containerRef,
   timeRange,
   settings,
 }) => {
@@ -416,53 +361,50 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
   });
 
   return (
-    <div className="canvas-container" ref={containerRef}>
-      <RisoPattern />
-      <svg
-        className="trails-svg"
-        width="100%"
-        height="100%"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          pointerEvents: "none",
-        }}
-      >
-        {trailStates.map((trailState, trailIndex) => (
-          <Trail
-            key={`trail-${trailIndex}`}
-            trailState={trailState}
-            trailIndex={trailIndex}
-            elapsedTimeMs={elapsedTimeMs}
-            onSpawnClick={handleSpawnClick}
-            settingsRefs={{
-              strokeWidth: strokeWidthRef,
-              pointSize: pointSizeRef,
-              trailOpacity: trailOpacityRef,
-            }}
-          />
-        ))}
-        {activeClickEffects.map((effect) => (
-          <RippleEffect
-            key={effect.id}
-            effect={effect}
-            settings={{
-              clickMinRadius: settings.clickMinRadius,
-              clickMaxRadius: settings.clickMaxRadius,
-              clickMinDuration: settings.clickMinDuration,
-              clickMaxDuration: settings.clickMaxDuration,
-              clickExpansionDuration: settings.clickExpansionDuration,
-              clickStrokeWidth: settings.clickStrokeWidth,
-              clickOpacity: settings.clickOpacity,
-              clickNumRings: settings.clickNumRings,
-              clickRingDelayMs: settings.clickRingDelayMs,
-              clickAnimationStopPoint: settings.clickAnimationStopPoint,
-            }}
-          />
-        ))}
-      </svg>
-    </div>
+    <svg
+      className="trails-svg"
+      width="100%"
+      height="100%"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        pointerEvents: "none",
+      }}
+    >
+      {trailStates.map((trailState, trailIndex) => (
+        <Trail
+          key={`trail-${trailIndex}`}
+          trailState={trailState}
+          trailIndex={trailIndex}
+          elapsedTimeMs={elapsedTimeMs}
+          onSpawnClick={handleSpawnClick}
+          settingsRefs={{
+            strokeWidth: strokeWidthRef,
+            pointSize: pointSizeRef,
+            trailOpacity: trailOpacityRef,
+          }}
+        />
+      ))}
+      {activeClickEffects.map((effect) => (
+        <RippleEffect
+          key={effect.id}
+          effect={effect}
+          settings={{
+            clickMinRadius: settings.clickMinRadius,
+            clickMaxRadius: settings.clickMaxRadius,
+            clickMinDuration: settings.clickMinDuration,
+            clickMaxDuration: settings.clickMaxDuration,
+            clickExpansionDuration: settings.clickExpansionDuration,
+            clickStrokeWidth: settings.clickStrokeWidth,
+            clickOpacity: settings.clickOpacity,
+            clickNumRings: settings.clickNumRings,
+            clickRingDelayMs: settings.clickRingDelayMs,
+            clickAnimationStopPoint: settings.clickAnimationStopPoint,
+          }}
+        />
+      ))}
+    </svg>
   );
 }, (prevProps, nextProps) => {
   // Only re-render if trail states, time range, or click settings change
@@ -470,7 +412,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
   return (
     prevProps.trailStates === nextProps.trailStates &&
     prevProps.timeRange === nextProps.timeRange &&
-    prevProps.containerRef === nextProps.containerRef &&
     prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
     prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
     prevProps.settings.clickMinDuration === nextProps.settings.clickMinDuration &&

@@ -3,9 +3,10 @@
 import "./movement.scss";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent, Trail, TrailState } from "./types";
+import { CollectionEvent, Trail, TrailState, KeyboardEventData, TypingAction, TypingAnimation, TypingState } from "./types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
+import { AnimatedTyping } from "./AnimatedTyping";
 
 // RISO-inspired color palette
 const RISO_COLORS = [
@@ -69,7 +70,17 @@ const loadSettings = () => {
       hold: true,
       cursor_change: true,
     },
+    eventTypeFilter: {
+      cursor: true,
+      keyboard: true,
+    },
     domainFilter: '',
+    keyboardOverlapFactor: 0.9,
+    textboxOpacity: 0.2,
+    keyboardMinFontSize: 12,
+    keyboardMaxFontSize: 18,
+    keyboardShowCaret: true,
+    keyboardAnimationSpeed: 0.5, // Slower typing speed (0.5 = half speed)
   };
 
   try {
@@ -82,6 +93,10 @@ const loadSettings = () => {
         eventFilter: {
           ...defaults.eventFilter,
           ...(parsed.eventFilter || {}),
+        },
+        eventTypeFilter: {
+          ...defaults.eventTypeFilter,
+          ...(parsed.eventTypeFilter || {}),
         },
       };
     }
@@ -122,23 +137,51 @@ const InternetMovement = () => {
     }
 
     try {
-      // Build query params
+      // Build query params - always fetch max to get all available events
+      // Domain filtering happens client-side to avoid missing domains in dropdown
       const params = new URLSearchParams({
-        type: 'cursor',
         limit: '5000',
       });
 
-      // Add domain filter if set
-      if (settings.domainFilter) {
-        params.append('domain', settings.domainFilter);
+      // Fetch cursor and keyboard events in parallel
+      const promises: Promise<CollectionEvent[]>[] = [];
+
+      if (settings.eventTypeFilter.cursor) {
+        promises.push(
+          fetch(`${API_URL}?${params.toString()}&type=cursor`)
+            .then(res => {
+              if (!res.ok) throw new Error(`Failed to fetch cursor events: ${res.status}`);
+              return res.json();
+            })
+            .then(events => {
+              console.log(`[Fetch] Received ${events.length} cursor events`);
+              return events;
+            })
+        );
       }
 
-      const response = await fetch(`${API_URL}?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch events: ${response.status}`);
+      if (settings.eventTypeFilter.keyboard) {
+        promises.push(
+          fetch(`${API_URL}?${params.toString()}&type=keyboard`)
+            .then(res => {
+              if (!res.ok) throw new Error(`Failed to fetch keyboard events: ${res.status}`);
+              return res.json();
+            })
+            .then(events => {
+              console.log(`[Fetch] Received ${events.length} keyboard events`);
+              return events;
+            })
+        );
       }
-      const data: CollectionEvent[] = await response.json();
-      setEvents(data);
+
+      if (promises.length === 0) {
+        setEvents([]);
+        return;
+      }
+
+      const results = await Promise.all(promises);
+      const allEvents = results.flat();
+      setEvents(allEvents);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch events");
       console.error("Error fetching events:", err);
@@ -235,6 +278,14 @@ const InternetMovement = () => {
     });
     return Array.from(domains).sort();
   }, [events]);
+
+  // Clear domain filter if it's not in available domains (only when events change)
+  useEffect(() => {
+    if (events.length > 0 && settings.domainFilter && availableDomains.length > 0 && !availableDomains.includes(settings.domainFilter)) {
+      console.log(`[Domain Filter] Clearing filter for "${settings.domainFilter}" - not found in available domains`);
+      setSettings((s) => ({ ...s, domainFilter: '' }));
+    }
+  }, [events.length]); // Only depend on events.length to prevent loops
 
   const trails = useMemo(() => {
     const sizeToUse = initialViewportSize.current.width > 0
@@ -371,16 +422,43 @@ const InternetMovement = () => {
     return trails;
   }, [events, settings.randomizeColors, settings.domainFilter, settings.eventFilter, viewportSize]);
 
-  const { timeRange, trailSchedule } = useMemo(() => {
-    if (trails.length === 0) return {
-      timeRange: { min: 0, max: 0, duration: 0 },
-      trailSchedule: []
-    };
+  // Extract keyboard events before calculating timeRange
+  const keyboardEvents = useMemo(() => {
+    return events.filter(e => e.type === 'keyboard');
+  }, [events]);
 
-    const times = trails.flatMap(t => [t.startTime, t.endTime]);
-    const min = Math.min(...times);
-    const max = Math.max(...times);
+  const { timeRange, trailSchedule } = useMemo(() => {
+    // Collect times from both trails and keyboard events to calculate global timeRange
+    const allTimes: number[] = [];
+
+    if (trails.length > 0) {
+      allTimes.push(...trails.flatMap(t => [t.startTime, t.endTime]));
+    }
+
+    if (keyboardEvents.length > 0) {
+      allTimes.push(...keyboardEvents.map(e => e.ts));
+    }
+
+    if (allTimes.length === 0) {
+      return {
+        timeRange: { min: 0, max: 0, duration: 0 },
+        trailSchedule: []
+      };
+    }
+
+    const min = Math.min(...allTimes);
+    const max = Math.max(...allTimes);
     const dataDuration = max - min;
+
+    if (trails.length === 0) {
+      // Only keyboard events - use simple duration
+      const duration = Math.max(dataDuration, 60000);
+      console.log('[TimeRange] Keyboard-only mode:', { min, max, duration, keyboardEventsCount: keyboardEvents.length });
+      return {
+        timeRange: { min, max, duration },
+        trailSchedule: []
+      };
+    }
 
     const avgDuration = trails.reduce((sum, t) => sum + (t.endTime - t.startTime), 0) / trails.length;
     const minGapMs = settings.minGapBetweenTrails * 1000;
@@ -445,7 +523,7 @@ const InternetMovement = () => {
       timeRange: { min, max, duration: cycleDuration },
       trailSchedule: schedule
     };
-  }, [trails, settings.trailAnimationMode, settings.maxConcurrentTrails, settings.overlapFactor, settings.minGapBetweenTrails]);
+  }, [trails, keyboardEvents, settings.trailAnimationMode, settings.maxConcurrentTrails, settings.overlapFactor, settings.minGapBetweenTrails]);
 
   const applyStyleVariations = useCallback((
     points: Array<{ x: number; y: number }>,
@@ -575,6 +653,206 @@ const InternetMovement = () => {
     });
   }, [trails, trailSchedule, timeRange, settings.trailStyle, settings.chaosIntensity, applyStyleVariations]);
 
+  // Process keyboard events into TypingAnimation[]
+  const keyboardAnimations = useMemo(() => {
+    // Wait for viewport to be measured before processing
+    if (viewportSize.width === 0 && initialViewportSize.current.width === 0) {
+      return [];
+    }
+
+    const sizeToUse = initialViewportSize.current.width > 0
+      ? initialViewportSize.current
+      : viewportSize;
+
+    if (keyboardEvents.length === 0) {
+      return [];
+    }
+
+    // Apply domain filter if set
+    let filteredKeyboardEvents = keyboardEvents;
+    if (settings.domainFilter) {
+      filteredKeyboardEvents = keyboardEvents.filter(e => {
+        const eventDomain = extractDomain(e.meta.url || '');
+        return eventDomain === settings.domainFilter;
+      });
+    }
+
+    // Group by participant + URL
+    const eventsByParticipantAndUrl = new Map<string, CollectionEvent[]>();
+
+    filteredKeyboardEvents.forEach(event => {
+      const pid = event.meta.pid;
+      const url = event.meta.url || "";
+      const key = `${pid}|${url}`;
+
+      if (!eventsByParticipantAndUrl.has(key)) {
+        eventsByParticipantAndUrl.set(key, []);
+      }
+      eventsByParticipantAndUrl.get(key)!.push(event);
+    });
+
+    const animations: TypingAnimation[] = [];
+
+    eventsByParticipantAndUrl.forEach((groupEvents, key) => {
+      groupEvents.sort((a, b) => a.ts - b.ts);
+
+      let skippedNoSequence = 0;
+      let skippedNoId = 0;
+      groupEvents.forEach(event => {
+        const data = event.data as any as KeyboardEventData;
+
+        // Skip events without sequence (abstract privacy level)
+        if (!data.sequence || data.sequence.length === 0) {
+          skippedNoSequence++;
+          return;
+        }
+
+        // Skip events without valid IDs
+        if (!event.id) {
+          skippedNoId++;
+          return;
+        }
+
+        const x = data.x * sizeToUse.width;
+        const y = data.y * sizeToUse.height;
+
+        animations.push({
+          event,
+          x,
+          y,
+          color: getColorForParticipant(event.meta.pid),
+          startTime: event.ts,
+          sequence: data.sequence,
+        });
+      });
+    });
+
+    console.log('[Keyboard] Created', animations.length, 'typing animations');
+    return animations;
+  }, [keyboardEvents, settings.domainFilter, viewportSize.width]);
+
+  // Helper function to calculate typing duration from sequence
+  const calculateTypingDuration = (sequence: TypingAction[]): number => {
+    if (sequence.length === 0) return 2000;
+
+    const lastTimestamp = sequence[sequence.length - 1].timestamp;
+    return lastTimestamp + 1000; // Add 1s buffer to show final result
+  };
+
+  // Create typing schedule with high overlap
+  const keyboardSchedule = useMemo(() => {
+    if (keyboardAnimations.length === 0 || timeRange.duration === 0) {
+      return {
+        timeRange: timeRange,
+        schedule: []
+      };
+    }
+
+    // Use much higher overlap for keyboard (settings.keyboardOverlapFactor, default 0.9)
+    const avgDuration = 3000; // Average typing animation duration
+    const overlapMultiplier = 1 - settings.keyboardOverlapFactor * 0.95;
+    const actualSpacing = avgDuration * overlapMultiplier;
+
+    // Stagger mode similar to trails
+    const schedule = keyboardAnimations.map((anim, index) => {
+      const typingDuration = calculateTypingDuration(anim.sequence);
+      const startOffset = (index * actualSpacing) % timeRange.duration;
+
+      return {
+        index,
+        startTime: timeRange.min + startOffset,
+        endTime: timeRange.min + startOffset + typingDuration,
+        duration: typingDuration,
+      };
+    });
+
+    return { timeRange, schedule };
+  }, [keyboardAnimations, timeRange, settings.keyboardOverlapFactor]);
+
+  // Generate TypingState[] with visual variations
+  const typingStates = useMemo((): TypingState[] => {
+    if (keyboardAnimations.length === 0) return [];
+
+    return keyboardAnimations.map((anim, index) => {
+      const schedule = keyboardSchedule.schedule[index];
+      if (!schedule) {
+        return {
+          animation: anim,
+          startOffsetMs: 0,
+          durationMs: calculateTypingDuration(anim.sequence),
+          textboxSize: { width: 200, height: 40 },
+          fontSize: 14,
+          positionOffset: { x: 0, y: 0 },
+        };
+      }
+
+      const seed = anim.x + anim.y;
+
+      // Seeded random for consistent variation
+      const seededRandom = (offset: number = 0) => {
+        const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
+        return x - Math.floor(x);
+      };
+
+      // Count newlines and words for smarter sizing
+      const fullText = anim.sequence.reduce((text, action) => {
+        if (action.action === 'type' && action.text) {
+          return text + action.text;
+        } else if (action.action === 'backspace' && action.deletedCount) {
+          return text.slice(0, -action.deletedCount);
+        }
+        return text;
+      }, '');
+
+      const lineCount = (fullText.match(/\n/g) || []).length + 1;
+      const charCount = fullText.length;
+
+      // Smart width calculation - cap at max width
+      const MAX_WIDTH = 400;
+      const MIN_WIDTH = 150;
+      const charsPerLine = 35; // Approximate chars that fit in one line
+      const estimatedWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, charCount * 8));
+      const width = estimatedWidth + (seededRandom(1) - 0.5) * 40;
+
+      // Smart height calculation
+      const LINE_HEIGHT = 24;
+      const PADDING = 16;
+      const estimatedLines = Math.max(lineCount, Math.ceil(charCount / charsPerLine));
+      const baseHeight = estimatedLines * LINE_HEIGHT + PADDING;
+      const heightVariation = (seededRandom(2) - 0.5) * 20;
+      const height = Math.max(40, baseHeight + heightVariation);
+
+      // Font size variation (use settings min/max)
+      const fontSizeRange = settings.keyboardMaxFontSize - settings.keyboardMinFontSize;
+      const fontSize = settings.keyboardMinFontSize + seededRandom(3) * fontSizeRange;
+
+      // Positional variation - offset from base x/y to reduce overlap
+      const offsetRadius = 60; // Max offset in pixels
+      const offsetX = (seededRandom(4) - 0.5) * offsetRadius;
+      const offsetY = (seededRandom(5) - 0.5) * offsetRadius;
+
+      return {
+        animation: anim,
+        startOffsetMs: schedule.startTime - timeRange.min,
+        durationMs: schedule.duration,
+        textboxSize: { width, height },
+        fontSize,
+        positionOffset: { x: offsetX, y: offsetY },
+      };
+    });
+
+    console.log('[Typing States]', typingStates.length, 'states created');
+    return typingStates;
+  }, [keyboardAnimations, keyboardSchedule, timeRange, settings.keyboardMinFontSize, settings.keyboardMaxFontSize]);
+
+  // Memoize typing settings to prevent infinite re-renders
+  const typingSettings = useMemo(() => ({
+    animationSpeed: settings.animationSpeed,
+    textboxOpacity: settings.textboxOpacity,
+    keyboardShowCaret: settings.keyboardShowCaret,
+    keyboardAnimationSpeed: settings.keyboardAnimationSpeed,
+  }), [settings.animationSpeed, settings.textboxOpacity, settings.keyboardShowCaret, settings.keyboardAnimationSpeed]);
+
   return (
     <div className="internet-movement">
       <Controls
@@ -636,28 +914,90 @@ const InternetMovement = () => {
         </div>
       )}
 
-      <AnimatedTrails
-        key={settings.domainFilter}
-        trailStates={trailStates}
-        containerRef={containerRef}
-        timeRange={timeRange}
-        settings={{
-          strokeWidth: settings.strokeWidth,
-          pointSize: settings.pointSize,
-          trailOpacity: settings.trailOpacity,
-          animationSpeed: settings.animationSpeed,
-          clickMinRadius: settings.clickMinRadius,
-          clickMaxRadius: settings.clickMaxRadius,
-          clickMinDuration: settings.clickMinDuration,
-          clickMaxDuration: settings.clickMaxDuration,
-          clickExpansionDuration: settings.clickExpansionDuration,
-          clickStrokeWidth: settings.clickStrokeWidth,
-          clickOpacity: settings.clickOpacity,
-          clickNumRings: settings.clickNumRings,
-          clickRingDelayMs: settings.clickRingDelayMs,
-          clickAnimationStopPoint: settings.clickAnimationStopPoint,
-        }}
-      />
+      <div className="canvas-container" ref={containerRef}>
+        {/* RISO paper texture overlay */}
+        <svg
+          width="100%"
+          height="100%"
+          className="riso-pattern"
+          style={{
+            position: "absolute",
+            inset: 0,
+            opacity: 0.7,
+            pointerEvents: "none",
+            mixBlendMode: "multiply",
+          }}
+        >
+          <defs>
+            <filter id="noise">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.9"
+                numOctaves="3"
+                stitchTiles="stitch"
+              />
+              <feColorMatrix
+                type="matrix"
+                values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 2 -1"
+              />
+            </filter>
+            <filter id="grain">
+              <feTurbulence
+                type="turbulence"
+                baseFrequency="0.5"
+                numOctaves="2"
+                stitchTiles="stitch"
+              />
+              <feColorMatrix type="saturate" values="0" />
+              <feComponentTransfer>
+                <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
+              </feComponentTransfer>
+            </filter>
+            <filter id="smoothing">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" />
+            </filter>
+          </defs>
+          <rect width="100%" height="100%" filter="url(#noise)" />
+          <rect
+            width="100%"
+            height="100%"
+            filter="url(#grain)"
+            style={{ opacity: 0.3 }}
+          />
+        </svg>
+
+        {settings.eventTypeFilter.cursor && (
+          <AnimatedTrails
+            key={settings.domainFilter}
+            trailStates={trailStates}
+            timeRange={timeRange}
+            settings={{
+              strokeWidth: settings.strokeWidth,
+              pointSize: settings.pointSize,
+              trailOpacity: settings.trailOpacity,
+              animationSpeed: settings.animationSpeed,
+              clickMinRadius: settings.clickMinRadius,
+              clickMaxRadius: settings.clickMaxRadius,
+              clickMinDuration: settings.clickMinDuration,
+              clickMaxDuration: settings.clickMaxDuration,
+              clickExpansionDuration: settings.clickExpansionDuration,
+              clickStrokeWidth: settings.clickStrokeWidth,
+              clickOpacity: settings.clickOpacity,
+              clickNumRings: settings.clickNumRings,
+              clickRingDelayMs: settings.clickRingDelayMs,
+              clickAnimationStopPoint: settings.clickAnimationStopPoint,
+            }}
+          />
+        )}
+
+        {settings.eventTypeFilter.keyboard && (
+          <AnimatedTyping
+            typingStates={typingStates}
+            timeRange={timeRange}
+            settings={typingSettings}
+          />
+        )}
+      </div>
     </div>
   );
 };

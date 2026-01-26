@@ -214,6 +214,5 @@ export interface KeyboardEventData {
   y: number;              // 0-1 normalized position (captured on focus)
   t?: string;             // Element selector
   event: KeyboardEventType;
-  textLength: number;     // Always collected
   sequence?: TypingAction[] | null; // Full sequence (null if abstract level, PII redacted if detected)
 }

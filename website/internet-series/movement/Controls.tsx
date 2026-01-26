@@ -282,23 +282,39 @@ export const Controls: React.FC<ControlsProps> = memo(({
       <CollapsibleSection title="Filters" sectionKey="filters">
         <div className="control-group">
           <label htmlFor="domain-filter">Domain Filter</label>
-          <select
-            id="domain-filter"
-            value={settings.domainFilter}
-            onChange={(e) =>
-              setSettings((s: any) => ({
-                ...s,
-                domainFilter: e.target.value,
-              }))
-            }
-          >
-            <option value="">All Domains</option>
-            {availableDomains.map((domain) => (
-              <option key={domain} value={domain}>
-                {domain}
-              </option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select
+              id="domain-filter"
+              value={settings.domainFilter}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  domainFilter: e.target.value,
+                }))
+              }
+              style={{ flex: 1 }}
+            >
+              <option value="">All Domains</option>
+              {availableDomains.map((domain) => (
+                <option key={domain} value={domain}>
+                  {domain}
+                </option>
+              ))}
+            </select>
+            {settings.domainFilter && (
+              <button
+                onClick={() => setSettings((s: any) => ({ ...s, domainFilter: '' }))}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                }}
+                title="Clear filter"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="control-group">
@@ -378,6 +394,156 @@ export const Controls: React.FC<ControlsProps> = memo(({
               style={{ marginRight: '8px' }}
             />
             Randomize Colors (Test Mode)
+          </label>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Event Types" sectionKey="eventTypes">
+        <div className="control-group">
+          <label style={{ fontSize: '12px', fontWeight: 'normal', textTransform: 'none' }}>
+            <input
+              type="checkbox"
+              checked={settings.eventTypeFilter.cursor}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  eventTypeFilter: { ...s.eventTypeFilter, cursor: e.target.checked },
+                }))
+              }
+              style={{ marginRight: '6px' }}
+            />
+            Cursor Events
+          </label>
+        </div>
+        <div className="control-group">
+          <label style={{ fontSize: '12px', fontWeight: 'normal', textTransform: 'none' }}>
+            <input
+              type="checkbox"
+              checked={settings.eventTypeFilter.keyboard}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  eventTypeFilter: { ...s.eventTypeFilter, keyboard: e.target.checked },
+                }))
+              }
+              style={{ marginRight: '6px' }}
+            />
+            Keyboard Events
+          </label>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Keyboard Settings" sectionKey="keyboard">
+        <div className="control-group">
+          <label htmlFor="keyboard-animation-speed">Typing Speed</label>
+          <input
+            id="keyboard-animation-speed"
+            type="range"
+            min="0.1"
+            max="2"
+            step="0.1"
+            value={settings.keyboardAnimationSpeed}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                keyboardAnimationSpeed: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.keyboardAnimationSpeed.toFixed(1)}x</span>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="keyboard-overlap">Overlap Factor</label>
+          <input
+            id="keyboard-overlap"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={settings.keyboardOverlapFactor}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                keyboardOverlapFactor: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.keyboardOverlapFactor.toFixed(2)}</span>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="textbox-opacity">Textbox Opacity</label>
+          <input
+            id="textbox-opacity"
+            type="range"
+            min="0.05"
+            max="0.5"
+            step="0.05"
+            value={settings.textboxOpacity}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                textboxOpacity: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.textboxOpacity.toFixed(2)}</span>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="keyboard-min-font">Min Font Size</label>
+          <input
+            id="keyboard-min-font"
+            type="range"
+            min="8"
+            max="20"
+            step="1"
+            value={settings.keyboardMinFontSize}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                keyboardMinFontSize: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.keyboardMinFontSize}px</span>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="keyboard-max-font">Max Font Size</label>
+          <input
+            id="keyboard-max-font"
+            type="range"
+            min="12"
+            max="32"
+            step="1"
+            value={settings.keyboardMaxFontSize}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                keyboardMaxFontSize: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.keyboardMaxFontSize}px</span>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="keyboard-show-caret">
+            <input
+              id="keyboard-show-caret"
+              type="checkbox"
+              checked={settings.keyboardShowCaret}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  keyboardShowCaret: e.target.checked,
+                }))
+              }
+              style={{ marginRight: '8px' }}
+            />
+            Show Blinking Caret
           </label>
         </div>
       </CollapsibleSection>
