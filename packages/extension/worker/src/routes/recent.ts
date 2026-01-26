@@ -1,4 +1,5 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
 
 /**
  * Extract domain from URL, matching frontend logic
@@ -51,7 +52,7 @@ export async function handleRecent(
     }
     
     // Transform back to CollectionEvent format
-    let events = (data || []).map((row) => ({
+    let events: CollectionEvent[] = (data || []).map((row) => ({
       id: row.id,
       type: row.type,
       ts: new Date(row.ts).getTime(),
@@ -63,7 +64,7 @@ export async function handleRecent(
         vw: row.viewport_width,
         vh: row.viewport_height,
         tz: row.timezone,
-      },
+      } as EventMeta,
     }));
     
     // Filter by domain if provided

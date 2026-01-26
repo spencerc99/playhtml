@@ -5,36 +5,17 @@
  * to power collective artworks.
  */
 
-/**
- * Base event structure - all collectors emit this
- */
-export interface CollectionEvent {
-  id: string;                    // ULID (sortable, unique)
-  type: CollectionEventType;     // Event type
-  ts: number;                    // Unix ms timestamp
-  data: unknown;                 // Type-specific payload
-  meta: EventMeta;
-}
+// Import shared types (used by both extension and worker)
+import type {
+  CollectionEvent as SharedCollectionEvent,
+  CollectionEventType as SharedCollectionEventType,
+  EventMeta as SharedEventMeta,
+} from '../shared/types';
 
-/**
- * Event types that can be collected
- */
-export type CollectionEventType = 
-  | 'cursor' 
-  | 'navigation'
-  | 'viewport';
-
-/**
- * Metadata attached to every event
- */
-export interface EventMeta {
-  sid: string;      // Session ID (per browser session)
-  pid: string;      // Participant ID (anonymous, persistent)
-  url: string;      // Current page URL
-  vw: number;       // Viewport width
-  vh: number;       // Viewport height
-  tz: string;       // Timezone (e.g., "America/New_York")
-}
+// Re-export shared types for backward compatibility
+export type CollectionEventType = SharedCollectionEventType;
+export type EventMeta = SharedEventMeta;
+export type CollectionEvent = SharedCollectionEvent;
 
 /**
  * Cursor event types
@@ -208,4 +189,31 @@ export function getElementSelector(element: HTMLElement): string {
 
   // Fall back to tag name
   return element.tagName.toLowerCase();
+}
+
+/**
+ * Keyboard event types
+ */
+export type KeyboardEventType = 'type';
+
+/**
+ * Typing action in a sequence
+ */
+export interface TypingAction {
+  action: 'type' | 'backspace';
+  text?: string;           // For 'type': string of sequential characters typed (grouped)
+  deletedCount?: number;   // For 'backspace': number of characters deleted (assumed from end)
+  timestamp: number;      // Relative timestamp within batch (ms from first action in group)
+}
+
+/**
+ * Keyboard-specific payload
+ */
+export interface KeyboardEventData {
+  x: number;              // 0-1 normalized position (captured on focus)
+  y: number;              // 0-1 normalized position (captured on focus)
+  t?: string;             // Element selector
+  event: KeyboardEventType;
+  textLength: number;     // Always collected
+  sequence?: TypingAction[] | null; // Full sequence (null if abstract level, PII redacted if detected)
 }

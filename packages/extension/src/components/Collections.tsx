@@ -6,14 +6,47 @@ interface CollectionsProps {
   onBack: () => void;
 }
 
+const PRIVACY_LEVEL_KEY = 'collection_keyboard_privacy_level';
+
 export function Collections({ onBack }: CollectionsProps) {
   const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardPrivacyLevel, setKeyboardPrivacyLevel] = useState<'abstract' | 'full'>('abstract');
 
   useEffect(() => {
     loadCollectors();
+    loadPrivacyLevel();
   }, []);
+
+  const loadPrivacyLevel = async () => {
+    try {
+      const result = await browser.storage.local.get([PRIVACY_LEVEL_KEY]);
+      const level = result[PRIVACY_LEVEL_KEY];
+      if (level === 'abstract' || level === 'full') {
+        setKeyboardPrivacyLevel(level);
+      } else {
+        // Default to abstract if not set
+        setKeyboardPrivacyLevel('abstract');
+        await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: 'abstract' });
+      }
+    } catch (error) {
+      console.error('Failed to load privacy level:', error);
+      setKeyboardPrivacyLevel('abstract');
+    }
+  };
+
+  const updatePrivacyLevel = async (level: 'abstract' | 'full') => {
+    try {
+      await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: level });
+      setKeyboardPrivacyLevel(level);
+      // Reload collectors to ensure the change is reflected
+      await loadCollectors();
+    } catch (error) {
+      console.error('Failed to update privacy level:', error);
+      alert('Failed to update privacy level. Please try again.');
+    }
+  };
 
   const loadCollectors = async () => {
     try {
@@ -323,6 +356,68 @@ export function Collections({ onBack }: CollectionsProps) {
                   </span>
                 </label>
               </div>
+              {/* Privacy level sub-setting for keyboard collector */}
+              {collector.type === 'keyboard' && collector.enabled && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: "500",
+                          color: "#374151",
+                          display: "block",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Privacy Level
+                      </label>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "11px",
+                          color: "#6b7280",
+                        }}
+                      >
+                        {keyboardPrivacyLevel === 'abstract'
+                          ? 'Abstract: Typing frequency and location only (no text)'
+                          : 'Full: Text content with PII redaction'}
+                      </p>
+                    </div>
+                    <select
+                      value={keyboardPrivacyLevel}
+                      onChange={(e) =>
+                        updatePrivacyLevel(e.target.value as 'abstract' | 'full')
+                      }
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "6px",
+                        backgroundColor: "white",
+                        color: "#374151",
+                        cursor: "pointer",
+                        minWidth: "100px",
+                      }}
+                    >
+                      <option value="abstract">Abstract</option>
+                      <option value="full">Full</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

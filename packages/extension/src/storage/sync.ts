@@ -19,23 +19,22 @@ const DEV_WORKER_URL = 'http://localhost:8787';
 
 /**
  * Detect if we're in development mode
- * Checks for dev mode flag in storage, or falls back to checking build mode
+ * Checks build environment (WXT sets this when running `wxt dev`)
  */
-async function isDevelopment(): Promise<boolean> {
+function isDevelopment(): boolean {
   try {
-    // Check if dev mode is explicitly set in storage
-    const result = await browser.storage.local.get(['collection_dev_mode']);
-    if (result.collection_dev_mode === true) {
-      return true;
-    }
-    
-    // Check build mode if available (WXT sets this)
+    // Check build mode (WXT sets this when running `wxt dev`)
     if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env.DEV === true || import.meta.env.MODE === 'development';
+      const isDev = import.meta.env.DEV === true || import.meta.env.MODE === 'development';
+      if (isDev) {
+        console.log('[Sync] Development mode detected from build environment');
+      }
+      return isDev;
     }
     
     return false;
-  } catch {
+  } catch (error) {
+    console.error('[Sync] Error detecting development mode:', error);
     return false;
   }
 }
@@ -47,24 +46,28 @@ async function isDevelopment(): Promise<boolean> {
  */
 async function getWorkerUrl(): Promise<string> {
   try {
-    // Check if custom URL is set in storage (for testing/override)
+    // Check if custom URL is set in storage (for testing/override - highest priority)
     const result = await browser.storage.local.get([STORAGE_KEYS.WORKER_URL]);
     if (result[STORAGE_KEYS.WORKER_URL]) {
-      return result[STORAGE_KEYS.WORKER_URL];
+      const customUrl = result[STORAGE_KEYS.WORKER_URL];
+      console.log('[Sync] Using custom worker URL from storage:', customUrl);
+      return customUrl;
     }
     
     // Use dev URL if in development mode
-    const isDev = await isDevelopment();
+    const isDev = isDevelopment();
     if (isDev) {
-      if (VERBOSE) {
-        console.log('[Sync] Using development worker URL:', DEV_WORKER_URL);
-      }
+      console.log('[Sync] Using development worker URL:', DEV_WORKER_URL);
+      console.log('[Sync] Make sure wrangler dev is running: cd packages/extension/worker && wrangler dev');
       return DEV_WORKER_URL;
     }
     
+    console.log('[Sync] Using production worker URL:', PROD_WORKER_URL);
     return PROD_WORKER_URL;
-  } catch {
+  } catch (error) {
+    console.error('[Sync] Error getting worker URL:', error);
     // Fallback to production
+    console.log('[Sync] Falling back to production worker URL:', PROD_WORKER_URL);
     return PROD_WORKER_URL;
   }
 }
@@ -112,7 +115,21 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('[Sync] Failed to upload events:', error);
+    console.error('[Sync] Failed to upload events to', workerUrl, ':', error);
+    
+    // If using a non-existent URL (like localhost:9999), don't retry - it's disabled for testing
+    if (workerUrl.includes('localhost:9999')) {
+      console.log('[Sync] Uploads disabled for testing - events stored locally only');
+      return; // Don't throw, so EventBuffer doesn't retry
+    }
+    
+    // If using localhost:8787 and it fails, provide helpful message
+    if (workerUrl.includes('localhost:8787')) {
+      console.warn('[Sync] Local worker not responding. Make sure wrangler dev is running:');
+      console.warn('[Sync]   cd packages/extension/worker && wrangler dev');
+      // Still throw so EventBuffer can retry when worker comes online
+    }
+    
     // Note: Even if this throws, the server might have received and inserted the events
     // The upsert with ignoreDuplicates handles this gracefully
     throw error; // Re-throw so EventBuffer can retry
@@ -134,16 +151,3 @@ export async function getConfig(): Promise<{ workerUrl: string }> {
   return { workerUrl };
 }
 
-/**
- * Enable development mode (uses localhost worker)
- */
-export async function enableDevMode(): Promise<void> {
-  await browser.storage.local.set({ collection_dev_mode: true });
-}
-
-/**
- * Disable development mode (uses production worker)
- */
-export async function disableDevMode(): Promise<void> {
-  await browser.storage.local.set({ collection_dev_mode: false });
-}

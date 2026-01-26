@@ -3,6 +3,7 @@ import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
+import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { VERBOSE } from "../config";
 
 export default defineContentScript({
@@ -892,6 +893,9 @@ export default defineContentScript({
         
         const viewportCollector = new ViewportCollector();
         collectorManager.registerCollector(viewportCollector);
+        
+        const keyboardCollector = new KeyboardCollector();
+        collectorManager.registerCollector(keyboardCollector);
         
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
