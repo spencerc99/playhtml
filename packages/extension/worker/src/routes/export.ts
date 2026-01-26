@@ -1,4 +1,5 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
 
 /**
  * POST /events/export
@@ -60,7 +61,7 @@ export async function handleExport(
     );
     
     // Transform to CollectionEvent format
-    const events = (data || []).map((row) => ({
+    const events: CollectionEvent[] = (data || []).map((row) => ({
       id: row.id,
       type: row.type,
       ts: new Date(row.ts).getTime(),
@@ -72,7 +73,7 @@ export async function handleExport(
         vw: row.viewport_width,
         vh: row.viewport_height,
         tz: row.timezone,
-      },
+      } as EventMeta,
     }));
     
     const edition = {

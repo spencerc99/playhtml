@@ -1,5 +1,6 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { VERBOSE } from '../config';
+import { getValidEventTypes, type CollectionEventType } from '../../../src/shared/types';
 
 // Rate limiting: max events per request
 const MAX_EVENTS_PER_REQUEST = 500;
@@ -71,8 +72,8 @@ export async function handleIngest(
       }
       
       // Validate event type
-      const validTypes = ['cursor', 'navigation', 'viewport'];
-      if (!validTypes.includes(event.type)) {
+      const validTypes = getValidEventTypes();
+      if (!validTypes.includes(event.type as CollectionEventType)) {
         return new Response(
           JSON.stringify({ error: `Invalid event type: ${event.type}` }),
           { 

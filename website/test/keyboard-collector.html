@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keyboard Collector Test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-top: 0;
+    }
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #4CAF50;
+      border-radius: 4px;
+    }
+    .test-section h3 {
+      margin-top: 0;
+    }
+    .test-section ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    textarea {
+      min-height: 80px;
+      font-family: monospace;
+    }
+    .event-log {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .event-item {
+      margin: 10px 0;
+      padding: 10px;
+      background: #252526;
+      border-radius: 4px;
+      border-left: 3px solid #007acc;
+    }
+    .event-type {
+      color: #4ec9b0;
+      font-weight: bold;
+    }
+    .privacy-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .privacy-toggle label {
+      font-weight: bold;
+    }
+    .privacy-toggle select {
+      padding: 5px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 15px 0;
+    }
+    .stat-item {
+      padding: 10px;
+      background: #e3f2fd;
+      border-radius: 4px;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #1976d2;
+    }
+    button {
+      padding: 8px 16px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    .clear-btn {
+      background: #f44336;
+    }
+    .clear-btn:hover {
+      background: #da190b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Keyboard Collector Test Page</h1>
+    <p>This page tests the keyboard collector extension. Make sure the extension is loaded and enabled.</p>
+    <div id="status-indicator" style="padding: 10px; margin: 10px 0; border-radius: 4px; background: #fff3cd; border: 1px solid #ffc107;">
+      <strong>Status:</strong> <span id="status-text">Waiting for events...</span>
+      <div style="margin-top: 10px; font-size: 14px;">
+        <strong>How to enable:</strong> Open the extension popup (click the extension icon), go to Collections, and toggle the keyboard collector ON.
+        <br><strong>Note:</strong> Status will update to "ENABLED" when you start typing and events are received.
+      </div>
+    </div>
+    
+    <div class="privacy-toggle">
+      <label for="privacy-level">Privacy Level:</label>
+      <select id="privacy-level">
+        <option value="abstract">Abstract (no text)</option>
+        <option value="full">Full (with text, PII redacted)</option>
+      </select>
+      <button onclick="updatePrivacyLevel()">Update</button>
+    </div>
+
+    <div class="privacy-toggle" style="margin-top: 10px;">
+      <label for="dev-mode">Worker URL Override:</label>
+      <select id="dev-mode">
+        <option value="auto">Auto (dev mode detected from build)</option>
+        <option value="local">Local (localhost:8787)</option>
+        <option value="disable">Disable Uploads (testing only)</option>
+      </select>
+      <button onclick="updateDevMode()">Show Instructions</button>
+      <div style="font-size: 12px; color: #666; margin-top: 5px;">
+        <strong>Note:</strong> Use browser console (F12) to set these values. Click "Show Instructions" for the commands.
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-item">
+        <div class="stat-label">Total Events</div>
+        <div class="stat-value" id="event-count">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Last Event Type</div>
+        <div class="stat-value" id="last-event-type">-</div>
+      </div>
+    </div>
+
+    <div style="margin: 15px 0;">
+      <button onclick="clearLog()" class="clear-btn">Clear Log</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Test Inputs</h2>
+    
+    <div class="test-section">
+      <h3>Text Input</h3>
+      <input type="text" id="text-input" placeholder="Type here for test case 1">
+    </div>
+
+    <div class="test-section">
+      <h3>Textarea</h3>
+      <textarea id="textarea-input" placeholder="Type here for multi-line text"></textarea>
+    </div>
+
+    <div class="test-section">
+      <h3>Password Input (Should be Skipped)</h3>
+      <input type="password" id="password-input" placeholder="This should not be collected">
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Test Cases</h2>
+    
+    <div class="test-section">
+      <h3>Test Case 1: Basic Typing with Privacy Levels</h3>
+      <ol>
+        <li>Focus on the text input above</li>
+        <li>Type "hello world"</li>
+        <li>Wait 2+ seconds</li>
+        <li>Check the event log below</li>
+        <li>Verify: event emitted with correct textLength</li>
+        <li>Switch privacy level to "Full" and repeat</li>
+        <li>Verify: text and sequence are captured (if full level)</li>
+      </ol>
+    </div>
+
+    <div class="test-section">
+      <h3>Test Case 2: Backspace Handling and Grouping</h3>
+      <ol>
+        <li>Focus on the text input</li>
+        <li>Type "hello world" quickly</li>
+        <li>Press backspace 5 times rapidly</li>
+        <li>Wait 2+ seconds</li>
+        <li>Verify: sequence shows grouped backspace action</li>
+        <li>Verify: final text is "hello "</li>
+      </ol>
+    </div>
+
+    <div class="test-section">
+      <h3>Test Case 3: PII Detection and Password Skipping</h3>
+      <ol>
+        <li><strong>Password test:</strong> Focus on password input, type "secret123"</li>
+        <li>Verify: No events collected (password inputs skipped)</li>
+        <li><strong>Email test:</strong> Focus on text input, type "contact me at user@example.com"</li>
+        <li>Wait 2+ seconds</li>
+        <li>Verify: Email is redacted with █ characters</li>
+        <li><strong>Phone test:</strong> Type "Call me at (555) 123-4567"</li>
+        <li>Verify: Phone number is redacted</li>
+        <li><strong>SSN test:</strong> Type "My SSN is 123-45-6789"</li>
+        <li>Verify: SSN is redacted</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Event Log</h2>
+    <div class="event-log" id="event-log">Waiting for events...\n</div>
+  </div>
+
+  <script>
+    let eventCount = 0;
+    const eventLog = document.getElementById('event-log');
+    const eventCountEl = document.getElementById('event-count');
+    const lastEventTypeEl = document.getElementById('last-event-type');
+
+    // Listen for events from the extension content script
+    window.addEventListener('message', (event) => {
+      // Accept messages from same origin (content script runs in page context)
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      if (event.data && event.data.type === 'KEYBOARD_COLLECTOR_EVENT') {
+        addEventToLog(event.data.data);
+      }
+    });
+
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+
+    // Check if collector is enabled by listening for events
+    // If we receive events, the collector is enabled
+    let hasReceivedEvent = false;
+    
+    // Override addEventToLog to update status
+    const originalAddEventToLog = addEventToLog;
+    addEventToLog = function(eventData) {
+      if (!hasReceivedEvent) {
+        hasReceivedEvent = true;
+        statusText.textContent = 'ENABLED - Collecting events';
+        statusIndicator.style.background = '#d4edda';
+        statusIndicator.style.borderColor = '#28a745';
+        eventLog.innerHTML += '✅ Keyboard collector is working! Events are being collected.\n';
+      }
+      originalAddEventToLog(eventData);
+    };
+
+    function checkCollectorStatus() {
+      // We can't directly check status from the page, so show instructions
+      statusText.textContent = 'Waiting for events...';
+      statusIndicator.style.background = '#fff3cd';
+      statusIndicator.style.borderColor = '#ffc107';
+      eventLog.innerHTML = 'Instructions:\n';
+      eventLog.innerHTML += '1. Open the extension popup (click extension icon)\n';
+      eventLog.innerHTML += '2. Go to Collections section\n';
+      eventLog.innerHTML += '3. Toggle "keyboard" collector ON\n';
+      eventLog.innerHTML += '4. Type in the inputs above\n';
+      eventLog.innerHTML += '5. If collector is enabled, events will appear here\n\n';
+    }
+
+    // Log initialization
+    console.log('Keyboard Collector Test Page initialized');
+    console.log('Waiting for events from extension...');
+    eventLog.innerHTML = 'Keyboard Collector Test Page initialized\n';
+    eventLog.innerHTML += 'Checking collector status...\n';
+    
+    // Check status on load
+    checkCollectorStatus();
+    
+    // Show instructions in console
+    console.log('Keyboard Collector Test Page');
+    console.log('================================');
+    console.log('Dev mode is automatically detected when running "wxt dev"');
+    console.log('It will use http://localhost:8787 automatically');
+    console.log('');
+    console.log('To override worker URL (for testing):');
+    console.log('  Disable uploads: chrome.storage.local.set({collection_worker_url: "http://localhost:9999"})');
+    console.log('  Use local worker: chrome.storage.local.set({collection_worker_url: "http://localhost:8787"})');
+    console.log('  Use production: chrome.storage.local.set({collection_worker_url: null})');
+    console.log('');
+    console.log('To set privacy level:');
+    console.log('  chrome.storage.local.set({collection_keyboard_privacy_level: "full"})');
+    console.log('  or "abstract" for no text');
+    console.log('');
+    console.log('Type in the inputs above to see events!');
+
+    // Function to add event to log
+    function addEventToLog(eventData) {
+      eventCount++;
+      eventCountEl.textContent = eventCount;
+      
+      const eventType = eventData.event || 'unknown';
+      lastEventTypeEl.textContent = eventType;
+
+      const eventItem = document.createElement('div');
+      eventItem.className = 'event-item';
+      
+      const timestamp = new Date().toLocaleTimeString();
+      let logText = `[${timestamp}] <span class="event-type">${eventType.toUpperCase()}</span>\n`;
+      logText += `Position: (${eventData.x?.toFixed(4)}, ${eventData.y?.toFixed(4)})\n`;
+      logText += `Text Length: ${eventData.textLength}\n`;
+      
+      if (eventData.sequence && eventData.sequence.length > 0) {
+        logText += `Sequence (${eventData.sequence.length} actions):\n`;
+        eventData.sequence.forEach((action, idx) => {
+          logText += `  ${idx + 1}. ${action.action}`;
+          if (action.text) {
+            logText += ` - text: "${action.text}"`;
+          }
+          if (action.deletedCount !== undefined) {
+            logText += ` - deletedCount: ${action.deletedCount}`;
+          }
+          logText += ` (${action.timestamp}ms)\n`;
+        });
+      } else {
+        logText += `Sequence: null\n`;
+      }
+      
+      if (eventData.t) {
+        logText += `Selector: ${eventData.t}\n`;
+      }
+      
+      eventItem.textContent = logText;
+      eventLog.appendChild(eventItem);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    function clearLog() {
+      eventLog.innerHTML = 'Log cleared.\n';
+      eventCount = 0;
+      eventCountEl.textContent = '0';
+      lastEventTypeEl.textContent = '-';
+    }
+
+    function updatePrivacyLevel() {
+      alert('Privacy level must be set from the extension popup or browser console.\n\n' +
+            'To set via console:\n' +
+            '1. Open browser console (F12)\n' +
+            '2. Run: chrome.storage.local.set({collection_keyboard_privacy_level: "' + document.getElementById('privacy-level').value + '"})\n' +
+            '3. Refresh the page');
+    }
+
+    function updateDevMode() {
+      const mode = document.getElementById('dev-mode').value;
+      let instructions = '';
+      
+      if (mode === 'disable') {
+        instructions = 'To disable uploads, run in browser console:\n' +
+          'chrome.storage.local.set({collection_worker_url: "http://localhost:9999"})';
+      } else if (mode === 'local') {
+        instructions = 'To use local worker, run in browser console:\n' +
+          'chrome.storage.local.set({collection_worker_url: "http://localhost:8787"})\n\n' +
+          'Note: Dev mode is automatically detected when running "wxt dev"\n' +
+          'Make sure wrangler dev is running: cd packages/extension/worker && wrangler dev';
+      } else {
+        instructions = 'To use production (or auto-detect dev mode), run in browser console:\n' +
+          'chrome.storage.local.set({collection_worker_url: null})\n\n' +
+          'When running "wxt dev", it will automatically use localhost:8787';
+      }
+      
+      alert(instructions);
+    }
+
+    // Log instructions
+    console.log('Keyboard Collector Test Page Loaded');
+    console.log('Instructions:');
+    console.log('1. Make sure the extension is loaded');
+    console.log('2. Enable the keyboard collector in extension settings');
+    console.log('3. Type in the inputs above and watch the event log');
+    console.log('4. Events will appear in the log below');
+    console.log('\nNote: Events are collected by the extension content script.');
+    console.log('To see events here, the extension would need to send messages to the page.');
+    console.log('For now, check the browser console for extension logs (if VERBOSE is enabled).');
+  </script>
+</body>
+</html>
