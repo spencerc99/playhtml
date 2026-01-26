@@ -369,7 +369,6 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       return;
     }
 
-    const finalText = this.focusedInput.value || '';
     let sequence = null;
 
     if (this.privacyLevel === 'full') {
@@ -382,6 +381,17 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
         // deletedCount is just a number, no redaction needed
         return redacted;
       });
+    } else {
+      // Abstract level: redact all non-whitespace characters but preserve whitespace
+      // This preserves cadence (timestamps) while hiding actual content
+      sequence = this.sequence.map(action => {
+        const redacted: TypingAction = { ...action };
+        if (action.text) {
+          redacted.text = this.redactNonWhitespace(action.text);
+        }
+        // deletedCount is just a number, no redaction needed
+        return redacted;
+      });
     }
 
     const typeData: KeyboardEventData = {
@@ -389,7 +399,6 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       y: this.cachedPosition.y,
       t: this.cachedSelector,
       event: 'type',
-      textLength: finalText.length,
       sequence: sequence,
     };
 
@@ -421,6 +430,18 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     }
 
     return redacted;
+  }
+
+  /**
+   * Redact all non-whitespace characters while preserving whitespace
+   * Used for abstract privacy level to preserve cadence while hiding content
+   */
+  private redactNonWhitespace(text: string): string {
+    // Replace each character: keep whitespace, redact everything else
+    return text.replace(/./g, (char) => {
+      // Check if character is whitespace (space, tab, newline, etc.)
+      return /\s/.test(char) ? char : REDACTION_CHAR;
+    });
   }
 
   /**

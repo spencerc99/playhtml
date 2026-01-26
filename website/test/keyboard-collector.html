@@ -205,7 +205,7 @@
         <li>Type "hello world"</li>
         <li>Wait 2+ seconds</li>
         <li>Check the event log below</li>
-        <li>Verify: event emitted with correct textLength</li>
+        <li>Verify: event emitted with sequence</li>
         <li>Switch privacy level to "Full" and repeat</li>
         <li>Verify: text and sequence are captured (if full level)</li>
       </ol>
@@ -335,7 +335,6 @@
       const timestamp = new Date().toLocaleTimeString();
       let logText = `[${timestamp}] <span class="event-type">${eventType.toUpperCase()}</span>\n`;
       logText += `Position: (${eventData.x?.toFixed(4)}, ${eventData.y?.toFixed(4)})\n`;
-      logText += `Text Length: ${eventData.textLength}\n`;
       
       if (eventData.sequence && eventData.sequence.length > 0) {
         logText += `Sequence (${eventData.sequence.length} actions):\n`;

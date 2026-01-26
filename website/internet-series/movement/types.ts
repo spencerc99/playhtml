@@ -58,3 +58,49 @@ export interface ClickEffect {
   trailIndex: number;
   holdDuration?: number; // If present, this is a hold event - scale size and duration by this
 }
+
+// Keyboard event types
+export interface KeyboardEventData {
+  x: number;
+  y: number;
+  t?: string;
+  event: 'type';
+  sequence?: TypingAction[] | null;
+}
+
+export interface TypingAction {
+  action: 'type' | 'backspace';
+  text?: string;
+  deletedCount?: number;
+  timestamp: number;
+}
+
+export interface TypingAnimation {
+  event: CollectionEvent;
+  x: number;
+  y: number;
+  color: string;
+  startTime: number;
+  sequence: TypingAction[];
+}
+
+export interface TypingState {
+  animation: TypingAnimation;
+  startOffsetMs: number;
+  durationMs: number;
+  textboxSize: { width: number; height: number };
+  fontSize: number;
+  positionOffset: { x: number; y: number };
+}
+
+export interface ActiveTyping {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  currentText: string;
+  showCaret: boolean;
+  textboxSize: { width: number; height: number };
+  fontSize: number;
+  positionOffset: { x: number; y: number };
+}
