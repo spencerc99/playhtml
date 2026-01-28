@@ -7,16 +7,20 @@ interface CollectionsProps {
 }
 
 const PRIVACY_LEVEL_KEY = 'collection_keyboard_privacy_level';
+const FILTER_SUBSTRINGS_KEY = 'collection_keyboard_filter_substrings';
 
 export function Collections({ onBack }: CollectionsProps) {
   const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keyboardPrivacyLevel, setKeyboardPrivacyLevel] = useState<'abstract' | 'full'>('abstract');
+  const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
+  const [newFilterSubstring, setNewFilterSubstring] = useState('');
 
   useEffect(() => {
     loadCollectors();
     loadPrivacyLevel();
+    loadFilterSubstrings();
   }, []);
 
   const loadPrivacyLevel = async () => {
@@ -45,6 +49,57 @@ export function Collections({ onBack }: CollectionsProps) {
     } catch (error) {
       console.error('Failed to update privacy level:', error);
       alert('Failed to update privacy level. Please try again.');
+    }
+  };
+
+  const loadFilterSubstrings = async () => {
+    try {
+      const result = await browser.storage.local.get([FILTER_SUBSTRINGS_KEY]);
+      const substrings = result[FILTER_SUBSTRINGS_KEY];
+      if (Array.isArray(substrings)) {
+        setFilterSubstrings(substrings);
+      } else {
+        // Default to empty array if not set
+        setFilterSubstrings([]);
+        await browser.storage.local.set({ [FILTER_SUBSTRINGS_KEY]: [] });
+      }
+    } catch (error) {
+      console.error('Failed to load filter substrings:', error);
+      setFilterSubstrings([]);
+    }
+  };
+
+  const addFilterSubstring = async () => {
+    const trimmed = newFilterSubstring.trim();
+    if (!trimmed) {
+      alert('Please enter a substring to filter');
+      return;
+    }
+
+    if (filterSubstrings.includes(trimmed)) {
+      alert('This substring is already in the filter list');
+      return;
+    }
+
+    try {
+      const updated = [...filterSubstrings, trimmed];
+      await browser.storage.local.set({ [FILTER_SUBSTRINGS_KEY]: updated });
+      setFilterSubstrings(updated);
+      setNewFilterSubstring('');
+    } catch (error) {
+      console.error('Failed to add filter substring:', error);
+      alert('Failed to add filter substring. Please try again.');
+    }
+  };
+
+  const removeFilterSubstring = async (substring: string) => {
+    try {
+      const updated = filterSubstrings.filter(s => s !== substring);
+      await browser.storage.local.set({ [FILTER_SUBSTRINGS_KEY]: updated });
+      setFilterSubstrings(updated);
+    } catch (error) {
+      console.error('Failed to remove filter substring:', error);
+      alert('Failed to remove filter substring. Please try again.');
     }
   };
 
@@ -358,21 +413,76 @@ export function Collections({ onBack }: CollectionsProps) {
               </div>
               {/* Privacy level sub-setting for keyboard collector */}
               {collector.type === 'keyboard' && collector.enabled && (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    paddingTop: "12px",
-                    borderTop: "1px solid #e5e7eb",
-                  }}
-                >
+                <>
                   <div
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+                      marginTop: "12px",
+                      paddingTop: "12px",
+                      borderTop: "1px solid #e5e7eb",
                     }}
                   >
-                    <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <label
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: "500",
+                            color: "#374151",
+                            display: "block",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          Privacy Level
+                        </label>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: "11px",
+                            color: "#6b7280",
+                          }}
+                        >
+                          {keyboardPrivacyLevel === 'abstract'
+                            ? 'Abstract: Typing frequency and location only (no text)'
+                            : 'Full: Text content with PII redaction'}
+                        </p>
+                      </div>
+                      <select
+                        value={keyboardPrivacyLevel}
+                        onChange={(e) =>
+                          updatePrivacyLevel(e.target.value as 'abstract' | 'full')
+                        }
+                        style={{
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          border: "1px solid #d1d5db",
+                          borderRadius: "6px",
+                          backgroundColor: "white",
+                          color: "#374151",
+                          cursor: "pointer",
+                          minWidth: "100px",
+                        }}
+                      >
+                        <option value="abstract">Abstract</option>
+                        <option value="full">Full</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Filter substrings section - only show when privacy level is 'full' */}
+                  {keyboardPrivacyLevel === 'full' && (
+                    <div
+                      style={{
+                        marginTop: "12px",
+                        paddingTop: "12px",
+                        borderTop: "1px solid #e5e7eb",
+                      }}
+                    >
                       <label
                         style={{
                           fontSize: "12px",
@@ -382,41 +492,121 @@ export function Collections({ onBack }: CollectionsProps) {
                           marginBottom: "4px",
                         }}
                       >
-                        Privacy Level
+                        Filter Sensitive Text
                       </label>
                       <p
                         style={{
-                          margin: 0,
+                          margin: "0 0 8px 0",
                           fontSize: "11px",
                           color: "#6b7280",
                         }}
                       >
-                        {keyboardPrivacyLevel === 'abstract'
-                          ? 'Abstract: Typing frequency and location only (no text)'
-                          : 'Full: Text content with PII redaction'}
+                        Sequences containing these substrings will be redacted
                       </p>
+
+                      {/* Add new filter input */}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={newFilterSubstring}
+                          onChange={(e) => setNewFilterSubstring(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              addFilterSubstring();
+                            }
+                          }}
+                          placeholder="Enter substring..."
+                          style={{
+                            flex: 1,
+                            padding: "6px 8px",
+                            fontSize: "12px",
+                            border: "1px solid #d1d5db",
+                            borderRadius: "4px",
+                            outline: "none",
+                          }}
+                        />
+                        <button
+                          onClick={addFilterSubstring}
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            backgroundColor: "#10b981",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontWeight: "500",
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      {/* Display current filters */}
+                      {filterSubstrings.length > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "6px",
+                          }}
+                        >
+                          {filterSubstrings.map((substring) => (
+                            <div
+                              key={substring}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "4px 8px",
+                                backgroundColor: "#fee2e2",
+                                color: "#991b1b",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                              }}
+                            >
+                              <span>{substring}</span>
+                              <button
+                                onClick={() => removeFilterSubstring(substring)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#991b1b",
+                                  cursor: "pointer",
+                                  fontSize: "14px",
+                                  padding: "0",
+                                  lineHeight: 1,
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {filterSubstrings.length === 0 && (
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: "11px",
+                            color: "#9ca3af",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          No filters added yet
+                        </p>
+                      )}
                     </div>
-                    <select
-                      value={keyboardPrivacyLevel}
-                      onChange={(e) =>
-                        updatePrivacyLevel(e.target.value as 'abstract' | 'full')
-                      }
-                      style={{
-                        padding: "6px 12px",
-                        fontSize: "12px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        backgroundColor: "white",
-                        color: "#374151",
-                        cursor: "pointer",
-                        minWidth: "100px",
-                      }}
-                    >
-                      <option value="abstract">Abstract</option>
-                      <option value="full">Full</option>
-                    </select>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
             </div>
           ))}
