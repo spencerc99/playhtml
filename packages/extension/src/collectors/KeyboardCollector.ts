@@ -5,8 +5,9 @@ import browser from 'webextension-polyfill';
 import { VERBOSE } from '../config';
 
 const PRIVACY_LEVEL_KEY = 'collection_keyboard_privacy_level';
+const FILTER_SUBSTRINGS_KEY = 'collection_keyboard_filter_substrings';
 const REDACTION_CHAR = '█'; // U+2588, full block
-const DEBOUNCE_DELAY = 2000; // 2 seconds
+const DEBOUNCE_DELAY = 5000; // 5 seconds - longer to handle gaps between typing sessions
 
 // PII detection patterns
 const PII_PATTERNS = {
@@ -27,17 +28,25 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   // Privacy level (cached in memory)
   private privacyLevel: 'abstract' | 'full' = 'abstract';
 
+  // Filter substrings (cached in memory)
+  private filterSubstrings: string[] = [];
+
   // Currently focused input tracking
   private focusedInput: HTMLInputElement | HTMLTextAreaElement | null = null;
   private cachedPosition: { x: number; y: number } | null = null;
   private cachedSelector: string | null = null;
+  private cachedStyling: { w: number; h: number; br: number; bg: number; bs: number } | null = null;
   private initialText: string = '';
+
+  // Track last focused element to accumulate sequences across focus/blur cycles
+  private lastElementKey: string | null = null; // selector + position identifier
 
   // Event handlers
   private focusHandler?: (e: FocusEvent) => void;
   private blurHandler?: (e: FocusEvent) => void;
   private keydownHandler?: (e: KeyboardEvent) => void;
   private inputHandler?: (e: Event) => void;
+  private beforeUnloadHandler?: (e: Event) => void;
 
   // Typing sequence tracking
   private sequence: TypingAction[] = [];
@@ -45,21 +54,32 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   private lastKeydown: string | null = null;
   private firstActionTime: number = 0;
 
-  // Debouncing
+  // Debouncing (longer timeout to handle gaps between typing sessions on same input)
   private debounceTimer: number | null = null;
 
   start(): void {
-    // Load privacy level from storage (once on init) - fire and forget
+    // Load privacy level and filter substrings from storage (once on init) - fire and forget
     this.initPrivacyLevel().catch(() => {
       // Silently fail - default to abstract
+    });
+    this.initFilterSubstrings().catch(() => {
+      // Silently fail - default to empty list
     });
 
     // Listen for storage changes to update cache
     browser.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === 'local' && changes[PRIVACY_LEVEL_KEY]) {
-        const newLevel = changes[PRIVACY_LEVEL_KEY].newValue;
-        if (newLevel === 'abstract' || newLevel === 'full') {
-          this.privacyLevel = newLevel;
+      if (areaName === 'local') {
+        if (changes[PRIVACY_LEVEL_KEY]) {
+          const newLevel = changes[PRIVACY_LEVEL_KEY].newValue;
+          if (newLevel === 'abstract' || newLevel === 'full') {
+            this.privacyLevel = newLevel;
+          }
+        }
+        if (changes[FILTER_SUBSTRINGS_KEY]) {
+          const newList = changes[FILTER_SUBSTRINGS_KEY].newValue;
+          if (Array.isArray(newList)) {
+            this.filterSubstrings = newList;
+          }
         }
       }
     });
@@ -115,11 +135,19 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       this.handleInput();
     };
 
+    // Set up beforeunload handler to flush pending typing on page navigation
+    this.beforeUnloadHandler = (e: Event) => {
+      if (this.sequence.length > 0) {
+        this.flushTypingEvent();
+      }
+    };
+
     // Attach event listeners
     document.addEventListener('focus', this.focusHandler, true);
     document.addEventListener('blur', this.blurHandler, true);
     document.addEventListener('keydown', this.keydownHandler, true);
     document.addEventListener('input', this.inputHandler, true);
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
   }
 
   stop(): void {
@@ -144,14 +172,19 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       this.inputHandler = undefined;
     }
 
+    if (this.beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+      this.beforeUnloadHandler = undefined;
+    }
+
     // Clear debounce timer
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
 
-    // Flush any pending typing event
-    if (this.sequence.length > 0 && this.focusedInput) {
+    // Flush any pending typing event (even if element is not currently focused)
+    if (this.sequence.length > 0 && this.cachedPosition && this.cachedSelector) {
       this.flushTypingEvent();
     }
 
@@ -159,6 +192,8 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     this.focusedInput = null;
     this.cachedPosition = null;
     this.cachedSelector = null;
+    this.cachedStyling = null;
+    this.lastElementKey = null;
     this.sequence = [];
     this.textBefore = '';
     this.lastKeydown = null;
@@ -184,50 +219,97 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   }
 
   /**
+   * Initialize filter substrings from storage (read once, cache in memory)
+   */
+  private async initFilterSubstrings(): Promise<void> {
+    try {
+      const result = await browser.storage.local.get([FILTER_SUBSTRINGS_KEY]);
+      const list = result[FILTER_SUBSTRINGS_KEY];
+      if (Array.isArray(list)) {
+        this.filterSubstrings = list;
+      } else {
+        // Default to empty list
+        this.filterSubstrings = [];
+        await browser.storage.local.set({ [FILTER_SUBSTRINGS_KEY]: [] });
+      }
+    } catch (error) {
+      this.filterSubstrings = []; // Default on error
+    }
+  }
+
+  /**
    * Handle focus event
    */
   private handleFocus(input: HTMLInputElement | HTMLTextAreaElement): void {
-    this.focusedInput = input;
-    
-    // Get initial text
-    this.initialText = input.value || '';
-    this.textBefore = this.initialText;
-
-    // Calculate and cache position (once on focus)
+    // Calculate position and selector to determine if this is the same element
     const rect = input.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    this.cachedPosition = normalizePosition(
+    const position = normalizePosition(
       centerX,
       centerY,
       window.innerWidth,
       window.innerHeight
     );
+    const selector = getElementSelector(input);
 
-    // Cache element selector
-    this.cachedSelector = getElementSelector(input);
+    // Create element key for tracking (selector + rough position)
+    const elementKey = `${selector}|${position.x.toFixed(2)}|${position.y.toFixed(2)}`;
 
-    // Reset sequence
-    this.sequence = [];
-    this.firstActionTime = 0;
+    // Check if this is a different element than the last one we were tracking
+    if (this.lastElementKey && this.lastElementKey !== elementKey) {
+      // Switching to a different element - flush any pending typing from previous element
+      if (this.sequence.length > 0) {
+        this.flushTypingEvent();
+      }
+    }
+
+    // Update tracking for this element
+    this.focusedInput = input;
+    this.lastElementKey = elementKey;
+    this.initialText = input.value || '';
+    this.textBefore = this.initialText;
+    this.cachedPosition = position;
+    this.cachedSelector = selector;
+
+    // Cache input styling
+    const computedStyle = window.getComputedStyle(input);
+    this.cachedStyling = {
+      w: Math.round(rect.width),
+      h: Math.round(rect.height),
+      br: Math.min(20, parseInt(computedStyle.borderTopLeftRadius) || 0),
+      bg: this.getBackgroundLuminosity(computedStyle.backgroundColor),
+      bs: this.mapBorderStyle(computedStyle.borderStyle),
+    };
+
+    // Only reset sequence if switching elements (checked above)
+    // If returning to same element, continue accumulating
+    if (this.lastElementKey === elementKey && this.sequence.length > 0) {
+      // Continuing on same element - keep existing sequence
+      // Just cancel debounce timer since we're actively typing again
+      if (this.debounceTimer !== null) {
+        clearTimeout(this.debounceTimer);
+        this.debounceTimer = null;
+      }
+    } else if (this.lastElementKey !== elementKey) {
+      // New element - reset sequence (already flushed above)
+      this.sequence = [];
+      this.firstActionTime = 0;
+    }
   }
 
   /**
    * Handle blur event
+   * Don't immediately flush - let debounce timer handle it
+   * This allows accumulating sequences across multiple focus/blur cycles on same element
    */
   private handleBlur(): void {
-    // Flush any pending typing event immediately
-    if (this.sequence.length > 0 && this.focusedInput) {
-      this.flushTypingEvent();
-    }
-
-    // Reset state
+    // Just clear focused input reference
+    // Keep sequence, cached data, and lastElementKey so we can resume if same element is focused again
     this.focusedInput = null;
-    this.cachedPosition = null;
-    this.cachedSelector = null;
-    this.sequence = [];
-    this.textBefore = '';
     this.lastKeydown = null;
+
+    // Debounce timer will flush after DEBOUNCE_DELAY if no more typing occurs
   }
 
   /**
@@ -369,9 +451,33 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       return;
     }
 
+    // Check if the full typed text contains any filter substrings
+    const fullText = this.sequence.reduce((text, action) => {
+      if (action.action === 'type' && action.text) {
+        return text + action.text;
+      } else if (action.action === 'backspace' && action.deletedCount) {
+        return text.slice(0, -action.deletedCount);
+      }
+      return text;
+    }, '').toLowerCase(); // Case-insensitive matching
+
+    const containsFilteredSubstring = this.filterSubstrings.some(substring =>
+      fullText.includes(substring.toLowerCase())
+    );
+
     let sequence = null;
 
-    if (this.privacyLevel === 'full') {
+    if (containsFilteredSubstring) {
+      // Redact entire sequence if it contains a filtered substring
+      sequence = this.sequence.map(action => {
+        const redacted: TypingAction = { ...action };
+        if (action.text) {
+          redacted.text = REDACTION_CHAR.repeat(action.text.length);
+        }
+        // deletedCount is just a number, no redaction needed
+        return redacted;
+      });
+    } else if (this.privacyLevel === 'full') {
       // Redact PII in sequence actions
       sequence = this.sequence.map(action => {
         const redacted: TypingAction = { ...action };
@@ -400,6 +506,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       t: this.cachedSelector,
       event: 'type',
       sequence: sequence,
+      style: this.cachedStyling || undefined,
     };
 
     this.emit(typeData);
@@ -411,9 +518,44 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       console.log('[KeyboardCollector] Type event emitted:', typeData);
     }
 
-    // Reset sequence
+    // Reset sequence and element tracking
     this.sequence = [];
     this.firstActionTime = 0;
+    this.lastElementKey = null;
+    this.cachedPosition = null;
+    this.cachedSelector = null;
+    this.cachedStyling = null;
+  }
+
+  /**
+   * Get background luminosity (0-1) from CSS color string
+   * Used to detect light/dark input backgrounds
+   */
+  private getBackgroundLuminosity(backgroundColor: string): number {
+    // Parse rgba/rgb color
+    const match = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match) return 0.5; // Default to mid-range if can't parse
+
+    const r = parseInt(match[1]);
+    const g = parseInt(match[2]);
+    const b = parseInt(match[3]);
+
+    // Calculate relative luminance using sRGB coefficients
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return Math.round(luminance * 100) / 100; // Round to 2 decimals
+  }
+
+  /**
+   * Map CSS border style to numeric code for compact storage
+   */
+  private mapBorderStyle(borderStyle: string): number {
+    switch (borderStyle) {
+      case 'solid': return 1;
+      case 'dashed': return 2;
+      case 'dotted': return 3;
+      case 'double': return 4;
+      default: return 0; // none, hidden, or other
+    }
   }
 
   /**
