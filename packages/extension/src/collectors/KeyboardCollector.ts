@@ -23,7 +23,7 @@ const PII_PATTERNS = {
  */
 export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   readonly type = 'keyboard' as const;
-  readonly description = 'Captures typing events with privacy levels and PII detection';
+  readonly description = 'Captures typing in any editable element (inputs, textareas, contenteditable)';
 
   // Privacy level (cached in memory)
   private privacyLevel: 'abstract' | 'full' = 'abstract';
@@ -31,8 +31,8 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   // Filter substrings (cached in memory)
   private filterSubstrings: string[] = [];
 
-  // Currently focused input tracking
-  private focusedInput: HTMLInputElement | HTMLTextAreaElement | null = null;
+  // Currently focused input tracking (supports input, textarea, and contenteditable)
+  private focusedInput: HTMLElement | null = null;
   private cachedPosition: { x: number; y: number } | null = null;
   private cachedSelector: string | null = null;
   private cachedStyling: { w: number; h: number; br: number; bg: number; bs: number } | null = null;
@@ -87,18 +87,21 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     // Set up focus handler
     this.focusHandler = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
-      
+
       // Skip password inputs
       if (target instanceof HTMLInputElement && target.type === 'password') {
         return;
       }
 
-      // Only track input and textarea elements
-      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+      // Track input, textarea, and contenteditable elements
+      const isInput = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+      const isContentEditable = target.isContentEditable;
+
+      if (!isInput && !isContentEditable) {
         return;
       }
 
-      this.handleFocus(target as HTMLInputElement | HTMLTextAreaElement);
+      this.handleFocus(target);
     };
 
     // Set up blur handler
@@ -238,9 +241,21 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   }
 
   /**
+   * Get text content from any editable element
+   */
+  private getElementText(element: HTMLElement): string {
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      return element.value || '';
+    } else if (element.isContentEditable) {
+      return element.textContent || '';
+    }
+    return '';
+  }
+
+  /**
    * Handle focus event
    */
-  private handleFocus(input: HTMLInputElement | HTMLTextAreaElement): void {
+  private handleFocus(input: HTMLElement): void {
     // Calculate position and selector to determine if this is the same element
     const rect = input.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -267,7 +282,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     // Update tracking for this element
     this.focusedInput = input;
     this.lastElementKey = elementKey;
-    this.initialText = input.value || '';
+    this.initialText = this.getElementText(input);
     this.textBefore = this.initialText;
     this.cachedPosition = position;
     this.cachedSelector = selector;
@@ -320,7 +335,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       return;
     }
 
-    const textAfter = this.focusedInput.value || '';
+    const textAfter = this.getElementText(this.focusedInput);
 
     // Detect paste: large text change without matching keydown
     const textChange = textAfter.length - this.textBefore.length;

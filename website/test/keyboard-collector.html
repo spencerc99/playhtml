@@ -193,6 +193,20 @@
       <h3>Password Input (Should be Skipped)</h3>
       <input type="password" id="password-input" placeholder="This should not be collected">
     </div>
+
+    <div class="test-section">
+      <h3>ContentEditable Div (Google Docs / Rich Text Editor)</h3>
+      <div
+        id="contenteditable-div"
+        contenteditable="true"
+        style="min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: system-ui;"
+      >
+        Type here to test contenteditable elements (like Google Docs, Notion, etc.)
+      </div>
+      <p style="font-size: 12px; color: #666; margin-top: 5px;">
+        This tests rich text editors, Google Docs, Notion, and other apps that use contenteditable
+      </p>
+    </div>
   </div>
 
   <div class="container">
@@ -235,6 +249,17 @@
         <li>Verify: Phone number is redacted</li>
         <li><strong>SSN test:</strong> Type "My SSN is 123-45-6789"</li>
         <li>Verify: SSN is redacted</li>
+      </ol>
+    </div>
+
+    <div class="test-section">
+      <h3>Test Case 4: ContentEditable Elements (Rich Text Editors)</h3>
+      <ol>
+        <li>Focus on the contenteditable div above</li>
+        <li>Clear the placeholder text and type "hello from google docs"</li>
+        <li>Wait 5+ seconds</li>
+        <li>Verify: Event is collected with typing sequence</li>
+        <li><strong>Note:</strong> This simulates Google Docs, Notion, Medium, and other rich text editors</li>
       </ol>
     </div>
   </div>
