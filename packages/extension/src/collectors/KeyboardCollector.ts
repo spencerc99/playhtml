@@ -36,6 +36,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   private cachedPosition: { x: number; y: number } | null = null;
   private cachedSelector: string | null = null;
   private cachedStyling: { w: number; h: number; br: number; bg: number; bs: number } | null = null;
+  private cachedIsContentEditable: boolean = false;
   private initialText: string = '';
 
   // Track last focused element to accumulate sequences across focus/blur cycles
@@ -196,6 +197,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     this.cachedPosition = null;
     this.cachedSelector = null;
     this.cachedStyling = null;
+    this.cachedIsContentEditable = false;
     this.lastElementKey = null;
     this.sequence = [];
     this.textBefore = '';
@@ -286,6 +288,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     this.textBefore = this.initialText;
     this.cachedPosition = position;
     this.cachedSelector = selector;
+    this.cachedIsContentEditable = input.isContentEditable && !(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement);
 
     // Cache input styling
     const computedStyle = window.getComputedStyle(input);
@@ -522,6 +525,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       event: 'type',
       sequence: sequence,
       style: this.cachedStyling || undefined,
+      ce: this.cachedIsContentEditable || undefined, // Only include if true (save storage)
     };
 
     this.emit(typeData);
@@ -540,6 +544,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     this.cachedPosition = null;
     this.cachedSelector = null;
     this.cachedStyling = null;
+    this.cachedIsContentEditable = false;
   }
 
   /**

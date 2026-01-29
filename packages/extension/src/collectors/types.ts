@@ -207,6 +207,17 @@ export interface TypingAction {
 }
 
 /**
+ * Input styling captured on focus
+ */
+export interface InputStyling {
+  w: number;  // Width in pixels
+  h: number;  // Height in pixels
+  br: number; // Border radius in pixels (capped at 20)
+  bg: number; // Background luminosity 0-1 (for light/dark detection)
+  bs: number; // Border style: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
+}
+
+/**
  * Keyboard-specific payload
  */
 export interface KeyboardEventData {
@@ -215,4 +226,6 @@ export interface KeyboardEventData {
   t?: string;             // Element selector
   event: KeyboardEventType;
   sequence?: TypingAction[] | null; // Full sequence (null if abstract level, PII redacted if detected)
+  style?: InputStyling;   // Input box styling (optional for backwards compatibility)
+  ce?: boolean;           // True if element is contenteditable (Google Docs, etc.), false/undefined for input/textarea
 }
