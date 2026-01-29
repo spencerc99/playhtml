@@ -60,12 +60,21 @@ export interface ClickEffect {
 }
 
 // Keyboard event types
+export interface InputStyling {
+  w: number;  // Width in pixels
+  h: number;  // Height in pixels
+  br: number; // Border radius in pixels (capped at 20)
+  bg: number; // Background luminosity 0-1 (for light/dark detection)
+  bs: number; // Border style: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
+}
+
 export interface KeyboardEventData {
   x: number;
   y: number;
   t?: string;
   event: 'type';
   sequence?: TypingAction[] | null;
+  style?: InputStyling;
 }
 
 export interface TypingAction {
@@ -91,6 +100,7 @@ export interface TypingState {
   textboxSize: { width: number; height: number };
   fontSize: number;
   positionOffset: { x: number; y: number };
+  style?: InputStyling;
 }
 
 export interface ActiveTyping {
@@ -103,4 +113,54 @@ export interface ActiveTyping {
   textboxSize: { width: number; height: number };
   fontSize: number;
   positionOffset: { x: number; y: number };
+  style?: InputStyling;
+}
+
+// Viewport animation types
+export interface ScrollAnimation {
+  participantId: string;
+  sessionId: string;
+  pageUrl: string;
+  color: string;
+  scrollEvents: Array<{
+    scrollX: number;
+    scrollY: number;
+    timestamp: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  }>;
+  resizeEvents?: Array<{
+    width: number;
+    height: number;
+    timestamp: number;
+    quantity?: number;
+  }>;
+  zoomEvents?: Array<{
+    zoom: number;
+    previous_zoom?: number;
+    timestamp: number;
+    quantity?: number;
+  }>;
+  startTime: number;
+  endTime: number;
+  startViewportWidth: number;
+  startViewportHeight: number;
+  endViewportWidth: number;
+  endViewportHeight: number;
+}
+
+export interface ViewportSize {
+  width: number;
+  height: number;
+  key: string;
+  count: number;
+}
+
+export interface ScrollViewportState {
+  animation: ScrollAnimation;
+  viewportSize: ViewportSize;
+  startOffsetMs: number;
+  durationMs: number;
+  viewportRect: { x: number; y: number; width: number; height: number };
+  backgroundSeed: number;
 }
