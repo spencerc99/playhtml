@@ -392,6 +392,11 @@ const loadSettings = () => {
       keyboard: true,
       viewport: false,
     },
+    viewportEventFilter: {
+      scroll: true,
+      resize: true,
+      zoom: true,
+    },
     domainFilter: "",
     scrollSpeed: 1.0,
     backgroundOpacity: 0.7,
@@ -423,6 +428,10 @@ const loadSettings = () => {
         eventTypeFilter: {
           ...defaults.eventTypeFilter,
           ...(parsed.eventTypeFilter || {}),
+        },
+        viewportEventFilter: {
+          ...defaults.viewportEventFilter,
+          ...(parsed.viewportEventFilter || {}),
         },
       };
     }
@@ -1863,8 +1872,8 @@ const InternetMovement = () => {
     const visibleScrollAnimations = scrollAnimations.filter((anim) => {
       let hasVisibleActivity = false;
 
-      // Check for visible scrolling
-      if (anim.scrollEvents.length >= 2) {
+      // Check for visible scrolling (only if scroll filter is enabled)
+      if (settings.viewportEventFilter.scroll && anim.scrollEvents.length >= 2) {
         const scrollYValues = anim.scrollEvents.map((e) => e.scrollY);
         const minScrollY = Math.min(...scrollYValues);
         const maxScrollY = Math.max(...scrollYValues);
@@ -1874,8 +1883,8 @@ const InternetMovement = () => {
         }
       }
 
-      // Check for visible resize
-      if (anim.resizeEvents && anim.resizeEvents.length >= 2) {
+      // Check for visible resize (only if resize filter is enabled)
+      if (settings.viewportEventFilter.resize && anim.resizeEvents && anim.resizeEvents.length >= 2) {
         const widths = anim.resizeEvents.map((e) => e.width);
         const heights = anim.resizeEvents.map((e) => e.height);
         const widthChange = Math.max(...widths) - Math.min(...widths);
@@ -1888,8 +1897,8 @@ const InternetMovement = () => {
         }
       }
 
-      // Check for visible zoom
-      if (anim.zoomEvents && anim.zoomEvents.length >= 2) {
+      // Check for visible zoom (only if zoom filter is enabled)
+      if (settings.viewportEventFilter.zoom && anim.zoomEvents && anim.zoomEvents.length >= 2) {
         const zooms = anim.zoomEvents.map((e) => e.zoom);
         const zoomChange = Math.max(...zooms) - Math.min(...zooms);
         if (zoomChange >= MIN_ZOOM_CHANGE) {
@@ -1939,21 +1948,35 @@ const InternetMovement = () => {
         ? visibleScrollAnimations
         : scrollAnimations;
 
-    // Use ALL animations to enable cycling through all data
+    // Randomize viewport count between MIN_VIEWPORTS and MAX_VIEWPORTS
     // With proper staggering, only maxConcurrentScrolls will be active at once
     // When one finishes, the next one starts automatically
-    const maxViewportInstances = 100; // Cap total to avoid too many DOM elements
-    const finalCount = Math.min(animationsToUse.length, maxViewportInstances);
+    const availableCount = animationsToUse.length;
+    const effectiveMin = Math.min(MIN_VIEWPORTS, availableCount > 0 ? availableCount : MIN_VIEWPORTS);
+    const effectiveMax = Math.min(MAX_VIEWPORTS, Math.max(availableCount, MIN_VIEWPORTS));
+    
+    // Randomize between effective min and max
+    const randomizedCount = effectiveMin + Math.floor(Math.random() * (effectiveMax - effectiveMin + 1));
+    const finalCount = Math.max(effectiveMin, Math.min(randomizedCount, effectiveMax));
 
     console.log(
-      `[Scroll] Using ${finalCount} viewports (from ${animationsToUse.length} available animations, capped at ${maxViewportInstances})`,
+      `[Scroll] Using ${finalCount} viewports (randomized between ${effectiveMin}-${effectiveMax}, from ${availableCount} available, settings: min=${MIN_VIEWPORTS}, max=${MAX_VIEWPORTS})`,
     );
 
-    // Use all available animations (or up to the cap)
-    const viewportInstances: ScrollAnimation[] = animationsToUse.slice(
-      0,
-      finalCount,
-    );
+    // Use animations up to finalCount, cycling if we need more than available
+    let viewportInstances: ScrollAnimation[];
+    if (availableCount >= finalCount) {
+      // We have enough animations, just take the first finalCount
+      viewportInstances = animationsToUse.slice(0, finalCount);
+    } else if (availableCount > 0) {
+      // We need to duplicate animations to reach finalCount
+      viewportInstances = [];
+      for (let i = 0; i < finalCount; i++) {
+        viewportInstances.push(animationsToUse[i % availableCount]);
+      }
+    } else {
+      viewportInstances = [];
+    }
 
     console.log(
       `[Scroll] Generated ${viewportInstances.length} viewport instances from ${scrollAnimations.length} animations`,
@@ -1972,7 +1995,8 @@ const InternetMovement = () => {
     // Match trail scheduling formula EXACTLY:
     // overlapMultiplier = 1 - settings.overlapFactor * 0.8
     // spacing = (avgDuration / maxConcurrent) * overlapMultiplier
-    const minGapMs = 50; // Minimum gap to prevent excessive overlap
+    // Reduced minimum gap to allow more concurrent starts with randomization
+    const minGapMs = 10; // Minimum gap to prevent excessive overlap (reduced for more concurrency)
     const overlapMultiplier = 1 - settings.scrollOverlapFactor * 0.8;
     const baseSpacing =
       (avgCompressedDuration / settings.maxConcurrentScrolls) *
@@ -1996,26 +2020,26 @@ const InternetMovement = () => {
         `expectedConcurrent=${expectedConcurrent}`,
     );
 
-    // Group by color (like trails) for interleaved scheduling
-    const viewportsByColor = new Map<string, number[]>();
-    viewportInstances.forEach((anim, index) => {
-      if (!viewportsByColor.has(anim.color)) {
-        viewportsByColor.set(anim.color, []);
-      }
-      viewportsByColor.get(anim.color)!.push(index);
-    });
+    // Randomize order for more organic, alive feeling
+    // Create array of indices and shuffle them randomly
+    const allIndices = viewportInstances.map((_, i) => i);
 
-    const colorGroups = Array.from(viewportsByColor.values());
-    const orderedIndices: number[] = [];
-    const maxGroupSize = Math.max(...colorGroups.map((g) => g.length));
+    // Fisher-Yates shuffle for consistent randomization
+    // Use a seeded random based on viewport count for deterministic but random order
+    const shuffleSeed = viewportInstances.length * 7 + 13;
+    let randomSeed = shuffleSeed;
+    const seededRandom = () => {
+      randomSeed = (randomSeed * 9301 + 49297) % 233280;
+      return randomSeed / 233280;
+    };
 
-    // Interleave by color (same pattern as trails)
-    for (let i = 0; i < maxGroupSize; i++) {
-      for (const group of colorGroups) {
-        if (i < group.length) {
-          orderedIndices.push(group[i]);
-        }
-      }
+    const shuffledIndices = [...allIndices];
+    for (let i = shuffledIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(seededRandom() * (i + 1));
+      [shuffledIndices[i], shuffledIndices[j]] = [
+        shuffledIndices[j],
+        shuffledIndices[i],
+      ];
     }
 
     // Calculate cycle duration for scroll animations
@@ -2048,15 +2072,33 @@ const InternetMovement = () => {
         `This ensures continuous replacement.`,
     );
 
-    // Remove this duplicate log since we added it above
-    // (The new log explains the cycling strategy)
+    // Create schedule with randomized order and concurrent starts
+    // Allow multiple animations to start at similar times by:
+    // 1. Using randomized order (already done above)
+    // 2. Adding randomization to start offsets (±30% of spacing)
+    // 3. Reducing effective spacing to allow more concurrent starts
+    const randomizationFactor = 0.3; // ±30% randomization
+    const concurrentStartWindow = actualSpacing * 0.4; // Allow 40% of spacing for concurrent starts
 
     const scrollSchedule = viewportInstances.map((anim, originalIndex) => {
       const duration = anim.endTime - anim.startTime;
-      const scheduledPosition = orderedIndices.indexOf(originalIndex);
-      // Distribute start times evenly within scrollCycleDuration (not timeRange.duration)
-      const startOffset =
+      const scheduledPosition = shuffledIndices.indexOf(originalIndex);
+
+      // Base offset with randomization to allow concurrent starts
+      const baseOffset =
         (scheduledPosition * actualSpacing) % scrollCycleDuration;
+      const randomOffset =
+        (seededRandom() - 0.5) * actualSpacing * randomizationFactor;
+
+      // Clamp randomization to stay within concurrent start window
+      const clampedRandomOffset = Math.max(
+        -concurrentStartWindow,
+        Math.min(concurrentStartWindow, randomOffset),
+      );
+
+      const startOffset =
+        (baseOffset + clampedRandomOffset + scrollCycleDuration) %
+        scrollCycleDuration;
 
       return {
         index: originalIndex,
@@ -2234,6 +2276,7 @@ const InternetMovement = () => {
     settings.maxConcurrentScrolls,
     settings.minViewports,
     settings.maxViewports,
+    settings.viewportEventFilter,
     timeRange,
     viewportSize,
   ]);

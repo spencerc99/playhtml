@@ -226,7 +226,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="max-concurrent"
               type="range"
               min="1"
-              max="20"
+              max="25"
               step="1"
               value={settings.maxConcurrentTrails}
               onChange={(e) =>
@@ -533,6 +533,86 @@ export const Controls: React.FC<ControlsProps> = memo(
               Viewport Events
             </label>
           </div>
+          {/* Viewport event type sub-filters */}
+          {settings.eventTypeFilter.viewport && (
+            <div style={{ marginLeft: "20px", marginTop: "8px" }}>
+              <div className="control-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: "12px",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={settings.viewportEventFilter?.scroll ?? true}
+                    onChange={(e) =>
+                      setSettings((s: any) => ({
+                        ...s,
+                        viewportEventFilter: {
+                          ...s.viewportEventFilter,
+                          scroll: e.target.checked,
+                        },
+                      }))
+                    }
+                    style={{ marginRight: "6px" }}
+                  />
+                  Scroll
+                </label>
+              </div>
+              <div className="control-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: "12px",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={settings.viewportEventFilter?.resize ?? true}
+                    onChange={(e) =>
+                      setSettings((s: any) => ({
+                        ...s,
+                        viewportEventFilter: {
+                          ...s.viewportEventFilter,
+                          resize: e.target.checked,
+                        },
+                      }))
+                    }
+                    style={{ marginRight: "6px" }}
+                  />
+                  Resize
+                </label>
+              </div>
+              <div className="control-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: "12px",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={settings.viewportEventFilter?.zoom ?? true}
+                    onChange={(e) =>
+                      setSettings((s: any) => ({
+                        ...s,
+                        viewportEventFilter: {
+                          ...s.viewportEventFilter,
+                          zoom: e.target.checked,
+                        },
+                      }))
+                    }
+                    style={{ marginRight: "6px" }}
+                  />
+                  Zoom
+                </label>
+              </div>
+            </div>
+          )}
         </CollapsibleSection>
 
         <CollapsibleSection title="Keyboard Settings" sectionKey="keyboard">
@@ -736,7 +816,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="max-concurrent-scrolls"
               type="range"
               min="1"
-              max="10"
+              max="25"
               step="1"
               value={settings.maxConcurrentScrolls}
               onChange={(e) =>
@@ -750,9 +830,7 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="min-viewports">
-              Min Viewports
-            </label>
+            <label htmlFor="min-viewports">Min Viewports</label>
             <input
               id="min-viewports"
               type="range"
@@ -771,9 +849,7 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="max-viewports">
-              Max Viewports
-            </label>
+            <label htmlFor="max-viewports">Max Viewports</label>
             <input
               id="max-viewports"
               type="range"

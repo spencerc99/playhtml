@@ -843,7 +843,7 @@ const ViewportRect = memo(
           //     </text>
           //   )} */}
 
-            {hasZoom && (
+            {/*hasZoom && (
               <text
                 x={visualX + 12}
                 y={
@@ -859,7 +859,7 @@ const ViewportRect = memo(
               >
                 🔍 {zoomLevel.toFixed(2)}x
               </text>
-            )}
+            )*/}
 
             {/*}   {hasZoom && (
           //     <circle

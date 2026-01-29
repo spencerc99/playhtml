@@ -8,7 +8,7 @@ export interface CollectionEvent {
   data: {
     x: number;
     y: number;
-    event?: 'move' | 'click' | 'hold' | 'cursor_change';
+    event?: "move" | "click" | "hold" | "cursor_change";
     cursor?: string;
     button?: number;
     duration?: number;
@@ -30,7 +30,13 @@ export interface Trail {
   angle?: number;
   startTime: number;
   endTime: number;
-  clicks: Array<{ x: number; y: number; ts: number; button?: number; duration?: number }>;
+  clicks: Array<{
+    x: number;
+    y: number;
+    ts: number;
+    button?: number;
+    duration?: number;
+  }>;
 }
 
 export interface TrailState {
@@ -61,8 +67,8 @@ export interface ClickEffect {
 
 // Keyboard event types
 export interface InputStyling {
-  w: number;  // Width in pixels
-  h: number;  // Height in pixels
+  w: number; // Width in pixels
+  h: number; // Height in pixels
   br: number; // Border radius in pixels (capped at 20)
   bg: number; // Background luminosity 0-1 (for light/dark detection)
   bs: number; // Border style: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
@@ -72,13 +78,13 @@ export interface KeyboardEventData {
   x: number;
   y: number;
   t?: string;
-  event: 'type';
+  event: "type";
   sequence?: TypingAction[] | null;
   style?: InputStyling;
 }
 
 export interface TypingAction {
-  action: 'type' | 'backspace';
+  action: "type" | "backspace";
   text?: string;
   deletedCount?: number;
   timestamp: number;
