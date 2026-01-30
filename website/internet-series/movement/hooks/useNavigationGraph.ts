@@ -8,13 +8,13 @@ import {
   NavigationEdge,
   NavigationState,
   NavigationJourney,
-} from "./types";
-import { generateWobblyCursorPath, hashString as hashStr, seededRandom } from "./styleUtils";
+} from "../types";
+import { generateWobblyCursorPath, hashString as hashStr, seededRandom } from "../utils/styleUtils";
 import {
   RISO_COLORS,
   getColorForParticipant,
   extractDomain,
-} from "./eventUtils";
+} from "../utils/eventUtils";
 
 // Settings interface for navigation graph
 export interface NavigationGraphSettings {

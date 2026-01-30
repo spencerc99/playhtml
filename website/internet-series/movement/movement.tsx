@@ -4,20 +4,20 @@ import "./movement.scss";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 import { CollectionEvent } from "./types";
-import { Controls } from "./Controls";
-import { AnimatedTrails } from "./AnimatedTrails";
-import { AnimatedTyping } from "./AnimatedTyping";
-import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
-import { AnimatedNavigation } from "./AnimatedNavigation";
+import { Controls } from "./components/Controls";
+import { AnimatedTrails } from "./components/AnimatedTrails";
+import { AnimatedTyping } from "./components/AnimatedTyping";
+import { AnimatedScrollViewports } from "./components/AnimatedScrollViewports";
+import { AnimatedNavigation } from "./components/AnimatedNavigation";
 
 // Import event-specific hooks
-import { useCursorTrails } from "./useCursorTrails";
-import { useKeyboardTyping } from "./useKeyboardTyping";
-import { useViewportScroll } from "./useViewportScroll";
-import { useNavigationGraph } from "./useNavigationGraph";
+import { useCursorTrails } from "./hooks/useCursorTrails";
+import { useKeyboardTyping } from "./hooks/useKeyboardTyping";
+import { useViewportScroll } from "./hooks/useViewportScroll";
+import { useNavigationGraph } from "./hooks/useNavigationGraph";
 
 // Import shared utilities
-import { extractDomain } from "./eventUtils";
+import { extractDomain } from "./utils/eventUtils";
 
 const API_URL =
   "https://playhtml-game-api.spencerc99.workers.dev/events/recent";

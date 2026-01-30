@@ -2,14 +2,14 @@
 // ABOUTME: Extracts viewport/scroll-specific logic from movement.tsx for cleaner separation of concerns
 
 import { useMemo } from "react";
-import { CollectionEvent, ScrollAnimation } from "./types";
+import { CollectionEvent, ScrollAnimation } from "../types";
 import {
   getColorForParticipant,
   extractDomain,
   SCROLL_SESSION_THRESHOLD,
   SCROLL_TIME_COMPRESSION,
   MAX_VIEWPORT_ANIMATION_DURATION,
-} from "./eventUtils";
+} from "../utils/eventUtils";
 
 // Settings interface for viewport scroll
 export interface ViewportScrollSettings {

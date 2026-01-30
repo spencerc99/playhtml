@@ -2,7 +2,7 @@
 // ABOUTME: Shows navigation hops building up a graph - nodes appear when edges reach them
 // ABOUTME: Edges and nodes stay visible after appearing (graph builds up over time)
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
-import { NavigationNode, NavigationEdge, NavigationState, NavigationJourney } from "./types";
+import { NavigationNode, NavigationEdge, NavigationState, NavigationJourney } from "../types";
 
 // Configuration
 const HOP_DURATION = 1200; // How long edge takes to draw (ms)

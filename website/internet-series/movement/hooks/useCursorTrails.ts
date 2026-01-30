@@ -2,14 +2,14 @@
 // ABOUTME: Extracts cursor-specific logic from movement.tsx for cleaner separation of concerns
 
 import { useMemo, useCallback } from "react";
-import { CollectionEvent, Trail, TrailState } from "./types";
-import { applyStyleVariations } from "./styleUtils";
+import { CollectionEvent, Trail, TrailState } from "../types";
+import { applyStyleVariations } from "../utils/styleUtils";
 import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
   extractDomain,
-} from "./eventUtils";
+} from "../utils/eventUtils";
 
 // Settings interface for cursor trails
 export interface CursorTrailSettings {
