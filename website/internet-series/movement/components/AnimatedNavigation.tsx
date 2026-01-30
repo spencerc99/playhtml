@@ -1,115 +1,51 @@
-// ABOUTME: Animated navigation graph visualization component
-// ABOUTME: Shows navigation hops building up a graph - nodes appear when edges reach them
-// ABOUTME: Edges and nodes stay visible after appearing (graph builds up over time)
-import React, { useState, useEffect, useRef, memo, useCallback } from "react";
-import { NavigationNode, NavigationEdge, NavigationState, NavigationJourney } from "../types";
+// ABOUTME: Animated navigation timeline visualization - branching roots style
+// ABOUTME: Auto-scrolling timeline with sessions as tracks and shared nodes
+// ABOUTME: Nodes appear when visible, edges connect with organic wobbly lines
 
-// Configuration
-const HOP_DURATION = 1200; // How long edge takes to draw (ms)
-const HOP_STAGGER = 800; // Time between spawning hops (ms)
-const MAX_CONCURRENT_HOPS = 3; // Max hops animating at once
-const CYCLE_PAUSE = 2000; // Pause before restarting cycle (ms)
-
-// RISO-inspired color palette
-const RISO_COLORS = [
-  "rgb(0, 120, 191)", // Blue
-  "rgb(255, 102, 94)", // Bright Red
-  "rgb(0, 169, 92)", // Green
-  "rgb(255, 123, 75)", // Orange
-  "rgb(146, 55, 141)", // Purple
-  "rgb(255, 232, 0)", // Yellow
-  "rgb(255, 72, 176)", // Fluorescent Pink
-  "rgb(0, 131, 138)", // Teal
-];
+import React, { useState, useEffect, useRef, memo } from "react";
+import { TimelineState, TimelineNode, TimelineEdge, TimelineSession } from "../types";
 
 interface AnimatedNavigationProps {
-  navigationState: NavigationState;
-  timeRange: { min: number; max: number; duration: number };
+  timelineState: TimelineState;
+  canvasSize: { width: number; height: number };
   settings: {
-    animationSpeed: number;
-    navigationWindowOpacity: number;
-    navigationEdgeOpacity: number;
-    navigationUniqueHopsOnly: boolean;
+    scrollSpeed: number;
+    nodeOpacity: number;
+    edgeOpacity: number;
     randomizeColors?: boolean;
   };
 }
 
-// A single navigation hop: from one node to another
-interface NavigationHop {
-  id: string;
-  sourceNodeId: string;
-  targetNodeId: string;
-  edgeId: string;
-  color: string;
-}
+// Configuration
+const FADE_DISTANCE = 100; // px to fade in/out at edges
+const NODE_RADIUS = 8;
+const LABEL_OFFSET = 15;
 
-// An active hop animation
-interface ActiveHop {
-  id: string;
-  hop: NavigationHop;
-  startTime: number;
-  duration: number;
-}
-
-// Format URL for display
-function formatUrlForDisplay(node: NavigationNode, maxLength: number = 18): string {
-  const fullPath = node.id;
-  
-  if (fullPath === node.domain || fullPath === node.domain + "/") {
-    return node.domain.length > maxLength 
-      ? node.domain.slice(0, maxLength - 2) + ".." 
-      : node.domain;
-  }
-  
-  const pathStart = fullPath.indexOf("/");
-  if (pathStart === -1) {
-    return fullPath.length > maxLength ? fullPath.slice(0, maxLength - 2) + ".." : fullPath;
-  }
-  
-  const domain = fullPath.slice(0, pathStart);
-  const path = fullPath.slice(pathStart);
-  
-  const shortDomain = domain.length > 12 ? domain.slice(0, 10) + ".." : domain;
-  const remainingLength = maxLength - shortDomain.length;
-  
-  if (path.length <= remainingLength) {
-    return shortDomain + path;
-  }
-  
-  const pathParts = path.split("/").filter(p => p);
-  if (pathParts.length > 0) {
-    const lastPart = pathParts[pathParts.length - 1];
-    const abbreviated = lastPart.length > remainingLength - 3 
-      ? "/.." + lastPart.slice(-(remainingLength - 4))
-      : "/.." + lastPart;
-    return shortDomain + abbreviated;
-  }
-  
-  return shortDomain + path.slice(0, remainingLength - 2) + "..";
-}
-
-// Generate SVG path from points
-function generatePathFromPoints(points: Array<{ x: number; y: number }>): string {
+// Generate SVG path from points with smooth curves
+function generateSmoothPath(points: Array<{ x: number; y: number }>): string {
   if (points.length < 2) return "";
   
   let path = `M ${points[0].x} ${points[0].y}`;
   
   for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
     const p1 = points[i];
     const p2 = points[i + 1];
-    path += ` Q ${p1.x} ${p1.y} ${(p1.x + p2.x) / 2} ${(p1.y + p2.y) / 2}`;
-  }
-  
-  if (points.length > 1) {
-    const lastPoint = points[points.length - 1];
-    const secondLast = points[points.length - 2];
-    path += ` Q ${secondLast.x} ${secondLast.y} ${lastPoint.x} ${lastPoint.y}`;
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    
+    // Catmull-Rom to Bezier conversion
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    
+    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
   
   return path;
 }
 
-// Generate wobbly path between two points
+// Generate wobbly organic path between two points
 function generateWobblyPath(
   source: { x: number; y: number },
   target: { x: number; y: number },
@@ -119,31 +55,38 @@ function generateWobblyPath(
   const dy = target.y - source.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
   
-  const numPoints = Math.max(4, Math.min(12, Math.ceil(distance / 35)));
+  // More points for longer distances
+  const numPoints = Math.max(3, Math.min(8, Math.ceil(distance / 60)));
   const points: Array<{ x: number; y: number }> = [source];
+  
+  // Seeded random
+  const rand = (offset: number) => {
+    const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
+    return x - Math.floor(x);
+  };
   
   for (let i = 1; i < numPoints; i++) {
     const t = i / numPoints;
     const baseX = source.x + dx * t;
     const baseY = source.y + dy * t;
     
-    const rand = (offset: number) => {
-      const x = Math.sin(seed + i * 12.9898 + offset * 7.233) * 43758.5453;
-      return x - Math.floor(x);
-    };
+    // Organic wobble - perpendicular to the line
+    const perpX = -dy / distance;
+    const perpY = dx / distance;
+    const wobbleAmount = 20 * (1 - Math.abs(t - 0.5) * 2); // More wobble in middle
+    const wobble = (rand(i) - 0.5) * wobbleAmount;
     
-    const wobble = 15;
-    const offsetX = (rand(0) - 0.5) * wobble;
-    const offsetY = (rand(1) - 0.5) * wobble;
-    
-    points.push({ x: baseX + offsetX, y: baseY + offsetY });
+    points.push({
+      x: baseX + perpX * wobble,
+      y: baseY + perpY * wobble,
+    });
   }
   
   points.push(target);
   return points;
 }
 
-// Hash string to number
+// Hash string for seeding
 function hashString(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -153,330 +96,143 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
-// Node component - appears when revealed
-const NodePill = memo(({
+// Format URL for label
+function formatLabel(node: TimelineNode): string {
+  // Show domain and abbreviated path
+  const path = node.id.replace(node.domain, "");
+  if (!path || path === "/") {
+    return node.domain;
+  }
+  
+  // Abbreviate long paths
+  if (path.length > 15) {
+    const parts = path.split("/").filter(p => p);
+    if (parts.length > 0) {
+      return node.domain + "/..." + parts[parts.length - 1].slice(0, 10);
+    }
+  }
+  
+  return node.domain + path.slice(0, 12);
+}
+
+// Node component
+const TimelineNodeComponent = memo(({
   node,
   opacity,
-  color,
-  scale = 1,
+  showLabel,
 }: {
-  node: NavigationNode;
+  node: TimelineNode;
   opacity: number;
-  color: string;
-  scale?: number;
+  showLabel: boolean;
 }) => {
-  const width = 140;
-  const height = 24;
-  const x = node.x - width / 2;
-  const y = node.y - height / 2;
-  
-  const displayUrl = formatUrlForDisplay(node, 18);
+  if (opacity <= 0) return null;
   
   return (
-    <g 
-      opacity={opacity}
-      transform={`translate(${node.x}, ${node.y}) scale(${scale}) translate(${-node.x}, ${-node.y})`}
-    >
-      {/* Shadow */}
-      <rect
-        x={x + 2}
-        y={y + 2}
-        width={width}
-        height={height}
-        rx={4}
-        ry={4}
-        fill="rgba(0,0,0,0.15)"
-      />
-      
-      {/* Background */}
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        rx={4}
-        ry={4}
-        fill="white"
-        stroke={color}
+    <g opacity={opacity}>
+      {/* Node circle */}
+      <circle
+        cx={node.x}
+        cy={node.y}
+        r={NODE_RADIUS + Math.min(4, node.visitCount - 1)}
+        fill={node.color}
+        stroke="white"
         strokeWidth={2}
+        style={{ filter: "drop-shadow(1px 1px 2px rgba(0,0,0,0.2))" }}
       />
       
-      {/* Color accent */}
-      <rect
-        x={x}
-        y={y}
-        width={6}
-        height={height}
-        rx={4}
-        ry={4}
-        fill={color}
-      />
-      <rect
-        x={x + 3}
-        y={y}
-        width={3}
-        height={height}
-        fill={color}
-      />
-      
-      {/* URL text */}
-      <text
-        x={x + 12}
-        y={node.y + 4}
-        fontSize={9}
-        fontFamily='"Martian Mono", "Space Mono", "Courier New", monospace'
-        fill="#333"
-        fontWeight="500"
-      >
-        {displayUrl}
-      </text>
+      {/* Floating label */}
+      {showLabel && (
+        <text
+          x={node.x}
+          y={node.y + NODE_RADIUS + LABEL_OFFSET}
+          textAnchor="middle"
+          fontSize={9}
+          fontFamily='"Martian Mono", "Space Mono", monospace'
+          fill="#666"
+          opacity={0.8}
+        >
+          {formatLabel(node)}
+        </text>
+      )}
     </g>
   );
 });
 
-// Edge component - draws progressively
-const EdgePath = memo(({
+// Edge component
+const TimelineEdgeComponent = memo(({
+  edge,
   sourceNode,
   targetNode,
-  progress,
   opacity,
-  color,
-  seed,
 }: {
-  sourceNode: NavigationNode;
-  targetNode: NavigationNode;
-  progress: number;
+  edge: TimelineEdge;
+  sourceNode: TimelineNode;
+  targetNode: TimelineNode;
   opacity: number;
-  color: string;
-  seed: number;
 }) => {
-  if (progress <= 0) return null;
+  if (opacity <= 0) return null;
   
+  const seed = hashString(edge.id);
   const wobblePath = generateWobblyPath(
     { x: sourceNode.x, y: sourceNode.y },
     { x: targetNode.x, y: targetNode.y },
     seed
   );
   
-  const pathData = generatePathFromPoints(wobblePath);
-  
-  const totalLength = wobblePath.reduce((acc, point, i) => {
-    if (i === 0) return 0;
-    const prev = wobblePath[i - 1];
-    return acc + Math.sqrt(Math.pow(point.x - prev.x, 2) + Math.pow(point.y - prev.y, 2));
-  }, 0);
-  
-  const visibleLength = totalLength * progress;
-  const dashArray = `${visibleLength} ${totalLength - visibleLength + 50}`;
+  const pathData = generateSmoothPath(wobblePath);
   
   return (
     <path
       d={pathData}
       fill="none"
-      stroke={color}
-      strokeWidth={3}
+      stroke={edge.color}
+      strokeWidth={2.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       opacity={opacity}
-      strokeDasharray={dashArray}
       style={{ mixBlendMode: "multiply" }}
     />
   );
 });
 
 export const AnimatedNavigation: React.FC<AnimatedNavigationProps> = memo(({
-  navigationState,
-  timeRange,
+  timelineState,
+  canvasSize,
   settings,
 }) => {
-  // Track which nodes and edges have been revealed (stay visible)
-  const [revealedNodes, setRevealedNodes] = useState<Map<string, string>>(new Map()); // nodeId -> color
-  const [revealedEdges, setRevealedEdges] = useState<Map<string, string>>(new Map()); // edgeId -> color
-  const [activeHops, setActiveHops] = useState<ActiveHop[]>([]);
-  
-  const hopQueueRef = useRef<NavigationHop[]>([]);
-  const queueIndexRef = useRef(0);
-  const lastSpawnTimeRef = useRef(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
   const animationFrameRef = useRef<number>();
-  const cycleStartTimeRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
   
-  const settingsRef = useRef(settings);
+  // Settings refs
+  const scrollSpeedRef = useRef(settings.scrollSpeed);
   useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
+    scrollSpeedRef.current = settings.scrollSpeed;
+  }, [settings.scrollSpeed]);
   
-  // Build hop queue from journeys
+  // Auto-scroll animation
   useEffect(() => {
-    if (!navigationState || navigationState.journeys.length === 0) {
-      hopQueueRef.current = [];
-      return;
-    }
-    
-    const hops: NavigationHop[] = [];
-    const seenEdges = new Set<string>();
-    
-    const multiNodeJourneys = navigationState.journeys.filter(j => j.edgeSequence.length > 0);
-    
-    multiNodeJourneys.forEach(journey => {
-      for (let i = 0; i < journey.edgeSequence.length; i++) {
-        const edgeId = journey.edgeSequence[i];
-        const sourceNodeId = journey.nodeSequence[i];
-        const targetNodeId = journey.nodeSequence[i + 1];
-        
-        // If unique hops only, skip if we've seen this edge
-        if (settingsRef.current.navigationUniqueHopsOnly && seenEdges.has(edgeId)) {
-          continue;
-        }
-        
-        if (sourceNodeId && targetNodeId) {
-          seenEdges.add(edgeId);
-          hops.push({
-            id: `${journey.id}-hop-${i}`,
-            sourceNodeId,
-            targetNodeId,
-            edgeId,
-            color: journey.color,
-          });
-        }
-      }
-    });
-    
-    // Shuffle for variety
-    for (let i = hops.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [hops[i], hops[j]] = [hops[j], hops[i]];
-    }
-    
-    hopQueueRef.current = hops;
-    queueIndexRef.current = 0;
-    
-    // Reset revealed state
-    setRevealedNodes(new Map());
-    setRevealedEdges(new Map());
-    setActiveHops([]);
-    cycleStartTimeRef.current = 0;
-    
-    console.log(`[Navigation] Created ${hops.length} hops (unique: ${settingsRef.current.navigationUniqueHopsOnly})`);
-  }, [navigationState, settings.navigationUniqueHopsOnly]);
-  
-  // Node lookup map
-  const nodeMap = React.useMemo(() => {
-    const map = new Map<string, NavigationNode>();
-    navigationState.nodes.forEach(n => map.set(n.id, n));
-    return map;
-  }, [navigationState.nodes]);
-  
-  // Get next hop from queue
-  const getNextHop = useCallback((): NavigationHop | null => {
-    const queue = hopQueueRef.current;
-    if (queue.length === 0) return null;
-    
-    const hop = queue[queueIndexRef.current];
-    queueIndexRef.current = (queueIndexRef.current + 1) % queue.length;
-    
-    // Check if we've completed a cycle
-    if (queueIndexRef.current === 0) {
-      return null; // Signal cycle complete
-    }
-    
-    return hop;
-  }, []);
-  
-  // Animation loop
-  useEffect(() => {
-    if (navigationState.nodes.length === 0 || hopQueueRef.current.length === 0) return;
+    if (!timelineState || timelineState.nodes.size === 0) return;
     
     const animate = (timestamp: number) => {
-      if (cycleStartTimeRef.current === 0) {
-        cycleStartTimeRef.current = timestamp;
+      if (lastTimeRef.current === 0) {
+        lastTimeRef.current = timestamp;
       }
       
-      const now = timestamp;
-      const speed = settingsRef.current.animationSpeed;
+      const deltaTime = (timestamp - lastTimeRef.current) / 1000; // seconds
+      lastTimeRef.current = timestamp;
       
-      // Check if we should restart the cycle
-      const allHopsProcessed = queueIndexRef.current === 0 && revealedEdges.size > 0;
-      if (allHopsProcessed && activeHops.length === 0) {
-        // Wait for pause, then restart
-        const pauseElapsed = now - lastSpawnTimeRef.current;
-        if (pauseElapsed > CYCLE_PAUSE / speed) {
-          // Reset for new cycle
-          setRevealedNodes(new Map());
-          setRevealedEdges(new Map());
-          queueIndexRef.current = 0;
-          cycleStartTimeRef.current = now;
-        }
-      }
-      
-      // Try to spawn new hop
-      if (now - lastSpawnTimeRef.current > HOP_STAGGER / speed) {
-        const activeCount = activeHops.length;
+      setScrollOffset(prev => {
+        const newOffset = prev + scrollSpeedRef.current * deltaTime;
         
-        if (activeCount < MAX_CONCURRENT_HOPS) {
-          const hop = getNextHop();
-          if (hop) {
-            const sourceNode = nodeMap.get(hop.sourceNodeId);
-            const targetNode = nodeMap.get(hop.targetNodeId);
-            
-            if (sourceNode && targetNode) {
-              // Reveal source node immediately when hop starts
-              setRevealedNodes(prev => {
-                const next = new Map(prev);
-                if (!next.has(hop.sourceNodeId)) {
-                  next.set(hop.sourceNodeId, hop.color);
-                }
-                return next;
-              });
-              
-              setActiveHops(prev => [...prev, {
-                id: `${hop.id}-${now}`,
-                hop,
-                startTime: now,
-                duration: HOP_DURATION / speed,
-              }]);
-              lastSpawnTimeRef.current = now;
-            }
-          }
+        // Loop back when we've scrolled past all content
+        const maxScroll = timelineState.totalWidth - canvasSize.width + 200;
+        if (newOffset > maxScroll) {
+          return 0; // Loop back to start
         }
-      }
-      
-      // Update active hops
-      const completedHops: ActiveHop[] = [];
-      const stillActive: ActiveHop[] = [];
-      
-      activeHops.forEach(activeHop => {
-        const elapsed = now - activeHop.startTime;
-        if (elapsed >= activeHop.duration) {
-          completedHops.push(activeHop);
-        } else {
-          stillActive.push(activeHop);
-        }
+        
+        return newOffset;
       });
-      
-      // Mark completed hops' targets and edges as permanently revealed
-      if (completedHops.length > 0) {
-        setRevealedNodes(prev => {
-          const next = new Map(prev);
-          completedHops.forEach(h => {
-            if (!next.has(h.hop.targetNodeId)) {
-              next.set(h.hop.targetNodeId, h.hop.color);
-            }
-          });
-          return next;
-        });
-        
-        setRevealedEdges(prev => {
-          const next = new Map(prev);
-          completedHops.forEach(h => {
-            if (!next.has(h.hop.edgeId)) {
-              next.set(h.hop.edgeId, h.hop.color);
-            }
-          });
-          return next;
-        });
-        
-        setActiveHops(stillActive);
-      }
       
       animationFrameRef.current = requestAnimationFrame(animate);
     };
@@ -487,34 +243,55 @@ export const AnimatedNavigation: React.FC<AnimatedNavigationProps> = memo(({
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      lastTimeRef.current = 0;
     };
-  }, [navigationState.nodes.length, activeHops, getNextHop, nodeMap, revealedEdges.size]);
+  }, [timelineState, canvasSize.width]);
   
-  if (navigationState.nodes.length === 0) {
+  if (!timelineState || timelineState.nodes.size === 0) {
     return null;
   }
   
-  const windowOpacity = settings.navigationWindowOpacity;
-  const edgeOpacity = settings.navigationEdgeOpacity;
+  // Calculate visible range
+  const visibleLeft = scrollOffset - FADE_DISTANCE;
+  const visibleRight = scrollOffset + canvasSize.width + FADE_DISTANCE;
   
-  // Calculate current progress for active hops
-  const now = performance.now();
-  const activeHopProgress = new Map<string, { progress: number; color: string; sourceId: string; targetId: string }>();
+  // Calculate opacity based on position in viewport
+  const getOpacity = (x: number, baseOpacity: number): number => {
+    const relativeX = x - scrollOffset;
+    
+    // Fade in from left
+    if (relativeX < FADE_DISTANCE) {
+      return baseOpacity * Math.max(0, relativeX / FADE_DISTANCE);
+    }
+    
+    // Fade out to right
+    if (relativeX > canvasSize.width - FADE_DISTANCE) {
+      return baseOpacity * Math.max(0, (canvasSize.width - relativeX) / FADE_DISTANCE);
+    }
+    
+    return baseOpacity;
+  };
   
-  activeHops.forEach(activeHop => {
-    const elapsed = now - activeHop.startTime;
-    const progress = Math.min(1, elapsed / activeHop.duration);
-    activeHopProgress.set(activeHop.hop.edgeId, {
-      progress,
-      color: activeHop.hop.color,
-      sourceId: activeHop.hop.sourceNodeId,
-      targetId: activeHop.hop.targetNodeId,
-    });
+  // Get visible nodes
+  const visibleNodes = Array.from(timelineState.nodes.values()).filter(
+    node => node.x >= visibleLeft && node.x <= visibleRight
+  );
+  
+  // Get visible edges (both endpoints must be in extended visible range)
+  const visibleEdges = timelineState.edges.filter(edge => {
+    const sourceNode = timelineState.nodes.get(edge.sourceNodeId);
+    const targetNode = timelineState.nodes.get(edge.targetNodeId);
+    if (!sourceNode || !targetNode) return false;
+    
+    const minX = Math.min(sourceNode.x, targetNode.x);
+    const maxX = Math.max(sourceNode.x, targetNode.x);
+    
+    return maxX >= visibleLeft && minX <= visibleRight;
   });
   
   return (
     <svg
-      className="navigation-svg"
+      className="navigation-timeline-svg"
       width="100%"
       height="100%"
       style={{
@@ -522,98 +299,78 @@ export const AnimatedNavigation: React.FC<AnimatedNavigationProps> = memo(({
         top: 0,
         left: 0,
         pointerEvents: "none",
+        overflow: "hidden",
       }}
     >
-      {/* Render permanently revealed edges */}
-      {Array.from(revealedEdges.entries()).map(([edgeId, color]) => {
-        const edge = navigationState.edges.find(e => e.id === edgeId);
-        if (!edge) return null;
+      {/* Transform group for scrolling */}
+      <g transform={`translate(${-scrollOffset}, 0)`}>
+        {/* Render edges first (below nodes) */}
+        {visibleEdges.map(edge => {
+          const sourceNode = timelineState.nodes.get(edge.sourceNodeId);
+          const targetNode = timelineState.nodes.get(edge.targetNodeId);
+          if (!sourceNode || !targetNode) return null;
+          
+          // Use average x for opacity calculation
+          const avgX = (sourceNode.x + targetNode.x) / 2;
+          const opacity = getOpacity(avgX, settings.edgeOpacity);
+          
+          return (
+            <TimelineEdgeComponent
+              key={edge.id}
+              edge={edge}
+              sourceNode={sourceNode}
+              targetNode={targetNode}
+              opacity={opacity}
+            />
+          );
+        })}
         
-        const sourceNode = nodeMap.get(edge.source);
-        const targetNode = nodeMap.get(edge.target);
-        if (!sourceNode || !targetNode) return null;
-        
-        // Skip if this edge is currently animating
-        if (activeHopProgress.has(edgeId)) return null;
-        
-        return (
-          <EdgePath
-            key={`revealed-${edgeId}`}
-            sourceNode={sourceNode}
-            targetNode={targetNode}
-            progress={1}
-            opacity={edgeOpacity}
-            color={color}
-            seed={hashString(edgeId)}
-          />
-        );
-      })}
+        {/* Render nodes */}
+        {visibleNodes.map(node => {
+          const opacity = getOpacity(node.x, settings.nodeOpacity);
+          // Show label for nodes with higher opacity (more central)
+          const showLabel = opacity > settings.nodeOpacity * 0.7;
+          
+          return (
+            <TimelineNodeComponent
+              key={node.id}
+              node={node}
+              opacity={opacity}
+              showLabel={showLabel}
+            />
+          );
+        })}
+      </g>
       
-      {/* Render actively animating edges */}
-      {activeHops.map(activeHop => {
-        const sourceNode = nodeMap.get(activeHop.hop.sourceNodeId);
-        const targetNode = nodeMap.get(activeHop.hop.targetNodeId);
-        if (!sourceNode || !targetNode) return null;
-        
-        const elapsed = now - activeHop.startTime;
-        const progress = Math.min(1, elapsed / activeHop.duration);
-        
-        return (
-          <EdgePath
-            key={activeHop.id}
-            sourceNode={sourceNode}
-            targetNode={targetNode}
-            progress={progress}
-            opacity={edgeOpacity}
-            color={activeHop.hop.color}
-            seed={hashString(activeHop.hop.edgeId)}
-          />
-        );
-      })}
+      {/* Gradient overlays for fade effect */}
+      <defs>
+        <linearGradient id="fadeLeft" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgb(245,244,241)" stopOpacity="1" />
+          <stop offset="100%" stopColor="rgb(245,244,241)" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="fadeRight" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgb(245,244,241)" stopOpacity="0" />
+          <stop offset="100%" stopColor="rgb(245,244,241)" stopOpacity="1" />
+        </linearGradient>
+      </defs>
       
-      {/* Render permanently revealed nodes */}
-      {Array.from(revealedNodes.entries()).map(([nodeId, color]) => {
-        const node = nodeMap.get(nodeId);
-        if (!node) return null;
-        
-        return (
-          <NodePill
-            key={`revealed-${nodeId}`}
-            node={node}
-            opacity={windowOpacity}
-            color={color}
-          />
-        );
-      })}
+      {/* Left fade overlay */}
+      <rect
+        x="0"
+        y="0"
+        width={FADE_DISTANCE}
+        height={canvasSize.height}
+        fill="url(#fadeLeft)"
+      />
       
-      {/* Render nodes that are targets of active hops (appearing) */}
-      {activeHops.map(activeHop => {
-        const targetNode = nodeMap.get(activeHop.hop.targetNodeId);
-        if (!targetNode) return null;
-        
-        // Skip if already revealed
-        if (revealedNodes.has(activeHop.hop.targetNodeId)) return null;
-        
-        const elapsed = now - activeHop.startTime;
-        const progress = Math.min(1, elapsed / activeHop.duration);
-        
-        // Target node starts appearing at 60% of edge progress
-        const nodeProgress = Math.max(0, (progress - 0.6) / 0.4);
-        if (nodeProgress <= 0) return null;
-        
-        const scale = 0.8 + nodeProgress * 0.2;
-        const opacity = nodeProgress * windowOpacity;
-        
-        return (
-          <NodePill
-            key={`appearing-${activeHop.id}`}
-            node={targetNode}
-            opacity={opacity}
-            color={activeHop.hop.color}
-            scale={scale}
-          />
-        );
-      })}
+      {/* Right fade overlay */}
+      <rect
+        x={canvasSize.width - FADE_DISTANCE}
+        y="0"
+        width={FADE_DISTANCE}
+        height={canvasSize.height}
+        fill="url(#fadeRight)"
+      />
     </svg>
   );
 });

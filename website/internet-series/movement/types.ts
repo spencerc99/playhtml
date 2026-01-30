@@ -237,3 +237,47 @@ export interface NavigationState {
   journeys: NavigationJourney[];
   durationMs: number;
 }
+
+// Timeline visualization types for branching roots view
+export interface TimelineNode {
+  id: string; // normalized URL
+  domain: string;
+  fullUrl: string;
+  x: number; // position based on first visit time
+  y: number; // calculated based on connected sessions
+  color: string; // domain color
+  sessions: string[]; // which sessions touch this node
+  firstVisitTime: number;
+  visitCount: number;
+}
+
+export interface TimelineEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  sessionId: string;
+  color: string;
+  timestamp: number;
+}
+
+export interface TimelineSession {
+  id: string;
+  participantId: string;
+  baseY: number; // random y track position (0-1)
+  color: string;
+  events: Array<{
+    nodeId: string;
+    timestamp: number;
+  }>;
+  startTime: number;
+  endTime: number;
+}
+
+export interface TimelineState {
+  nodes: Map<string, TimelineNode>;
+  edges: TimelineEdge[];
+  sessions: TimelineSession[];
+  minTime: number;
+  maxTime: number;
+  totalWidth: number; // total scrollable width in pixels
+}

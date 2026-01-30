@@ -943,59 +943,60 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="nav-unique-hops">
-              <input
-                id="nav-unique-hops"
-                type="checkbox"
-                checked={settings.navigationUniqueHopsOnly ?? true}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    navigationUniqueHopsOnly: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Unique Hops Only
-            </label>
-          </div>
-
-          <div className="control-group">
-            <label htmlFor="nav-max-nodes">Max Nodes</label>
+            <label htmlFor="nav-scroll-speed">Scroll Speed</label>
             <input
-              id="nav-max-nodes"
+              id="nav-scroll-speed"
               type="range"
-              min="10"
-              max="50"
-              step="5"
-              value={settings.navigationMaxNodes ?? 30}
+              min="20"
+              max="200"
+              step="10"
+              value={settings.navigationScrollSpeed ?? 80}
               onChange={(e) =>
                 setSettings((s: any) => ({
                   ...s,
-                  navigationMaxNodes: parseInt(e.target.value),
+                  navigationScrollSpeed: parseInt(e.target.value),
                 }))
               }
             />
-            <span>{settings.navigationMaxNodes ?? 30}</span>
+            <span>{settings.navigationScrollSpeed ?? 80}px/s</span>
           </div>
 
           <div className="control-group">
-            <label htmlFor="nav-min-visits">Min Visits</label>
+            <label htmlFor="nav-max-sessions">Max Sessions</label>
             <input
-              id="nav-min-visits"
+              id="nav-max-sessions"
               type="range"
               min="1"
-              max="10"
+              max="20"
               step="1"
-              value={settings.navigationMinVisits ?? 2}
+              value={settings.navigationMaxSessions ?? 8}
               onChange={(e) =>
                 setSettings((s: any) => ({
                   ...s,
-                  navigationMinVisits: parseInt(e.target.value),
+                  navigationMaxSessions: parseInt(e.target.value),
                 }))
               }
             />
-            <span>{settings.navigationMinVisits ?? 2}</span>
+            <span>{settings.navigationMaxSessions ?? 8}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="nav-min-session-events">Min Events/Session</label>
+            <input
+              id="nav-min-session-events"
+              type="range"
+              min="2"
+              max="20"
+              step="1"
+              value={settings.navigationMinSessionEvents ?? 3}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  navigationMinSessionEvents: parseInt(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.navigationMinSessionEvents ?? 3}</span>
           </div>
         </CollapsibleSection>
 
