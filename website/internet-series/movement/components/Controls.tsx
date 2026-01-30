@@ -1,7 +1,7 @@
 // ABOUTME: Controls panel component for the Internet Movement visualization
 // ABOUTME: Provides UI for adjusting visualization settings and displaying stats
 import React, { useState, memo } from "react";
-import { CollectionEvent, Trail } from "./types";
+import { CollectionEvent, Trail } from "../types";
 
 interface ControlsProps {
   visible: boolean;

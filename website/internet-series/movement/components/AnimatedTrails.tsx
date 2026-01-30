@@ -1,8 +1,8 @@
 // ABOUTME: Animated trails visualization component with animation loop
 // ABOUTME: Handles trail rendering, click effects, and animation timing
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
-import { TrailState, ClickEffect } from "./types";
-import { getCursorComponent } from "./cursors";
+import { TrailState, ClickEffect } from "../types";
+import { getCursorComponent } from "../cursors";
 
 interface RippleSettings {
   clickMinRadius: number;

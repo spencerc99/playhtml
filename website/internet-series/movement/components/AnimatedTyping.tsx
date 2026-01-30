@@ -1,7 +1,7 @@
 // ABOUTME: Animated typing visualization component with character-by-character replay
 // ABOUTME: Handles typing animation, sequence replay, and blinking caret
 import React, { useState, useEffect, useRef, memo } from "react";
-import { TypingState, TypingAction, ActiveTyping } from "./types";
+import { TypingState, TypingAction, ActiveTyping } from "../types";
 
 interface TypingSettings {
   animationSpeed: number;

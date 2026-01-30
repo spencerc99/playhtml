@@ -8,8 +8,8 @@ import {
   TypingAction,
   TypingAnimation,
   TypingState,
-} from "./types";
-import { getColorForParticipant, extractDomain } from "./eventUtils";
+} from "../types";
+import { getColorForParticipant, extractDomain } from "../utils/eventUtils";
 
 // Settings interface for keyboard typing
 export interface KeyboardTypingSettings {

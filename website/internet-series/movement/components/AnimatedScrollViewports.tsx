@@ -1,7 +1,7 @@
 // ABOUTME: Dynamic animated scroll viewport visualization component
 // ABOUTME: Renders viewports on-demand with fade transitions and dynamic space packing
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
-import { ScrollAnimation, ActiveViewport, ViewportPhase } from "./types";
+import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
 
 // Configuration constants
 const FADE_IN_DURATION = 400; // ms
