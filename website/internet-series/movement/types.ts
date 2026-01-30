@@ -170,3 +170,17 @@ export interface ScrollViewportState {
   viewportRect: { x: number; y: number; width: number; height: number };
   backgroundSeed: number;
 }
+
+// Dynamic viewport system types
+export type ViewportPhase = 'fade-in' | 'animating' | 'fade-out';
+
+export interface ActiveViewport {
+  id: string;
+  animation: ScrollAnimation;
+  rect: { x: number; y: number; width: number; height: number };
+  phase: ViewportPhase;
+  phaseStartTime: number;  // When this phase started (real time)
+  animationStartTime: number;  // When animation started (real time)
+  durationMs: number;  // How long the animation runs
+  backgroundSeed: number;
+}
