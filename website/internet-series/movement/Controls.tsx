@@ -29,12 +29,15 @@ export const Controls: React.FC<ControlsProps> = memo(
     fetchEvents,
     timeRange,
   }) => {
+    // All sections expanded by default
     const [expandedSections, setExpandedSections] = useState<
       Record<string, boolean>
     >({
-      appearance: true,
-      animation: true,
       filters: true,
+      cursorSettings: true,
+      keyboard: true,
+      scroll: true,
+      navigation: true,
     });
 
     const toggleSection = (section: string) => {
@@ -97,7 +100,356 @@ export const Controls: React.FC<ControlsProps> = memo(
         className="controls"
         style={{ maxHeight: "calc(100vh - 40px)", overflowY: "auto" }}
       >
-        <CollapsibleSection title="Appearance" sectionKey="appearance">
+        {/* Randomize Colors at the very top */}
+        <div className="control-group" style={{ marginBottom: "12px" }}>
+          <label htmlFor="randomize-colors">
+            <input
+              id="randomize-colors"
+              type="checkbox"
+              checked={settings.randomizeColors}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  randomizeColors: e.target.checked,
+                }))
+              }
+              style={{ marginRight: "8px" }}
+            />
+            Randomize Colors (Test Mode)
+          </label>
+        </div>
+
+        {/* Filters section - unified event type and cursor event filters */}
+        <CollapsibleSection title="Filters" sectionKey="filters">
+          <div className="control-group">
+            <label htmlFor="domain-filter">Domain Filter</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <select
+                id="domain-filter"
+                value={settings.domainFilter}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    domainFilter: e.target.value,
+                  }))
+                }
+                style={{ flex: 1 }}
+              >
+                <option value="">All Domains</option>
+                {availableDomains.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
+              {settings.domainFilter && (
+                <button
+                  onClick={() =>
+                    setSettings((s: any) => ({ ...s, domainFilter: "" }))
+                  }
+                  style={{
+                    padding: "4px 8px",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                  }}
+                  title="Clear filter"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="control-group">
+            <label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "4px", display: "block" }}>
+              Event Types
+            </label>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                marginTop: "4px",
+              }}
+            >
+              {/* Cursor Events with sub-filters */}
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.eventTypeFilter.cursor}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      eventTypeFilter: {
+                        ...s.eventTypeFilter,
+                        cursor: e.target.checked,
+                      },
+                    }))
+                  }
+                  style={{ marginRight: "6px" }}
+                />
+                Cursor Events
+              </label>
+              {/* Cursor event sub-filters - only shown when cursor events enabled */}
+              {settings.eventTypeFilter.cursor && (
+                <div style={{ marginLeft: "20px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.eventFilter.move}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          eventFilter: { ...s.eventFilter, move: e.target.checked },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Move
+                  </label>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.eventFilter.click}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          eventFilter: {
+                            ...s.eventFilter,
+                            click: e.target.checked,
+                          },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Click
+                  </label>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.eventFilter.hold}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          eventFilter: { ...s.eventFilter, hold: e.target.checked },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Hold
+                  </label>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.eventFilter.cursor_change}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          eventFilter: {
+                            ...s.eventFilter,
+                            cursor_change: e.target.checked,
+                          },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Cursor Change
+                  </label>
+                </div>
+              )}
+
+              {/* Keyboard Events */}
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.eventTypeFilter.keyboard}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      eventTypeFilter: {
+                        ...s.eventTypeFilter,
+                        keyboard: e.target.checked,
+                      },
+                    }))
+                  }
+                  style={{ marginRight: "6px" }}
+                />
+                Keyboard Events
+              </label>
+
+              {/* Viewport Events with sub-filters */}
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.eventTypeFilter.viewport}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      eventTypeFilter: {
+                        ...s.eventTypeFilter,
+                        viewport: e.target.checked,
+                      },
+                    }))
+                  }
+                  style={{ marginRight: "6px" }}
+                />
+                Viewport Events
+              </label>
+              {/* Viewport event sub-filters */}
+              {settings.eventTypeFilter.viewport && (
+                <div style={{ marginLeft: "20px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.viewportEventFilter?.scroll ?? true}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          viewportEventFilter: {
+                            ...s.viewportEventFilter,
+                            scroll: e.target.checked,
+                          },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Scroll
+                  </label>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.viewportEventFilter?.resize ?? true}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          viewportEventFilter: {
+                            ...s.viewportEventFilter,
+                            resize: e.target.checked,
+                          },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Resize
+                  </label>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "normal",
+                      textTransform: "none",
+                      opacity: 0.9,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.viewportEventFilter?.zoom ?? true}
+                      onChange={(e) =>
+                        setSettings((s: any) => ({
+                          ...s,
+                          viewportEventFilter: {
+                            ...s.viewportEventFilter,
+                            zoom: e.target.checked,
+                          },
+                        }))
+                      }
+                      style={{ marginRight: "6px" }}
+                    />
+                    Zoom
+                  </label>
+                </div>
+              )}
+
+              {/* Navigation Events */}
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.eventTypeFilter.navigation}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      eventTypeFilter: {
+                        ...s.eventTypeFilter,
+                        navigation: e.target.checked,
+                      },
+                    }))
+                  }
+                  style={{ marginRight: "6px" }}
+                />
+                Navigation Events
+              </label>
+            </div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Cursor Settings - merged from Appearance and Animation */}
+        <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
+          {/* Appearance settings */}
           <div className="control-group">
             <label htmlFor="trail-opacity">Trail Opacity</label>
             <input
@@ -156,25 +508,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="animation-speed">Animation Speed</label>
-            <input
-              id="animation-speed"
-              type="range"
-              min="0.1"
-              max="10"
-              step="0.1"
-              value={settings.animationSpeed}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  animationSpeed: parseFloat(e.target.value),
-                }))
-              }
-            />
-            <span>{settings.animationSpeed.toFixed(1)}x</span>
-          </div>
-
-          <div className="control-group">
             <label htmlFor="trail-style">Trail Style</label>
             <select
               id="trail-style"
@@ -217,9 +550,27 @@ export const Controls: React.FC<ControlsProps> = memo(
               <span>{(settings.chaosIntensity || 1.0).toFixed(1)}x</span>
             </div>
           )}
-        </CollapsibleSection>
 
-        <CollapsibleSection title="Animation" sectionKey="animation">
+          {/* Animation settings */}
+          <div className="control-group">
+            <label htmlFor="animation-speed">Animation Speed</label>
+            <input
+              id="animation-speed"
+              type="range"
+              min="0.1"
+              max="10"
+              step="0.1"
+              value={settings.animationSpeed}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  animationSpeed: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.animationSpeed.toFixed(1)}x</span>
+          </div>
+
           <div className="control-group">
             <label htmlFor="max-concurrent">Max Concurrent Trails</label>
             <input
@@ -296,322 +647,6 @@ export const Controls: React.FC<ControlsProps> = memo(
                 <span>{settings.minGapBetweenTrails.toFixed(1)}s</span>
               </div>
             </>
-          )}
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Filters" sectionKey="filters">
-          <div className="control-group">
-            <label htmlFor="domain-filter">Domain Filter</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <select
-                id="domain-filter"
-                value={settings.domainFilter}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    domainFilter: e.target.value,
-                  }))
-                }
-                style={{ flex: 1 }}
-              >
-                <option value="">All Domains</option>
-                {availableDomains.map((domain) => (
-                  <option key={domain} value={domain}>
-                    {domain}
-                  </option>
-                ))}
-              </select>
-              {settings.domainFilter && (
-                <button
-                  onClick={() =>
-                    setSettings((s: any) => ({ ...s, domainFilter: "" }))
-                  }
-                  style={{
-                    padding: "4px 8px",
-                    fontSize: "11px",
-                    cursor: "pointer",
-                  }}
-                  title="Clear filter"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="control-group">
-            <label>Event Filter</label>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-                marginTop: "4px",
-              }}
-            >
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "normal",
-                  textTransform: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={settings.eventFilter.move}
-                  onChange={(e) =>
-                    setSettings((s: any) => ({
-                      ...s,
-                      eventFilter: { ...s.eventFilter, move: e.target.checked },
-                    }))
-                  }
-                  style={{ marginRight: "6px" }}
-                />
-                Move Events
-              </label>
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "normal",
-                  textTransform: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={settings.eventFilter.click}
-                  onChange={(e) =>
-                    setSettings((s: any) => ({
-                      ...s,
-                      eventFilter: {
-                        ...s.eventFilter,
-                        click: e.target.checked,
-                      },
-                    }))
-                  }
-                  style={{ marginRight: "6px" }}
-                />
-                Click Events
-              </label>
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "normal",
-                  textTransform: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={settings.eventFilter.hold}
-                  onChange={(e) =>
-                    setSettings((s: any) => ({
-                      ...s,
-                      eventFilter: { ...s.eventFilter, hold: e.target.checked },
-                    }))
-                  }
-                  style={{ marginRight: "6px" }}
-                />
-                Hold Events
-              </label>
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "normal",
-                  textTransform: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={settings.eventFilter.cursor_change}
-                  onChange={(e) =>
-                    setSettings((s: any) => ({
-                      ...s,
-                      eventFilter: {
-                        ...s.eventFilter,
-                        cursor_change: e.target.checked,
-                      },
-                    }))
-                  }
-                  style={{ marginRight: "6px" }}
-                />
-                Cursor Change Events
-              </label>
-            </div>
-          </div>
-
-          <div className="control-group">
-            <label htmlFor="randomize-colors">
-              <input
-                id="randomize-colors"
-                type="checkbox"
-                checked={settings.randomizeColors}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    randomizeColors: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Randomize Colors (Test Mode)
-            </label>
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Event Types" sectionKey="eventTypes">
-          <div className="control-group">
-            <label
-              style={{
-                fontSize: "12px",
-                fontWeight: "normal",
-                textTransform: "none",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={settings.eventTypeFilter.cursor}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    eventTypeFilter: {
-                      ...s.eventTypeFilter,
-                      cursor: e.target.checked,
-                    },
-                  }))
-                }
-                style={{ marginRight: "6px" }}
-              />
-              Cursor Events
-            </label>
-          </div>
-          <div className="control-group">
-            <label
-              style={{
-                fontSize: "12px",
-                fontWeight: "normal",
-                textTransform: "none",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={settings.eventTypeFilter.keyboard}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    eventTypeFilter: {
-                      ...s.eventTypeFilter,
-                      keyboard: e.target.checked,
-                    },
-                  }))
-                }
-                style={{ marginRight: "6px" }}
-              />
-              Keyboard Events
-            </label>
-          </div>
-          <div className="control-group">
-            <label
-              style={{
-                fontSize: "12px",
-                fontWeight: "normal",
-                textTransform: "none",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={settings.eventTypeFilter.viewport}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    eventTypeFilter: {
-                      ...s.eventTypeFilter,
-                      viewport: e.target.checked,
-                    },
-                  }))
-                }
-                style={{ marginRight: "6px" }}
-              />
-              Viewport Events
-            </label>
-          </div>
-          {/* Viewport event type sub-filters */}
-          {settings.eventTypeFilter.viewport && (
-            <div style={{ marginLeft: "20px", marginTop: "8px" }}>
-              <div className="control-group">
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    fontSize: "12px",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.viewportEventFilter?.scroll ?? true}
-                    onChange={(e) =>
-                      setSettings((s: any) => ({
-                        ...s,
-                        viewportEventFilter: {
-                          ...s.viewportEventFilter,
-                          scroll: e.target.checked,
-                        },
-                      }))
-                    }
-                    style={{ marginRight: "6px" }}
-                  />
-                  Scroll
-                </label>
-              </div>
-              <div className="control-group">
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    fontSize: "12px",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.viewportEventFilter?.resize ?? true}
-                    onChange={(e) =>
-                      setSettings((s: any) => ({
-                        ...s,
-                        viewportEventFilter: {
-                          ...s.viewportEventFilter,
-                          resize: e.target.checked,
-                        },
-                      }))
-                    }
-                    style={{ marginRight: "6px" }}
-                  />
-                  Resize
-                </label>
-              </div>
-              <div className="control-group">
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    fontSize: "12px",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.viewportEventFilter?.zoom ?? true}
-                    onChange={(e) =>
-                      setSettings((s: any) => ({
-                        ...s,
-                        viewportEventFilter: {
-                          ...s.viewportEventFilter,
-                          zoom: e.target.checked,
-                        },
-                      }))
-                    }
-                    style={{ marginRight: "6px" }}
-                  />
-                  Zoom
-                </label>
-              </div>
-            </div>
           )}
         </CollapsibleSection>
 
@@ -865,6 +900,102 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.maxViewports}</span>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Navigation" sectionKey="navigation">
+          <div className="control-group">
+            <label htmlFor="nav-window-opacity">Window Opacity</label>
+            <input
+              id="nav-window-opacity"
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.1"
+              value={settings.navigationWindowOpacity ?? 0.9}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  navigationWindowOpacity: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.navigationWindowOpacity ?? 0.9).toFixed(1)}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="nav-edge-opacity">Edge Opacity</label>
+            <input
+              id="nav-edge-opacity"
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.1"
+              value={settings.navigationEdgeOpacity ?? 0.6}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  navigationEdgeOpacity: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.navigationEdgeOpacity ?? 0.6).toFixed(1)}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="nav-unique-hops">
+              <input
+                id="nav-unique-hops"
+                type="checkbox"
+                checked={settings.navigationUniqueHopsOnly ?? true}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    navigationUniqueHopsOnly: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Unique Hops Only
+            </label>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="nav-max-nodes">Max Nodes</label>
+            <input
+              id="nav-max-nodes"
+              type="range"
+              min="10"
+              max="50"
+              step="5"
+              value={settings.navigationMaxNodes ?? 30}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  navigationMaxNodes: parseInt(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.navigationMaxNodes ?? 30}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="nav-min-visits">Min Visits</label>
+            <input
+              id="nav-min-visits"
+              type="range"
+              min="1"
+              max="10"
+              step="1"
+              value={settings.navigationMinVisits ?? 2}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  navigationMinVisits: parseInt(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.navigationMinVisits ?? 2}</span>
           </div>
         </CollapsibleSection>
 
