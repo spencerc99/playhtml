@@ -14,7 +14,7 @@ import { AnimatedNavigation } from "./components/AnimatedNavigation";
 import { useCursorTrails } from "./hooks/useCursorTrails";
 import { useKeyboardTyping } from "./hooks/useKeyboardTyping";
 import { useViewportScroll } from "./hooks/useViewportScroll";
-import { useNavigationGraph } from "./hooks/useNavigationGraph";
+import { useNavigationTimeline } from "./hooks/useNavigationTimeline";
 
 // Import shared utilities
 import { extractDomain } from "./utils/eventUtils";
@@ -81,10 +81,10 @@ const loadSettings = () => {
     keyboardPositionRandomness: 0.3,
     keyboardRandomizeOrder: false,
     navigationWindowOpacity: 0.9,
-    navigationEdgeOpacity: 0.6,
-    navigationUniqueHopsOnly: true,
-    navigationMaxNodes: 30,
-    navigationMinVisits: 1,
+    navigationEdgeOpacity: 0.7,
+    navigationScrollSpeed: 80,
+    navigationMaxSessions: 8,
+    navigationMinSessionEvents: 3,
   };
 
   try {
@@ -422,24 +422,27 @@ const InternetMovement = () => {
     viewportSettings
   );
 
-  // Process navigation events into graph
-  const navigationGraphSettings = useMemo(
+  // Process navigation events into timeline
+  const navigationTimelineSettings = useMemo(
     () => ({
       domainFilter: settings.domainFilter,
-      navigationMaxNodes: settings.navigationMaxNodes,
-      navigationMinVisits: settings.navigationMinVisits,
+      maxSessions: settings.navigationMaxSessions,
+      minSessionEvents: settings.navigationMinSessionEvents,
+      canvasWidth: viewportSize.width,
+      canvasHeight: viewportSize.height,
     }),
     [
       settings.domainFilter,
-      settings.navigationMaxNodes,
-      settings.navigationMinVisits,
+      settings.navigationMaxSessions,
+      settings.navigationMinSessionEvents,
+      viewportSize.width,
+      viewportSize.height,
     ]
   );
 
-  const { navigationState } = useNavigationGraph(
+  const { timelineState } = useNavigationTimeline(
     events,
-    viewportSize,
-    navigationGraphSettings
+    navigationTimelineSettings
   );
 
   // ============================================================
@@ -478,17 +481,15 @@ const InternetMovement = () => {
 
   const navigationSettings = useMemo(
     () => ({
-      animationSpeed: settings.animationSpeed,
-      navigationWindowOpacity: settings.navigationWindowOpacity,
-      navigationEdgeOpacity: settings.navigationEdgeOpacity,
-      navigationUniqueHopsOnly: settings.navigationUniqueHopsOnly,
+      scrollSpeed: settings.navigationScrollSpeed,
+      nodeOpacity: settings.navigationWindowOpacity,
+      edgeOpacity: settings.navigationEdgeOpacity,
       randomizeColors: settings.randomizeColors,
     }),
     [
-      settings.animationSpeed,
+      settings.navigationScrollSpeed,
       settings.navigationWindowOpacity,
       settings.navigationEdgeOpacity,
-      settings.navigationUniqueHopsOnly,
       settings.randomizeColors,
     ]
   );
@@ -665,11 +666,11 @@ const InternetMovement = () => {
           )}
 
         {settings.eventTypeFilter.navigation &&
-          navigationState &&
-          navigationState.nodes.length > 0 && (
+          timelineState &&
+          timelineState.nodes.size > 0 && (
             <AnimatedNavigation
-              navigationState={navigationState}
-              timeRange={timeRange}
+              timelineState={timelineState}
+              canvasSize={viewportSize}
               settings={navigationSettings}
             />
           )}
