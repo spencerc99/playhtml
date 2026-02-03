@@ -905,6 +905,129 @@ export const Controls: React.FC<ControlsProps> = memo(
 
         <CollapsibleSection title="Navigation" sectionKey="navigation">
           <div className="control-group">
+            <span style={{ display: "block", marginBottom: "4px" }}>View mode</span>
+            <label style={{ marginRight: "12px" }}>
+              <input
+                type="radio"
+                name="nav-view-mode"
+                checked={(settings.navigationViewMode ?? "timeline") === "timeline"}
+                onChange={() =>
+                  setSettings((s: any) => ({ ...s, navigationViewMode: "timeline" }))
+                }
+                style={{ marginRight: "4px" }}
+              />
+              Timeline (scroll)
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="nav-view-mode"
+                checked={(settings.navigationViewMode ?? "timeline") === "radial"}
+                onChange={() =>
+                  setSettings((s: any) => ({ ...s, navigationViewMode: "radial" }))
+                }
+                style={{ marginRight: "4px" }}
+              />
+              Radial (expand)
+            </label>
+          </div>
+
+          {(settings.navigationViewMode ?? "timeline") === "radial" && (
+            <>
+              <div className="control-group">
+                <label htmlFor="nav-max-parallel-edges">Max parallel edges</label>
+                <input
+                  id="nav-max-parallel-edges"
+                  type="range"
+                  min="1"
+                  max="8"
+                  step="1"
+                  value={settings.navigationMaxParallelEdges ?? 3}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      navigationMaxParallelEdges: parseInt(e.target.value, 10),
+                    }))
+                  }
+                />
+                <span>{settings.navigationMaxParallelEdges ?? 3}</span>
+              </div>
+              <div className="control-group">
+                <label htmlFor="radial-blob-samples">Blob outline samples</label>
+                <input
+                  id="radial-blob-samples"
+                  type="range"
+                  min="8"
+                  max="160"
+                  step="8"
+                  value={settings.navigationRadialBlobSamples ?? 64}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      navigationRadialBlobSamples: parseInt(e.target.value, 10),
+                    }))
+                  }
+                />
+                <span>{settings.navigationRadialBlobSamples ?? 64}</span>
+              </div>
+              <div className="control-group">
+                <label htmlFor="radial-blob-tension">Blob curve smoothness</label>
+                <input
+                  id="radial-blob-tension"
+                  type="range"
+                  min="0.15"
+                  max="0.5"
+                  step="0.01"
+                  value={settings.navigationRadialBlobCurveTension ?? 0.5}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      navigationRadialBlobCurveTension: parseFloat(e.target.value),
+                    }))
+                  }
+                />
+                <span>{(settings.navigationRadialBlobCurveTension ?? 0.5).toFixed(2)}</span>
+              </div>
+              <div className="control-group">
+                <label htmlFor="radial-blob-noise">Blob edge noise</label>
+                <input
+                  id="radial-blob-noise"
+                  type="range"
+                  min="0"
+                  max="0.5"
+                  step="0.01"
+                  value={settings.navigationRadialBlobEdgeNoise ?? 0.45}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      navigationRadialBlobEdgeNoise: parseFloat(e.target.value),
+                    }))
+                  }
+                />
+                <span>{(settings.navigationRadialBlobEdgeNoise ?? 0.45).toFixed(2)}</span>
+              </div>
+              <div className="control-group">
+                <label htmlFor="radial-blob-valley">Blob valley depth</label>
+                <input
+                  id="radial-blob-valley"
+                  type="range"
+                  min="0.02"
+                  max="0.35"
+                  step="0.01"
+                  value={settings.navigationRadialBlobValleyDepth ?? 0.05}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      navigationRadialBlobValleyDepth: parseFloat(e.target.value),
+                    }))
+                  }
+                />
+                <span>{(settings.navigationRadialBlobValleyDepth ?? 0.05).toFixed(2)}</span>
+              </div>
+            </>
+          )}
+
+          <div className="control-group">
             <label htmlFor="nav-window-opacity">Window Opacity</label>
             <input
               id="nav-window-opacity"

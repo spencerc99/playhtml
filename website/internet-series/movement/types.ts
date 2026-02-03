@@ -281,3 +281,24 @@ export interface TimelineState {
   maxTime: number;
   totalWidth: number; // total scrollable width in pixels
 }
+
+// Radial (expand from center) navigation visualization
+export interface RadialNode {
+  id: string; // domain
+  x: number;
+  y: number;
+  visitCount: number;
+  distinctUrlCount: number;
+  color: string;
+}
+
+export interface RadialSession {
+  id: string;
+  color: string;
+  steps: Array<{ domainId: string; timestamp: number }>;
+}
+
+export interface RadialState {
+  nodes: Map<string, RadialNode>;
+  sessions: RadialSession[];
+}

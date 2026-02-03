@@ -13,6 +13,18 @@ export const RISO_COLORS = [
   "rgb(0, 131, 138)", // Teal
 ];
 
+// Muted organic palette for radial (slime / moss / lichen): olives, sages, lichen grays, earth
+export const RADIAL_ORGANIC_COLORS = [
+  "rgb(98, 115, 78)",   // sage
+  "rgb(118, 128, 88)",   // olive
+  "rgb(100, 108, 82)",   // moss
+  "rgb(132, 118, 92)",   // lichen / stone
+  "rgb(88, 95, 78)",     // dark moss
+  "rgb(108, 102, 82)",   // bark
+  "rgb(94, 110, 88)",    // forest
+  "rgb(115, 112, 92)",   // stone-gray
+];
+
 /**
  * Hash a participant ID to a number for consistent color assignment
  */
