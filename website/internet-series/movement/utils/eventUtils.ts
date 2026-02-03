@@ -16,7 +16,7 @@ export const RISO_COLORS = [
 // Luminosity for radial nodes (slime blobs). 1 = unchanged; >1 = brighter; <1 = darker.
 export const RADIAL_PALETTE_LUMINOSITY = 1.8;
 // Luminosity for radial edges (paths between nodes). Independent of node luminosity.
-export const RADIAL_EDGE_LUMINOSITY = 0.8;
+export const RADIAL_EDGE_LUMINOSITY = 1.2;
 
 const RADIAL_ORGANIC_BASE: [number, number, number][] = [
   [98, 115, 78], // sage green

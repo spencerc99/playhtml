@@ -295,6 +295,8 @@ export interface RadialNode {
 export interface RadialSession {
   id: string;
   color: string;
+  /** Local date YYYY-MM-DD of first step (matches top-right date display) */
+  dayKey: string;
   steps: Array<{ domainId: string; timestamp: number }>;
 }
 

@@ -34,6 +34,7 @@ export const Controls: React.FC<ControlsProps> = memo(
       Record<string, boolean>
     >({
       filters: true,
+      cursorVisualizers: true,
       cursorSettings: true,
       keyboard: true,
       scroll: true,
@@ -446,6 +447,59 @@ export const Controls: React.FC<ControlsProps> = memo(
             </div>
           </div>
         </CollapsibleSection>
+
+        {/* Cursor visualizers - which cursor layers to show (only when cursor events enabled) */}
+        {settings.eventTypeFilter?.cursor && (
+          <CollapsibleSection
+            title="Cursor Visualizers"
+            sectionKey="cursorVisualizers"
+          >
+            <div className="control-group">
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.showCursorTrails !== false}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      showCursorTrails: e.target.checked,
+                    }))
+                  }
+                  style={{ marginRight: "8px" }}
+                />
+                Show trails
+              </label>
+            </div>
+            <div className="control-group">
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.showCursorClicks !== false}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      showCursorClicks: e.target.checked,
+                    }))
+                  }
+                  style={{ marginRight: "8px" }}
+                />
+                Show clicks & holds
+              </label>
+            </div>
+          </CollapsibleSection>
+        )}
 
         {/* Cursor Settings - merged from Appearance and Animation */}
         <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
@@ -934,6 +988,21 @@ export const Controls: React.FC<ControlsProps> = memo(
 
           {(settings.navigationViewMode ?? "timeline") === "radial" && (
             <>
+              <div className="control-group">
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.navigationRadialSegmentByDay ?? true}
+                    onChange={(e) =>
+                      setSettings((s: any) => ({
+                        ...s,
+                        navigationRadialSegmentByDay: e.target.checked,
+                      }))
+                    }
+                  />
+                  Segment by day (clear canvas between days)
+                </label>
+              </div>
               <div className="control-group">
                 <label htmlFor="nav-max-parallel-edges">Max parallel edges</label>
                 <input

@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client";
 import { CollectionEvent } from "./types";
 import { Controls } from "./components/Controls";
 import { AnimatedTrails } from "./components/AnimatedTrails";
+import { AnimatedClicks, type ScheduledClick } from "./components/AnimatedClicks";
 import { AnimatedTyping } from "./components/AnimatedTyping";
 import { AnimatedScrollViewports } from "./components/AnimatedScrollViewports";
 import { AnimatedNavigation } from "./components/AnimatedNavigation";
@@ -50,6 +51,8 @@ const loadSettings = () => {
     clickRingDelayMs: 360,
     clickExpansionDuration: 12300,
     clickAnimationStopPoint: 0.45,
+    showCursorTrails: true,
+    showCursorClicks: true,
     eventFilter: {
       move: true,
       click: true,
@@ -93,6 +96,7 @@ const loadSettings = () => {
     navigationRadialBlobCurveTension: 0.5,
     navigationRadialBlobEdgeNoise: 0.45,
     navigationRadialBlobValleyDepth: 0.05,
+    navigationRadialSegmentByDay: true,
   };
 
   try {
@@ -388,6 +392,54 @@ const InternetMovement = () => {
     return { min, max, duration };
   }, [cursorTimeBounds, cursorCycleDuration]);
 
+  // Schedule clicks for AnimatedClicks using same concurrency/spacing logic as trails
+  // so sparse clicks are shown with ~maxConcurrentTrails ripples active at once
+  const { scheduledClicks, clickCycleDuration } = useMemo(() => {
+    const flat: ScheduledClick[] = [];
+    trailStates.forEach((state, trailIndex) => {
+      const { startOffsetMs, durationMs, trail, clicksWithProgress } = state;
+      clicksWithProgress.forEach((click, clickIdx) => {
+        const spawnAtMs = startOffsetMs + click.progress * durationMs;
+        flat.push({
+          id: `trail-${trailIndex}-click-${clickIdx}`,
+          x: click.x,
+          y: click.y,
+          color: trail.color,
+          spawnAtMs,
+          holdDuration: click.duration,
+        });
+      });
+    });
+    if (flat.length === 0) return { scheduledClicks: [], clickCycleDuration: 0 };
+
+    // Sort by original time so playback order is preserved
+    flat.sort((a, b) => a.spawnAtMs - b.spawnAtMs);
+
+    // Reuse trail scheduling params: target ~maxConcurrentTrails concurrent ripples
+    const avgRippleDurationMs =
+      (settings.clickMinDuration + settings.clickMaxDuration) / 2;
+    const overlapMultiplier = 1 - settings.overlapFactor * 0.8;
+    const baseInterval =
+      (avgRippleDurationMs / settings.maxConcurrentTrails) * overlapMultiplier;
+    const minGapMs = settings.minGapBetweenTrails * 1000;
+    const actualSpawnIntervalMs = Math.max(minGapMs, baseInterval);
+
+    const scheduledClicks: ScheduledClick[] = flat.map((c, i) => ({
+      ...c,
+      spawnAtMs: i * actualSpawnIntervalMs,
+    }));
+    const clickCycleDuration = flat.length * actualSpawnIntervalMs;
+
+    return { scheduledClicks, clickCycleDuration };
+  }, [
+    trailStates,
+    settings.maxConcurrentTrails,
+    settings.overlapFactor,
+    settings.minGapBetweenTrails,
+    settings.clickMinDuration,
+    settings.clickMaxDuration,
+  ]);
+
   // Process keyboard events into typing animations
   const keyboardSettings = useMemo(
     () => ({
@@ -461,11 +513,13 @@ const InternetMovement = () => {
       minSessionEvents: settings.navigationMinSessionEvents,
       canvasWidth: viewportSize.width,
       canvasHeight: viewportSize.height,
+      segmentByDay: settings.navigationRadialSegmentByDay ?? true,
     }),
     [
       settings.domainFilter,
       settings.navigationMaxSessions,
       settings.navigationMinSessionEvents,
+      settings.navigationRadialSegmentByDay,
       viewportSize.width,
       viewportSize.height,
     ],
@@ -651,15 +705,36 @@ const InternetMovement = () => {
           />
         </svg>
 
-        {settings.eventTypeFilter.cursor && (
+        {settings.eventTypeFilter.cursor && settings.showCursorTrails && (
           <AnimatedTrails
             key={settings.domainFilter}
             trailStates={trailStates}
             timeRange={timeRange}
+            showClickRipples={!settings.showCursorClicks}
             settings={{
               strokeWidth: settings.strokeWidth,
               pointSize: settings.pointSize,
               trailOpacity: settings.trailOpacity,
+              animationSpeed: settings.animationSpeed,
+              clickMinRadius: settings.clickMinRadius,
+              clickMaxRadius: settings.clickMaxRadius,
+              clickMinDuration: settings.clickMinDuration,
+              clickMaxDuration: settings.clickMaxDuration,
+              clickExpansionDuration: settings.clickExpansionDuration,
+              clickStrokeWidth: settings.clickStrokeWidth,
+              clickOpacity: settings.clickOpacity,
+              clickNumRings: settings.clickNumRings,
+              clickRingDelayMs: settings.clickRingDelayMs,
+              clickAnimationStopPoint: settings.clickAnimationStopPoint,
+            }}
+          />
+        )}
+        {settings.eventTypeFilter.cursor && settings.showCursorClicks && (
+          <AnimatedClicks
+            key={settings.domainFilter}
+            scheduledClicks={scheduledClicks}
+            timeRange={{ duration: clickCycleDuration }}
+            settings={{
               animationSpeed: settings.animationSpeed,
               clickMinRadius: settings.clickMinRadius,
               clickMaxRadius: settings.clickMaxRadius,
@@ -704,6 +779,7 @@ const InternetMovement = () => {
                 nodeOpacity: settings.navigationWindowOpacity,
                 edgeOpacity: settings.navigationEdgeOpacity,
                 maxParallelEdges: settings.navigationMaxParallelEdges,
+                segmentByDay: settings.navigationRadialSegmentByDay ?? true,
                 blob: {
                   samples: settings.navigationRadialBlobSamples,
                   curveTension: settings.navigationRadialBlobCurveTension,
