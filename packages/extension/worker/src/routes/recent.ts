@@ -15,14 +15,17 @@ function extractDomain(url: string | null): string {
   }
 }
 
+/** Supabase/PostgREST returns at most 1000 rows per request; we paginate to satisfy larger limits. */
+const SUPABASE_PAGE_SIZE = 1000;
+
 /**
  * GET /events/recent
  * Get recent events for live artwork rendering
  * Public endpoint (no auth required)
- * 
+ *
  * Query parameters:
  * - type: Event type filter (default: 'cursor')
- * - limit: Maximum number of events (default: 1000, max: 5000)
+ * - limit: Maximum number of events (default: 1000, max: 5000). Pagination is used to return up to 5000.
  * - domain: Domain filter (optional) - filters events by URL domain
  */
 export async function handleRecent(
@@ -34,29 +37,40 @@ export async function handleRecent(
     const type = url.searchParams.get('type') || 'cursor';
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 5000);
     const domainFilter = url.searchParams.get('domain') || null;
-    
+
     const supabase = createSupabaseClient(env);
-    const { data, error } = await supabase
-      .from('collection_events')
-      .select('*')
-      .eq('type', type)
-      .order('ts', { ascending: false })
-      .limit(limit);
-    
-    if (error) {
-      console.error('Supabase query error:', error);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch events', details: error.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+    const allRows: Record<string, unknown>[] = [];
+
+    for (let offset = 0; offset < limit; offset += SUPABASE_PAGE_SIZE) {
+      const from = offset;
+      const to = offset + SUPABASE_PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('collection_events')
+        .select('*')
+        .eq('type', type)
+        .order('ts', { ascending: false })
+        .range(from, to);
+
+      if (error) {
+        console.error('Supabase query error:', error);
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch events', details: error.message }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const page = data ?? [];
+      allRows.push(...page);
+      if (page.length < SUPABASE_PAGE_SIZE) break;
     }
-    
-    // Transform back to CollectionEvent format
-    let events: CollectionEvent[] = (data || []).map((row) => ({
-      id: row.id,
-      type: row.type,
-      ts: new Date(row.ts).getTime(),
-      data: row.data,
+
+    // Transform back to CollectionEvent format (cap at limit)
+    const rows = allRows.slice(0, limit);
+    let events: CollectionEvent[] = rows.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      type: row.type as CollectionEvent['type'],
+      ts: new Date(row.ts as string).getTime(),
+      data: row.data as CollectionEvent['data'],
       meta: {
         pid: row.participant_id,
         sid: row.session_id,

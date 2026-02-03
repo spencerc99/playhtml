@@ -141,7 +141,8 @@ const InternetMovement = () => {
     }
   }, [settings]);
 
-  // Fetch events from API
+  // Fetch events from API (limit 5000 per type).
+  // For continuous fetching: poll with ?after=<lastEventId> or use SSE; merge new events into state (append or replace).
   const fetchEvents = async () => {
     setLoading(true);
     setError(null);

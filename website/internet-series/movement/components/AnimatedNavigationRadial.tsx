@@ -27,7 +27,7 @@ const PAUSE_BETWEEN_SESSIONS = 1500;
 const GROWTH_DURATION = 200;
 const DEFAULT_MAX_CONCURRENT_EDGES = 3;
 const BASE_RADIUS = 12;
-const NODE_RADIUS_LERP = 0.12; // smooth transition toward target radius (per frame)
+const NODE_RADIUS_LERP = 0.055; // smooth transition toward target radius (per frame); lower = slower growth
 const Bump_AMPLITUDE_RATIO = 0.35; // base bump size as fraction of radius
 
 // Seeded RNG for reproducible per-node variation (same node = same shape, different nodes = different)
@@ -85,8 +85,12 @@ function pathFromPoints(points: Array<{ x: number; y: number }>): string {
 }
 
 const DEFAULT_BLOB_SAMPLES = 64;
-const FOOTPRINT_RADIUS_SCALE = 5.4; // background layer spreads well beyond the node
-const FOOTPRINT_FILL = "rgba(72, 80, 68, 0.03)"; // only control for footprint visibility (no filter)
+const FOOTPRINT_RADIUS_SCALE = 11.4; // max multiplier for footprint at large radii
+const FOOTPRINT_RAMP_SCALE = 1.6; // smaller = steeper growth (exponential approach)
+// Subtract this from raw ramp so small nodes stay at 1x longer; 0 = no delay
+const FOOTPRINT_RAMP_OFFSET = 0.5;
+const FOOTPRINT_RADIUS_LERP = 0.032; // footprint size lags behind node (slower than NODE_RADIUS_LERP)
+const FOOTPRINT_FILL = "rgba(127, 138, 121, 0.03)"; // only control for footprint visibility (no filter)
 const DEFAULT_BLOB_CURVE_TENSION = 0.5;
 const DEFAULT_BLOB_EDGE_NOISE = 0.45;
 const DEFAULT_BLOB_VALLEY_DEPTH = 0.05;
@@ -136,7 +140,8 @@ function blobPath(
   let angle = 0;
   for (let i = 0; i < n; i++) {
     bumpAngles.push(angle);
-    const step = ((2 * Math.PI) / n) * (angleStepBase + rnd(i * 7) * angleStepRange);
+    const step =
+      ((2 * Math.PI) / n) * (angleStepBase + rnd(i * 7) * angleStepRange);
     angle += step;
   }
   const scale = (2 * Math.PI) / angle;
@@ -147,7 +152,9 @@ function blobPath(
   const ampRange = isHighBump ? 1.2 : 0.9;
   const ampBase = isHighBump ? 0.4 : 0.6;
   for (let i = 0; i < n; i++) {
-    bumpAmps.push(radius * Bump_AMPLITUDE_RATIO * (ampBase + rnd(i * 11) * ampRange));
+    bumpAmps.push(
+      radius * Bump_AMPLITUDE_RATIO * (ampBase + rnd(i * 11) * ampRange),
+    );
     bumpWidths.push(0.35 + rnd(i * 13) * (isHighBump ? 0.7 : 0.5));
   }
 
@@ -265,7 +272,11 @@ const RadialNodeBlob = memo(
           </clipPath>
         </defs>
         <g clipPath={`url(#${clipId})`}>
-          <path d={d} fill={node.color} filter="url(#radialBlobGrain)" />
+          <path
+            d={d}
+            fill={node.color}
+            filter={`url(#radialBlobGrain-${hashString(node.id) % 5})`}
+          />
         </g>
         <path d={d} fill="none" stroke={strokeColor} strokeWidth={1.8} />
         <g aria-hidden>
@@ -411,6 +422,9 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const [nodeAnimatedRadii, setNodeAnimatedRadii] = useState<
       Map<string, number>
     >(new Map());
+    const [footprintAnimatedRadii, setFootprintAnimatedRadii] = useState<
+      Map<string, number>
+    >(new Map());
     const animationRef = useRef<number>();
     const sessionOrderRef = useRef<number[]>([]);
     const activeEdgesRef = useRef<ActiveEdge[]>([]);
@@ -419,6 +433,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const sessionStartTimeRef = useRef<number>(0);
     const hasShownFirstNodeRef = useRef<boolean>(false);
     const nodeAnimatedRadiusRef = useRef<Map<string, number>>(new Map());
+    const footprintAnimatedRadiusRef = useRef<Map<string, number>>(new Map());
     const displayVisitCountsRef = useRef<Map<string, number>>(new Map());
     const visibleNodeIdsRef = useRef<Set<string>>(new Set());
     const nodeScalesRef = useRef<Map<string, number>>(new Map());
@@ -446,11 +461,13 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
       setDisplayVisitCounts(new Map());
       setCompletedEdges([]);
       setNodeAnimatedRadii(new Map());
+      setFootprintAnimatedRadii(new Map());
       setPhase("playing");
       activeEdgesRef.current = [];
       nextStepIndexRef.current = 1;
       hasShownFirstNodeRef.current = false;
       nodeAnimatedRadiusRef.current = new Map();
+      footprintAnimatedRadiusRef.current = new Map();
     }, [radialState]);
 
     useEffect(() => {
@@ -479,10 +496,12 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
             setDisplayVisitCounts(new Map());
             setCompletedEdges([]);
             setNodeAnimatedRadii(new Map());
+            setFootprintAnimatedRadii(new Map());
             activeEdgesRef.current = [];
             nextStepIndexRef.current = 1;
             hasShownFirstNodeRef.current = false;
             nodeAnimatedRadiusRef.current = new Map();
+            footprintAnimatedRadiusRef.current = new Map();
             sessionStartTimeRef.current = timestamp;
           }
           animationRef.current = requestAnimationFrame(animate);
@@ -579,6 +598,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
 
         // Smooth node size: lerp animated radius toward target (avoids jump when visit count updates)
         const radii = nodeAnimatedRadiusRef.current;
+        const footprintRadii = footprintAnimatedRadiusRef.current;
         for (const nodeId of visibleNodeIdsRef.current) {
           const node = radialState.nodes.get(nodeId);
           if (!node) continue;
@@ -595,8 +615,34 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
               Math.abs(next - targetRadius) < 0.5 ? targetRadius : next,
             );
           }
+          // Footprint lags behind node (slower lerp) so it grows after the node
+          const nodeRadius = radii.get(nodeId) ?? targetRadius;
+          const rampRaw =
+            1 - Math.exp(-nodeRadius / (BASE_RADIUS * FOOTPRINT_RAMP_SCALE));
+          const ramp = Math.max(
+            0,
+            (rampRaw - FOOTPRINT_RAMP_OFFSET) / (1 - FOOTPRINT_RAMP_OFFSET),
+          );
+          const targetFootprintRadius =
+            nodeRadius * (1 + (FOOTPRINT_RADIUS_SCALE - 1) * ramp);
+          const currentFootprint = footprintRadii.get(nodeId);
+          if (currentFootprint === undefined) {
+            footprintRadii.set(nodeId, targetFootprintRadius);
+          } else {
+            const nextFootprint =
+              currentFootprint +
+              (targetFootprintRadius - currentFootprint) *
+                FOOTPRINT_RADIUS_LERP;
+            footprintRadii.set(
+              nodeId,
+              Math.abs(nextFootprint - targetFootprintRadius) < 0.5
+                ? targetFootprintRadius
+                : nextFootprint,
+            );
+          }
         }
         setNodeAnimatedRadii(new Map(radii));
+        setFootprintAnimatedRadii(new Map(footprintRadii));
 
         // Session done when no more steps to start and all in-flight edges complete
         if (
@@ -629,23 +675,43 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
         style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
       >
         <defs>
-          {/* Rainbow/iridescent texture: colorful turbulence blended into fill (clip node to path to avoid rect) */}
-          <filter
-            id="radialBlobGrain"
-            x="-20%"
-            y="-20%"
-            width="140%"
-            height="140%"
-          >
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.06"
-              numOctaves="3"
-              seed="1"
-              result="noise"
-            />
-            <feBlend in="SourceGraphic" in2="noise" mode="multiply" />
-          </filter>
+          {/* Rainbow/iridescent texture: intensity varies per-node (0–4) for visual variation */}
+          {[0.28, 0.48, 0.68, 0.85, 1].map((intensity, i) => (
+            <filter
+              key={i}
+              id={`radialBlobGrain-${i}`}
+              x="-20%"
+              y="-20%"
+              width="140%"
+              height="140%"
+            >
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.06"
+                numOctaves="3"
+                seed="1"
+                result="noise"
+              />
+              <feComponentTransfer in="noise" result="noiseScaled">
+                <feFuncR
+                  type="linear"
+                  slope={intensity}
+                  intercept={0.5 - intensity * 0.5}
+                />
+                <feFuncG
+                  type="linear"
+                  slope={intensity}
+                  intercept={0.5 - intensity * 0.5}
+                />
+                <feFuncB
+                  type="linear"
+                  slope={intensity}
+                  intercept={0.5 - intensity * 0.5}
+                />
+              </feComponentTransfer>
+              <feBlend in="SourceGraphic" in2="noiseScaled" mode="multiply" />
+            </filter>
+          ))}
         </defs>
         {/* Bottom layer: moss footprint background (drawn first so it sits behind edges and nodes) */}
         {Array.from(radialState.nodes.values()).map((node) => {
@@ -659,7 +725,10 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
             node.distinctUrlCount,
             Math.max(1, liveVisitCount),
           );
-          const footprintRadius = radius * FOOTPRINT_RADIUS_SCALE;
+          // Use animated footprint radius so footprint grows slower than node
+          const footprintRadius =
+            footprintAnimatedRadii.get(node.id) ??
+            radius * (1 + (FOOTPRINT_RADIUS_SCALE - 1) * 0);
           const seed = hashString(node.id);
           const footprintBumps = Math.max(2, numBumps);
           const dFootprint = blobPath(
@@ -787,32 +856,48 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
         })}
 
         {/* Session date & time (top right), progresses with animation */}
-        {session && session.steps.length > 0 && (() => {
-          const steps = session.steps;
-          const k = Math.min(completedEdges.length, steps.length - 1);
-          let displayTs = steps[k].timestamp;
-          if (activeEdges.length > 0 && completedEdges.length < steps.length - 1) {
-            const progress = Math.min(1, (currentTime - activeEdges[0].startTime) / STEP_DURATION);
-            const t0 = steps[completedEdges.length]?.timestamp ?? displayTs;
-            const t1 = steps[completedEdges.length + 1]?.timestamp ?? t0;
-            displayTs = t0 + (t1 - t0) * progress;
-          }
-          const d = new Date(displayTs);
-          const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-          const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
-          return (
-            <text
-              x={canvasSize.width - 16}
-              y={22}
-              textAnchor="end"
-              fontSize={11}
-              fontFamily='"Martian Mono", monospace'
-              fill="rgba(55, 58, 52, 0.75)"
-            >
-              {dateStr}  {timeStr}
-            </text>
-          );
-        })()}
+        {session &&
+          session.steps.length > 0 &&
+          (() => {
+            const steps = session.steps;
+            const k = Math.min(completedEdges.length, steps.length - 1);
+            let displayTs = steps[k].timestamp;
+            if (
+              activeEdges.length > 0 &&
+              completedEdges.length < steps.length - 1
+            ) {
+              const progress = Math.min(
+                1,
+                (currentTime - activeEdges[0].startTime) / STEP_DURATION,
+              );
+              const t0 = steps[completedEdges.length]?.timestamp ?? displayTs;
+              const t1 = steps[completedEdges.length + 1]?.timestamp ?? t0;
+              displayTs = t0 + (t1 - t0) * progress;
+            }
+            const d = new Date(displayTs);
+            const dateStr = d.toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+            const timeStr = d.toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+              second: "2-digit",
+            });
+            return (
+              <text
+                x={canvasSize.width - 16}
+                y={22}
+                textAnchor="end"
+                fontSize={11}
+                fontFamily='"Martian Mono", monospace'
+                fill="rgba(55, 58, 52, 0.75)"
+              >
+                {dateStr} {timeStr}
+              </text>
+            );
+          })()}
       </svg>
     );
   });
