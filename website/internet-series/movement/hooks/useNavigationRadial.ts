@@ -8,7 +8,11 @@ import {
   RadialSession,
   RadialState,
 } from "../types";
-import { RADIAL_ORGANIC_COLORS, extractDomain } from "../utils/eventUtils";
+import {
+  RADIAL_ORGANIC_COLORS,
+  RADIAL_EDGE_COLORS,
+  extractDomain,
+} from "../utils/eventUtils";
 
 export interface NavigationRadialSettings {
   domainFilter: string;
@@ -109,8 +113,10 @@ export function useNavigationRadial(
 
     const domains = Array.from(domainVisitCount.keys()).sort();
     const domainColors = new Map<string, string>();
+    const domainEdgeColors = new Map<string, string>();
     domains.forEach((domain, idx) => {
       domainColors.set(domain, RADIAL_ORGANIC_COLORS[idx % RADIAL_ORGANIC_COLORS.length]);
+      domainEdgeColors.set(domain, RADIAL_EDGE_COLORS[idx % RADIAL_EDGE_COLORS.length]);
     });
 
     // Layout: one node at center (first to appear), rest spread anywhere on the page
@@ -189,7 +195,8 @@ export function useNavigationRadial(
     validSessions.forEach(([sessionKey, sessionEvents]) => {
       const sortedSession = [...sessionEvents].sort((a, b) => a.ts - b.ts);
       const firstUrl = sortedSession[0].meta.url || (sortedSession[0].data as any).url || "";
-      const sessionColor = domainColors.get(extractDomain(firstUrl)) ?? RADIAL_ORGANIC_COLORS[0];
+      const sessionColor =
+        domainEdgeColors.get(extractDomain(firstUrl)) ?? RADIAL_EDGE_COLORS[0];
 
       const steps: Array<{ domainId: string; timestamp: number }> = [];
       let lastDomain: string | null = null;

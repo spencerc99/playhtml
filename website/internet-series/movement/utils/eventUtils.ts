@@ -13,17 +13,40 @@ export const RISO_COLORS = [
   "rgb(0, 131, 138)", // Teal
 ];
 
-// Muted organic palette for radial (slime / moss / lichen): olives, sages, lichen grays, earth
-export const RADIAL_ORGANIC_COLORS = [
-  "rgb(98, 115, 78)",   // sage
-  "rgb(118, 128, 88)",   // olive
-  "rgb(100, 108, 82)",   // moss
-  "rgb(132, 118, 92)",   // lichen / stone
-  "rgb(88, 95, 78)",     // dark moss
-  "rgb(108, 102, 82)",   // bark
-  "rgb(94, 110, 88)",    // forest
-  "rgb(115, 112, 92)",   // stone-gray
+// Luminosity for radial nodes (slime blobs). 1 = unchanged; >1 = brighter; <1 = darker.
+export const RADIAL_PALETTE_LUMINOSITY = 1.8;
+// Luminosity for radial edges (paths between nodes). Independent of node luminosity.
+export const RADIAL_EDGE_LUMINOSITY = 0.8;
+
+const RADIAL_ORGANIC_BASE: [number, number, number][] = [
+  [98, 115, 78], // sage green
+  [100, 108, 82], // moss
+  [132, 118, 92], // lichen / stone
+  [108, 102, 82], // bark
+  [115, 112, 92], // stone-gray
+  [140, 95, 72], // rusty clay
+  [145, 115, 75], // amber / honey
+  [128, 98, 82], // dried orange
+  [95, 98, 115], // slate / lavender-gray
+  [92, 88, 108], // heather
+  [88, 95, 105], // blue-gray moss
 ];
+
+function scaleRgb([r, g, b]: [number, number, number], scale: number): string {
+  const clamp = (n: number) =>
+    Math.round(Math.min(255, Math.max(0, n * scale)));
+  return `rgb(${clamp(r)}, ${clamp(g)}, ${clamp(b)})`;
+}
+
+/** Slime-mold palette for nodes (RADIAL_PALETTE_LUMINOSITY) */
+export const RADIAL_ORGANIC_COLORS = RADIAL_ORGANIC_BASE.map((rgb) =>
+  scaleRgb(rgb, RADIAL_PALETTE_LUMINOSITY),
+);
+
+/** Same hues as nodes but scaled by RADIAL_EDGE_LUMINOSITY (for edge strokes) */
+export const RADIAL_EDGE_COLORS = RADIAL_ORGANIC_BASE.map((rgb) =>
+  scaleRgb(rgb, RADIAL_EDGE_LUMINOSITY),
+);
 
 /**
  * Hash a participant ID to a number for consistent color assignment
