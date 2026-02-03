@@ -57,8 +57,8 @@ function hashString(str: string): number {
 }
 
 /**
- * Map timestamp to x position using log scale for gaps
- * This compresses large time gaps while preserving sequence
+ * Map timestamp to x position.
+ * Linear mapping spreads events by actual time gaps for a less packed look.
  */
 function timeToX(
   timestamp: number,
@@ -72,9 +72,8 @@ function timeToX(
   const elapsed = timestamp - minTime;
   const totalDuration = maxTime - minTime;
   
-  // Use sqrt scale to compress large gaps while showing sequence
-  // sqrt(elapsed/total) gives us 0-1, then scale to width
-  const normalizedTime = Math.sqrt(elapsed / totalDuration);
+  // Linear: events spread proportionally to time gaps
+  const normalizedTime = elapsed / totalDuration;
   
   return padding + normalizedTime * (baseWidth - padding * 2);
 }
@@ -161,10 +160,9 @@ export function useNavigationTimeline(
       });
     });
 
-    // Calculate timeline width (allow scrolling)
-    // Make it wider for better horizontal spread
-    const totalWidth = Math.max(settings.canvasWidth * 5, 4000);
-    const padding = 150;
+    // Calculate timeline width - much wider for comfortable horizontal spread
+    const totalWidth = Math.max(settings.canvasWidth * 12, 8000);
+    const padding = 200;
 
     // Create sessions with random Y tracks
     const sessions: TimelineSession[] = [];
@@ -272,20 +270,56 @@ export function useNavigationTimeline(
           }
         });
         const avgY = (totalY / node.sessions.length) * settings.canvasHeight;
-        const jitter = (seededRandom(hashString(node.id), 2) - 0.5) * 200;
+        const jitterRange = settings.canvasHeight * 0.35; // ±17.5% of height
+        const jitter = (seededRandom(hashString(node.id), 2) - 0.5) * jitterRange;
         node.y = avgY + jitter;
       } else if (node.sessions.length === 1) {
-        // Single session: use that session's Y with much larger jitter for organic spread
+        // Single session: large vertical jitter scaled by canvas height
         const session = sessions.find((s) => s.id === node.sessions[0]);
         if (session) {
-          const jitter = (seededRandom(hashString(node.id), 1) - 0.5) * 300;
+          const jitterRange = settings.canvasHeight * 0.55; // ±27.5% of height
+          const jitter = (seededRandom(hashString(node.id), 1) - 0.5) * jitterRange;
           node.y = session.baseY * settings.canvasHeight + jitter;
         }
       }
       
       // Clamp Y to canvas with generous margins
-      node.y = Math.max(60, Math.min(settings.canvasHeight - 60, node.y));
+      node.y = Math.max(80, Math.min(settings.canvasHeight - 80, node.y));
     });
+
+    // Minimum spacing pass: nudge apart nodes that are too close
+    const nodeList = Array.from(nodes.values());
+    const minDist = 100;
+    const margin = 80;
+    
+    for (let iter = 0; iter < 5; iter++) {
+      for (let i = 0; i < nodeList.length; i++) {
+        for (let j = i + 1; j < nodeList.length; j++) {
+          const a = nodeList[i];
+          const b = nodeList[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < minDist && dist > 0) {
+            const overlap = (minDist - dist) / 2;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            
+            a.x -= nx * overlap;
+            a.y -= ny * overlap;
+            b.x += nx * overlap;
+            b.y += ny * overlap;
+          }
+        }
+      }
+      
+      // Re-clamp after each iteration
+      nodeList.forEach((node) => {
+        node.x = Math.max(padding, Math.min(totalWidth - padding, node.x));
+        node.y = Math.max(margin, Math.min(settings.canvasHeight - margin, node.y));
+      });
+    }
 
     console.log(
       `[Timeline] Created ${nodes.size} nodes, ${edges.length} edges, ${sessions.length} sessions`

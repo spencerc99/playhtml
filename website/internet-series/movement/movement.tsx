@@ -9,12 +9,14 @@ import { AnimatedTrails } from "./components/AnimatedTrails";
 import { AnimatedTyping } from "./components/AnimatedTyping";
 import { AnimatedScrollViewports } from "./components/AnimatedScrollViewports";
 import { AnimatedNavigation } from "./components/AnimatedNavigation";
+import { AnimatedNavigationRadial } from "./components/AnimatedNavigationRadial";
 
 // Import event-specific hooks
 import { useCursorTrails } from "./hooks/useCursorTrails";
 import { useKeyboardTyping } from "./hooks/useKeyboardTyping";
 import { useViewportScroll } from "./hooks/useViewportScroll";
 import { useNavigationTimeline } from "./hooks/useNavigationTimeline";
+import { useNavigationRadial } from "./hooks/useNavigationRadial";
 
 // Import shared utilities
 import { extractDomain } from "./utils/eventUtils";
@@ -81,10 +83,16 @@ const loadSettings = () => {
     keyboardPositionRandomness: 0.3,
     keyboardRandomizeOrder: false,
     navigationWindowOpacity: 0.9,
-    navigationEdgeOpacity: 0.7,
+    navigationEdgeOpacity: 0.2,
     navigationScrollSpeed: 80,
     navigationMaxSessions: 8,
     navigationMinSessionEvents: 3,
+    navigationViewMode: "timeline" as "timeline" | "radial",
+    navigationMaxParallelEdges: 3,
+    navigationRadialBlobSamples: 64,
+    navigationRadialBlobCurveTension: 0.5,
+    navigationRadialBlobEdgeNoise: 0.45,
+    navigationRadialBlobValleyDepth: 0.05,
   };
 
   try {
@@ -156,7 +164,7 @@ const InternetMovement = () => {
             .then((events) => {
               console.log(`[Fetch] Received ${events.length} cursor events`);
               return events;
-            })
+            }),
         );
       }
 
@@ -166,14 +174,14 @@ const InternetMovement = () => {
             .then((res) => {
               if (!res.ok)
                 throw new Error(
-                  `Failed to fetch keyboard events: ${res.status}`
+                  `Failed to fetch keyboard events: ${res.status}`,
                 );
               return res.json();
             })
             .then((events) => {
               console.log(`[Fetch] Received ${events.length} keyboard events`);
               return events;
-            })
+            }),
         );
       }
 
@@ -183,7 +191,7 @@ const InternetMovement = () => {
             if (!res.ok)
               throw new Error(`Failed to fetch viewport events: ${res.status}`);
             return res.json();
-          })
+          }),
         );
       }
 
@@ -193,16 +201,16 @@ const InternetMovement = () => {
             .then((res) => {
               if (!res.ok)
                 throw new Error(
-                  `Failed to fetch navigation events: ${res.status}`
+                  `Failed to fetch navigation events: ${res.status}`,
                 );
               return res.json();
             })
             .then((events) => {
               console.log(
-                `[Fetch] Received ${events.length} navigation events`
+                `[Fetch] Received ${events.length} navigation events`,
               );
               return events;
-            })
+            }),
         );
       }
 
@@ -309,7 +317,7 @@ const InternetMovement = () => {
       !availableDomains.includes(settings.domainFilter)
     ) {
       console.log(
-        `[Domain Filter] Clearing filter for "${settings.domainFilter}" - not found in available domains`
+        `[Domain Filter] Clearing filter for "${settings.domainFilter}" - not found in available domains`,
       );
       setSettings((s) => ({ ...s, domainFilter: "" }));
     }
@@ -344,7 +352,7 @@ const InternetMovement = () => {
       settings.maxConcurrentTrails,
       settings.overlapFactor,
       settings.minGapBetweenTrails,
-    ]
+    ],
   );
 
   const {
@@ -396,7 +404,7 @@ const InternetMovement = () => {
       settings.keyboardMaxFontSize,
       settings.keyboardPositionRandomness,
       settings.keyboardRandomizeOrder,
-    ]
+    ],
   );
 
   const { typingStates } = useKeyboardTyping(
@@ -404,7 +412,7 @@ const InternetMovement = () => {
     viewportSize,
     keyboardSettings,
     timeRange.duration,
-    timeRange.min
+    timeRange.min,
   );
 
   // Process viewport events into scroll animations
@@ -413,13 +421,13 @@ const InternetMovement = () => {
       domainFilter: settings.domainFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.domainFilter, settings.viewportEventFilter]
+    [settings.domainFilter, settings.viewportEventFilter],
   );
 
   const { animations: scrollAnimations } = useViewportScroll(
     events,
     viewportSize,
-    viewportSettings
+    viewportSettings,
   );
 
   // Process navigation events into timeline
@@ -437,13 +445,32 @@ const InternetMovement = () => {
       settings.navigationMinSessionEvents,
       viewportSize.width,
       viewportSize.height,
-    ]
+    ],
   );
 
   const { timelineState } = useNavigationTimeline(
     events,
-    navigationTimelineSettings
+    navigationTimelineSettings,
   );
+
+  const navigationRadialSettings = useMemo(
+    () => ({
+      domainFilter: settings.domainFilter,
+      maxSessions: settings.navigationMaxSessions,
+      minSessionEvents: settings.navigationMinSessionEvents,
+      canvasWidth: viewportSize.width,
+      canvasHeight: viewportSize.height,
+    }),
+    [
+      settings.domainFilter,
+      settings.navigationMaxSessions,
+      settings.navigationMinSessionEvents,
+      viewportSize.width,
+      viewportSize.height,
+    ],
+  );
+
+  const { radialState } = useNavigationRadial(events, navigationRadialSettings);
 
   // ============================================================
   // Memoized settings objects for child components
@@ -461,7 +488,7 @@ const InternetMovement = () => {
       settings.textboxOpacity,
       settings.keyboardShowCaret,
       settings.keyboardAnimationSpeed,
-    ]
+    ],
   );
 
   const scrollSettings = useMemo(
@@ -476,7 +503,7 @@ const InternetMovement = () => {
       settings.backgroundOpacity,
       settings.maxConcurrentScrolls,
       settings.randomizeColors,
-    ]
+    ],
   );
 
   const navigationSettings = useMemo(
@@ -491,7 +518,7 @@ const InternetMovement = () => {
       settings.navigationWindowOpacity,
       settings.navigationEdgeOpacity,
       settings.randomizeColors,
-    ]
+    ],
   );
 
   // ============================================================
@@ -666,6 +693,28 @@ const InternetMovement = () => {
           )}
 
         {settings.eventTypeFilter.navigation &&
+          (settings.navigationViewMode ?? "timeline") === "radial" &&
+          radialState &&
+          radialState.nodes.size > 0 && (
+            <AnimatedNavigationRadial
+              radialState={radialState}
+              canvasSize={viewportSize}
+              settings={{
+                nodeOpacity: settings.navigationWindowOpacity,
+                edgeOpacity: settings.navigationEdgeOpacity,
+                maxParallelEdges: settings.navigationMaxParallelEdges,
+                blob: {
+                  samples: settings.navigationRadialBlobSamples,
+                  curveTension: settings.navigationRadialBlobCurveTension,
+                  edgeNoise: settings.navigationRadialBlobEdgeNoise,
+                  valleyDepth: settings.navigationRadialBlobValleyDepth,
+                },
+              }}
+            />
+          )}
+
+        {settings.eventTypeFilter.navigation &&
+          (settings.navigationViewMode ?? "timeline") === "timeline" &&
           timelineState &&
           timelineState.nodes.size > 0 && (
             <AnimatedNavigation
@@ -680,5 +729,5 @@ const InternetMovement = () => {
 };
 
 ReactDOM.createRoot(
-  document.getElementById("reactContent") as HTMLElement
+  document.getElementById("reactContent") as HTMLElement,
 ).render(<InternetMovement />);
