@@ -3,111 +3,13 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { TrailState, ClickEffect } from "../types";
 import { getCursorComponent } from "../cursors";
-
-interface RippleSettings {
-  clickMinRadius: number;
-  clickMaxRadius: number;
-  clickMinDuration: number;
-  clickMaxDuration: number;
-  clickExpansionDuration: number;
-  clickStrokeWidth: number;
-  clickOpacity: number;
-  clickNumRings: number;
-  clickRingDelayMs: number;
-  clickAnimationStopPoint: number;
-}
-
-// Ripple Effect Component for clicks
-const RippleEffect = memo(
-  ({
-    effect,
-    settings: rippleSettings,
-  }: {
-    effect: ClickEffect;
-    settings: RippleSettings;
-  }) => {
-    const [now, setNow] = useState(Date.now());
-    const [isAnimating, setIsAnimating] = useState(true);
-
-    // Scale by hold duration if present (250ms is minimum hold threshold)
-    // Formula: multiplier = 1 + (holdDuration / 1000) so 250ms = 1.25x, 1000ms = 2x, 2000ms = 3x
-    const holdMultiplier = effect.holdDuration ? (1 + effect.holdDuration / 1000) : 1;
-    
-    const baseMaxRadius = rippleSettings.clickMinRadius + effect.radiusFactor * (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
-    const effectMaxRadius = baseMaxRadius * holdMultiplier;
-    
-    const baseTotalDuration = rippleSettings.clickMinDuration + effect.durationFactor * (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
-    const effectTotalDuration = baseTotalDuration * holdMultiplier;
-
-    useEffect(() => {
-      let animationFrameId: number;
-
-      const animate = () => {
-        setNow(Date.now());
-        animationFrameId = requestAnimationFrame(animate);
-      };
-
-      if (isAnimating) {
-        animationFrameId = requestAnimationFrame(animate);
-      }
-
-      return () => {
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId);
-        }
-      };
-    }, [isAnimating]);
-
-    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
-    const expansionDuration = rippleSettings.clickExpansionDuration * holdMultiplier;
-    
-    const totalElapsed = now - effect.startTime;
-    const allRingsComplete = totalElapsed >= effectTotalDuration || Array.from({ length: rippleSettings.clickNumRings }).every((_, i) => {
-      const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
-      const elapsed = now - ringStartTime;
-      const ringProgress = Math.min(1, elapsed / expansionDuration);
-      return ringProgress >= rippleSettings.clickAnimationStopPoint;
-    });
-
-    if (isAnimating && allRingsComplete) {
-      setIsAnimating(false);
-    }
-
-    const rings = Array.from({ length: rippleSettings.clickNumRings }, (_, i) => {
-      const ringStartTime = effect.startTime + (i * rippleSettings.clickRingDelayMs);
-      const elapsed = now - ringStartTime;
-
-      if (elapsed < 0) return null;
-
-      const rawProgress = Math.min(1, elapsed / expansionDuration);
-      const clampedProgress = Math.min(rawProgress, rippleSettings.clickAnimationStopPoint);
-      const normalizedProgress = clampedProgress / rippleSettings.clickAnimationStopPoint;
-      const ringRadius = effectMaxRadius * rippleSettings.clickAnimationStopPoint * easeOutCubic(normalizedProgress);
-      const ringOpacity = rippleSettings.clickOpacity;
-
-      return (
-        <circle
-          key={i}
-          cx={effect.x}
-          cy={effect.y}
-          r={ringRadius}
-          fill="none"
-          stroke={effect.color}
-          strokeWidth={rippleSettings.clickStrokeWidth}
-          opacity={Math.max(0, ringOpacity)}
-          style={{ mixBlendMode: "multiply" }}
-        />
-      );
-    });
-
-    return <g>{rings}</g>;
-  }
-);
+import { RippleEffect } from "./ClickRipple";
 
 interface AnimatedTrailsProps {
   trailStates: TrailState[];
   timeRange: { min: number; max: number; duration: number };
+  /** When false, ripples are not shown (e.g. when AnimatedClicks is used for click-only view) */
+  showClickRipples?: boolean;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -129,6 +31,7 @@ interface AnimatedTrailsProps {
 export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
   trailStates,
   timeRange,
+  showClickRipples = true,
   settings,
 }) => {
   const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
@@ -230,12 +133,14 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
     trailIndex,
     elapsedTimeMs,
     onSpawnClick,
+    showClickRipples: showRipples,
     settingsRefs
   }: {
     trailState: TrailState;
     trailIndex: number;
     elapsedTimeMs: number;
     onSpawnClick: (click: ClickEffect) => void;
+    showClickRipples: boolean;
     settingsRefs: {
       strokeWidth: React.MutableRefObject<number>;
       pointSize: React.MutableRefObject<number>;
@@ -282,6 +187,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
       : variedPoints[0] || { x: 0, y: 0 };
 
     useEffect(() => {
+      if (!showRipples) return;
       const trailKey = `trail-${trailIndex}`;
       if (!spawnedClicksRef.current.has(trailKey)) {
         spawnedClicksRef.current.set(trailKey, new Set());
@@ -305,7 +211,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
           });
         }
       });
-    }, [trailProgress, clicksWithProgress, cursorPosition, trail.color, trailIndex, onSpawnClick]);
+    }, [showRipples, trailProgress, clicksWithProgress, cursorPosition, trail.color, trailIndex, onSpawnClick]);
 
     const visiblePathData = pointsToDraw.length >= 2
       ? generatePathFromVariedPoints(pointsToDraw, 'straight')
@@ -379,6 +285,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
           trailIndex={trailIndex}
           elapsedTimeMs={elapsedTimeMs}
           onSpawnClick={handleSpawnClick}
+          showClickRipples={showClickRipples}
           settingsRefs={{
             strokeWidth: strokeWidthRef,
             pointSize: pointSizeRef,
@@ -386,7 +293,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
           }}
         />
       ))}
-      {activeClickEffects.map((effect) => (
+      {showClickRipples && activeClickEffects.map((effect) => (
         <RippleEffect
           key={effect.id}
           effect={effect}
@@ -407,11 +314,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(({
     </svg>
   );
 }, (prevProps, nextProps) => {
-  // Only re-render if trail states, time range, or click settings change
+  // Only re-render if trail states, time range, showClickRipples, or click settings change
   // Visual settings (strokeWidth, pointSize, trailOpacity, animationSpeed) are handled via refs
   return (
     prevProps.trailStates === nextProps.trailStates &&
     prevProps.timeRange === nextProps.timeRange &&
+    prevProps.showClickRipples === nextProps.showClickRipples &&
     prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
     prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
     prevProps.settings.clickMinDuration === nextProps.settings.clickMinDuration &&

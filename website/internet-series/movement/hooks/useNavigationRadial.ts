@@ -20,6 +20,8 @@ export interface NavigationRadialSettings {
   minSessionEvents: number;
   canvasWidth: number;
   canvasHeight: number;
+  /** When true, split sessions by calendar day and clear canvas between days; when false, one session per browser session, continuous play */
+  segmentByDay?: boolean;
 }
 
 export interface UseNavigationRadialResult {
@@ -47,6 +49,31 @@ function hashString(str: string): number {
     hash = hash & hash;
   }
   return Math.abs(hash);
+}
+
+/** Local date YYYY-MM-DD for day segmentation. Use event creator's timezone when available (meta.tz). */
+function toLocalDateKey(ts: number, timezone?: string): string {
+  const d = new Date(ts);
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(d);
+      const y = parts.find((p) => p.type === "year")?.value ?? "";
+      const m = parts.find((p) => p.type === "month")?.value ?? "";
+      const day = parts.find((p) => p.type === "day")?.value ?? "";
+      return `${y}-${m}-${day}`;
+    } catch {
+      // fallback to viewer local
+    }
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function useNavigationRadial(
@@ -190,13 +217,14 @@ export function useNavigationRadial(
       });
     }
 
-    // Build sessions as domain-step sequences (collapse consecutive same-domain)
+    // Build sessions: one per (browser session, calendar day) so a single browser session spanning multiple days becomes multiple sessions and we can clear between days
     const sessions: RadialSession[] = [];
     validSessions.forEach(([sessionKey, sessionEvents]) => {
       const sortedSession = [...sessionEvents].sort((a, b) => a.ts - b.ts);
       const firstUrl = sortedSession[0].meta.url || (sortedSession[0].data as any).url || "";
       const sessionColor =
         domainEdgeColors.get(extractDomain(firstUrl)) ?? RADIAL_EDGE_COLORS[0];
+      const tz = sortedSession[0].meta?.tz;
 
       const steps: Array<{ domainId: string; timestamp: number }> = [];
       let lastDomain: string | null = null;
@@ -213,16 +241,54 @@ export function useNavigationRadial(
         }
       });
 
-      if (steps.length > 0) {
+      if (steps.length === 0) return;
+
+      const segmentByDay = settings.segmentByDay ?? true;
+
+      if (segmentByDay) {
+        // Group steps by calendar day (original user's local date) so one session per day
+        const stepsByDay = new Map<string, Array<{ domainId: string; timestamp: number }>>();
+        steps.forEach((step) => {
+          const dayKey = toLocalDateKey(step.timestamp, tz);
+          if (!stepsByDay.has(dayKey)) stepsByDay.set(dayKey, []);
+          stepsByDay.get(dayKey)!.push(step);
+        });
+
+        const sortedDays = Array.from(stepsByDay.keys()).sort();
+        sortedDays.forEach((dayKey) => {
+          const daySteps = stepsByDay.get(dayKey)!;
+          if (daySteps.length > 0) {
+            sessions.push({
+              id: `${sessionKey}|${dayKey}`,
+              color: sessionColor,
+              dayKey,
+              steps: daySteps,
+            });
+          }
+        });
+      } else {
+        // Continuous: one session per browser session, single dayKey from first step
+        const dayKey = toLocalDateKey(steps[0].timestamp, tz);
         sessions.push({
           id: sessionKey,
           color: sessionColor,
+          dayKey,
           steps,
         });
       }
     });
 
-    console.log(`[Radial] Created ${nodes.size} domain nodes, ${sessions.length} sessions`);
+    // Sort by day (oldest first), then by first step time within day, so day segments are contiguous
+    sessions.sort((a, b) => {
+      if (a.dayKey !== b.dayKey) return a.dayKey.localeCompare(b.dayKey);
+      const aFirst = a.steps[0]?.timestamp ?? 0;
+      const bFirst = b.steps[0]?.timestamp ?? 0;
+      return aFirst - bFirst;
+    });
+
+    const sessionsByDay = new Map<string, number>();
+    sessions.forEach((s) => sessionsByDay.set(s.dayKey, (sessionsByDay.get(s.dayKey) ?? 0) + 1));
+    console.log("[Radial] Created", nodes.size, "domain nodes,", sessions.length, "sessions. Sessions per day (local):", Object.fromEntries(sessionsByDay));
     return { nodes, sessions };
   }, [
     navigationEvents,
@@ -231,6 +297,7 @@ export function useNavigationRadial(
     settings.minSessionEvents,
     settings.canvasWidth,
     settings.canvasHeight,
+    settings.segmentByDay,
   ]);
 
   return { radialState };

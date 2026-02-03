@@ -18,12 +18,16 @@ interface AnimatedNavigationRadialProps {
     nodeOpacity: number;
     edgeOpacity: number;
     maxParallelEdges?: number;
+    /** When false, play through all sessions continuously without clearing between days */
+    segmentByDay?: boolean;
     blob?: RadialBlobSettings;
   };
 }
 
 const STEP_DURATION = 800; // ms per step (edge draw + node appear/grow)
 const PAUSE_BETWEEN_SESSIONS = 1500;
+const PAUSE_BETWEEN_DAYS = 2400; // longer pause when crossing to a new day (canvas clears then repaints)
+const CLEAR_DURATION = 450; // ms to show empty canvas when transitioning to a new day so the clear is visible
 const GROWTH_DURATION = 200;
 const DEFAULT_MAX_CONCURRENT_EDGES = 3;
 const BASE_RADIUS = 12;
@@ -418,7 +422,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const [completedEdges, setCompletedEdges] = useState<
       Array<{ from: string; to: string; color: string }>
     >([]);
-    const [phase, setPhase] = useState<"playing" | "pause">("playing");
+    const [phase, setPhase] = useState<"playing" | "pause" | "clearing">("playing");
     const [nodeAnimatedRadii, setNodeAnimatedRadii] = useState<
       Map<string, number>
     >(new Map());
@@ -431,6 +435,9 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const nextStepIndexRef = useRef<number>(1);
     const lastEdgeStartTimeRef = useRef<number>(0);
     const sessionStartTimeRef = useRef<number>(0);
+    const clearStartTimeRef = useRef<number>(0);
+    const pendingNextSessionIndexRef = useRef<number | null>(null);
+    const didLogPauseRef = useRef<boolean>(false);
     const hasShownFirstNodeRef = useRef<boolean>(false);
     const nodeAnimatedRadiusRef = useRef<Map<string, number>>(new Map());
     const footprintAnimatedRadiusRef = useRef<Map<string, number>>(new Map());
@@ -445,15 +452,37 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
       nodeScalesRef.current = nodeScales;
     }, [displayVisitCounts, visibleNodeIds, nodeScales]);
 
-    // Initialize random session order when radialState changes
+    // Session order: when segmentByDay, group by day and shuffle within each day; otherwise flat shuffle
     useEffect(() => {
       if (!radialState || radialState.sessions.length === 0) return;
-      const order = radialState.sessions.map((_, i) => i);
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
+      const segmentByDay = settings.segmentByDay ?? true;
+      let order: number[];
+      if (segmentByDay) {
+        const byDay = new Map<string, number[]>();
+        radialState.sessions.forEach((s, i) => {
+          if (!byDay.has(s.dayKey)) byDay.set(s.dayKey, []);
+          byDay.get(s.dayKey)!.push(i);
+        });
+        order = [];
+        Array.from(byDay.keys())
+          .sort()
+          .forEach((dayKey) => {
+            const indices = byDay.get(dayKey)!;
+            for (let i = indices.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+            order.push(...indices);
+          });
+      } else {
+        order = radialState.sessions.map((_, i) => i);
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
       }
       sessionOrderRef.current = order;
+      pendingNextSessionIndexRef.current = null;
       setCurrentSessionIndex(0);
       setActiveEdges([]);
       setVisibleNodeIds(new Set());
@@ -468,7 +497,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
       hasShownFirstNodeRef.current = false;
       nodeAnimatedRadiusRef.current = new Map();
       footprintAnimatedRadiusRef.current = new Map();
-    }, [radialState]);
+    }, [radialState, settings.segmentByDay]);
 
     useEffect(() => {
       if (!radialState || radialState.sessions.length === 0) return;
@@ -481,27 +510,94 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
           return;
         }
 
+        // Day segmentation: when next session is a different dayKey we clear canvas then start fresh
         if (phase === "pause") {
-          if (
-            timestamp - sessionStartTimeRef.current >
-            PAUSE_BETWEEN_SESSIONS
-          ) {
+          const nextIdx =
+            (currentSessionIndex + 1) % radialState.sessions.length;
+          const currentSession =
+            radialState.sessions[
+              sessionOrderRef.current[currentSessionIndex] ?? 0
+            ];
+          const nextSession =
+            radialState.sessions[sessionOrderRef.current[nextIdx] ?? 0];
+          const segmentByDay = settings.segmentByDay ?? true;
+          const isNewDay =
+            segmentByDay &&
+            nextSession &&
+            currentSession &&
+            nextSession.dayKey !== currentSession.dayKey;
+          const elapsed = timestamp - sessionStartTimeRef.current;
+          const pauseDuration = isNewDay
+            ? PAUSE_BETWEEN_DAYS
+            : PAUSE_BETWEEN_SESSIONS;
+          if (!didLogPauseRef.current) {
+            const dayKeys = [...new Set(radialState.sessions.map((s) => s.dayKey))];
+            console.log("[Radial] Pause tick: day check", {
+              currentSessionIndex,
+              nextIdx,
+              currentDayKey: currentSession?.dayKey,
+              nextDayKey: nextSession?.dayKey,
+              isNewDay,
+              pauseDuration,
+              elapsed,
+              allDayKeysInData: dayKeys,
+              sessionOrderLength: sessionOrderRef.current.length,
+            });
+            didLogPauseRef.current = true;
+          }
+          if (elapsed > pauseDuration) {
+            if (isNewDay) {
+              // Clear canvas first: do NOT advance session index yet so we render same SVG with no content (visible clear)
+              console.log("[Radial] New day: clearing canvas for", nextSession.dayKey);
+              pendingNextSessionIndexRef.current = nextIdx;
+              setPhase("clearing");
+              setActiveEdges([]);
+              setVisibleNodeIds(new Set());
+              setNodeScales(new Map());
+              setDisplayVisitCounts(new Map());
+              setCompletedEdges([]);
+              setNodeAnimatedRadii(new Map());
+              setFootprintAnimatedRadii(new Map());
+              activeEdgesRef.current = [];
+              nextStepIndexRef.current = 1;
+              hasShownFirstNodeRef.current = false;
+              nodeAnimatedRadiusRef.current = new Map();
+              footprintAnimatedRadiusRef.current = new Map();
+              clearStartTimeRef.current = timestamp;
+            } else {
+              console.log("[Radial] Same day: advancing to next session", { nextIdx });
+              setPhase("playing");
+              setCurrentSessionIndex(nextIdx);
+              setActiveEdges([]);
+              setVisibleNodeIds(new Set());
+              setNodeScales(new Map());
+              setDisplayVisitCounts(new Map());
+              setCompletedEdges([]);
+              setNodeAnimatedRadii(new Map());
+              setFootprintAnimatedRadii(new Map());
+              activeEdgesRef.current = [];
+              nextStepIndexRef.current = 1;
+              hasShownFirstNodeRef.current = false;
+              nodeAnimatedRadiusRef.current = new Map();
+              footprintAnimatedRadiusRef.current = new Map();
+              sessionStartTimeRef.current = timestamp;
+            }
+          }
+          didLogPauseRef.current = false;
+          animationRef.current = requestAnimationFrame(animate);
+          return;
+        }
+
+        if (phase === "clearing") {
+          const clearElapsed = timestamp - clearStartTimeRef.current;
+          if (clearElapsed > CLEAR_DURATION) {
+            const pending = pendingNextSessionIndexRef.current;
+            console.log("[Radial] Clearing done, starting new day", { pending, clearElapsed });
+            if (pending !== null) {
+              setCurrentSessionIndex(pending);
+              pendingNextSessionIndexRef.current = null;
+            }
             setPhase("playing");
-            setCurrentSessionIndex(
-              (prev) => (prev + 1) % radialState.sessions.length,
-            );
-            setActiveEdges([]);
-            setVisibleNodeIds(new Set());
-            setNodeScales(new Map());
-            setDisplayVisitCounts(new Map());
-            setCompletedEdges([]);
-            setNodeAnimatedRadii(new Map());
-            setFootprintAnimatedRadii(new Map());
-            activeEdgesRef.current = [];
-            nextStepIndexRef.current = 1;
-            hasShownFirstNodeRef.current = false;
-            nodeAnimatedRadiusRef.current = new Map();
-            footprintAnimatedRadiusRef.current = new Map();
             sessionStartTimeRef.current = timestamp;
           }
           animationRef.current = requestAnimationFrame(animate);
@@ -649,6 +745,15 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
           nextStepIndexRef.current >= steps.length &&
           activeEdgesRef.current.length === 0
         ) {
+          didLogPauseRef.current = false;
+          const sessionIdxDone = sessionOrderRef.current[currentSessionIndex] ?? 0;
+          const sessionDone = radialState.sessions[sessionIdxDone];
+          console.log("[Radial] Session ended, entering pause", {
+            sessionIndex: currentSessionIndex,
+            sessionIdxInOrder: sessionIdxDone,
+            dayKey: sessionDone?.dayKey,
+            totalSessions: radialState.sessions.length,
+          });
           setPhase("pause");
           sessionStartTimeRef.current = timestamp;
         }
@@ -660,15 +765,18 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
       return () => {
         if (animationRef.current) cancelAnimationFrame(animationRef.current);
       };
-    }, [radialState, currentSessionIndex, phase, settings.maxParallelEdges]);
+    }, [radialState, currentSessionIndex, phase, settings.maxParallelEdges, settings.segmentByDay]);
 
     if (!radialState || radialState.nodes.size === 0) return null;
 
     const sessionIdx = sessionOrderRef.current[currentSessionIndex] ?? 0;
     const session = radialState.sessions[sessionIdx];
+    // Key by day so when day changes we remount the SVG and guarantee a clean canvas (no stale nodes/edges)
+    const svgKey = `radial-${session?.dayKey ?? "initial"}`;
 
     return (
       <svg
+        key={svgKey}
         className="navigation-radial-svg"
         width="100%"
         height="100%"
