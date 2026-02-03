@@ -1,0 +1,613 @@
+@import "../../base.scss";
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #1a1a1a;
+  font-family: system-ui, -apple-system, sans-serif;
+
+  // Hide cursor when drunk (will be handled by JS)
+  &.drunk {
+    cursor: none !important;
+  }
+}
+
+// Hide default playhtml cursors since we're rendering our own
+.playhtml-cursor-other {
+  display: none !important;
+}
+
+// Hide the document cursor that playhtml sets
+html,
+body,
+* {
+  cursor: none !important;
+}
+
+// But allow pointer cursor on interactive elements
+.drink,
+button,
+a {
+  cursor: pointer !important;
+}
+
+.drunk-cursor-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(
+      circle at 20% 30%,
+      rgba(139, 69, 19, 0.3) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 80% 70%,
+      rgba(101, 67, 33, 0.2) 0%,
+      transparent 50%
+    ),
+    linear-gradient(
+      to bottom,
+      #d4a574 0%,
+      #c19a6b 20%,
+      #8b7355 50%,
+      #5c4a3a 80%,
+      #3e2f24 100%
+    );
+
+  // Add texture
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 20px,
+        rgba(0, 0, 0, 0.02) 20px,
+        rgba(0, 0, 0, 0.02) 21px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 20px,
+        rgba(0, 0, 0, 0.02) 20px,
+        rgba(0, 0, 0, 0.02) 21px
+      );
+    pointer-events: none;
+    opacity: 0.6;
+  }
+}
+
+// Drunk Indicator - Skeuomorphic Club Penguin style
+.drunk-indicator {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: linear-gradient(to bottom, #ffd700 0%, #ffb347 50%, #ff8c42 100%);
+  border: 4px solid #8b4513;
+  border-radius: 16px;
+  padding: 16px 20px;
+  min-width: 180px;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 2px #654321;
+  font-family: "Comic Sans MS", "Marker Felt", "Arial Rounded MT Bold",
+    sans-serif;
+
+  .drunk-label {
+    font-size: 18px;
+    font-weight: bold;
+    color: #8b4513;
+    text-align: center;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.8),
+      -1px -1px 0px rgba(0, 0, 0, 0.3);
+    text-transform: uppercase;
+  }
+
+  .drunk-bar {
+    width: 100%;
+    height: 20px;
+    background: linear-gradient(to bottom, #654321 0%, #3e2723 100%);
+    border: 3px solid #1a1a1a;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5),
+      0 1px 2px rgba(255, 255, 255, 0.2);
+
+    .drunk-bar-fill {
+      height: 100%;
+      background: linear-gradient(
+        to bottom,
+        #ff6b6b 0%,
+        #ee5a52 30%,
+        #c92a2a 60%,
+        #862e2e 100%
+      );
+      transition: width 0.2s ease;
+      border-radius: 6px;
+      box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.3),
+        0 2px 4px rgba(255, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+
+      &::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 4px,
+          rgba(255, 255, 255, 0.1) 4px,
+          rgba(255, 255, 255, 0.1) 8px
+        );
+      }
+    }
+  }
+
+  .drunk-level {
+    font-size: 16px;
+    color: #1a1a1a;
+    text-align: center;
+    font-weight: bold;
+    text-shadow: 1px 1px 0px rgba(255, 255, 255, 0.8),
+      -1px -1px 0px rgba(0, 0, 0, 0.2);
+  }
+}
+
+// Beer-scale variant: 5 slots, active = colored, inactive = greyed; compact like progress bar
+.drunk-indicator-beers {
+  padding: 8px 12px;
+  min-width: auto;
+
+  .drunk-beers {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: -2px;
+    flex-wrap: nowrap;
+  }
+
+  .drunk-beer-wrapper {
+    position: relative;
+    width: 24px;
+    height: auto;
+    display: flex;
+    align-items: flex-end; // Align fill from bottom
+  }
+
+  .drunk-beer-icon {
+    width: 24px;
+    height: auto;
+    display: block;
+    transition: filter 0.2s ease;
+  }
+
+  .drunk-beer-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    transition: height 0.2s ease;
+  }
+
+  .drunk-beer-active {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  }
+
+  .drunk-beer-inactive {
+    filter: grayscale(1) brightness(0.7) opacity(0.6);
+  }
+}
+
+// Custom cursor for drunk effect - actual cursor shape
+.custom-cursor {
+  position: fixed;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-12px, -4px);
+  transition: transform 0.05s ease;
+  will-change: transform;
+
+  svg.cursor-main {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  }
+
+  // Drunk state - pulsing animation
+  &.cursor-drunk {
+    animation: cursor-pulse-own 1s ease-in-out infinite;
+
+    svg.cursor-main {
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5))
+        drop-shadow(0 0 8px rgba(255, 100, 100, 0.4));
+    }
+  }
+
+  // Double vision copies
+  svg.cursor-double-vision {
+    position: absolute;
+    top: 0;
+    left: 0;
+    filter: blur(1px) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    pointer-events: none;
+
+    &.cursor-double-1 {
+      animation: double-vision-drift-1 2s ease-in-out infinite;
+    }
+
+    &.cursor-double-2 {
+      animation: double-vision-drift-2 2.5s ease-in-out infinite;
+    }
+  }
+}
+
+// Double vision drift animations
+@keyframes double-vision-drift-1 {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: 3px -2px;
+  }
+  50% {
+    translate: -2px 1px;
+  }
+  75% {
+    translate: 2px 2px;
+  }
+}
+
+@keyframes double-vision-drift-2 {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  33% {
+    translate: -3px -1px;
+  }
+  66% {
+    translate: 2px 3px;
+  }
+}
+
+// Pulsing animation for own cursor (different transform origin)
+@keyframes cursor-pulse-own {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: translate(-12px, -4px) scale(1);
+  }
+  50% {
+    filter: brightness(1.2);
+    transform: translate(-12px, -4px) scale(1.1);
+  }
+}
+
+// Other users' cursors
+.other-cursor {
+  position: fixed;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  z-index: 100;
+  transform: translate(-50%, -50%);
+  transition: all 0.1s ease;
+
+  svg.cursor-main {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  }
+
+  // Drunk state - pulsing animation
+  &.cursor-drunk {
+    animation: cursor-pulse 1s ease-in-out infinite;
+
+    svg.cursor-main {
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))
+        drop-shadow(0 0 8px rgba(255, 100, 100, 0.4));
+    }
+  }
+
+  // Double vision copies
+  svg.cursor-double-vision {
+    position: absolute;
+    top: 0;
+    left: 0;
+    filter: blur(1px) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    pointer-events: none;
+
+    &.cursor-double-1 {
+      animation: double-vision-drift-1 2s ease-in-out infinite;
+    }
+
+    &.cursor-double-2 {
+      animation: double-vision-drift-2 2.5s ease-in-out infinite;
+    }
+  }
+}
+
+// Pulsing animation for drunk cursors
+@keyframes cursor-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    filter: brightness(1.2);
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+// Cursor Bar wooden sign - hanging in top left
+.cursor-bar-sign {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 100;
+  pointer-events: none;
+
+  // Rope/chain from ceiling
+  &::before {
+    content: "";
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 28px;
+    background: linear-gradient(
+      to bottom,
+      #8b7355 0%,
+      #6b5344 50%,
+      #5c4033 100%
+    );
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  // Wooden board
+  padding: 12px 24px;
+  background: linear-gradient(
+    165deg,
+    #a0522d 0%,
+    #8b4513 15%,
+    #654321 50%,
+    #5c4033 85%,
+    #4a3520 100%
+  );
+  border: 4px solid #3e2723;
+  border-radius: 6px;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.15),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.5),
+    0 0 0 2px #2c1810;
+  transform: rotate(-2deg);
+
+  .cursor-bar-sign-text {
+    display: block;
+    font-family: "Comic Sans MS", "Marker Felt", "Arial Rounded MT Bold", serif;
+    font-size: 28px;
+    font-weight: bold;
+    color: #f5deb3;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5),
+      -1px -1px 0 rgba(255, 255, 255, 0.2), 0 0 8px rgba(0, 0, 0, 0.4);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+}
+
+// Countertop
+.countertop {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background-image: url("/experiments/drunk-cursor/wooden-countertop.png");
+  background-size: cover;
+  background-position: center bottom;
+  background-size: 1200px;
+  background-repeat: repeat-x;
+  border-top: 4px solid #3e2723;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+}
+
+// Drink elements (beer or water)
+.drink {
+  position: absolute;
+  bottom: 140px;
+  width: 160px;
+  height: auto;
+  cursor: pointer;
+  transform: translateX(-50%);
+  transition: transform 0.2s ease, filter 0.2s ease;
+  z-index: 60;
+
+  // Full state - interactive
+  &.drink-full {
+    &:hover {
+      transform: translateX(-50%) translateY(-5px) scale(1.02);
+      filter: brightness(1.2);
+    }
+
+    &:active {
+      transform: translateX(-50%) scale(0.98);
+    }
+  }
+
+  // Draining animation - tilt while drinking
+  &.drink-draining {
+    animation: drinking-tilt 0.4s ease-in-out infinite;
+    cursor: wait;
+    pointer-events: none;
+  }
+
+  // Falling animation - tumble off table
+  &.drink-falling {
+    animation: drink-fall 0.8s ease-in forwards;
+    pointer-events: none;
+  }
+
+  // Pouring state - drink is at front being filled
+  &.drink-pouring {
+    transform: translateX(-30%) scale(2.2) translateY(120px);
+    transform-origin: center bottom;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
+    pointer-events: none;
+    z-index: 100; // Above other drinks
+  }
+
+  // Respawning animation - slide from front to counter
+  &.drink-respawning {
+    animation: drink-respawn 0.6s ease-out forwards;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  // Water-specific styling - subtle blue tint glow
+  &.drink-water {
+    .drink-image-filled {
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))
+        drop-shadow(0 0 12px rgba(100, 180, 255, 0.3));
+    }
+  }
+
+  .drink-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    transition: opacity 0.05s linear;
+  }
+
+  // Empty container layer - positioned behind filled drink
+  .drink-image-empty {
+    position: absolute;
+    top: 0;
+    left: 0;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    z-index: 1;
+  }
+
+  // Filled drink layer - on top, gets masked during drain
+  .drink-image-filled {
+    position: relative;
+    z-index: 2;
+  }
+}
+
+// Drinking tilt animation
+@keyframes drinking-tilt {
+  0%,
+  100% {
+    transform: translateX(-50%) rotate(-8deg);
+  }
+  50% {
+    transform: translateX(-50%) rotate(8deg);
+  }
+}
+
+// Drink falling off table
+@keyframes drink-fall {
+  0% {
+    transform: translateX(-50%) translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translateX(-50%) translateY(10px) rotate(15deg);
+  }
+  100% {
+    transform: translateX(-30%) translateY(300px) rotate(90deg);
+    opacity: 0;
+  }
+}
+
+// Drink respawning - slides from front (pouring position) to counter
+@keyframes drink-respawn {
+  0% {
+    transform: translateX(-30%) scale(2.2) translateY(120px);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
+  }
+  70% {
+    transform: translateX(-50%) translateY(5px) scale(0.95);
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+  }
+  100% {
+    transform: translateX(-50%) translateY(0) scale(1);
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+  }
+}
+
+// Animations
+@keyframes foam-bubble {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes bubble-rise {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-8px) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-16px) scale(0.8);
+    opacity: 0;
+  }
+}
+
+// Footer napkin - small, compact
+.footer-napkin {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: 200;
+
+  // Napkin style
+  background: linear-gradient(135deg, #f5f0e6 0%, #ebe4d4 50%, #ddd5c3 100%);
+  padding: 4px 8px;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transform: rotate(1deg);
+
+  font-family: "Comic Sans MS", "Marker Felt", cursive;
+  font-size: 8px;
+  color: #5c4033;
+  white-space: nowrap;
+
+  a {
+    color: #8b4513;
+    text-decoration: none;
+    font-weight: bold;
+
+    &:hover {
+      text-decoration: underline;
+      color: #a0522d;
+    }
+  }
+}
