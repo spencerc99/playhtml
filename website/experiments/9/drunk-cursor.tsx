@@ -641,6 +641,7 @@ const DrunkCursorController = withSharedState(
     // Audio refs for sounds
     const drinkSoundRef = useRef<HTMLAudioElement | null>(null);
     const pourSoundRef = useRef<HTMLAudioElement | null>(null);
+    const waterPourSoundRef = useRef<HTMLAudioElement | null>(null);
 
     const {
       dispatchPlayEvent,
@@ -658,6 +659,10 @@ const DrunkCursorController = withSharedState(
         "/experiments/drunk-cursor/beer-pour.MP3",
       );
       pourSoundRef.current.volume = 0.9;
+      waterPourSoundRef.current = new Audio(
+        "/experiments/drunk-cursor/pouring-water.mp3",
+      );
+      waterPourSoundRef.current.volume = 0.9;
       return () => {
         if (drinkSoundRef.current) {
           drinkSoundRef.current.pause();
@@ -666,6 +671,10 @@ const DrunkCursorController = withSharedState(
         if (pourSoundRef.current) {
           pourSoundRef.current.pause();
           pourSoundRef.current = null;
+        }
+        if (waterPourSoundRef.current) {
+          waterPourSoundRef.current.pause();
+          waterPourSoundRef.current = null;
         }
       };
     }, []);
@@ -720,9 +729,13 @@ const DrunkCursorController = withSharedState(
                 [drinkIndex]: { ...prev[drinkIndex]!, state: "hidden" },
               }));
               setTimeout(() => {
-                if (pourSoundRef.current) {
-                  pourSoundRef.current.currentTime = 0;
-                  pourSoundRef.current.play().catch(() => {});
+                const pourAudio =
+                  nextType === "water"
+                    ? waterPourSoundRef.current
+                    : pourSoundRef.current;
+                if (pourAudio) {
+                  pourAudio.currentTime = 0;
+                  pourAudio.play().catch(() => {});
                 }
                 setAnimatingSlotData((prev) => ({
                   ...prev,
@@ -1082,10 +1095,8 @@ const DrunkCursorController = withSharedState(
 
         {/* Footer napkin */}
         <div className="footer-napkin">
-          <a href="https://playhtml.fun">playhtml</a> experiment{" "}
-          <a href="https://github.com/spencerc99/playhtml/blob/main/website/experiments/9/">
-            "drunk-cursor"
-          </a>
+          <a href="https://playhtml.fun">playhtml</a> experiment 9 by{" "}
+          <a href="https://spencer.place/">spencer chang</a>
         </div>
 
         {/* Countertop with drinks */}
