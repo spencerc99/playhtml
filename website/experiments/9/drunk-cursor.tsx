@@ -625,6 +625,16 @@ const DrunkCursorController = withSharedState(
 
     const myColor = cursors?.color;
 
+    // Welcome modal: show on first visit, persist dismissal in localStorage
+    const [welcomeDismissed, setWelcomeDismissed] = useState(() => {
+      if (typeof localStorage === "undefined") return false;
+      return localStorage.getItem("drunk-cursor-welcome-dismissed") === "1";
+    });
+    const enterBar = useCallback(() => {
+      localStorage.setItem("drunk-cursor-welcome-dismissed", "1");
+      setWelcomeDismissed(true);
+    }, []);
+
     const drinks = Array.from({ length: DRINK_COUNT }, (_, i) => i);
 
     // Shared: which slot is beer vs water (synced for all clients)
@@ -875,6 +885,36 @@ const DrunkCursorController = withSharedState(
 
     return (
       <div className="drunk-cursor-container" id="drunk-cursor-main-1">
+        {/* Welcome modal - first visit only */}
+        {!welcomeDismissed && (
+          <div
+            className="welcome-modal-overlay"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div className="welcome-modal">
+              <h2 className="welcome-modal-title">
+                Welcome to the Cursor Bar!
+              </h2>
+              <p className="welcome-modal-body">
+                This is a shared place for cursors to hang out, relax, and
+                rewind after a long day scrolling. Drink some beer, dance
+                together, and remember to share!
+              </p>
+              <button
+                type="button"
+                className="welcome-modal-button"
+                onClick={enterBar}
+              >
+                Enter bar
+              </button>
+              <p className="welcome-modal-disclaimer">
+                *drink responsibly, don&apos;t drink and scroll
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Drunk Indicator - beer scale (5 slots), always visible */}
         <div className="drunk-indicator drunk-indicator-beers">
           <div className="drunk-beers">
