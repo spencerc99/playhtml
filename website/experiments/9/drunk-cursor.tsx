@@ -82,6 +82,8 @@ const DrunkCursorController = withSharedState(
     const [otherCursors, setOtherCursors] = useState<
       Map<string, CursorPresence>
     >(new Map());
+    // Use ref to track latest cursor positions without triggering effect restarts
+    const otherCursorsRef = useRef<Map<string, CursorPresence>>(new Map());
     // Track wobbled positions for other users' cursors (simulated locally)
     const [otherCursorsWobbled, setOtherCursorsWobbled] = useState<
       Map<string, { x: number; y: number }>
@@ -465,10 +467,11 @@ const DrunkCursorController = withSharedState(
         setCurrentMousePos({ x: newX, y: newY });
 
         // Update wobbled positions for other users' cursors
+        // Read from ref to get latest positions without restarting the animation loop
         const newWobbled = new Map<string, { x: number; y: number }>();
         const time = performance.now() / 1000;
 
-        otherCursors.forEach((cursorPresence, userId) => {
+        otherCursorsRef.current.forEach((cursorPresence, userId) => {
           if (!cursorPresence.cursor) return;
 
           const userDrunkLevel = getUserDrunkLevel(userId, false);
@@ -510,7 +513,7 @@ const DrunkCursorController = withSharedState(
           cancelAnimationFrame(animationFrameRef.current);
         }
       };
-    }, [hasSynced, drunkLevel, otherCursors, getUserDrunkLevel]);
+    }, [hasSynced, drunkLevel, getUserDrunkLevel]);
 
     // Drunk level decay over time - use a single interval that runs continuously
     useEffect(() => {
@@ -577,6 +580,8 @@ const DrunkCursorController = withSharedState(
           }
         });
 
+        // Update both state (for rendering) and ref (for animation loop)
+        otherCursorsRef.current = newCursors;
         setOtherCursors(newCursors);
       };
 
