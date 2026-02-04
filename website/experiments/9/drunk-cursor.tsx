@@ -27,10 +27,23 @@ interface CursorPresence {
 
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 
+const DRINK_COUNT = 4;
+const WATER_SPAWN_CHANCE = 0.1;
+type DrinkType = "beer" | "water";
+type DrinkState =
+  | "full"
+  | "draining"
+  | "falling"
+  | "hidden"
+  | "pouring"
+  | "respawning";
+
 const DrunkCursorController = withSharedState(
   {
-    id: "drunk-cursor-main",
-    defaultData: {},
+    id: "drunk-cursor-main-1",
+    defaultData: {
+      drinkTypes: Array(DRINK_COUNT).fill("beer") as DrinkType[],
+    },
     myDefaultAwareness: {
       drunkLevel: 0,
     },
@@ -85,36 +98,6 @@ const DrunkCursorController = withSharedState(
 
       // Override immediately and set up observer to keep it overridden
       overrideCursor();
-
-      // Use MutationObserver to watch for cursor style changes
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (
-            mutation.type === "attributes" &&
-            mutation.attributeName === "style" &&
-            mutation.target === document.documentElement
-          ) {
-            const cursor = document.documentElement.style.cursor;
-            // If playhtml sets a cursor (contains "url"), override it
-            if (cursor && cursor.includes("url")) {
-              overrideCursor();
-            }
-          }
-        });
-      });
-
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["style"],
-      });
-
-      // Also periodically check and override (fallback)
-      const checkInterval = setInterval(overrideCursor, 100);
-
-      return () => {
-        observer.disconnect();
-        clearInterval(checkInterval);
-      };
     }, [hasSynced]);
 
     // Get my user ID from cursor client
@@ -139,7 +122,7 @@ const DrunkCursorController = withSharedState(
         const provider = (playhtml.cursorClient as any).provider;
         if (!provider) return 0;
 
-        const elementId = "drunk-cursor-main";
+        const elementId = "drunk-cursor-main-1";
         const clientIdNum = parseInt(userId);
         if (isNaN(clientIdNum)) return 0;
 
@@ -630,48 +613,6 @@ const DrunkCursorController = withSharedState(
           baseColor = getMyPlayerIdentity().color;
         }
 
-        // Apply red tint based on drunk level
-        const userDrunkLevel = getUserDrunkLevel(userId, isMyCursor);
-        if (userDrunkLevel > 0) {
-          const redTint = userDrunkLevel / 100;
-
-          // Parse HSL color
-          const hslMatch = baseColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-          if (hslMatch) {
-            let hue = parseInt(hslMatch[1]);
-            let sat = parseInt(hslMatch[2]);
-            let light = parseInt(hslMatch[3]);
-
-            // Shift hue towards red (0 or 360)
-            if (hue > 180) {
-              hue = hue - (hue - 360) * redTint;
-            } else {
-              hue = hue - hue * redTint;
-            }
-            // Increase saturation and decrease lightness for "red face" effect
-            sat = Math.min(100, sat + redTint * 30);
-            light = Math.max(20, light - redTint * 15);
-
-            return `hsl(${Math.round(hue)}, ${Math.round(sat)}%, ${Math.round(
-              light,
-            )}%)`;
-          }
-
-          // Fallback: try RGB
-          const rgbMatch = baseColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-          if (rgbMatch) {
-            const r = parseInt(rgbMatch[1]);
-            const g = parseInt(rgbMatch[2]);
-            const b = parseInt(rgbMatch[3]);
-            const newR = Math.min(255, r + (255 - r) * redTint);
-            const newG = Math.max(0, g - g * redTint * 0.6);
-            const newB = Math.max(0, b - b * redTint * 0.6);
-            return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(
-              newB,
-            )})`;
-          }
-        }
-
         return baseColor;
       },
       [otherCursors, getUserDrunkLevel, cursors],
@@ -679,39 +620,33 @@ const DrunkCursorController = withSharedState(
 
     const myColor = cursors?.color;
 
-    // Create drink elements
-    const drinkCount = 4;
-    const drinks = Array.from({ length: drinkCount }, (_, i) => i);
+    const drinks = Array.from({ length: DRINK_COUNT }, (_, i) => i);
 
-    // Drink types: "beer" | "water"
-    type DrinkType = "beer" | "water";
-    const [drinkTypes, setDrinkTypes] = useState<DrinkType[]>(() =>
-      Array(drinkCount).fill("beer"),
-    );
+    // Shared: which slot is beer vs water (synced for all clients)
+    const drinkTypes =
+      data?.drinkTypes ?? (Array(DRINK_COUNT).fill("beer") as DrinkType[]);
 
-    // Chance for water to spawn (25%)
-    const WATER_SPAWN_CHANCE = 0.25;
-
-    // Drink states: "full" | "draining" | "falling" | "hidden" | "pouring" | "respawning"
-    type DrinkState =
-      | "full"
-      | "draining"
-      | "falling"
-      | "hidden"
-      | "pouring"
-      | "respawning";
-    const [drinkStates, setDrinkStates] = useState<DrinkState[]>(() =>
-      Array(drinkCount).fill("full"),
-    );
-
-    // Track fill level for draining animation (100 = full, 0 = empty)
-    const [drinkFillLevels, setDrinkFillLevels] = useState<number[]>(() =>
-      Array(drinkCount).fill(100),
-    );
+    // Local: per-slot animation state when a drink is being consumed (drain → fall → pour → respawn)
+    type SlotAnimation = {
+      state: DrinkState;
+      fillLevel: number;
+      consumedType: DrinkType;
+      nextType: DrinkType;
+    };
+    const [animatingSlotData, setAnimatingSlotData] = useState<
+      Record<number, SlotAnimation>
+    >({});
+    const animatingSlotsRef = useRef<Set<number>>(new Set());
 
     // Audio refs for sounds
     const drinkSoundRef = useRef<HTMLAudioElement | null>(null);
     const pourSoundRef = useRef<HTMLAudioElement | null>(null);
+
+    const {
+      dispatchPlayEvent,
+      registerPlayEventListener,
+      removePlayEventListener,
+    } = useContext(PlayContext);
 
     // Initialize audio elements
     useEffect(() => {
@@ -719,12 +654,10 @@ const DrunkCursorController = withSharedState(
         "/experiments/drunk-cursor/beer-drink.wav",
       );
       drinkSoundRef.current.volume = 0.5;
-
       pourSoundRef.current = new Audio(
         "/experiments/drunk-cursor/beer-pour.MP3",
       );
       pourSoundRef.current.volume = 0.9;
-
       return () => {
         if (drinkSoundRef.current) {
           drinkSoundRef.current.pause();
@@ -737,207 +670,235 @@ const DrunkCursorController = withSharedState(
       };
     }, []);
 
-    // Handle drinking a specific drink (beer or water)
-    const handleDrink = useCallback(
-      (drinkIndex: number) => {
-        if (!hasSynced) return;
-
-        // Only allow drinking if drink is full
-        if (drinkStates[drinkIndex] !== "full") return;
-
-        const isWater = drinkTypes[drinkIndex] === "water";
-
-        // Start draining
-        setDrinkStates((prev) => {
-          const next = [...prev];
-          next[drinkIndex] = "draining";
-          return next;
-        });
-
-        // Play drinking sound
-        if (drinkSoundRef.current) {
-          drinkSoundRef.current.currentTime = 0;
-          drinkSoundRef.current.play().catch(() => {
-            // Audio play failed (likely no user interaction yet)
-          });
-        }
-
-        // Animate the drink draining over ~1.2 seconds
-        const drainDuration = 1200;
-        const drainSteps = 24;
-        const drainAmount = 100 / drainSteps;
-        const stepInterval = drainDuration / drainSteps;
+    // Start full drink animation for a slot (drain → fall → hidden → pour → respawn → full). Called from event listener.
+    const startDrinkAnimation = useCallback(
+      (
+        drinkIndex: number,
+        consumedType: DrinkType,
+        nextType: DrinkType,
+        applyDrunkEffect: boolean,
+      ) => {
+        const DRAIN_DURATION = 1200;
+        const DRAIN_STEPS = 24;
+        const DRAIN_AMOUNT = 100 / DRAIN_STEPS;
+        const STEP_INTERVAL = DRAIN_DURATION / DRAIN_STEPS;
+        // Initial state already set by event listener; just run the timers
 
         let currentStep = 0;
         const drainInterval = setInterval(() => {
           currentStep++;
-
-          setDrinkFillLevels((prev) => {
-            const newLevels = [...prev];
-            newLevels[drinkIndex] = Math.max(
-              0,
-              100 - currentStep * drainAmount,
-            );
-            return newLevels;
+          setAnimatingSlotData((prev) => {
+            const slot = prev[drinkIndex];
+            if (!slot) return prev;
+            return {
+              ...prev,
+              [drinkIndex]: {
+                ...slot,
+                fillLevel: Math.max(0, 100 - currentStep * DRAIN_AMOUNT),
+              },
+            };
           });
 
-          if (currentStep >= drainSteps) {
+          if (currentStep >= DRAIN_STEPS) {
             clearInterval(drainInterval);
-
-            // Apply effect after finishing the drink
-            const currentLevel = drunkLevelRef.current;
-            let newLevel: number;
-            if (isWater) {
-              // Water sobers you up (-30 drunk level)
-              newLevel = Math.max(0, currentLevel - 30);
-            } else {
-              // Beer makes you drunker (+20 drunk level)
-              newLevel = Math.min(100, currentLevel + 20);
+            if (applyDrunkEffect) {
+              const currentLevel = drunkLevelRef.current;
+              const newLevel =
+                consumedType === "water"
+                  ? Math.max(0, currentLevel - 30)
+                  : Math.min(100, currentLevel + 20);
+              drunkLevelRef.current = newLevel;
+              setMyAwareness({ drunkLevel: newLevel });
             }
-            drunkLevelRef.current = newLevel;
-            setMyAwareness({ drunkLevel: newLevel });
-
-            // Start falling animation
-            setDrinkStates((prev) => {
-              const next = [...prev];
-              next[drinkIndex] = "falling";
-              return next;
-            });
-
-            // After fall animation (800ms), hide the drink
+            setAnimatingSlotData((prev) => ({
+              ...prev,
+              [drinkIndex]: { ...prev[drinkIndex]!, state: "falling" },
+            }));
             setTimeout(() => {
-              setDrinkStates((prev) => {
-                const next = [...prev];
-                next[drinkIndex] = "hidden";
-                return next;
-              });
-
-              // After being hidden (1.5s), start pouring
+              setAnimatingSlotData((prev) => ({
+                ...prev,
+                [drinkIndex]: { ...prev[drinkIndex]!, state: "hidden" },
+              }));
               setTimeout(() => {
-                // Decide if next drink is water or beer
-                const nextIsWater = Math.random() < WATER_SPAWN_CHANCE;
-                setDrinkTypes((prev) => {
-                  const next = [...prev];
-                  next[drinkIndex] = nextIsWater ? "water" : "beer";
-                  return next;
-                });
-
-                // Play pour sound when new drink starts pouring
                 if (pourSoundRef.current) {
                   pourSoundRef.current.currentTime = 0;
-                  pourSoundRef.current.play().catch(() => {
-                    // Audio play failed
-                  });
+                  pourSoundRef.current.play().catch(() => {});
                 }
-
-                // Start with empty drink at front (pouring state)
-                setDrinkStates((prev) => {
-                  const next = [...prev];
-                  next[drinkIndex] = "pouring";
-                  return next;
-                });
-                // Start empty, will fill up
-                setDrinkFillLevels((prev) => {
-                  const newLevels = [...prev];
-                  newLevels[drinkIndex] = 0;
-                  return newLevels;
-                });
-
-                // Animate filling over ~2.5 seconds
-                const fillDuration = 2500;
-                const fillSteps = 20;
-                const fillAmount = 100 / fillSteps;
-                const stepInterval = fillDuration / fillSteps;
-
-                let currentStep = 0;
+                setAnimatingSlotData((prev) => ({
+                  ...prev,
+                  [drinkIndex]: {
+                    ...prev[drinkIndex]!,
+                    state: "pouring",
+                    fillLevel: 0,
+                  },
+                }));
+                const FILL_DURATION = 2500;
+                const FILL_STEPS = 20;
+                const FILL_AMOUNT = 100 / FILL_STEPS;
+                const fillStepInterval = FILL_DURATION / FILL_STEPS;
+                let fillStep = 0;
                 const fillInterval = setInterval(() => {
-                  currentStep++;
-
-                  setDrinkFillLevels((prev) => {
-                    const newLevels = [...prev];
-                    newLevels[drinkIndex] = Math.min(
-                      100,
-                      currentStep * fillAmount,
-                    );
-                    return newLevels;
+                  fillStep++;
+                  setAnimatingSlotData((prev) => {
+                    const slot = prev[drinkIndex];
+                    if (!slot) return prev;
+                    return {
+                      ...prev,
+                      [drinkIndex]: {
+                        ...slot,
+                        fillLevel: Math.min(100, fillStep * FILL_AMOUNT),
+                      },
+                    };
                   });
-
-                  if (currentStep >= fillSteps) {
+                  if (fillStep >= FILL_STEPS) {
                     clearInterval(fillInterval);
-
-                    // After filling, slide the drink into place
-                    setDrinkStates((prev) => {
-                      const next = [...prev];
-                      next[drinkIndex] = "respawning";
-                      return next;
-                    });
-
-                    // After slide animation (600ms), drink is full again
+                    setAnimatingSlotData((prev) => ({
+                      ...prev,
+                      [drinkIndex]: {
+                        ...prev[drinkIndex]!,
+                        state: "respawning",
+                      },
+                    }));
                     setTimeout(() => {
-                      setDrinkStates((prev) => {
-                        const next = [...prev];
-                        next[drinkIndex] = "full";
+                      animatingSlotsRef.current.delete(drinkIndex);
+                      setAnimatingSlotData((prev) => {
+                        const next = { ...prev };
+                        delete next[drinkIndex];
                         return next;
                       });
                     }, 600);
                   }
-                }, stepInterval);
+                }, fillStepInterval);
               }, 1500);
             }, 800);
           }
-        }, stepInterval);
+        }, STEP_INTERVAL);
       },
-      [hasSynced, drinkStates, drinkTypes, setMyAwareness],
+      [setMyAwareness],
+    );
+
+    // Collaborative: when anyone drinks, all clients play sound and start local animation
+    useEffect(() => {
+      if (!hasSynced || !registerPlayEventListener || !removePlayEventListener)
+        return;
+      const listenerId = registerPlayEventListener("drunk-cursor-drink", {
+        onEvent: (payload: unknown) => {
+          const p = payload as {
+            drinkIndex?: number;
+            consumedType?: DrinkType;
+            nextType?: DrinkType;
+            userId?: string | null;
+          } | null;
+          if (p == null || typeof p.drinkIndex !== "number") return;
+          const { drinkIndex, consumedType, nextType, userId } = p;
+          if (animatingSlotsRef.current.has(drinkIndex)) return;
+          animatingSlotsRef.current.add(drinkIndex);
+          if (drinkSoundRef.current) {
+            drinkSoundRef.current.currentTime = 0;
+            drinkSoundRef.current.play().catch(() => {});
+          }
+          setAnimatingSlotData((prev) => ({
+            ...prev,
+            [drinkIndex]: {
+              state: "draining",
+              fillLevel: 100,
+              consumedType: consumedType ?? "beer",
+              nextType: nextType ?? "beer",
+            },
+          }));
+          const myId = getMyUserId();
+          startDrinkAnimation(
+            drinkIndex,
+            consumedType ?? "beer",
+            nextType ?? "beer",
+            userId != null && myId != null && userId === myId,
+          );
+        },
+      });
+      return () => removePlayEventListener("drunk-cursor-drink", listenerId);
+    }, [
+      hasSynced,
+      registerPlayEventListener,
+      removePlayEventListener,
+      getMyUserId,
+      startDrinkAnimation,
+    ]);
+
+    // Click handler: only update shared state and dispatch event; animation is started by event listener
+    const handleDrink = useCallback(
+      (drinkIndex: number) => {
+        if (!hasSynced || !dispatchPlayEvent) return;
+        if (animatingSlotData[drinkIndex] != null) return;
+        const consumedType = data?.drinkTypes?.[drinkIndex] ?? "beer";
+        const nextType = Math.random() < WATER_SPAWN_CHANCE ? "water" : "beer";
+        // playhtml: use splice() for array updates; draft.drinkTypes[i] = x is not supported
+        setData((draft: { drinkTypes: DrinkType[] }) => {
+          draft.drinkTypes.splice(drinkIndex, 1, nextType);
+        });
+        dispatchPlayEvent({
+          type: "drunk-cursor-drink",
+          eventPayload: {
+            drinkIndex,
+            consumedType,
+            nextType,
+            userId: getMyUserId(),
+          },
+        });
+      },
+      [
+        hasSynced,
+        dispatchPlayEvent,
+        animatingSlotData,
+        data?.drinkTypes,
+        setData,
+        getMyUserId,
+      ],
     );
 
     return (
-      <div className="drunk-cursor-container" id="drunk-cursor-main">
-        {/* Drunk Indicator - beer scale (5 slots, active = filled, inactive = greyed) */}
-        {drunkLevel > 0 && (
-          <div className="drunk-indicator drunk-indicator-beers">
-            <div className="drunk-beers">
-              {Array.from({ length: 5 }, (_, i) => {
-                const beerLevel = drunkLevel / 20; // 0-5 (decimal)
-                const fullBeers = Math.floor(beerLevel);
-                const partialBeer = beerLevel - fullBeers; // 0-1 for the current partial beer
+      <div className="drunk-cursor-container" id="drunk-cursor-main-1">
+        {/* Drunk Indicator - beer scale (5 slots), always visible */}
+        <div className="drunk-indicator drunk-indicator-beers">
+          <div className="drunk-beers">
+            {Array.from({ length: 5 }, (_, i) => {
+              const beerLevel = drunkLevel / 20; // 0-5 (decimal)
+              const fullBeers = Math.floor(beerLevel);
+              const partialBeer = beerLevel - fullBeers; // 0-1 for the current partial beer
 
-                const isFullyActive = i < fullBeers;
-                const isPartiallyActive = i === fullBeers && partialBeer > 0;
-                const fillPercentage = isPartiallyActive
-                  ? partialBeer * 100
-                  : 0;
+              const isFullyActive = i < fullBeers;
+              const isPartiallyActive = i === fullBeers && partialBeer > 0;
+              const fillPercentage = isPartiallyActive ? partialBeer * 100 : 0;
 
-                return (
-                  <div key={i} className="drunk-beer-wrapper">
-                    {/* Inactive (greyed) beer as background */}
+              return (
+                <div key={i} className="drunk-beer-wrapper">
+                  {/* Inactive (greyed) beer as background */}
+                  <img
+                    src="/experiments/drunk-cursor/beer.webp"
+                    alt=""
+                    className="drunk-beer-icon drunk-beer-inactive"
+                  />
+                  {/* Active (colored) beer clipped to show partial fill */}
+                  <div
+                    className="drunk-beer-fill"
+                    style={{
+                      height: isFullyActive
+                        ? "100%"
+                        : isPartiallyActive
+                        ? `${fillPercentage}%`
+                        : "0%",
+                    }}
+                  >
                     <img
                       src="/experiments/drunk-cursor/beer.webp"
                       alt=""
-                      className="drunk-beer-icon drunk-beer-inactive"
+                      className="drunk-beer-icon drunk-beer-active"
                     />
-                    {/* Active (colored) beer clipped to show partial fill */}
-                    <div
-                      className="drunk-beer-fill"
-                      style={{
-                        height: isFullyActive
-                          ? "100%"
-                          : isPartiallyActive
-                          ? `${fillPercentage}%`
-                          : "0%",
-                      }}
-                    >
-                      <img
-                        src="/experiments/drunk-cursor/beer.webp"
-                        alt=""
-                        className="drunk-beer-icon drunk-beer-active"
-                      />
-                    </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
 
         {/* Custom cursor element (always show for own cursor) */}
         <div
@@ -1130,10 +1091,17 @@ const DrunkCursorController = withSharedState(
         {/* Countertop with drinks */}
         <div className="countertop">
           {drinks.map((i) => {
-            const state = drinkStates[i];
-            const fillLevel = drinkFillLevels[i];
-            const drinkType = drinkTypes[i];
-            const isWater = drinkType === "water";
+            const slotAnim = animatingSlotData[i];
+            const isAnimating = slotAnim != null;
+            const state = isAnimating ? slotAnim.state : "full";
+            const fillLevel = isAnimating ? slotAnim.fillLevel : 100;
+            // When animating: drain/fall use consumedType; pour/respawn use nextType. When full use shared data.drinkTypes
+            const displayType: DrinkType = isAnimating
+              ? state === "draining" || state === "falling"
+                ? slotAnim.consumedType
+                : slotAnim.nextType
+              : drinkTypes[i] ?? "beer";
+            const isWater = displayType === "water";
 
             // Don't render hidden drinks
             if (state === "hidden") return null;
@@ -1153,7 +1121,6 @@ const DrunkCursorController = withSharedState(
             // Calculate mask based on state
             let maskStyle: React.CSSProperties = {};
             if (state === "draining") {
-              // Draining: liquid level drops from top (hide top portion)
               maskStyle = {
                 maskImage: `linear-gradient(to bottom, transparent ${
                   100 - fillLevel
@@ -1163,7 +1130,6 @@ const DrunkCursorController = withSharedState(
                 }%, black ${100 - fillLevel}%)`,
               };
             } else if (state === "pouring") {
-              // Pouring: liquid fills from bottom (hide top portion, reveal as fillLevel increases)
               maskStyle = {
                 maskImage: `linear-gradient(to bottom, transparent ${
                   100 - fillLevel
@@ -1174,7 +1140,6 @@ const DrunkCursorController = withSharedState(
               };
             }
 
-            // Image paths based on drink type
             const emptyImageSrc = isWater
               ? "/experiments/drunk-cursor/empty-water-glass.png"
               : "/experiments/drunk-cursor/empty-beer.png";
@@ -1190,10 +1155,9 @@ const DrunkCursorController = withSharedState(
                 }`}
                 onClick={() => handleDrink(i)}
                 style={{
-                  left: `${15 + (i * 70) / (drinkCount - 1)}%`,
+                  left: `${15 + (i * 70) / (DRINK_COUNT - 1)}%`,
                 }}
               >
-                {/* Empty container layer - visible during drain, falling, and pouring */}
                 {showEmpty && (
                   <img
                     src={emptyImageSrc}
@@ -1201,7 +1165,6 @@ const DrunkCursorController = withSharedState(
                     className="drink-image drink-image-empty"
                   />
                 )}
-                {/* Filled drink layer */}
                 {showFilled && (
                   <img
                     src={filledImageSrc}
