@@ -102,7 +102,10 @@ describe("ElementHandler", () => {
       triggerAwarenessUpdate,
     } as unknown as ElementData);
 
-    handler.__awareness = [{ who: "A" } as any, { who: "B" } as any];
+    handler.updateAwareness(
+      [{ who: "A" } as any, { who: "B" } as any],
+      new Map([["stable-id-a", { who: "A" } as any], ["stable-id-b", { who: "B" } as any]])
+    );
     expect(updateElementAwareness).toHaveBeenCalledTimes(1);
 
     handler.setMyAwareness({ me: "X" } as any);

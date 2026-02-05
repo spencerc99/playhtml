@@ -25,6 +25,12 @@ export type CursorPresence = {
   page?: string;
 };
 
+// Slim cursor presence type for rendering (excludes internal fields)
+export type CursorPresenceView = {
+  cursor: Cursor | null;
+  playerIdentity?: PlayerIdentity;
+};
+
 // Event payloads for cursor-related global API updates
 export interface CursorEvents {
   allColors: string[];

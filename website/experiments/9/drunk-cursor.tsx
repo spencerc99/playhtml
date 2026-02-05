@@ -13,19 +13,9 @@ import {
   PlayProvider,
   usePlayContext,
   withSharedState,
+  useCursorPresences,
 } from "@playhtml/react";
 import { playhtml } from "playhtml";
-
-interface CursorPresence {
-  cursor: { x: number; y: number } | null;
-  playerIdentity: {
-    playerStyle: { colorPalette: string[] };
-    name?: string;
-  };
-  lastSeen: number;
-}
-
-const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 
 const DRINK_COUNT = 4;
 const WATER_SPAWN_CHANCE = 0.1;
@@ -48,7 +38,14 @@ const DrunkCursorController = withSharedState(
       drunkLevel: 0,
     },
   },
-  ({ data, setData, myAwareness, setMyAwareness, awareness }) => {
+  ({
+    data,
+    setData,
+    myAwareness,
+    setMyAwareness,
+    awareness,
+    awarenessByStableId,
+  }) => {
     // Use ref to track current drunk level for interval callbacks and prevent flicker
     const drunkLevelRef = useRef(0);
 
@@ -79,11 +76,13 @@ const DrunkCursorController = withSharedState(
     const wobblePhaseRef = useRef({ x: 0, y: 0, lastResetX: 0, lastResetY: 0 }); // Track wobble phase for smooth/jerk pattern
     const { hasSynced, cursors, getMyPlayerIdentity } = useContext(PlayContext);
     const drunkDecayIntervalRef = useRef<number | null>(null);
-    const [otherCursors, setOtherCursors] = useState<
-      Map<string, CursorPresence>
-    >(new Map());
+    // Get cursor presences from the new API
+    const cursorPresences = useCursorPresences();
     // Use ref to track latest cursor positions without triggering effect restarts
-    const otherCursorsRef = useRef<Map<string, CursorPresence>>(new Map());
+    const otherCursorsRef = useRef(cursorPresences);
+    // Update ref synchronously (not in useEffect) to avoid timing issues with animation loop
+    otherCursorsRef.current = cursorPresences;
+
     // Track wobbled positions for other users' cursors (simulated locally)
     const [otherCursorsWobbled, setOtherCursorsWobbled] = useState<
       Map<string, { x: number; y: number }>
@@ -93,7 +92,6 @@ const DrunkCursorController = withSharedState(
     useEffect(() => {
       if (!hasSynced) return;
 
-      // Override the cursor style that playhtml sets
       const overrideCursor = () => {
         document.documentElement.style.cursor = "none";
       };
@@ -102,46 +100,24 @@ const DrunkCursorController = withSharedState(
       overrideCursor();
     }, [hasSynced]);
 
-    // Get my user ID from cursor client
+    // Get my user ID (stable ID)
     const getMyUserId = useCallback((): string | null => {
-      if (!playhtml.cursorClient) return null;
-      const provider = (playhtml.cursorClient as any).provider;
-      if (!provider) return null;
-      return provider.awareness.clientID.toString();
-    }, []);
+      const identity = getMyPlayerIdentity();
+      return identity?.publicKey ?? null;
+    }, [getMyPlayerIdentity]);
 
-    // Get drunk level for a user from awareness
-    // The awareness array from withSharedState contains all users' awareness
-    // We need to match userId (client ID) to the awareness entry
+    // Get drunk level for a user from awareness (using stable ID)
     const getUserDrunkLevel = useCallback(
-      (userId: string, isMyCursor: boolean = false): number => {
+      (stableId: string, isMyCursor: boolean = false): number => {
         if (isMyCursor) {
           return drunkLevel;
         }
 
-        // Access the provider's awareness states directly to get client ID -> awareness mapping
-        if (!playhtml.cursorClient) return 0;
-        const provider = (playhtml.cursorClient as any).provider;
-        if (!provider) return 0;
-
-        const elementId = "drunk-cursor-main-1";
-        const clientIdNum = parseInt(userId);
-        if (isNaN(clientIdNum)) return 0;
-
-        // Get awareness state for this client ID
-        const states = provider.awareness.getStates();
-        const userState = states.get(clientIdNum);
-        if (userState) {
-          // Check if this user has awareness for our element
-          const elementAwareness = userState["can-play"]?.[elementId];
-          if (elementAwareness?.drunkLevel !== undefined) {
-            return elementAwareness.drunkLevel;
-          }
-        }
-
-        return 0;
+        // Use awarenessByStableId from withSharedState
+        const userAwareness = awarenessByStableId.get(stableId);
+        return userAwareness?.drunkLevel ?? 0;
       },
-      [drunkLevel],
+      [drunkLevel, awarenessByStableId],
     );
 
     // Track own cursor movements
@@ -557,50 +533,8 @@ const DrunkCursorController = withSharedState(
     // Wobble animation when drunk and not moving - now handled in smoothStep above
     // Removed separate wobble effect since it's integrated into the interference system
 
-    // Listen to other users' cursor positions from awareness
-    useEffect(() => {
-      if (!hasSynced || !playhtml.cursorClient) return;
-
-      const provider = (playhtml.cursorClient as any).provider;
-      if (!provider) return;
-
-      const updateOtherCursors = () => {
-        const states = provider.awareness.getStates();
-        const myClientId = provider.awareness.clientID;
-        const newCursors = new Map<string, CursorPresence>();
-
-        states.forEach((state, clientId) => {
-          if (clientId === myClientId) return;
-
-          const cursorData = state[CURSOR_AWARENESS_FIELD] as
-            | CursorPresence
-            | undefined;
-          if (cursorData?.cursor) {
-            newCursors.set(clientId.toString(), cursorData);
-          }
-        });
-
-        // Update both state (for rendering) and ref (for animation loop)
-        otherCursorsRef.current = newCursors;
-        setOtherCursors(newCursors);
-      };
-
-      // Initial update
-      updateOtherCursors();
-
-      // Listen to awareness changes
-      provider.awareness.on("change", updateOtherCursors);
-
-      return () => {
-        provider.awareness.off("change", updateOtherCursors);
-      };
-    }, [hasSynced]);
-
-    // No need to sync - drunkLevel is already from myAwareness
-    // The awareness is automatically synced when we call setMyAwareness
-
     const getUserColor = useCallback(
-      (userId: string, isMyCursor: boolean = false): string => {
+      (stableId: string, isMyCursor: boolean = false): string => {
         let baseColor: string | undefined;
 
         if (isMyCursor) {
@@ -608,19 +542,21 @@ const DrunkCursorController = withSharedState(
           baseColor = cursors?.color;
         }
         if (!baseColor) {
-          // Other users: same as playhtml - use cursor presence playerIdentity from awareness
-          const cursorPresence = otherCursors.get(userId);
+          // Other users: use cursor presence from the new API
+          const cursorPresence = cursorPresences.get(stableId);
           baseColor =
             cursorPresence?.playerIdentity?.playerStyle?.colorPalette?.[0];
         }
         if (!baseColor) {
-          // Same fallback as playhtml cursor-client when playerIdentity/color is missing
-          baseColor = getMyPlayerIdentity().color;
+          // Fallback to my color
+          const myIdentity = getMyPlayerIdentity();
+          baseColor =
+            myIdentity?.playerStyle?.colorPalette?.[0] ?? cursors?.color;
         }
 
         return baseColor;
       },
-      [otherCursors, getUserDrunkLevel, cursors],
+      [cursorPresences, cursors, getMyPlayerIdentity],
     );
 
     const myColor = cursors?.color;
@@ -1038,69 +974,52 @@ const DrunkCursorController = withSharedState(
         </div>
 
         {/* Other users' cursors */}
-        {Array.from(otherCursors.entries()).map(([userId, cursorPresence]) => {
-          if (!cursorPresence.cursor) return null;
-          const userDrunkLevel = getUserDrunkLevel(userId, false);
-          const color = getUserColor(userId);
+        {Array.from(cursorPresences.entries()).map(
+          ([stableId, cursorPresence]) => {
+            // Skip my own cursor - it's rendered separately above
+            const myStableId = getMyPlayerIdentity()?.publicKey;
+            if (stableId === myStableId) return null;
 
-          // Use wobbled position if available, otherwise use actual position
-          const wobbledPos = otherCursorsWobbled.get(userId);
-          const displayX = wobbledPos?.x ?? cursorPresence.cursor.x;
-          const displayY = wobbledPos?.y ?? cursorPresence.cursor.y;
+            if (!cursorPresence.cursor) return null;
+            const userDrunkLevel = getUserDrunkLevel(stableId, false);
+            const color = getUserColor(stableId);
 
-          return (
-            <div
-              key={userId}
-              className={`other-cursor ${
-                userDrunkLevel > 0 ? "cursor-drunk" : ""
-              }`}
-              style={{
-                left: displayX,
-                top: displayY,
-                // Pulsing animation speed based on drunk level
-                animationDuration:
-                  userDrunkLevel > 0
-                    ? `${1.5 - (userDrunkLevel / 100) * 0.7}s`
-                    : undefined,
-              }}
-            >
-              {/* Double vision copies - only when drunk */}
-              {userDrunkLevel > 20 && (
-                <>
-                  <svg
-                    className="cursor-double-vision cursor-double-1"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    style={{
-                      opacity: Math.min(0.4, (userDrunkLevel - 20) / 100),
-                      transform: `translate(${
-                        4 + (userDrunkLevel / 100) * 8
-                      }px, ${-2 - (userDrunkLevel / 100) * 4}px)`,
-                    }}
-                  >
-                    <path
-                      d="M3 3L10.07 19.97L12.58 12.58L19.97 10.07L3 3Z"
-                      fill={color}
-                      stroke="white"
-                      strokeWidth="1.5"
-                    />
-                  </svg>
-                  {userDrunkLevel > 50 && (
+            // Use wobbled position if available, otherwise use actual position
+            const wobbledPos = otherCursorsWobbled.get(stableId);
+            const displayX = wobbledPos?.x ?? cursorPresence.cursor.x;
+            const displayY = wobbledPos?.y ?? cursorPresence.cursor.y;
+
+            return (
+              <div
+                key={stableId}
+                className={`other-cursor ${
+                  userDrunkLevel > 0 ? "cursor-drunk" : ""
+                }`}
+                style={{
+                  left: displayX,
+                  top: displayY,
+                  // Pulsing animation speed based on drunk level
+                  animationDuration:
+                    userDrunkLevel > 0
+                      ? `${1.5 - (userDrunkLevel / 100) * 0.7}s`
+                      : undefined,
+                }}
+              >
+                {/* Double vision copies - only when drunk */}
+                {userDrunkLevel > 20 && (
+                  <>
                     <svg
-                      className="cursor-double-vision cursor-double-2"
+                      className="cursor-double-vision cursor-double-1"
                       width="24"
                       height="24"
                       viewBox="0 0 24 24"
                       fill="none"
                       xmlns="http://www.w3.org/2000/svg"
                       style={{
-                        opacity: Math.min(0.3, (userDrunkLevel - 50) / 100),
+                        opacity: Math.min(0.4, (userDrunkLevel - 20) / 100),
                         transform: `translate(${
-                          -3 - (userDrunkLevel / 100) * 6
-                        }px, ${3 + (userDrunkLevel / 100) * 3}px)`,
+                          4 + (userDrunkLevel / 100) * 8
+                        }px, ${-2 - (userDrunkLevel / 100) * 4}px)`,
                       }}
                     >
                       <path
@@ -1110,28 +1029,51 @@ const DrunkCursorController = withSharedState(
                         strokeWidth="1.5"
                       />
                     </svg>
-                  )}
-                </>
-              )}
-              {/* Main cursor */}
-              <svg
-                className="cursor-main"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M3 3L10.07 19.97L12.58 12.58L19.97 10.07L3 3Z"
-                  fill={color}
-                  stroke="white"
-                  strokeWidth="1.5"
-                />
-              </svg>
-            </div>
-          );
-        })}
+                    {userDrunkLevel > 50 && (
+                      <svg
+                        className="cursor-double-vision cursor-double-2"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        style={{
+                          opacity: Math.min(0.3, (userDrunkLevel - 50) / 100),
+                          transform: `translate(${
+                            -3 - (userDrunkLevel / 100) * 6
+                          }px, ${3 + (userDrunkLevel / 100) * 3}px)`,
+                        }}
+                      >
+                        <path
+                          d="M3 3L10.07 19.97L12.58 12.58L19.97 10.07L3 3Z"
+                          fill={color}
+                          stroke="white"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
+                    )}
+                  </>
+                )}
+                {/* Main cursor */}
+                <svg
+                  className="cursor-main"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M3 3L10.07 19.97L12.58 12.58L19.97 10.07L3 3Z"
+                    fill={color}
+                    stroke="white"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </div>
+            );
+          },
+        )}
 
         {/* Cursor Bar wooden sign - top left */}
         <div className="cursor-bar-sign">

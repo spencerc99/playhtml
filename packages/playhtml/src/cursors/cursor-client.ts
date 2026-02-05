@@ -1,6 +1,7 @@
 import type YPartyKitProvider from "y-partykit/provider";
 import {
   CursorPresence,
+  CursorPresenceView,
   PlayerIdentity,
   Cursor,
   generatePersistentPlayerIdentity,
@@ -115,6 +116,10 @@ export class CursorClientAwareness {
   private chat: CursorChat | null = null;
   private currentMessage: string | null = null;
   private otherUsersWithMessages: Set<string> = new Set();
+  private cursorPresenceChangeCallbacks = new Map<
+    string,
+    (presences: Map<string, CursorPresenceView>) => void
+  >();
 
   constructor(
     private provider: YPartyKitProvider,
@@ -212,6 +217,9 @@ export class CursorClientAwareness {
     this.updateGlobalColors();
     this.updateChatCTA();
     this.checkProximityOptimized();
+
+    // Notify cursor presence listeners of changes
+    this.notifyCursorPresenceListeners();
   }
 
   private rebuildSpatialGrid(): void {
@@ -1019,5 +1027,64 @@ export class CursorClientAwareness {
       color: this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6",
       name: this.playerIdentity.name || "",
     };
+  }
+
+  // Get my player identity (including stable publicKey)
+  getMyPlayerIdentity(): PlayerIdentity {
+    return this.playerIdentity;
+  }
+
+  // Get the provider (needed for awareness access)
+  getProvider(): YPartyKitProvider {
+    return this.provider;
+  }
+
+  // Get all cursor presences keyed by stable ID (slim shape for rendering)
+  getCursorPresences(): Map<string, CursorPresenceView> {
+    const presences = new Map<string, CursorPresenceView>();
+    const states = this.provider.awareness.getStates();
+
+    states.forEach((state, clientId) => {
+      const cursorData = state[CURSOR_AWARENESS_FIELD] as
+        | CursorPresence
+        | undefined;
+      if (!cursorData?.cursor) return;
+
+      // Stable ID from playerIdentity - skip if missing (matches onChangeAwareness behavior)
+      const stableId = cursorData.playerIdentity?.publicKey;
+      if (!stableId) {
+        console.warn(
+          `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping cursor presence`
+        );
+        return;
+      }
+
+      // Slim shape: only cursor + playerIdentity
+      presences.set(stableId, {
+        cursor: cursorData.cursor,
+        playerIdentity: cursorData.playerIdentity,
+      });
+    });
+
+    return presences;
+  }
+
+  // Subscribe to cursor presence changes
+  onCursorPresencesChange(
+    callback: (presences: Map<string, CursorPresenceView>) => void
+  ): () => void {
+    const id = Math.random().toString(36);
+    this.cursorPresenceChangeCallbacks.set(id, callback);
+
+    // Return unsubscribe function
+    return () => {
+      this.cursorPresenceChangeCallbacks.delete(id);
+    };
+  }
+
+  // Notify listeners of cursor presence changes
+  private notifyCursorPresenceListeners(): void {
+    const presences = this.getCursorPresences();
+    this.cursorPresenceChangeCallbacks.forEach((cb) => cb(presences));
   }
 }
