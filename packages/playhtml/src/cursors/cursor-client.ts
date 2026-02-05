@@ -21,18 +21,144 @@ const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 
 export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
   return Math.sqrt(
-    Math.pow(cursor1.x - cursor2.x, 2) + Math.pow(cursor1.y - cursor2.y, 2)
+    Math.pow(cursor1.x - cursor2.x, 2) + Math.pow(cursor1.y - cursor2.y, 2),
   );
+}
+
+// Coordinate conversion utilities
+function clientToStorageCoordinates(
+  clientX: number,
+  clientY: number,
+  mode: "relative" | "absolute",
+): { x: number; y: number } {
+  if (mode === "relative") {
+    // Convert to viewport percentage (0-100)
+    return {
+      x: (clientX / window.innerWidth) * 100,
+      y: (clientY / window.innerHeight) * 100,
+    };
+  } else {
+    // absolute mode: use document coordinates (pageX/pageY)
+    return {
+      x: clientX + window.scrollX,
+      y: clientY + window.scrollY,
+    };
+  }
+}
+
+function storageToClientCoordinates(
+  x: number,
+  y: number,
+  mode: "relative" | "absolute",
+): { x: number; y: number } {
+  if (mode === "relative") {
+    // Convert from viewport percentage to pixels
+    return {
+      x: (x / 100) * window.innerWidth,
+      y: (y / 100) * window.innerHeight,
+    };
+  } else {
+    // absolute mode: convert from document to viewport coordinates
+    return {
+      x: x - window.scrollX,
+      y: y - window.scrollY,
+    };
+  }
+}
+
+// Spring animation system for smooth cursor movement
+class SpringAnimator {
+  private position: { x: number; y: number };
+  private velocity: { x: number; y: number };
+  private target: { x: number; y: number };
+  private stiffness: number;
+  private damping: number;
+  private mass: number;
+  private animationFrame: number | null = null;
+  private onUpdate: (position: { x: number; y: number }) => void;
+
+  constructor(
+    initialPosition: { x: number; y: number },
+    onUpdate: (position: { x: number; y: number }) => void,
+    config: { stiffness?: number; damping?: number; mass?: number } = {},
+  ) {
+    this.position = { ...initialPosition };
+    this.velocity = { x: 0, y: 0 };
+    this.target = { ...initialPosition };
+    this.onUpdate = onUpdate;
+
+    // Spring physics parameters (similar to framer-motion defaults)
+    this.stiffness = config.stiffness ?? 170; // Higher = stiffer spring
+    this.damping = config.damping ?? 26; // Higher = less oscillation
+    this.mass = config.mass ?? 0.5; // Higher = slower movement
+  }
+
+  setTarget(target: { x: number; y: number }) {
+    this.target = { ...target };
+
+    // Start animation if not already running
+    if (this.animationFrame === null) {
+      this.animate();
+    }
+  }
+
+  private animate = () => {
+    const deltaTime = 1 / 60; // Assume 60fps (16.67ms)
+
+    // Spring physics calculations (Hooke's law with damping)
+    const springForceX = (this.target.x - this.position.x) * this.stiffness;
+    const springForceY = (this.target.y - this.position.y) * this.stiffness;
+
+    const dampingForceX = this.velocity.x * this.damping;
+    const dampingForceY = this.velocity.y * this.damping;
+
+    const accelerationX = (springForceX - dampingForceX) / this.mass;
+    const accelerationY = (springForceY - dampingForceY) / this.mass;
+
+    this.velocity.x += accelerationX * deltaTime;
+    this.velocity.y += accelerationY * deltaTime;
+
+    this.position.x += this.velocity.x * deltaTime;
+    this.position.y += this.velocity.y * deltaTime;
+
+    this.onUpdate(this.position);
+
+    // Check if spring has settled (position close to target, velocity near zero)
+    const distanceToTarget = Math.sqrt(
+      Math.pow(this.target.x - this.position.x, 2) +
+        Math.pow(this.target.y - this.position.y, 2),
+    );
+    const speed = Math.sqrt(
+      Math.pow(this.velocity.x, 2) + Math.pow(this.velocity.y, 2),
+    );
+
+    // Stop animating when settled (within 0.5px and speed < 0.5px/s)
+    if (distanceToTarget < 0.5 && speed < 0.5) {
+      this.position = { ...this.target };
+      this.velocity = { x: 0, y: 0 };
+      this.onUpdate(this.position);
+      this.animationFrame = null;
+    } else {
+      this.animationFrame = requestAnimationFrame(this.animate);
+    }
+  };
+
+  destroy() {
+    if (this.animationFrame !== null) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
+  }
 }
 
 interface CursorEventEmitter {
   on<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void;
   off<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void;
 }
 
@@ -103,6 +229,7 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
 
 export class CursorClientAwareness {
   private cursors: Map<string, HTMLElement> = new Map();
+  private cursorAnimators: Map<string, SpringAnimator> = new Map(); // Spring animators for each cursor
   private spatialGrid: SpatialGrid<CursorPresence> = new SpatialGrid(300); // 300px cell size
   private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
@@ -120,14 +247,16 @@ export class CursorClientAwareness {
     string,
     (presences: Map<string, CursorPresenceView>) => void
   >();
+  private coordinateMode: "relative" | "absolute";
 
   constructor(
     private provider: YPartyKitProvider,
-    private options: CursorOptions = {}
+    private options: CursorOptions = {},
   ) {
     this.playerIdentity =
       options.playerIdentity || generatePersistentPlayerIdentity();
     this.visibilityThreshold = options.visibilityThreshold || undefined;
+    this.coordinateMode = options.coordinateMode || "relative"; // Default to viewport percentage
 
     if (this.options.enableChat === true) {
       this.chat = new CursorChat({
@@ -176,7 +305,7 @@ export class CursorClientAwareness {
   private handleAwarenessChange(
     added: number[],
     updated: number[],
-    removed: number[]
+    removed: number[],
   ): void {
     const states = this.provider.awareness.getStates();
 
@@ -233,10 +362,16 @@ export class CursorClientAwareness {
 
       const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
       if (cursorData?.cursor) {
+        // Convert storage coordinates to client coordinates for spatial grid
+        const clientCoords = storageToClientCoordinates(
+          cursorData.cursor.x,
+          cursorData.cursor.y,
+          this.coordinateMode,
+        );
         this.spatialGrid.insert({
           id: clientId.toString(),
-          x: cursorData.cursor.x,
-          y: cursorData.cursor.y,
+          x: clientCoords.x,
+          y: clientCoords.y,
           data: cursorData,
         });
       }
@@ -250,11 +385,18 @@ export class CursorClientAwareness {
     const proximityThreshold =
       this.options.proximityThreshold || PROXIMITY_THRESHOLD;
 
-    // Use spatial grid to efficiently find nearby cursors
-    const nearbyItems = this.spatialGrid.findNearby(
+    // Convert our cursor to client coordinates for proximity check
+    const ourClientCoords = storageToClientCoordinates(
       this.currentCursor.x,
       this.currentCursor.y,
-      proximityThreshold
+      this.coordinateMode,
+    );
+
+    // Use spatial grid to efficiently find nearby cursors (grid already has client coords)
+    const nearbyItems = this.spatialGrid.findNearby(
+      ourClientCoords.x,
+      ourClientCoords.y,
+      proximityThreshold,
     );
 
     // Check precise distance for nearby candidates
@@ -262,7 +404,24 @@ export class CursorClientAwareness {
       const presence = item.data;
       if (!presence.cursor) continue;
 
-      const distance = calculateDistance(this.currentCursor, presence.cursor);
+      // Convert their cursor to client coordinates for distance calculation
+      const theirClientCoords = storageToClientCoordinates(
+        presence.cursor.x,
+        presence.cursor.y,
+        this.coordinateMode,
+      );
+      const distance = calculateDistance(
+        {
+          x: ourClientCoords.x,
+          y: ourClientCoords.y,
+          pointer: this.currentCursor.pointer,
+        },
+        {
+          x: theirClientCoords.x,
+          y: theirClientCoords.y,
+          pointer: presence.cursor.pointer,
+        },
+      );
       const isNear = distance < proximityThreshold;
 
       if (isNear) {
@@ -281,7 +440,7 @@ export class CursorClientAwareness {
           this.options.onProximityEntered?.(
             presence.playerIdentity,
             positions,
-            angle
+            angle,
           );
         }
       }
@@ -360,16 +519,22 @@ export class CursorClientAwareness {
       // Show/hide our own cursor based on pointer type (like cursor-party)
       if (pointer === "mouse") {
         const cursorStyle = getCursorStyleForUser(
-          this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6"
+          this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6",
         );
         document.documentElement.style.cursor = cursorStyle;
       } else {
         document.documentElement.style.cursor = "auto";
       }
 
+      // Convert to storage coordinates based on mode
+      const storageCoords = clientToStorageCoordinates(
+        e.clientX,
+        e.clientY,
+        this.coordinateMode,
+      );
       this.currentCursor = {
-        x: e.clientX,
-        y: e.clientY,
+        x: storageCoords.x,
+        y: storageCoords.y,
         pointer,
       };
       this.throttledUpdateCursorAwareness();
@@ -381,9 +546,15 @@ export class CursorClientAwareness {
     const updateTouchCursor = (e: TouchEvent) => {
       const touch = e.touches[0];
       if (touch) {
+        // Convert to storage coordinates based on mode
+        const storageCoords = clientToStorageCoordinates(
+          touch.clientX,
+          touch.clientY,
+          this.coordinateMode,
+        );
         this.currentCursor = {
-          x: touch.clientX,
-          y: touch.clientY,
+          x: storageCoords.x,
+          y: storageCoords.y,
           pointer: "touch",
         };
         this.throttledUpdateCursorAwareness();
@@ -444,7 +615,7 @@ export class CursorClientAwareness {
     // Set cursor data in awareness using reserved field
     this.provider.awareness.setLocalStateField(
       CURSOR_AWARENESS_FIELD,
-      cursorPresence
+      cursorPresence,
     );
   }
 
@@ -455,7 +626,10 @@ export class CursorClientAwareness {
     }
 
     // Check if this cursor should be rendered
-    if (this.options.shouldRenderCursor && !this.options.shouldRenderCursor(cursorData)) {
+    if (
+      this.options.shouldRenderCursor &&
+      !this.options.shouldRenderCursor(cursorData)
+    ) {
       this.removeCursor(clientId);
       return;
     }
@@ -476,7 +650,7 @@ export class CursorClientAwareness {
         cursor.pointer,
         cursorData.message,
         clientId,
-        cursorData
+        cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(clientId, cursorElement);
@@ -486,36 +660,74 @@ export class CursorClientAwareness {
       this.updateCursorMessage(
         cursorElement,
         cursorData.playerIdentity,
-        cursorData.message
+        cursorData.message,
       );
       this.updateCursorName(cursorElement, cursorData.playerIdentity);
     }
 
-    // Update position with boundary checks
+    // Convert from storage coordinates to client coordinates for target position
+    const targetCoords = storageToClientCoordinates(
+      cursor.x,
+      cursor.y,
+      this.coordinateMode,
+    );
+
     const cursorSize = 20;
     const margin = 2;
-
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    const clampedX = Math.max(
+    // Clamp target position to viewport bounds
+    const clampedTargetX = Math.max(
       -cursorSize + margin,
-      Math.min(viewportWidth - margin, cursor.x)
+      Math.min(viewportWidth - margin, targetCoords.x),
     );
-    const clampedY = Math.max(
+    const clampedTargetY = Math.max(
       -cursorSize + margin,
-      Math.min(viewportHeight - margin, cursor.y)
+      Math.min(viewportHeight - margin, targetCoords.y),
     );
 
-    cursorElement.style.position = "fixed";
-    cursorElement.style.left = `${clampedX}px`;
-    cursorElement.style.top = `${clampedY}px`;
-    cursorElement.style.zIndex = "999999";
-    cursorElement.style.pointerEvents = "none";
+    // Get or create spring animator for this cursor
+    let animator = this.cursorAnimators.get(clientId);
+
+    if (!animator) {
+      // Create new animator with current target as initial position (no jump on first render)
+      animator = new SpringAnimator(
+        { x: clampedTargetX, y: clampedTargetY },
+        (position) => {
+          // Update callback - sets the actual DOM position
+          if (cursorElement) {
+            cursorElement.style.position = "fixed";
+            cursorElement.style.left = `${position.x}px`;
+            cursorElement.style.top = `${position.y}px`;
+            cursorElement.style.zIndex = "999999";
+            cursorElement.style.pointerEvents = "none";
+          }
+        },
+      );
+      this.cursorAnimators.set(clientId, animator);
+    }
+
+    // Update animator target to new position (triggers spring animation)
+    animator.setTarget({ x: clampedTargetX, y: clampedTargetY });
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
-      const distance = calculateDistance(cursor, this.currentCursor);
+      // Convert our cursor to client coordinates for distance calculation
+      const ourClientCoords = storageToClientCoordinates(
+        this.currentCursor.x,
+        this.currentCursor.y,
+        this.coordinateMode,
+      );
+      // Use target coordinates for distance (viewport pixels)
+      const distance = calculateDistance(
+        { x: targetCoords.x, y: targetCoords.y, pointer: cursor.pointer },
+        {
+          x: ourClientCoords.x,
+          y: ourClientCoords.y,
+          pointer: this.currentCursor.pointer,
+        },
+      );
       const isVisible = this.visibilityThreshold
         ? distance < this.visibilityThreshold
         : true;
@@ -535,7 +747,7 @@ export class CursorClientAwareness {
     pointer: string = "mouse",
     message?: string | null,
     connectionId?: string,
-    cursorData?: CursorPresence
+    cursorData?: CursorPresence,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
@@ -544,7 +756,7 @@ export class CursorClientAwareness {
     if (connectionId && this.options.onCustomCursorRender) {
       const customElement = this.options.onCustomCursorRender(
         connectionId,
-        element
+        element,
       );
       if (customElement) {
         return customElement;
@@ -656,13 +868,20 @@ export class CursorClientAwareness {
         this.cursors.delete(clientId);
       }, 300);
     }
+
+    // Clean up spring animator
+    const animator = this.cursorAnimators.get(clientId);
+    if (animator) {
+      animator.destroy();
+      this.cursorAnimators.delete(clientId);
+    }
   }
 
   private savePlayerIdentityToStorage(): void {
     try {
       localStorage.setItem(
         PLAYER_IDENTITY_STORAGE_KEY,
-        JSON.stringify(this.playerIdentity)
+        JSON.stringify(this.playerIdentity),
       );
     } catch (e) {
       console.warn("Failed to save player identity to localStorage:", e);
@@ -722,7 +941,7 @@ export class CursorClientAwareness {
 
   private emitGlobalEvent<K extends keyof CursorEvents>(
     event: K,
-    value: CursorEvents[K]
+    value: CursorEvents[K],
   ): void {
     const listeners = this.globalApiListeners.get(event);
     if (listeners) {
@@ -750,7 +969,7 @@ export class CursorClientAwareness {
   private updateCursorMessage(
     element: HTMLElement,
     playerIdentity?: PlayerIdentity,
-    message?: string | null
+    message?: string | null,
   ): void {
     // Remove existing message element
     const existingMessage = element.querySelector(".playhtml-cursor-message");
@@ -782,7 +1001,7 @@ export class CursorClientAwareness {
 
   private updateCursorName(
     element: HTMLElement,
-    playerIdentity?: PlayerIdentity
+    playerIdentity?: PlayerIdentity,
   ): void {
     // Remove existing name element
     const existingName = element.querySelector(".playhtml-cursor-name");
@@ -834,7 +1053,7 @@ export class CursorClientAwareness {
       return color.replace("rgb", "rgba").replace(")", `, ${opacity})`);
     } else if (color.startsWith("hsl")) {
       const matches = color.match(
-        /hsl\((\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)%,\s*(\d+(?:\.\d+)?)%\)/
+        /hsl\((\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)%,\s*(\d+(?:\.\d+)?)%\)/,
       );
       if (matches) {
         const [, h, s, l] = matches.map(Number);
@@ -896,7 +1115,7 @@ export class CursorClientAwareness {
     }
 
     const [rs, gs, bs] = [r / 255, g / 255, b / 255].map((val) =>
-      val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4)
+      val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4),
     );
     return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
   }
@@ -917,7 +1136,7 @@ export class CursorClientAwareness {
       if (cursorData && cursorData.cursor) {
         const distance = calculateDistance(
           this.currentCursor!,
-          cursorData.cursor
+          cursorData.cursor,
         );
         const isVisible = distance < this.visibilityThreshold!;
 
@@ -972,6 +1191,10 @@ export class CursorClientAwareness {
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
 
+    // Clean up spring animators
+    this.cursorAnimators.forEach((animator) => animator.destroy());
+    this.cursorAnimators.clear();
+
     // Clean up spatial grid
     this.spatialGrid.clear();
 
@@ -1002,7 +1225,7 @@ export class CursorClientAwareness {
   // Instance-level subscription API (mirrors window.cursors.on/off)
   on<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void {
     if (!this.globalApiListeners.has(event)) {
       this.globalApiListeners.set(event, new Set());
@@ -1012,7 +1235,7 @@ export class CursorClientAwareness {
 
   off<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void {
     const listeners = this.globalApiListeners.get(event);
     if (listeners) {
@@ -1054,7 +1277,7 @@ export class CursorClientAwareness {
       const stableId = cursorData.playerIdentity?.publicKey;
       if (!stableId) {
         console.warn(
-          `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping cursor presence`
+          `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping cursor presence`,
         );
         return;
       }
@@ -1071,7 +1294,7 @@ export class CursorClientAwareness {
 
   // Subscribe to cursor presence changes
   onCursorPresencesChange(
-    callback: (presences: Map<string, CursorPresenceView>) => void
+    callback: (presences: Map<string, CursorPresenceView>) => void,
   ): () => void {
     const id = Math.random().toString(36);
     this.cursorPresenceChangeCallbacks.set(id, callback);

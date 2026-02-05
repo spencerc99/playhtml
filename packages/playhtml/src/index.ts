@@ -294,12 +294,15 @@ export type CursorRoom =
   | "section"
   | ((context: { domain: string; pathname: string; search: string }) => string);
 
+export type CursorCoordinateMode = "relative" | "absolute";
+
 export interface CursorOptions {
   enabled?: boolean;
   playerIdentity?: PlayerIdentity;
   proximityThreshold?: number;
   visibilityThreshold?: number;
   cursorStyle?: string;
+  coordinateMode?: CursorCoordinateMode; // "relative" (viewport %) or "absolute" (document px)
   onProximityEntered?: (
     playerIdentity?: PlayerIdentity,
     positions?: {
@@ -864,17 +867,17 @@ function onChangeAwareness() {
   >();
 
   states.forEach((state, clientId) => {
-    // Skip our own client
-    if (clientId === awarenessProvider.awareness.clientID) return;
-
     // Get stable ID from cursor presence on same provider
     const cursorData = state.__playhtml_cursors__;
     const stableId = cursorData?.playerIdentity?.publicKey;
 
     if (!stableId) {
-      console.warn(
-        `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping awareness`
-      );
+      // Only warn for other clients, not our own (we might not have initialized cursors yet)
+      if (clientId !== awarenessProvider.awareness.clientID) {
+        console.warn(
+          `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping awareness`
+        );
+      }
       return; // Skip clients without stable ID
     }
 
@@ -945,7 +948,14 @@ function setupElements(): void {
     return;
   }
 
-  yprovider.awareness.on("change", () => onChangeAwareness());
+  // Listen to awareness changes on the cursor provider (where element awareness is stored)
+  // Fall back to doc provider if cursors are disabled
+  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  awarenessProvider.awareness.on("change", () => onChangeAwareness());
+
+  // Trigger initial awareness sync to populate existing states
+  onChangeAwareness();
+
   firstSetup = false;
 }
 
