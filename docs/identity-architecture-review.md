@@ -183,29 +183,29 @@ The indirection is: to grant "write" on an element, you need to:
 
 This is flexible but hard to reason about, especially for developers without deep experience. The auth example (`auth-example.html`) demonstrates this complexity—it takes 50+ lines of configuration to set up basic roles.
 
-**Recommendation:** Consider a simpler two-tier model:
-
-```html
-<!-- Tier 1: Element declares WHO can do WHAT -->
-<div id="my-element" can-move
-     playhtml-write="owner, contributors"
-     playhtml-delete="owner">
-```
+**Recommendation:** The single `playhtml-permissions` attribute is the right call — it keeps all permission info in one place and reads naturally. The real complexity is the indirection between `roles` and `permissionConditions` in the JS config. A role defined as `{ condition: "frequentVisitor" }` requires the developer to look up the matching function in a separate `permissionConditions` object. Consider letting roles be defined directly as functions:
 
 ```javascript
-// Tier 2: Site declares WHO is WHO
+// Current: role → condition name → function (two hops of indirection)
+playhtml.init({
+  roles: {
+    visitors: { condition: "frequentVisitor" },
+  },
+  permissionConditions: {
+    frequentVisitor: async (ctx) => ctx.visitCount >= 5,
+  },
+});
+
+// Simpler: role → function directly (one hop)
 playhtml.init({
   roles: {
     owner: ["<public-key>"],
-    contributors: { condition: "frequentVisitor" }
+    visitors: async (ctx) => ctx.visitCount >= 5,
   },
-  conditions: {
-    frequentVisitor: (ctx) => ctx.visitCount >= 5
-  }
 });
 ```
 
-This eliminates the middle `PermissionConfig` layer and makes the HTML attributes directly reference role names. The mapping from `action → role → user` collapses to `action → roles (on element) → user check (global)`.
+This keeps the `playhtml-permissions` attribute unchanged, keeps a single config object in `init()`, and removes the named-condition indirection. The type becomes `string[] | PermissionFunction` instead of `string[] | { condition: string }`.
 
 ### 4. The `PermissionContext` carries too much ambient state
 
@@ -279,14 +279,7 @@ The `scheduleSessionRenewal` function calls `establishSession` which uncondition
 
 1. **Automatic identity generation for anonymous users.** Currently, if no identity exists, the user runs in "read-only mode." For a playful library, consider auto-generating an ephemeral identity for every visitor so they can always interact. Make the distinction between "has persistent identity" and "is anonymous" rather than "has identity" vs "no identity."
 
-2. **The auth example is intimidating.** The `auth-example.html` requires understanding public keys, role definitions, condition functions, and session management to set up basic owner-only permissions. Consider a simpler default:
-
-   ```html
-   <!-- Just works: only the page author can modify -->
-   <div can-move playhtml-owner="me">Protected</div>
-   ```
-
-   Where `"me"` is resolved to the current identity's public key. The current system requires knowing and hardcoding public keys upfront.
+2. **The onboarding workflow could be smoother.** The auth example already has a "Copy Public Key" button, which is good. The manual public key approach is the correct design for a decentralized system without a central auth provider — there's no way to magically know who "the author" is from HTML alone. But the generate-then-paste workflow could be streamlined: consider a dev-mode helper (CLI command or dev UI panel) that generates an identity and outputs a ready-to-paste `playhtml-permissions` snippet, so the developer doesn't have to manually construct the attribute string with their key.
 
 3. **Too many exports on `playhtml.auth`.** The API surface is:
    - `getCurrentIdentity`, `checkPermission`, `onAuthReady`, `createSignedAction`, `createAuthenticatedMessage`, `createNewIdentity`, `configureGlobalPermissions`, `getCurrentSession`, `establishSession`
@@ -308,7 +301,7 @@ The `scheduleSessionRenewal` function calls `establishSession` which uncondition
 | **Medium** | Consolidate duplicated crypto code | Low |
 | **Medium** | Document that permissions are client-side advisory only | Low |
 | **Medium** | Simplify PermissionContext to actually-used fields | Low |
-| **Medium** | Simplify role/permission model to two tiers | Medium |
+| **Medium** | Inline condition functions into role definitions (remove named-condition indirection) | Low |
 | **Medium** | Remove dead code (throwing `establishSession`, unused password params, broken visit counter) | Low |
 | **Low** | Fix React hook dependency array and default permissions | Low |
 | **Low** | Auto-generate ephemeral identities for anonymous users | Low |
