@@ -1,5 +1,4 @@
 // PlayHTML Authentication & Identity Types
-// Based on the design in docs/auth.md
 
 export interface PlayHTMLIdentity {
   privateKey: string; // Private key for signing (base64 encoded)
@@ -19,50 +18,32 @@ export interface PlayHTMLAuth {
   verify: (message: string, signature: string, publicKey: string) => Promise<boolean>;
 }
 
-// Simplified permission model
-export interface GlobalRoleDefinition {
-  [roleName: string]: string[] | { condition: string }; // Public keys array or conditional assignment
-}
+// Role definition: explicit public key list, or inline condition function.
+// This replaces the previous model where condition functions were defined
+// separately in `permissionConditions` and referenced by name.
+//
+// Usage:
+//   roles: {
+//     owner: ["<public-key-1>", "<public-key-2>"],
+//     contributors: async (ctx) => ctx.customData.visitCount >= 5,
+//   }
+export type RoleDefinition = string[] | PermissionFunction;
 
 export interface PermissionConfig {
   [action: string]: string; // action -> required role mapping
 }
 
 export interface GlobalPlayHTMLConfig {
-  roles?: GlobalRoleDefinition;
-  permissionConditions?: Record<string, PermissionFunction>;
+  roles?: Record<string, RoleDefinition>;
 }
 
+// Simplified permission context — only contains fields that are actually populated.
+// Use `customData` for site-specific context like visitCount, timeOfDay, geolocation, etc.
 export interface PermissionContext {
   user?: PlayHTMLIdentity;
   element: HTMLElement;
   domain: string;
-  visitCount: number;
-  timeOfDay: number;
-  userLocation?: { lat: number; lng: number };
-  siteLocation?: { lat: number; lng: number };
-  customData: Record<string, any>; // Site-specific context
-}
-
-export interface SignedAction {
-  action: string; // What action is being performed
-  elementId: string; // Target element
-  data: any; // Action payload
-  timestamp: number; // When action was created
-  nonce: string; // Unique nonce to prevent replay
-  signature: string; // Cryptographic signature
-  publicKey: string; // Actor's public key
-  algorithm?: string; // Signature algorithm (Ed25519 or RSA-PSS)
-}
-
-export interface AuthenticatedMessage {
-  type: string;
-  data: any;
-  timestamp: number;
-  nonce: string;
-  signature: string;
-  publicKey: string;
-  algorithm?: string; // Signature algorithm (Ed25519 or RSA-PSS)
+  customData: Record<string, any>;
 }
 
 export interface UserSession {
@@ -136,14 +117,14 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 // Import public key from base64 string for verification (shared utility)
 async function importPublicKey(publicKeyBase64: string, algorithm: string = "Ed25519"): Promise<CryptoKey> {
   // For Node.js environments, use Buffer; for browser, use base64ToArrayBuffer
-  const publicKeyBuffer = typeof Buffer !== 'undefined' 
+  const publicKeyBuffer = typeof Buffer !== 'undefined'
     ? Buffer.from(publicKeyBase64, "base64")
     : base64ToArrayBuffer(publicKeyBase64);
-  
-  const keyAlgorithm = algorithm === "RSA-PSS" 
+
+  const keyAlgorithm = algorithm === "RSA-PSS"
     ? { name: "RSA-PSS", hash: "SHA-256" }
     : { name: "Ed25519" };
-  
+
   return await crypto.subtle.importKey(
     "spki",
     publicKeyBuffer,
@@ -153,7 +134,7 @@ async function importPublicKey(publicKeyBase64: string, algorithm: string = "Ed2
   );
 }
 
-// Consolidated signature verification function (replaces both crypto.ts and previous common implementation)
+// Consolidated signature verification function (single source of truth)
 export async function verifySignature(
   message: string,
   signatureBase64: string,
@@ -165,25 +146,25 @@ export async function verifySignature(
     if (!signatureBase64 || !publicKeyBase64) {
       return false;
     }
-    
+
     // Check if inputs are valid base64
-    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(publicKeyBase64) || 
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(publicKeyBase64) ||
         !/^[A-Za-z0-9+/]*={0,2}$/.test(signatureBase64)) {
       return false;
     }
 
     const publicKey = await importPublicKey(publicKeyBase64, algorithm);
     const messageBuffer = new TextEncoder().encode(message);
-    
+
     // For Node.js environments, use Buffer; for browser, use base64ToArrayBuffer
     const signatureBuffer = typeof Buffer !== 'undefined'
-      ? Buffer.from(signatureBase64, "base64") 
+      ? Buffer.from(signatureBase64, "base64")
       : base64ToArrayBuffer(signatureBase64);
-    
-    const verifyAlgorithm = algorithm === "RSA-PSS" 
+
+    const verifyAlgorithm = algorithm === "RSA-PSS"
       ? { name: "RSA-PSS", saltLength: 32 }
       : "Ed25519";
-    
+
     return await crypto.subtle.verify(
       verifyAlgorithm,
       publicKey,

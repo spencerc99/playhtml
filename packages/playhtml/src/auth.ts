@@ -1,14 +1,17 @@
 // PlayHTML Authentication System
 // Implements identity management and global auth object
+//
+// NOTE: Permissions are checked client-side only and are advisory.
+// A modified client can bypass permission checks. The CRDT layer (Yjs)
+// does not enforce permissions. If server-side enforcement is needed,
+// CRDT writes would need an authorization middleware on the server.
 
 import type {
   PlayHTMLIdentity,
   PlayHTMLAuth,
   PermissionContext,
-  GlobalRoleDefinition,
   PermissionConfig,
   PermissionFunction,
-  SessionChallenge,
   ValidatedSession,
   SessionAction,
 } from "@playhtml/common";
@@ -27,23 +30,23 @@ export {
   verifySignature,
   importIdentity,
   exportIdentity,
-  createSignedAction,
-  createAuthenticatedMessage,
 } from "./crypto";
+
+// Role definition: either an explicit list of public keys, or a condition function
+export type RoleDefinition = string[] | PermissionFunction;
 
 // Global auth state
 let currentIdentity: PlayHTMLIdentity | undefined;
 let authReadyCallbacks: Array<(auth: PlayHTMLAuth) => void> = [];
 
 // Global permission configuration
-let globalRoles: GlobalRoleDefinition = {};
-let permissionConditions: Record<string, PermissionFunction> = {};
+let globalRoles: Record<string, RoleDefinition> = {};
 
 // Session management state
 let currentSession: ValidatedSession | null = null;
 let sessionRenewalTimer: number | null = null;
-
-// No built-in permission functions - users define their own custom functions
+// Set externally by the main module when WebSocket is available
+let sessionWebSocket: WebSocket | null = null;
 
 // Create PlayHTMLAuth object from identity
 function createAuthFromIdentity(identity?: PlayHTMLIdentity): PlayHTMLAuth {
@@ -168,7 +171,10 @@ export async function createNewIdentity(
   return identity;
 }
 
-// Check if user has permission for a specific action using global roles first, then element-specific permissions
+// Check if user has permission for a specific action using global roles first,
+// then element-specific permissions.
+//
+// NOTE: This check is client-side only and advisory. See module header comment.
 export async function checkPermission(
   elementId: string,
   action: string,
@@ -180,13 +186,12 @@ export async function checkPermission(
   // First check if this is a globally owned element (from InitOptions.roles)
   if (userIdentity && Object.keys(globalRoles).length > 0) {
     const userRoles = await getUserRolesForElement(elementId, userIdentity);
-    
+
     // Check if user has "owner" or "admin" role globally - these have write access to all elements
     if (userRoles.includes("owner") || userRoles.includes("admin")) {
       return true;
     }
   }
-
 
   // Check element-specific permissions (playhtml-permissions attribute)
   const permissionsAttr = element.getAttribute("playhtml-permissions");
@@ -218,37 +223,16 @@ export async function checkPermission(
   return userRoles.includes(requiredRole);
 }
 
-// Helper functions
-function getVisitCount(domain: string): number {
-  try {
-    const stored = localStorage.getItem(`playhtml_visits_${domain}`);
-    const count = stored ? parseInt(stored) : 0;
-    localStorage.setItem(`playhtml_visits_${domain}`, (count + 1).toString());
-    return count + 1;
-  } catch {
-    return 0;
-  }
-}
-
-function getElementCustomData(element: HTMLElement): Record<string, any> {
-  try {
-    const customData = element.getAttribute("playhtml-custom-data");
-    return customData ? JSON.parse(customData) : {};
-  } catch {
-    return {};
-  }
-}
-
-// Configure global roles and permission conditions
+// Configure global roles.
+// Roles can be:
+//   - string[] of public keys (explicit membership)
+//   - PermissionFunction (inline condition, evaluated at check time)
 export function configureGlobalPermissions(
-  roles: GlobalRoleDefinition,
-  conditions: Record<string, PermissionFunction> = {}
+  roles: Record<string, RoleDefinition>,
 ): void {
   globalRoles = roles;
-  permissionConditions = conditions;
   console.log("[PLAYHTML AUTH]: Configured global permissions", {
-    roles,
-    conditions,
+    roles: Object.keys(roles),
   });
 }
 
@@ -277,31 +261,23 @@ export async function getUserRolesForElement(
     return ["everyone"]; // Default role for unauthenticated users
   }
 
-  const context = await buildPermissionContext(userIdentity, elementId);
-
   for (const [roleName, roleDefinition] of Object.entries(globalRoles)) {
     if (Array.isArray(roleDefinition)) {
       // Explicit public key list
       if (roleDefinition.includes(userIdentity.publicKey)) {
         roles.push(roleName);
       }
-    } else if (roleDefinition.condition) {
-      // Conditional role assignment
-      const conditionFn = permissionConditions[roleDefinition.condition];
-      if (conditionFn) {
-        try {
-          if (await conditionFn(context)) {
-            roles.push(roleName);
-          }
-        } catch (error) {
-          console.error(
-            `Failed to evaluate role condition '${roleDefinition.condition}':`,
-            error
-          );
+    } else if (typeof roleDefinition === "function") {
+      // Inline condition function — no indirection through named conditions
+      const context = buildPermissionContext(userIdentity, elementId);
+      try {
+        if (await roleDefinition(context)) {
+          roles.push(roleName);
         }
-      } else {
-        console.warn(
-          `Permission condition '${roleDefinition.condition}' not found in custom conditions`
+      } catch (error) {
+        console.error(
+          `Failed to evaluate role condition for '${roleName}':`,
+          error
         );
       }
     }
@@ -310,24 +286,34 @@ export async function getUserRolesForElement(
   return roles.length > 0 ? roles : ["visitor"]; // Default to visitor if no roles matched
 }
 
-// Build permission context for evaluation
-async function buildPermissionContext(
+// Get the current user's roles (convenience helper for UI rendering)
+export async function getMyRoles(elementId?: string): Promise<string[]> {
+  const identity = getCurrentIdentity();
+  return getUserRolesForElement(elementId || "", identity);
+}
+
+// Build permission context for condition evaluation
+function buildPermissionContext(
   userIdentity: PlayHTMLIdentity | undefined,
   elementId: string
-): Promise<PermissionContext> {
+): PermissionContext {
   const element = document.getElementById(elementId);
-  if (!element) {
-    throw new Error(`Element ${elementId} not found`);
-  }
 
   return {
     user: userIdentity,
-    element,
+    element: element || document.createElement("div"),
     domain: window.location.hostname,
-    visitCount: getVisitCount(window.location.hostname),
-    timeOfDay: new Date().getHours(),
-    customData: getElementCustomData(element),
+    customData: element ? getElementCustomData(element) : {},
   };
+}
+
+function getElementCustomData(element: HTMLElement): Record<string, any> {
+  try {
+    const customData = element.getAttribute("playhtml-custom-data");
+    return customData ? JSON.parse(customData) : {};
+  } catch {
+    return {};
+  }
 }
 
 // Get current authenticated identity
@@ -337,117 +323,12 @@ export function getCurrentIdentity(): PlayHTMLIdentity | undefined {
 
 // Session Management Functions
 
-// Generate a challenge for session establishment
-export function generateSessionChallenge(): SessionChallenge {
-  const challenge = crypto.randomUUID();
-  const domain = window.location.hostname;
-  const timestamp = Date.now();
-  const expiresAt = timestamp + 5 * 60 * 1000; // 5 minutes
-
-  return {
-    challenge,
-    domain,
-    timestamp,
-    expiresAt,
-  };
+// Set the WebSocket used for session management (called from main module)
+export function setSessionWebSocket(ws: WebSocket): void {
+  sessionWebSocket = ws;
 }
 
-// Internal session establishment with WebSocket (called from main.ts)
-export async function establishSessionWithWS(
-  identity: PlayHTMLIdentity,
-  ws: WebSocket
-): Promise<ValidatedSession> {
-  return new Promise((resolve, reject) => {
-    const challenge = generateSessionChallenge();
-
-    // Sign the challenge to prove identity ownership
-    signMessage(
-      JSON.stringify(challenge),
-      identity.privateKey,
-      identity.algorithm
-    )
-      .then((signature) => {
-        const request = {
-          type: "session_establish",
-          challenge,
-          signature,
-          publicKey: identity.publicKey,
-          algorithm: identity.algorithm || "Ed25519",
-        };
-
-        // Set up one-time listener for session response
-        const handleMessage = (event: MessageEvent) => {
-          console.log('[PLAYHTML] Received WebSocket message:', event.data);
-          try {
-            const data = JSON.parse(event.data);
-            console.log('[PLAYHTML] Parsed message type:', data.type);
-            
-            if (
-              data.type === "session_established" ||
-              data.type === "session_renewed"
-            ) {
-              console.log('[PLAYHTML] Session response received:', data);
-              ws.removeEventListener("message", handleMessage);
-
-              const session: ValidatedSession = {
-                sessionId: data.sessionId,
-                publicKey: data.publicKey,
-                domain: window.location.hostname,
-                establishedAt: Date.now(),
-                expiresAt: data.expiresAt,
-              };
-
-              // Store session and set up auto-renewal
-              currentSession = session;
-              scheduleSessionRenewal(session);
-
-              // Dispatch session events
-              const eventType =
-                data.type === "session_renewed"
-                  ? "playhtmlSessionRenewed"
-                  : "playhtmlSessionEstablished";
-              window.dispatchEvent(
-                new CustomEvent(eventType, { detail: session })
-              );
-
-              console.log(
-                `✅ Session ${
-                  data.type === "session_renewed" ? "renewed" : "established"
-                }: ${session.sessionId}`
-              );
-
-              resolve(session);
-            } else if (data.type === "session_error") {
-              console.log('[PLAYHTML] Session error received:', data);
-              ws.removeEventListener("message", handleMessage);
-              reject(new Error(data.message || "Session establishment failed"));
-            } else {
-              console.log('[PLAYHTML] Ignoring message type:', data.type);
-            }
-          } catch (error) {
-            console.log('[PLAYHTML] Non-JSON message received:', event.data);
-          }
-        };
-
-        ws.addEventListener("message", handleMessage);
-
-        // Send session establishment request
-        console.log('[PLAYHTML] Sending session establishment request:', request);
-        console.log('[PLAYHTML] WebSocket readyState:', ws.readyState);
-        ws.send(JSON.stringify(request));
-        console.log('[PLAYHTML] Session request sent, waiting for response...');
-
-        // Set timeout for session establishment
-        setTimeout(() => {
-          ws.removeEventListener("message", handleMessage);
-          reject(new Error("Session establishment timeout"));
-        }, 10000); // 10 second timeout
-      })
-      .catch(reject);
-  });
-}
-
-// Public session establishment function (delegates to main.ts)
+// Establish or re-establish a session over the current WebSocket
 export async function establishSession(
   identity?: PlayHTMLIdentity
 ): Promise<ValidatedSession> {
@@ -455,11 +336,113 @@ export async function establishSession(
   if (!actualIdentity) {
     throw new Error("No identity available for session establishment");
   }
+  if (!sessionWebSocket) {
+    throw new Error("No WebSocket connection available");
+  }
+  return await establishSessionWithWS(actualIdentity, sessionWebSocket);
+}
 
-  // This will be called by the main module with the actual WebSocket
-  throw new Error(
-    "Session establishment must be called through PlayHTML main module"
-  );
+// Internal session establishment with WebSocket
+// Uses server-initiated challenge-response: client requests challenge,
+// server generates and sends it, client signs and returns it.
+export async function establishSessionWithWS(
+  identity: PlayHTMLIdentity,
+  ws: WebSocket
+): Promise<ValidatedSession> {
+  return new Promise((resolve, reject) => {
+    // Request a challenge from the server
+    const request = {
+      type: "session_request_challenge",
+      publicKey: identity.publicKey,
+      algorithm: identity.algorithm || "Ed25519",
+    };
+
+    // Set up one-time listener for server responses
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "session_challenge") {
+          // Server sent a challenge — sign it and respond
+          signMessage(
+            JSON.stringify(data.challenge),
+            identity.privateKey,
+            identity.algorithm
+          )
+            .then((signature) => {
+              ws.send(
+                JSON.stringify({
+                  type: "session_establish",
+                  challenge: data.challenge,
+                  signature,
+                  publicKey: identity.publicKey,
+                  algorithm: identity.algorithm || "Ed25519",
+                })
+              );
+            })
+            .catch((err) => {
+              ws.removeEventListener("message", handleMessage);
+              reject(err);
+            });
+        } else if (
+          data.type === "session_established" ||
+          data.type === "session_renewed"
+        ) {
+          ws.removeEventListener("message", handleMessage);
+
+          const session: ValidatedSession = {
+            sessionId: data.sessionId,
+            publicKey: data.publicKey,
+            domain: window.location.hostname,
+            establishedAt: Date.now(),
+            expiresAt: data.expiresAt,
+          };
+
+          // Store session and set up auto-renewal
+          currentSession = session;
+          scheduleSessionRenewal(session);
+
+          // Dispatch session events
+          const eventType =
+            data.type === "session_renewed"
+              ? "playhtmlSessionRenewed"
+              : "playhtmlSessionEstablished";
+          window.dispatchEvent(
+            new CustomEvent(eventType, { detail: session })
+          );
+
+          console.log(
+            `Session ${
+              data.type === "session_renewed" ? "renewed" : "established"
+            }: ${session.sessionId.slice(0, 8)}...`
+          );
+
+          resolve(session);
+        } else if (data.type === "session_error") {
+          ws.removeEventListener("message", handleMessage);
+          reject(new Error(data.message || "Session establishment failed"));
+        }
+      } catch {
+        // Non-JSON message, ignore
+      }
+    };
+
+    ws.addEventListener("message", handleMessage);
+
+    // Send challenge request to server
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(request));
+    } else {
+      ws.removeEventListener("message", handleMessage);
+      reject(new Error("WebSocket not open"));
+    }
+
+    // Set timeout for session establishment
+    setTimeout(() => {
+      ws.removeEventListener("message", handleMessage);
+      reject(new Error("Session establishment timeout"));
+    }, 10000); // 10 second timeout
+  });
 }
 
 // Schedule automatic session renewal
@@ -475,10 +458,7 @@ function scheduleSessionRenewal(session: ValidatedSession): void {
   if (timeUntilRenewal > 0) {
     sessionRenewalTimer = window.setTimeout(async () => {
       try {
-        const identity = getCurrentIdentity();
-        if (identity) {
-          await establishSession(identity); // This will extend the existing session
-        }
+        await establishSession();
       } catch (error) {
         console.error("Session renewal failed:", error);
         window.dispatchEvent(
@@ -492,7 +472,7 @@ function scheduleSessionRenewal(session: ValidatedSession): void {
     }, timeUntilRenewal);
 
     console.log(
-      `🔄 Session renewal scheduled in ${Math.round(
+      `Session renewal scheduled in ${Math.round(
         timeUntilRenewal / 1000 / 60
       )} minutes`
     );
@@ -504,7 +484,7 @@ export function getCurrentSession(): ValidatedSession | null {
   return currentSession;
 }
 
-// Create a session action (replaces signed actions for better performance)
+// Create a session action (lightweight — no per-action signing)
 export function createSessionAction(
   action: string,
   elementId: string,
@@ -525,16 +505,16 @@ export function createSessionAction(
 }
 
 // Initialize session authentication on page load (called from main.ts with WebSocket)
-export async function initializeSessionAuth(ws?: WebSocket): Promise<void> {
+export async function initializeSessionAuth(ws: WebSocket): Promise<void> {
+  setSessionWebSocket(ws);
   const identity = getCurrentIdentity();
-  if (identity && ws) {
-    // Wait a bit for WebSocket to be fully ready
+  if (identity) {
+    // Wait for WebSocket to be fully ready
     if (ws.readyState !== WebSocket.OPEN) {
-      console.log('[PLAYHTML SESSION]: WebSocket not ready, waiting...');
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         const checkReady = () => {
           if (ws.readyState === WebSocket.OPEN) {
-            resolve(true);
+            resolve();
           } else {
             setTimeout(checkReady, 100);
           }
@@ -542,9 +522,8 @@ export async function initializeSessionAuth(ws?: WebSocket): Promise<void> {
         checkReady();
       });
     }
-    
+
     try {
-      console.log('[PLAYHTML SESSION]: Attempting to establish session...');
       await establishSessionWithWS(identity, ws);
     } catch (error) {
       console.warn("Failed to establish session on page load:", error);

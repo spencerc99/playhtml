@@ -189,57 +189,29 @@
         updateSessionStatus(null);
       });
 
-      // Initialize PlayHTML with global role configuration
+      // Initialize PlayHTML with global role configuration.
+      // Roles can be either explicit public key arrays, or inline condition
+      // functions that receive a PermissionContext and return a boolean.
       await playhtml.init({
-        // Define global roles for the site
         roles: {
-          // Explicit public key assignments - will be populated when user creates identity
+          // Explicit public key assignments
           owner: [
             "MCowBQYDK2VwAyEAMndQFsLmugJTh0yVF0somtpb9FVY91mTTmMXUB+Bzfc=",
           ],
           moderators: [],
           contributors: [],
 
-          // Conditional role assignments
-          visitors: { condition: "frequentVisitor" },
-          earlyAccess: { condition: "workingHours" },
-        },
-
-        // Custom permission conditions (examples)
-        permissionConditions: {
-          // Time-based access
-          workingHours: async (context) => {
+          // Inline condition functions — no separate permissionConditions needed
+          visitors: async (context) => {
+            // Visit-based progression (customize via customData)
+            const visitCount = parseInt(localStorage.getItem("playhtml_visits_demo") || "0") + 1;
+            localStorage.setItem("playhtml_visits_demo", String(visitCount));
+            return visitCount >= 5;
+          },
+          earlyAccess: async (context) => {
+            // Time-based access
             const hour = new Date().getHours();
             return hour >= 9 && hour <= 17;
-          },
-
-          // Visit-based progression
-          frequentVisitor: async (context) => {
-            return context.visitCount >= 5;
-          },
-
-          // Morning-only access
-          morningOnly: async (context) => {
-            const hour = new Date().getHours();
-            return hour >= 6 && hour <= 12;
-          },
-
-          // Password protection
-          passwordProtected: async (context) => {
-            const password = prompt("Enter password:");
-            return password === "secret123";
-          },
-
-          // Konami code unlock
-          konamiUnlock: async (context) => {
-            return context.customData.konamiSequenceCompleted === true;
-          },
-
-          // Geographic proximity (example - would need real geolocation)
-          geographicProximity: async (context) => {
-            // This is just an example - would need real implementation
-            console.log("Geographic check would happen here");
-            return true; // Always allow for demo
           },
         },
       });
@@ -274,27 +246,22 @@
             }
           }, 0);
 
-          // Update global roles to include this user as contributor (owners are pre-configured)
-          playhtml.auth.configureGlobalPermissions(
-            {
-              owner: [
-                "MCowBQYDK2VwAyEAMndQFsLmugJTh0yVF0somtpb9FVY91mTTmMXUB+Bzfc=",
-              ],
-              moderators: [],
-              contributors: [auth.identity.publicKey], // Auto-add new users as contributors
-              visitors: { condition: "frequentVisitor" },
-              earlyAccess: { condition: "workingHours" },
+          // Update global roles to include this user as contributor
+          playhtml.auth.configureGlobalPermissions({
+            owner: [
+              "MCowBQYDK2VwAyEAMndQFsLmugJTh0yVF0somtpb9FVY91mTTmMXUB+Bzfc=",
+            ],
+            moderators: [],
+            contributors: [auth.identity.publicKey], // Auto-add new users as contributors
+            visitors: async (context) => {
+              const visitCount = parseInt(localStorage.getItem("playhtml_visits_demo") || "0");
+              return visitCount >= 5;
             },
-            {
-              workingHours: async (context) => {
-                const hour = new Date().getHours();
-                return hour >= 9 && hour <= 17;
-              },
-              frequentVisitor: async (context) => {
-                return context.visitCount >= 5;
-              },
-            }
-          );
+            earlyAccess: async (context) => {
+              const hour = new Date().getHours();
+              return hour >= 9 && hour <= 17;
+            },
+          });
         } else {
           authInfo.innerHTML =
             "<strong>Not Authenticated</strong> - Running in read-only mode";

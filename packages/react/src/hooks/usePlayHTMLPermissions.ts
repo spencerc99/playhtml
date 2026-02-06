@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import playhtml from '../playhtml-singleton';
+import type { PlayHTMLComponents } from 'playhtml';
 
 export interface PermissionState {
   canRead: boolean;
@@ -11,7 +12,10 @@ export interface PermissionState {
 }
 
 /**
- * Hook to check user permissions for a specific element
+ * Hook to check user permissions for a specific element.
+ *
+ * NOTE: Permissions are client-side advisory only. See auth.ts in the core package.
+ *
  * @param elementId - The ID of the element to check permissions for
  * @param customActions - Additional custom actions to check beyond the defaults
  * @returns Object with permission states for different actions
@@ -21,39 +25,44 @@ export function usePlayHTMLPermissions(
   customActions: string[] = []
 ): PermissionState {
   const defaultActions = ['read', 'write', 'delete', 'moderate', 'admin'];
-  const allActions = [...defaultActions, ...customActions];
-  
+  // Memoize so the dependency array is stable across renders
+  const allActions = useMemo(
+    () => [...defaultActions, ...customActions],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [customActions.join(',')]
+  );
+
+  // Default to deny until permissions are resolved
   const [permissions, setPermissions] = useState<PermissionState>(() => {
     const initial: PermissionState = {
-      canRead: true,
-      canWrite: true,
+      canRead: false,
+      canWrite: false,
       canDelete: false,
       canModerate: false,
       canAdmin: false,
     };
-    
+
     // Add custom actions to initial state
     customActions.forEach(action => {
       initial[`can${action.charAt(0).toUpperCase() + action.slice(1)}`] = false;
     });
-    
+
     return initial;
   });
 
   useEffect(() => {
     const updatePermissions = async () => {
-      // @ts-ignore - auth may not be typed in the React package yet
-      if (!playhtml.auth?.getCurrentIdentity || !playhtml.auth?.checkPermission) {
+      const auth = (playhtml as PlayHTMLComponents).auth;
+      if (!auth?.getCurrentIdentity || !auth?.checkPermission) {
         console.warn('[usePlayHTMLPermissions] PlayHTML auth not available');
         return;
       }
-      
-      // @ts-ignore - auth may not be typed in the React package yet
-      const identity = playhtml.auth.getCurrentIdentity();
-      
+
+      const identity = auth.getCurrentIdentity();
+
       const newPermissions: PermissionState = {
-        canRead: true,
-        canWrite: true,
+        canRead: false,
+        canWrite: false,
         canDelete: false,
         canModerate: false,
         canAdmin: false,
@@ -61,8 +70,7 @@ export function usePlayHTMLPermissions(
 
       try {
         for (const action of allActions) {
-          // @ts-ignore - auth may not be typed in the React package yet
-          const hasPermission = await playhtml.auth.checkPermission(elementId, action, identity);
+          const hasPermission = await auth.checkPermission(elementId, action, identity);
           const camelCaseAction = `can${action.charAt(0).toUpperCase() + action.slice(1)}`;
           newPermissions[camelCaseAction] = hasPermission;
         }
@@ -78,11 +86,11 @@ export function usePlayHTMLPermissions(
     // Listen for auth changes
     const handleAuthReady = () => updatePermissions();
     window.addEventListener('playhtmlAuthReady', handleAuthReady);
-    
+
     return () => {
       window.removeEventListener('playhtmlAuthReady', handleAuthReady);
     };
-  }, [elementId, allActions.join(',')]);
+  }, [elementId, allActions]);
 
   return permissions;
 }

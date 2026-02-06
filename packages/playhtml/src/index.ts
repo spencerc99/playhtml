@@ -14,8 +14,6 @@ import {
   generatePersistentPlayerIdentity,
   deepReplaceIntoProxy,
   PlayHTMLIdentity,
-  GlobalRoleDefinition,
-  PermissionFunction,
   ValidatedSession,
 } from "@playhtml/common";
 import * as Y from "yjs";
@@ -35,8 +33,9 @@ import {
   createSessionAction,
   establishSessionWithWS,
   getUserRolesForElement,
+  getMyRoles,
 } from "./auth";
-import { createSignedAction, createAuthenticatedMessage } from "./crypto";
+import type { RoleDefinition } from "./auth";
 import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
@@ -430,15 +429,17 @@ export interface InitOptions<T = any> {
   cursors?: CursorOptions;
 
   /**
-   * Define global roles for the entire site. Maps role names to arrays of public keys
-   * or conditional role assignments.
+   * Define global roles for the entire site. Maps role names to either:
+   * - An array of public keys (explicit membership)
+   * - A PermissionFunction (inline condition, evaluated at check time)
+   *
+   * Example:
+   *   roles: {
+   *     owner: ["<public-key>"],
+   *     contributors: async (ctx) => ctx.customData.visitCount >= 5,
+   *   }
    */
-  roles?: GlobalRoleDefinition;
-
-  /**
-   * Custom permission condition functions for dynamic role assignments.
-   */
-  permissionConditions?: Record<string, PermissionFunction>;
+  roles?: Record<string, RoleDefinition>;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -529,7 +530,6 @@ async function initPlayHTML({
   developmentMode = false,
   cursors = {},
   roles = {},
-  permissionConditions = {},
 }: InitOptions = {}) {
   if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
@@ -540,11 +540,8 @@ async function initPlayHTML({
   window.playhtml = playhtml;
 
   // Configure global permissions if provided
-  if (
-    Object.keys(roles).length > 0 ||
-    Object.keys(permissionConditions).length > 0
-  ) {
-    configureGlobalPermissions(roles, permissionConditions);
+  if (Object.keys(roles).length > 0) {
+    configureGlobalPermissions(roles);
   }
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
@@ -1117,15 +1114,14 @@ export interface PlayHTMLComponents {
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
-  // Authentication
+  // Authentication (permissions are client-side advisory — see auth.ts)
   auth: {
     getCurrentIdentity: typeof getCurrentIdentity;
     checkPermission: typeof checkPermission;
     onAuthReady: typeof onAuthReady;
-    createSignedAction: typeof createSignedAction;
-    createAuthenticatedMessage: typeof createAuthenticatedMessage;
     createNewIdentity: typeof createNewIdentity;
     configureGlobalPermissions: typeof configureGlobalPermissions;
+    getMyRoles: typeof getMyRoles;
     // Session functions
     getCurrentSession: typeof getCurrentSession;
     establishSession: (
@@ -1152,15 +1148,14 @@ export const playhtml: PlayHTMLComponents = {
   get cursorClient() {
     return cursorClient;
   },
-  // Authentication
+  // Authentication (permissions are client-side advisory — see auth.ts)
   auth: {
     getCurrentIdentity,
     checkPermission,
     onAuthReady,
-    createSignedAction,
-    createAuthenticatedMessage,
     createNewIdentity,
     configureGlobalPermissions,
+    getMyRoles,
     // Session functions
     getCurrentSession,
     establishSession: async (identity?: PlayHTMLIdentity) => {

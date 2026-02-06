@@ -3,11 +3,10 @@ import {
   generateIdentity,
   signMessage,
   verifySignature,
-  generateSessionChallenge,
   createSessionAction,
   getCurrentSession,
 } from "../auth";
-import type { PlayHTMLIdentity, SessionChallenge } from "@playhtml/common";
+import type { PlayHTMLIdentity } from "@playhtml/common";
 
 // Mock global crypto for testing
 const mockCrypto = {
@@ -281,53 +280,9 @@ describe("Authentication - Signature Verification", () => {
   });
 });
 
-describe("Authentication - Session Challenges", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockCrypto.randomUUID.mockReturnValue('test-challenge-uuid');
-    
-    // Mock window.location
-    Object.defineProperty(window, 'location', {
-      value: { hostname: 'localhost' },
-      writable: true
-    });
-  });
-
-  it("should generate valid session challenge", () => {
-    const challenge = generateSessionChallenge();
-
-    expect(challenge).toEqual({
-      challenge: 'test-challenge-uuid',
-      domain: 'localhost',
-      timestamp: expect.any(Number),
-      expiresAt: expect.any(Number),
-    });
-
-    // Should expire in 5 minutes (300,000ms)
-    expect(challenge.expiresAt - challenge.timestamp).toBe(5 * 60 * 1000);
-  });
-
-  it("should create unique challenges", () => {
-    mockCrypto.randomUUID
-      .mockReturnValueOnce('challenge-1')
-      .mockReturnValueOnce('challenge-2');
-
-    const challenge1 = generateSessionChallenge();
-    const challenge2 = generateSessionChallenge();
-
-    expect(challenge1.challenge).not.toBe(challenge2.challenge);
-  });
-
-  it("should use correct domain from window.location", () => {
-    Object.defineProperty(window, 'location', {
-      value: { hostname: 'example.com' },
-      writable: true
-    });
-
-    const challenge = generateSessionChallenge();
-    expect(challenge.domain).toBe('example.com');
-  });
-});
+// Note: Session challenges are now generated server-side (server-initiated
+// challenge-response). Client-side challenge generation has been removed.
+// Server challenge tests are in partykit/__tests__/auth.test.ts.
 
 describe("Authentication - Session Actions", () => {
   beforeEach(() => {

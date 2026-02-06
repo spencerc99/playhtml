@@ -256,6 +256,10 @@ export default class implements Party.Server {
         } else if (parsed.type === "register-shared-element") {
           // Handle dynamic registration of shared source element
           await this.handleRegisterSharedElement(parsed.element, sender);
+        } else if (parsed.type === "session_request_challenge") {
+          // Server-initiated challenge: generate challenge and send to client
+          await this.handleSessionChallengeRequest(parsed, sender);
+          return;
         } else if (parsed.type === "session_establish") {
           console.log(
             `[PartyKit] Handling session establishment for ${parsed.publicKey?.slice(
@@ -649,7 +653,46 @@ export default class implements Party.Server {
     this.observersAttached = true;
   }
 
-  // WebSocket-based session establishment
+  // Handle client request for a challenge (server-initiated challenge-response)
+  private async handleSessionChallengeRequest(
+    request: any,
+    sender: Party.Connection
+  ) {
+    const { publicKey, algorithm } = request;
+    if (!publicKey) {
+      sender.send(
+        JSON.stringify({
+          type: "session_error",
+          message: "Missing publicKey",
+        })
+      );
+      return;
+    }
+
+    // Generate a challenge and store it server-side
+    const challenge: SessionChallenge = {
+      challenge: crypto.randomUUID(),
+      domain: "server",
+      timestamp: Date.now(),
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    };
+
+    // Key by connection id + public key to prevent cross-connection reuse
+    const challengeKey = `${sender.id}:${publicKey}`;
+    this.pendingChallenges.set(challengeKey, challenge);
+
+    // Clean up expired challenges after 5 minutes
+    setTimeout(() => this.pendingChallenges.delete(challengeKey), 5 * 60 * 1000);
+
+    sender.send(
+      JSON.stringify({
+        type: "session_challenge",
+        challenge,
+      })
+    );
+  }
+
+  // WebSocket-based session establishment (validates against server-generated challenge)
   private async handleSessionEstablishmentWS(
     request: any,
     sender: Party.Connection
@@ -664,7 +707,39 @@ export default class implements Party.Server {
         )}...`
       );
 
-      // Validate signature first - use algorithm if provided, default to Ed25519
+      // Verify the challenge was issued by this server
+      const challengeKey = `${sender.id}:${publicKey}`;
+      const pendingChallenge = this.pendingChallenges.get(challengeKey);
+
+      if (!pendingChallenge) {
+        sender.send(
+          JSON.stringify({
+            type: "session_error",
+            message: "No pending challenge found. Request a challenge first.",
+          })
+        );
+        return;
+      }
+
+      // Verify the challenge matches what the server issued
+      if (
+        pendingChallenge.challenge !== challenge?.challenge ||
+        pendingChallenge.expiresAt < Date.now()
+      ) {
+        this.pendingChallenges.delete(challengeKey);
+        sender.send(
+          JSON.stringify({
+            type: "session_error",
+            message: "Invalid or expired challenge",
+          })
+        );
+        return;
+      }
+
+      // Challenge consumed — delete it
+      this.pendingChallenges.delete(challengeKey);
+
+      // Validate signature against the server-issued challenge
       const isValidSignature = await verifySignature(
         JSON.stringify(challenge),
         signature,
