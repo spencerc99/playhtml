@@ -1,4 +1,3 @@
-import React from "react";
 import { withSharedState } from "@playhtml/react";
 import { formatLargeNumber } from "./utils";
 import "./ReactiveOrb.scss";

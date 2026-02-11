@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Buffer } from "buffer";
 import { useStickyState } from "./hooks/useStickyState";
 
 // Types from the original admin.ts
@@ -508,7 +507,7 @@ const AdminConsole: React.FC = () => {
   const [showRawDbData, setShowRawDbData] = useState(false);
   const [showYDocDebug, setShowYDocDebug] = useState(false);
   const [showDataComparison, setShowDataComparison] = useState(false);
-  const [showBackupComparison, setShowBackupComparison] = useState(false);
+  const [_showBackupComparison, setShowBackupComparison] = useState(false);
 
   // Section collapse/expand state
   const [sectionsExpanded, setSectionsExpanded] = useState<
@@ -544,7 +543,7 @@ const AdminConsole: React.FC = () => {
   const [editableJson, setEditableJson] = useState<string>("");
   const [jsonError, setJsonError] = useState<string>("");
   const [currentBackupFile, setCurrentBackupFile] = useState<File | null>(null);
-  const [backupBase64, setBackupBase64] = useState<string | null>(null);
+  const [_backupBase64, setBackupBase64] = useState<string | null>(null);
   const [savedBackupPath, setSavedBackupPath] = useStickyState<string | null>(
     "playhtml-admin-backup-path",
     null
@@ -1256,7 +1255,7 @@ const AdminConsole: React.FC = () => {
             "success"
           );
           const totalElements = Object.values(reconstructedData).reduce(
-            (sum, tagData: any) => sum + Object.keys(tagData).length,
+            (sum: number, tagData: any) => sum + Object.keys(tagData).length,
             0
           );
           addStep(`📊 Found ${totalElements} total elements`, "success");

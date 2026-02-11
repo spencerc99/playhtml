@@ -1,6 +1,6 @@
 // ABOUTME: Slot machine component for cycling through playhtml examples
 // ABOUTME: Uses deterministic daily shuffle to ensure all examples are seen
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import "./ExampleSlotMachine.scss";
 
 interface Example {

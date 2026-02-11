@@ -1,4 +1,3 @@
-import React from "react";
 import { usePlayContext } from "@playhtml/react";
 import { ViewCount } from "../../packages/react/examples/ViewCount";
 import { formatLargeNumber } from "../../packages/react/examples/utils";
