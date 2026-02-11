@@ -162,7 +162,14 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "4px", display: "block" }}>
+            <label
+              style={{
+                fontSize: "12px",
+                fontWeight: "600",
+                marginBottom: "4px",
+                display: "block",
+              }}
+            >
               Event Types
             </label>
             <div
@@ -199,7 +206,14 @@ export const Controls: React.FC<ControlsProps> = memo(
               </label>
               {/* Cursor event sub-filters - only shown when cursor events enabled */}
               {settings.eventTypeFilter.cursor && (
-                <div style={{ marginLeft: "20px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div
+                  style={{
+                    marginLeft: "20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
+                >
                   <label
                     style={{
                       fontSize: "11px",
@@ -214,7 +228,10 @@ export const Controls: React.FC<ControlsProps> = memo(
                       onChange={(e) =>
                         setSettings((s: any) => ({
                           ...s,
-                          eventFilter: { ...s.eventFilter, move: e.target.checked },
+                          eventFilter: {
+                            ...s.eventFilter,
+                            move: e.target.checked,
+                          },
                         }))
                       }
                       style={{ marginRight: "6px" }}
@@ -259,7 +276,10 @@ export const Controls: React.FC<ControlsProps> = memo(
                       onChange={(e) =>
                         setSettings((s: any) => ({
                           ...s,
-                          eventFilter: { ...s.eventFilter, hold: e.target.checked },
+                          eventFilter: {
+                            ...s.eventFilter,
+                            hold: e.target.checked,
+                          },
                         }))
                       }
                       style={{ marginRight: "6px" }}
@@ -344,7 +364,14 @@ export const Controls: React.FC<ControlsProps> = memo(
               </label>
               {/* Viewport event sub-filters */}
               {settings.eventTypeFilter.viewport && (
-                <div style={{ marginLeft: "20px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div
+                  style={{
+                    marginLeft: "20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
+                >
                   <label
                     style={{
                       fontSize: "11px",
@@ -959,14 +986,21 @@ export const Controls: React.FC<ControlsProps> = memo(
 
         <CollapsibleSection title="Navigation" sectionKey="navigation">
           <div className="control-group">
-            <span style={{ display: "block", marginBottom: "4px" }}>View mode</span>
+            <span style={{ display: "block", marginBottom: "4px" }}>
+              View mode
+            </span>
             <label style={{ marginRight: "12px" }}>
               <input
                 type="radio"
                 name="nav-view-mode"
-                checked={(settings.navigationViewMode ?? "timeline") === "timeline"}
+                checked={
+                  (settings.navigationViewMode ?? "timeline") === "timeline"
+                }
                 onChange={() =>
-                  setSettings((s: any) => ({ ...s, navigationViewMode: "timeline" }))
+                  setSettings((s: any) => ({
+                    ...s,
+                    navigationViewMode: "timeline",
+                  }))
                 }
                 style={{ marginRight: "4px" }}
               />
@@ -976,9 +1010,14 @@ export const Controls: React.FC<ControlsProps> = memo(
               <input
                 type="radio"
                 name="nav-view-mode"
-                checked={(settings.navigationViewMode ?? "timeline") === "radial"}
+                checked={
+                  (settings.navigationViewMode ?? "timeline") === "radial"
+                }
                 onChange={() =>
-                  setSettings((s: any) => ({ ...s, navigationViewMode: "radial" }))
+                  setSettings((s: any) => ({
+                    ...s,
+                    navigationViewMode: "radial",
+                  }))
                 }
                 style={{ marginRight: "4px" }}
               />
@@ -989,7 +1028,14 @@ export const Controls: React.FC<ControlsProps> = memo(
           {(settings.navigationViewMode ?? "timeline") === "radial" && (
             <>
               <div className="control-group">
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={settings.navigationRadialSegmentByDay ?? true}
@@ -1004,7 +1050,9 @@ export const Controls: React.FC<ControlsProps> = memo(
                 </label>
               </div>
               <div className="control-group">
-                <label htmlFor="nav-max-parallel-edges">Max parallel edges</label>
+                <label htmlFor="nav-max-parallel-edges">
+                  Max parallel edges
+                </label>
                 <input
                   id="nav-max-parallel-edges"
                   type="range"
@@ -1022,7 +1070,9 @@ export const Controls: React.FC<ControlsProps> = memo(
                 <span>{settings.navigationMaxParallelEdges ?? 3}</span>
               </div>
               <div className="control-group">
-                <label htmlFor="radial-blob-samples">Blob outline samples</label>
+                <label htmlFor="radial-blob-samples">
+                  Blob outline samples
+                </label>
                 <input
                   id="radial-blob-samples"
                   type="range"
@@ -1040,7 +1090,9 @@ export const Controls: React.FC<ControlsProps> = memo(
                 <span>{settings.navigationRadialBlobSamples ?? 64}</span>
               </div>
               <div className="control-group">
-                <label htmlFor="radial-blob-tension">Blob curve smoothness</label>
+                <label htmlFor="radial-blob-tension">
+                  Blob curve smoothness
+                </label>
                 <input
                   id="radial-blob-tension"
                   type="range"
@@ -1051,11 +1103,17 @@ export const Controls: React.FC<ControlsProps> = memo(
                   onChange={(e) =>
                     setSettings((s: any) => ({
                       ...s,
-                      navigationRadialBlobCurveTension: parseFloat(e.target.value),
+                      navigationRadialBlobCurveTension: parseFloat(
+                        e.target.value,
+                      ),
                     }))
                   }
                 />
-                <span>{(settings.navigationRadialBlobCurveTension ?? 0.5).toFixed(2)}</span>
+                <span>
+                  {(settings.navigationRadialBlobCurveTension ?? 0.5).toFixed(
+                    2,
+                  )}
+                </span>
               </div>
               <div className="control-group">
                 <label htmlFor="radial-blob-noise">Blob edge noise</label>
@@ -1073,7 +1131,9 @@ export const Controls: React.FC<ControlsProps> = memo(
                     }))
                   }
                 />
-                <span>{(settings.navigationRadialBlobEdgeNoise ?? 0.45).toFixed(2)}</span>
+                <span>
+                  {(settings.navigationRadialBlobEdgeNoise ?? 0.45).toFixed(2)}
+                </span>
               </div>
               <div className="control-group">
                 <label htmlFor="radial-blob-valley">Blob valley depth</label>
@@ -1087,11 +1147,17 @@ export const Controls: React.FC<ControlsProps> = memo(
                   onChange={(e) =>
                     setSettings((s: any) => ({
                       ...s,
-                      navigationRadialBlobValleyDepth: parseFloat(e.target.value),
+                      navigationRadialBlobValleyDepth: parseFloat(
+                        e.target.value,
+                      ),
                     }))
                   }
                 />
-                <span>{(settings.navigationRadialBlobValleyDepth ?? 0.05).toFixed(2)}</span>
+                <span>
+                  {(settings.navigationRadialBlobValleyDepth ?? 0.05).toFixed(
+                    2,
+                  )}
+                </span>
               </div>
             </>
           )}

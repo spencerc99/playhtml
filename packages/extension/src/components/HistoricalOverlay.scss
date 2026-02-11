@@ -1,0 +1,165 @@
+// ABOUTME: Styles for the historical data overlay
+
+.playhtml-historical-overlay {
+  // Full-screen overlay
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 2147483647 !important; // Maximum z-index value - above everything
+  pointer-events: none !important; // Don't block page interactions
+  overflow: hidden !important;
+
+  // Make animations and controls interactive
+  svg,
+  canvas,
+  .overlay-info-bar {
+    pointer-events: auto !important;
+  }
+
+  // No dimming of page content
+  background: transparent !important;
+
+  .riso-pattern {
+    pointer-events: none !important;
+  }
+}
+
+.playhtml-historical-overlay .overlay-info-bar {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 2147483647 !important; // Maximum z-index - same as parent
+  pointer-events: auto !important;
+
+  display: flex !important;
+  align-items: center !important;
+  gap: 24px !important;
+  padding: 16px 24px !important;
+
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-top: 2px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: blur(10px) !important;
+
+  font-family: 'Martian Mono', 'Space Mono', 'Courier New', monospace !important;
+  font-size: 12px !important;
+
+  .info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 200px;
+
+    .domain {
+      font-weight: 700;
+      font-size: 14px;
+      color: #1f2937;
+      letter-spacing: 0.3px;
+    }
+
+    .date-range {
+      font-size: 11px;
+      color: #6b7280;
+      font-weight: 500;
+    }
+  }
+
+  .event-counts {
+    display: flex;
+    gap: 20px;
+    padding-left: 24px;
+    border-left: 2px solid rgba(0, 0, 0, 0.1);
+
+    .count-item {
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+
+      .label {
+        font-size: 11px;
+        color: #6b7280;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .value {
+        font-size: 14px;
+        font-weight: 700;
+        color: #1f2937;
+      }
+    }
+  }
+
+  .visualization-toggles {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+    padding-right: 12px;
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+
+      input[type='checkbox'] {
+        cursor: pointer;
+        width: 16px;
+        height: 16px;
+        accent-color: #6366f1;
+      }
+
+      &:hover {
+        color: #1f2937;
+      }
+    }
+  }
+
+  .loading-status {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+    margin-left: auto;
+  }
+
+  .error-status {
+    font-size: 12px;
+    color: #dc2626;
+    font-weight: 600;
+    margin-left: auto;
+  }
+
+  .close-button {
+    background: #1f2937;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'Martian Mono', 'Space Mono', 'Courier New', monospace;
+    transition: background 0.2s, transform 0.1s;
+
+    &:hover {
+      background: #111827;
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+}

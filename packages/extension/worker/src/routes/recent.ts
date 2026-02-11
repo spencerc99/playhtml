@@ -44,10 +44,19 @@ export async function handleRecent(
     for (let offset = 0; offset < limit; offset += SUPABASE_PAGE_SIZE) {
       const from = offset;
       const to = offset + SUPABASE_PAGE_SIZE - 1;
-      const { data, error } = await supabase
+
+      // Build query with domain filter if provided
+      let query = supabase
         .from('collection_events')
         .select('*')
-        .eq('type', type)
+        .eq('type', type);
+
+      // Add domain filter using indexed domain column
+      if (domainFilter) {
+        query = query.eq('domain', domainFilter);
+      }
+
+      const { data, error } = await query
         .order('ts', { ascending: false })
         .range(from, to);
 
@@ -66,7 +75,7 @@ export async function handleRecent(
 
     // Transform back to CollectionEvent format (cap at limit)
     const rows = allRows.slice(0, limit);
-    let events: CollectionEvent[] = rows.map((row: Record<string, unknown>) => ({
+    const events: CollectionEvent[] = rows.map((row: Record<string, unknown>) => ({
       id: row.id as string,
       type: row.type as CollectionEvent['type'],
       ts: new Date(row.ts as string).getTime(),
@@ -80,14 +89,6 @@ export async function handleRecent(
         tz: row.timezone,
       } as EventMeta,
     }));
-    
-    // Filter by domain if provided
-    if (domainFilter) {
-      events = events.filter((event) => {
-        const eventDomain = extractDomain(event.meta.url || '');
-        return eventDomain === domainFilter;
-      });
-    }
     
     return new Response(
       JSON.stringify(events),

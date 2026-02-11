@@ -178,6 +178,19 @@ function PlayHTMLPopup() {
     }
   };
 
+  const toggleHistoricalOverlay = async () => {
+    if (!currentTab?.id) return;
+
+    try {
+      await browser.tabs.sendMessage(currentTab.id, {
+        type: "TOGGLE_HISTORICAL_OVERLAY",
+      });
+      window.close(); // Close popup
+    } catch (error) {
+      console.error("Failed to toggle historical overlay:", error);
+    }
+  };
+
   const pingContentScript = async () => {
     try {
       if (currentTab?.id) {
@@ -250,6 +263,7 @@ function PlayHTMLPopup() {
           onPickElement={activateElementPicker}
           onViewInventory={() => setCurrentView("inventory")}
           onViewCollections={() => setCurrentView("collections")}
+          onViewHistory={toggleHistoricalOverlay}
           inventory={inventory}
         />
       </main>
