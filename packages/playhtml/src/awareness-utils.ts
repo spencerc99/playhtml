@@ -34,11 +34,12 @@ export function getElementAwarenessFingerprint(
     for (const tag of tagKeys) {
       const tagData = state[tag];
       if (tagData == null || typeof tagData !== "object") continue;
-      const elementIds = Object.keys(tagData).sort();
+      const tagRecord = tagData as Record<string, unknown>;
+      const elementIds = Object.keys(tagRecord).sort();
       for (const elementId of elementIds) {
         try {
           parts.push(
-            `${clientId}:${tag}:${elementId}:${JSON.stringify(tagData[elementId])}`
+            `${clientId}:${tag}:${elementId}:${JSON.stringify(tagRecord[elementId])}`
           );
         } catch {
           // skip non-JSON-serializable values
