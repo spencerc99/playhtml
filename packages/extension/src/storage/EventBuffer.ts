@@ -3,7 +3,7 @@ import { getParticipantId, getSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 
 const DB_NAME = 'collection_events_db';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Incremented for uploaded flag addition
 const STORE_NAME = 'events';
 const BATCH_SIZE = 100;
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
@@ -44,12 +44,31 @@ export class EventBuffer {
       
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        
-        // Create object store if it doesn't exist
+        const oldVersion = event.oldVersion;
+
+        // Create object store if it doesn't exist (v1)
+        let store: IDBObjectStore;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
           store.createIndex('ts', 'ts', { unique: false });
           store.createIndex('type', 'type', { unique: false });
+        } else {
+          const transaction = (event.target as IDBOpenDBRequest).transaction!;
+          store = transaction.objectStore(STORE_NAME);
+        }
+
+        // Add url index for domain queries (v2)
+        if (oldVersion < 2) {
+          if (!store.indexNames.contains('url')) {
+            store.createIndex('url', 'meta.url', { unique: false });
+          }
+        }
+
+        // Add uploaded index to track which events have been synced (v3)
+        if (oldVersion < 3) {
+          if (!store.indexNames.contains('uploaded')) {
+            store.createIndex('uploaded', 'uploaded', { unique: false });
+          }
         }
       };
     });
@@ -67,16 +86,18 @@ export class EventBuffer {
    */
   async addEvent(event: CollectionEvent): Promise<void> {
     await this.ensureInitialized();
-    
+
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
         return;
       }
-      
+
       const transaction = this.db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.add(event);
+      // Add uploaded flag (false initially)
+      const eventWithFlag = { ...event, uploaded: false };
+      const request = store.add(eventWithFlag);
       
       request.onsuccess = async () => {
         resolve();
@@ -149,20 +170,20 @@ export class EventBuffer {
     
     try {
       await this.uploadCallback(events);
-      
-      // Remove uploaded events from IndexedDB
-      await this.removeEvents(events.map(e => e.id));
+
+      // Mark events as uploaded but keep them in IndexedDB for local history
+      await this.markEventsAsUploaded(events.map(e => e.id));
       if (VERBOSE) {
-        console.log(`[EventBuffer] Successfully uploaded and removed ${events.length} events`);
+        console.log(`[EventBuffer] Successfully uploaded ${events.length} events (kept in local storage)`);
       }
     } catch (error) {
       console.error('[EventBuffer] Failed to upload events:', error);
-      // Events remain in IndexedDB for retry later
+      // Events remain in IndexedDB with uploaded=false for retry later
     }
   }
   
   /**
-   * Get pending events from IndexedDB
+   * Get pending (not yet uploaded) events from IndexedDB
    */
   private async getPendingEvents(limit: number): Promise<CollectionEvent[]> {
     return new Promise((resolve, reject) => {
@@ -170,31 +191,84 @@ export class EventBuffer {
         reject(new Error('Database not initialized'));
         return;
       }
-      
+
       const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
-      const index = store.index('ts');
-      const request = index.openCursor(null, 'next');
-      
+
+      // Get all events and filter for not-uploaded
+      // (Can't use index because undefined != false in IndexedDB)
+      const request = store.openCursor();
+
       const events: CollectionEvent[] = [];
-      
+
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-        
+
         if (cursor && events.length < limit) {
-          events.push(cursor.value as CollectionEvent);
+          const evt = cursor.value;
+          // Include events that are not uploaded (false or undefined)
+          if (evt.uploaded !== true) {
+            events.push(evt as CollectionEvent);
+          }
           cursor.continue();
         } else {
           resolve(events);
         }
       };
-      
+
       request.onerror = () => reject(request.error);
     });
   }
   
   /**
-   * Remove events from IndexedDB
+   * Mark events as uploaded (set uploaded flag to true)
+   */
+  private async markEventsAsUploaded(ids: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+
+      let completed = 0;
+      const total = ids.length;
+
+      if (total === 0) {
+        resolve();
+        return;
+      }
+
+      ids.forEach((id) => {
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          const event = getRequest.result;
+          if (event) {
+            event.uploaded = true;
+            const putRequest = store.put(event);
+            putRequest.onsuccess = () => {
+              completed++;
+              if (completed === total) {
+                resolve();
+              }
+            };
+            putRequest.onerror = () => reject(putRequest.error);
+          } else {
+            completed++;
+            if (completed === total) {
+              resolve();
+            }
+          }
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    });
+  }
+
+  /**
+   * Remove events from IndexedDB (deprecated - kept for manual cleanup)
    */
   private async removeEvents(ids: string[]): Promise<void> {
     return new Promise((resolve, reject) => {

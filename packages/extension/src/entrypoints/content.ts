@@ -876,6 +876,67 @@ export default defineContentScript({
     // Initialize extension when DOM is ready
     let extensionInstance: PlayHTMLExtension | null = null;
     let collectorManager: CollectorManager | null = null;
+    let overlayRoot: any = null;
+    let overlayVisible = false;
+
+    const toggleHistoricalOverlay = async () => {
+      try {
+        overlayVisible = !overlayVisible;
+
+        if (overlayVisible) {
+          // Create overlay
+          if (VERBOSE) {
+            console.log('[HistoricalOverlay] Activating overlay...');
+          }
+
+          // Dynamically import React and components
+          const [{ default: React }, { createRoot }, { HistoricalOverlay }] =
+            await Promise.all([
+              import('react'),
+              import('react-dom/client'),
+              import('../components/HistoricalOverlay'),
+            ]);
+
+          // Create container
+          const container = document.createElement('div');
+          container.id = 'playhtml-historical-overlay-root';
+          document.body.appendChild(container);
+
+          // Create React root
+          overlayRoot = createRoot(container);
+
+          // Render overlay
+          overlayRoot.render(
+            React.createElement(HistoricalOverlay, {
+              visible: true,
+              onClose: () => toggleHistoricalOverlay(),
+            })
+          );
+
+          if (VERBOSE) {
+            console.log('[HistoricalOverlay] Overlay activated');
+          }
+        } else {
+          // Remove overlay
+          if (overlayRoot) {
+            overlayRoot.unmount();
+            overlayRoot = null;
+          }
+
+          const container = document.getElementById('playhtml-historical-overlay-root');
+          if (container) {
+            container.remove();
+          }
+
+          if (VERBOSE) {
+            console.log('[HistoricalOverlay] Overlay deactivated');
+          }
+        }
+      } catch (error) {
+        console.error('[HistoricalOverlay] Failed to toggle overlay:', error);
+        overlayVisible = false;
+      }
+    };
 
     const initializeCollectors = async () => {
       try {
@@ -919,6 +980,14 @@ export default defineContentScript({
       initializeCollectors().catch(console.error);
     }
 
+    // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'H' || e.key === 'h')) {
+        e.preventDefault();
+        toggleHistoricalOverlay();
+      }
+    });
+
     // Listen for messages from popup/devtools
     browser.runtime.onMessage.addListener(
       (message: any, sender: any, sendResponse: any) => {
@@ -941,6 +1010,12 @@ export default defineContentScript({
           extensionInstance?.activateElementPicker();
           sendResponse({ success: true });
           return true; // Keep message channel open for async response
+        }
+
+        if (message.type === "TOGGLE_HISTORICAL_OVERLAY") {
+          toggleHistoricalOverlay();
+          sendResponse({ success: true, visible: overlayVisible });
+          return true;
         }
 
         // Collector management messages

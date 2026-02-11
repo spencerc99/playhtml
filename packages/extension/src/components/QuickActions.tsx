@@ -6,15 +6,17 @@ interface QuickActionsProps {
   onPickElement: () => void;
   onViewInventory: () => void;
   onViewCollections: () => void;
+  onViewHistory: () => void;
   inventory: GameInventory;
 }
 
-export function QuickActions({ 
-  onTestConnection, 
-  onPickElement, 
+export function QuickActions({
+  onTestConnection,
+  onPickElement,
   onViewInventory,
   onViewCollections,
-  inventory 
+  onViewHistory,
+  inventory
 }: QuickActionsProps) {
   return (
     <section>
@@ -79,6 +81,21 @@ export function QuickActions({
           }}
         >
           Collections
+        </button>
+        <button
+          onClick={onViewHistory}
+          style={{
+            padding: "8px 12px",
+            background: "#f59e0b",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            fontSize: "12px",
+            cursor: "pointer",
+            fontWeight: "500",
+          }}
+        >
+          View Page History
         </button>
       </div>
     </section>
