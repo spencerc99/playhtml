@@ -11,11 +11,60 @@ import {
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions } from "..";
+import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
-import randomColor from "randomcolor";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
+
+/** Cursor presence that has been validated: has cursor, playerIdentity with publicKey and primary color. */
+export type ValidCursorPresence = CursorPresence & {
+  cursor: NonNullable<CursorPresence["cursor"]>;
+  playerIdentity: PlayerIdentity;
+};
+
+/** Returns primary color from player identity; throws if missing (no default). */
+function getPrimaryColor(identity: PlayerIdentity): string {
+  const color = identity.playerStyle?.colorPalette?.[0];
+  if (color == null || color === "") {
+    throw new Error(
+      "[playhtml] Player identity must have playerStyle.colorPalette[0] (primary color).",
+    );
+  }
+  return color;
+}
+
+/** Validates identity has publicKey and primary color; throws if not. */
+function assertValidPlayerIdentity(identity: PlayerIdentity): void {
+  if (!identity.publicKey) {
+    throw new Error("[playhtml] Player identity must have publicKey.");
+  }
+  getPrimaryColor(identity);
+}
+
+/**
+ * Validates raw awareness state into a renderable cursor presence, or null.
+ * Invalid when: no cursor data, missing cursor position, missing playerIdentity/publicKey,
+ * or missing primary color (e.g. old clients, corrupted state, or not yet initialized).
+ * Call this once when reading from awareness; downstream code then assumes valid data.
+ */
+function getValidCursorPresence(
+  state: Record<string, unknown> | undefined,
+  _clientId: number,
+): ValidCursorPresence | null {
+  const cursorData = state?.[CURSOR_AWARENESS_FIELD] as
+    | CursorPresence
+    | undefined;
+  if (!cursorData?.cursor || !cursorData.playerIdentity?.publicKey) {
+    return null;
+  }
+  try {
+    getPrimaryColor(cursorData.playerIdentity);
+  } catch {
+    return null;
+  }
+  return cursorData as ValidCursorPresence;
+}
 
 // Global cursor API interface (like cursor-party)
 
@@ -255,6 +304,7 @@ export class CursorClientAwareness {
   ) {
     this.playerIdentity =
       options.playerIdentity || generatePersistentPlayerIdentity();
+    assertValidPlayerIdentity(this.playerIdentity);
     this.visibilityThreshold = options.visibilityThreshold || undefined;
     this.coordinateMode = options.coordinateMode || "relative"; // Default to viewport percentage
 
@@ -276,11 +326,10 @@ export class CursorClientAwareness {
     this.setupCursorTracking();
     this.setupAwarenessHandling();
 
-    // Set initial cursor style
-    const primaryColor =
-      this.playerIdentity.playerStyle.colorPalette[0] ||
-      randomColor({ luminosity: "bright" });
-    document.documentElement.style.cursor = getCursorStyleForUser(primaryColor);
+    // Set initial cursor style (throws if identity has no primary color)
+    document.documentElement.style.cursor = getCursorStyleForUser(
+      getPrimaryColor(this.playerIdentity),
+    );
   }
 
   private setupAwarenessHandling(): void {
@@ -309,16 +358,24 @@ export class CursorClientAwareness {
   ): void {
     const states = this.provider.awareness.getStates();
 
-    // Handle added and updated cursors
+    // Handle added and updated cursors (only render when we have valid presence)
+    const myClientId = this.provider.awareness.clientID;
     [...added, ...updated].forEach((clientId) => {
-      const clientState = states.get(clientId);
-      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-
-      if (cursorData && clientId !== this.provider.awareness.clientID) {
-        this.updateCursor(clientId.toString(), cursorData);
+      const valid = getValidCursorPresence(
+        states.get(clientId) as Record<string, unknown> | undefined,
+        clientId,
+      );
+      if (clientId === myClientId) {
+        // Skip our own cursor (we render it separately)
+      } else if (valid) {
+        this.updateCursor(clientId.toString(), valid);
+      } else {
+        // Invalid or missing presence: remove any existing cursor so we don't leave a stale DOM element
+        this.removeCursor(clientId.toString());
       }
 
-      // Track messages for chat CTA
+      // Track messages for chat CTA (use raw state so we see message even if identity invalid)
+      const cursorData = states.get(clientId)?.[CURSOR_AWARENESS_FIELD];
       if (cursorData?.message) {
         this.otherUsersWithMessages.add(clientId.toString());
       } else {
@@ -337,10 +394,14 @@ export class CursorClientAwareness {
 
     // Recompute all player colors from current awareness states
     this.allPlayerColors.clear();
-    states.forEach((clientState) => {
-      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-      const color = cursorData?.playerIdentity?.playerStyle?.colorPalette?.[0];
-      if (color) this.allPlayerColors.add(color);
+    states.forEach((clientState, clientId) => {
+      const valid = getValidCursorPresence(
+        clientState as Record<string, unknown>,
+        clientId,
+      );
+      if (valid) {
+        this.allPlayerColors.add(getPrimaryColor(valid.playerIdentity));
+      }
     });
 
     this.updateGlobalColors();
@@ -360,21 +421,23 @@ export class CursorClientAwareness {
     states.forEach((clientState, clientId) => {
       if (clientId === myClientId) return;
 
-      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-      if (cursorData?.cursor) {
-        // Convert storage coordinates to client coordinates for spatial grid
-        const clientCoords = storageToClientCoordinates(
-          cursorData.cursor.x,
-          cursorData.cursor.y,
-          this.coordinateMode,
-        );
-        this.spatialGrid.insert({
-          id: clientId.toString(),
-          x: clientCoords.x,
-          y: clientCoords.y,
-          data: cursorData,
-        });
-      }
+      const valid = getValidCursorPresence(
+        clientState as Record<string, unknown>,
+        clientId,
+      );
+      if (!valid) return;
+
+      const clientCoords = storageToClientCoordinates(
+        valid.cursor.x,
+        valid.cursor.y,
+        this.coordinateMode,
+      );
+      this.spatialGrid.insert({
+        id: clientId.toString(),
+        x: clientCoords.x,
+        y: clientCoords.y,
+        data: valid,
+      });
     });
   }
 
@@ -506,9 +569,9 @@ export class CursorClientAwareness {
         const maybeCustomCursor = extractUrlFromCursorStyle(style.cursor);
 
         if (maybeCustomCursor) {
-          const ourColor =
-            this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
-          const ourCursorSvg = encodeSVG(getSvgForCursor(ourColor));
+          const ourCursorSvg = encodeSVG(
+            getSvgForCursor(getPrimaryColor(this.playerIdentity)),
+          );
 
           if (!maybeCustomCursor.includes(ourCursorSvg)) {
             pointer = maybeCustomCursor;
@@ -518,10 +581,9 @@ export class CursorClientAwareness {
 
       // Show/hide our own cursor based on pointer type (like cursor-party)
       if (pointer === "mouse") {
-        const cursorStyle = getCursorStyleForUser(
-          this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6",
+        document.documentElement.style.cursor = getCursorStyleForUser(
+          getPrimaryColor(this.playerIdentity),
         );
-        document.documentElement.style.cursor = cursorStyle;
       } else {
         document.documentElement.style.cursor = "auto";
       }
@@ -619,11 +681,8 @@ export class CursorClientAwareness {
     );
   }
 
-  private updateCursor(clientId: string, cursorData: CursorPresence): void {
-    if (!cursorData.cursor) {
-      this.removeCursor(clientId);
-      return;
-    }
+  private updateCursor(clientId: string, cursorData: ValidCursorPresence): void {
+    const identity = cursorData.playerIdentity;
 
     // Check if this cursor should be rendered
     if (
@@ -646,7 +705,7 @@ export class CursorClientAwareness {
         cursorElement.remove();
       }
       cursorElement = this.createCursorElement(
-        cursorData.playerIdentity,
+        identity,
         cursor.pointer,
         cursorData.message,
         clientId,
@@ -657,12 +716,8 @@ export class CursorClientAwareness {
       document.body.appendChild(cursorElement);
     } else if (cursorElement) {
       // Update existing cursor with new message and name
-      this.updateCursorMessage(
-        cursorElement,
-        cursorData.playerIdentity,
-        cursorData.message,
-      );
-      this.updateCursorName(cursorElement, cursorData.playerIdentity);
+      this.updateCursorMessage(cursorElement, identity, cursorData.message);
+      this.updateCursorName(cursorElement, identity);
     }
 
     // Convert from storage coordinates to client coordinates for target position
@@ -746,7 +801,7 @@ export class CursorClientAwareness {
   }
 
   private createCursorElement(
-    playerIdentity?: PlayerIdentity,
+    playerIdentity: PlayerIdentity,
     pointer: string = "mouse",
     message?: string | null,
     connectionId?: string,
@@ -766,7 +821,7 @@ export class CursorClientAwareness {
       }
     }
 
-    const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+    const color = getPrimaryColor(playerIdentity);
 
     // Render different cursor based on pointer type
     switch (pointer) {
@@ -905,9 +960,14 @@ export class CursorClientAwareness {
         self.emitGlobalEvent("allColors", newColors);
       },
       get color() {
-        return self.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
+        return getPrimaryColor(self.playerIdentity);
       },
       set color(newColor: string) {
+        if (newColor == null || newColor === "") {
+          throw new Error(
+            "[playhtml] cursor.color cannot be set to empty; player identity must have a primary color.",
+          );
+        }
         const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
         self.playerIdentity.playerStyle.colorPalette[0] = newColor;
         self.savePlayerIdentityToStorage();
@@ -1012,10 +1072,10 @@ export class CursorClientAwareness {
       existingName.remove();
     }
 
-    // Add name if present
+    // Add name if present (requires identity with primary color)
     const name = playerIdentity?.name;
-    if (name) {
-      const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+    if (name && playerIdentity) {
+      const color = getPrimaryColor(playerIdentity);
       const truncatedName = name.length > 10 ? name.slice(0, 10) + ".." : name;
 
       const borderColor = this.opacifyColor(color, 0.6);
@@ -1182,8 +1242,9 @@ export class CursorClientAwareness {
       this.updateAllCursorVisibility();
     }
 
-    // Update player identity if provided
+    // Update player identity if provided (must have publicKey and primary color)
     if (options.playerIdentity !== undefined) {
+      assertValidPlayerIdentity(options.playerIdentity);
       this.playerIdentity = options.playerIdentity;
     }
   }
@@ -1263,8 +1324,8 @@ export class CursorClientAwareness {
   getSnapshot(): CursorEvents {
     return {
       allColors: Array.from(this.allPlayerColors),
-      color: this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6",
-      name: this.playerIdentity.name || "",
+      color: getPrimaryColor(this.playerIdentity),
+      name: this.playerIdentity.name ?? undefined,
     };
   }
 
@@ -1286,35 +1347,28 @@ export class CursorClientAwareness {
     const states = this.provider.awareness.getStates();
 
     states.forEach((state, clientId) => {
-      const cursorData = state[CURSOR_AWARENESS_FIELD] as
-        | CursorPresence
-        | undefined;
-      if (!cursorData?.cursor) return;
+      const valid = getValidCursorPresence(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (!valid) return;
 
-      // Stable ID from playerIdentity - skip if missing (matches onChangeAwareness behavior)
-      const stableId = cursorData.playerIdentity?.publicKey;
-      if (!stableId) {
-        console.warn(
-          `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping cursor presence`,
-        );
-        return;
-      }
-
-      // Convert storage coords to client coords (same as updateCursor) so consumers get pixel values
+      const stableId = getStableIdForAwareness(
+        state as Record<string, unknown>,
+        clientId,
+      );
       const clientCoords = storageToClientCoordinates(
-        cursorData.cursor.x,
-        cursorData.cursor.y,
+        valid.cursor.x,
+        valid.cursor.y,
         this.coordinateMode,
       );
-
-      // Slim shape: cursor with client coordinates + playerIdentity
       presences.set(stableId, {
         cursor: {
           x: clientCoords.x,
           y: clientCoords.y,
-          pointer: cursorData.cursor.pointer,
+          pointer: valid.cursor.pointer,
         },
-        playerIdentity: cursorData.playerIdentity,
+        playerIdentity: valid.playerIdentity,
       });
     });
 

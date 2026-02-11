@@ -43,7 +43,6 @@ const DrunkCursorController = withSharedState(
     setData,
     myAwareness,
     setMyAwareness,
-    awareness,
     awarenessByStableId,
   }) => {
     // Use ref to track current drunk level for interval callbacks and prevent flicker
@@ -75,8 +74,8 @@ const DrunkCursorController = withSharedState(
     const lastUpdateTimeRef = useRef(0); // Track last mousemove time for wobble detection
     const wobblePhaseRef = useRef({ x: 0, y: 0, lastResetX: 0, lastResetY: 0 }); // Track wobble phase for smooth/jerk pattern
     const { hasSynced, cursors, getMyPlayerIdentity } = useContext(PlayContext);
+    const myStableId = getMyPlayerIdentity()?.publicKey ?? null;
     const drunkDecayIntervalRef = useRef<number | null>(null);
-    // Get cursor presences from the new API
     const cursorPresences = useCursorPresences();
     // Use ref to track latest cursor positions without triggering effect restarts
     const otherCursorsRef = useRef(cursorPresences);
@@ -976,8 +975,6 @@ const DrunkCursorController = withSharedState(
         {/* Other users' cursors */}
         {Array.from(cursorPresences.entries()).map(
           ([stableId, cursorPresence]) => {
-            // Skip my own cursor - it's rendered separately above
-            const myStableId = getMyPlayerIdentity()?.publicKey;
             if (stableId === myStableId) return null;
 
             if (!cursorPresence.cursor) return null;

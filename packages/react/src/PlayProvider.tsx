@@ -116,18 +116,26 @@ export function PlayProvider({
     Map<string, CursorPresenceView>
   >(new Map());
 
+  // Single effect: cursor client state and presence subscriptions when synced
   useEffect(() => {
     const client = playhtml.cursorClient;
-    if (!client || !initOptions?.cursors?.enabled) return;
+    if (!client) return;
 
-    // Initialize from current values
+    setCursorPresences(client.getCursorPresences());
+    const unsubPresences = client.onCursorPresencesChange((presences) => {
+      setCursorPresences(new Map(presences)); // New Map to trigger re-render
+    });
+
+    if (!initOptions?.cursors?.enabled) {
+      return unsubPresences;
+    }
+
     const snap = client.getSnapshot();
     setCursorsState({
       allColors: snap.allColors || [],
       color: snap.color || "",
       name: snap.name || "",
     });
-
     const handleAllColors = (allColors: string[]) => {
       setCursorsState((prev) => ({ ...prev, allColors }));
     };
@@ -145,24 +153,8 @@ export function PlayProvider({
       client.off("allColors", handleAllColors);
       client.off("color", handleColor);
       client.off("name", handleName);
+      unsubPresences();
     };
-  }, [hasSynced]);
-
-  // Subscribe to cursor presences
-  useEffect(() => {
-    if (!playhtml.cursorClient) return;
-
-    // Initial load
-    setCursorPresences(playhtml.cursorClient.getCursorPresences());
-
-    // Subscribe to changes
-    const unsubscribe = playhtml.cursorClient.onCursorPresencesChange(
-      (presences) => {
-        setCursorPresences(new Map(presences)); // Create new Map to trigger re-render
-      }
-    );
-
-    return unsubscribe;
   }, [hasSynced]);
 
   return (
