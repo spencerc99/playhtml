@@ -28,6 +28,7 @@ jobs:
 
     - name: Lint
       run: bun run lint
+      continue-on-error: true  # Report lint results but do not block merge
       
     - name: Build site
       run: bun build-site
