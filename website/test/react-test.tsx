@@ -41,7 +41,7 @@ const Candle = withSharedState(
         }}
       />
     );
-  }
+  },
 );
 
 // Loading State Test Component
@@ -107,11 +107,11 @@ const WithSharedStateCanPlayWithLoading = withSharedState(
     >
       can-play (pulse) - {data.count}
     </div>
-  )
+  ),
 );
 
 ReactDOM.createRoot(
-  document.getElementById("reactContent") as HTMLElement
+  document.getElementById("reactContent") as HTMLElement,
 ).render(
   <PlayProvider
     initOptions={{
@@ -233,5 +233,5 @@ ReactDOM.createRoot(
       </div>
       {/* <MirrorableElement></MirrorableElement> */}
     </div>
-  </PlayProvider>
+  </PlayProvider>,
 );

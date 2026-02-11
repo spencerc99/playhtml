@@ -13,3 +13,38 @@ export function getStableIdForAwareness(
     | undefined;
   return cursorData?.playerIdentity?.publicKey ?? String(clientId);
 }
+
+/**
+ * Builds a stable string fingerprint of only element-awareness data (all keys
+ * that do not start with "__"). Used to skip onChangeAwareness work when only
+ * cursor or other internal awareness (e.g. __playhtml_cursors__) changed, so
+ * we don't rebuild maps and trigger React re-renders on every mouse move.
+ */
+export function getElementAwarenessFingerprint(
+  states: Map<number, Record<string, unknown>>
+): string {
+  const parts: string[] = [];
+  const clientIds = Array.from(states.keys()).sort((a, b) => a - b);
+  for (const clientId of clientIds) {
+    const state = states.get(clientId);
+    if (!state) continue;
+    const tagKeys = Object.keys(state)
+      .filter((k) => !k.startsWith("__"))
+      .sort();
+    for (const tag of tagKeys) {
+      const tagData = state[tag];
+      if (tagData == null || typeof tagData !== "object") continue;
+      const elementIds = Object.keys(tagData).sort();
+      for (const elementId of elementIds) {
+        try {
+          parts.push(
+            `${clientId}:${tag}:${elementId}:${JSON.stringify(tagData[elementId])}`
+          );
+        } catch {
+          // skip non-JSON-serializable values
+        }
+      }
+    }
+  }
+  return parts.join("|");
+}

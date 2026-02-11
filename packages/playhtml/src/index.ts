@@ -21,7 +21,10 @@ import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
-import { getStableIdForAwareness } from "./awareness-utils";
+import {
+  getStableIdForAwareness,
+  getElementAwarenessFingerprint,
+} from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
 import { setupDevUI } from "./development";
 import {
@@ -455,6 +458,8 @@ function onMessage(evt: MessageEvent) {
 
 let hasSynced = false;
 let firstSetup = true;
+/** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
+let lastElementAwarenessFingerprint: string | null = null;
 let isDevelopmentMode = false;
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
@@ -860,6 +865,16 @@ function onChangeAwareness() {
   // Since awareness is on cursor provider, read from there
   const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
   const states = awarenessProvider.awareness.getStates();
+
+  // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
+  // on every mouse move (up to 60fps); skip rebuild and handler updates when only that changed.
+  const fingerprint = getElementAwarenessFingerprint(
+    states as Map<number, Record<string, unknown>>
+  );
+  if (fingerprint === lastElementAwarenessFingerprint) {
+    return;
+  }
+  lastElementAwarenessFingerprint = fingerprint;
 
   // Build awareness per element: { array: V[], byStableId: Map<string, V> }
   const elementAwareness = new Map<
