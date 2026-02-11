@@ -1278,7 +1278,9 @@ export class CursorClientAwareness {
     return this.provider;
   }
 
-  // Get all cursor presences keyed by stable ID (slim shape for rendering)
+  // Get all cursor presences keyed by stable ID (slim shape for rendering).
+  // Cursor coordinates are converted from storage (e.g. viewport % when coordinateMode is "relative")
+  // to client pixel coordinates so consumers can use them directly for CSS left/top.
   getCursorPresences(): Map<string, CursorPresenceView> {
     const presences = new Map<string, CursorPresenceView>();
     const states = this.provider.awareness.getStates();
@@ -1298,9 +1300,20 @@ export class CursorClientAwareness {
         return;
       }
 
-      // Slim shape: only cursor + playerIdentity
+      // Convert storage coords to client coords (same as updateCursor) so consumers get pixel values
+      const clientCoords = storageToClientCoordinates(
+        cursorData.cursor.x,
+        cursorData.cursor.y,
+        this.coordinateMode,
+      );
+
+      // Slim shape: cursor with client coordinates + playerIdentity
       presences.set(stableId, {
-        cursor: cursorData.cursor,
+        cursor: {
+          x: clientCoords.x,
+          y: clientCoords.y,
+          pointer: cursorData.cursor.pointer,
+        },
         playerIdentity: cursorData.playerIdentity,
       });
     });
