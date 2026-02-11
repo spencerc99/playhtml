@@ -24,7 +24,7 @@ jobs:
       run: bun build-packages
 
     - name: Run tests
-      run: cd packages/playhtml && bun test
+      run: cd packages/playhtml && bun run test
 
     - name: Lint
       run: bun run lint
