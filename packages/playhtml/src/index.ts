@@ -21,6 +21,7 @@ import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
+import { getStableIdForAwareness } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
 import { setupDevUI } from "./development";
 import {
@@ -867,19 +868,10 @@ function onChangeAwareness() {
   >();
 
   states.forEach((state, clientId) => {
-    // Get stable ID from cursor presence on same provider
-    const cursorData = state.__playhtml_cursors__;
-    const stableId = cursorData?.playerIdentity?.publicKey;
-
-    if (!stableId) {
-      // Only warn for other clients, not our own (we might not have initialized cursors yet)
-      if (clientId !== awarenessProvider.awareness.clientID) {
-        console.warn(
-          `[playhtml] Client ${clientId} has no playerIdentity.publicKey - skipping awareness`
-        );
-      }
-      return; // Skip clients without stable ID
-    }
+    const stableId = getStableIdForAwareness(
+      state as Record<string, unknown>,
+      clientId
+    );
 
     // Process each tag type
     Object.keys(state).forEach((tag) => {
@@ -904,8 +896,11 @@ function onChangeAwareness() {
   });
 
   // Update all handlers with both array and byStableId
+  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
   elementAwareness.forEach(({ array, byStableId }, key) => {
-    const [tag, elementId] = key.split(":");
+    const colonIndex = key.indexOf(":");
+    const tag = key.slice(0, colonIndex);
+    const elementId = key.slice(colonIndex + 1);
     const tagElementHandlers = elementHandlers.get(tag as TagType);
     if (!tagElementHandlers) return;
 

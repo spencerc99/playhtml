@@ -691,17 +691,20 @@ export class CursorClientAwareness {
     let animator = this.cursorAnimators.get(clientId);
 
     if (!animator) {
-      // Create new animator with current target as initial position (no jump on first render)
+      // Create new animator with current target as initial position (no jump on first render).
+      // Resolve element by clientId in the callback so that when the cursor element is
+      // recreated (e.g. pointer type change mouse→touch), the animator still updates the
+      // current element from this.cursors, not a stale reference.
       animator = new SpringAnimator(
         { x: clampedTargetX, y: clampedTargetY },
         (position) => {
-          // Update callback - sets the actual DOM position
-          if (cursorElement) {
-            cursorElement.style.position = "fixed";
-            cursorElement.style.left = `${position.x}px`;
-            cursorElement.style.top = `${position.y}px`;
-            cursorElement.style.zIndex = "999999";
-            cursorElement.style.pointerEvents = "none";
+          const el = this.cursors.get(clientId);
+          if (el) {
+            el.style.position = "fixed";
+            el.style.left = `${position.x}px`;
+            el.style.top = `${position.y}px`;
+            el.style.zIndex = "999999";
+            el.style.pointerEvents = "none";
           }
         },
       );
@@ -1128,15 +1131,28 @@ export class CursorClientAwareness {
   private updateAllCursorVisibility(): void {
     if (!this.currentCursor || !this.visibilityThreshold) return;
 
+    // Convert our cursor to client coordinates so distance is in pixels (visibilityThreshold is in px)
+    const ourClientCoords = storageToClientCoordinates(
+      this.currentCursor.x,
+      this.currentCursor.y,
+      this.coordinateMode,
+    );
+
     this.cursors.forEach((cursorElement, clientId) => {
       // Get cursor data from spatial grid
       const gridItems = this.spatialGrid.getAll();
       const cursorData = gridItems.find((item) => item.id === clientId)?.data;
 
       if (cursorData && cursorData.cursor) {
+        // Convert their cursor to client coordinates (same as updateCursor/checkProximityOptimized)
+        const theirClientCoords = storageToClientCoordinates(
+          cursorData.cursor.x,
+          cursorData.cursor.y,
+          this.coordinateMode,
+        );
         const distance = calculateDistance(
-          this.currentCursor!,
-          cursorData.cursor,
+          { ...ourClientCoords, pointer: this.currentCursor!.pointer },
+          { ...theirClientCoords, pointer: cursorData.cursor.pointer },
         );
         const isVisible = distance < this.visibilityThreshold!;
 
