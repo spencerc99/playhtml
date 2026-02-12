@@ -21,6 +21,10 @@ import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
+import {
+  getStableIdForAwareness,
+  getElementAwarenessFingerprint,
+} from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
 import { setupDevUI } from "./development";
 import {
@@ -294,12 +298,15 @@ export type CursorRoom =
   | "section"
   | ((context: { domain: string; pathname: string; search: string }) => string);
 
+export type CursorCoordinateMode = "relative" | "absolute";
+
 export interface CursorOptions {
   enabled?: boolean;
   playerIdentity?: PlayerIdentity;
   proximityThreshold?: number;
   visibilityThreshold?: number;
   cursorStyle?: string;
+  coordinateMode?: CursorCoordinateMode; // "relative" (viewport %) or "absolute" (document px)
   onProximityEntered?: (
     playerIdentity?: PlayerIdentity,
     positions?: {
@@ -451,6 +458,8 @@ function onMessage(evt: MessageEvent) {
 
 let hasSynced = false;
 let firstSetup = true;
+/** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
+let lastElementAwarenessFingerprint: string | null = null;
 let isDevelopmentMode = false;
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
@@ -659,7 +668,9 @@ async function initPlayHTML({
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
-  const awareness = yprovider.awareness.getLocalState();
+  // Use cursor provider for awareness (matches cursor scope)
+  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awareness = awarenessProvider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
 }
@@ -790,14 +801,17 @@ function createPlayElementData<T extends TagType, TData = any>(
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
-      const localAwareness = yprovider.awareness.getLocalState()?.[tag] || {};
+      // Use cursor provider for awareness (matches cursor scope)
+      // Fall back to doc provider if cursors are disabled
+      const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+      const localAwareness = awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
       if (localAwareness[elementId] === elementAwarenessData) {
         return;
       }
 
       localAwareness[elementId] = elementAwarenessData;
-      yprovider.awareness.setLocalStateField(tag, localAwareness);
+      awarenessProvider.awareness.setLocalStateField(tag, localAwareness);
     },
     triggerAwarenessUpdate: () => {
       onChangeAwareness();
@@ -848,61 +862,66 @@ function getElementInitializerInfoForElement(
 }
 
 function onChangeAwareness() {
-  // map of tagType -> elementId -> clientId -> awarenessData
-  const awarenessStates = new Map<string, Map<string, any>>();
+  // Since awareness is on cursor provider, read from there
+  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const states = awarenessProvider.awareness.getStates();
 
-  function setClientElementAwareness(
-    tag: string,
-    elementId: string,
-    clientId: number,
-    awarenessData: any
-  ) {
-    if (!awarenessStates.has(tag)) {
-      awarenessStates.set(tag, new Map<string, any>());
-    }
-    const tagAwarenessStates = awarenessStates.get(tag)!;
-    if (!tagAwarenessStates.has(elementId)) {
-      tagAwarenessStates.set(elementId, new Map<string, any>());
-    }
-    const elementAwarenessStates = tagAwarenessStates.get(elementId);
-    elementAwarenessStates.set(clientId, awarenessData);
+  // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
+  // on every mouse move (up to 60fps); skip rebuild and handler updates when only that changed.
+  const fingerprint = getElementAwarenessFingerprint(
+    states as Map<number, Record<string, unknown>>
+  );
+  if (fingerprint === lastElementAwarenessFingerprint) {
+    return;
   }
+  lastElementAwarenessFingerprint = fingerprint;
 
-  yprovider.awareness.getStates().forEach((state, clientId) => {
-    for (const [tag, tagData] of Object.entries(state)) {
-      const tagElementHandlers = elementHandlers.get(tag as TagType);
-      if (!tagElementHandlers) {
-        continue;
-      }
-      for (const [elementId, _elementHandler] of tagElementHandlers) {
-        if (!(elementId in tagData)) {
-          continue;
-        }
-        const elementAwarenessData = tagData[elementId];
-        setClientElementAwareness(
-          tag,
-          elementId,
-          clientId,
-          elementAwarenessData
-        );
-      }
-    }
+  // Build awareness per element: { array: V[], byStableId: Map<string, V> }
+  const elementAwareness = new Map<
+    string,
+    { array: any[]; byStableId: Map<string, any> }
+  >();
 
-    for (const [tag, tagAwarenessStates] of awarenessStates) {
-      const tagElementHandlers = elementHandlers.get(tag as TagType);
-      if (!tagElementHandlers) {
-        continue;
-      }
-      for (const [elementId, elementHandler] of tagElementHandlers) {
-        const elementAwarenessStates = tagAwarenessStates
-          .get(elementId)
-          ?.values();
-        if (!elementAwarenessStates) {
-          continue;
+  states.forEach((state, clientId) => {
+    const stableId = getStableIdForAwareness(
+      state as Record<string, unknown>,
+      clientId
+    );
+
+    // Process each tag type
+    Object.keys(state).forEach((tag) => {
+      if (tag.startsWith("__")) return; // Skip reserved fields like __playhtml_cursors__
+
+      const tagData = state[tag];
+      if (!tagData || typeof tagData !== "object") return;
+
+      Object.keys(tagData).forEach((elementId) => {
+        const awarenessValue = tagData[elementId];
+        const key = `${tag}:${elementId}`;
+
+        if (!elementAwareness.has(key)) {
+          elementAwareness.set(key, { array: [], byStableId: new Map() });
         }
-        let presentAwarenessStates = Array.from(elementAwarenessStates);
-        elementHandler.__awareness = presentAwarenessStates;
-      }
+
+        const entry = elementAwareness.get(key)!;
+        entry.array.push(awarenessValue);
+        entry.byStableId.set(stableId, awarenessValue);
+      });
+    });
+  });
+
+  // Update all handlers with both array and byStableId
+  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
+  elementAwareness.forEach(({ array, byStableId }, key) => {
+    const colonIndex = key.indexOf(":");
+    const tag = key.slice(0, colonIndex);
+    const elementId = key.slice(colonIndex + 1);
+    const tagElementHandlers = elementHandlers.get(tag as TagType);
+    if (!tagElementHandlers) return;
+
+    const handler = tagElementHandlers.get(elementId);
+    if (handler) {
+      handler.updateAwareness(array, byStableId);
     }
   });
 }
@@ -939,7 +958,14 @@ function setupElements(): void {
     return;
   }
 
-  yprovider.awareness.on("change", () => onChangeAwareness());
+  // Listen to awareness changes on the cursor provider (where element awareness is stored)
+  // Fall back to doc provider if cursors are disabled
+  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  awarenessProvider.awareness.on("change", () => onChangeAwareness());
+
+  // Trigger initial awareness sync to populate existing states
+  onChangeAwareness();
+
   firstSetup = false;
 }
 

@@ -1,11 +1,9 @@
-import React, { useContext, useEffect } from "react";
+import { useContext, useEffect } from "react";
 import { PlayContext, withSharedState } from "@playhtml/react";
-
-interface Props {}
 
 export const ViewCount = withSharedState(
   { defaultData: { count: 0 }, id: "viewCount" },
-  ({ data, setData }, props) => {
+  ({ data, setData }) => {
     const { hasSynced } = useContext(PlayContext);
     useEffect(() => {
       if (!hasSynced) {

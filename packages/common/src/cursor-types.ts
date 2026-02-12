@@ -25,6 +25,12 @@ export type CursorPresence = {
   page?: string;
 };
 
+// Slim cursor presence type for rendering (excludes internal fields)
+export type CursorPresenceView = {
+  cursor: Cursor | null;
+  playerIdentity?: PlayerIdentity;
+};
+
 // Event payloads for cursor-related global API updates
 export interface CursorEvents {
   allColors: string[];
@@ -34,6 +40,12 @@ export interface CursorEvents {
 
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
+
+/** Returns a random HSL color string (used as default primary color when none exists). */
+function randomPrimaryColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 70%, 60%)`;
+}
 
 export function generatePlayerIdentity(): PlayerIdentity {
   const publicKey = crypto
@@ -57,34 +69,62 @@ export function generatePlayerIdentity(): PlayerIdentity {
   };
 }
 
+/** Returns true if identity has a non-empty primary color. */
+function hasValidPrimaryColor(identity: PlayerIdentity): boolean {
+  const color = identity.playerStyle?.colorPalette?.[0];
+  return typeof color === "string" && color.length > 0;
+}
+
+/** Ensures identity has a primary color (assigns random if missing), then saves to localStorage. */
+function ensurePrimaryColorAndSave(identity: PlayerIdentity): void {
+  if (!hasValidPrimaryColor(identity)) {
+    if (!identity.playerStyle) identity.playerStyle = { colorPalette: [] };
+    if (!Array.isArray(identity.playerStyle.colorPalette)) {
+      identity.playerStyle.colorPalette = [];
+    }
+    identity.playerStyle.colorPalette[0] = randomPrimaryColor();
+    try {
+      localStorage.setItem(
+        PLAYER_IDENTITY_STORAGE_KEY,
+        JSON.stringify(identity),
+      );
+    } catch (e) {
+      console.warn("Failed to save player identity to localStorage:", e);
+    }
+  }
+}
+
 export const PLAYER_IDENTITY_STORAGE_KEY = "playhtml_player_identity";
+/**
+ * Loads player identity from localStorage, or generates a new one with a random
+ * primary color. Ensures primary color always exists (assigns random and saves if missing).
+ * Identity is persisted so the same publicKey and color are reused across sessions.
+ */
 export function generatePersistentPlayerIdentity(): PlayerIdentity {
-  // Try to load existing identity from localStorage
   const stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
   if (stored) {
     try {
-      const identity = JSON.parse(stored);
-      // Validate that it has the required structure
-      if (identity.publicKey && identity.playerStyle?.colorPalette) {
+      const identity = JSON.parse(stored) as PlayerIdentity;
+      if (identity.publicKey) {
+        // If stored identity has no valid primary color, assign random and persist
+        if (!hasValidPrimaryColor(identity)) {
+          ensurePrimaryColorAndSave(identity);
+        }
         return identity;
       }
     } catch (e) {
-      // If parsing fails, generate new identity
       console.warn(
-        "Failed to parse stored player identity, generating new one"
+        "Failed to parse stored player identity, generating new one",
       );
     }
   }
 
-  // Generate new identity if none exists or stored one is invalid
+  // No valid stored identity: generate new one (includes random primary color) and save
   const identity = generatePlayerIdentity();
-
-  // Save to localStorage
   try {
     localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
   } catch (e) {
     console.warn("Failed to save player identity to localStorage:", e);
   }
-
   return identity;
 }

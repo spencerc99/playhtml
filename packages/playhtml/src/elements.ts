@@ -22,6 +22,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   defaultData: T;
   localData: U;
   awareness: V[] = [];
+  awarenessByStableId: Map<string, V> = new Map();
   selfAwareness?: V;
   element: HTMLElement;
   _data: T;
@@ -84,7 +85,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     const initialData = data === undefined ? this.defaultData : data;
 
     if (awarenessData !== undefined) {
-      this.__awareness = awarenessData;
+      this.awareness = awarenessData;
     }
     const myInitialAwareness =
       myDefaultAwareness instanceof Function
@@ -233,11 +234,12 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.updateElement(this.getEventHandlerData());
   }
 
-  set __awareness(data: V[]) {
+  updateAwareness(data: V[], byStableId: Map<string, V>) {
     if (!this.updateElementAwareness) {
       return;
     }
     this.awareness = data;
+    this.awarenessByStableId = byStableId;
     this.updateElementAwareness(this.getAwarenessEventHandlerData());
   }
 
@@ -247,6 +249,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       data: this.data,
       localData: this.localData,
       awareness: this.awareness,
+      awarenessByStableId: this.awarenessByStableId,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setMyAwareness: (newData) => this.setMyAwareness(newData),

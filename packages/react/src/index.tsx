@@ -139,6 +139,9 @@ export function CanPlayElement<T extends object, V = any>({
   const [awareness, setAwareness] = useState<V[]>(
     initialAwareness ? [initialAwareness] : []
   );
+  const [awarenessByStableId, setAwarenessByStableId] = useState<
+    Map<string, V>
+  >(new Map());
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
     initialAwareness
   );
@@ -147,10 +150,12 @@ export function CanPlayElement<T extends object, V = any>({
   const updateElement: ElementInitializer["updateElementAwareness"] = ({
     data: newData,
     awareness: newAwareness,
+    awarenessByStableId: newAwarenessByStableId,
     myAwareness,
   }) => {
     setData(newData);
     setAwareness(newAwareness);
+    setAwarenessByStableId(newAwarenessByStableId);
     setMyAwareness(myAwareness);
   };
 
@@ -190,6 +195,7 @@ export function CanPlayElement<T extends object, V = any>({
     // @ts-ignore
     data,
     awareness,
+    awarenessByStableId,
     setData: (newData: T | ((draft: T) => void)) => {
       // console.log("settingdata", newData);
       // console.log(ref.current?.id);
@@ -440,6 +446,7 @@ export function withSharedState<T extends object, V = any, P = any>(
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
+export { useCursorPresences } from "./hooks";
 export {
   CanMoveElement,
   CanSpinElement,

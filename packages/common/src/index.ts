@@ -55,6 +55,7 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   data: T;
   localData: U;
   awareness: V[];
+  awarenessByStableId: Map<string, V>;
   element: HTMLElement;
   /**
    * Updates the element's shared data.

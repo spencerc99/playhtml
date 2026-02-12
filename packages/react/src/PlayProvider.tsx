@@ -2,7 +2,7 @@ import { PropsWithChildren, createContext, useEffect, useState } from "react";
 import playhtml from "./playhtml-singleton";
 import { InitOptions, CursorOptions } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
-import { CursorEvents } from "@playhtml/common";
+import { CursorEvents, CursorPresenceView, PlayerIdentity } from "@playhtml/common";
 
 export interface PlayContextInfo
   extends Pick<
@@ -16,8 +16,9 @@ export interface PlayContextInfo
   hasSynced: boolean;
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
-  getMyPlayerIdentity: () => { color: string; name: string };
+  getMyPlayerIdentity: () => PlayerIdentity | null;
   cursors: CursorEvents;
+  cursorPresences: Map<string, CursorPresenceView>;
 }
 
 export const PlayContext = createContext<PlayContextInfo>({
@@ -59,6 +60,7 @@ export const PlayContext = createContext<PlayContextInfo>({
     color: "",
     name: undefined,
   },
+  cursorPresences: new Map(),
 });
 
 interface Props {
@@ -100,13 +102,8 @@ export function PlayProvider({
     }
   };
 
-  const getMyPlayerIdentity = () => {
-    // Access the global cursors API that exposes the current player's information
-    const cursors = (window as any).cursors;
-    return {
-      color: cursors.color,
-      name: cursors.name,
-    };
+  const getMyPlayerIdentity = (): PlayerIdentity | null => {
+    return playhtml.cursorClient?.getMyPlayerIdentity() ?? null;
   };
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
@@ -115,18 +112,30 @@ export function PlayProvider({
     name: undefined,
   });
 
+  const [cursorPresences, setCursorPresences] = useState<
+    Map<string, CursorPresenceView>
+  >(new Map());
+
+  // Single effect: cursor client state and presence subscriptions when synced
   useEffect(() => {
     const client = playhtml.cursorClient;
-    if (!client || !initOptions?.cursors?.enabled) return;
+    if (!client) return;
 
-    // Initialize from current values
+    setCursorPresences(client.getCursorPresences());
+    const unsubPresences = client.onCursorPresencesChange((presences) => {
+      setCursorPresences(new Map(presences)); // New Map to trigger re-render
+    });
+
+    if (!initOptions?.cursors?.enabled) {
+      return unsubPresences;
+    }
+
     const snap = client.getSnapshot();
     setCursorsState({
       allColors: snap.allColors || [],
       color: snap.color || "",
       name: snap.name || "",
     });
-
     const handleAllColors = (allColors: string[]) => {
       setCursorsState((prev) => ({ ...prev, allColors }));
     };
@@ -144,6 +153,7 @@ export function PlayProvider({
       client.off("allColors", handleAllColors);
       client.off("color", handleColor);
       client.off("name", handleName);
+      unsubPresences();
     };
   }, [hasSynced]);
 
@@ -160,6 +170,7 @@ export function PlayProvider({
         configureCursors,
         getMyPlayerIdentity,
         cursors: cursorsState,
+        cursorPresences,
       }}
     >
       {children}

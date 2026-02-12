@@ -1,5 +1,4 @@
 import { CanToggleElement } from "@playhtml/react";
-import React from "react";
 
 export function SharedLamp({
   src = "https://shop.noguchi.org/cdn/shop/products/1A_on_2048x.jpg?v=1567364979",

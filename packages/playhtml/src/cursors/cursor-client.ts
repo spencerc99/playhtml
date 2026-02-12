@@ -1,6 +1,7 @@
 import type YPartyKitProvider from "y-partykit/provider";
 import {
   CursorPresence,
+  CursorPresenceView,
   PlayerIdentity,
   Cursor,
   generatePersistentPlayerIdentity,
@@ -10,28 +11,203 @@ import {
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions } from "..";
+import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
-import randomColor from "randomcolor";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
+
+/** Cursor presence that has been validated: has cursor, playerIdentity with publicKey and primary color. */
+export type ValidCursorPresence = CursorPresence & {
+  cursor: NonNullable<CursorPresence["cursor"]>;
+  playerIdentity: PlayerIdentity;
+};
+
+/** Returns primary color from player identity; throws if missing (no default). */
+function getPrimaryColor(identity: PlayerIdentity): string {
+  const color = identity.playerStyle?.colorPalette?.[0];
+  if (color == null || color === "") {
+    throw new Error(
+      "[playhtml] Player identity must have playerStyle.colorPalette[0] (primary color).",
+    );
+  }
+  return color;
+}
+
+/** Validates identity has publicKey and primary color; throws if not. */
+function assertValidPlayerIdentity(identity: PlayerIdentity): void {
+  if (!identity.publicKey) {
+    throw new Error("[playhtml] Player identity must have publicKey.");
+  }
+  getPrimaryColor(identity);
+}
+
+/**
+ * Validates raw awareness state into a renderable cursor presence, or null.
+ * Invalid when: no cursor data, missing cursor position, missing playerIdentity/publicKey,
+ * or missing primary color (e.g. old clients, corrupted state, or not yet initialized).
+ * Call this once when reading from awareness; downstream code then assumes valid data.
+ */
+function getValidCursorPresence(
+  state: Record<string, unknown> | undefined,
+  _clientId: number,
+): ValidCursorPresence | null {
+  const cursorData = state?.[CURSOR_AWARENESS_FIELD] as
+    | CursorPresence
+    | undefined;
+  if (!cursorData?.cursor || !cursorData.playerIdentity?.publicKey) {
+    return null;
+  }
+  try {
+    getPrimaryColor(cursorData.playerIdentity);
+  } catch {
+    return null;
+  }
+  return cursorData as ValidCursorPresence;
+}
 
 // Global cursor API interface (like cursor-party)
 
 export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
   return Math.sqrt(
-    Math.pow(cursor1.x - cursor2.x, 2) + Math.pow(cursor1.y - cursor2.y, 2)
+    Math.pow(cursor1.x - cursor2.x, 2) + Math.pow(cursor1.y - cursor2.y, 2),
   );
+}
+
+// Coordinate conversion utilities
+function clientToStorageCoordinates(
+  clientX: number,
+  clientY: number,
+  mode: "relative" | "absolute",
+): { x: number; y: number } {
+  if (mode === "relative") {
+    // Convert to viewport percentage (0-100)
+    return {
+      x: (clientX / window.innerWidth) * 100,
+      y: (clientY / window.innerHeight) * 100,
+    };
+  } else {
+    // absolute mode: use document coordinates (pageX/pageY)
+    return {
+      x: clientX + window.scrollX,
+      y: clientY + window.scrollY,
+    };
+  }
+}
+
+function storageToClientCoordinates(
+  x: number,
+  y: number,
+  mode: "relative" | "absolute",
+): { x: number; y: number } {
+  if (mode === "relative") {
+    // Convert from viewport percentage to pixels
+    return {
+      x: (x / 100) * window.innerWidth,
+      y: (y / 100) * window.innerHeight,
+    };
+  } else {
+    // absolute mode: convert from document to viewport coordinates
+    return {
+      x: x - window.scrollX,
+      y: y - window.scrollY,
+    };
+  }
+}
+
+// Spring animation system for smooth cursor movement
+class SpringAnimator {
+  private position: { x: number; y: number };
+  private velocity: { x: number; y: number };
+  private target: { x: number; y: number };
+  private stiffness: number;
+  private damping: number;
+  private mass: number;
+  private animationFrame: number | null = null;
+  private onUpdate: (position: { x: number; y: number }) => void;
+
+  constructor(
+    initialPosition: { x: number; y: number },
+    onUpdate: (position: { x: number; y: number }) => void,
+    config: { stiffness?: number; damping?: number; mass?: number } = {},
+  ) {
+    this.position = { ...initialPosition };
+    this.velocity = { x: 0, y: 0 };
+    this.target = { ...initialPosition };
+    this.onUpdate = onUpdate;
+
+    // Spring physics parameters (similar to framer-motion defaults)
+    this.stiffness = config.stiffness ?? 170; // Higher = stiffer spring
+    this.damping = config.damping ?? 26; // Higher = less oscillation
+    this.mass = config.mass ?? 0.5; // Higher = slower movement
+  }
+
+  setTarget(target: { x: number; y: number }) {
+    this.target = { ...target };
+
+    // Start animation if not already running
+    if (this.animationFrame === null) {
+      this.animate();
+    }
+  }
+
+  private animate = () => {
+    const deltaTime = 1 / 60; // Assume 60fps (16.67ms)
+
+    // Spring physics calculations (Hooke's law with damping)
+    const springForceX = (this.target.x - this.position.x) * this.stiffness;
+    const springForceY = (this.target.y - this.position.y) * this.stiffness;
+
+    const dampingForceX = this.velocity.x * this.damping;
+    const dampingForceY = this.velocity.y * this.damping;
+
+    const accelerationX = (springForceX - dampingForceX) / this.mass;
+    const accelerationY = (springForceY - dampingForceY) / this.mass;
+
+    this.velocity.x += accelerationX * deltaTime;
+    this.velocity.y += accelerationY * deltaTime;
+
+    this.position.x += this.velocity.x * deltaTime;
+    this.position.y += this.velocity.y * deltaTime;
+
+    this.onUpdate(this.position);
+
+    // Check if spring has settled (position close to target, velocity near zero)
+    const distanceToTarget = Math.sqrt(
+      Math.pow(this.target.x - this.position.x, 2) +
+        Math.pow(this.target.y - this.position.y, 2),
+    );
+    const speed = Math.sqrt(
+      Math.pow(this.velocity.x, 2) + Math.pow(this.velocity.y, 2),
+    );
+
+    // Stop animating when settled (within 0.5px and speed < 0.5px/s)
+    if (distanceToTarget < 0.5 && speed < 0.5) {
+      this.position = { ...this.target };
+      this.velocity = { x: 0, y: 0 };
+      this.onUpdate(this.position);
+      this.animationFrame = null;
+    } else {
+      this.animationFrame = requestAnimationFrame(this.animate);
+    }
+  };
+
+  destroy() {
+    if (this.animationFrame !== null) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
+  }
 }
 
 interface CursorEventEmitter {
   on<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void;
   off<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void;
 }
 
@@ -102,6 +278,7 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
 
 export class CursorClientAwareness {
   private cursors: Map<string, HTMLElement> = new Map();
+  private cursorAnimators: Map<string, SpringAnimator> = new Map(); // Spring animators for each cursor
   private spatialGrid: SpatialGrid<CursorPresence> = new SpatialGrid(300); // 300px cell size
   private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
@@ -115,14 +292,21 @@ export class CursorClientAwareness {
   private chat: CursorChat | null = null;
   private currentMessage: string | null = null;
   private otherUsersWithMessages: Set<string> = new Set();
+  private cursorPresenceChangeCallbacks = new Map<
+    string,
+    (presences: Map<string, CursorPresenceView>) => void
+  >();
+  private coordinateMode: "relative" | "absolute";
 
   constructor(
     private provider: YPartyKitProvider,
-    private options: CursorOptions = {}
+    private options: CursorOptions = {},
   ) {
     this.playerIdentity =
       options.playerIdentity || generatePersistentPlayerIdentity();
+    assertValidPlayerIdentity(this.playerIdentity);
     this.visibilityThreshold = options.visibilityThreshold || undefined;
+    this.coordinateMode = options.coordinateMode || "relative"; // Default to viewport percentage
 
     if (this.options.enableChat === true) {
       this.chat = new CursorChat({
@@ -142,11 +326,10 @@ export class CursorClientAwareness {
     this.setupCursorTracking();
     this.setupAwarenessHandling();
 
-    // Set initial cursor style
-    const primaryColor =
-      this.playerIdentity.playerStyle.colorPalette[0] ||
-      randomColor({ luminosity: "bright" });
-    document.documentElement.style.cursor = getCursorStyleForUser(primaryColor);
+    // Set initial cursor style (throws if identity has no primary color)
+    document.documentElement.style.cursor = getCursorStyleForUser(
+      getPrimaryColor(this.playerIdentity),
+    );
   }
 
   private setupAwarenessHandling(): void {
@@ -171,20 +354,28 @@ export class CursorClientAwareness {
   private handleAwarenessChange(
     added: number[],
     updated: number[],
-    removed: number[]
+    removed: number[],
   ): void {
     const states = this.provider.awareness.getStates();
 
-    // Handle added and updated cursors
+    // Handle added and updated cursors (only render when we have valid presence)
+    const myClientId = this.provider.awareness.clientID;
     [...added, ...updated].forEach((clientId) => {
-      const clientState = states.get(clientId);
-      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-
-      if (cursorData && clientId !== this.provider.awareness.clientID) {
-        this.updateCursor(clientId.toString(), cursorData);
+      const valid = getValidCursorPresence(
+        states.get(clientId) as Record<string, unknown> | undefined,
+        clientId,
+      );
+      if (clientId === myClientId) {
+        // Skip our own cursor (we render it separately)
+      } else if (valid) {
+        this.updateCursor(clientId.toString(), valid);
+      } else {
+        // Invalid or missing presence: remove any existing cursor so we don't leave a stale DOM element
+        this.removeCursor(clientId.toString());
       }
 
-      // Track messages for chat CTA
+      // Track messages for chat CTA (use raw state so we see message even if identity invalid)
+      const cursorData = states.get(clientId)?.[CURSOR_AWARENESS_FIELD];
       if (cursorData?.message) {
         this.otherUsersWithMessages.add(clientId.toString());
       } else {
@@ -203,15 +394,22 @@ export class CursorClientAwareness {
 
     // Recompute all player colors from current awareness states
     this.allPlayerColors.clear();
-    states.forEach((clientState) => {
-      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-      const color = cursorData?.playerIdentity?.playerStyle?.colorPalette?.[0];
-      if (color) this.allPlayerColors.add(color);
+    states.forEach((clientState, clientId) => {
+      const valid = getValidCursorPresence(
+        clientState as Record<string, unknown>,
+        clientId,
+      );
+      if (valid) {
+        this.allPlayerColors.add(getPrimaryColor(valid.playerIdentity));
+      }
     });
 
     this.updateGlobalColors();
     this.updateChatCTA();
     this.checkProximityOptimized();
+
+    // Notify cursor presence listeners of changes
+    this.notifyCursorPresenceListeners();
   }
 
   private rebuildSpatialGrid(): void {
@@ -223,15 +421,23 @@ export class CursorClientAwareness {
     states.forEach((clientState, clientId) => {
       if (clientId === myClientId) return;
 
-      const cursorData = clientState?.[CURSOR_AWARENESS_FIELD];
-      if (cursorData?.cursor) {
-        this.spatialGrid.insert({
-          id: clientId.toString(),
-          x: cursorData.cursor.x,
-          y: cursorData.cursor.y,
-          data: cursorData,
-        });
-      }
+      const valid = getValidCursorPresence(
+        clientState as Record<string, unknown>,
+        clientId,
+      );
+      if (!valid) return;
+
+      const clientCoords = storageToClientCoordinates(
+        valid.cursor.x,
+        valid.cursor.y,
+        this.coordinateMode,
+      );
+      this.spatialGrid.insert({
+        id: clientId.toString(),
+        x: clientCoords.x,
+        y: clientCoords.y,
+        data: valid,
+      });
     });
   }
 
@@ -242,11 +448,18 @@ export class CursorClientAwareness {
     const proximityThreshold =
       this.options.proximityThreshold || PROXIMITY_THRESHOLD;
 
-    // Use spatial grid to efficiently find nearby cursors
-    const nearbyItems = this.spatialGrid.findNearby(
+    // Convert our cursor to client coordinates for proximity check
+    const ourClientCoords = storageToClientCoordinates(
       this.currentCursor.x,
       this.currentCursor.y,
-      proximityThreshold
+      this.coordinateMode,
+    );
+
+    // Use spatial grid to efficiently find nearby cursors (grid already has client coords)
+    const nearbyItems = this.spatialGrid.findNearby(
+      ourClientCoords.x,
+      ourClientCoords.y,
+      proximityThreshold,
     );
 
     // Check precise distance for nearby candidates
@@ -254,7 +467,24 @@ export class CursorClientAwareness {
       const presence = item.data;
       if (!presence.cursor) continue;
 
-      const distance = calculateDistance(this.currentCursor, presence.cursor);
+      // Convert their cursor to client coordinates for distance calculation
+      const theirClientCoords = storageToClientCoordinates(
+        presence.cursor.x,
+        presence.cursor.y,
+        this.coordinateMode,
+      );
+      const distance = calculateDistance(
+        {
+          x: ourClientCoords.x,
+          y: ourClientCoords.y,
+          pointer: this.currentCursor.pointer,
+        },
+        {
+          x: theirClientCoords.x,
+          y: theirClientCoords.y,
+          pointer: presence.cursor.pointer,
+        },
+      );
       const isNear = distance < proximityThreshold;
 
       if (isNear) {
@@ -273,7 +503,7 @@ export class CursorClientAwareness {
           this.options.onProximityEntered?.(
             presence.playerIdentity,
             positions,
-            angle
+            angle,
           );
         }
       }
@@ -339,9 +569,9 @@ export class CursorClientAwareness {
         const maybeCustomCursor = extractUrlFromCursorStyle(style.cursor);
 
         if (maybeCustomCursor) {
-          const ourColor =
-            this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
-          const ourCursorSvg = encodeSVG(getSvgForCursor(ourColor));
+          const ourCursorSvg = encodeSVG(
+            getSvgForCursor(getPrimaryColor(this.playerIdentity)),
+          );
 
           if (!maybeCustomCursor.includes(ourCursorSvg)) {
             pointer = maybeCustomCursor;
@@ -351,17 +581,22 @@ export class CursorClientAwareness {
 
       // Show/hide our own cursor based on pointer type (like cursor-party)
       if (pointer === "mouse") {
-        const cursorStyle = getCursorStyleForUser(
-          this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6"
+        document.documentElement.style.cursor = getCursorStyleForUser(
+          getPrimaryColor(this.playerIdentity),
         );
-        document.documentElement.style.cursor = cursorStyle;
       } else {
         document.documentElement.style.cursor = "auto";
       }
 
+      // Convert to storage coordinates based on mode
+      const storageCoords = clientToStorageCoordinates(
+        e.clientX,
+        e.clientY,
+        this.coordinateMode,
+      );
       this.currentCursor = {
-        x: e.clientX,
-        y: e.clientY,
+        x: storageCoords.x,
+        y: storageCoords.y,
         pointer,
       };
       this.throttledUpdateCursorAwareness();
@@ -373,9 +608,15 @@ export class CursorClientAwareness {
     const updateTouchCursor = (e: TouchEvent) => {
       const touch = e.touches[0];
       if (touch) {
+        // Convert to storage coordinates based on mode
+        const storageCoords = clientToStorageCoordinates(
+          touch.clientX,
+          touch.clientY,
+          this.coordinateMode,
+        );
         this.currentCursor = {
-          x: touch.clientX,
-          y: touch.clientY,
+          x: storageCoords.x,
+          y: storageCoords.y,
           pointer: "touch",
         };
         this.throttledUpdateCursorAwareness();
@@ -436,18 +677,18 @@ export class CursorClientAwareness {
     // Set cursor data in awareness using reserved field
     this.provider.awareness.setLocalStateField(
       CURSOR_AWARENESS_FIELD,
-      cursorPresence
+      cursorPresence,
     );
   }
 
-  private updateCursor(clientId: string, cursorData: CursorPresence): void {
-    if (!cursorData.cursor) {
-      this.removeCursor(clientId);
-      return;
-    }
+  private updateCursor(clientId: string, cursorData: ValidCursorPresence): void {
+    const identity = cursorData.playerIdentity;
 
     // Check if this cursor should be rendered
-    if (this.options.shouldRenderCursor && !this.options.shouldRenderCursor(cursorData)) {
+    if (
+      this.options.shouldRenderCursor &&
+      !this.options.shouldRenderCursor(cursorData)
+    ) {
       this.removeCursor(clientId);
       return;
     }
@@ -464,50 +705,87 @@ export class CursorClientAwareness {
         cursorElement.remove();
       }
       cursorElement = this.createCursorElement(
-        cursorData.playerIdentity,
+        identity,
         cursor.pointer,
         cursorData.message,
         clientId,
-        cursorData
+        cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(clientId, cursorElement);
       document.body.appendChild(cursorElement);
     } else if (cursorElement) {
       // Update existing cursor with new message and name
-      this.updateCursorMessage(
-        cursorElement,
-        cursorData.playerIdentity,
-        cursorData.message
-      );
-      this.updateCursorName(cursorElement, cursorData.playerIdentity);
+      this.updateCursorMessage(cursorElement, identity, cursorData.message);
+      this.updateCursorName(cursorElement, identity);
     }
 
-    // Update position with boundary checks
+    // Convert from storage coordinates to client coordinates for target position
+    const targetCoords = storageToClientCoordinates(
+      cursor.x,
+      cursor.y,
+      this.coordinateMode,
+    );
+
     const cursorSize = 20;
     const margin = 2;
-
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    const clampedX = Math.max(
+    // Clamp target position to viewport bounds
+    const clampedTargetX = Math.max(
       -cursorSize + margin,
-      Math.min(viewportWidth - margin, cursor.x)
+      Math.min(viewportWidth - margin, targetCoords.x),
     );
-    const clampedY = Math.max(
+    const clampedTargetY = Math.max(
       -cursorSize + margin,
-      Math.min(viewportHeight - margin, cursor.y)
+      Math.min(viewportHeight - margin, targetCoords.y),
     );
 
-    cursorElement.style.position = "fixed";
-    cursorElement.style.left = `${clampedX}px`;
-    cursorElement.style.top = `${clampedY}px`;
-    cursorElement.style.zIndex = "999999";
-    cursorElement.style.pointerEvents = "none";
+    // Get or create spring animator for this cursor
+    let animator = this.cursorAnimators.get(clientId);
+
+    if (!animator) {
+      // Create new animator with current target as initial position (no jump on first render).
+      // Resolve element by clientId in the callback so that when the cursor element is
+      // recreated (e.g. pointer type change mouse→touch), the animator still updates the
+      // current element from this.cursors, not a stale reference.
+      animator = new SpringAnimator(
+        { x: clampedTargetX, y: clampedTargetY },
+        (position) => {
+          const el = this.cursors.get(clientId);
+          if (el) {
+            el.style.position = "fixed";
+            el.style.left = `${position.x}px`;
+            el.style.top = `${position.y}px`;
+            el.style.zIndex = "999999";
+            el.style.pointerEvents = "none";
+          }
+        },
+      );
+      this.cursorAnimators.set(clientId, animator);
+    }
+
+    // Update animator target to new position (triggers spring animation)
+    animator.setTarget({ x: clampedTargetX, y: clampedTargetY });
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
-      const distance = calculateDistance(cursor, this.currentCursor);
+      // Convert our cursor to client coordinates for distance calculation
+      const ourClientCoords = storageToClientCoordinates(
+        this.currentCursor.x,
+        this.currentCursor.y,
+        this.coordinateMode,
+      );
+      // Use target coordinates for distance (viewport pixels)
+      const distance = calculateDistance(
+        { x: targetCoords.x, y: targetCoords.y, pointer: cursor.pointer },
+        {
+          x: ourClientCoords.x,
+          y: ourClientCoords.y,
+          pointer: this.currentCursor.pointer,
+        },
+      );
       const isVisible = this.visibilityThreshold
         ? distance < this.visibilityThreshold
         : true;
@@ -523,11 +801,11 @@ export class CursorClientAwareness {
   }
 
   private createCursorElement(
-    playerIdentity?: PlayerIdentity,
+    playerIdentity: PlayerIdentity,
     pointer: string = "mouse",
     message?: string | null,
     connectionId?: string,
-    cursorData?: CursorPresence
+    cursorData?: CursorPresence,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
@@ -536,14 +814,14 @@ export class CursorClientAwareness {
     if (connectionId && this.options.onCustomCursorRender) {
       const customElement = this.options.onCustomCursorRender(
         connectionId,
-        element
+        element,
       );
       if (customElement) {
         return customElement;
       }
     }
 
-    const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+    const color = getPrimaryColor(playerIdentity);
 
     // Render different cursor based on pointer type
     switch (pointer) {
@@ -648,13 +926,20 @@ export class CursorClientAwareness {
         this.cursors.delete(clientId);
       }, 300);
     }
+
+    // Clean up spring animator
+    const animator = this.cursorAnimators.get(clientId);
+    if (animator) {
+      animator.destroy();
+      this.cursorAnimators.delete(clientId);
+    }
   }
 
   private savePlayerIdentityToStorage(): void {
     try {
       localStorage.setItem(
         PLAYER_IDENTITY_STORAGE_KEY,
-        JSON.stringify(this.playerIdentity)
+        JSON.stringify(this.playerIdentity),
       );
     } catch (e) {
       console.warn("Failed to save player identity to localStorage:", e);
@@ -675,9 +960,14 @@ export class CursorClientAwareness {
         self.emitGlobalEvent("allColors", newColors);
       },
       get color() {
-        return self.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6";
+        return getPrimaryColor(self.playerIdentity);
       },
       set color(newColor: string) {
+        if (newColor == null || newColor === "") {
+          throw new Error(
+            "[playhtml] cursor.color cannot be set to empty; player identity must have a primary color.",
+          );
+        }
         const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
         self.playerIdentity.playerStyle.colorPalette[0] = newColor;
         self.savePlayerIdentityToStorage();
@@ -714,7 +1004,7 @@ export class CursorClientAwareness {
 
   private emitGlobalEvent<K extends keyof CursorEvents>(
     event: K,
-    value: CursorEvents[K]
+    value: CursorEvents[K],
   ): void {
     const listeners = this.globalApiListeners.get(event);
     if (listeners) {
@@ -742,7 +1032,7 @@ export class CursorClientAwareness {
   private updateCursorMessage(
     element: HTMLElement,
     playerIdentity?: PlayerIdentity,
-    message?: string | null
+    message?: string | null,
   ): void {
     // Remove existing message element
     const existingMessage = element.querySelector(".playhtml-cursor-message");
@@ -774,7 +1064,7 @@ export class CursorClientAwareness {
 
   private updateCursorName(
     element: HTMLElement,
-    playerIdentity?: PlayerIdentity
+    playerIdentity?: PlayerIdentity,
   ): void {
     // Remove existing name element
     const existingName = element.querySelector(".playhtml-cursor-name");
@@ -782,10 +1072,10 @@ export class CursorClientAwareness {
       existingName.remove();
     }
 
-    // Add name if present
+    // Add name if present (requires identity with primary color)
     const name = playerIdentity?.name;
-    if (name) {
-      const color = playerIdentity?.playerStyle?.colorPalette?.[0] || "#3b82f6";
+    if (name && playerIdentity) {
+      const color = getPrimaryColor(playerIdentity);
       const truncatedName = name.length > 10 ? name.slice(0, 10) + ".." : name;
 
       const borderColor = this.opacifyColor(color, 0.6);
@@ -826,7 +1116,7 @@ export class CursorClientAwareness {
       return color.replace("rgb", "rgba").replace(")", `, ${opacity})`);
     } else if (color.startsWith("hsl")) {
       const matches = color.match(
-        /hsl\((\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)%,\s*(\d+(?:\.\d+)?)%\)/
+        /hsl\((\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)%,\s*(\d+(?:\.\d+)?)%\)/,
       );
       if (matches) {
         const [, h, s, l] = matches.map(Number);
@@ -888,7 +1178,7 @@ export class CursorClientAwareness {
     }
 
     const [rs, gs, bs] = [r / 255, g / 255, b / 255].map((val) =>
-      val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4)
+      val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4),
     );
     return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
   }
@@ -901,15 +1191,28 @@ export class CursorClientAwareness {
   private updateAllCursorVisibility(): void {
     if (!this.currentCursor || !this.visibilityThreshold) return;
 
+    // Convert our cursor to client coordinates so distance is in pixels (visibilityThreshold is in px)
+    const ourClientCoords = storageToClientCoordinates(
+      this.currentCursor.x,
+      this.currentCursor.y,
+      this.coordinateMode,
+    );
+
     this.cursors.forEach((cursorElement, clientId) => {
       // Get cursor data from spatial grid
       const gridItems = this.spatialGrid.getAll();
       const cursorData = gridItems.find((item) => item.id === clientId)?.data;
 
       if (cursorData && cursorData.cursor) {
+        // Convert their cursor to client coordinates (same as updateCursor/checkProximityOptimized)
+        const theirClientCoords = storageToClientCoordinates(
+          cursorData.cursor.x,
+          cursorData.cursor.y,
+          this.coordinateMode,
+        );
         const distance = calculateDistance(
-          this.currentCursor!,
-          cursorData.cursor
+          { ...ourClientCoords, pointer: this.currentCursor!.pointer },
+          { ...theirClientCoords, pointer: cursorData.cursor.pointer },
         );
         const isVisible = distance < this.visibilityThreshold!;
 
@@ -939,8 +1242,9 @@ export class CursorClientAwareness {
       this.updateAllCursorVisibility();
     }
 
-    // Update player identity if provided
+    // Update player identity if provided (must have publicKey and primary color)
     if (options.playerIdentity !== undefined) {
+      assertValidPlayerIdentity(options.playerIdentity);
       this.playerIdentity = options.playerIdentity;
     }
   }
@@ -963,6 +1267,10 @@ export class CursorClientAwareness {
     // Clean up cursors
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
+
+    // Clean up spring animators
+    this.cursorAnimators.forEach((animator) => animator.destroy());
+    this.cursorAnimators.clear();
 
     // Clean up spatial grid
     this.spatialGrid.clear();
@@ -994,7 +1302,7 @@ export class CursorClientAwareness {
   // Instance-level subscription API (mirrors window.cursors.on/off)
   on<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void {
     if (!this.globalApiListeners.has(event)) {
       this.globalApiListeners.set(event, new Set());
@@ -1004,7 +1312,7 @@ export class CursorClientAwareness {
 
   off<K extends keyof CursorEvents>(
     event: K,
-    callback: (value: CursorEvents[K]) => void
+    callback: (value: CursorEvents[K]) => void,
   ): void {
     const listeners = this.globalApiListeners.get(event);
     if (listeners) {
@@ -1016,8 +1324,73 @@ export class CursorClientAwareness {
   getSnapshot(): CursorEvents {
     return {
       allColors: Array.from(this.allPlayerColors),
-      color: this.playerIdentity.playerStyle.colorPalette[0] || "#3b82f6",
-      name: this.playerIdentity.name || "",
+      color: getPrimaryColor(this.playerIdentity),
+      name: this.playerIdentity.name ?? undefined,
     };
+  }
+
+  // Get my player identity (including stable publicKey)
+  getMyPlayerIdentity(): PlayerIdentity {
+    return this.playerIdentity;
+  }
+
+  // Get the provider (needed for awareness access)
+  getProvider(): YPartyKitProvider {
+    return this.provider;
+  }
+
+  // Get all cursor presences keyed by stable ID (slim shape for rendering).
+  // Cursor coordinates are converted from storage (e.g. viewport % when coordinateMode is "relative")
+  // to client pixel coordinates so consumers can use them directly for CSS left/top.
+  getCursorPresences(): Map<string, CursorPresenceView> {
+    const presences = new Map<string, CursorPresenceView>();
+    const states = this.provider.awareness.getStates();
+
+    states.forEach((state, clientId) => {
+      const valid = getValidCursorPresence(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (!valid) return;
+
+      const stableId = getStableIdForAwareness(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      const clientCoords = storageToClientCoordinates(
+        valid.cursor.x,
+        valid.cursor.y,
+        this.coordinateMode,
+      );
+      presences.set(stableId, {
+        cursor: {
+          x: clientCoords.x,
+          y: clientCoords.y,
+          pointer: valid.cursor.pointer,
+        },
+        playerIdentity: valid.playerIdentity,
+      });
+    });
+
+    return presences;
+  }
+
+  // Subscribe to cursor presence changes
+  onCursorPresencesChange(
+    callback: (presences: Map<string, CursorPresenceView>) => void,
+  ): () => void {
+    const id = Math.random().toString(36);
+    this.cursorPresenceChangeCallbacks.set(id, callback);
+
+    // Return unsubscribe function
+    return () => {
+      this.cursorPresenceChangeCallbacks.delete(id);
+    };
+  }
+
+  // Notify listeners of cursor presence changes
+  private notifyCursorPresenceListeners(): void {
+    const presences = this.getCursorPresences();
+    this.cursorPresenceChangeCallbacks.forEach((cb) => cb(presences));
   }
 }

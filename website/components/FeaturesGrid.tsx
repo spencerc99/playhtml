@@ -21,7 +21,7 @@ interface ExperimentOneData {
 
 // Component to fetch shared color data and make it available to parent
 // TODO: fix this, somehow it is clearing the data with the defaultData?
-const SharedColorProvider = withSharedState<
+const _SharedColorProvider = withSharedState<
   ExperimentOneData,
   undefined,
   { children: React.ReactNode }
@@ -130,13 +130,13 @@ const FeatureCard = ({
   );
 };
 
-function highlightElements(capability) {
+function highlightElements(capability: string) {
   document.querySelectorAll(`[${capability}]`).forEach((ele) => {
     ele.classList.add("highlighted");
   });
 }
 
-function unhighlightElements(capability) {
+function unhighlightElements(capability: string) {
   document.querySelectorAll(`[${capability}]`).forEach((ele) => {
     ele.classList.remove("highlighted");
   });
