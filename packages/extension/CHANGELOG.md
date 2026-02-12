@@ -1,5 +1,16 @@
 # @playhtml/extension
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [1427a62]
+- Updated dependencies [3e385c7]
+- Updated dependencies [7cc91bd]
+  - playhtml@2.6.0
+  - @playhtml/common@0.4.0
+  - @playhtml/react@0.8.0
+
 ## 0.1.5
 
 ### Patch Changes
