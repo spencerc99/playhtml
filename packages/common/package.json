@@ -7,7 +7,8 @@
   "author": "Spencer Chang <spencerc99@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/spencerc99/playhtml/packages/common.git"
+    "url": "https://github.com/spencerc99/playhtml.git",
+    "directory": "packages/common"
   },
   "bugs": {
     "url": "https://github.com/spencerc99/playhtml/issues"
