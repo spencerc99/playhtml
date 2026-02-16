@@ -1,5 +1,16 @@
 # Change Log
 
+## 0.9.0
+
+### Minor Changes
+
+- 90fa88a: Add cursor animation API: `triggerCursorAnimation(stableId, animationClass, durationMs)` applies a CSS class to a cursor element for a given duration. Includes self-cursor support via a temporary ghost cursor element, animation stacking prevention, and guards to prevent position/visibility updates from interfering with active animations. Also improves coordinate conversion to account for browser zoom via visualViewport.
+
+### Patch Changes
+
+- Updated dependencies [90fa88a]
+  - playhtml@2.7.0
+
 ## 0.8.0
 
 ### Minor Changes
@@ -18,7 +29,7 @@
   const unsubscribe = playhtml.cursorClient.onCursorPresencesChange(
     (presences) => {
       // presences is Map<string, CursorPresenceView>
-    },
+    }
   );
 
   // Get my stable player identity
@@ -215,7 +226,7 @@ export const ToggleSquare = withPlay<Props>()(
         onClick={() => setData({ on: !data.on })}
       />
     );
-  },
+  }
 );
 ```
 
@@ -235,7 +246,7 @@ export const ToggleSquare = withSharedState(
         onClick={() => setData({ on: !data.on })}
       />
     );
-  },
+  }
 );
 ```
 
