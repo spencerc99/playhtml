@@ -73,7 +73,7 @@ export function CanPlayElement<T extends object, V = any>({
       }
 
       Alternatively, you can use the 'standalone' prop on individual components
-      `
+      `,
     );
   }
 
@@ -84,7 +84,7 @@ export function CanPlayElement<T extends object, V = any>({
       playhtml
         .init()
         .catch((err) =>
-          console.error("Error initializing playhtml in standalone mode:", err)
+          console.error("Error initializing playhtml in standalone mode:", err),
         );
     }
   }, [standalone, playContext.isProviderMissing]);
@@ -121,7 +121,7 @@ export function CanPlayElement<T extends object, V = any>({
         (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
       : (fnOrValue as T);
   const resolveDefaultAwareness = (
-    fnOrValue?: V | ((el: HTMLElement) => V)
+    fnOrValue?: V | ((el: HTMLElement) => V),
   ): V | undefined =>
     typeof fnOrValue === "function"
       ? // @ts-ignore
@@ -131,19 +131,19 @@ export function CanPlayElement<T extends object, V = any>({
   const [data, setData] = useState<T | undefined>(
     defaultData !== undefined
       ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
-      : undefined
+      : undefined,
   );
   const initialAwareness = resolveDefaultAwareness(
-    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined
+    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined,
   );
   const [awareness, setAwareness] = useState<V[]>(
-    initialAwareness ? [initialAwareness] : []
+    initialAwareness ? [initialAwareness] : [],
   );
   const [awarenessByStableId, setAwarenessByStableId] = useState<
     Map<string, V>
   >(new Map());
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-    initialAwareness
+    initialAwareness,
   );
 
   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
@@ -179,7 +179,7 @@ export function CanPlayElement<T extends object, V = any>({
         // If playhtml isn't initialized yet, log a helpful message
         if (!playhtml.elementHandlers) {
           console.warn(
-            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes."
+            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes.",
           );
         }
       }
@@ -208,14 +208,14 @@ export function CanPlayElement<T extends object, V = any>({
       if (!effectiveId) {
         console.warn(
           `[@playhtml/react] No effective id for element`,
-          ref.current
+          ref.current,
         );
         return;
       }
       const handler = getCurrentElementHandler(TagType.CanPlay, effectiveId);
       if (!handler) {
         console.warn(
-          `[@playhtml/react] No handler found for element ${effectiveId}`
+          `[@playhtml/react] No handler found for element ${effectiveId}`,
         );
         return;
       }
@@ -227,7 +227,7 @@ export function CanPlayElement<T extends object, V = any>({
         : undefined;
       if (!effectiveId) return;
       getCurrentElementHandler(TagType.CanPlay, effectiveId)?.setMyAwareness(
-        newLocalAwareness
+        newLocalAwareness,
       );
     },
     myAwareness,
@@ -236,7 +236,7 @@ export function CanPlayElement<T extends object, V = any>({
 
   if (isReactFragment(renderedChildren) && !id) {
     throw new Error(
-      `If you pass a single React Fragment as the children, you must also specify 'id' in the props`
+      `If you pass a single React Fragment as the children, you must also specify 'id' in the props`,
     );
   }
 
@@ -257,7 +257,7 @@ export function CanPlayElement<T extends object, V = any>({
           : { shared: "" }
         : {}),
     },
-    { fragmentId: id }
+    { fragmentId: id },
   );
 }
 
@@ -313,9 +313,9 @@ export function withSharedState<T extends object, V = any, P = any>(
   playConfig: WithPlayProps<T, V> | ((props: P) => WithPlayProps<T, V>),
   component: (
     playProps: ReactElementEventHandlerData<T, V>,
-    props: P
+    props: P,
   ) => React.ReactElement,
-  options?: WithPlayOptionalProps
+  options?: WithPlayOptionalProps,
 ): (props: P) => JSX.Element {
   const renderChildren = (props: P): JSX.Element => {
     const configForProps =

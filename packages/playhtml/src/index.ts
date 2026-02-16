@@ -197,7 +197,7 @@ function handleNewSharedReference(element: HTMLElement): void {
         JSON.stringify({
           type: "add-shared-reference",
           reference: newReference,
-        })
+        }),
       );
 
       // Request permissions for this specific element
@@ -205,12 +205,12 @@ function handleNewSharedReference(element: HTMLElement): void {
         JSON.stringify({
           type: "export-permissions",
           elementIds: [elementId],
-        })
+        }),
       );
     } catch (error) {
       console.warn(
         "[PLAYHTML] Failed to notify server of new shared reference:",
-        error
+        error,
       );
     }
   }
@@ -248,12 +248,12 @@ function handleNewSharedElement(element: HTMLElement): void {
         JSON.stringify({
           type: "register-shared-element",
           element: sharedElement,
-        })
+        }),
       );
     } catch (error) {
       console.warn(
         "[PLAYHTML] Failed to notify server of new shared element:",
-        error
+        error,
       );
     }
   }
@@ -262,7 +262,7 @@ function handleNewSharedElement(element: HTMLElement): void {
 function ensureElementProxy<TData = unknown>(
   tag: string,
   elementId: string,
-  defaultData: TData
+  defaultData: TData,
 ): TData {
   if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
   const tagMap = proxyByTagAndId.get(tag)!;
@@ -313,18 +313,18 @@ export interface CursorOptions {
       ours: { x: number; y: number };
       theirs: { x: number; y: number };
     },
-    angle?: number
+    angle?: number,
   ) => void;
   onProximityLeft?: (connectionId: string) => void;
   onCustomCursorRender?: (
     connectionId: string,
-    element: HTMLElement
+    element: HTMLElement,
   ) => HTMLElement | null;
   enableChat?: boolean;
   room?: CursorRoom;
   shouldRenderCursor?: (presence: CursorPresence) => boolean;
   getCursorStyle?: (
-    presence: CursorPresence
+    presence: CursorPresence,
   ) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
@@ -410,14 +410,14 @@ function onMessage(evt: MessageEvent) {
   // Handle system messages
   if (message.type === "room-reset") {
     console.warn(
-      `[PLAYHTML] Received room-reset message with epoch=${message.resetEpoch}. Storing and reloading...`
+      `[PLAYHTML] Received room-reset message with epoch=${message.resetEpoch}. Storing and reloading...`,
     );
     // Store the reset epoch if provided
     if (message.resetEpoch) {
       const storageKey = `playhtml_resetEpoch_${__currentRoomId}`;
       localStorage.setItem(storageKey, String(message.resetEpoch));
       console.log(
-        `[PLAYHTML] Stored resetEpoch=${message.resetEpoch} in localStorage key=${storageKey}`
+        `[PLAYHTML] Stored resetEpoch=${message.resetEpoch} in localStorage key=${storageKey}`,
       );
     }
     // Force reload to fetch fresh state
@@ -441,7 +441,7 @@ function onMessage(evt: MessageEvent) {
           if (mode === "read-only") {
             // Add not-allowed affordance to any matching referenced element
             const el = document.querySelector(
-              `[data-source$="#${CSS.escape(elementId)}"]`
+              `[data-source$="#${CSS.escape(elementId)}"]`,
             ) as HTMLElement | null;
             if (el) el.setAttribute("data-source-read-only", "");
           }
@@ -508,7 +508,7 @@ async function initPlayHTML({
 ࿂࿂࿂࿂ booting up playhtml... ࿂࿂࿂࿂
 ࿂࿂࿂࿂  https://playhtml.fun  ࿂࿂࿂࿂
 ࿂࿂࿂࿂   ࿂     ࿂     ࿂     ࿂   ࿂࿂࿂࿂
-࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`
+࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
   );
 
   // Discover shared elements and references on the page
@@ -531,7 +531,7 @@ async function initPlayHTML({
     : null;
 
   console.log(
-    `[PLAYHTML] Connecting with clientResetEpoch=${clientResetEpoch} (stored: ${storedResetEpoch}) to room=${room}`
+    `[PLAYHTML] Connecting with clientResetEpoch=${clientResetEpoch} (stored: ${storedResetEpoch}) to room=${room}`,
   );
 
   // Create provider with shared element parameters
@@ -556,11 +556,11 @@ async function initPlayHTML({
     if (yprovider.ws) {
       yprovider.ws.addEventListener("message", onMessage);
       console.log(
-        `[PLAYHTML] Attached onMessage handler to WebSocket, readyState=${yprovider.ws.readyState}`
+        `[PLAYHTML] Attached onMessage handler to WebSocket, readyState=${yprovider.ws.readyState}`,
       );
     } else {
       console.warn(
-        "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached"
+        "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached",
       );
     }
   });
@@ -583,7 +583,7 @@ async function initPlayHTML({
       // Normalize using the same function as main room to ensure consistent comparison
       const cursorRoom = normalizeRoomId(
         window.location.host,
-        cursorRoomString
+        cursorRoomString,
       );
 
       // Only create separate provider if cursor room is different from element room
@@ -592,7 +592,7 @@ async function initPlayHTML({
         cursorProvider = new YPartyKitProvider(
           partykitHost,
           cursorRoom,
-          cursorDoc
+          cursorDoc,
         );
         cursorProvider.on("error", () => {
           onError?.();
@@ -653,7 +653,7 @@ async function initPlayHTML({
         try {
           const elementIds = sharedReferences.map((r) => r.elementId);
           yprovider.ws?.send(
-            JSON.stringify({ type: "export-permissions", elementIds })
+            JSON.stringify({ type: "export-permissions", elementIds }),
           );
         } catch (error) {
           console.error("[PLAYHTML] Error during post-sync setup:", error);
@@ -728,7 +728,7 @@ function markElementAsReady(element: HTMLElement): void {
 function markAllElementsAsLoading(): void {
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`)
+      document.querySelectorAll(`[${tag}]`),
     ).filter(isHTMLElement);
 
     tagElements.forEach((element) => {
@@ -740,7 +740,7 @@ function markAllElementsAsLoading(): void {
 function markAllElementsAsReady(): void {
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`)
+      document.querySelectorAll(`[${tag}]`),
     ).filter(isHTMLElement);
 
     tagElements.forEach((element) => {
@@ -753,7 +753,7 @@ function createPlayElementData<T extends TagType, TData = any>(
   element: HTMLElement,
   tag: T,
   tagInfo: ElementInitializer<TData>,
-  elementId: string
+  elementId: string,
 ): ElementData<TData> {
   if (VERBOSE) {
     console.log("registering element", elementId, "using SyncedStore data");
@@ -768,7 +768,7 @@ function createPlayElementData<T extends TagType, TData = any>(
   const dataProxy = ensureElementProxy<TData>(
     tag,
     elementId,
-    initialData as TData
+    initialData as TData,
   );
 
   const elementData: ElementData = {
@@ -804,7 +804,8 @@ function createPlayElementData<T extends TagType, TData = any>(
       // Use cursor provider for awareness (matches cursor scope)
       // Fall back to doc provider if cursors are disabled
       const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
-      const localAwareness = awarenessProvider.awareness.getLocalState()?.[tag] || {};
+      const localAwareness =
+        awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
       if (localAwareness[elementId] === elementAwarenessData) {
         return;
@@ -822,7 +823,7 @@ function createPlayElementData<T extends TagType, TData = any>(
 }
 
 function isCorrectElementInitializer(
-  tagInfo: ElementInitializer
+  tagInfo: ElementInitializer,
 ): tagInfo is ElementInitializer {
   return (
     tagInfo.defaultData !== undefined &&
@@ -834,7 +835,7 @@ function isCorrectElementInitializer(
 
 function getElementInitializerInfoForElement(
   tag: TagType | string,
-  element: HTMLElement
+  element: HTMLElement,
 ) {
   if (tag === TagType.CanPlay) {
     // TODO: this needs to handle multiple can-play functionalities?
@@ -869,7 +870,7 @@ function onChangeAwareness() {
   // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
   // on every mouse move (up to 60fps); skip rebuild and handler updates when only that changed.
   const fingerprint = getElementAwarenessFingerprint(
-    states as Map<number, Record<string, unknown>>
+    states as Map<number, Record<string, unknown>>,
   );
   if (fingerprint === lastElementAwarenessFingerprint) {
     return;
@@ -885,7 +886,7 @@ function onChangeAwareness() {
   states.forEach((state, clientId) => {
     const stableId = getStableIdForAwareness(
       state as Record<string, unknown>,
-      clientId
+      clientId,
     );
 
     // Process each tag type
@@ -939,7 +940,7 @@ function setupElements(): void {
 
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`)
+      document.querySelectorAll(`[${tag}]`),
     ).filter(isHTMLElement);
 
     if (!tagElements.length) {
@@ -950,7 +951,7 @@ function setupElements(): void {
       console.log(`SET UP ${tag}`);
     }
     void Promise.all(
-      tagElements.map((element) => setupPlayElementForTag(element, tag))
+      tagElements.map((element) => setupPlayElementForTag(element, tag)),
     );
   }
 
@@ -1047,7 +1048,7 @@ function maybeSetupTag(tag: TagType | string): void {
  */
 function isElementValidForTag(
   element: HTMLElement,
-  tag: TagType | string
+  tag: TagType | string,
 ): boolean {
   return (
     capabilitiesToInitializer[tag]?.isValidElementForTag?.(element) ?? true
@@ -1059,7 +1060,7 @@ function isElementValidForTag(
  */
 async function setupPlayElementForTag<T extends TagType | string>(
   element: HTMLElement,
-  tag: T
+  tag: T,
 ): Promise<void> {
   if (VERBOSE) {
     console.log(`Setting up playhtml element for tag ${tag}`);
@@ -1089,7 +1090,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
 
   if (!elementId) {
     console.error(
-      `Element ${element} does not have an acceptable ID. Please add an ID to the element to register it as a playhtml element.`
+      `Element ${element} does not have an acceptable ID. Please add an ID to the element to register it as a playhtml element.`,
     );
     return;
   }
@@ -1099,11 +1100,11 @@ async function setupPlayElementForTag<T extends TagType | string>(
 
   const elementInitializerInfo = getElementInitializerInfoForElement(
     tag,
-    element
+    element,
   );
   if (!isCorrectElementInitializer(elementInitializerInfo)) {
     console.error(
-      `Element ${elementId} does not have proper info to initial a playhtml element. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`
+      `Element ${elementId} does not have proper info to initial a playhtml element. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`,
     );
     return;
   }
@@ -1112,7 +1113,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     element,
     tag as TagType,
     elementInitializerInfo,
-    elementId
+    elementId,
   );
   if (tagElementHandlers.has(elementId)) {
     // Try to update the elements info
@@ -1173,7 +1174,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       // Debug: log updates for shared elements
       if (VERBOSE) {
         console.log(
-          `[PLAYHTML] updated shared element ${tag}:${elementId} via SyncedStore observer`
+          `[PLAYHTML] updated shared element ${tag}:${elementId} via SyncedStore observer`,
         );
       }
     });
@@ -1190,7 +1191,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
         const timeoutId = window.setTimeout(() => {
           if (!sharedUpdateSeen.has(key)) {
             console.warn(
-              `[playhtml] Shared reference ${tag}:${elementId} has not received data. Check data-source and source availability.`
+              `[playhtml] Shared reference ${tag}:${elementId} has not received data. Check data-source and source availability.`,
             );
           }
           sharedHydrationTimers.delete(key);
@@ -1204,7 +1205,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
 // TODO: make async and run it after synced
 function setupPlayElement(
   element: Element,
-  { ignoreIfAlreadySetup }: { ignoreIfAlreadySetup?: boolean } = {}
+  { ignoreIfAlreadySetup }: { ignoreIfAlreadySetup?: boolean } = {},
 ) {
   // Prevent invalid configuration: element cannot be both a source and a consumer
   if (
@@ -1213,14 +1214,14 @@ function setupPlayElement(
   ) {
     const id = (element as HTMLElement).id || "<no-id>";
     console.error(
-      `[playhtml] Element ${id} has both 'data-source' and 'shared'. Ignoring. A single element cannot be both a consumer and a source.`
+      `[playhtml] Element ${id} has both 'data-source' and 'shared'. Ignoring. A single element cannot be both a consumer and a source.`,
     );
     return;
   }
   if (
     ignoreIfAlreadySetup &&
     Object.keys(elementHandlers || {}).some((tag) =>
-      elementHandlers.get(tag)?.has(element.id)
+      elementHandlers.get(tag)?.has(element.id),
     )
   ) {
     return;
@@ -1243,7 +1244,7 @@ function setupPlayElement(
 
   // Handle loading state for dynamically added elements
   const hasPlayhtmlAttributes = getTagTypes().some((tag) =>
-    element.hasAttribute(tag)
+    element.hasAttribute(tag),
   );
 
   if (hasPlayhtmlAttributes) {
@@ -1259,7 +1260,7 @@ function setupPlayElement(
   void Promise.all(
     getTagTypes()
       .filter((tag) => element.hasAttribute(tag))
-      .map((tag) => setupPlayElementForTag(element, tag))
+      .map((tag) => setupPlayElementForTag(element, tag)),
   );
 }
 
@@ -1300,7 +1301,7 @@ function removePlayElement(element: Element | null) {
 function deleteElementData(tag: string, elementId: string): void {
   if (!hasSynced) {
     console.warn(
-      `[PLAYHTML] Cannot remove element data before sync: ${tag}:${elementId}`
+      `[PLAYHTML] Cannot remove element data before sync: ${tag}:${elementId}`,
     );
     return;
   }
@@ -1331,7 +1332,7 @@ function deleteElementData(tag: string, elementId: string): void {
     } catch (error) {
       console.warn(
         `[PLAYHTML] Failed to remove SyncedStore data for ${key}:`,
-        error
+        error,
       );
     }
   }
@@ -1380,7 +1381,7 @@ function dispatchPlayEvent(message: EventMessage) {
 // to register a listener for a type and provide a callback and it returns you a function that triggers that event.
 function registerPlayEventListener(
   type: string,
-  event: Omit<PlayEvent, "type">
+  event: Omit<PlayEvent, "type">,
 ): string {
   const id = String(eventCount++);
 

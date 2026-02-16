@@ -18,7 +18,7 @@
   const unsubscribe = playhtml.cursorClient.onCursorPresencesChange(
     (presences) => {
       // presences is Map<string, CursorPresenceView>
-    }
+    },
   );
 
   // Get my stable player identity
@@ -72,18 +72,18 @@
   - Awareness scope matches cursor scope for more intuitive behavior
 
 - 3e385c7: Add composable cursor room configuration with filtering and styling options.
-- 7cc91bd: Add `removeElementData` API for cleaning up orphaned element data
+- 7cc91bd: Add `deleteElementData` API for cleaning up orphaned element data
 
-  This release adds a new `removeElementData(tag, elementId)` function to both the core `playhtml` package and the React wrapper. This function allows you to clean up orphaned data when elements are deleted, preventing accumulation of stale data in the database.
+  This release adds a new `deleteElementData(tag, elementId)` function to both the core `playhtml` package and the React wrapper. This function allows you to clean up orphaned data when elements are deleted, preventing accumulation of stale data in the database.
 
   **Usage:**
 
   ```tsx
-  import { removeElementData } from "@playhtml/react";
+  import { deleteElementData } from "@playhtml/react";
 
   // Or access via playhtml object
   import { playhtml } from "@playhtml/react";
-  playhtml.removeElementData("can-move", elementId);
+  playhtml.deleteElementData("can-move", elementId);
   ```
 
 ### Patch Changes
@@ -215,7 +215,7 @@ export const ToggleSquare = withPlay<Props>()(
         onClick={() => setData({ on: !data.on })}
       />
     );
-  }
+  },
 );
 ```
 
@@ -235,7 +235,7 @@ export const ToggleSquare = withSharedState(
         onClick={() => setData({ on: !data.on })}
       />
     );
-  }
+  },
 );
 ```
 

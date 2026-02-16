@@ -38,3 +38,5 @@ dist-ssr
 .output
 
 internal-docs
+
+.dev.vars

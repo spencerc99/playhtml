@@ -17,6 +17,11 @@ export interface PlayContextInfo
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
   getMyPlayerIdentity: () => PlayerIdentity | null;
+  /**
+   * Apply a CSS class to the actual cursor DOM element for the given stableId.
+   * Returns true if applied; false if cursor not found.
+   */
+  triggerCursorAnimation: (stableId: string, animationClass: string, durationMs?: number) => boolean;
   cursors: CursorEvents;
   cursorPresences: Map<string, CursorPresenceView>;
 }
@@ -46,6 +51,11 @@ export const PlayContext = createContext<PlayContextInfo>({
     );
   },
   getMyPlayerIdentity: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  triggerCursorAnimation: () => {
     throw new Error(
       "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
     );
@@ -104,6 +114,15 @@ export function PlayProvider({
 
   const getMyPlayerIdentity = (): PlayerIdentity | null => {
     return playhtml.cursorClient?.getMyPlayerIdentity() ?? null;
+  };
+
+  const triggerCursorAnimation = (
+    stableId: string,
+    animationClass: string,
+    durationMs?: number,
+  ): boolean => {
+    if (!playhtml.cursorClient) return false;
+    return playhtml.cursorClient.triggerCursorAnimation(stableId, animationClass, durationMs);
   };
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
@@ -169,6 +188,7 @@ export function PlayProvider({
         isProviderMissing: false,
         configureCursors,
         getMyPlayerIdentity,
+        triggerCursorAnimation,
         cursors: cursorsState,
         cursorPresences,
       }}

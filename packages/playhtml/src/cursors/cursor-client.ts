@@ -75,22 +75,40 @@ export function calculateDistance(cursor1: Cursor, cursor2: Cursor): number {
 }
 
 // Coordinate conversion utilities
+// Both modes account for browser zoom via visualViewport.scale so that
+// cursors point to the correct content position regardless of zoom level.
+function getZoomScale(): number {
+  return window.visualViewport?.scale ?? 1;
+}
+
 function clientToStorageCoordinates(
   clientX: number,
   clientY: number,
   mode: "relative" | "absolute",
 ): { x: number; y: number } {
+  const scale = getZoomScale();
   if (mode === "relative") {
-    // Convert to viewport percentage (0-100)
+    // Convert to viewport percentage (0-100), adjusting for zoom
+    const vp = window.visualViewport;
+    const vpWidth = vp?.width ?? window.innerWidth;
+    const vpHeight = vp?.height ?? window.innerHeight;
+    const vpOffsetLeft = vp?.offsetLeft ?? 0;
+    const vpOffsetTop = vp?.offsetTop ?? 0;
     return {
-      x: (clientX / window.innerWidth) * 100,
-      y: (clientY / window.innerHeight) * 100,
+      x: ((clientX + vpOffsetLeft) / (vpWidth * scale)) * 100,
+      y: ((clientY + vpOffsetTop) / (vpHeight * scale)) * 100,
     };
   } else {
-    // absolute mode: use document coordinates (pageX/pageY)
+    // absolute mode: convert client coordinates to document coordinates,
+    // accounting for both scroll and zoom
+    const vp = window.visualViewport;
+    const scrollX = vp ? vp.pageLeft : window.scrollX;
+    const scrollY = vp ? vp.pageTop : window.scrollY;
+    const offsetLeft = vp?.offsetLeft ?? 0;
+    const offsetTop = vp?.offsetTop ?? 0;
     return {
-      x: clientX + window.scrollX,
-      y: clientY + window.scrollY,
+      x: (clientX + offsetLeft) / scale + scrollX,
+      y: (clientY + offsetTop) / scale + scrollY,
     };
   }
 }
@@ -100,17 +118,29 @@ function storageToClientCoordinates(
   y: number,
   mode: "relative" | "absolute",
 ): { x: number; y: number } {
+  const scale = getZoomScale();
   if (mode === "relative") {
-    // Convert from viewport percentage to pixels
+    // Convert from viewport percentage to pixels, adjusting for zoom
+    const vp = window.visualViewport;
+    const vpWidth = vp?.width ?? window.innerWidth;
+    const vpHeight = vp?.height ?? window.innerHeight;
+    const vpOffsetLeft = vp?.offsetLeft ?? 0;
+    const vpOffsetTop = vp?.offsetTop ?? 0;
     return {
-      x: (x / 100) * window.innerWidth,
-      y: (y / 100) * window.innerHeight,
+      x: (x / 100) * vpWidth * scale - vpOffsetLeft,
+      y: (y / 100) * vpHeight * scale - vpOffsetTop,
     };
   } else {
-    // absolute mode: convert from document to viewport coordinates
+    // absolute mode: convert from document to viewport coordinates,
+    // accounting for both scroll and zoom
+    const vp = window.visualViewport;
+    const scrollX = vp ? vp.pageLeft : window.scrollX;
+    const scrollY = vp ? vp.pageTop : window.scrollY;
+    const offsetLeft = vp?.offsetLeft ?? 0;
+    const offsetTop = vp?.offsetTop ?? 0;
     return {
-      x: x - window.scrollX,
-      y: y - window.scrollY,
+      x: (x - scrollX) * scale - offsetLeft,
+      y: (y - scrollY) * scale - offsetTop,
     };
   }
 }
@@ -191,6 +221,20 @@ class SpringAnimator {
       this.animationFrame = requestAnimationFrame(this.animate);
     }
   };
+
+  // Immediately jump to a position without spring animation.
+  // Used when the viewport changes (scroll/zoom) and cursors need to
+  // track content instantly.
+  snapTo(position: { x: number; y: number }) {
+    if (this.animationFrame !== null) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
+    this.position = { ...position };
+    this.target = { ...position };
+    this.velocity = { x: 0, y: 0 };
+    this.onUpdate(this.position);
+  }
 
   destroy() {
     if (this.animationFrame !== null) {
@@ -288,6 +332,7 @@ export class CursorClientAwareness {
   private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
+  private activeAnimationCleanups = new Map<string, () => void>(); // stableId -> cleanup fn
   private allPlayerColors: Set<string> = new Set();
   private chat: CursorChat | null = null;
   private currentMessage: string | null = null;
@@ -306,7 +351,7 @@ export class CursorClientAwareness {
       options.playerIdentity || generatePersistentPlayerIdentity();
     assertValidPlayerIdentity(this.playerIdentity);
     this.visibilityThreshold = options.visibilityThreshold || undefined;
-    this.coordinateMode = options.coordinateMode || "relative"; // Default to viewport percentage
+    this.coordinateMode = options.coordinateMode || "absolute";
 
     if (this.options.enableChat === true) {
       this.chat = new CursorChat({
@@ -627,21 +672,103 @@ export class CursorClientAwareness {
     };
 
     const handleTouchEnd = () => {
-      this.currentCursor = null;
-      this.updateCursorAwareness();
+      // Keep presence alive on touch end — cursor freezes at last known position.
+      // Same rationale as mouseleave: switching apps shouldn't remove presence.
     };
 
     document.addEventListener("mousemove", updateCursor);
     document.addEventListener("touchmove", updateTouchCursor);
     document.addEventListener("touchend", handleTouchEnd);
 
-    // Handle leaving the page/window
-    document.addEventListener("mouseleave", (e) => {
-      this.currentCursor = null;
-      this.updateCursorAwareness();
-      // When cursor leaves, show all cursors (no visibility restriction)
+    // When mouse leaves the window, keep presence alive but stop updating position.
+    // The cursor freezes at its last known position for other clients.
+    // TODO: consider displaying inactive cursors differently (faded, grayed out, etc.)
+    document.addEventListener("mouseleave", () => {
       this.showAllCursors();
     });
+
+    // Reposition all remote cursors when scroll or zoom changes, since
+    // absolute-mode coordinates are document-relative but cursors render
+    // with position:fixed.
+    let viewportChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    const repositionOnViewportChange = () => {
+      if (viewportChangeTimer !== null) {
+        clearTimeout(viewportChangeTimer);
+      }
+      viewportChangeTimer = setTimeout(() => {
+        viewportChangeTimer = null;
+        this.repositionAllCursors();
+      }, 150);
+    };
+    window.addEventListener("scroll", repositionOnViewportChange, {
+      passive: true,
+    });
+    window.addEventListener("resize", repositionOnViewportChange);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener(
+        "scroll",
+        repositionOnViewportChange,
+      );
+      window.visualViewport.addEventListener(
+        "resize",
+        repositionOnViewportChange,
+      );
+    }
+
+    // Clean up presence when the page is actually closed/navigated away
+    window.addEventListener("beforeunload", () => {
+      this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    });
+  }
+
+  // Re-derive client positions for all remote cursors from their stored
+  // document coordinates. Called when scroll/zoom changes so that fixed-
+  // position cursor elements track the correct content location.
+  private repositionAllCursors(): void {
+    const states = this.provider.awareness.getStates();
+    const localClientId = this.provider.awareness.clientID;
+    const cursorSize = 20;
+    const margin = 2;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    for (const [numericId, state] of states) {
+      const stableId = getStableIdForAwareness(
+        state as Record<string, unknown>,
+        numericId,
+      );
+      if (numericId === localClientId) continue;
+
+      const valid = getValidCursorPresence(
+        state as Record<string, unknown>,
+        numericId,
+      );
+      if (!valid?.cursor) continue;
+
+      const animator = this.cursorAnimators.get(stableId);
+      if (!animator) continue;
+
+      const targetCoords = storageToClientCoordinates(
+        valid.cursor.x,
+        valid.cursor.y,
+        this.coordinateMode,
+      );
+
+      const clampedX = Math.max(
+        -cursorSize + margin,
+        Math.min(viewportWidth - margin, targetCoords.x),
+      );
+      const clampedY = Math.max(
+        -cursorSize + margin,
+        Math.min(viewportHeight - margin, targetCoords.y),
+      );
+
+      // Jump directly instead of animating — scroll/zoom changes should
+      // feel instant, not springy.
+      animator.snapTo({ x: clampedX, y: clampedY });
+    }
+
+    this.updateAllCursorVisibility();
   }
 
   private throttledUpdateCursorAwareness(): void {
@@ -681,7 +808,10 @@ export class CursorClientAwareness {
     );
   }
 
-  private updateCursor(clientId: string, cursorData: ValidCursorPresence): void {
+  private updateCursor(
+    clientId: string,
+    cursorData: ValidCursorPresence,
+  ): void {
     const identity = cursorData.playerIdentity;
 
     // Check if this cursor should be rendered
@@ -792,11 +922,15 @@ export class CursorClientAwareness {
 
       cursorElement.style.display = isVisible ? "block" : "none";
       cursorElement.style.opacity = isVisible ? "1" : "0";
-      cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
+      if (!cursorElement.dataset.animating) {
+        cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
+      }
     } else {
       cursorElement.style.display = "block";
       cursorElement.style.opacity = "1";
-      cursorElement.style.transform = "scale(1)";
+      if (!cursorElement.dataset.animating) {
+        cursorElement.style.transform = "scale(1)";
+      }
     }
   }
 
@@ -1218,7 +1352,9 @@ export class CursorClientAwareness {
 
         cursorElement.style.display = isVisible ? "block" : "none";
         cursorElement.style.opacity = isVisible ? "1" : "0";
-        cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
+        if (!cursorElement.dataset.animating) {
+          cursorElement.style.transform = isVisible ? "scale(1)" : "scale(0.8)";
+        }
       }
     });
   }
@@ -1227,7 +1363,9 @@ export class CursorClientAwareness {
     this.cursors.forEach((cursorElement) => {
       cursorElement.style.display = "block";
       cursorElement.style.opacity = "1";
-      cursorElement.style.transform = "scale(1)";
+      if (!cursorElement.dataset.animating) {
+        cursorElement.style.transform = "scale(1)";
+      }
     });
   }
 
@@ -1392,5 +1530,132 @@ export class CursorClientAwareness {
   private notifyCursorPresenceListeners(): void {
     const presences = this.getCursorPresences();
     this.cursorPresenceChangeCallbacks.forEach((cb) => cb(presences));
+  }
+  /**
+   * Apply a CSS class to a specific cursor element identified by the player's stableId (publicKey).
+   * The class is added to the actual rendered cursor DOM element and removed after `durationMs`.
+   * Returns true if the cursor element was found and the animation was applied.
+   */
+  triggerCursorAnimation(
+    stableId: string,
+    animationClass: string,
+    durationMs: number = 1500,
+  ): boolean {
+    // Cancel any existing animation for this cursor
+    const existingCleanup = this.activeAnimationCleanups.get(stableId);
+    if (existingCleanup) {
+      existingCleanup();
+    }
+
+    // Check if this is the local player (self) — no cursor DOM element exists for self
+    const isSelf = stableId === this.playerIdentity.publicKey;
+
+    if (isSelf) {
+      return this.triggerSelfCursorAnimation(animationClass, durationMs);
+    }
+
+    // Find the awareness clientId that corresponds to this stableId
+    const states = this.provider.awareness.getStates();
+    let targetClientId: string | null = null;
+
+    states.forEach((state, clientId) => {
+      if (targetClientId) return;
+      const sid = getStableIdForAwareness(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (sid === stableId) {
+        targetClientId = String(clientId);
+      }
+    });
+
+    if (!targetClientId) return false;
+
+    const el = this.cursors.get(targetClientId);
+    if (!el) return false;
+
+    const targetEl: HTMLElement =
+      (el.querySelector("svg") as HTMLElement | null) ?? el;
+
+    el.dataset.animating = "true";
+    // Force cursor visible during animation (may have been hidden by visibility threshold)
+    const savedDisplay = el.style.display;
+    const savedOpacity = el.style.opacity;
+    el.style.display = "block";
+    el.style.opacity = "1";
+    // Disable the base transition so left/top updates don't interfere with the animation
+    const savedTransition = el.style.transition;
+    el.style.transition = "none";
+    targetEl.classList.add(animationClass);
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      targetEl.classList.remove(animationClass);
+      delete el.dataset.animating;
+      el.style.transition = savedTransition;
+      el.style.display = savedDisplay;
+      el.style.opacity = savedOpacity;
+      this.activeAnimationCleanups.delete(stableId);
+    };
+    this.activeAnimationCleanups.set(stableId, cleanup);
+    const onAnimationEnd = () => {
+      cleanup();
+      targetEl.removeEventListener("animationend", onAnimationEnd);
+    };
+
+    targetEl.addEventListener("animationend", onAnimationEnd);
+
+    // Fallback timeout cleanup
+    window.setTimeout(onAnimationEnd, durationMs);
+    return true;
+  }
+
+  // Create a temporary ghost cursor at the local player's position and animate it
+  private triggerSelfCursorAnimation(
+    animationClass: string,
+    durationMs: number,
+  ): boolean {
+    if (!this.currentCursor) return false;
+
+    const color = getPrimaryColor(this.playerIdentity);
+    const coords = storageToClientCoordinates(
+      this.currentCursor.x,
+      this.currentCursor.y,
+      this.coordinateMode,
+    );
+
+    // Create a temporary cursor element matching the standard cursor shape
+    const ghost = document.createElement("div");
+    ghost.className = `playhtml-cursor-other ${animationClass}`;
+    ghost.style.cssText = `
+      position: fixed;
+      left: ${coords.x - 16}px;
+      top: ${coords.y - 16}px;
+      width: 32px;
+      height: 32px;
+      z-index: 999999;
+      pointer-events: none;
+      opacity: 0.3;
+      transform-origin: top left;
+    `;
+    ghost.innerHTML = this.getMouseCursorSVG(color);
+    document.body.appendChild(ghost);
+
+    const stableId = this.playerIdentity.publicKey;
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      ghost.removeEventListener("animationend", onEnd);
+      ghost.remove();
+      this.activeAnimationCleanups.delete(stableId);
+    };
+    this.activeAnimationCleanups.set(stableId, cleanup);
+    const onEnd = () => cleanup();
+    ghost.addEventListener("animationend", onEnd);
+    window.setTimeout(cleanup, durationMs);
+
+    return true;
   }
 }
