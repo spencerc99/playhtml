@@ -530,10 +530,6 @@ async function initPlayHTML({
     ? parseInt(storedResetEpoch, 10)
     : null;
 
-  console.log(
-    `[PLAYHTML] Connecting with clientResetEpoch=${clientResetEpoch} (stored: ${storedResetEpoch}) to room=${room}`,
-  );
-
   // Create provider with shared element parameters
   yprovider = new YPartyKitProvider(partykitHost, room, doc, {
     params: {
@@ -555,9 +551,6 @@ async function initPlayHTML({
   queueMicrotask(() => {
     if (yprovider.ws) {
       yprovider.ws.addEventListener("message", onMessage);
-      console.log(
-        `[PLAYHTML] Attached onMessage handler to WebSocket, readyState=${yprovider.ws.readyState}`,
-      );
     } else {
       console.warn(
         "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached",

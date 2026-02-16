@@ -200,7 +200,7 @@ When deleting elements at runtime, clean up their playhtml data to prevent accum
 
 ```javascript
 // When removing an element
-playhtml.removeElementData("can-move", elementId);
+playhtml.deleteElementData("can-move", elementId);
 ```
 
 This removes all associated data (SyncedStore, observers, handlers). For bulk cleanup of orphaned data, use the admin cleanup endpoint. See [data-cleanup.md](https://github.com/spencerc99/playhtml/blob/main/docs/data-cleanup.md) for details.

@@ -4,11 +4,11 @@ When elements are deleted from your application, their playhtml data can accumul
 
 ## Runtime Cleanup API
 
-For elements deleted at runtime, use `playhtml.removeElementData()` to clean up all associated data:
+For elements deleted at runtime, use `playhtml.deleteElementData()` to clean up all associated data:
 
 ```javascript
 // Remove all data for a specific element ID and tag
-playhtml.removeElementData("can-move", elementId);
+playhtml.deleteElementData("can-move", elementId);
 ```
 
 This removes:
@@ -27,7 +27,7 @@ function handleDeleteWord(id: string) {
 
   // Clean up playhtml data
   if (window.playhtml) {
-    window.playhtml.removeElementData("can-move", id);
+    window.playhtml.deleteElementData("can-move", id);
   }
 }
 ```

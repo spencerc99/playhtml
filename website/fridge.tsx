@@ -11,7 +11,7 @@ import { useLocation } from "./useLocation";
 // Detect mobile viewport
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 768
+    () => typeof window !== "undefined" && window.innerWidth < 768,
   );
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -156,7 +156,7 @@ declare global {
   interface Window {
     plausible?: (
       eventName: string,
-      options?: { props?: Record<string, any> }
+      options?: { props?: Record<string, any> },
     ) => void;
   }
 }
@@ -249,20 +249,6 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
         });
         setLocalData({ startMouseX: clientX, startMouseY: clientY });
       },
-      // onMount: (_, { setData, element }) => {
-      //   // Reverse migration: if can-play data exists, copy it to can-move and delete can-play
-      //   const canPlayData = getCanPlayData(element.id);
-      //   if (canPlayData && (canPlayData.x !== 0 || canPlayData.y !== 0)) {
-      //     setData({ x: canPlayData.x, y: canPlayData.y });
-      //     // Clean up old can-play data
-      //     try {
-      //       const playhtml = (window as any).playhtml;
-      //       playhtml?.deleteElementData?.("can-play", element.id);
-      //     } catch (e) {
-      //       console.warn("[FRIDGE] Failed to cleanup old can-play data:", e);
-      //     }
-      //   }
-      // },
     };
   },
   ({ data, setData }, props: Props) => {
@@ -326,7 +312,7 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 const Words = [
@@ -388,7 +374,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 1000;
+const MaxWords = 2000;
 const MaxWordLength = 40;
 
 interface ToolboxProps {
@@ -425,7 +411,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     } | null>(null);
     const [wallInputValue, setWallInputValue] = React.useState(wall);
     const [showWallControls, setShowWallControls] = React.useState(false);
-    const { removeElementData } = useContext(PlayContext);
+    const { deleteElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
@@ -499,6 +485,11 @@ const WordControls = withSharedState<FridgeWordType[]>(
         return;
       }
 
+      // Enforce word limit (guards both Add button and Enter key submission)
+      if (data.length >= MaxWords) {
+        return;
+      }
+
       if (input.length > MaxWordLength) {
         alert("word too long!");
         clearMessage();
@@ -511,7 +502,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         })
       ) {
         alert(
-          "we don't seem to like that word :( please keep things nice here"
+          "we don't seem to like that word :( please keep things nice here",
         );
         clearMessage();
         return false;
@@ -542,7 +533,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     function handleDeleteWord(
       id: string | undefined,
       word: string,
-      color: string | undefined
+      color: string | undefined,
     ) {
       if (deleteCount >= DeleteWordLimit) {
         // Track delete overload
@@ -577,9 +568,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
       // Clean up element data to prevent orphaned data
       if (id) {
         try {
-          removeElementData("can-move", id);
+          deleteElementData("can-move", id);
           // Also clean up any leftover can-play data from migration period
-          removeElementData("can-play", id);
+          deleteElementData("can-play", id);
         } catch (error) {
           console.warn("[FRIDGE] Failed to cleanup element data:", error);
         }
@@ -646,7 +637,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
             placeholder="New word..."
             value={input}
             onKeyDown={(e) => {
-              if (e.key === "Enter") onSubmit(true);
+              if (e.key === "Enter" && data.length < MaxWords) onSubmit(true);
             }}
             maxLength={30}
             onChange={(e) => setInput(e.target.value.trim())}
@@ -961,7 +952,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         {createPortal(toolbox, document.body)}
       </>
     );
-  }
+  },
 );
 
 const AdminSettings = ({
@@ -1078,7 +1069,7 @@ const FridgeWordsContent = withSharedState(
         {isAdmin && <AdminSettings data={data} setData={setData} />}
       </>
     );
-  }
+  },
 );
 
 function FridgeWords(props: FridgeWordsProps) {
@@ -1106,6 +1097,10 @@ function Main() {
         room: wall,
         onError: () => {
           setHasError(true);
+        },
+        cursors: {
+          enabled: true,
+          coordinateMode: "absolute",
         },
       }}
     >
