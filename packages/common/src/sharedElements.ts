@@ -17,6 +17,16 @@ export function parseDataSource(value: string): SharedReference {
   return { domain, path, elementId };
 }
 
+// Normalizes the host for room ID construction. Strips "www." prefix
+// so that www.example.com and example.com resolve to the same room,
+// and substitutes "LOCAL" for empty hosts (file:// protocol).
+export const LOCAL_HOST_IDENTIFIER = "LOCAL";
+
+export function normalizeHost(host: string): string {
+  if (!host) return LOCAL_HOST_IDENTIFIER;
+  return host.replace(/^www\./i, "");
+}
+
 export function normalizePath(path: string): string {
   if (!path) return "/";
   const cleaned = path.replace(/\.[^/.]+$/, "");
@@ -24,6 +34,7 @@ export function normalizePath(path: string): string {
 }
 
 export function deriveRoomId(host: string, inputRoom: string): string {
+  const normalizedHost = normalizeHost(host);
   const normalized = normalizePath(inputRoom);
-  return encodeURIComponent(`${host}-${normalized}`);
+  return encodeURIComponent(`${normalizedHost}-${normalized}`);
 }

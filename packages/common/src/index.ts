@@ -110,6 +110,14 @@ export interface RegisteredPlayEvent<T = any> extends PlayEvent<T> {
 }
 
 /**
+ * Rounds a number to one decimal place. Used for can-move x/y so synced
+ * state stays compact over the wire (avoids long floats like 267.332275390625).
+ */
+function roundToFirstDecimal(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/**
  * Custom Capabilities data types
  */
 export type MoveData = {
@@ -292,9 +300,11 @@ export const TagTypeToElement: DefaultTagInitializers = {
         (top < 0 && clientY < localData.startMouseY)
       )
         return;
+      const newX = data.x + clientX - localData.startMouseX;
+      const newY = data.y + clientY - localData.startMouseY;
       setData({
-        x: data.x + clientX - localData.startMouseX,
-        y: data.y + clientY - localData.startMouseY,
+        x: roundToFirstDecimal(newX),
+        y: roundToFirstDecimal(newY),
       });
       setLocalData({ startMouseX: clientX, startMouseY: clientY });
     },

@@ -94,6 +94,16 @@ describe("Room normalization and cursor room matching", () => {
       expect(playhtml.roomId).toBe(expectedRoom);
     });
 
+    it("should normalize www. and non-www hosts to the same room", async () => {
+      mockLocation("www.example.com", "/test/playground");
+      const playhtml = await freshPlayhtml();
+      await playhtml.init({ room: "/test/playground" });
+
+      // www. should be stripped — same room as example.com
+      const expectedRoom = encodeURIComponent("example.com-/test/playground");
+      expect(playhtml.roomId).toBe(expectedRoom);
+    });
+
     it("should include search params when defaultRoomOptions.includeSearch is true", async () => {
       mockLocation("example.com", "/test/playground", "?query=test");
       const playhtml = await freshPlayhtml();

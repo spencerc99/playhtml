@@ -30,12 +30,12 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 Each package (playhtml, react, common) has its own build process:
 
 - `cd packages/[package-name] && bun build`: Build individual package
-- `cd packages/react && bun test`: Run React package tests
+- `cd packages/react && bun run test`: Run React package tests
 
 ### Testing
 
-- `cd packages/react && bun test`: Run tests for React components
-- `cd packages/react && bun test:watch`: Run tests in watch mode
+- `cd packages/react && bun run test`: Run tests for React components
+- `cd packages/react && bun run test:watch`: Run tests in watch mode
 
 ## Architecture
 

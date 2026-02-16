@@ -32,7 +32,7 @@ import {
   findSharedReferencesOnPage,
   isSharedReadOnly,
 } from "./sharing";
-import { parseDataSource } from "@playhtml/common";
+import { parseDataSource, normalizeHost } from "@playhtml/common";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
@@ -136,9 +136,10 @@ function resolveCursorRoom(room: CursorRoom): string {
  * @returns Encoded room ID in format: host or host-{roomString}
  */
 function normalizeRoomId(host: string, roomString: string): string {
+  const h = normalizeHost(host);
   // If roomString is empty (domain case), just use host without separator
   // Otherwise use host + "-" + roomString format to match main room construction
-  const normalized = roomString === "" ? host : `${host}-${roomString}`;
+  const normalized = roomString === "" ? h : `${h}-${roomString}`;
   return encodeURIComponent(normalized);
 }
 
