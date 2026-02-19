@@ -66,11 +66,48 @@
     }
   }
 
-  &__context {
-    margin-bottom: 16px;
-    padding: 12px;
-    background: $surface;
+  &__stats {
+    display: flex;
+    gap: 0;
+    margin-bottom: 12px;
+    border: 1px solid $border;
     border-radius: 8px;
+    overflow: hidden;
+  }
+
+  &__stat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 4px;
+    font-family: $font-mono;
+
+    & + & {
+      border-left: 1px solid $border;
+    }
+  }
+
+  &__stat-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: $text;
+    line-height: 1.2;
+  }
+
+  &__stat-label {
+    font-size: 9px;
+    color: $text-muted;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 1px;
+  }
+
+  &__context {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    background: $surface;
+    border-radius: 6px;
     font-size: 12px;
     color: $text;
 
@@ -83,24 +120,49 @@
   &__collector-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
   }
 
   &__privacy-notice {
-    margin-top: 16px;
-    padding: 12px;
+    margin-top: 12px;
+    padding: 8px 10px;
     background: $gold-bg;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 11px;
     color: $gold-text;
+    line-height: 1.5;
+
+    a {
+      color: $gold-text;
+      text-decoration: underline;
+    }
+  }
+
+  &__clear-btn {
+    margin-top: 12px;
+    width: 100%;
+    padding: 8px;
+    background: none;
+    border: 1px solid $border-strong;
+    border-radius: 6px;
+    font-family: $font-body;
+    font-size: 11px;
+    color: $text-muted;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+
+    &:hover {
+      color: $error-text;
+      border-color: rgba(196, 114, 78, 0.4);
+    }
   }
 }
 
 // Individual collector card
 .collector-card {
-  padding: 12px;
+  padding: 9px 10px;
   border: 1px solid $border;
-  border-radius: 8px;
+  border-radius: 6px;
   background: $bg;
 
   &--active {
@@ -108,67 +170,84 @@
     border-color: $active-border;
   }
 
-  &__header {
+  // Top row: icon + name + count on left, mode radios on right
+  &__row {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 8px;
-  }
-
-  &__info {
-    flex: 1;
+    gap: 8px;
+    margin-bottom: 4px;
   }
 
   &__title-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
+    gap: 6px;
+  }
+
+  &__icon {
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    opacity: 0.8;
   }
 
   &__name {
-    @include heading;
-    font-size: 14px;
+    font-family: $font-body;
+    font-size: 12px;
+    font-weight: 600;
+    color: $text;
     text-transform: capitalize;
   }
 
-  &__status-badge {
+  &__count {
+    font-family: $font-mono;
     font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    color: white;
-
-    &--active { background: $accent-teal; }
-    &--paused { background: $text-faint; }
+    color: $text-muted;
   }
 
   &__description {
-    font-size: 12px;
+    font-size: 11px;
     color: $text-muted;
+    line-height: 1.4;
+    padding-left: 20px; // align under the name, past icon
   }
 
   &__modes {
     display: flex;
-    gap: 6px;
-    margin-left: 12px;
+    gap: 8px;
+    flex-shrink: 0;
 
     label {
-      font-size: 11px;
-      color: $text;
+      font-size: 10px;
+      color: $text-muted;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
       cursor: pointer;
+
+      &:has(input:checked) {
+        color: $text;
+        font-weight: 600;
+      }
     }
 
     input[type='radio'] {
       accent-color: $accent-teal;
+      width: 11px;
+      height: 11px;
     }
   }
 
+  // The status badge is now removed from the compact card design
+  &__status-badge {
+    display: none;
+  }
+
   &__privacy-section {
-    margin-top: 12px;
-    padding-top: 12px;
+    margin-top: 8px;
+    padding-top: 8px;
     border-top: 1px solid $border;
   }
 

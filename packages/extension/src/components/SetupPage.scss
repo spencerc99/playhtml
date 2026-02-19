@@ -1,7 +1,7 @@
 // ABOUTME: Styles for the full-page first-time setup wizard
 // ABOUTME: Covers welcome, customize, consent, and done steps
 
-@use '../styles/variables' as *;
+@use "../styles/variables" as *;
 
 .setup-page {
   min-height: 100vh;
@@ -37,18 +37,11 @@
     margin-bottom: 16px;
   }
 
-  &__field-row {
-    display: flex;
-    gap: 16px;
-    align-items: flex-end;
-    margin-top: 8px;
-  }
-
   &__field {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    flex: 0 0 40%;
+    margin-top: 8px;
   }
 
   &__field-label {
@@ -60,12 +53,14 @@
   &__input {
     @include input-field;
     font-size: 14px;
+    max-width: 250px;
   }
 
   &__color-row {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    margin-top: 12px;
   }
 
   &__color-picker-row {
@@ -114,8 +109,16 @@
     margin-bottom: 16px;
   }
 
-  &__btn-primary   { @include btn-primary; }
-  &__btn-secondary { @include btn-secondary; }
-  &__btn-private   { @include btn-teal; }
-  &__btn-collective { @include btn-blue; }
+  &__btn-primary {
+    @include btn-primary;
+  }
+  &__btn-secondary {
+    @include btn-secondary;
+  }
+  &__btn-private {
+    @include btn-teal;
+  }
+  &__btn-collective {
+    @include btn-blue;
+  }
 }

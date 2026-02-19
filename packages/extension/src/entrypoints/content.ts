@@ -1101,6 +1101,36 @@ export default defineContentScript({
           return true;
         }
 
+        if (message.type === "GET_STORAGE_STATS") {
+          (async () => {
+            try {
+              const { LocalEventStore } = await import('../storage/LocalEventStore');
+              const store = new LocalEventStore();
+              const stats = await store.getStorageStats();
+              sendResponse({ success: true, stats });
+            } catch (e: any) {
+              console.error('[Content] Failed to get storage stats', e);
+              sendResponse({ success: false, error: e?.message || String(e) });
+            }
+          })();
+          return true;
+        }
+
+        if (message.type === "CLEAR_ALL_EVENTS") {
+          (async () => {
+            try {
+              const { LocalEventStore } = await import('../storage/LocalEventStore');
+              const store = new LocalEventStore();
+              await store.clearAll();
+              sendResponse({ success: true });
+            } catch (e: any) {
+              console.error('[Content] Failed to clear events', e);
+              sendResponse({ success: false, error: e?.message || String(e) });
+            }
+          })();
+          return true;
+        }
+
         return; // Don't keep the channel open for other message types
       }
     );

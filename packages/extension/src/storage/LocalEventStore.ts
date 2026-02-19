@@ -1,13 +1,16 @@
 // ABOUTME: Local storage interface for querying collected events by domain
 // ABOUTME: Provides domain-based queries for historical data visualization
 
-import type { CollectionEvent, CollectionEventType } from '../collectors/types';
-import { VERBOSE } from '../config';
-import { normalizeUrl, extractDomain as extractDomainUtil } from '../utils/urlNormalization';
+import type { CollectionEvent, CollectionEventType } from "../collectors/types";
+import { VERBOSE } from "../config";
+import {
+  normalizeUrl,
+  extractDomain as extractDomainUtil,
+} from "../utils/urlNormalization";
 
-const DB_NAME = 'collection_events_db';
+const DB_NAME = "collection_events_db";
 const DB_VERSION = 3; // Incremented for uploaded flag addition
-const STORE_NAME = 'events';
+const STORE_NAME = "events";
 
 export interface QueryOptions {
   type?: CollectionEventType;
@@ -26,9 +29,11 @@ export interface DomainStats {
 
 export interface StorageStats {
   totalEvents: number;
+  /** Approximate byte size (sum of JSON string lengths; ~1:1 for ASCII event data). Single stringify per event for perf. */
   estimatedSizeBytes: number;
   oldestEvent: number;
   newestEvent: number;
+  countsByType: Record<string, number>;
 }
 
 /**
@@ -66,7 +71,7 @@ export class LocalEventStore {
         this.db = request.result;
         this.isInitialized = true;
         if (VERBOSE) {
-          console.log('[LocalEventStore] Initialized successfully');
+          console.log("[LocalEventStore] Initialized successfully");
         }
         resolve();
       };
@@ -78,9 +83,9 @@ export class LocalEventStore {
         // Create object store if it doesn't exist (v1)
         let store: IDBObjectStore;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          store.createIndex('ts', 'ts', { unique: false });
-          store.createIndex('type', 'type', { unique: false });
+          store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+          store.createIndex("ts", "ts", { unique: false });
+          store.createIndex("type", "type", { unique: false });
         } else {
           const transaction = (event.target as IDBOpenDBRequest).transaction!;
           store = transaction.objectStore(STORE_NAME);
@@ -88,20 +93,20 @@ export class LocalEventStore {
 
         // Add url index for domain queries (v2)
         if (oldVersion < 2) {
-          if (!store.indexNames.contains('url')) {
-            store.createIndex('url', 'meta.url', { unique: false });
+          if (!store.indexNames.contains("url")) {
+            store.createIndex("url", "meta.url", { unique: false });
             if (VERBOSE) {
-              console.log('[LocalEventStore] Added url index');
+              console.log("[LocalEventStore] Added url index");
             }
           }
         }
 
         // Add uploaded index to track which events have been synced (v3)
         if (oldVersion < 3) {
-          if (!store.indexNames.contains('uploaded')) {
-            store.createIndex('uploaded', 'uploaded', { unique: false });
+          if (!store.indexNames.contains("uploaded")) {
+            store.createIndex("uploaded", "uploaded", { unique: false });
             if (VERBOSE) {
-              console.log('[LocalEventStore] Added uploaded index');
+              console.log("[LocalEventStore] Added uploaded index");
             }
           }
         }
@@ -123,7 +128,7 @@ export class LocalEventStore {
    */
   async queryByDomain(
     domain: string,
-    options: QueryOptions = {}
+    options: QueryOptions = {},
   ): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
@@ -131,13 +136,13 @@ export class LocalEventStore {
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
-        reject(new Error('Database not initialized'));
+        reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const urlIndex = store.index('url');
+      const urlIndex = store.index("url");
 
       const events: CollectionEvent[] = [];
       const request = urlIndex.openCursor();
@@ -179,13 +184,15 @@ export class LocalEventStore {
         } else {
           // Sort by timestamp (ascending - oldest first)
           events.sort((a, b) => a.ts - b.ts);
-          console.log(`[LocalEventStore] Query complete: ${events.length} events for ${domain}`);
+          console.log(
+            `[LocalEventStore] Query complete: ${events.length} events for ${domain}`,
+          );
           resolve(events);
         }
       };
 
       request.onerror = () => {
-        console.error('[LocalEventStore] Query error:', request.error);
+        console.error("[LocalEventStore] Query error:", request.error);
         reject(request.error);
       };
     });
@@ -200,7 +207,7 @@ export class LocalEventStore {
    */
   async queryByUrl(
     url: string,
-    options: QueryOptions = {}
+    options: QueryOptions = {},
   ): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
@@ -208,13 +215,13 @@ export class LocalEventStore {
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
-        reject(new Error('Database not initialized'));
+        reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const urlIndex = store.index('url');
+      const urlIndex = store.index("url");
 
       const events: CollectionEvent[] = [];
       const request = urlIndex.openCursor();
@@ -272,13 +279,13 @@ export class LocalEventStore {
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
-        reject(new Error('Database not initialized'));
+        reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const urlIndex = store.index('url');
+      const urlIndex = store.index("url");
 
       let totalEvents = 0;
       const eventsByType: Record<string, number> = {};
@@ -320,20 +327,22 @@ export class LocalEventStore {
   /**
    * Get all domains with stored events
    */
-  async getAllDomains(): Promise<Array<{
-    domain: string;
-    eventCount: number;
-    lastVisit: number;
-  }>> {
+  async getAllDomains(): Promise<
+    Array<{
+      domain: string;
+      eventCount: number;
+      lastVisit: number;
+    }>
+  > {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
-        reject(new Error('Database not initialized'));
+        reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const request = store.openCursor();
 
@@ -358,11 +367,13 @@ export class LocalEventStore {
 
           cursor.continue();
         } else {
-          const domains = Array.from(domainMap.entries()).map(([domain, data]) => ({
-            domain,
-            eventCount: data.count,
-            lastVisit: data.lastVisit,
-          }));
+          const domains = Array.from(domainMap.entries()).map(
+            ([domain, data]) => ({
+              domain,
+              eventCount: data.count,
+              lastVisit: data.lastVisit,
+            }),
+          );
 
           // Sort by last visit (most recent first)
           domains.sort((a, b) => b.lastVisit - a.lastVisit);
@@ -383,55 +394,47 @@ export class LocalEventStore {
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
-        reject(new Error('Database not initialized'));
+        reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const countRequest = store.count();
 
-      countRequest.onsuccess = () => {
-        const totalEvents = countRequest.result;
+      // Single cursor pass: collect total count, timestamp bounds, per-type counts, and actual serialized size
+      // TODO: decide if we need per-type event counts and if so, we should store counts natively in database so we don't have to count them here
+      const countsByType: Record<string, number> = {};
+      let totalEvents = 0;
+      let oldestEvent = 0;
+      let newestEvent = 0;
+      let actualSizeBytes = 0;
 
-        // Get timestamp bounds
-        const tsIndex = store.index('ts');
-        const oldestRequest = tsIndex.openCursor(null, 'next');
-        const newestRequest = tsIndex.openCursor(null, 'prev');
+      const request = store.openCursor();
 
-        let oldestEvent = 0;
-        let newestEvent = 0;
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
-        oldestRequest.onsuccess = (event) => {
-          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-          if (cursor) {
-            oldestEvent = (cursor.value as CollectionEvent).ts;
-          }
-
-          newestRequest.onsuccess = (event) => {
-            const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-            if (cursor) {
-              newestEvent = (cursor.value as CollectionEvent).ts;
-            }
-
-            // Estimate size (rough approximation)
-            const estimatedSizeBytes = totalEvents * 300; // ~300 bytes per event
-
-            resolve({
-              totalEvents,
-              estimatedSizeBytes,
-              oldestEvent,
-              newestEvent,
-            });
-          };
-
-          newestRequest.onerror = () => reject(newestRequest.error);
-        };
-
-        oldestRequest.onerror = () => reject(oldestRequest.error);
+        if (cursor) {
+          const evt = cursor.value as CollectionEvent;
+          totalEvents++;
+          countsByType[evt.type] = (countsByType[evt.type] ?? 0) + 1;
+          if (oldestEvent === 0 || evt.ts < oldestEvent) oldestEvent = evt.ts;
+          if (evt.ts > newestEvent) newestEvent = evt.ts;
+          // Serialized size: string length ≈ bytes for mostly-ASCII event JSON (avoids TextEncoder per-event for perf)
+          actualSizeBytes += JSON.stringify(evt).length;
+          cursor.continue();
+        } else {
+          resolve({
+            totalEvents,
+            estimatedSizeBytes: actualSizeBytes,
+            oldestEvent,
+            newestEvent,
+            countsByType,
+          });
+        }
       };
 
-      countRequest.onerror = () => reject(countRequest.error);
+      request.onerror = () => reject(request.error);
     });
   }
 
@@ -439,18 +442,35 @@ export class LocalEventStore {
    * Prune events older than cutoff timestamp
    * Returns number of events deleted
    */
+  async clearAll(): Promise<void> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async pruneOlderThan(cutoffTs: number): Promise<number> {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
-        reject(new Error('Database not initialized'));
+        reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
-      const tsIndex = store.index('ts');
+      const tsIndex = store.index("ts");
 
       const idsToDelete: string[] = [];
       const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs));
@@ -471,7 +491,11 @@ export class LocalEventStore {
               deleted++;
               if (deleted === idsToDelete.length) {
                 if (VERBOSE) {
-                  console.log(`[LocalEventStore] Pruned ${deleted} events older than ${new Date(cutoffTs).toISOString()}`);
+                  console.log(
+                    `[LocalEventStore] Pruned ${deleted} events older than ${new Date(
+                      cutoffTs,
+                    ).toISOString()}`,
+                  );
                 }
                 resolve(deleted);
               }

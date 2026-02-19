@@ -16,9 +16,21 @@ function CursorPreview({ color }: { color: string }) {
   );
 }
 
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
 function randomPrimaryColor(): string {
   const hue = Math.floor(Math.random() * 360);
-  return `hsl(${hue}, 70%, 60%)`;
+  return hslToHex(hue, 70, 60);
 }
 
 export default function SetupPage() {
@@ -103,37 +115,35 @@ export default function SetupPage() {
         {step === 'customize' && (
           <section className="setup-step">
             <h2 className="setup-step__heading">Make it yours</h2>
-            <div className="setup-step__field-row">
-              <div className="setup-step__field">
-                <label className="setup-step__field-label">Name (optional)</label>
+            <div className="setup-step__field">
+              <label className="setup-step__field-label">Name (optional)</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Alex"
+                className="setup-step__input"
+              />
+            </div>
+            <div className="setup-step__color-row">
+              <label className="setup-step__field-label">Color</label>
+              <div className="setup-step__color-picker-row">
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Alex"
-                  className="setup-step__input"
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="setup-step__color-input"
                 />
-              </div>
-              <div className="setup-step__color-row">
-                <label className="setup-step__field-label">Color</label>
-                <div className="setup-step__color-picker-row">
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="setup-step__color-input"
-                  />
-                  <button
-                    type="button"
-                    aria-label="Re-roll color"
-                    title="Re-roll color"
-                    onClick={() => setColor(randomPrimaryColor())}
-                    className="setup-step__reroll-btn"
-                  >
-                    ↻
-                  </button>
-                  <div className="setup-step__cursor-preview">
-                    <CursorPreview color={color} />
-                  </div>
+                <button
+                  type="button"
+                  aria-label="Re-roll color"
+                  title="Re-roll color"
+                  onClick={() => setColor(randomPrimaryColor())}
+                  className="setup-step__reroll-btn"
+                >
+                  ↻
+                </button>
+                <div className="setup-step__cursor-preview">
+                  <CursorPreview color={color} />
                 </div>
               </div>
             </div>
