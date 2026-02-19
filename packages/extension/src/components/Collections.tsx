@@ -1,6 +1,11 @@
+// ABOUTME: Data collection settings screen for managing collector modes (off/local/shared)
+// ABOUTME: Also handles keyboard privacy level and filter substring settings
+
 import React, { useState, useEffect } from "react";
 import browser from "webextension-polyfill";
 import type { CollectorStatus } from "../collectors/types";
+import { getValidEventTypes } from "../shared/types";
+import "./Collections.scss";
 
 interface CollectionsProps {
   onBack: () => void;
@@ -16,12 +21,53 @@ export function Collections({ onBack }: CollectionsProps) {
   const [keyboardPrivacyLevel, setKeyboardPrivacyLevel] = useState<'abstract' | 'full'>('abstract');
   const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
   const [newFilterSubstring, setNewFilterSubstring] = useState('');
+  const [modes, setModes] = useState<Record<string, 'off' | 'local' | 'shared'>>({});
 
   useEffect(() => {
     loadCollectors();
     loadPrivacyLevel();
     loadFilterSubstrings();
+    loadModes();
   }, []);
+
+  const loadModes = async () => {
+    try {
+      const types = getValidEventTypes();
+      const keys = types.map(t => `collection_mode_${t}`);
+      const result = await browser.storage.local.get(keys);
+      const next: Record<string, 'off' | 'local' | 'shared'> = {};
+      for (const t of types) {
+        const val = result[`collection_mode_${t}`];
+        next[t] = val === 'off' || val === 'shared' || val === 'local' ? val : 'local';
+      }
+      setModes(next);
+      const toSet: Record<string, string> = {};
+      for (const t of types) {
+        if (!result[`collection_mode_${t}`]) toSet[`collection_mode_${t}`] = next[t];
+      }
+      if (Object.keys(toSet).length > 0) await browser.storage.local.set(toSet);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const updateMode = async (type: string, mode: 'off' | 'local' | 'shared') => {
+    try {
+      await browser.storage.local.set({ [`collection_mode_${type}`]: mode });
+      setModes(prev => ({ ...prev, [type]: mode }));
+
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        if (mode === 'off') {
+          await browser.tabs.sendMessage(tab.id, { type: 'DISABLE_COLLECTOR', collectorType: type });
+        } else {
+          await browser.tabs.sendMessage(tab.id, { type: 'ENABLE_COLLECTOR', collectorType: type });
+        }
+      }
+    } catch (e) {
+      alert('Failed to update mode. Please try again.');
+    }
+  };
 
   const loadPrivacyLevel = async () => {
     try {
@@ -209,419 +255,137 @@ export function Collections({ onBack }: CollectionsProps) {
 
   if (isLoading) {
     return (
-      <div style={{ padding: "20px", textAlign: "center" }}>
-        <div>Loading collections...</div>
-      </div>
+      <div className="collections__loading">Loading collections...</div>
     );
   }
 
   return (
-    <div
-      style={{
-        padding: "16px",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <header style={{ marginBottom: "16px" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            marginBottom: "8px",
-          }}
-        >
-          <button
-            onClick={onBack}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "18px",
-              marginRight: "8px",
-              padding: "0",
-            }}
-          >
-            ←
-          </button>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "18px",
-              color: "#1f2937",
-            }}
-          >
-            Collections
-          </h1>
+    <div className="collections">
+      <header className="collections__header">
+        <div className="back-row">
+          <button onClick={onBack} className="back-btn">←</button>
+          <h1>Data Collection Settings</h1>
         </div>
-        <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>
-          Participate in collective internet artworks
-        </p>
+        <p>Control what's collected and whether it's shared</p>
       </header>
 
-      <main style={{ flex: 1, overflow: "auto" }}>
+      <main className="collections__main">
         {error && (
-          <div
-            style={{
-              marginBottom: "16px",
-              padding: "12px",
-              background: "#fee2e2",
-              borderRadius: "8px",
-              fontSize: "12px",
-              color: "#991b1b",
-            }}
-          >
-            <strong>⚠️ {error}</strong>
+          <div className="collections__error">
+            <strong>△ {error}</strong>
             <br />
-            <span style={{ fontSize: "11px" }}>
-              Try refreshing the page or navigating to a regular website.
-            </span>
+            <span>Try refreshing the page or navigating to a regular website.</span>
           </div>
         )}
-        <div
-          style={{
-            marginBottom: "16px",
-            padding: "12px",
-            background: "#f3f4f6",
-            borderRadius: "8px",
-            fontSize: "12px",
-            color: "#4b5563",
-          }}
-        >
+
+        <div className="collections__context">
           <strong>Participating in:</strong> Internet Movement
           <br />
-          <span style={{ fontSize: "11px", color: "#6b7280" }}>
-            Your browsing behaviors contribute to evolving artworks
-          </span>
+          <span>Your browsing behaviors contribute to evolving artworks</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {collectors.map((collector) => (
-            <div
-              key={collector.type}
-              style={{
-                padding: "12px",
-                border: "1px solid #e5e7eb",
-                borderRadius: "8px",
-                background: collector.enabled ? "#f0fdf4" : "#ffffff",
-              }}
-            >
+        <div className="collections__collector-list">
+          {collectors.map((collector) => {
+            const isActive = modes[collector.type] && modes[collector.type] !== 'off';
+            return (
               <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: "8px",
-                }}
+                key={collector.type}
+                className={`collector-card${isActive ? " collector-card--active" : ""}`}
               >
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <h3
-                      style={{
-                        margin: 0,
-                        fontSize: "14px",
-                        fontWeight: "600",
-                        color: "#1f2937",
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {collector.type}
-                    </h3>
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        background: collector.enabled
-                          ? "#10b981"
-                          : "#9ca3af",
-                        color: "white",
-                      }}
-                    >
-                      {collector.enabled ? "Active" : "Paused"}
-                    </span>
-                  </div>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "12px",
-                      color: "#6b7280",
-                    }}
-                  >
-                    {collector.description}
-                  </p>
-                </div>
-                <label
-                  style={{
-                    position: "relative",
-                    display: "inline-block",
-                    width: "44px",
-                    height: "24px",
-                    marginLeft: "12px",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={collector.enabled}
-                    onChange={(e) =>
-                      toggleCollector(collector.type, e.target.checked)
-                    }
-                    style={{
-                      opacity: 0,
-                      width: 0,
-                      height: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      position: "absolute",
-                      cursor: "pointer",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: collector.enabled
-                        ? "#10b981"
-                        : "#d1d5db",
-                      transition: "0.3s",
-                      borderRadius: "24px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        content: '""',
-                        height: "18px",
-                        width: "18px",
-                        left: collector.enabled ? "22px" : "3px",
-                        bottom: "3px",
-                        backgroundColor: "white",
-                        transition: "0.3s",
-                        borderRadius: "50%",
-                      }}
-                    />
-                  </span>
-                </label>
-              </div>
-              {/* Privacy level sub-setting for keyboard collector */}
-              {collector.type === 'keyboard' && collector.enabled && (
-                <>
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      paddingTop: "12px",
-                      borderTop: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div>
-                        <label
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: "500",
-                            color: "#374151",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Privacy Level
-                        </label>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: "11px",
-                            color: "#6b7280",
-                          }}
-                        >
-                          {keyboardPrivacyLevel === 'abstract'
-                            ? 'Abstract: Typing frequency and location only (no text)'
-                            : 'Full: Text content with PII redaction'}
-                        </p>
-                      </div>
-                      <select
-                        value={keyboardPrivacyLevel}
-                        onChange={(e) =>
-                          updatePrivacyLevel(e.target.value as 'abstract' | 'full')
-                        }
-                        style={{
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          backgroundColor: "white",
-                          color: "#374151",
-                          cursor: "pointer",
-                          minWidth: "100px",
-                        }}
-                      >
-                        <option value="abstract">Abstract</option>
-                        <option value="full">Full</option>
-                      </select>
+                <div className="collector-card__header">
+                  <div className="collector-card__info">
+                    <div className="collector-card__title-row">
+                      <h3 className="collector-card__name">{collector.type}</h3>
+                      <span className={`collector-card__status-badge collector-card__status-badge--${isActive ? "active" : "paused"}`}>
+                        {isActive ? "Active" : "Paused"}
+                      </span>
                     </div>
+                    <p className="collector-card__description">{collector.description}</p>
                   </div>
-
-                  {/* Filter substrings section - only show when privacy level is 'full' */}
-                  {keyboardPrivacyLevel === 'full' && (
-                    <div
-                      style={{
-                        marginTop: "12px",
-                        paddingTop: "12px",
-                        borderTop: "1px solid #e5e7eb",
-                      }}
-                    >
-                      <label
-                        style={{
-                          fontSize: "12px",
-                          fontWeight: "500",
-                          color: "#374151",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        Filter Sensitive Text
-                      </label>
-                      <p
-                        style={{
-                          margin: "0 0 8px 0",
-                          fontSize: "11px",
-                          color: "#6b7280",
-                        }}
-                      >
-                        Sequences containing these substrings will be redacted
-                      </p>
-
-                      {/* Add new filter input */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          marginBottom: "8px",
-                        }}
-                      >
+                  <div className="collector-card__modes">
+                    {(['off', 'local', 'shared'] as const).map((opt) => (
+                      <label key={opt}>
                         <input
-                          type="text"
-                          value={newFilterSubstring}
-                          onChange={(e) => setNewFilterSubstring(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              addFilterSubstring();
-                            }
-                          }}
-                          placeholder="Enter substring..."
-                          style={{
-                            flex: 1,
-                            padding: "6px 8px",
-                            fontSize: "12px",
-                            border: "1px solid #d1d5db",
-                            borderRadius: "4px",
-                            outline: "none",
-                          }}
+                          type="radio"
+                          name={`mode-${collector.type}`}
+                          value={opt}
+                          checked={(modes[collector.type] || 'local') === opt}
+                          onChange={() => updateMode(collector.type, opt)}
                         />
-                        <button
-                          onClick={addFilterSubstring}
-                          style={{
-                            padding: "6px 12px",
-                            fontSize: "12px",
-                            backgroundColor: "#10b981",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontWeight: "500",
-                          }}
-                        >
-                          Add
-                        </button>
-                      </div>
+                        {opt === 'local' ? 'Local only' : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
 
-                      {/* Display current filters */}
-                      {filterSubstrings.length > 0 && (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "6px",
-                          }}
-                        >
-                          {filterSubstrings.map((substring) => (
-                            <div
-                              key={substring}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                padding: "4px 8px",
-                                backgroundColor: "#fee2e2",
-                                color: "#991b1b",
-                                borderRadius: "4px",
-                                fontSize: "11px",
-                              }}
-                            >
-                              <span>{substring}</span>
-                              <button
-                                onClick={() => removeFilterSubstring(substring)}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  color: "#991b1b",
-                                  cursor: "pointer",
-                                  fontSize: "14px",
-                                  padding: "0",
-                                  lineHeight: 1,
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
+                {/* Privacy level sub-setting for keyboard collector */}
+                {collector.type === 'keyboard' && isActive && (
+                  <>
+                    <div className="collector-card__privacy-section">
+                      <div className="collector-card__privacy-header">
+                        <div>
+                          <label className="collector-card__privacy-label">Privacy Level</label>
+                          <p className="collector-card__privacy-desc">
+                            {keyboardPrivacyLevel === 'abstract'
+                              ? 'Abstract: Typing frequency and location only (no text)'
+                              : 'Full: Text content with PII redaction'}
+                          </p>
                         </div>
-                      )}
-
-                      {filterSubstrings.length === 0 && (
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: "11px",
-                            color: "#9ca3af",
-                            fontStyle: "italic",
-                          }}
+                        <select
+                          value={keyboardPrivacyLevel}
+                          onChange={(e) => updatePrivacyLevel(e.target.value as 'abstract' | 'full')}
+                          className="collector-card__privacy-select"
                         >
-                          No filters added yet
-                        </p>
-                      )}
+                          <option value="abstract">Abstract</option>
+                          <option value="full">Full</option>
+                        </select>
+                      </div>
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
+
+                    {/* Filter substrings section - only show when privacy level is 'full' */}
+                    {keyboardPrivacyLevel === 'full' && (
+                      <div className="collector-card__filter-section">
+                        <label className="collector-card__filter-label">Filter Sensitive Text</label>
+                        <p className="collector-card__filter-desc">
+                          Sequences containing these substrings will be redacted
+                        </p>
+                        <div className="collector-card__filter-input-row">
+                          <input
+                            type="text"
+                            value={newFilterSubstring}
+                            onChange={(e) => setNewFilterSubstring(e.target.value)}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') addFilterSubstring();
+                            }}
+                            placeholder="Enter substring..."
+                          />
+                          <button onClick={addFilterSubstring}>Add</button>
+                        </div>
+
+                        {filterSubstrings.length > 0 && (
+                          <div className="collector-card__filter-tags">
+                            {filterSubstrings.map((substring) => (
+                              <div key={substring} className="collector-card__filter-tag">
+                                <span>{substring}</span>
+                                <button onClick={() => removeFilterSubstring(substring)}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {filterSubstrings.length === 0 && (
+                          <p className="collector-card__filter-empty">No filters added yet</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        <div
-          style={{
-            marginTop: "16px",
-            padding: "12px",
-            background: "#fef3c7",
-            borderRadius: "8px",
-            fontSize: "11px",
-            color: "#92400e",
-          }}
-        >
+        <div className="collections__privacy-notice">
           <strong>Privacy:</strong> All data is anonymous. No personal
           information is collected. You can pause collection anytime.
         </div>

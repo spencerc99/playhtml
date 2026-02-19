@@ -42,7 +42,7 @@ interface OverlaySettings {
   randomizeColors: boolean;
 }
 
-const defaultSettings: OverlaySettings = {
+export const defaultSettings: OverlaySettings = {
   showCursorTrails: true,
   showCursorClicks: false,
   showTyping: false,
@@ -374,12 +374,12 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
     gap: "16px",
     padding: "12px 16px",
     background: forceServerBackfill
-      ? "rgba(255, 237, 213, 0.98)"
-      : "rgba(255, 255, 255, 0.98)",
+      ? "rgba(212, 184, 92, 0.15)"
+      : "rgba(250, 247, 242, 0.98)",
     borderTop: forceServerBackfill
-      ? "2px solid rgba(245, 158, 11, 0.5)"
-      : "2px solid rgba(0, 0, 0, 0.1)",
-    boxShadow: "0 -4px 12px rgba(0, 0, 0, 0.08)",
+      ? "2px solid rgba(212, 184, 92, 0.4)"
+      : "2px solid rgba(90, 78, 65, 0.15)",
+    boxShadow: "0 -4px 12px rgba(90, 78, 65, 0.1)",
     backdropFilter: "blur(10px)",
     fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
     fontSize: "12px",
@@ -396,13 +396,13 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
   const domainStyles: React.CSSProperties = {
     fontWeight: 700,
     fontSize: "14px",
-    color: "#1f2937",
+    color: "#3d3833",
     letterSpacing: "0.3px",
   };
 
   const dateRangeStyles: React.CSSProperties = {
     fontSize: "11px",
-    color: "#6b7280",
+    color: "#8a8279",
     fontWeight: 500,
   };
 
@@ -411,7 +411,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
     flexWrap: "wrap", // Wrap on small screens
     gap: "12px",
     paddingLeft: "16px",
-    borderLeft: "2px solid rgba(0, 0, 0, 0.1)",
+    borderLeft: "2px solid rgba(90, 78, 65, 0.12)",
   };
 
   const countItemStyles: React.CSSProperties = {
@@ -422,7 +422,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
 
   const countLabelStyles: React.CSSProperties = {
     fontSize: "11px",
-    color: "#6b7280",
+    color: "#8a8279",
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: "0.5px",
@@ -431,7 +431,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
   const countValueStyles: React.CSSProperties = {
     fontSize: "14px",
     fontWeight: 700,
-    color: "#1f2937",
+    color: "#3d3833",
   };
 
   const togglesContainerStyles: React.CSSProperties = {
@@ -450,7 +450,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
     userSelect: "none",
     fontSize: "11px",
     fontWeight: 600,
-    color: "#374151",
+    color: "#3d3833",
     letterSpacing: "0.3px",
     textTransform: "uppercase",
   };
@@ -459,11 +459,11 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
     cursor: "pointer",
     width: "16px",
     height: "16px",
-    accentColor: "#6366f1",
+    accentColor: "#8b6b7f",
   };
 
   const closeButtonStyles: React.CSSProperties = {
-    background: "#1f2937",
+    background: "#3d3833",
     color: "white",
     border: "none",
     padding: "8px 16px",
@@ -479,14 +479,14 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
 
   const loadingStatusStyles: React.CSSProperties = {
     fontSize: "12px",
-    color: "#6b7280",
+    color: "#8a8279",
     fontWeight: 500,
     marginLeft: "auto",
   };
 
   const errorStatusStyles: React.CSSProperties = {
     fontSize: "12px",
-    color: "#dc2626",
+    color: "#9a5a3a",
     fontWeight: 600,
     marginLeft: "auto",
   };
@@ -501,7 +501,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
           </div>
           <div style={dateRangeStyles}>
             {actualMode === "domain" ? "All pages" : "This page only"}
-            {forceServerBackfill && " • 🌐 Server"}
+            {forceServerBackfill && " • Server"}
           </div>
           {dateRange && (
             <div style={{ ...dateRangeStyles, marginTop: "2px" }}>
@@ -527,7 +527,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
             border: "1px solid rgba(0, 0, 0, 0.2)",
             padding: "4px 8px",
             borderRadius: "4px",
-            fontSize: "16px",
+            fontSize: "11px",
             cursor: "pointer",
             transition: "all 0.2s",
             lineHeight: 1,
@@ -541,7 +541,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
             e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.2)";
           }}
         >
-          {actualMode === "domain" ? "🌐" : "📄"}
+          {actualMode === "domain" ? "◉ Domain" : "▤ Page"}
         </button>
 
         {!loading && events.length > 0 && (
@@ -625,11 +625,11 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
           onClick={onClose}
           style={closeButtonStyles}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#111827";
+            e.currentTarget.style.background = "#2a2421";
             e.currentTarget.style.transform = "translateY(-1px)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#1f2937";
+            e.currentTarget.style.background = "#3d3833";
             e.currentTarget.style.transform = "translateY(0)";
           }}
           onMouseDown={(e) => {

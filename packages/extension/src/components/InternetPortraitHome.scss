@@ -1,0 +1,175 @@
+// ABOUTME: Styles for the main popup home view
+// ABOUTME: Covers header wordmark, collector status grid, preview card, and footer
+
+@use '../styles/variables' as *;
+
+.portrait-home {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+
+  &__header {
+    margin-bottom: 12px;
+  }
+
+  &__wordmark {
+    @include wordmark;
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+
+  &__subtitle {
+    font-size: 12px;
+    color: $text-muted;
+  }
+
+  &__main {
+    flex: 1;
+    overflow: auto;
+  }
+
+  &__footer {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid $border;
+    font-size: 10px;
+    color: $text-faint;
+    text-align: center;
+  }
+}
+
+// Collection status section
+.collection-status {
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+
+  &__header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    h3 {
+      @include heading;
+      font-size: 14px;
+    }
+  }
+
+  &__settings-link {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: $accent-blue;
+    font-size: 12px;
+    font-family: $font-body;
+    padding: 0;
+  }
+
+  &__error {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: $text-faint;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+}
+
+// Single collector pill in the grid
+.collector-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 6px 8px;
+  border: 1px solid $border;
+  border-radius: 6px;
+
+  &__name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  &__icon {
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  &__name {
+    text-transform: capitalize;
+    color: $text;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  &__state {
+    flex-shrink: 0;
+
+    &--on  { color: $accent-teal; }
+    &--off { color: $text-faint; }
+  }
+}
+
+// Faux browser window preview card
+.preview-card {
+  border: 1px solid $border;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 2px 10px $shadow;
+  background: $bg;
+  margin-bottom: 8px;
+
+  &__chrome {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    background: $surface-hover;
+  }
+
+  &__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    display: inline-block;
+
+    &--close  { background: $accent-rust; }
+    &--min    { background: $accent-gold; }
+    &--expand { background: $accent-teal; }
+  }
+
+  &__body {
+    position: relative;
+    height: 180px;
+  }
+
+  &__label {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    padding: 8px 10px;
+    background: rgba(61, 56, 51, 0.8);
+    color: white;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: $font-heading;
+  }
+}
+
+.preview-hint {
+  font-size: 11px;
+  color: $text-muted;
+  margin: 0;
+}

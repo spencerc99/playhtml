@@ -1,33 +1,83 @@
 import React, { useState, useEffect } from "react";
+import { Agentation } from "agentation";
 import { createRoot } from "react-dom/client";
+import "../../styles/popup.scss";
 import browser from "webextension-polyfill";
 import { Inventory } from "../../components/Inventory";
 import { PlayerIdentityCard } from "../../components/PlayerIdentityCard";
 import { SiteStatus } from "../../components/SiteStatus";
 import { QuickActions } from "../../components/QuickActions";
 import { Collections } from "../../components/Collections";
-import { PlayerIdentity, GameInventory, InventoryItem, PlayHTMLStatus } from "../../types";
+import { InternetPortraitHome } from "../../components/InternetPortraitHome";
+import { Onboarding } from "../../components/Onboarding";
+import { FLAGS } from "../../flags";
+import {
+  PlayerIdentity,
+  GameInventory,
+  InventoryItem,
+  PlayHTMLStatus,
+} from "../../types";
 
 function PlayHTMLPopup() {
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(
-    null
+    null,
   );
   const [currentTab, setCurrentTab] = useState<browser.Tabs.Tab | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [playhtmlStatus, setPlayhtmlStatus] = useState<PlayHTMLStatus>({ 
-    detected: false, 
-    elementCount: 0, 
-    checking: true 
+  const [playhtmlStatus, setPlayhtmlStatus] = useState<PlayHTMLStatus>({
+    detected: false,
+    elementCount: 0,
+    checking: true,
   });
   const [inventory, setInventory] = useState<GameInventory>({
     items: [],
     totalItems: 0,
     lastUpdated: 0,
   });
-  const [currentView, setCurrentView] = useState<"main" | "inventory" | "collections">("main");
+  const [currentView, setCurrentView] = useState<
+    "main" | "inventory" | "collections"
+  >("main");
+  const [devFeaturesEnabled, setDevFeaturesEnabled] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
+    null,
+  );
 
   useEffect(() => {
     loadPlayerData();
+    // Load dev override and onboarding flags
+    (async () => {
+      try {
+        const result = await browser.storage.local.get([
+          "devFeaturesEnabled",
+          "onboarding_complete",
+        ]);
+        setDevFeaturesEnabled(Boolean(result.devFeaturesEnabled));
+        setOnboardingComplete(
+          result.onboarding_complete === "true" ||
+            result.onboarding_complete === true,
+        );
+      } catch {
+        setDevFeaturesEnabled(false);
+        setOnboardingComplete(false);
+      }
+    })();
+
+    // Dev hotkey: Cmd/Ctrl+Shift+.
+    const onKeyDown = async (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === ".") {
+        e.preventDefault();
+        setDevFeaturesEnabled((prev) => {
+          const next = !prev;
+          // Fire and forget; state is source of truth for UI
+          browser.storage.local
+            .set({ devFeaturesEnabled: next })
+            .catch(() => {});
+          return next;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const loadPlayerData = async () => {
@@ -106,7 +156,7 @@ function PlayHTMLPopup() {
   };
 
   const addInventoryItem = async (
-    item: Omit<InventoryItem, "id" | "collectedAt">
+    item: Omit<InventoryItem, "id" | "collectedAt">,
   ) => {
     const newItem: InventoryItem = {
       ...item,
@@ -129,7 +179,7 @@ function PlayHTMLPopup() {
       const updatedInventory: GameInventory = {
         ...inventory,
         items: inventory.items.filter(
-          (item: InventoryItem) => item.id !== itemId
+          (item: InventoryItem) => item.id !== itemId,
         ),
         totalItems: Math.max(0, inventory.totalItems - 1),
         lastUpdated: Date.now(),
@@ -145,7 +195,7 @@ function PlayHTMLPopup() {
   const clearInventory = async () => {
     if (
       confirm(
-        "Are you sure you want to clear your entire inventory? This cannot be undone."
+        "Are you sure you want to clear your entire inventory? This cannot be undone.",
       )
     ) {
       try {
@@ -162,7 +212,6 @@ function PlayHTMLPopup() {
       }
     }
   };
-
 
   const activateElementPicker = async () => {
     if (!currentTab?.id) return;
@@ -191,6 +240,8 @@ function PlayHTMLPopup() {
     }
   };
 
+  const bagEnabled = devFeaturesEnabled || FLAGS.COPRESENCE;
+
   const pingContentScript = async () => {
     try {
       if (currentTab?.id) {
@@ -203,10 +254,64 @@ function PlayHTMLPopup() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || onboardingComplete === null) {
     return (
       <div style={{ padding: "20px", textAlign: "center" }}>
-        <div>Loading PlayHTML Bag...</div>
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!onboardingComplete) {
+    return (
+      <div
+        style={{
+          padding: 16,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <header style={{ marginBottom: 12 }}>
+          <h1
+            style={{
+              margin: "0 0 6px 0",
+              fontSize: 18,
+              color: "#111827",
+              fontStyle: "italic",
+              fontFamily: "'Lora', Georgia, serif",
+            }}
+          >
+            we were online
+          </h1>
+          <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+            Finish setup to get started
+          </p>
+        </header>
+        <main style={{ flex: 1 }}>
+          <p style={{ fontSize: 12, color: "#4b5563" }}>
+            We’ll guide you through a quick setup in a full tab.
+          </p>
+          <button
+            onClick={async () => {
+              const url = browser.runtime.getURL("options.html");
+              await browser.tabs.create({ url });
+              window.close();
+            }}
+            style={{
+              padding: "10px 12px",
+              background: "#2563eb",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Open Setup
+          </button>
+        </main>
       </div>
     );
   }
@@ -223,9 +328,15 @@ function PlayHTMLPopup() {
   }
 
   if (currentView === "collections") {
+    return <Collections onBack={() => setCurrentView("main")} />;
+  }
+
+  if (!bagEnabled) {
     return (
-      <Collections
-        onBack={() => setCurrentView("main")}
+      <InternetPortraitHome
+        playerIdentity={playerIdentity}
+        onViewCollections={() => setCurrentView("collections")}
+        onViewHistory={toggleHistoricalOverlay}
       />
     );
   }
@@ -240,8 +351,15 @@ function PlayHTMLPopup() {
       }}
     >
       <header style={{ marginBottom: "16px" }}>
-        <h1 style={{ margin: "0 0 8px 0", fontSize: "18px", color: "#1f2937" }}>
-          PlayHTML Bag
+        <h1
+          style={{
+            margin: "0 0 8px 0",
+            fontSize: "18px",
+            color: "#1f2937",
+            fontFamily: "'Lora', Georgia, serif",
+          }}
+        >
+          we were online{" "}
         </h1>
         <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>
           Transform any webpage into an interactive playground
@@ -252,11 +370,9 @@ function PlayHTMLPopup() {
         {playerIdentity && (
           <PlayerIdentityCard playerIdentity={playerIdentity} />
         )}
-        
-        <SiteStatus 
-          currentTab={currentTab} 
-          playhtmlStatus={playhtmlStatus} 
-        />
+        {bagEnabled && (
+          <SiteStatus currentTab={currentTab} playhtmlStatus={playhtmlStatus} />
+        )}
 
         <QuickActions
           onTestConnection={pingContentScript}
@@ -265,6 +381,7 @@ function PlayHTMLPopup() {
           onViewCollections={() => setCurrentView("collections")}
           onViewHistory={toggleHistoricalOverlay}
           inventory={inventory}
+          showBagFeatures={bagEnabled}
         />
       </main>
 
@@ -288,7 +405,12 @@ function PlayHTMLPopup() {
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
-  root.render(<PlayHTMLPopup />);
+  root.render(
+    <>
+      {process.env.NODE_ENV === "development" && <Agentation />}
+      <PlayHTMLPopup />
+    </>,
+  );
 }
 
 export default PlayHTMLPopup;

@@ -17,6 +17,11 @@ export default defineConfig({
         matches: ["<all_urls>"],
       },
     ],
+    // Add options page to host first-time setup
+    options_ui: {
+      page: "options.html",
+      open_in_tab: true,
+    },
   },
   modules: ["@wxt-dev/module-react"],
   outDir: "dist",

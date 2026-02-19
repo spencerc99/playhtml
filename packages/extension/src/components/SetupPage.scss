@@ -1,0 +1,121 @@
+// ABOUTME: Styles for the full-page first-time setup wizard
+// ABOUTME: Covers welcome, customize, consent, and done steps
+
+@use '../styles/variables' as *;
+
+.setup-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: $bg;
+  color: $text;
+
+  &__inner {
+    width: 100%;
+    max-width: 720px;
+  }
+}
+
+.setup-step {
+  &__title {
+    @include wordmark;
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+
+  &__heading {
+    @include heading;
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  &__subtitle {
+    font-size: 14px;
+    color: $text-muted;
+    margin-bottom: 16px;
+  }
+
+  &__field-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    margin-top: 8px;
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 0 0 40%;
+  }
+
+  &__field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: $text;
+  }
+
+  &__input {
+    @include input-field;
+    font-size: 14px;
+  }
+
+  &__color-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__color-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__color-input {
+    width: 48px;
+    height: 36px;
+    border: 1px solid $border-strong;
+    border-radius: 6px;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  &__reroll-btn {
+    @include btn-secondary;
+    padding: 8px 10px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  &__cursor-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+    margin-left: 8px;
+  }
+
+  &__actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+  }
+
+  &__consent-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  &__btn-primary   { @include btn-primary; }
+  &__btn-secondary { @include btn-secondary; }
+  &__btn-private   { @include btn-teal; }
+  &__btn-collective { @include btn-blue; }
+}

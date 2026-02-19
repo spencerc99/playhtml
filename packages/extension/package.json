@@ -30,6 +30,7 @@
     "@types/webextension-polyfill": "^0.10.7",
     "@vitejs/plugin-react": "^4.2.1",
     "@wxt-dev/module-react": "^1.1.3",
+    "agentation": "^2.2.1",
     "jsdom": "^27.4.0",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",

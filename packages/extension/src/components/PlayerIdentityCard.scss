@@ -1,0 +1,63 @@
+// ABOUTME: Styles for the player identity card section in the popup
+// ABOUTME: Shows player name, cursor preview in their color, palette swatches, and site count
+
+@use '../styles/variables' as *;
+
+.identity-card {
+  @include card;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  &__cursor {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: $bg;
+    border-radius: 8px;
+    border: 1px solid $border;
+  }
+
+  &__info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__name {
+    @include heading;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+
+  &__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  &__site-count {
+    font-size: 11px;
+    color: $text-muted;
+  }
+
+  &__palette {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+  }
+
+  &__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid $border;
+  }
+}

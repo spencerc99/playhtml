@@ -6,6 +6,11 @@ export default defineBackground(() => {
     if (details.reason === 'install') {
       // First time installation - setup default identity
       initializePlayerIdentity()
+      // Open setup page in a new tab
+      const url = browser.runtime.getURL('options.html')
+      browser.tabs.create({ url }).catch((e) => {
+        console.warn('Failed to open setup page on install', e)
+      })
     }
   })
 

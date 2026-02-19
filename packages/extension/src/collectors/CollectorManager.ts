@@ -4,6 +4,7 @@ import type { CollectionEventType, CollectorStatus } from './types';
 import { EventBuffer } from '../storage/EventBuffer';
 import { uploadEvents } from '../storage/sync';
 import { VERBOSE } from '../config';
+import { getValidEventTypes } from '../shared/types';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
 
@@ -31,10 +32,39 @@ export class CollectorManager {
   async init(): Promise<void> {
     if (this.initialized) return;
     
-    // Load enabled collectors from storage
+    // First, apply 3-way modes (off/local/shared) if present
+    await this.applyModesFromStorage();
+    // Then, load legacy enabled flags for backward compatibility
     await this.loadEnabledCollectors();
     
     this.initialized = true;
+  }
+
+  /**
+   * Enable/disable collectors based on per-collector mode in storage.
+   * - 'off' => disable
+   * - 'local' or 'shared' => enable
+   */
+  private async applyModesFromStorage(): Promise<void> {
+    try {
+      const types = getValidEventTypes();
+      const keys = types.map((t) => `collection_mode_${t}`);
+      const result = await browser.storage.local.get(keys);
+      for (const type of types) {
+        const mode = result[`collection_mode_${type}`];
+        const normalized: 'off' | 'local' | 'shared' =
+          mode === 'off' || mode === 'local' || mode === 'shared' ? mode : 'local';
+        if (normalized === 'off') {
+          await this.disableCollector(type as CollectionEventType);
+        } else {
+          await this.enableCollector(type as CollectionEventType);
+        }
+      }
+    } catch (e) {
+      if (VERBOSE) {
+        console.warn('[CollectorManager] Failed to apply modes from storage:', e);
+      }
+    }
   }
   
   /**

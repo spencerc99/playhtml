@@ -1,6 +1,7 @@
 import type { CollectionEvent, CollectionEventType } from '../collectors/types';
 import { getParticipantId, getSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
+import browser from 'webextension-polyfill';
 
 const DB_NAME = 'collection_events_db';
 const DB_VERSION = 3; // Incremented for uploaded flag addition
@@ -164,17 +165,38 @@ export class EventBuffer {
       return;
     }
     
-    if (VERBOSE) {
-      console.log(`[EventBuffer] Flushing ${events.length} events...`);
-    }
-    
+    // Filter events by per-collector sharing mode
+    let uploadable: CollectionEvent[] = events;
     try {
-      await this.uploadCallback(events);
+      const types = Array.from(new Set(events.map(e => e.type)));
+      const keys = types.map(t => `collection_mode_${t}`);
+      const result = await browser.storage.local.get(keys);
+      uploadable = events.filter(e => {
+        const mode = result[`collection_mode_${e.type}`];
+        const normalized: 'off' | 'local' | 'shared' = (mode === 'off' || mode === 'shared' || mode === 'local') ? mode : 'local';
+        return normalized === 'shared';
+      });
+    } catch (e) {
+      // If storage fails, default to not filtering (preserve current behavior)
+      uploadable = events;
+    }
 
-      // Mark events as uploaded but keep them in IndexedDB for local history
-      await this.markEventsAsUploaded(events.map(e => e.id));
+    if (VERBOSE) {
+      console.log(`[EventBuffer] Flushing ${events.length} events (uploading ${uploadable.length})...`);
+    }
+
+    if (uploadable.length === 0) {
+      // Nothing to upload; keep events in local store for history
+      return;
+    }
+
+    try {
+      await this.uploadCallback(uploadable);
+
+      // Mark uploaded events as uploaded but keep them in IndexedDB for local history
+      await this.markEventsAsUploaded(uploadable.map(e => e.id));
       if (VERBOSE) {
-        console.log(`[EventBuffer] Successfully uploaded ${events.length} events (kept in local storage)`);
+        console.log(`[EventBuffer] Successfully uploaded ${uploadable.length} events (kept in local storage)`);
       }
     } catch (error) {
       console.error('[EventBuffer] Failed to upload events:', error);

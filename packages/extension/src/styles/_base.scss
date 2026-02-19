@@ -1,0 +1,44 @@
+// ABOUTME: Global base styles for all popup and options pages
+// ABOUTME: Emits CSS custom property tokens and sets default body styles
+
+@use 'variables' as *;
+
+:root {
+  @include root-tokens;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: $font-body;
+  background: $bg;
+  color: $text;
+  -webkit-font-smoothing: antialiased;
+}
+
+// Typography scale
+h1, h2, h3, h4 {
+  @include heading;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: $accent-blue;
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; }
+}
+
+// The wordmark — always applied via this class
+.wordmark {
+  @include wordmark;
+}

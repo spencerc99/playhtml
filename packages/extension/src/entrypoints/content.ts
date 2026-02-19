@@ -973,11 +973,13 @@ export default defineContentScript({
         extensionInstance = new PlayHTMLExtension();
         extensionInstance.init();
         initializeCollectors().catch(console.error);
+        setupModeChangeListener();
       });
     } else {
       extensionInstance = new PlayHTMLExtension();
       extensionInstance.init();
       initializeCollectors().catch(console.error);
+      setupModeChangeListener();
     }
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
@@ -1082,8 +1084,47 @@ export default defineContentScript({
           return true;
         }
 
+        if (message.type === "GET_RECENT_EVENTS") {
+          // Return up to N most recent cursor events for the current domain
+          (async () => {
+            try {
+              const { LocalEventStore } = await import('../storage/LocalEventStore');
+              const store = new LocalEventStore();
+              const domain = window.location.host.replace(/^www\./, '');
+              const events = await store.queryByDomain(domain, { type: 'cursor', limit: 200 });
+              sendResponse({ success: true, events });
+            } catch (e: any) {
+              console.error('[Content] Failed to get recent events', e);
+              sendResponse({ success: false, error: e?.message || String(e) });
+            }
+          })();
+          return true;
+        }
+
         return; // Don't keep the channel open for other message types
       }
     );
+
+    function setupModeChangeListener() {
+      try {
+        browser.storage.onChanged.addListener((changes, area) => {
+          if (area !== 'local' || !collectorManager) return;
+          for (const key of Object.keys(changes)) {
+            if (key.startsWith('collection_mode_')) {
+              const type = key.replace('collection_mode_', '');
+              const next = changes[key]?.newValue;
+              const normalized = next === 'off' || next === 'local' || next === 'shared' ? next : 'local';
+              if (normalized === 'off') {
+                collectorManager.disableCollector(type as any).catch(console.error);
+              } else {
+                collectorManager.enableCollector(type as any).catch(console.error);
+              }
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('[Content] Failed to set up mode change listener', e);
+      }
+    }
   },
 });

@@ -1,0 +1,14 @@
+// ABOUTME: Entry stylesheet for the popup page
+// ABOUTME: Imports base tokens and sets popup-specific dimensions
+
+@use 'base';
+
+body {
+  width: 350px;
+  height: 500px;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}

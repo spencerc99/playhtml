@@ -1,0 +1,275 @@
+// ABOUTME: Styles for the data collection settings screen
+// ABOUTME: Covers collector cards, mode radio buttons, privacy settings, and filter tags
+
+@use '../styles/variables' as *;
+
+.collections {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+
+  &__header {
+    margin-bottom: 16px;
+
+    .back-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      margin-right: 8px;
+      padding: 0;
+      color: $text;
+      line-height: 1;
+    }
+
+    h1 {
+      @include heading;
+      font-size: 18px;
+    }
+
+    p {
+      font-size: 12px;
+      color: $text-muted;
+    }
+  }
+
+  &__main {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__loading {
+    padding: 20px;
+    text-align: center;
+    color: $text;
+  }
+
+  &__error {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: $error-bg;
+    border-radius: 8px;
+    font-size: 12px;
+    color: $error-text;
+
+    span {
+      font-size: 11px;
+    }
+  }
+
+  &__context {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: $surface;
+    border-radius: 8px;
+    font-size: 12px;
+    color: $text;
+
+    span {
+      font-size: 11px;
+      color: $text-muted;
+    }
+  }
+
+  &__collector-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__privacy-notice {
+    margin-top: 16px;
+    padding: 12px;
+    background: $gold-bg;
+    border-radius: 8px;
+    font-size: 11px;
+    color: $gold-text;
+  }
+}
+
+// Individual collector card
+.collector-card {
+  padding: 12px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $bg;
+
+  &--active {
+    background: $active-bg;
+    border-color: $active-border;
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  &__info {
+    flex: 1;
+  }
+
+  &__title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  &__name {
+    @include heading;
+    font-size: 14px;
+    text-transform: capitalize;
+  }
+
+  &__status-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: white;
+
+    &--active { background: $accent-teal; }
+    &--paused { background: $text-faint; }
+  }
+
+  &__description {
+    font-size: 12px;
+    color: $text-muted;
+  }
+
+  &__modes {
+    display: flex;
+    gap: 6px;
+    margin-left: 12px;
+
+    label {
+      font-size: 11px;
+      color: $text;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    input[type='radio'] {
+      accent-color: $accent-teal;
+    }
+  }
+
+  &__privacy-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid $border;
+  }
+
+  &__privacy-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__privacy-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: $text;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  &__privacy-desc {
+    font-size: 11px;
+    color: $text-muted;
+  }
+
+  &__privacy-select {
+    @include input-field;
+    padding: 6px 12px;
+    font-size: 12px;
+    min-width: 100px;
+    cursor: pointer;
+  }
+
+  &__filter-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid $border;
+  }
+
+  &__filter-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: $text;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  &__filter-desc {
+    font-size: 11px;
+    color: $text-muted;
+    margin-bottom: 8px;
+  }
+
+  &__filter-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+
+    input {
+      @include input-field;
+      flex: 1;
+      font-size: 12px;
+      padding: 6px 8px;
+    }
+
+    button {
+      @include btn-teal;
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+  }
+
+  &__filter-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__filter-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: $error-bg;
+    color: $error-text;
+    border-radius: 4px;
+    font-size: 11px;
+
+    button {
+      background: none;
+      border: none;
+      color: $error-text;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0;
+      line-height: 1;
+      font-weight: bold;
+    }
+  }
+
+  &__filter-empty {
+    font-size: 11px;
+    color: $text-faint;
+    font-style: italic;
+  }
+}
