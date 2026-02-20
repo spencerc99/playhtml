@@ -13,7 +13,7 @@ const PROD_WORKER_URL = 'https://playhtml-game-api.spencerc99.workers.dev';
 
 /**
  * Development worker URL (localhost)
- * Run with: cd packages/extension/worker && wrangler dev
+ * Run with: cd extension/worker && wrangler dev
  */
 const DEV_WORKER_URL = 'http://localhost:8787';
 
@@ -58,7 +58,7 @@ async function getWorkerUrl(): Promise<string> {
     const isDev = isDevelopment();
     if (isDev) {
       console.log('[Sync] Using development worker URL:', DEV_WORKER_URL);
-      console.log('[Sync] Make sure wrangler dev is running: cd packages/extension/worker && wrangler dev');
+      console.log('[Sync] Make sure wrangler dev is running: cd extension/worker && wrangler dev');
       return DEV_WORKER_URL;
     }
     
@@ -126,7 +126,7 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
     // If using localhost:8787 and it fails, provide helpful message
     if (workerUrl.includes('localhost:8787')) {
       console.warn('[Sync] Local worker not responding. Make sure wrangler dev is running:');
-      console.warn('[Sync]   cd packages/extension/worker && wrangler dev');
+      console.warn('[Sync]   cd extension/worker && wrangler dev');
       // Still throw so EventBuffer can retry when worker comes online
     }
     

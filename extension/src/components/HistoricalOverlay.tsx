@@ -7,18 +7,18 @@ import type { CollectionEvent, CollectionEventType } from "../collectors/types";
 import { determineFilterScope, extractDomain } from "../utils/urlNormalization";
 
 // Import visualization components from movement
-import { AnimatedTrails } from "../../../../website/internet-series/movement/components/AnimatedTrails";
+import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
 import {
   AnimatedClicks,
   type ScheduledClick,
-} from "../../../../website/internet-series/movement/components/AnimatedClicks";
-import { AnimatedTyping } from "../../../../website/internet-series/movement/components/AnimatedTyping";
-import { AnimatedScrollViewports } from "../../../../website/internet-series/movement/AnimatedScrollViewports";
+} from "../../../website/internet-series/movement/components/AnimatedClicks";
+import { AnimatedTyping } from "../../../website/internet-series/movement/components/AnimatedTyping";
+import { AnimatedScrollViewports } from "../../../website/internet-series/movement/AnimatedScrollViewports";
 
 // Import hooks
-import { useCursorTrails } from "../../../../website/internet-series/movement/hooks/useCursorTrails";
-import { useKeyboardTyping } from "../../../../website/internet-series/movement/hooks/useKeyboardTyping";
-import { useViewportScroll } from "../../../../website/internet-series/movement/hooks/useViewportScroll";
+import { useCursorTrails } from "../../../website/internet-series/movement/hooks/useCursorTrails";
+import { useKeyboardTyping } from "../../../website/internet-series/movement/hooks/useKeyboardTyping";
+import { useViewportScroll } from "../../../website/internet-series/movement/hooks/useViewportScroll";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections
