@@ -13,10 +13,17 @@
     margin-bottom: 12px;
   }
 
+  &__header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
   &__wordmark {
     @include wordmark;
     font-size: 18px;
-    margin-bottom: 6px;
+    margin-bottom: 0;
   }
 
   &__subtitle {

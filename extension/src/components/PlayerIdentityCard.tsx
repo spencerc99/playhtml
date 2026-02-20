@@ -6,6 +6,8 @@ import "./PlayerIdentityCard.scss";
 
 interface PlayerIdentityCardProps {
   playerIdentity: PlayerIdentity;
+  /** Compact inline mode: cursor icon + name only, for header row */
+  compact?: boolean;
 }
 
 // SVG cursor path rendered in the player's primary color
@@ -24,10 +26,19 @@ function CursorPreview({ color }: { color: string }) {
   );
 }
 
-export function PlayerIdentityCard({ playerIdentity }: PlayerIdentityCardProps) {
+export function PlayerIdentityCard({ playerIdentity, compact = false }: PlayerIdentityCardProps) {
   const primaryColor = playerIdentity.playerStyle.colorPalette[0] ?? "#4a9a8a";
   const displayName = playerIdentity.name?.trim() || "Anonymous";
   const siteCount = playerIdentity.discoveredSites?.length ?? 0;
+
+  if (compact) {
+    return (
+      <div className="identity-card identity-card--compact">
+        <CursorPreview color={primaryColor} />
+        <span className="identity-card__name">{displayName}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="identity-card">

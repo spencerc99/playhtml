@@ -168,6 +168,7 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
       event: "scroll",
       scrollX: normalized.scrollX,
       scrollY: normalized.scrollY,
+      scrollDistancePx: deltaX + deltaY,
     };
 
     if (VERBOSE) {

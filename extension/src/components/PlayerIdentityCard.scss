@@ -60,4 +60,21 @@
     border-radius: 50%;
     border: 1px solid $border;
   }
+
+  &--compact {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 0;
+
+    .identity-card__name {
+      font-size: 12px;
+      margin-bottom: 0;
+      color: $text-muted;
+    }
+  }
 }

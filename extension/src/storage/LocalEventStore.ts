@@ -1,7 +1,7 @@
 // ABOUTME: Local storage interface for querying collected events by domain
 // ABOUTME: Provides domain-based queries for historical data visualization
 
-import type { CollectionEvent, CollectionEventType } from "../collectors/types";
+import type { CollectionEvent, CollectionEventType, NavigationEventData, ViewportEventData } from "../collectors/types";
 import { VERBOSE } from "../config";
 import {
   normalizeUrl,
@@ -34,6 +34,19 @@ export interface StorageStats {
   oldestEvent: number;
   newestEvent: number;
   countsByType: Record<string, number>;
+}
+
+export interface ScreenTimeSession {
+  url: string;
+  focusTs: number;
+  blurTs: number;
+  durationMs: number;
+}
+
+export interface ScreenTimeResult {
+  totalMs: number;
+  sessions: ScreenTimeSession[];
+  totalScrollDistancePx: number;
 }
 
 /**
@@ -436,6 +449,107 @@ export class LocalEventStore {
 
       request.onerror = () => reject(request.error);
     });
+  }
+
+  /**
+   * Get all events across all domains, sorted by timestamp ascending
+   */
+  async getAllEvents(options: QueryOptions = {}): Promise<CollectionEvent[]> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.openCursor();
+
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+
+        if (cursor) {
+          const evt = cursor.value as CollectionEvent;
+          let include = true;
+
+          if (options.type && evt.type !== options.type) include = false;
+          if (options.startTs && evt.ts < options.startTs) include = false;
+          if (options.endTs && evt.ts > options.endTs) include = false;
+
+          if (include) {
+            events.push(evt);
+            if (options.limit && events.length >= options.limit) {
+              events.sort((a, b) => a.ts - b.ts);
+              resolve(events);
+              return;
+            }
+          }
+
+          cursor.continue();
+        } else {
+          events.sort((a, b) => a.ts - b.ts);
+          resolve(events);
+        }
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Compute screen time by pairing focus→blur navigation events.
+   * Also sums scroll distance from viewport events.
+   *
+   * Optional domain/url filter via QueryOptions.type is ignored here since
+   * navigation events are what drive the session calculation; pass startTs/endTs
+   * to restrict the time window.
+   */
+  async getScreenTime(options: Pick<QueryOptions, 'startTs' | 'endTs'> = {}): Promise<ScreenTimeResult> {
+    await this.ensureInitialized();
+
+    // Pull all navigation events (focus/blur) and viewport scroll events in one pass
+    const navEvents = await this.getAllEvents({ type: 'navigation', ...options });
+    const viewportEvents = await this.getAllEvents({ type: 'viewport', ...options });
+
+    // Pair focus → blur into sessions
+    const sessions: ScreenTimeSession[] = [];
+    let pendingFocus: { ts: number; url: string } | null = null;
+
+    for (const evt of navEvents) {
+      const d = evt.data as NavigationEventData;
+      if (d.event === 'focus') {
+        pendingFocus = { ts: evt.ts, url: evt.meta.url };
+      } else if ((d.event === 'blur' || d.event === 'beforeunload') && pendingFocus) {
+        const durationMs = evt.ts - pendingFocus.ts;
+        // Discard sessions under 1s (noise) or over 8h (forgot to close tab)
+        if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
+          sessions.push({
+            url: pendingFocus.url,
+            focusTs: pendingFocus.ts,
+            blurTs: evt.ts,
+            durationMs,
+          });
+        }
+        pendingFocus = null;
+      }
+    }
+
+    const totalMs = sessions.reduce((sum, s) => sum + s.durationMs, 0);
+
+    // Sum scroll distance from viewport scroll events
+    let totalScrollDistancePx = 0;
+    for (const evt of viewportEvents) {
+      const d = evt.data as ViewportEventData;
+      if (d.event === 'scroll' && d.scrollDistancePx != null) {
+        totalScrollDistancePx += d.scrollDistancePx;
+      }
+    }
+
+    return { totalMs, sessions, totalScrollDistancePx };
   }
 
   /**

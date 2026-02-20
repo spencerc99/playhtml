@@ -2,6 +2,7 @@
 // ABOUTME: Reuses visualization components from website/internet-series/movement/
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import browser from "webextension-polyfill";
 import { loadHistoricalData, type FilterMode } from "../storage/historyLoader";
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
 import { determineFilterScope, extractDomain } from "../utils/urlNormalization";
@@ -620,6 +621,29 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
           <div style={loadingStatusStyles}>Loading historical data...</div>
         )}
         {error && <div style={errorStatusStyles}>{error}</div>}
+
+        <a
+          href={browser.runtime.getURL("portrait.html")}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: "11px",
+            color: "#8a8279",
+            textDecoration: "none",
+            borderBottom: "1px solid rgba(138, 130, 121, 0.4)",
+            paddingBottom: "1px",
+            whiteSpace: "nowrap",
+            transition: "color 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.color = "#3d3833";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.color = "#8a8279";
+          }}
+        >
+          full portrait →
+        </a>
 
         <button
           onClick={onClose}

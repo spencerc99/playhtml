@@ -1,3 +1,6 @@
+// ABOUTME: Collector for tab visibility, navigation, and page lifecycle events
+// ABOUTME: Emits focus/blur events to enable screen time calculation from local event data
+
 import { BaseCollector } from './BaseCollector';
 import type { NavigationEventData } from './types';
 import { VERBOSE } from '../config';
@@ -78,7 +81,18 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
     document.addEventListener('visibilitychange', this.visibilityChangeHandler);
     window.addEventListener('popstate', this.popstateHandler);
     window.addEventListener('beforeunload', this.beforeunloadHandler);
-    
+
+    // Emit synthetic focus if the page is already visible when collection starts.
+    // Without this, a session that begins mid-visit has no focus anchor and the
+    // first blur event cannot be paired to compute screen time.
+    if (document.visibilityState === 'visible') {
+      this.emitDiscreteEvent({
+        event: 'focus',
+        visibility_state: 'visible',
+      });
+      this.updateLastEvent('focus');
+    }
+
     if (VERBOSE) {
       console.log('[NavigationCollector] Started successfully');
     }

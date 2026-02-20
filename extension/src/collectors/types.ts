@@ -83,8 +83,9 @@ export type ViewportEventType = 'scroll' | 'resize' | 'zoom';
 export interface ViewportEventData {
   event: ViewportEventType;
   // For scroll
-  scrollX?: number;       // 0-1 normalized (scrollLeft / scrollWidth)
-  scrollY?: number;       // 0-1 normalized (scrollTop / scrollHeight)
+  scrollX?: number;            // 0-1 normalized (scrollLeft / scrollWidth)
+  scrollY?: number;            // 0-1 normalized (scrollTop / scrollHeight)
+  scrollDistancePx?: number;   // absolute pixel distance scrolled (deltaX + deltaY)
   // For resize
   width?: number;         // viewport width
   height?: number;        // viewport height
