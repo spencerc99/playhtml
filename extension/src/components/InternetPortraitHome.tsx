@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { PlayerIdentityCard } from "./PlayerIdentityCard";
 import type { PlayerIdentity } from "../types";
-import type { CollectorStatus } from "../collectors/types";
+import type { CollectorStatus, NavigationEventData } from "../collectors/types";
 import type { CollectionEvent } from "../collectors/types";
 import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
@@ -23,6 +23,7 @@ interface Props {
 
 interface PortraitStats {
   domain: string;
+  totalTimeMs: number | null;
   eventCounts: { cursor: number; keyboard: number; viewport: number };
   dateRange: { oldest: string; newest: string } | null;
   uniquePageCount: number;
@@ -136,18 +137,40 @@ export function InternetPortraitHome({
         const domainStats = await store.getDomainStats(domain);
         if (domainStats.totalEvents === 0) return;
 
-        // Collect unique pages
+        // Fetch all events for this domain in one pass
         const events = await store.queryByDomain(domain);
+
+        // Unique pages visited
         const uniqueUrls = new Set(
           events.map((e) => e.meta.url).filter(Boolean),
         );
 
+        // Event type counts
         const counts = { cursor: 0, keyboard: 0, viewport: 0 };
         events.forEach((e) => {
           if (e.type === "cursor") counts.cursor++;
           else if (e.type === "keyboard") counts.keyboard++;
           else if (e.type === "viewport") counts.viewport++;
         });
+
+        // Screen time: pair focus → blur from navigation events
+        const navEvents = events
+          .filter((e) => e.type === "navigation")
+          .sort((a, b) => a.ts - b.ts);
+        let pendingFocusTs: number | null = null;
+        let totalTimeMs = 0;
+        for (const evt of navEvents) {
+          const d = evt.data as NavigationEventData;
+          if (d.event === "focus") {
+            pendingFocusTs = evt.ts;
+          } else if ((d.event === "blur" || d.event === "beforeunload") && pendingFocusTs !== null) {
+            const durationMs = evt.ts - pendingFocusTs;
+            if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
+              totalTimeMs += durationMs;
+            }
+            pendingFocusTs = null;
+          }
+        }
 
         const dateRange =
           domainStats.firstVisit && domainStats.lastVisit
@@ -159,6 +182,7 @@ export function InternetPortraitHome({
 
         setPortraitStats({
           domain,
+          totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
           eventCounts: counts,
           dateRange,
           uniquePageCount: uniqueUrls.size,
@@ -184,7 +208,6 @@ export function InternetPortraitHome({
       </header>
 
       <main className="portrait-home__main">
-        {/* TODO: replace mock data with real portraitStats once IndexedDB loading is reliable */}
         <section className="collection-status">
           <div className="collection-status__header-row">
             <h3>Your Collection Status</h3>
@@ -237,25 +260,16 @@ export function InternetPortraitHome({
             </div>
             <div className="preview-card__body">
               <TinyMovementPreview />
-              <PortraitCard
-                domain={portraitStats?.domain ?? "github.com"}
-                totalTimeMs={12319252}
-                eventCounts={
-                  portraitStats?.eventCounts ?? {
-                    cursor: 1420,
-                    keyboard: 83,
-                    viewport: 204,
-                  }
-                }
-                dateRange={
-                  portraitStats?.dateRange ?? {
-                    oldest: "1/1/2026",
-                    newest: "2/20/2026",
-                  }
-                }
-                uniquePageCount={portraitStats?.uniquePageCount ?? 47}
-                compact
-              />
+              {portraitStats && (
+                <PortraitCard
+                  domain={portraitStats.domain}
+                  totalTimeMs={portraitStats.totalTimeMs}
+                  eventCounts={portraitStats.eventCounts}
+                  dateRange={portraitStats.dateRange}
+                  uniquePageCount={portraitStats.uniquePageCount}
+                  compact
+                />
+              )}
               <div className="preview-card__label">Open Your Portrait</div>
             </div>
           </div>
