@@ -1,0 +1,25 @@
+// ABOUTME: Global base styles for the wewere.online homepage
+// ABOUTME: Resets + design token application
+
+@use './styles/variables' as *;
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background: $bg;
+  color: $text;
+  font-family: $font-body;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

@@ -395,7 +395,7 @@ function PlayHTMLPopup() {
           textAlign: "center",
         }}
       >
-        PlayHTML Extension v0.1.0
+        we were online v0.1.5
       </footer>
     </div>
   );

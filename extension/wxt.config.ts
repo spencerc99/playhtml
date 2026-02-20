@@ -3,13 +3,13 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   srcDir: "src",
   manifest: {
-    name: "Tiny Internets",
+    name: "we were online",
     description:
-      "Turn the internet into an multiplayer playground. Add elements and discover what others have left behind.",
+      "A quiet portrait of your time on the internet. Collect traces of where you've been and share them anonymously.",
     permissions: ["storage", "activeTab", "scripting", "tabs"],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
-      default_title: "Tiny Internets",
+      default_title: "we were online",
     },
     web_accessible_resources: [
       {

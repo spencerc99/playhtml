@@ -53,11 +53,11 @@ export function TinyMovementPreview() {
     () => ({
       // Match internet movement defaults where sensible for a preview
       trailOpacity: 0.7,
-      randomizeColors: false,
+      randomizeColors: true,
       domainFilter: "",
       eventFilter: { move: true, click: true, hold: true, cursor_change: true },
       trailStyle: "chaotic" as const,
-      chaosIntensity: 1.0,
+      chaosIntensity: 0.5,
       trailAnimationMode: "stagger" as const,
       maxConcurrentTrails: 3,
       overlapFactor: 0.5,
@@ -92,7 +92,7 @@ export function TinyMovementPreview() {
             strokeWidth: 1,
             pointSize: 0,
             trailOpacity: 0.7,
-            animationSpeed: 3.0,
+            animationSpeed: 1.0,
             clickMinRadius: 6,
             clickMaxRadius: 18,
             clickMinDuration: 300,
