@@ -2,28 +2,13 @@
 // ABOUTME: Shown in the main popup home view
 import React from "react";
 import { PlayerIdentity } from "../types";
+import { CursorSvg } from "./icons";
 import "./PlayerIdentityCard.scss";
 
 interface PlayerIdentityCardProps {
   playerIdentity: PlayerIdentity;
-  /** Compact inline mode: cursor icon + name only, for header row */
+  /** Compact inline mode: cursor icon only in bordered box, for header row */
   compact?: boolean;
-}
-
-// SVG cursor path rendered in the player's primary color
-function CursorPreview({ color }: { color: string }) {
-  return (
-    <svg width="28" height="28" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z"
-        fill={color}
-      />
-      <path
-        d="m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z"
-        fill={color}
-      />
-    </svg>
-  );
 }
 
 export function PlayerIdentityCard({ playerIdentity, compact = false }: PlayerIdentityCardProps) {
@@ -32,10 +17,13 @@ export function PlayerIdentityCard({ playerIdentity, compact = false }: PlayerId
   const siteCount = playerIdentity.discoveredSites?.length ?? 0;
 
   if (compact) {
+    // TODO: clicking the cursor should navigate to a profile page where
+    // the user can view the full identity card and edit their info
     return (
       <div className="identity-card identity-card--compact">
-        <CursorPreview color={primaryColor} />
-        <span className="identity-card__name">{displayName}</span>
+        <div className="identity-card__cursor">
+          <CursorSvg size={28} color={primaryColor} />
+        </div>
       </div>
     );
   }
@@ -43,7 +31,7 @@ export function PlayerIdentityCard({ playerIdentity, compact = false }: PlayerId
   return (
     <div className="identity-card">
       <div className="identity-card__cursor">
-        <CursorPreview color={primaryColor} />
+        <CursorSvg size={28} color={primaryColor} />
       </div>
       <div className="identity-card__info">
         <div className="identity-card__name">{displayName}</div>

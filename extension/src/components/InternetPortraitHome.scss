@@ -1,7 +1,7 @@
 // ABOUTME: Styles for the main popup home view
 // ABOUTME: Covers header wordmark, collector status grid, preview card, and footer
 
-@use '../styles/variables' as *;
+@use "../styles/variables" as *;
 
 .portrait-home {
   padding: 16px;
@@ -123,8 +123,12 @@
   &__state {
     flex-shrink: 0;
 
-    &--on  { color: $accent-teal; }
-    &--off { color: $text-faint; }
+    &--on {
+      color: $accent-teal;
+    }
+    &--off {
+      color: $text-faint;
+    }
   }
 }
 
@@ -151,9 +155,15 @@
     border-radius: 9999px;
     display: inline-block;
 
-    &--close  { background: $accent-rust; }
-    &--min    { background: $accent-gold; }
-    &--expand { background: $accent-teal; }
+    &--close {
+      background: $accent-rust;
+    }
+    &--min {
+      background: $accent-gold;
+    }
+    &--expand {
+      background: $accent-teal;
+    }
   }
 
   &__body {
@@ -173,10 +183,4 @@
     font-weight: 700;
     font-family: $font-heading;
   }
-}
-
-.preview-hint {
-  font-size: 11px;
-  color: $text-muted;
-  margin: 0;
 }

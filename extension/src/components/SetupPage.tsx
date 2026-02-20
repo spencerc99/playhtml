@@ -3,18 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import browser from 'webextension-polyfill';
 import { getValidEventTypes } from '../shared/types';
+import { CursorSvg } from './icons';
 import "./SetupPage.scss";
 
 type Step = 'welcome' | 'customize' | 'consent' | 'done';
-
-function CursorPreview({ color }: { color: string }) {
-  return (
-    <svg width="36" height="36" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <path d="m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z" fill={color} />
-      <path d="m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z" fill={color} />
-    </svg>
-  );
-}
 
 function hslToHex(h: number, s: number, l: number): string {
   s /= 100;
@@ -82,6 +74,9 @@ export default function SetupPage() {
       const toSet: Record<string, string> = {};
       for (const t of types) toSet[`collection_mode_${t}`] = mode;
       toSet['onboarding_complete'] = 'true';
+      // Shared mode defaults to abstract keyboard display for privacy;
+      // local mode shows full text since data stays on-device
+      toSet['keyboard_display_mode'] = mode === 'shared' ? 'abstract' : 'full';
       await browser.storage.local.set(toSet);
 
       try {
@@ -143,7 +138,7 @@ export default function SetupPage() {
                   ↻
                 </button>
                 <div className="setup-step__cursor-preview">
-                  <CursorPreview color={color} />
+                  <CursorSvg size={36} color={color} />
                 </div>
               </div>
             </div>

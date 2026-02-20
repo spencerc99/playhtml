@@ -77,6 +77,7 @@ const loadSettings = () => {
     keyboardAnimationSpeed: 0.5,
     keyboardPositionRandomness: 0.3,
     keyboardRandomizeOrder: false,
+    keyboardDisplayMode: "full" as "full" | "abstract",
     navigationWindowOpacity: 0.9,
     navigationEdgeOpacity: 0.2,
     navigationScrollSpeed: 80,

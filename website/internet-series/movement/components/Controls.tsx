@@ -733,6 +733,23 @@ export const Controls: React.FC<ControlsProps> = memo(
 
         <CollapsibleSection title="Keyboard Settings" sectionKey="keyboard">
           <div className="control-group">
+            <label htmlFor="keyboard-display-mode">Display Mode</label>
+            <select
+              id="keyboard-display-mode"
+              value={settings.keyboardDisplayMode ?? "full"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  keyboardDisplayMode: e.target.value as "full" | "abstract",
+                }))
+              }
+            >
+              <option value="full">Full (show text)</option>
+              <option value="abstract">Abstract (redacted bars)</option>
+            </select>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="keyboard-animation-speed">Typing Speed</label>
             <input
               id="keyboard-animation-speed"

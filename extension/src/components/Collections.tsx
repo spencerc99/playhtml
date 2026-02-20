@@ -5,82 +5,11 @@ import React, { useState, useEffect } from "react";
 import browser from "webextension-polyfill";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "../shared/types";
+import { CollectorIcon } from "./icons";
 import "./Collections.scss";
 
 interface CollectionsProps {
   onBack: () => void;
-}
-
-function CollectorIcon({ type }: { type: string }) {
-  if (type === "cursor")
-    return (
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 32 32"
-        fill="#3d3833"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path d="m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z" />
-        <path d="m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z" />
-      </svg>
-    );
-  if (type === "keyboard")
-    return (
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect x="3" y="7" width="18" height="10" rx="2" stroke="#3d3833" />
-        <rect x="5" y="9" width="2" height="2" fill="#3d3833" />
-        <rect x="8" y="9" width="2" height="2" fill="#3d3833" />
-        <rect x="11" y="9" width="2" height="2" fill="#3d3833" />
-        <rect x="14" y="9" width="2" height="2" fill="#3d3833" />
-        <rect x="17" y="9" width="2" height="2" fill="#3d3833" />
-        <rect x="5" y="12" width="10" height="2" fill="#3d3833" />
-        <rect x="16" y="12" width="3" height="2" fill="#3d3833" />
-      </svg>
-    );
-  if (type === "navigation")
-    return (
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect x="3" y="5" width="18" height="14" rx="2" stroke="#3d3833" />
-        <circle cx="7" cy="8" r="1" fill="#3d3833" />
-        <circle cx="10" cy="8" r="1" fill="#3d3833" />
-        <rect
-          x="5"
-          y="10"
-          width="14"
-          height="7"
-          fill="#efe9df"
-          stroke="#efe9df"
-        />
-      </svg>
-    );
-  if (type === "viewport")
-    return (
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect x="4" y="4" width="16" height="16" rx="2" stroke="#3d3833" />
-        <rect x="17" y="6" width="2" height="12" rx="1" fill="#b5aea5" />
-        <rect x="17" y="9" width="2" height="4" rx="1" fill="#3d3833" />
-      </svg>
-    );
-  return null;
 }
 
 const PRIVACY_LEVEL_KEY = "collection_keyboard_privacy_level";

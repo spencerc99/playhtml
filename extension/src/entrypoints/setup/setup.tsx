@@ -1,3 +1,5 @@
+// ABOUTME: Entrypoint for the setup wizard page
+// ABOUTME: Renders SetupPage into the root element
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../styles/options.scss';

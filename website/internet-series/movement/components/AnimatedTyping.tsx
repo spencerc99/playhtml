@@ -8,6 +8,7 @@ interface TypingSettings {
   textboxOpacity: number;
   keyboardShowCaret: boolean;
   keyboardAnimationSpeed: number;
+  keyboardDisplayMode: "full" | "abstract";
 }
 
 interface AnimatedTypingProps {
@@ -246,7 +247,30 @@ const TypingBox = memo(
         >
           {/* Text content */}
           <span style={{ position: "relative", zIndex: 1 }}>
-            {currentText}
+            {settings.keyboardDisplayMode === "abstract" ? (
+              // Abstract mode: redacted bars that preserve length/structure without revealing text
+              currentText.split("\n").map((line, i) => (
+                <span key={i} style={{ display: "block", lineHeight: "1.5" }}>
+                  {line.length > 0 ? (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: `${Math.max(8, line.length * fontSize * 0.55)}px`,
+                        height: `${fontSize * 0.75}px`,
+                        backgroundColor: textColor,
+                        opacity: 0.25,
+                        borderRadius: "2px",
+                        verticalAlign: "middle",
+                      }}
+                    />
+                  ) : (
+                    <br />
+                  )}
+                </span>
+              ))
+            ) : (
+              currentText
+            )}
             {settings.keyboardShowCaret && showCaret && (
               <span
                 style={{
