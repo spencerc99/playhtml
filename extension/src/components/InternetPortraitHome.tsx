@@ -4,16 +4,12 @@ import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { PlayerIdentityCard } from "./PlayerIdentityCard";
 import type { PlayerIdentity } from "../types";
-import type { CollectorStatus, NavigationEventData } from "../collectors/types";
+import type { CollectorStatus } from "../collectors/types";
 import type { CollectionEvent } from "../collectors/types";
 import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
-import { LocalEventStore } from "../storage/LocalEventStore";
-import { extractDomain } from "../utils/urlNormalization";
 import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
-
-const store = new LocalEventStore();
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -123,7 +119,7 @@ export function InternetPortraitHome({
     };
   }, []);
 
-  // Load portrait stats for current tab's domain
+  // Load portrait stats for current tab's domain via content script
   useEffect(() => {
     (async () => {
       try {
@@ -131,62 +127,13 @@ export function InternetPortraitHome({
           active: true,
           currentWindow: true,
         });
-        const domain = extractDomain(tab?.url ?? null);
-        if (!domain) return;
-
-        const domainStats = await store.getDomainStats(domain);
-        if (domainStats.totalEvents === 0) return;
-
-        // Fetch all events for this domain in one pass
-        const events = await store.queryByDomain(domain);
-
-        // Unique pages visited
-        const uniqueUrls = new Set(
-          events.map((e) => e.meta.url).filter(Boolean),
-        );
-
-        // Event type counts
-        const counts = { cursor: 0, keyboard: 0, viewport: 0 };
-        events.forEach((e) => {
-          if (e.type === "cursor") counts.cursor++;
-          else if (e.type === "keyboard") counts.keyboard++;
-          else if (e.type === "viewport") counts.viewport++;
+        if (!tab?.id) return;
+        const response = await browser.tabs.sendMessage(tab.id, {
+          type: "GET_DOMAIN_STATS",
         });
-
-        // Screen time: pair focus → blur from navigation events
-        const navEvents = events
-          .filter((e) => e.type === "navigation")
-          .sort((a, b) => a.ts - b.ts);
-        let pendingFocusTs: number | null = null;
-        let totalTimeMs = 0;
-        for (const evt of navEvents) {
-          const d = evt.data as NavigationEventData;
-          if (d.event === "focus") {
-            pendingFocusTs = evt.ts;
-          } else if ((d.event === "blur" || d.event === "beforeunload") && pendingFocusTs !== null) {
-            const durationMs = evt.ts - pendingFocusTs;
-            if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
-              totalTimeMs += durationMs;
-            }
-            pendingFocusTs = null;
-          }
+        if (response?.success && response.stats) {
+          setPortraitStats(response.stats);
         }
-
-        const dateRange =
-          domainStats.firstVisit && domainStats.lastVisit
-            ? {
-                oldest: new Date(domainStats.firstVisit).toLocaleDateString(),
-                newest: new Date(domainStats.lastVisit).toLocaleDateString(),
-              }
-            : null;
-
-        setPortraitStats({
-          domain,
-          totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
-          eventCounts: counts,
-          dateRange,
-          uniquePageCount: uniqueUrls.size,
-        });
       } catch {
         // Best-effort — portrait card is optional
       }

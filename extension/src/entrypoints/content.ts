@@ -1101,6 +1101,76 @@ export default defineContentScript({
           return true;
         }
 
+        if (message.type === "GET_DOMAIN_STATS") {
+          (async () => {
+            try {
+              const { LocalEventStore } = await import('../storage/LocalEventStore');
+              const { extractDomain } = await import('../utils/urlNormalization');
+              const store = new LocalEventStore();
+              const domain = extractDomain(window.location.href);
+              if (!domain) {
+                sendResponse({ success: true, stats: null });
+                return;
+              }
+
+              const domainStats = await store.getDomainStats(domain);
+              if (domainStats.totalEvents === 0) {
+                sendResponse({ success: true, stats: null });
+                return;
+              }
+
+              const events = await store.queryByDomain(domain);
+
+              const uniqueUrls = new Set(events.map((e) => e.meta.url).filter(Boolean));
+
+              const counts = { cursor: 0, keyboard: 0, viewport: 0 };
+              events.forEach((e) => {
+                if (e.type === 'cursor') counts.cursor++;
+                else if (e.type === 'keyboard') counts.keyboard++;
+                else if (e.type === 'viewport') counts.viewport++;
+              });
+
+              const navEvents = events
+                .filter((e) => e.type === 'navigation')
+                .sort((a, b) => a.ts - b.ts);
+              let pendingFocusTs: number | null = null;
+              let totalTimeMs = 0;
+              for (const evt of navEvents) {
+                const d = evt.data as any;
+                if (d.event === 'focus') {
+                  pendingFocusTs = evt.ts;
+                } else if ((d.event === 'blur' || d.event === 'beforeunload') && pendingFocusTs !== null) {
+                  const durationMs = evt.ts - pendingFocusTs;
+                  if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
+                    totalTimeMs += durationMs;
+                  }
+                  pendingFocusTs = null;
+                }
+              }
+
+              const dateRange =
+                domainStats.firstVisit && domainStats.lastVisit
+                  ? { oldest: new Date(domainStats.firstVisit).toLocaleDateString(), newest: new Date(domainStats.lastVisit).toLocaleDateString() }
+                  : null;
+
+              sendResponse({
+                success: true,
+                stats: {
+                  domain,
+                  totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
+                  eventCounts: counts,
+                  dateRange,
+                  uniquePageCount: uniqueUrls.size,
+                },
+              });
+            } catch (e: any) {
+              console.error('[Content] Failed to get domain stats', e);
+              sendResponse({ success: false, error: e?.message || String(e) });
+            }
+          })();
+          return true;
+        }
+
         if (message.type === "GET_STORAGE_STATS") {
           (async () => {
             try {
