@@ -63,6 +63,7 @@ const loadSettings = () => {
       zoom: true,
     },
     domainFilter: "",
+    documentSpace: false,
     scrollSpeed: 1.0,
     backgroundOpacity: 0.7,
     maxConcurrentScrolls: 5,
@@ -240,6 +241,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       maxConcurrentTrails: settings.maxConcurrentTrails,
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
+      documentSpace: settings.documentSpace,
     }),
     [
       settings.trailOpacity,
@@ -252,6 +254,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.maxConcurrentTrails,
       settings.overlapFactor,
       settings.minGapBetweenTrails,
+      settings.documentSpace,
     ],
   );
 

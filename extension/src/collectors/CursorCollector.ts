@@ -41,6 +41,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private mouseDownButton: number = -1;
   private mouseDownX: number = 0;
   private mouseDownY: number = 0;
+  private mouseDownScrollX: number = 0;
+  private mouseDownScrollY: number = 0;
   private holdThreshold = 250; // ms to distinguish click vs hold
   
   // Click debouncing (similar to zoom/resize/navigation)
@@ -128,6 +130,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.mouseDownButton = e.button;
       this.mouseDownX = e.clientX;
       this.mouseDownY = e.clientY;
+      this.mouseDownScrollX = window.scrollX;
+      this.mouseDownScrollY = window.scrollY;
     };
     
     // Set up mouse up handler (for click/hold detection)
@@ -147,6 +151,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         // Hold events are emitted immediately (not debounced)
         this.emitDiscreteEvent({
           ...normalized,
+          scrollX: this.mouseDownScrollX,
+          scrollY: this.mouseDownScrollY,
           t: targetSelector,
           event: 'hold',
           button: this.mouseDownButton,
@@ -156,6 +162,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         // Click events are debounced to handle rapid clicking
         this.handleClick({
           ...normalized,
+          scrollX: this.mouseDownScrollX,
+          scrollY: this.mouseDownScrollY,
           t: targetSelector,
           event: 'click',
           button: this.mouseDownButton,
@@ -365,6 +373,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     const data: CursorEventData = {
       x: normalized.x,
       y: normalized.y,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
       t: this.currentTarget,
       cursor: this.currentCursorStyle,
       event: 'move',

@@ -217,6 +217,27 @@ export class CollectorManager {
   }
   
   /**
+   * Pause all currently-enabled collectors without persisting the change.
+   * Use resumeAll() to restore them.
+   */
+  pauseAll(): void {
+    for (const collector of this.collectors.values()) {
+      if (collector.isEnabled()) {
+        collector.disable();
+      }
+    }
+  }
+
+  /**
+   * Resume all collectors that were enabled before the last pauseAll().
+   * Re-reads persisted enabled state so only collectors the user enabled
+   * are restarted.
+   */
+  async resumeAll(): Promise<void> {
+    await this.loadEnabledCollectors();
+  }
+
+  /**
    * Manually trigger a batch flush
    */
   async flushEvents(): Promise<void> {

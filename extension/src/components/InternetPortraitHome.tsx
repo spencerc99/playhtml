@@ -32,6 +32,7 @@ export function InternetPortraitHome({
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [presenceCount, setPresenceCount] = useState<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef<number | null>(null);
   const tRef = useRef<number>(0);
@@ -140,6 +141,17 @@ export function InternetPortraitHome({
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+      try {
+        const { count } = await browser.tabs.sendMessage(tab.id, { type: "GET_PRESENCE_COUNT" });
+        setPresenceCount(count);
+      } catch {} // content script may not be ready
+    })();
+  }, []);
+
   return (
     <div className="portrait-home">
       <header className="portrait-home__header">
@@ -149,9 +161,16 @@ export function InternetPortraitHome({
             <PlayerIdentityCard playerIdentity={playerIdentity} compact />
           )}
         </div>
-        <p className="portrait-home__subtitle">
-          An evolving portrait from your time on the internet
-        </p>
+        <div className="portrait-home__subtitle-row">
+          <p className="portrait-home__subtitle">
+            An evolving portrait from your time on the internet
+          </p>
+          {presenceCount !== null && presenceCount > 0 && (
+            <span className="portrait-home__presence">
+              {presenceCount} {presenceCount === 1 ? "person" : "people"} here
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="portrait-home__main">

@@ -28,6 +28,8 @@ export type CursorEventType = 'move' | 'click' | 'hold' | 'cursor_change';
 export interface CursorEventData {
   x: number;           // 0-1 normalized position
   y: number;           // 0-1 normalized position
+  scrollX?: number;    // window.scrollX at capture time, raw pixels
+  scrollY?: number;    // window.scrollY at capture time, raw pixels
   t?: string;          // Target element selector (optional)
   cursor?: string;     // CSS cursor style (pointer, grab, text, etc.)
   event?: CursorEventType;

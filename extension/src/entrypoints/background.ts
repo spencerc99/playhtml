@@ -60,6 +60,11 @@ export default defineBackground(() => {
       updateSiteDiscovery(message.domain).then(sendResponse)
       return true
     }
+
+    if (message.type === 'OPEN_TAB') {
+      browser.tabs.create({ url: message.url }).then(() => sendResponse({ success: true }))
+      return true
+    }
   })
 
   async function getPlayerIdentity() {

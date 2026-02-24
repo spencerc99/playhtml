@@ -26,9 +26,23 @@
     margin-bottom: 0;
   }
 
+  &__subtitle-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   &__subtitle {
     font-size: 12px;
     color: $text-muted;
+  }
+
+  &__presence {
+    font-size: 11px;
+    color: $text-faint;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   &__main {

@@ -28,6 +28,9 @@ export interface CursorTrailSettings {
   maxConcurrentTrails: number;
   overlapFactor: number;
   minGapBetweenTrails: number;
+  // When true, cursor positions are placed in document space using captured scroll offsets,
+  // so movements across a long scrollable page are shown relative to the full document.
+  documentSpace: boolean;
 }
 
 // Trail schedule item for animation timing
@@ -51,6 +54,8 @@ export interface UseCursorTrailsResult {
   trailSchedule: TrailScheduleItem[];
   timeBounds: { min: number; max: number };
   cycleDuration: number;
+  // In document space mode, the logical canvas dimensions differ from the viewport size
+  documentCanvasSize: { width: number; height: number } | null;
 }
 
 /**
@@ -72,9 +77,9 @@ export function useCursorTrails(
   }, [events]);
 
   // Build trails from cursor events
-  const trails = useMemo(() => {
+  const trailsResult = useMemo(() => {
     if (cursorEvents.length === 0 || viewportSize.width === 0) {
-      return [];
+      return { trails: [] as Trail[], documentCanvasSize: null };
     }
 
     // Apply domain filter
@@ -84,6 +89,29 @@ export function useCursorTrails(
           return eventDomain === settings.domainFilter;
         })
       : cursorEvents;
+
+    // In document space mode, compute the document bounding box so the overlay
+    // knows how tall/wide to make itself to cover all trail positions.
+    let maxDocX = 0;
+    let maxDocY = 0;
+    if (settings.documentSpace) {
+      filteredEvents.forEach((event) => {
+        if (
+          !event.data ||
+          typeof event.data.x !== "number" ||
+          typeof event.data.y !== "number"
+        )
+          return;
+        const vw = event.meta.vw || viewportSize.width;
+        const vh = event.meta.vh || viewportSize.height;
+        const scrollX = (event.data as { scrollX?: number }).scrollX ?? 0;
+        const scrollY = (event.data as { scrollY?: number }).scrollY ?? 0;
+        const docX = event.data.x * vw + scrollX;
+        const docY = event.data.y * vh + scrollY;
+        if (docX > maxDocX) maxDocX = docX;
+        if (docY > maxDocY) maxDocY = docY;
+      });
+    }
 
     const participantColors = new Map<string, string>();
     const trails: Trail[] = [];
@@ -141,6 +169,10 @@ export function useCursorTrails(
         duration?: number;
       }> = [];
       let lastTimestamp = 0;
+      // Track last viewport-relative position (normalized 0-1) to detect
+      // scroll-only samples where the cursor hasn't actually moved.
+      let lastNormX = -1;
+      let lastNormY = -1;
 
       groupEvents.forEach((event) => {
         const eventType = event.data.event || "move";
@@ -155,19 +187,59 @@ export function useCursorTrails(
         )
           return;
 
-        // Convert normalized coordinates (0-1) to pixel coordinates
-        // Normalized coordinates are relative to the viewport when the event was captured
-        // We scale them to the current canvas size to preserve relative positions
-        const x = event.data.x * viewportSize.width;
-        const y = event.data.y * viewportSize.height;
+        // In document space mode, skip move events that are scroll-induced:
+        // the cursor barely moved in viewport-relative terms between samples.
+        // Threshold is 5% of viewport — small enough to catch a stationary
+        // cursor while scrolling, large enough to keep real cursor movement.
+        // Clicks and holds always pass through.
+        if (
+          settings.documentSpace &&
+          eventType === "move" &&
+          lastNormX >= 0 &&
+          Math.abs(event.data.x - lastNormX) < 0.05 &&
+          Math.abs(event.data.y - lastNormY) < 0.05
+        ) {
+          lastTimestamp = event.ts;
+          lastNormX = event.data.x;
+          lastNormY = event.data.y;
+          return;
+        }
+
+        // Convert normalized coordinates (0-1) to pixel coordinates.
+        // In document space mode: reconstruct the absolute document position using
+        // the scroll offset captured at event time. Coordinates are in document
+        // pixels so the overlay can be absolutely positioned over the full page.
+        // In viewport space mode: scale normalized coords to current canvas size.
+        let x: number;
+        let y: number;
+        if (settings.documentSpace) {
+          const vw = event.meta.vw || viewportSize.width;
+          const vh = event.meta.vh || viewportSize.height;
+          const scrollX = (event.data as { scrollX?: number }).scrollX ?? 0;
+          const scrollY = (event.data as { scrollY?: number }).scrollY ?? 0;
+          x = event.data.x * vw + scrollX;
+          y = event.data.y * vh + scrollY;
+        } else {
+          x = event.data.x * viewportSize.width;
+          y = event.data.y * viewportSize.height;
+        }
         const isClick = eventType === "click";
         const isHold = eventType === "hold";
         const cursorType = event.data.cursor;
 
-        // Start new trail if gap exceeds threshold
+        // Start new trail if time gap exceeds threshold, or in document space
+        // mode if the spatial jump is too large (e.g. cursor staying put while
+        // user rapidly scrolls, producing huge diagonal slashes).
+        const lastPoint = currentTrail[currentTrail.length - 1];
+        const spatialJumpTooLarge =
+          settings.documentSpace &&
+          lastPoint !== undefined &&
+          Math.abs(y - lastPoint.y) > viewportSize.height * 0.5;
+
         if (
           currentTrail.length === 0 ||
-          event.ts - lastTimestamp > TRAIL_TIME_THRESHOLD
+          event.ts - lastTimestamp > TRAIL_TIME_THRESHOLD ||
+          spatialJumpTooLarge
         ) {
           // Push completed trail if it has enough points
           if (currentTrail.length >= 2) {
@@ -224,6 +296,8 @@ export function useCursorTrails(
         }
 
         lastTimestamp = event.ts;
+        lastNormX = event.data.x;
+        lastNormY = event.data.y;
       });
 
       // Don't forget the last trail
@@ -242,15 +316,23 @@ export function useCursorTrails(
       }
     });
 
-    return trails;
+    const documentCanvasSize =
+      settings.documentSpace && maxDocX > 0 && maxDocY > 0
+        ? { width: maxDocX, height: maxDocY }
+        : null;
+
+    return { trails, documentCanvasSize };
   }, [
     cursorEvents,
     settings.randomizeColors,
     settings.domainFilter,
     settings.eventFilter,
     settings.trailOpacity,
+    settings.documentSpace,
     viewportSize,
   ]);
+
+  const { trails, documentCanvasSize } = trailsResult;
 
   // Calculate time bounds and trail schedule
   const { timeBounds, cycleDuration, trailSchedule } = useMemo(() => {
@@ -442,5 +524,6 @@ export function useCursorTrails(
     trailSchedule,
     timeBounds,
     cycleDuration,
+    documentCanvasSize,
   };
 }

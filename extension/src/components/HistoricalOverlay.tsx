@@ -41,6 +41,9 @@ interface OverlaySettings {
   trailStyle: "straight" | "smooth" | "organic" | "chaotic";
   maxConcurrentTrails: number;
   randomizeColors: boolean;
+
+  // When true, cursor positions are shown in document space (full scrollable page)
+  documentSpace: boolean;
 }
 
 export const defaultSettings: OverlaySettings = {
@@ -55,14 +58,16 @@ export const defaultSettings: OverlaySettings = {
   trailStyle: "chaotic",
   maxConcurrentTrails: 15,
   randomizeColors: true,
+  documentSpace: false,
 };
 
 interface Props {
   visible: boolean;
+  currentUrl: string;
   onClose: () => void;
 }
 
-export function HistoricalOverlay({ visible, onClose }: Props) {
+export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,9 +78,18 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
   });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentUrl = window.location.href;
   const [filterMode, setFilterMode] = useState<FilterMode>("auto");
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
+  const prevDomainRef = useRef<string>(extractDomain(currentUrl));
+
+  // When URL changes, reset filterMode only if the domain changed
+  useEffect(() => {
+    const newDomain = extractDomain(currentUrl);
+    if (newDomain !== prevDomainRef.current) {
+      setFilterMode("auto");
+      prevDomainRef.current = newDomain;
+    }
+  }, [currentUrl]);
 
   // Determine filter scope based on current URL
   const filterScope = useMemo(() => {
@@ -206,6 +220,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
       maxConcurrentTrails: settings.maxConcurrentTrails,
       overlapFactor: 0.75,
       minGapBetweenTrails: 0.2,
+      documentSpace: settings.documentSpace,
     }),
     [settings, domain],
   );
@@ -215,6 +230,7 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
+    documentCanvasSize,
   } = useCursorTrails(events, viewportSize, cursorSettings);
 
   // Compute unified time range
@@ -350,17 +366,31 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
 
   if (!visible) return null;
 
-  const overlayStyles: React.CSSProperties = {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    zIndex: 2147483647,
-    pointerEvents: "none",
-    overflow: "hidden",
-    background: "transparent",
-  };
+  const overlayStyles: React.CSSProperties = settings.documentSpace
+    ? {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: documentCanvasSize
+          ? `${documentCanvasSize.height}px`
+          : "100%",
+        zIndex: 2147483647,
+        pointerEvents: "none",
+        overflow: "visible",
+        background: "transparent",
+      }
+    : {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        zIndex: 2147483647,
+        pointerEvents: "none",
+        overflow: "hidden",
+        background: "transparent",
+      };
 
   const infoBarStyles: React.CSSProperties = {
     position: "fixed",
@@ -577,6 +607,23 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
                 />
                 <span>Trails</span>
               </label>
+              <label
+                style={toggleLabelStyles}
+                title="Show cursor positions relative to the full scrollable page"
+              >
+                <input
+                  type="checkbox"
+                  style={checkboxStyles}
+                  checked={settings.documentSpace}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      documentSpace: e.target.checked,
+                    })
+                  }
+                />
+                <span>Doc space</span>
+              </label>
               <label style={toggleLabelStyles}>
                 <input
                   type="checkbox"
@@ -622,11 +669,13 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
         )}
         {error && <div style={errorStatusStyles}>{error}</div>}
 
-        <a
-          href={browser.runtime.getURL("portrait.html")}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => browser.runtime.sendMessage({ type: "OPEN_TAB", url: browser.runtime.getURL("portrait.html") })}
           style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
             fontSize: "11px",
             color: "#8a8279",
             textDecoration: "none",
@@ -634,16 +683,17 @@ export function HistoricalOverlay({ visible, onClose }: Props) {
             paddingBottom: "1px",
             whiteSpace: "nowrap",
             transition: "color 0.15s",
+            fontFamily: "inherit",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.color = "#3d3833";
+            e.currentTarget.style.color = "#3d3833";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.color = "#8a8279";
+            e.currentTarget.style.color = "#8a8279";
           }}
         >
           full portrait →
-        </a>
+        </button>
 
         <button
           onClick={onClose}

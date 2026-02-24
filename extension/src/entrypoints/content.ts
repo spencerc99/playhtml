@@ -12,6 +12,8 @@ export default defineContentScript({
   cssInjectionMode: "ui",
   main() {
 
+    let currentPresenceCount = 0;
+
     // Initialize PlayHTML extension on page
     class PlayHTMLExtension {
       private playerIdentity: any = null;
@@ -863,13 +865,33 @@ export default defineContentScript({
         }, 3000);
       }
 
-      private setupPresenceDetection() {
-        // TODO: Implement real-time presence with other players
+      private async setupPresenceDetection() {
+        if ("playhtml" in window) {
+          // Page already initialized PlayHTML — tap into existing window.cursors if available
+          this.listenForPresenceCount();
+          return;
+        }
 
-        // Simple cursor tracking for now
-        document.addEventListener("mousemove", (e) => {
-          // Throttled cursor position updates will go here
+        // Initialize PlayHTML for presence-only — no element capabilities needed
+        const { playhtml } = await import("playhtml");
+        await playhtml.init({
+          cursors: {
+            enabled: true,
+            playerIdentity: this.playerIdentity,
+          },
         });
+        this.listenForPresenceCount();
+      }
+
+      private listenForPresenceCount() {
+        if (!("cursors" in window)) return;
+
+        const emit = () => {
+          currentPresenceCount = (window as any).cursors.allColors.length;
+        };
+
+        (window as any).cursors.on("allColors", emit);
+        emit(); // read initial value
       }
     }
 
@@ -878,18 +900,33 @@ export default defineContentScript({
     let collectorManager: CollectorManager | null = null;
     let overlayRoot: any = null;
     let overlayVisible = false;
+    let overlayReactModule: { default: any; createElement: any } | null = null;
+    let HistoricalOverlayComponent: any = null;
+
+    const renderOverlay = () => {
+      if (!overlayRoot || !overlayReactModule || !HistoricalOverlayComponent) return;
+      overlayRoot.render(
+        overlayReactModule.createElement(HistoricalOverlayComponent, {
+          visible: true,
+          currentUrl: window.location.href,
+          onClose: () => toggleHistoricalOverlay(),
+        })
+      );
+    };
 
     const toggleHistoricalOverlay = async () => {
       try {
         overlayVisible = !overlayVisible;
 
         if (overlayVisible) {
-          // Create overlay
           if (VERBOSE) {
             console.log('[HistoricalOverlay] Activating overlay...');
           }
 
-          // Dynamically import React and components
+          // Pause collection while overlay is open — cursor/scroll events from
+          // interacting with the overlay UI shouldn't pollute the data.
+          collectorManager?.pauseAll();
+
           const [{ default: React }, { createRoot }, { HistoricalOverlay }] =
             await Promise.all([
               import('react'),
@@ -897,27 +934,20 @@ export default defineContentScript({
               import('../components/HistoricalOverlay'),
             ]);
 
-          // Create container
+          overlayReactModule = React;
+          HistoricalOverlayComponent = HistoricalOverlay;
+
           const container = document.createElement('div');
           container.id = 'playhtml-historical-overlay-root';
           document.body.appendChild(container);
 
-          // Create React root
           overlayRoot = createRoot(container);
-
-          // Render overlay
-          overlayRoot.render(
-            React.createElement(HistoricalOverlay, {
-              visible: true,
-              onClose: () => toggleHistoricalOverlay(),
-            })
-          );
+          renderOverlay();
 
           if (VERBOSE) {
             console.log('[HistoricalOverlay] Overlay activated');
           }
         } else {
-          // Remove overlay
           if (overlayRoot) {
             overlayRoot.unmount();
             overlayRoot = null;
@@ -928,6 +958,9 @@ export default defineContentScript({
             container.remove();
           }
 
+          // Resume collection now that the overlay is closed.
+          collectorManager?.resumeAll().catch(console.error);
+
           if (VERBOSE) {
             console.log('[HistoricalOverlay] Overlay deactivated');
           }
@@ -937,6 +970,19 @@ export default defineContentScript({
         overlayVisible = false;
       }
     };
+
+    // Re-render overlay with updated URL on SPA navigation
+    const handleNavigation = () => {
+      if (overlayVisible) renderOverlay();
+    };
+
+    window.addEventListener('popstate', handleNavigation);
+
+    // Intercept pushState/replaceState for SPA frameworks
+    const origPushState = history.pushState.bind(history);
+    const origReplaceState = history.replaceState.bind(history);
+    history.pushState = (...args) => { origPushState(...args); handleNavigation(); };
+    history.replaceState = (...args) => { origReplaceState(...args); handleNavigation(); };
 
     const initializeCollectors = async () => {
       try {
@@ -1198,6 +1244,11 @@ export default defineContentScript({
               sendResponse({ success: false, error: e?.message || String(e) });
             }
           })();
+          return true;
+        }
+
+        if (message.type === "GET_PRESENCE_COUNT") {
+          sendResponse({ count: currentPresenceCount });
           return true;
         }
 
