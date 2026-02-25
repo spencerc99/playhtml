@@ -65,6 +65,17 @@ export default defineBackground(() => {
       browser.tabs.create({ url: message.url }).then(() => sendResponse({ success: true }))
       return true
     }
+
+    if (message.type === 'CAPTURE_PAGE_PORTRAIT') {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore: captureVisibleTab overloads vary between polyfill types
+      browser.tabs.captureVisibleTab({ format: 'png' }).then((dataUrl: string) => {
+        sendResponse({ dataUrl })
+      }).catch((err: Error) => {
+        sendResponse({ error: err.message })
+      })
+      return true
+    }
   })
 
   async function getPlayerIdentity() {

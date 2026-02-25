@@ -17,6 +17,7 @@
   "dependencies": {
     "@playhtml/common": "workspace:*",
     "@playhtml/react": "workspace:*",
+    "html2canvas": "^1.4.1",
     "playhtml": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

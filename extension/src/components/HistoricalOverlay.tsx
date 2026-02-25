@@ -6,6 +6,11 @@ import browser from "webextension-polyfill";
 import { loadHistoricalData, type FilterMode } from "../storage/historyLoader";
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
 import { determineFilterScope, extractDomain } from "../utils/urlNormalization";
+import {
+  compositePagePortrait,
+  pagePortraitFilename,
+} from "../utils/portraitExport";
+import { PortraitCard } from "./PortraitCard";
 
 // Import visualization components from movement
 import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
@@ -80,6 +85,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   const [filterMode, setFilterMode] = useState<FilterMode>("auto");
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
+  const [showPortraitCard, setShowPortraitCard] = useState(false);
   const prevDomainRef = useRef<string>(extractDomain(currentUrl));
 
   // When URL changes, reset filterMode only if the domain changed
@@ -364,6 +370,60 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     };
   }, [events]);
 
+  // Compute screen time from navigation events
+  const totalTimeMs = useMemo(() => {
+    const navEvents = events
+      .filter((e) => e.type === "navigation")
+      .sort((a, b) => a.ts - b.ts);
+    let pendingFocusTs: number | null = null;
+    let total = 0;
+    for (const evt of navEvents) {
+      const d = evt.data as any;
+      if (d.event === "focus") {
+        pendingFocusTs = evt.ts;
+      } else if (
+        (d.event === "blur" || d.event === "beforeunload") &&
+        pendingFocusTs !== null
+      ) {
+        const duration = evt.ts - pendingFocusTs;
+        if (duration >= 1000 && duration <= 8 * 60 * 60 * 1000) {
+          total += duration;
+        }
+        pendingFocusTs = null;
+      }
+    }
+    return total > 0 ? total : null;
+  }, [events]);
+
+  const uniquePageCount = useMemo(() => {
+    const urls = new Set<string>();
+    events.forEach((e) => { if (e.meta?.url) urls.add(e.meta.url); });
+    return urls.size;
+  }, [events]);
+
+  async function handleCapturePagePortrait() {
+    try {
+      const response: { dataUrl?: string; error?: string } =
+        await browser.runtime.sendMessage({ type: "CAPTURE_PAGE_PORTRAIT" });
+      if (response.error || !response.dataUrl) {
+        console.error("[HistoricalOverlay] Capture failed:", response.error);
+        return;
+      }
+      const svgEl = document.querySelector(".trails-svg") as SVGSVGElement | null;
+      if (!svgEl) {
+        console.error("[HistoricalOverlay] Could not find .trails-svg element");
+        return;
+      }
+      await compositePagePortrait(
+        response.dataUrl,
+        svgEl,
+        pagePortraitFilename(domain),
+      );
+    } catch (err) {
+      console.error("[HistoricalOverlay] Export failed:", err);
+    }
+  }
+
   if (!visible) return null;
 
   const overlayStyles: React.CSSProperties = settings.documentSpace
@@ -524,6 +584,32 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   return (
     <div style={overlayStyles} ref={containerRef}>
+      {/* Floating portrait card */}
+      {showPortraitCard && !loading && events.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "80px",
+            right: "20px",
+            zIndex: 2147483646,
+            pointerEvents: "none",
+            width: "380px",
+          }}
+        >
+          <PortraitCard
+            domain={domain}
+            totalTimeMs={totalTimeMs}
+            eventCounts={{
+              cursor: eventCounts.cursor,
+              keyboard: eventCounts.keyboard,
+              viewport: eventCounts.viewport,
+            }}
+            dateRange={dateRange}
+            uniquePageCount={uniquePageCount}
+          />
+        </div>
+      )}
+
       {/* Bottom info bar */}
       <div style={infoBarStyles}>
         <div style={infoSectionStyles}>
@@ -693,6 +779,60 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           }}
         >
           full portrait →
+        </button>
+
+        {!loading && events.length > 0 && (
+          <button
+            onClick={() => setShowPortraitCard((p) => !p)}
+            title="Toggle portrait card"
+            style={{
+              background: showPortraitCard ? "rgba(61, 56, 51, 0.12)" : "none",
+              border: "1px solid rgba(0, 0, 0, 0.2)",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              lineHeight: 1,
+              fontFamily: "inherit",
+              color: "#3d3833",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.3)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.2)";
+            }}
+          >
+            portrait
+          </button>
+        )}
+
+        <button
+          onClick={handleCapturePagePortrait}
+          title="Save as image"
+          style={{
+            background: "none",
+            border: "1px solid rgba(0, 0, 0, 0.2)",
+            padding: "4px 8px",
+            borderRadius: "4px",
+            fontSize: "11px",
+            cursor: "pointer",
+            transition: "all 0.2s",
+            lineHeight: 1,
+            fontFamily: "inherit",
+            color: "#3d3833",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
+            e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.3)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "none";
+            e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.2)";
+          }}
+        >
+          ↓ save
         </button>
 
         <button

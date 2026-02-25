@@ -10,6 +10,8 @@ interface AnimatedTrailsProps {
   timeRange: { min: number; max: number; duration: number };
   /** When false, ripples are not shown (e.g. when AnimatedClicks is used for click-only view) */
   showClickRipples?: boolean;
+  /** When true, skip animation loop and render all trails fully drawn (snapshot-safe for html2canvas) */
+  frozen?: boolean;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -29,8 +31,11 @@ interface AnimatedTrailsProps {
 }
 
 export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
-  ({ trailStates, timeRange, showClickRipples = true, settings }) => {
-    const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
+  ({ trailStates, timeRange, showClickRipples = true, frozen = false, settings }) => {
+    // When frozen, use the full duration so all trails render at progress=1
+    const [elapsedTimeMs, setElapsedTimeMs] = useState(() =>
+      frozen ? timeRange.duration : 0,
+    );
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
       [],
     );
@@ -59,7 +64,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
     // Animation loop - elapsedTimeMs stays internal, never passed to parent
     useEffect(() => {
-      if (trailStates.length === 0) return;
+      if (frozen || trailStates.length === 0) return;
 
       let startTime: number | null = null;
 
@@ -355,12 +360,13 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     );
   },
   (prevProps, nextProps) => {
-    // Only re-render if trail states, time range, showClickRipples, or click settings change
+    // Only re-render if trail states, time range, showClickRipples, frozen, or click settings change
     // Visual settings (strokeWidth, pointSize, trailOpacity, animationSpeed) are handled via refs
     return (
       prevProps.trailStates === nextProps.trailStates &&
       prevProps.timeRange === nextProps.timeRange &&
       prevProps.showClickRipples === nextProps.showClickRipples &&
+      prevProps.frozen === nextProps.frozen &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickMinDuration ===
