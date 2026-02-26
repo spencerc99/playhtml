@@ -5,6 +5,7 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { VERBOSE } from "../config";
+import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -467,7 +468,7 @@ export default defineContentScript({
 
           if (!existingSiteSignature) {
             // This is a new site discovery - collect site signature
-            const siteTitle = document.title || currentDomain;
+            const siteTitle = getPageTitle(currentDomain);
             const description =
               document
                 .querySelector('meta[name="description"]')
@@ -493,13 +494,7 @@ export default defineContentScript({
       }
 
       private getFaviconUrl(): string {
-        const faviconLink = document.querySelector(
-          'link[rel="icon"], link[rel="shortcut icon"]'
-        ) as HTMLLinkElement;
-        if (faviconLink) {
-          return faviconLink.href;
-        }
-        return `${window.location.protocol}//${window.location.hostname}/favicon.ico`;
+        return getFaviconUrl();
       }
 
       private setupCollectionDetection() {

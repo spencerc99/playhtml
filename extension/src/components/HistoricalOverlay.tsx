@@ -10,7 +10,7 @@ import {
   compositePagePortrait,
   pagePortraitFilename,
 } from "../utils/portraitExport";
-import { PortraitCard } from "./PortraitCard";
+import { PortraitCard, type PortraitCardProps } from "./PortraitCard";
 
 // Import visualization components from movement
 import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
@@ -86,6 +86,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   const [filterMode, setFilterMode] = useState<FilterMode>("auto");
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
+  const [portraitStats, setPortraitStats] = useState<PortraitCardProps | null>(null);
   const prevDomainRef = useRef<string>(extractDomain(currentUrl));
 
   // When URL changes, reset filterMode only if the domain changed
@@ -194,6 +195,56 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [visible]);
+
+  // Fetch portrait stats when card is toggled on, re-fetch when filter mode changes
+  useEffect(() => {
+    if (!showPortraitCard) return;
+    (async () => {
+      try {
+        const { LocalEventStore } = await import("../storage/LocalEventStore");
+        const { extractDomain: extractDomainUtil } = await import("../utils/urlNormalization");
+        const store = new LocalEventStore();
+
+        const events = actualMode === "domain"
+          ? await store.queryByDomain(domain)
+          : await store.queryByUrl(currentUrl);
+
+        if (events.length === 0) return;
+
+        const counts = { cursor: 0, keyboard: 0, viewport: 0 };
+        const timestamps: number[] = [];
+        const uniqueUrls = new Set<string>();
+        events.forEach((e) => {
+          if (e.type === "cursor") counts.cursor++;
+          else if (e.type === "keyboard") counts.keyboard++;
+          else if (e.type === "viewport") counts.viewport++;
+          timestamps.push(e.ts);
+          if (e.meta?.url) uniqueUrls.add(e.meta.url);
+        });
+
+        const screenTime = await store.getScreenTime();
+        const scopedSessions = actualMode === "domain"
+          ? screenTime.sessions.filter((s) => extractDomainUtil(s.url) === domain)
+          : screenTime.sessions.filter((s) => {
+              try { return new URL(s.url).pathname === new URL(currentUrl).pathname; } catch { return false; }
+            });
+        const totalTimeMs = scopedSessions.reduce((sum, s) => sum + s.durationMs, 0);
+
+        setPortraitStats({
+          domain: actualMode === "domain" ? domain : new URL(currentUrl).pathname,
+          totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
+          eventCounts: counts,
+          dateRange: {
+            oldest: new Date(Math.min(...timestamps)).toLocaleDateString(),
+            newest: new Date(Math.max(...timestamps)).toLocaleDateString(),
+          },
+          uniquePageCount: uniqueUrls.size,
+        });
+      } catch (e) {
+        console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
+      }
+    })();
+  }, [showPortraitCard, actualMode, currentUrl, domain]);
 
   // Track viewport size
   useEffect(() => {
@@ -368,37 +419,6 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
       oldest: new Date(oldest).toLocaleDateString(),
       newest: new Date(newest).toLocaleDateString(),
     };
-  }, [events]);
-
-  // Compute screen time from navigation events
-  const totalTimeMs = useMemo(() => {
-    const navEvents = events
-      .filter((e) => e.type === "navigation")
-      .sort((a, b) => a.ts - b.ts);
-    let pendingFocusTs: number | null = null;
-    let total = 0;
-    for (const evt of navEvents) {
-      const d = evt.data as any;
-      if (d.event === "focus") {
-        pendingFocusTs = evt.ts;
-      } else if (
-        (d.event === "blur" || d.event === "beforeunload") &&
-        pendingFocusTs !== null
-      ) {
-        const duration = evt.ts - pendingFocusTs;
-        if (duration >= 1000 && duration <= 8 * 60 * 60 * 1000) {
-          total += duration;
-        }
-        pendingFocusTs = null;
-      }
-    }
-    return total > 0 ? total : null;
-  }, [events]);
-
-  const uniquePageCount = useMemo(() => {
-    const urls = new Set<string>();
-    events.forEach((e) => { if (e.meta?.url) urls.add(e.meta.url); });
-    return urls.size;
   }, [events]);
 
   async function handleCapturePagePortrait() {
@@ -585,7 +605,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   return (
     <div style={overlayStyles} ref={containerRef}>
       {/* Floating portrait card */}
-      {showPortraitCard && !loading && events.length > 0 && (
+      {showPortraitCard && portraitStats && (
         <div
           style={{
             position: "fixed",
@@ -596,17 +616,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             width: "380px",
           }}
         >
-          <PortraitCard
-            domain={domain}
-            totalTimeMs={totalTimeMs}
-            eventCounts={{
-              cursor: eventCounts.cursor,
-              keyboard: eventCounts.keyboard,
-              viewport: eventCounts.viewport,
-            }}
-            dateRange={dateRange}
-            uniquePageCount={uniquePageCount}
-          />
+          <PortraitCard {...portraitStats} />
         </div>
       )}
 

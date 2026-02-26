@@ -44,3 +44,16 @@ export interface CollectionEvent {
   data: unknown;                 // Type-specific payload
   meta: EventMeta;
 }
+
+/**
+ * Snapshot of page-level metadata used to avoid duplicating
+ * title/favicon payloads across every navigation event row.
+ */
+export interface PageMetadataSnapshot {
+  page_ref: string;
+  canonical_url: string;
+  title: string;
+  favicon_url: string;
+  metadata_hash: string;
+  observed_at_ts: number;
+}

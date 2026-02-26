@@ -3,59 +3,58 @@ $cell-size: 32px;
 body {
   margin: 0;
   padding: 0;
-  font-family: "Courier Prime", "Courier New", monospace;
-  background: white;
-  overflow: hidden;
+  background: #fafafa;
+  overflow-x: hidden;
+  overflow-y: auto; // The animation loop drives window.scrollTo() directly
   --cell-size: #{$cell-size};
 }
 
 #keypresses-grid {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
   position: relative;
-  overflow: hidden;
+  // height is set inline by the component based on total rows
 }
 
-// Grid paper background – same visual language as experiment 8
+// Subtle grid-paper background — same cadence as experiment 8
 .grid-container {
   display: grid;
   gap: 0;
-  background: white;
+  background: #fafafa;
   background-image:
-    repeating-linear-gradient(#e0e0e0 0 1px, transparent 1px 100%),
-    repeating-linear-gradient(90deg, #e0e0e0 0 1px, transparent 1px 100%);
+    repeating-linear-gradient(#e8e8e8 0 1px, transparent 1px 100%),
+    repeating-linear-gradient(90deg, #e8e8e8 0 1px, transparent 1px 100%);
   background-size: $cell-size $cell-size;
   width: 100%;
-  height: 100%;
+  // height is set inline
 }
 
 .grid-cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(#{$cell-size} - 4px);
-  font-weight: 700;
-  user-select: none;
+  // Base font size; overridden inline per session
+  font-size: 22px;
   font-family: "Courier Prime", "Courier New", monospace;
+  font-weight: 400;
+  color: transparent;
+  user-select: none;
   width: $cell-size;
   height: $cell-size;
   flex-shrink: 0;
   flex-grow: 0;
+  line-height: 1;
+  overflow: visible; // Allow slightly wider glyphs (serif W, M) to breathe
 
   &.filled {
-    animation: pop-in 0.15s ease-out both;
+    animation: appear 0.1s ease-out both;
   }
 
-  // Blinking cursor cell just after the last revealed character
-  &.cursor-cell {
-    background: rgba(0, 0, 0, 0.08);
-    outline: 2px solid currentColor;
-    outline-offset: -2px;
-    animation: cursor-blink 1.06s step-end infinite;
+  &.empty {
+    color: transparent;
   }
 }
 
-@keyframes pop-in {
+@keyframes appear {
   from {
     opacity: 0;
     transform: scale(0.7);
@@ -66,75 +65,113 @@ body {
   }
 }
 
-@keyframes cursor-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
-}
-
-// Minimal info bar at the bottom
+// ── Fixed info bar ────────────────────────────────────────────────────────────
 .info-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.9);
-  border-top: 1px solid #e0e0e0;
-  backdrop-filter: blur(8px);
+  height: 44px;
+  padding: 0 1rem;
+  background: rgba(250, 250, 250, 0.94);
+  border-top: 1px solid #e4e4e4;
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   gap: 1rem;
   font-family: "Courier Prime", "Courier New", monospace;
   font-size: 0.75rem;
-  color: #555;
+  color: #666;
   z-index: 10;
 }
 
 .info-label {
   font-weight: 700;
-  text-transform: lowercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
   color: #222;
 }
 
 .info-count {
-  color: #888;
+  color: #aaa;
 }
 
 .info-loading {
-  color: #aaa;
-  animation: pulse-text 1.2s ease-in-out infinite;
+  color: #bbb;
+  animation: pulse-text 1.4s ease-in-out infinite;
 }
 
 .info-error {
-  color: #d32f2f;
+  color: #c00;
   cursor: help;
 }
 
 @keyframes pulse-text {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  50%       { opacity: 0.3; }
 }
 
+// ── Dev-mode speed control ────────────────────────────────────────────────────
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #555;
+  user-select: none;
+  cursor: default;
+
+  input[type="range"] {
+    width: 90px;
+    height: 3px;
+    border-radius: 2px;
+    background: #ddd;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #333;
+      cursor: pointer;
+    }
+
+    &::-moz-range-thumb {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #333;
+      border: none;
+      cursor: pointer;
+    }
+  }
+}
+
+// ── Refresh button ────────────────────────────────────────────────────────────
 .refresh-btn {
   margin-left: auto;
   background: none;
-  border: 1px solid #ccc;
+  border: 1px solid #ddd;
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 1rem;
   cursor: pointer;
-  color: #555;
+  color: #666;
   line-height: 1;
-  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 
   &:hover:not(:disabled) {
     background: #f0f0f0;
+    border-color: #bbb;
     color: #111;
   }
 
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3;
     cursor: not-allowed;
   }
 }

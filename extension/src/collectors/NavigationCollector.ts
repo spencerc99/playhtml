@@ -4,6 +4,7 @@
 import { BaseCollector } from './BaseCollector';
 import type { NavigationEventData } from './types';
 import { VERBOSE } from '../config';
+import { buildMetadataHash, getCurrentPageMetadata } from '../utils/pageMetadata';
 
 /**
  * NavigationCollector captures navigation and tab lifecycle events:
@@ -47,6 +48,7 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
         event,
         // Include visibility state for context
         visibility_state: document.visibilityState as any,
+        ...this.getPageSnapshot(),
       });
       
       this.updateLastEvent(event);
@@ -62,6 +64,7 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
         event: 'popstate',
         url: window.location.href,
         state: e.state,
+        ...this.getPageSnapshot(window.location.href),
       });
       
       this.updateLastEvent('popstate');
@@ -73,6 +76,7 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       this.emitDiscreteEvent({
         event: 'beforeunload',
         from_url: window.location.href,
+        ...this.getPageSnapshot(window.location.href),
       });
     };
     
@@ -89,6 +93,7 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       this.emitDiscreteEvent({
         event: 'focus',
         visibility_state: 'visible',
+        ...this.getPageSnapshot(),
       });
       this.updateLastEvent('focus');
     }
@@ -164,5 +169,20 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
     
     // Emit to buffer for archival
     this.emit(dataWithQuantity);
+  }
+
+  /**
+   * Capture page metadata snapshot at event time.
+   * This allows server-side dedupe/versioning without keeping large fields per event row.
+   */
+  private getPageSnapshot(url = window.location.href): Pick<
+    NavigationEventData,
+    'page_ref' | 'canonical_url' | 'title' | 'favicon_url' | 'metadata_hash'
+  > {
+    const metadata = getCurrentPageMetadata(url);
+    return {
+      ...metadata,
+      metadata_hash: buildMetadataHash(metadata.title, metadata.favicon_url),
+    };
   }
 }

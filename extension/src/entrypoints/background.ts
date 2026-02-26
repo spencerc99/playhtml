@@ -25,7 +25,7 @@ export default defineBackground(() => {
           publicKey: generatePublicKey(),
           privateKey: generatePrivateKey(),
           playerStyle: {
-            colorPalette: ['#6366f1', '#8b5cf6', '#ec4899'],
+            colorPalette: [randomHslColor()],
             animationStyle: 'gentle' as const,
             interactionPatterns: []
           },
@@ -38,6 +38,13 @@ export default defineBackground(() => {
     } catch (error) {
       console.error('Failed to initialize player identity:', error)
     }
+  }
+
+  function randomHslColor(): string {
+    const hue = Math.floor(Math.random() * 360);
+    const s = 65 + Math.floor(Math.random() * 15); // 65–80%
+    const l = 55 + Math.floor(Math.random() * 15); // 55–70%
+    return `hsl(${hue}, ${s}%, ${l}%)`;
   }
 
   // Simple key generation (will be replaced with proper crypto)

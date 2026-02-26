@@ -586,7 +586,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {settings.eventTypeFilter.cursor && settings.showCursorTrails && (
           <AnimatedTrails
-            key={settings.domainFilter}
+            key={`trails-${settings.domainFilter}`}
             trailStates={trailStates}
             timeRange={timeRange}
             showClickRipples={!settings.showCursorClicks}
@@ -611,7 +611,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {settings.eventTypeFilter.cursor && settings.showCursorClicks && (
           <AnimatedClicks
-            key={settings.domainFilter}
+            key={`clicks-${settings.domainFilter}`}
             scheduledClicks={scheduledClicks}
             timeRange={{ duration: clickCycleDuration }}
             settings={{

@@ -15,6 +15,8 @@ describe("NavigationCollector", () => {
     Object.defineProperty(window, "location", {
       value: {
         href: "https://example.com/page",
+        protocol: "https:",
+        hostname: "example.com",
         pathname: "/page",
         search: "",
         hash: "",
@@ -75,6 +77,7 @@ describe("NavigationCollector", () => {
 
     it("emits blur event when tab becomes hidden", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
       // Simulate tab switch away
       Object.defineProperty(document, "hidden", { value: true });
@@ -87,12 +90,21 @@ describe("NavigationCollector", () => {
       const call = emitCallback.mock.calls[0][0] as NavigationEventData;
       expect(call.event).toBe("blur");
       expect(call.visibility_state).toBe("hidden");
+      expect(call.page_ref).toBeTruthy();
+      expect(call.title).toBeTruthy();
+      expect(call.favicon_url).toContain("example.com");
     });
 
     it("emits focus event when tab becomes visible", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
-      // Simulate tab switch back
+      // Simulate tab switch back (hidden -> visible)
+      Object.defineProperty(document, "hidden", { value: true });
+      Object.defineProperty(document, "visibilityState", { value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+      emitCallback.mockClear();
+
       Object.defineProperty(document, "hidden", { value: false });
       Object.defineProperty(document, "visibilityState", { value: "visible" });
       
@@ -103,11 +115,14 @@ describe("NavigationCollector", () => {
       const call = emitCallback.mock.calls[0][0] as NavigationEventData;
       expect(call.event).toBe("focus");
       expect(call.visibility_state).toBe("visible");
+      expect(call.page_ref).toBeTruthy();
+      expect(call.metadata_hash).toBeTruthy();
     });
 
     it("deduplicates events within 2 second window", () => {
       vi.useFakeTimers();
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
       // First blur
       Object.defineProperty(document, "hidden", { value: true });
@@ -124,13 +139,14 @@ describe("NavigationCollector", () => {
       vi.advanceTimersByTime(1600);
       document.dispatchEvent(new Event("visibilitychange"));
       expect(emitCallback).toHaveBeenCalledTimes(2);
-      expect((emitCallback.mock.calls[1][0] as NavigationEventData).quantity).toBe(1);
+      expect((emitCallback.mock.calls[1][0] as NavigationEventData).quantity).toBe(2);
 
       vi.useRealTimers();
     });
 
     it("does not emit when disabled", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
       collector.disable();
 
       const visibilityEvent = new Event("visibilitychange", { bubbles: true });
@@ -143,6 +159,7 @@ describe("NavigationCollector", () => {
   describe("popstate event", () => {
     it("emits popstate event with URL and state", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
       const mockState = { page: 2, filter: "active" };
       const popstateEvent = new PopStateEvent("popstate", {
@@ -153,6 +170,8 @@ describe("NavigationCollector", () => {
       Object.defineProperty(window, "location", {
         value: {
           href: "https://example.com/page?page=2",
+          protocol: "https:",
+          hostname: "example.com",
           pathname: "/page",
           search: "?page=2",
           hash: "",
@@ -168,10 +187,13 @@ describe("NavigationCollector", () => {
       expect(call.event).toBe("popstate");
       expect(call.url).toBe("https://example.com/page?page=2");
       expect(call.state).toEqual(mockState);
+      expect(call.page_ref).toBeTruthy();
+      expect(call.canonical_url).toContain("https://example.com/page?page=2");
     });
 
     it("handles popstate without state", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
       const popstateEvent = new PopStateEvent("popstate", { state: null });
       window.dispatchEvent(popstateEvent);
@@ -186,8 +208,10 @@ describe("NavigationCollector", () => {
   describe("beforeunload event", () => {
     it("emits beforeunload event with from_url", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
-      const beforeunloadEvent = new BeforeUnloadEvent("beforeunload", {
+      const beforeunloadEvent = new Event("beforeunload", {
+        bubbles: false,
         cancelable: true,
       });
 
@@ -197,31 +221,39 @@ describe("NavigationCollector", () => {
       const call = emitCallback.mock.calls[0][0] as NavigationEventData;
       expect(call.event).toBe("beforeunload");
       expect(call.from_url).toBe("https://example.com/page");
+      expect(call.title).toBeTruthy();
     });
   });
 
   describe("multiple events", () => {
     it("can handle multiple events in sequence", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
 
-      window.dispatchEvent(new Event("focus"));
-      window.dispatchEvent(new Event("blur"));
-      window.dispatchEvent(new Event("focus"));
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
 
       expect(emitCallback).toHaveBeenCalledTimes(3);
-      expect(emitCallback.mock.calls[0][0].event).toBe("focus");
-      expect(emitCallback.mock.calls[1][0].event).toBe("blur");
-      expect(emitCallback.mock.calls[2][0].event).toBe("focus");
+      expect(emitCallback.mock.calls[0][0].event).toBe("blur");
+      expect(emitCallback.mock.calls[1][0].event).toBe("focus");
+      expect(emitCallback.mock.calls[2][0].event).toBe("blur");
     });
   });
 
   describe("disabled state", () => {
     it("does not emit events when disabled", () => {
       collector.enable();
+      emitCallback.mockClear(); // Ignore synthetic initial focus.
       collector.disable();
 
-      window.dispatchEvent(new Event("focus"));
-      window.dispatchEvent(new Event("blur"));
+      document.dispatchEvent(new Event("visibilitychange"));
       window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
 
       expect(emitCallback).not.toHaveBeenCalled();

@@ -1,36 +1,65 @@
 // ABOUTME: Grid visualization of internet keyboard events
-// ABOUTME: Replays typed characters into grid cells using stagger animation from AnimatedTyping
+// ABOUTME: Scroll-driven reveal: the page slowly auto-scrolls and sessions activate
+// ABOUTME: as they enter the viewport, typing at natural speed with backspace replay.
+// ABOUTME: Visual variety comes from typography (font, weight, shade) not color.
 
-import React, { useState, useEffect, useRef, useMemo, memo } from "react";
-import { CollectionEvent, KeyboardEventData } from "../types";
-import { getColorForParticipant } from "../utils/eventUtils";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { CollectionEvent, KeyboardEventData, TypingAction } from "../types";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
 const CELL_SIZE = 32;
-const TOTAL_DURATION_MS = 40000; // 40-second loop
-const ANIMATION_SPEED = 1.0;
+/** Base scroll rate in px per real second at speed=1. */
+const SCROLL_SPEED_PX_S = 22;
+const SPEED_STORAGE_KEY = "keypresses-animation-speed";
+const DEFAULT_SPEED = 1.0;
+const MERGE_THRESHOLD_MS = 35000;
+const MAX_SESSIONS = 150;
+/** Empty cells inserted between sessions for visual breathing room. */
+const SESSION_GAP = 3;
 
-// Filter out test sequences (same pattern as useKeyboardTyping)
-const FILTER_TEST_SEQUENCES = ["elizabeth"];
+const checkDevMode = () =>
+  new URLSearchParams(window.location.search).has("dev");
 
-interface CellData {
-  char: string;
+// ── Typography variants ───────────────────────────────────────────────────────
+// Subtle differentiation via font family / weight / near-black shade only.
+interface SessionStyle {
+  fontFamily: string;
+  fontWeight: number;
+  fontSize: string;
   color: string;
-  revealTimeMs: number;
 }
 
-interface Session {
-  color: string;
-  chars: string;
-  seed: number;
-}
+const SESSION_STYLES: SessionStyle[] = [
+  // Monospace — full range from near-black to very light
+  { fontFamily: '"Courier Prime","Courier New",monospace', fontWeight: 700, fontSize: "22px", color: "#111" },
+  { fontFamily: '"Courier Prime","Courier New",monospace', fontWeight: 400, fontSize: "22px", color: "#333" },
+  { fontFamily: '"Courier Prime","Courier New",monospace', fontWeight: 400, fontSize: "22px", color: "#666" },
+  { fontFamily: '"Courier Prime","Courier New",monospace', fontWeight: 700, fontSize: "22px", color: "#888" },
+  { fontFamily: '"Courier Prime","Courier New",monospace', fontWeight: 400, fontSize: "22px", color: "#aaa" },
+  { fontFamily: '"Courier Prime","Courier New",monospace', fontWeight: 700, fontSize: "22px", color: "#c8c8c8" },
+  // Serif — mid and light
+  { fontFamily: 'Georgia,"Times New Roman",serif', fontWeight: 700, fontSize: "19px", color: "#1a1a1a" },
+  { fontFamily: 'Georgia,"Times New Roman",serif', fontWeight: 400, fontSize: "19px", color: "#4a4a4a" },
+  { fontFamily: 'Georgia,"Times New Roman",serif', fontWeight: 700, fontSize: "19px", color: "#777" },
+  { fontFamily: 'Georgia,"Times New Roman",serif', fontWeight: 400, fontSize: "19px", color: "#999" },
+  { fontFamily: 'Georgia,"Times New Roman",serif', fontWeight: 700, fontSize: "19px", color: "#bbb" },
+  { fontFamily: 'Georgia,"Times New Roman",serif', fontWeight: 400, fontSize: "19px", color: "#d0d0d0" },
+  // Sans-serif — dark, mid, light
+  { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', fontWeight: 700, fontSize: "20px", color: "#222" },
+  { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', fontWeight: 300, fontSize: "20px", color: "#555" },
+  { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', fontWeight: 600, fontSize: "20px", color: "#888" },
+  { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', fontWeight: 300, fontSize: "20px", color: "#aaa" },
+  { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', fontWeight: 600, fontSize: "20px", color: "#c0c0c0" },
+  { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', fontWeight: 300, fontSize: "20px", color: "#ddd" },
+];
 
-// Seeded random for consistent variations (mirrors AnimatedTyping)
+// ── Seeded random ─────────────────────────────────────────────────────────────
 function seededRandom(seed: number): number {
   const x = Math.sin(seed) * 43758.5453;
   return x - Math.floor(x);
 }
 
-// Calculate per-character reveal times with natural variation (mirrors AnimatedTyping)
+// ── Per-character timing with natural variation (mirrors AnimatedTyping) ──────
 function calculateCharacterTimings(
   textLength: number,
   baseDuration: number,
@@ -38,294 +67,402 @@ function calculateCharacterTimings(
 ): number[] {
   if (textLength <= 0) return [];
   if (baseDuration <= 0) return new Array(textLength).fill(0);
-
   const timings: number[] = [];
-  let cumulativeTime = 0;
-
+  let cumulative = 0;
   for (let i = 0; i < textLength; i++) {
-    // 0.5x – 1.5x speed variation per character
-    const variation = 0.5 + seededRandom(seed + i) * 1.0;
-    cumulativeTime += (baseDuration / textLength) * variation;
-    timings.push(cumulativeTime);
+    cumulative += (baseDuration / textLength) * (0.5 + seededRandom(seed + i));
+    timings.push(cumulative);
   }
-
-  // Normalize so final character lands exactly at baseDuration
-  const totalTime = timings[timings.length - 1] || 1;
-  return timings.map((t) => (t / totalTime) * baseDuration);
+  const scale = baseDuration / (timings[timings.length - 1] || 1);
+  return timings.map((t) => t * scale);
 }
 
 /**
- * Process raw keyboard events into per-cell data with staggered reveal times.
- *
- * Mirrors the session-grouping + overlap-stagger logic from useKeyboardTyping /
- * AnimatedTyping so the characters appear with the same organic rhythm.
+ * Exact port of AnimatedTyping's replaySequence.
+ * Replays a TypingAction[] as of `elapsedMs` into the session, returning the
+ * currently visible text including in-progress backspaces with natural rhythm.
  */
-function buildCellData(
-  events: CollectionEvent[],
-  maxChars: number,
-): CellData[] {
-  const MERGE_THRESHOLD_MS = 35000;
-  // High overlap: sessions start very close together (same default as AnimatedTyping)
-  const OVERLAP_FACTOR = 0.9;
-  const AVG_SESSION_DURATION_MS = 4000;
-  const actualSpacing = AVG_SESSION_DURATION_MS * (1 - OVERLAP_FACTOR * 0.95);
+function replaySequence(
+  sequence: TypingAction[],
+  elapsedMs: number,
+  seed: number = 0,
+): string {
+  if (!sequence || sequence.length === 0) return "";
+  let text = "";
+  let actionSeed = seed;
+  for (let i = 0; i < sequence.length; i++) {
+    const action = sequence[i];
+    const next = sequence[i + 1];
+    const actionStart = action.timestamp;
+    const actionEnd = next ? next.timestamp : actionStart + 2000;
+    if (elapsedMs < actionStart) break;
 
-  // ── 1. Filter to keyboard events that have a sequence ───────────────────────
-  const keyboardEvents = events.filter((e) => {
-    if (e.type !== "keyboard") return false;
-    const data = e.data as unknown as KeyboardEventData;
-    if (!data.sequence || data.sequence.length === 0) return false;
-
-    // Drop known test sequences
-    const fullText = data.sequence.reduce(
-      (acc, s) => acc + (s.text || ""),
-      "",
-    );
-    return !FILTER_TEST_SEQUENCES.includes(fullText);
-  });
-
-  // ── 2. Group by participant + session + URL + input selector ─────────────────
-  const eventsByInputField = new Map<string, CollectionEvent[]>();
-  keyboardEvents.forEach((event) => {
-    const data = event.data as unknown as KeyboardEventData;
-    const key = `${event.meta.pid}|${event.meta.sid}|${event.meta.url ?? ""}|${data.t ?? "unknown"}`;
-    if (!eventsByInputField.has(key)) eventsByInputField.set(key, []);
-    eventsByInputField.get(key)!.push(event);
-  });
-
-  // ── 3. Merge temporally-close events per input field ─────────────────────────
-  const sessions: Session[] = [];
-
-  eventsByInputField.forEach((groupEvents) => {
-    groupEvents.sort((a, b) => a.ts - b.ts);
-
-    const mergedGroups: CollectionEvent[][] = [];
-    let currentGroup: CollectionEvent[] = [];
-
-    groupEvents.forEach((event) => {
-      if (currentGroup.length === 0) {
-        currentGroup.push(event);
-        return;
-      }
-      const gap = event.ts - currentGroup[currentGroup.length - 1].ts;
-      if (gap <= MERGE_THRESHOLD_MS) {
-        currentGroup.push(event);
+    if (action.action === "type" && action.text) {
+      const len = action.text.length;
+      const timeIn = elapsedMs - actionStart;
+      if (elapsedMs >= actionEnd || len === 0) {
+        text += action.text;
       } else {
-        mergedGroups.push(currentGroup);
-        currentGroup = [event];
+        const timings = calculateCharacterTimings(len, actionEnd - actionStart, actionSeed);
+        let show = 1;
+        for (let j = 0; j < timings.length; j++) {
+          if (timeIn >= timings[j]) show = j + 1;
+          else break;
+        }
+        text += action.text.slice(0, show);
       }
-    });
-    if (currentGroup.length > 0) mergedGroups.push(currentGroup);
-
-    mergedGroups.forEach((group) => {
-      const firstEvent = group[0];
-      const color = getColorForParticipant(firstEvent.meta.pid);
-
-      // Replay actions to obtain the final typed text
-      let text = "";
-      group.forEach((event) => {
-        const data = event.data as unknown as KeyboardEventData;
-        data.sequence?.forEach((action) => {
-          if (action.action === "type" && action.text) {
-            text += action.text;
-          } else if (action.action === "backspace" && action.deletedCount) {
-            text = text.slice(0, -action.deletedCount);
-          }
-        });
-      });
-
-      // Keep only printable ASCII, collapse whitespace runs to a single space
-      const printable = text
-        .replace(/[^\x20-\x7E]/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      if (printable.length > 0) {
-        sessions.push({
-          color,
-          chars: printable,
-          seed: firstEvent.meta.pid.charCodeAt(0) + (firstEvent.ts % 10000),
-        });
+      actionSeed += len;
+    } else if (action.action === "backspace" && action.deletedCount) {
+      const count = action.deletedCount;
+      const timeIn = elapsedMs - actionStart;
+      if (elapsedMs >= actionEnd) {
+        text = text.slice(0, -Math.min(count, text.length));
+      } else {
+        const timings = calculateCharacterTimings(count, actionEnd - actionStart, actionSeed);
+        let deleted = 1;
+        for (let j = 0; j < timings.length; j++) {
+          if (timeIn >= timings[j]) deleted = j + 1;
+          else break;
+        }
+        text = text.slice(0, -Math.min(deleted, text.length));
       }
-    });
-  });
-
-  if (sessions.length === 0) return [];
-
-  // ── 4. Assign staggered reveal times (mirrors AnimatedTyping schedule) ───────
-  const allChars: CellData[] = [];
-
-  sessions.forEach((session, sessionIndex) => {
-    const startOffset = (sessionIndex * actualSpacing) % TOTAL_DURATION_MS;
-    // Distribute the session's chars over a window proportional to char count
-    const sessionDuration = Math.max(2000, session.chars.length * 100);
-
-    const charTimings = calculateCharacterTimings(
-      session.chars.length,
-      sessionDuration,
-      session.seed,
-    );
-
-    for (let i = 0; i < session.chars.length; i++) {
-      allChars.push({
-        char: session.chars[i],
-        color: session.color,
-        revealTimeMs: startOffset + charTimings[i],
-      });
+      actionSeed += count;
     }
-  });
-
-  // ── 5. Sort by reveal time, cap to grid capacity ─────────────────────────────
-  allChars.sort((a, b) => a.revealTimeMs - b.revealTimeMs);
-  const capped = allChars.slice(0, maxChars);
-  if (capped.length === 0) return [];
-
-  // Scale reveal times to fit within TOTAL_DURATION_MS if they exceed it
-  const maxReveal = capped[capped.length - 1].revealTimeMs;
-  if (maxReveal > TOTAL_DURATION_MS) {
-    const scale = TOTAL_DURATION_MS / maxReveal;
-    return capped.map((c) => ({
-      ...c,
-      revealTimeMs: c.revealTimeMs * scale,
-    }));
   }
-
-  return capped;
+  return text;
 }
 
-// ── Grid cell (memoized) ──────────────────────────────────────────────────────
-const GridCell = memo(
-  ({
-    char,
-    color,
-    isCursor,
-  }: {
-    char: string;
-    color: string | undefined;
-    isCursor: boolean;
-  }) => (
-    <div
-      className={`grid-cell${color ? " filled" : " empty"}${isCursor ? " cursor-cell" : ""}`}
-      style={{ color: color ?? "transparent", borderColor: isCursor ? color : undefined }}
-    >
-      {char}
-    </div>
-  ),
-  (prev, next) =>
-    prev.char === next.char &&
-    prev.color === next.color &&
-    prev.isCursor === next.isCursor,
-);
+/** Maximum text length reached at any point — needed to pre-allocate grid cells. */
+function computeMaxLength(sequence: TypingAction[]): number {
+  let text = "";
+  let maxLen = 0;
+  for (const a of sequence) {
+    if (a.action === "type" && a.text) {
+      text += a.text;
+      maxLen = Math.max(maxLen, text.length);
+    } else if (a.action === "backspace" && a.deletedCount) {
+      text = text.slice(0, -Math.min(a.deletedCount, text.length));
+    }
+  }
+  return Math.max(maxLen, text.length);
+}
 
-// ── Main component ────────────────────────────────────────────────────────────
-interface KeypressesGridProps {
+function calculateTypingDuration(sequence: TypingAction[]): number {
+  if (!sequence.length) return 2000;
+  return sequence[sequence.length - 1].timestamp + 2000;
+}
+
+// ── Session model ─────────────────────────────────────────────────────────────
+interface SessionState {
+  style: SessionStyle;
+  durationMs: number;
+  sequence: TypingAction[];
+  /** Cached result at completion — skips replaySequence when session is done typing. */
+  finalText: string;
+  seed: number;
+  gridStartIndex: number;
+  /** Max cells ever needed (text can grow then shrink via backspace). */
+  maxLength: number;
+}
+
+// ── Build sessions from raw events ────────────────────────────────────────────
+function buildSessions(events: CollectionEvent[]): SessionState[] {
+  const keyboardEvents = events.filter((e) => {
+    if (e.type !== "keyboard") return false;
+    const d = e.data as unknown as KeyboardEventData;
+    if (!d.sequence || d.sequence.length === 0) return false;
+    const flat = d.sequence.reduce((acc, s) => acc + (s.text || ""), "");
+    return flat !== "elizabeth"; // filter test data
+  });
+
+  // Group by unique input field (pid + sid + url + CSS selector)
+  const byField = new Map<string, CollectionEvent[]>();
+  keyboardEvents.forEach((ev) => {
+    const d = ev.data as unknown as KeyboardEventData;
+    const key = `${ev.meta.pid}|${ev.meta.sid}|${ev.meta.url ?? ""}|${d.t ?? ""}`;
+    if (!byField.has(key)) byField.set(key, []);
+    byField.get(key)!.push(ev);
+  });
+
+  interface RawSession {
+    sequence: TypingAction[];
+    seed: number;
+  }
+  const raw: RawSession[] = [];
+
+  byField.forEach((grp) => {
+    grp.sort((a, b) => a.ts - b.ts);
+    // Merge temporally close events into contiguous sequences
+    const merged: CollectionEvent[][] = [];
+    let cur: CollectionEvent[] = [];
+    grp.forEach((ev) => {
+      if (!cur.length || ev.ts - cur[cur.length - 1].ts > MERGE_THRESHOLD_MS) {
+        if (cur.length) merged.push(cur);
+        cur = [ev];
+      } else {
+        cur.push(ev);
+      }
+    });
+    if (cur.length) merged.push(cur);
+
+    merged.forEach((group) => {
+      const first = group[0];
+      const seq: TypingAction[] = [];
+      let offset = 0;
+      group.forEach((ev, gi) => {
+        const d = ev.data as unknown as KeyboardEventData;
+        if (!d.sequence) return;
+        const base = gi === 0 ? 0 : offset;
+        d.sequence.forEach((a) => seq.push({ ...a, timestamp: a.timestamp + base }));
+        if (d.sequence.length) offset += d.sequence[d.sequence.length - 1].timestamp + 500;
+      });
+      if (seq.length > 0) {
+        raw.push({
+          sequence: seq,
+          seed: first.meta.pid.charCodeAt(0) + (first.ts % 10000),
+        });
+      }
+    });
+  });
+
+  if (!raw.length) return [];
+
+  // Assign sequential grid positions and typography styles
+  let nextGrid = 0;
+  return raw.slice(0, MAX_SESSIONS).map((r, i) => {
+    const duration = calculateTypingDuration(r.sequence);
+    const maxLen = computeMaxLength(r.sequence);
+    const style = SESSION_STYLES[Math.floor(seededRandom(i * 7.3 + 1) * SESSION_STYLES.length)];
+    const seed = r.seed;
+    const finalText = replaySequence(r.sequence, duration, seed);
+    const gridStart = nextGrid;
+    nextGrid += maxLen + SESSION_GAP;
+    return { style, durationMs: duration, sequence: r.sequence, finalText, seed, gridStartIndex: gridStart, maxLength: maxLen };
+  });
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+interface Props {
   events: CollectionEvent[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
 }
 
-export const KeypressesGrid: React.FC<KeypressesGridProps> = ({
-  events,
-  loading,
-  error,
-  onRefresh,
-}) => {
-  const [gridDimensions, setGridDimensions] = useState({
-    cols: 60,
-    rows: 40,
+export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefresh }) => {
+  const [cols, setCols] = useState(() => Math.floor(window.innerWidth / CELL_SIZE));
+  const [animationSpeed, setAnimationSpeed] = useState<number>(() => {
+    const v = localStorage.getItem(SPEED_STORAGE_KEY);
+    return v ? parseFloat(v) : DEFAULT_SPEED;
   });
-  const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
-  const animationRef = useRef<number>();
+  const [devMode] = useState(checkDevMode);
 
-  // Recalculate grid dimensions when window resizes
+  // Refs readable in animation loop without causing restarts
+  const speedRef = useRef(animationSpeed);
+  const colsRef = useRef(cols);
+
+  // Imperative grid DOM
+  const gridRef = useRef<HTMLDivElement>(null);
+  const cellsRef = useRef<HTMLDivElement[]>([]);
+  const prevCharRef = useRef<string[]>([]);
+  const prevFilledRef = useRef<boolean[]>([]);
+
+  // Scroll-driven animation state
+  const virtualTimeRef = useRef(0);     // ms, grows at speed × realTime
+  const prevTsRef = useRef<number | null>(null);
+  // virtualTime at which each session first entered the viewport
+  const sessionEntryRef = useRef<Map<number, number>>(new Map());
+  const prevScrollRef = useRef(0);      // detects loop reset
+
+  const animRef = useRef<number>();
+
+  const sessions = useMemo(() => buildSessions(events), [events]);
+  const totalCells = sessions.length
+    ? sessions[sessions.length - 1].gridStartIndex + sessions[sessions.length - 1].maxLength
+    : 0;
+
+  // Keep refs current without restarting the animation loop
+  const totalCellsRef = useRef(totalCells);
+  totalCellsRef.current = totalCells;
+
   useEffect(() => {
-    const recalculate = () => {
-      setGridDimensions({
-        cols: Math.floor(window.innerWidth / CELL_SIZE),
-        rows: Math.floor(window.innerHeight / CELL_SIZE),
-      });
+    speedRef.current = animationSpeed;
+    localStorage.setItem(SPEED_STORAGE_KEY, String(animationSpeed));
+  }, [animationSpeed]);
+
+  useEffect(() => {
+    colsRef.current = cols;
+  }, [cols]);
+
+  // Recalculate cols on resize
+  useEffect(() => {
+    const handle = () => {
+      const c = Math.floor(window.innerWidth / CELL_SIZE);
+      setCols(c);
+      colsRef.current = c;
     };
-    recalculate();
-    window.addEventListener("resize", recalculate);
-    return () => window.removeEventListener("resize", recalculate);
+    window.addEventListener("resize", handle);
+    return () => window.removeEventListener("resize", handle);
   }, []);
 
-  const maxChars = gridDimensions.cols * gridDimensions.rows;
-
-  const cellData = useMemo(
-    () => buildCellData(events, maxChars),
-    [events, maxChars],
-  );
-
-  // Animation loop – mirrors AnimatedTyping's loop
+  // Build the DOM grid imperatively — avoids React reconciling thousands of cells
   useEffect(() => {
-    if (cellData.length === 0) return;
+    const grid = gridRef.current;
+    if (!grid) return;
+    grid.innerHTML = "";
+    grid.style.gridTemplateColumns = `repeat(${cols}, ${CELL_SIZE}px)`;
 
-    let startTime: number | null = null;
-
-    const animate = (timestamp: number) => {
-      if (startTime === null) startTime = timestamp;
-      const scaledElapsed = (timestamp - startTime) * ANIMATION_SPEED;
-      setElapsedTimeMs(scaledElapsed % TOTAL_DURATION_MS);
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [cellData]);
-
-  // How many cells are visible at this moment in the loop
-  const visibleCount = useMemo(() => {
-    let count = 0;
-    for (let i = 0; i < cellData.length; i++) {
-      if (cellData[i].revealTimeMs <= elapsedTimeMs) count = i + 1;
-      else break;
+    const newCells: HTMLDivElement[] = new Array(totalCells);
+    for (let i = 0; i < totalCells; i++) {
+      const div = document.createElement("div");
+      div.className = "grid-cell empty";
+      div.textContent = "\u00A0";
+      grid.appendChild(div);
+      newCells[i] = div;
     }
-    return count;
-  }, [cellData, elapsedTimeMs]);
+    cellsRef.current = newCells;
+    prevCharRef.current = new Array(totalCells).fill("");
+    prevFilledRef.current = new Array(totalCells).fill(false);
 
-  const totalCells = gridDimensions.cols * gridDimensions.rows;
-  // The "cursor" sits just after the last revealed character
-  const cursorIndex = visibleCount;
+    // Reset all scroll-driven state so sessions re-activate cleanly
+    sessionEntryRef.current.clear();
+    virtualTimeRef.current = 0;
+    prevTsRef.current = null;
+    prevScrollRef.current = 0;
+  }, [sessions, totalCells, cols]);
+
+  // ── Main animation loop ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!sessions.length) return;
+
+    const animate = (ts: number) => {
+      // Advance virtual time (affected by speed multiplier)
+      if (prevTsRef.current !== null) {
+        virtualTimeRef.current += (ts - prevTsRef.current) * speedRef.current;
+      }
+      prevTsRef.current = ts;
+
+      const viewportH = window.innerHeight;
+      const totalH = Math.ceil(totalCellsRef.current / colsRef.current) * CELL_SIZE;
+      // Leave 60px at the bottom so the info bar doesn't hide the last row
+      const maxScroll = Math.max(0, totalH - viewportH + 60);
+      const rawScrollPx = (virtualTimeRef.current * SCROLL_SPEED_PX_S) / 1000;
+      const loopedScroll = maxScroll > 0 ? rawScrollPx % maxScroll : 0;
+
+      // When the scroll position wraps back to the top, reset all session timers
+      if (loopedScroll < prevScrollRef.current - CELL_SIZE * 2) {
+        sessionEntryRef.current.clear();
+      }
+      prevScrollRef.current = loopedScroll;
+      window.scrollTo(0, loopedScroll);
+
+      const cells = cellsRef.current;
+      const prevChar = prevCharRef.current;
+      const prevFilled = prevFilledRef.current;
+      const currentCols = colsRef.current;
+
+      for (let si = 0; si < sessions.length; si++) {
+        const session = sessions[si];
+        const sessionTopRow = Math.floor(session.gridStartIndex / currentCols);
+        const sessionTopPx = sessionTopRow * CELL_SIZE;
+
+        // Activate the session the moment its first row scrolls into view
+        if (!sessionEntryRef.current.has(si) && sessionTopPx < loopedScroll + viewportH) {
+          sessionEntryRef.current.set(si, virtualTimeRef.current);
+        }
+
+        const entryVirtualTime = sessionEntryRef.current.get(si);
+
+        for (let j = 0; j < session.maxLength; j++) {
+          const idx = session.gridStartIndex + j;
+          if (!cells[idx]) continue;
+
+          let char = "";
+          if (entryVirtualTime !== undefined) {
+            const sessionElapsedMs = virtualTimeRef.current - entryVirtualTime;
+            // Use cached finalText once the session has fully typed out
+            const currentText =
+              sessionElapsedMs >= session.durationMs
+                ? session.finalText
+                : replaySequence(session.sequence, sessionElapsedMs, session.seed);
+            char = j < currentText.length ? currentText[j] : "";
+          }
+
+          const wasFilled = prevFilled[idx];
+
+          if (prevChar[idx] !== char) {
+            if (char) {
+              cells[idx].textContent = char;
+              if (!wasFilled) {
+                // Apply typography style on first fill (not on every char change)
+                const s = session.style;
+                cells[idx].style.fontFamily = s.fontFamily;
+                cells[idx].style.fontWeight = String(s.fontWeight);
+                cells[idx].style.fontSize = s.fontSize;
+                cells[idx].style.color = s.color;
+                cells[idx].className = "grid-cell filled";
+                prevFilled[idx] = true;
+              }
+            } else if (wasFilled) {
+              cells[idx].textContent = "\u00A0";
+              cells[idx].style.cssText = "";
+              cells[idx].className = "grid-cell empty";
+              prevFilled[idx] = false;
+            }
+            prevChar[idx] = char;
+          }
+        }
+      }
+
+      animRef.current = requestAnimationFrame(animate);
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      prevTsRef.current = null;
+    };
+  }, [sessions]);
+
+  const totalRows = Math.ceil(totalCells / cols);
 
   return (
     <div id="keypresses-grid">
       <div
+        ref={gridRef}
         className="grid-container"
         style={{
-          gridTemplateColumns: `repeat(${gridDimensions.cols}, ${CELL_SIZE}px)`,
+          gridTemplateColumns: `repeat(${cols}, ${CELL_SIZE}px)`,
+          height: `${totalRows * CELL_SIZE}px`,
         }}
-      >
-        {Array.from({ length: totalCells }, (_, index) => {
-          const cell = index < visibleCount ? cellData[index] : null;
-          return (
-            <GridCell
-              key={index}
-              char={cell?.char ?? "\u00A0"}
-              color={cell?.color}
-              isCursor={index === cursorIndex}
-            />
-          );
-        })}
-      </div>
+      />
 
       <div className="info-bar">
         <span className="info-label">internet keypresses</span>
-        {!loading && cellData.length > 0 && (
-          <span className="info-count">{cellData.length.toLocaleString()} characters</span>
+        {!loading && sessions.length > 0 && (
+          <span className="info-count">{sessions.length.toLocaleString()} sequences</span>
         )}
         {loading && <span className="info-loading">fetching…</span>}
         {error && (
-          <span className="info-error" title={error}>
-            error
-          </span>
+          <span className="info-error" title={error}>error</span>
         )}
-        <button className="refresh-btn" onClick={onRefresh} disabled={loading}>
-          ↺
-        </button>
+
+        {devMode && (
+          <label className="speed-control">
+            speed
+            <input
+              type="range"
+              min="0"
+              max="10"
+              step="0.1"
+              value={animationSpeed}
+              onChange={(e) => setAnimationSpeed(parseFloat(e.target.value))}
+            />
+            {animationSpeed.toFixed(1)}×
+          </label>
+        )}
+
+        <button className="refresh-btn" onClick={onRefresh} disabled={loading}>↺</button>
       </div>
     </div>
   );

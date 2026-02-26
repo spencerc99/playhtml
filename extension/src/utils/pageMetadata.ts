@@ -35,8 +35,14 @@ export function buildPageRef(canonicalUrl: string): string {
   return `pr_${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
-export function getPageTitle(fallback = window.location.hostname): string {
-  return (document.title || fallback).trim() || fallback;
+export function getPageTitle(fallback?: string): string {
+  const safeFallback =
+    fallback ||
+    (typeof window.location.hostname === 'string' && window.location.hostname.length > 0
+      ? window.location.hostname
+      : 'unknown');
+
+  return (document.title || safeFallback).trim() || safeFallback;
 }
 
 export function getFaviconUrl(): string {
@@ -48,7 +54,9 @@ export function getFaviconUrl(): string {
     return faviconLink.href;
   }
 
-  return `${window.location.protocol}//${window.location.hostname}/favicon.ico`;
+  const protocol = window.location.protocol || 'https:';
+  const hostname = window.location.hostname || 'localhost';
+  return `${protocol}//${hostname}/favicon.ico`;
 }
 
 export function getCurrentPageMetadata(url = window.location.href): PageMetadataSnapshot {
