@@ -15,7 +15,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   
   private mouseMoveHandler?: (e: MouseEvent) => void;
   private animationFrameId?: number;
-  private lastSampleTime = 0;
+  private sampleTimer: number | null = null;
   protected sampleRate = 250; // ms between samples for archival
   private realTimeRate = 16; // ~60fps for real-time (16ms)
   private lastRealTimeTime = 0;
@@ -56,19 +56,10 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     if (VERBOSE) {
       console.log('[CursorCollector] Starting cursor collection...');
     }
-    this.lastSampleTime = Date.now();
     this.lastRealTimeTime = Date.now();
-    
-    // Initialize last sampled position to current position
-    // This prevents the first sample from being triggered immediately
-    if (this.currentX === 0 && this.currentY === 0) {
-      // Wait for first mouse move to set initial position
-      this.lastSampledX = -9999;
-      this.lastSampledY = -9999;
-    } else {
-      this.lastSampledX = this.currentX;
-      this.lastSampledY = this.currentY;
-    }
+
+    this.lastSampledX = this.currentX;
+    this.lastSampledY = this.currentY;
     
     // Set up mouse move handler
     this.mouseMoveHandler = (e: MouseEvent) => {
@@ -77,7 +68,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       
       // Try to capture target element
       const target = e.target as HTMLElement;
-      if (target) {
+      if (target instanceof HTMLElement) {
         // Create a simple selector (tag + id/class if available)
         this.currentTarget = getElementSelector(target);
 
@@ -95,27 +86,14 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       
       // Schedule real-time update
       this.scheduleRealTimeUpdate();
-      
-      // Check if we should sample for archival
-      const now = Date.now();
-      if (now - this.lastSampleTime >= this.sampleRate) {
-        // Check if movement is significant enough
-        const dx = Math.abs(this.currentX - this.lastSampledX);
-        const dy = Math.abs(this.currentY - this.lastSampledY);
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance >= this.minMovementThreshold) {
-          const sampled = this.sample();
-          if (sampled) {
-            // Update last sampled position
-            this.lastSampledX = this.currentX;
-            this.lastSampledY = this.currentY;
-          }
-          this.lastSampleTime = now;
-        } else {
-          // Movement too small, just update the timer
-          this.lastSampleTime = now;
-        }
+
+      // Schedule archival sample if movement is significant enough
+      const dx = Math.abs(this.currentX - this.lastSampledX);
+      const dy = Math.abs(this.currentY - this.lastSampledY);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance >= this.minMovementThreshold) {
+        this.scheduleArchivalSample();
       }
     };
     
@@ -205,7 +183,12 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = undefined;
     }
-    
+
+    if (this.sampleTimer !== null) {
+      clearTimeout(this.sampleTimer);
+      this.sampleTimer = null;
+    }
+
     // Clear click debounce timer
     if (this.clickTimer !== null) {
       clearTimeout(this.clickTimer);
@@ -233,6 +216,24 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.emitRealTimeData();
       this.lastRealTimeTime = now;
     }
+  }
+
+  /**
+   * Schedule an archival sample via timer (debounced to sampleRate ms)
+   * The timer fires once per sample window, capturing the last cursor position
+   */
+  private scheduleArchivalSample(): void {
+    if (this.sampleTimer !== null) return; // Already scheduled
+
+    this.sampleTimer = window.setTimeout(() => {
+      this.sampleTimer = null;
+      if (!this.enabled) return;
+      const sampled = this.sample();
+      if (sampled) {
+        this.lastSampledX = this.currentX;
+        this.lastSampledY = this.currentY;
+      }
+    }, this.sampleRate);
   }
   
   /**

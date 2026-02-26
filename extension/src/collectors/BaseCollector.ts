@@ -17,6 +17,7 @@ export abstract class BaseCollector<T = unknown> {
   abstract readonly description: string;
   
   protected enabled: boolean = false;
+  protected paused: boolean = false;
   protected sampleRate: number = 100; // ms between samples (default)
   
   // Callbacks for emitting events
@@ -69,6 +70,22 @@ export abstract class BaseCollector<T = unknown> {
   isEnabled(): boolean {
     return this.enabled;
   }
+
+  /**
+   * Pause emission without tearing down DOM listeners.
+   * Use resume() to restore. Does not affect persisted enabled state.
+   */
+  pause(): void {
+    this.paused = true;
+  }
+
+  /**
+   * Resume emission after a pause(). Does not re-run start() or emit
+   * any synthetic events.
+   */
+  resume(): void {
+    this.paused = false;
+  }
   
   /**
    * Set the callback for buffered events (archival)
@@ -88,6 +105,8 @@ export abstract class BaseCollector<T = unknown> {
    * Emit an event to both buffers (archival) and real-time streams
    */
   protected emit(data: T): void {
+    if (this.paused) return;
+
     // Emit to buffer for archival
     if (this.onEmitCallback) {
       this.onEmitCallback(data);
@@ -104,6 +123,7 @@ export abstract class BaseCollector<T = unknown> {
    * Emit to real-time stream only (for high-frequency updates)
    */
   protected emitRealTime(data: T): void {
+    if (this.paused) return;
     if (this.onRealTimeCallback) {
       this.onRealTimeCallback(data);
     }

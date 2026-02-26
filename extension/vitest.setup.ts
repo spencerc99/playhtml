@@ -23,6 +23,7 @@ Object.defineProperty(window, "visualViewport", {
     removeEventListener: vi.fn(),
   },
   writable: true,
+  configurable: true,
 });
 
 // Mock getComputedStyle

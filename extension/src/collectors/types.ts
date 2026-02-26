@@ -182,6 +182,8 @@ export function normalizeScroll(
  * Prefers ID, falls back to first class, then tag name
  */
 export function getElementSelector(element: HTMLElement): string {
+  if (!element || !element.tagName) return '';
+
   // Prefer ID
   if (element.id) {
     return `#${element.id}`;

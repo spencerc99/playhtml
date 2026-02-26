@@ -16,10 +16,10 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
 
   private scrollHandler?: () => void;
   private resizeHandler?: () => void;
-  private lastScrollTime = 0;
   private lastResizeTime = 0;
   private scrollThrottle = 100; // ms
-  private resizeDebounce = 2000; // ms - wait for resize to settle (e.g., dragging window edge)
+  private scrollTimer: number | null = null;
+  private resizeDebounce = 200; // ms - wait for resize to settle
   private resizeTimer: number | null = null;
   private resizeQuantity = 0; // Count resize events during debounce window
 
@@ -33,7 +33,7 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
 
   // Zoom tracking
   private lastZoomLevel: number | null = null;
-  private lastZoomEmitTime = 0;
+  private lastZoomEmitTime = -Infinity;
   private zoomDebounce = 2000; // ms - wait for zoom to settle before emitting
   private zoomQuantity = 0; // Count zoom changes during debounce window
   private visualViewport: VisualViewport | null = null;
@@ -47,21 +47,22 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
     this.visualViewport = window.visualViewport || null;
     this.lastZoomLevel = this.getZoomLevel();
 
-    // Initialize scroll position tracking
-    this.lastScrollX = window.scrollX || document.documentElement.scrollLeft;
-    this.lastScrollY = window.scrollY || document.documentElement.scrollTop;
+    // Initialize to -1 so the first scroll event always registers as movement,
+    // including scrolls to position (0, 0).
+    this.lastScrollX = -1;
+    this.lastScrollY = -1;
 
     // Initialize resize dimensions tracking
     this.lastResizeWidth = window.innerWidth;
     this.lastResizeHeight = window.innerHeight;
 
-    // Scroll handler (throttled)
+    // Scroll handler (timer-based throttle: fires once per scrollThrottle window)
     this.scrollHandler = () => {
-      const now = Date.now();
-      if (now - this.lastScrollTime >= this.scrollThrottle) {
+      if (this.scrollTimer !== null) return;
+      this.scrollTimer = window.setTimeout(() => {
+        this.scrollTimer = null;
         this.emitScrollEvent();
-        this.lastScrollTime = now;
-      }
+      }, this.scrollThrottle);
     };
 
     // Resize handler (debounced)
@@ -84,16 +85,13 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
     };
 
     // Attach event listeners
-    // Use visualViewport if available (mobile/tablet), otherwise use window
+    window.addEventListener("scroll", this.scrollHandler, { passive: true });
+    window.addEventListener("resize", this.resizeHandler, { passive: true });
+
+    // Also listen to visualViewport resize for zoom detection (mobile/tablet)
     if (this.visualViewport) {
       this.visualViewport.addEventListener("resize", this.resizeHandler);
-      this.visualViewport.addEventListener("scroll", this.scrollHandler);
-    } else {
-      window.addEventListener("scroll", this.scrollHandler, { passive: true });
     }
-
-    // Always listen to window resize (for desktop browser resize)
-    window.addEventListener("resize", this.resizeHandler, { passive: true });
 
     if (VERBOSE) {
       console.log("[ViewportCollector] Started successfully");
@@ -102,11 +100,7 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
 
   stop(): void {
     if (this.scrollHandler) {
-      if (this.visualViewport) {
-        this.visualViewport.removeEventListener("scroll", this.scrollHandler);
-      } else {
-        window.removeEventListener("scroll", this.scrollHandler);
-      }
+      window.removeEventListener("scroll", this.scrollHandler);
       this.scrollHandler = undefined;
     }
 
@@ -116,6 +110,11 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
         this.visualViewport.removeEventListener("resize", this.resizeHandler);
       }
       this.resizeHandler = undefined;
+    }
+
+    if (this.scrollTimer !== null) {
+      clearTimeout(this.scrollTimer);
+      this.scrollTimer = null;
     }
 
     if (this.resizeTimer) {
@@ -253,13 +252,13 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
     const hasZoomChange = zoomDelta > 0.001; // 0.1% threshold for zoom changes
 
     if (hasZoomChange) {
-      // Increment quantity counter
-      this.zoomQuantity++;
-
       // Debounce: only emit if enough time has passed since last zoom event
       const timeSinceLastEmit = now - this.lastZoomEmitTime;
 
       if (timeSinceLastEmit >= this.zoomDebounce) {
+        // New debounce window — reset counter and count just this zoom
+        this.zoomQuantity = 1;
+
         const data: ViewportEventData = {
           event: "zoom",
           zoom: currentZoom,
@@ -309,8 +308,9 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
    * Note: Zoom detection only works on browsers with visualViewport API
    */
   private getZoomLevel(): number {
-    if (this.visualViewport?.scale) {
-      return this.visualViewport.scale;
+    const vv = window.visualViewport;
+    if (vv?.scale) {
+      return vv.scale;
     }
 
     // No reliable way to detect zoom without visualViewport

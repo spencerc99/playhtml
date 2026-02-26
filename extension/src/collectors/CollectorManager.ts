@@ -2,7 +2,6 @@ import browser from 'webextension-polyfill';
 import { BaseCollector } from './BaseCollector';
 import type { CollectionEventType, CollectorStatus } from './types';
 import { EventBuffer } from '../storage/EventBuffer';
-import { uploadEvents } from '../storage/sync';
 import { VERBOSE } from '../config';
 import { getValidEventTypes } from '../shared/types';
 
@@ -23,7 +22,6 @@ export class CollectorManager {
   
   constructor() {
     this.eventBuffer = new EventBuffer();
-    this.eventBuffer.setUploadCallback(uploadEvents);
   }
   
   /**
@@ -52,11 +50,10 @@ export class CollectorManager {
       const result = await browser.storage.local.get(keys);
       for (const type of types) {
         const mode = result[`collection_mode_${type}`];
-        const normalized: 'off' | 'local' | 'shared' =
-          mode === 'off' || mode === 'local' || mode === 'shared' ? mode : 'local';
-        if (normalized === 'off') {
+        // Only act if a mode is explicitly set; leave unset types to loadEnabledCollectors
+        if (mode === 'off') {
           await this.disableCollector(type as CollectionEventType);
-        } else {
+        } else if (mode === 'local' || mode === 'shared') {
           await this.enableCollector(type as CollectionEventType);
         }
       }
@@ -92,24 +89,8 @@ export class CollectorManager {
     if (VERBOSE) {
       console.log(`[CollectorManager] Emit callback set for ${collector.type}`);
     }
-    
-    // Check if this collector should be enabled
-    this.checkCollectorState(collector);
   }
-  
-  /**
-   * Check and apply saved state for a collector
-   */
-  private async checkCollectorState(collector: BaseCollector): Promise<void> {
-    const enabled = await this.isCollectorEnabled(collector.type);
-    
-    if (enabled) {
-      collector.enable();
-    } else {
-      collector.disable();
-    }
-  }
-  
+
   /**
    * Enable a collector
    */
@@ -217,24 +198,26 @@ export class CollectorManager {
   }
   
   /**
-   * Pause all currently-enabled collectors without persisting the change.
-   * Use resumeAll() to restore them.
+   * Pause emission on all enabled collectors without tearing down DOM listeners.
+   * Use resumeAll() to restore.
    */
   pauseAll(): void {
     for (const collector of this.collectors.values()) {
       if (collector.isEnabled()) {
-        collector.disable();
+        collector.pause();
       }
     }
   }
 
   /**
-   * Resume all collectors that were enabled before the last pauseAll().
-   * Re-reads persisted enabled state so only collectors the user enabled
-   * are restarted.
+   * Resume emission on all enabled collectors after pauseAll().
    */
-  async resumeAll(): Promise<void> {
-    await this.loadEnabledCollectors();
+  resumeAll(): void {
+    for (const collector of this.collectors.values()) {
+      if (collector.isEnabled()) {
+        collector.resume();
+      }
+    }
   }
 
   /**

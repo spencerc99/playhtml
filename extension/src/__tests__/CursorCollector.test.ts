@@ -368,8 +368,8 @@ describe("CursorCollector", () => {
     it("clamps positions to 0-1", async () => {
       collector.enable();
 
-      // Move to negative position (should clamp to 0)
-      simulateMouseMove(-10, -10);
+      // Move to negative position (should clamp to 0); distance > 15px threshold
+      simulateMouseMove(-20, -20);
       await advanceTime(250);
 
       const call = emitCallback.mock.calls[0][0] as CursorEventData;

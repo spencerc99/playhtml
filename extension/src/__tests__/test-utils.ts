@@ -189,9 +189,7 @@ export function simulateResize(width: number, height: number): void {
  * Advance time using fake timers
  */
 export async function advanceTime(ms: number): Promise<void> {
-  vi.advanceTimersByTime(ms);
-  // Allow microtasks to run
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await vi.advanceTimersByTimeAsync(ms);
 }
 
 /**
