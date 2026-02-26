@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
+import browser from "webextension-polyfill";
 import "../../styles/options.scss";
 import "../../../../website/internet-series/movement/movement.scss";
-import { LocalEventStore } from "../../storage/LocalEventStore";
 import type { CollectionEvent } from "../../../../website/internet-series/movement/types";
 import { MovementCanvas } from "../../../../website/internet-series/movement/components/MovementCanvas";
 import { useCursorTrails } from "../../../../website/internet-series/movement/hooks/useCursorTrails";
@@ -13,8 +13,6 @@ import { extractDomain } from "../../../../website/internet-series/movement/util
 import { DomainPortraitExport } from "../../components/DomainPortraitExport";
 import { captureDomPortrait, domainPortraitFilename } from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
-
-const store = new LocalEventStore();
 
 const PortraitPage = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
@@ -27,8 +25,8 @@ const PortraitPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const allEvents = await store.getAllEvents();
-      setEvents(allEvents as unknown as CollectionEvent[]);
+      const res: any = await browser.runtime.sendMessage({ type: "GET_ALL_EVENTS" });
+      setEvents((res?.events ?? []) as CollectionEvent[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load local events");
       console.error("Error loading local events:", err);
@@ -76,16 +74,19 @@ const PortraitPage = () => {
     const oldest = new Date(Math.min(...timestamps)).toLocaleDateString();
     const newest = new Date(Math.max(...timestamps)).toLocaleDateString();
 
-    // Compute screen time from navigation events
+    // Compute screen time + sessions from navigation events
     const navEvents = events
       .filter((e) => e.type === "navigation")
       .sort((a, b) => a.ts - b.ts);
     let pendingFocusTs: number | null = null;
+    let pendingFocusUrl = "";
     let totalTimeMs = 0;
+    const sessions: { url: string; focusTs: number; blurTs: number; durationMs: number }[] = [];
     for (const evt of navEvents) {
       const d = evt.data as any;
       if (d.event === "focus") {
         pendingFocusTs = evt.ts;
+        pendingFocusUrl = evt.meta?.url ?? "";
       } else if (
         (d.event === "blur" || d.event === "beforeunload") &&
         pendingFocusTs !== null
@@ -93,14 +94,30 @@ const PortraitPage = () => {
         const durationMs = evt.ts - pendingFocusTs;
         if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
           totalTimeMs += durationMs;
+          sessions.push({ url: pendingFocusUrl, focusTs: pendingFocusTs, blurTs: evt.ts, durationMs });
         }
         pendingFocusTs = null;
       }
     }
 
+    // Compute cursor distance
+    const cursorMoves = events
+      .filter((e) => e.type === "cursor" && (e.data as any).event === "move")
+      .sort((a, b) => a.ts - b.ts);
+    let cursorDistancePx = 0;
+    for (let i = 1; i < cursorMoves.length; i++) {
+      const prev = cursorMoves[i - 1].data as any;
+      const curr = cursorMoves[i].data as any;
+      const dx = (curr.x - prev.x) * 1920;
+      const dy = (curr.y - prev.y) * 1080;
+      cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
+    }
+
     return {
       domain,
       totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
+      sessions,
+      cursorDistancePx,
       eventCounts: counts,
       dateRange: { oldest, newest },
       uniquePageCount: uniqueUrls.size,

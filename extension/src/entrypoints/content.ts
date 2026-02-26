@@ -954,7 +954,7 @@ export default defineContentScript({
           }
 
           // Resume collection now that the overlay is closed.
-          collectorManager?.resumeAll().catch(console.error);
+          collectorManager?.resumeAll();
 
           if (VERBOSE) {
             console.log('[HistoricalOverlay] Overlay deactivated');
@@ -1003,6 +1003,24 @@ export default defineContentScript({
         await collectorManager.init();
         if (VERBOSE) {
           console.log("[Collections] Collector manager initialized successfully");
+        }
+
+        // One-time migration of page-origin IndexedDB events to extension-origin
+        const migrationKey = `migration_v1_done_${window.location.hostname}`;
+        try {
+          const migrationResult = await browser.storage.local.get([migrationKey]);
+          if (!migrationResult[migrationKey]) {
+            const { LocalEventStore } = await import('../storage/LocalEventStore');
+            const pageStore = new LocalEventStore();
+            const events = await pageStore.getAllEvents();
+            if (events.length > 0) {
+              await browser.runtime.sendMessage({ type: 'STORE_EVENTS', events });
+            }
+            await browser.storage.local.set({ [migrationKey]: true });
+          }
+        } catch (e) {
+          // Migration is best-effort; don't break collection if it fails
+          console.warn('[Content] Migration failed:', e);
         }
       } catch (error) {
         console.error("[Collections] Failed to initialize collector manager:", error);
@@ -1114,131 +1132,15 @@ export default defineContentScript({
             return true;
           }
           collectorManager.flushEvents().then(() => {
-            const buffer = collectorManager?.getEventBuffer();
-            buffer?.getPendingCount().then((count) => {
-              sendResponse({ success: true, pendingCount: count });
+            browser.runtime.sendMessage({ type: 'GET_PENDING_COUNT' }).then((res: any) => {
+              sendResponse({ success: true, pendingCount: res?.count ?? 0 });
+            }).catch(() => {
+              sendResponse({ success: true, pendingCount: 0 });
             });
           }).catch((error) => {
             console.error("Failed to flush events:", error);
             sendResponse({ success: false, error: error.message || String(error) });
           });
-          return true;
-        }
-
-        if (message.type === "GET_RECENT_EVENTS") {
-          // Return up to N most recent cursor events for the current domain
-          (async () => {
-            try {
-              const { LocalEventStore } = await import('../storage/LocalEventStore');
-              const store = new LocalEventStore();
-              const domain = window.location.host.replace(/^www\./, '');
-              const events = await store.queryByDomain(domain, { type: 'cursor', limit: 200 });
-              sendResponse({ success: true, events });
-            } catch (e: any) {
-              console.error('[Content] Failed to get recent events', e);
-              sendResponse({ success: false, error: e?.message || String(e) });
-            }
-          })();
-          return true;
-        }
-
-        if (message.type === "GET_DOMAIN_STATS") {
-          (async () => {
-            try {
-              const { LocalEventStore } = await import('../storage/LocalEventStore');
-              const { extractDomain } = await import('../utils/urlNormalization');
-              const store = new LocalEventStore();
-              const domain = extractDomain(window.location.href);
-              if (!domain) {
-                sendResponse({ success: true, stats: null });
-                return;
-              }
-
-              const domainStats = await store.getDomainStats(domain);
-              if (domainStats.totalEvents === 0) {
-                sendResponse({ success: true, stats: null });
-                return;
-              }
-
-              const events = await store.queryByDomain(domain);
-
-              const uniqueUrls = new Set(events.map((e) => e.meta.url).filter(Boolean));
-
-              const counts = { cursor: 0, keyboard: 0, viewport: 0 };
-              events.forEach((e) => {
-                if (e.type === 'cursor') counts.cursor++;
-                else if (e.type === 'keyboard') counts.keyboard++;
-                else if (e.type === 'viewport') counts.viewport++;
-              });
-
-              const navEvents = events
-                .filter((e) => e.type === 'navigation')
-                .sort((a, b) => a.ts - b.ts);
-              let pendingFocusTs: number | null = null;
-              let totalTimeMs = 0;
-              for (const evt of navEvents) {
-                const d = evt.data as any;
-                if (d.event === 'focus') {
-                  pendingFocusTs = evt.ts;
-                } else if ((d.event === 'blur' || d.event === 'beforeunload') && pendingFocusTs !== null) {
-                  const durationMs = evt.ts - pendingFocusTs;
-                  if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
-                    totalTimeMs += durationMs;
-                  }
-                  pendingFocusTs = null;
-                }
-              }
-
-              const dateRange =
-                domainStats.firstVisit && domainStats.lastVisit
-                  ? { oldest: new Date(domainStats.firstVisit).toLocaleDateString(), newest: new Date(domainStats.lastVisit).toLocaleDateString() }
-                  : null;
-
-              sendResponse({
-                success: true,
-                stats: {
-                  domain,
-                  totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
-                  eventCounts: counts,
-                  dateRange,
-                  uniquePageCount: uniqueUrls.size,
-                },
-              });
-            } catch (e: any) {
-              console.error('[Content] Failed to get domain stats', e);
-              sendResponse({ success: false, error: e?.message || String(e) });
-            }
-          })();
-          return true;
-        }
-
-        if (message.type === "GET_STORAGE_STATS") {
-          (async () => {
-            try {
-              const { LocalEventStore } = await import('../storage/LocalEventStore');
-              const store = new LocalEventStore();
-              const stats = await store.getStorageStats();
-              sendResponse({ success: true, stats });
-            } catch (e: any) {
-              console.error('[Content] Failed to get storage stats', e);
-              sendResponse({ success: false, error: e?.message || String(e) });
-            }
-          })();
-          return true;
-        }
-
-        if (message.type === "CLEAR_ALL_EVENTS") {
-          (async () => {
-            try {
-              const { LocalEventStore } = await import('../storage/LocalEventStore');
-              const store = new LocalEventStore();
-              await store.clearAll();
-              sendResponse({ success: true });
-            } catch (e: any) {
-              console.error('[Content] Failed to clear events', e);
-              sendResponse({ success: false, error: e?.message || String(e) });
-            }
-          })();
           return true;
         }
 

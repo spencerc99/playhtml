@@ -553,6 +553,113 @@ export class LocalEventStore {
   }
 
   /**
+   * Add a batch of events using upsert (put), so duplicate IDs don't error
+   */
+  async addEvents(events: CollectionEvent[]): Promise<void> {
+    await this.ensureInitialized();
+
+    if (events.length === 0) return;
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+
+      for (const event of events) {
+        store.put(event);
+      }
+    });
+  }
+
+  /**
+   * Add a single event — delegates to addEvents
+   */
+  async addEvent(event: CollectionEvent): Promise<void> {
+    return this.addEvents([event]);
+  }
+
+  /**
+   * Get events that have not yet been uploaded (uploaded !== true)
+   */
+  async getPendingEvents(limit: number): Promise<CollectionEvent[]> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.openCursor();
+
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+
+        if (cursor && events.length < limit) {
+          const evt = cursor.value;
+          if (evt.uploaded !== true) {
+            events.push(evt as CollectionEvent);
+          }
+          cursor.continue();
+        } else {
+          resolve(events);
+        }
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Mark events as uploaded by setting uploaded = true on each ID
+   */
+  async markEventsAsUploaded(ids: string[]): Promise<void> {
+    await this.ensureInitialized();
+
+    if (ids.length === 0) return;
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+
+      let completed = 0;
+      const total = ids.length;
+
+      ids.forEach((id) => {
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          const evt = getRequest.result;
+          if (evt) {
+            evt.uploaded = true;
+            store.put(evt);
+          }
+          completed++;
+          if (completed === total) {
+            resolve();
+          }
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    });
+  }
+
+  /**
    * Prune events older than cutoff timestamp
    * Returns number of events deleted
    */

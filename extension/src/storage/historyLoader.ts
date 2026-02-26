@@ -1,7 +1,7 @@
 // ABOUTME: Loads historical event data for domain visualization
-// ABOUTME: Combines local IndexedDB data with server backfill as needed
+// ABOUTME: Combines local IndexedDB data (via background worker) with server backfill as needed
 
-import { LocalEventStore } from "./LocalEventStore";
+import browser from 'webextension-polyfill';
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
 import { getConfig } from "./sync";
 import { VERBOSE } from "../config";
@@ -43,14 +43,30 @@ export async function loadHistoricalData(
   console.log(`[HistoryLoader] Loading data in ${actualMode} mode`);
   console.log(`[HistoryLoader] Domain: ${domain}, URL: ${normalizedCurrentUrl}`);
 
-  const localStore = new LocalEventStore();
   const allEvents: CollectionEvent[] = [];
 
-  // Query local storage for each event type
+  // Query background service worker for each event type
   for (const type of types) {
-    const localEvents = actualMode === 'domain'
-      ? await localStore.queryByDomain(domain, { type, limit })
-      : await localStore.queryByUrl(normalizedCurrentUrl, { type, limit });
+    let localEvents: CollectionEvent[] = [];
+    try {
+      if (actualMode === 'domain') {
+        const res: any = await browser.runtime.sendMessage({
+          type: 'QUERY_EVENTS_BY_DOMAIN',
+          domain,
+          options: { type, limit },
+        });
+        localEvents = res?.events || [];
+      } else {
+        const res: any = await browser.runtime.sendMessage({
+          type: 'QUERY_EVENTS_BY_URL',
+          url: normalizedCurrentUrl,
+          options: { type, limit },
+        });
+        localEvents = res?.events || [];
+      }
+    } catch (e) {
+      console.error(`[HistoryLoader] Failed to query ${type} from background:`, e);
+    }
 
     console.log(
       `[HistoryLoader] Found ${localEvents.length} local ${type} events`,
