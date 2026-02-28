@@ -1,5 +1,14 @@
 # Change Log
 
+## 2.7.1
+
+### Patch Changes
+
+- b7fc2e6: Fix built-in tag types (can-move, can-spin, etc.) ignoring custom properties set via withSharedState. Previously, only can-play elements read custom defaultData, onDrag, and other overrides from the DOM element. Now built-in tag initializers are merged with any custom properties, allowing withSharedState users to override defaultData and handlers for built-in capabilities. Also fix React setData/setMyAwareness callbacks to look up element handlers by actual tag instead of hardcoding can-play.
+- 2d16755: Fix room normalization: strip www. prefix so that www.example.com and example.com resolve to the same room. Use "LOCAL" identifier for file:// protocol rooms (empty host) to make them easily identifiable for cleanup. Default cursor coordinate mode changed to absolute so cursors track document position across scroll and zoom.
+- Updated dependencies [2d16755]
+  - @playhtml/common@0.4.1
+
 ## 2.7.0
 
 ### Minor Changes
