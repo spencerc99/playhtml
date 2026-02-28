@@ -216,7 +216,7 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
         // fade based on distance from center
         const distPx = Math.abs(yOffset);
         const t = Math.min(distPx / halfStage, 1);
-        const opacity = lerp(1, 0, t * t);
+        const opacity = lerp(1, 0.5, t * t);
         if (opacity < 0.02) continue;
 
         // title index: slot 0 (center) shows intPart; negative i = above = older

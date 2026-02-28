@@ -233,7 +233,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({
       trailOpacity: settings.trailOpacity,
       randomizeColors: settings.randomizeColors,
-      colorMode: settings.colorMode,
       domainFilter: settings.domainFilter,
       eventFilter: settings.eventFilter,
       trailStyle: settings.trailStyle,
@@ -247,7 +246,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     [
       settings.trailOpacity,
       settings.randomizeColors,
-      settings.colorMode,
       settings.domainFilter,
       settings.eventFilter,
       settings.trailStyle,

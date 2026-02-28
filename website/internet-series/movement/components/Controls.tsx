@@ -101,44 +101,23 @@ export const Controls: React.FC<ControlsProps> = memo(
         className="controls"
         style={{ maxHeight: "calc(100vh - 40px)", overflowY: "auto" }}
       >
-        {/* Color mode selector */}
+        {/* Randomize Colors at the very top */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
-          <label style={{ display: "block", marginBottom: "4px", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Trail colors
+          <label htmlFor="randomize-colors">
+            <input
+              id="randomize-colors"
+              type="checkbox"
+              checked={settings.randomizeColors}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  randomizeColors: e.target.checked,
+                }))
+              }
+              style={{ marginRight: "8px" }}
+            />
+            Randomize Colors (Test Mode)
           </label>
-          <div style={{ display: "flex", gap: "6px" }}>
-            {([
-              ["participant", "Per person"],
-              ["riso", "RISO palette"],
-              ["session-hue", "Time of day"],
-            ] as const).map(([mode, label]) => (
-              <button
-                key={mode}
-                onClick={() =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    colorMode: mode,
-                    randomizeColors: mode === "riso",
-                  }))
-                }
-                style={{
-                  padding: "3px 8px",
-                  fontSize: "11px",
-                  border: "1px solid rgba(90,78,65,0.25)",
-                  borderRadius: "3px",
-                  background: (settings.colorMode ?? (settings.randomizeColors ? "riso" : "participant")) === mode
-                    ? "rgba(90,78,65,0.12)" : "transparent",
-                  fontWeight: (settings.colorMode ?? (settings.randomizeColors ? "riso" : "participant")) === mode
-                    ? 600 : 400,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  color: "inherit",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Filters section - unified event type and cursor event filters */}

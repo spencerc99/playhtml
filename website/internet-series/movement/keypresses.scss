@@ -150,18 +150,18 @@ body {
   }
 }
 
-// ── Refresh button ────────────────────────────────────────────────────────────
-.refresh-btn {
-  margin-left: auto;
+// ── Toggle / action buttons shared base ──────────────────────────────────────
+%bar-btn {
   background: none;
   border: 1px solid #ddd;
   border-radius: 4px;
   padding: 2px 8px;
-  font-size: 1rem;
+  font-size: 0.72rem;
   cursor: pointer;
   color: #666;
-  line-height: 1;
+  line-height: 1.6;
   font-family: inherit;
+  letter-spacing: 0.02em;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 
   &:hover:not(:disabled) {
@@ -174,4 +174,29 @@ body {
     opacity: 0.3;
     cursor: not-allowed;
   }
+}
+
+// ── Shuffle toggle button ─────────────────────────────────────────────────────
+.toggle-btn {
+  @extend %bar-btn;
+
+  &.active {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+
+    &:hover {
+      background: #333;
+      border-color: #333;
+      color: #fff;
+    }
+  }
+}
+
+// ── Refresh button ────────────────────────────────────────────────────────────
+.refresh-btn {
+  @extend %bar-btn;
+  margin-left: auto;
+  font-size: 1rem;
+  padding: 2px 8px;
 }

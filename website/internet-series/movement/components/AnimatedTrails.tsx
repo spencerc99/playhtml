@@ -1,17 +1,306 @@
-// ABOUTME: Animated trails visualization component with animation loop
-// ABOUTME: Handles trail rendering, click effects, and animation timing
-import React, { useState, useEffect, useRef, memo, useCallback } from "react";
+// ABOUTME: Animated trails visualization component with imperative animation loop
+// ABOUTME: Handles trail rendering, click effects, and animation timing without per-frame React re-renders
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  useCallback,
+  useMemo,
+} from "react";
 import { TrailState, ClickEffect } from "../types";
 import { getCursorComponent } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
 
+// How many ms to spend fading a trail out when evicted by windowSize
+const EVICTION_FADE_MS = 3000;
+
+// How many points to show behind the cursor while drawing
+const TAIL_LENGTH = 1000;
+
+// Path generation from varied points, with LRU cache
+function createPathGenerator() {
+  const cache = new Map<string, string>();
+
+  return (points: Array<{ x: number; y: number }>, style: string): string => {
+    if (points.length < 2) return "";
+
+    const cacheKey = `${style}-${points.length}-${points[0].x.toFixed(
+      0,
+    )}-${points[0].y.toFixed(0)}-${points[points.length - 1].x.toFixed(
+      0,
+    )}-${points[points.length - 1].y.toFixed(0)}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
+    let path = `M ${points[0].x} ${points[0].y}`;
+
+    if (style === "straight") {
+      for (let i = 1; i < points.length; i++) {
+        path += ` L ${points[i].x} ${points[i].y}`;
+      }
+    } else {
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        path += ` Q ${p1.x} ${p1.y} ${(p1.x + p2.x) / 2} ${(p1.y + p2.y) / 2}`;
+      }
+
+      if (points.length > 1) {
+        const lastPoint = points[points.length - 1];
+        const secondLast = points[points.length - 2];
+        path += ` Q ${secondLast.x} ${secondLast.y} ${lastPoint.x} ${lastPoint.y}`;
+      }
+    }
+
+    cache.set(cacheKey, path);
+
+    if (cache.size > 500) {
+      const firstKey = cache.keys().next().value!;
+      cache.delete(firstKey);
+    }
+
+    return path;
+  };
+}
+
+// Compute visible points and path data for a trail at a given elapsed time.
+function computeTrailFrame(
+  trailState: TrailState,
+  elapsedTimeMs: number,
+  generatePath: (pts: Array<{ x: number; y: number }>, style: string) => string,
+) {
+  const { trail, startOffsetMs, durationMs, variedPoints } = trailState;
+
+  if (trail.points.length < 2) return null;
+
+  const trailElapsedMs = elapsedTimeMs - startOffsetMs;
+  if (trailElapsedMs < 0) return null;
+
+  const trailProgress = Math.min(1, trailElapsedMs / durationMs);
+  const isFinished = trailProgress >= 1;
+
+  const totalVariedPoints = variedPoints.length;
+  const exactVariedPosition = (totalVariedPoints - 1) * trailProgress;
+  const headIndex = Math.floor(exactVariedPosition);
+  const headFraction = exactVariedPosition - headIndex;
+
+  const tailStart = isFinished
+    ? Math.max(0, totalVariedPoints - TAIL_LENGTH)
+    : Math.max(0, headIndex - TAIL_LENGTH + 1);
+  const tailEnd = Math.min(headIndex, totalVariedPoints - 1);
+
+  const pointsToDraw: Array<{ x: number; y: number }> = [];
+  for (let i = tailStart; i <= tailEnd; i++) {
+    pointsToDraw.push(variedPoints[i]);
+  }
+
+  if (!isFinished && headIndex < totalVariedPoints - 1 && headFraction > 0) {
+    const p1 = variedPoints[headIndex];
+    const p2 = variedPoints[headIndex + 1];
+    pointsToDraw.push({
+      x: p1.x + (p2.x - p1.x) * headFraction,
+      y: p1.y + (p2.y - p1.y) * headFraction,
+    });
+  }
+
+  const cursorPosition =
+    pointsToDraw.length > 0
+      ? pointsToDraw[pointsToDraw.length - 1]
+      : variedPoints[0] || { x: 0, y: 0 };
+
+  const pathData =
+    pointsToDraw.length >= 2 ? generatePath(pointsToDraw, "straight") : "";
+
+  const currentPointIndex = Math.min(
+    Math.floor((trail.points.length - 1) * trailProgress),
+    trail.points.length - 1,
+  );
+
+  return {
+    trailProgress,
+    isFinished,
+    cursorPosition,
+    pathData,
+    cursorType: trail.points[currentPointIndex]?.cursor,
+  };
+}
+
+// Imperatively-updated trail. Renders SVG structure once on mount, then the
+// parent rAF loop updates DOM attributes directly via the ref handle.
+interface ImperativeTrailHandle {
+  update(
+    elapsedTimeMs: number,
+    trailOpacity: number,
+    strokeWidth: number,
+    evictionFade: number,
+  ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
+}
+
+interface TrailProps {
+  trailState: TrailState;
+  trailIndex: number;
+  generatePath: (
+    points: Array<{ x: number; y: number }>,
+    style: string,
+  ) => string;
+}
+
+const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
+  ({ trailState, trailIndex, generatePath }, ref) => {
+    const groupRef = useRef<SVGGElement>(null);
+    const pathRef = useRef<SVGPathElement>(null);
+    const cursorGroupRef = useRef<SVGGElement>(null);
+
+    const [cursorType, setCursorType] = useState<string | undefined>(
+      trailState.trail.points[0]?.cursor,
+    );
+    const CursorComponent = getCursorComponent(cursorType);
+    const cursorSize = 32;
+
+    React.useImperativeHandle(ref, () => ({
+      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
+        const group = groupRef.current;
+        if (!group) return null;
+
+        // evictionFade <= 0 means fully hidden
+        if (evictionFade <= 0) {
+          group.setAttribute("opacity", "0");
+          return null;
+        }
+
+        const frame = computeTrailFrame(
+          trailState,
+          elapsedTimeMs,
+          generatePath,
+        );
+
+        if (!frame) {
+          group.setAttribute("opacity", "0");
+          return null;
+        }
+
+        group.setAttribute("opacity", String(evictionFade));
+
+        const { pathData, isFinished, cursorPosition, trailProgress } = frame;
+
+        const pathEl = pathRef.current;
+        if (pathEl) {
+          if (pathData) {
+            pathEl.setAttribute("d", pathData);
+            pathEl.setAttribute("opacity", String(trailOpacity));
+            pathEl.setAttribute("stroke-width", String(strokeWidth));
+            pathEl.style.display = "";
+          } else {
+            pathEl.style.display = "none";
+          }
+        }
+
+        const cursorGroup = cursorGroupRef.current;
+        if (cursorGroup) {
+          if (!isFinished && trailProgress > 0) {
+            cursorGroup.style.display = "";
+            cursorGroup.setAttribute(
+              "transform",
+              `translate(${cursorPosition.x}, ${cursorPosition.y})`,
+            );
+          } else {
+            cursorGroup.style.display = "none";
+          }
+        }
+
+        if (frame.cursorType !== cursorType) {
+          setCursorType(frame.cursorType);
+        }
+
+        return { trailProgress, cursorPosition };
+      },
+    }));
+
+    const color = trailState.trail.color;
+
+    return (
+      <g ref={groupRef} opacity="0">
+        <path
+          ref={pathRef}
+          fill="none"
+          stroke={color}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ mixBlendMode: "multiply", display: "none" }}
+        />
+
+        <g ref={cursorGroupRef} style={{ display: "none" }}>
+          <g
+            transform={`translate(${-12 * (cursorSize / 24)}, ${
+              -4 * (cursorSize / 24)
+            })`}
+          >
+            <CursorComponent color={color} size={cursorSize} />
+          </g>
+        </g>
+      </g>
+    );
+  },
+);
+
+// Compute eviction fade for each trail index at a given time.
+function computeEvictionFades(
+  trailStates: TrailState[],
+  sortedFinishOrder: Array<{ originalIndex: number; finishedAtMs: number }>,
+  elapsedTimeMs: number,
+  windowSize: number,
+): Float64Array {
+  // Returns an array indexed by originalIndex with eviction fade values.
+  // 0 = hidden (not started or fully evicted), >0 = visible.
+  const fades = new Float64Array(trailStates.length);
+
+  const finished: Array<{ originalIndex: number; finishedAtMs: number }> = [];
+
+  for (const entry of sortedFinishOrder) {
+    const ts = trailStates[entry.originalIndex];
+    const trailElapsedMs = elapsedTimeMs - ts.startOffsetMs;
+    if (trailElapsedMs < 0) continue; // not started
+
+    const trailProgress = Math.min(1, trailElapsedMs / ts.durationMs);
+    if (trailProgress < 1) {
+      fades[entry.originalIndex] = 1; // active
+    } else {
+      finished.push(entry);
+    }
+  }
+
+  const excessCount = Math.max(0, finished.length - windowSize);
+  for (let i = 0; i < finished.length; i++) {
+    const f = finished[i];
+    if (i < excessCount) {
+      // Fade based on when this trail was pushed out of the window, not when
+      // it finished. The trail at index windowSize is the one that displaced
+      // trail i — so use its finishedAtMs as the eviction trigger time.
+      const displacerIndex = i + windowSize;
+      const evictedAtMs =
+        displacerIndex < finished.length
+          ? finished[displacerIndex].finishedAtMs
+          : elapsedTimeMs;
+      const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
+      fades[f.originalIndex] = Math.max(
+        0,
+        1 - timeSinceEvicted / EVICTION_FADE_MS,
+      );
+    } else {
+      fades[f.originalIndex] = 1;
+    }
+  }
+
+  return fades;
+}
+
 interface AnimatedTrailsProps {
   trailStates: TrailState[];
   timeRange: { min: number; max: number; duration: number };
-  /** When false, ripples are not shown (e.g. when AnimatedClicks is used for click-only view) */
   showClickRipples?: boolean;
-  /** When true, skip animation loop and render all trails fully drawn (snapshot-safe for html2canvas) */
   frozen?: boolean;
+  windowSize?: number;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -31,40 +320,125 @@ interface AnimatedTrailsProps {
 }
 
 export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
-  ({ trailStates, timeRange, showClickRipples = true, frozen = false, settings }) => {
-    // When frozen, use the full duration so all trails render at progress=1
-    const [elapsedTimeMs, setElapsedTimeMs] = useState(() =>
-      frozen ? timeRange.duration : 0,
-    );
+  ({
+    trailStates,
+    timeRange,
+    showClickRipples = true,
+    frozen = false,
+    windowSize = 50,
+    settings,
+  }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
       [],
     );
+
     const animationRef = useRef<number>();
-    const pathCache = useRef<Map<string, string>>(new Map());
     const spawnedClicksRef = useRef<Map<string, Set<number>>>(new Map());
 
-    // Use refs for all settings that should update without re-rendering
+    const generatePath = useRef(createPathGenerator()).current;
+
+    // Settings refs — updated without re-render
     const animationSpeedRef = useRef(settings.animationSpeed);
     const strokeWidthRef = useRef(settings.strokeWidth);
-    const pointSizeRef = useRef(settings.pointSize);
     const trailOpacityRef = useRef(settings.trailOpacity);
 
-    // Update refs without restarting animation
     useEffect(() => {
       animationSpeedRef.current = settings.animationSpeed;
       strokeWidthRef.current = settings.strokeWidth;
-      pointSizeRef.current = settings.pointSize;
       trailOpacityRef.current = settings.trailOpacity;
-    }, [
-      settings.animationSpeed,
-      settings.strokeWidth,
-      settings.pointSize,
-      settings.trailOpacity,
-    ]);
+    }, [settings.animationSpeed, settings.strokeWidth, settings.trailOpacity]);
 
-    // Animation loop - elapsedTimeMs stays internal, never passed to parent
+    // Pre-sort finished trails once per trailStates change
+    const sortedFinishOrder = useMemo(() => {
+      return trailStates
+        .map((ts, i) => ({
+          originalIndex: i,
+          finishedAtMs: ts.startOffsetMs + ts.durationMs,
+        }))
+        .sort((a, b) => a.finishedAtMs - b.finishedAtMs);
+    }, [trailStates]);
+
+    // Store one ref handle per trail index.
+    const trailHandles = useRef<(ImperativeTrailHandle | null)[]>(
+      new Array(trailStates.length).fill(null),
+    );
+
+    // Click batching
+    const pendingClicks = useRef<ClickEffect[]>([]);
+    const flushClicksScheduled = useRef(false);
+
+    const scheduleFlushClicks = useCallback(() => {
+      if (flushClicksScheduled.current) return;
+      flushClicksScheduled.current = true;
+      queueMicrotask(() => {
+        flushClicksScheduled.current = false;
+        const clicks = pendingClicks.current;
+        if (clicks.length === 0) return;
+        pendingClicks.current = [];
+        setActiveClickEffects((prev) => [...prev, ...clicks]);
+      });
+    }, []);
+
+    // Loop wrap detection
+    const prevElapsedRef = useRef(0);
+
+    // Refs the rAF loop reads (kept current via effects)
+    const trailStatesRef = useRef(trailStates);
+    const sortedFinishOrderRef = useRef(sortedFinishOrder);
+    const windowSizeRef = useRef(windowSize);
+    const showClickRipplesRef = useRef(showClickRipples);
+
     useEffect(() => {
-      if (frozen || trailStates.length === 0) return;
+      trailStatesRef.current = trailStates;
+    }, [trailStates]);
+    useEffect(() => {
+      sortedFinishOrderRef.current = sortedFinishOrder;
+    }, [sortedFinishOrder]);
+    useEffect(() => {
+      windowSizeRef.current = windowSize;
+    }, [windowSize]);
+    useEffect(() => {
+      showClickRipplesRef.current = showClickRipples;
+    }, [showClickRipples]);
+
+    // Track which trail indices are currently visible, for ripple pruning.
+    // Updated from rAF loop but only triggers a React re-render for ripple cleanup.
+    const visibleSetRef = useRef<Set<number>>(new Set());
+    const ripplePruneScheduled = useRef(false);
+
+    const scheduleRipplePrune = useCallback(() => {
+      if (ripplePruneScheduled.current) return;
+      ripplePruneScheduled.current = true;
+      queueMicrotask(() => {
+        ripplePruneScheduled.current = false;
+        const visible = visibleSetRef.current;
+        setActiveClickEffects((prev) => {
+          const pruned = prev.filter((e) => visible.has(e.trailIndex));
+          return pruned.length === prev.length ? prev : pruned;
+        });
+      });
+    }, []);
+
+    // The animation loop — pure imperative, no per-frame setState
+    useEffect(() => {
+      if (frozen) {
+        // Frozen: update all trails once at full progress
+        requestAnimationFrame(() => {
+          const elapsed = timeRange.duration;
+          for (let i = 0; i < trailStatesRef.current.length; i++) {
+            const handle = trailHandles.current[i];
+            handle?.update(
+              elapsed,
+              trailOpacityRef.current,
+              strokeWidthRef.current,
+              1,
+            );
+          }
+        });
+        return;
+      }
+
+      if (trailStates.length === 0) return;
 
       let startTime: number | null = null;
 
@@ -72,13 +446,87 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         if (startTime === null) startTime = timestamp;
 
         const realElapsed = timestamp - startTime;
-        // Scale elapsed time by animation speed to make animation faster/slower
-        // e.g., if speed = 2, after 1 second real time, 2 seconds of animation have passed
         const scaledElapsed = realElapsed * animationSpeedRef.current;
-        // Loop within the original timeRange duration
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
-        setElapsedTimeMs(loopedElapsed);
+        // Detect loop wrap
+        if (loopedElapsed < prevElapsedRef.current) {
+          spawnedClicksRef.current.clear();
+          setActiveClickEffects([]);
+        }
+        prevElapsedRef.current = loopedElapsed;
+
+        const currentTrailStates = trailStatesRef.current;
+        const trailOpacity = trailOpacityRef.current;
+        const strokeWidth = strokeWidthRef.current;
+
+        // Compute per-trail eviction fades
+        const fades = computeEvictionFades(
+          currentTrailStates,
+          sortedFinishOrderRef.current,
+          loopedElapsed,
+          windowSizeRef.current,
+        );
+
+        // Track which trails are visible this frame for ripple pruning
+        const newVisible = new Set<number>();
+
+        // Update all trails imperatively
+        for (let idx = 0; idx < currentTrailStates.length; idx++) {
+          const handle = trailHandles.current[idx];
+          if (!handle) continue;
+
+          const fade = fades[idx];
+          const result = handle.update(
+            loopedElapsed,
+            trailOpacity,
+            strokeWidth,
+            fade,
+          );
+
+          if (fade > 0) newVisible.add(idx);
+
+          // Spawn clicks
+          if (result && showClickRipplesRef.current) {
+            const ts = currentTrailStates[idx];
+            const trailKey = `trail-${idx}`;
+            if (!spawnedClicksRef.current.has(trailKey)) {
+              spawnedClicksRef.current.set(trailKey, new Set());
+            }
+            const spawnedSet = spawnedClicksRef.current.get(trailKey)!;
+
+            ts.clicksWithProgress.forEach((click, clickIdx) => {
+              if (
+                result.trailProgress >= click.progress &&
+                !spawnedSet.has(clickIdx)
+              ) {
+                spawnedSet.add(clickIdx);
+                pendingClicks.current.push({
+                  id: `${idx}-${clickIdx}-${Date.now()}`,
+                  x: result.cursorPosition.x,
+                  y: result.cursorPosition.y,
+                  color: ts.trail.color,
+                  radiusFactor: Math.random(),
+                  durationFactor: Math.random(),
+                  startTime: Date.now(),
+                  trailIndex: idx,
+                  holdDuration: click.duration,
+                });
+              }
+            });
+          }
+        }
+
+        visibleSetRef.current = newVisible;
+
+        // Flush pending clicks
+        if (pendingClicks.current.length > 0) {
+          scheduleFlushClicks();
+        }
+
+        // Prune ripples for trails that became invisible
+        scheduleRipplePrune();
+
         animationRef.current = requestAnimationFrame(animate);
       };
 
@@ -89,226 +537,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           cancelAnimationFrame(animationRef.current);
         }
       };
-    }, [trailStates, timeRange.duration]);
-
-    const handleSpawnClick = useCallback((click: ClickEffect) => {
-      setActiveClickEffects((prev) => [...prev, click]);
-    }, []);
-
-    // Generate path from varied points
-    const generatePathFromVariedPoints = useCallback(
-      (points: Array<{ x: number; y: number }>, style: string): string => {
-        if (points.length < 2) return "";
-
-        const cacheKey = `${style}-${points.length}-${points[0].x.toFixed(
-          0,
-        )}-${points[0].y.toFixed(0)}-${points[points.length - 1].x.toFixed(
-          0,
-        )}-${points[points.length - 1].y.toFixed(0)}`;
-        const cached = pathCache.current.get(cacheKey);
-        if (cached) return cached;
-
-        let path = `M ${points[0].x} ${points[0].y}`;
-
-        if (style === "straight") {
-          for (let i = 1; i < points.length; i++) {
-            path += ` L ${points[i].x} ${points[i].y}`;
-          }
-        } else {
-          for (let i = 0; i < points.length - 1; i++) {
-            const p1 = points[i];
-            const p2 = points[i + 1];
-            path += ` Q ${p1.x} ${p1.y} ${(p1.x + p2.x) / 2} ${
-              (p1.y + p2.y) / 2
-            }`;
-          }
-
-          if (points.length > 1) {
-            const lastPoint = points[points.length - 1];
-            const secondLast = points[points.length - 2];
-            path += ` Q ${secondLast.x} ${secondLast.y} ${lastPoint.x} ${lastPoint.y}`;
-          }
-        }
-
-        pathCache.current.set(cacheKey, path);
-
-        if (pathCache.current.size > 500) {
-          const firstKey = pathCache.current.keys().next().value;
-          pathCache.current.delete(firstKey);
-        }
-
-        return path;
-      },
-      [],
-    );
-
-    const Trail = memo(
-      ({
-        trailState,
-        trailIndex,
-        elapsedTimeMs,
-        onSpawnClick,
-        showClickRipples: showRipples,
-        settingsRefs,
-      }: {
-        trailState: TrailState;
-        trailIndex: number;
-        elapsedTimeMs: number;
-        onSpawnClick: (click: ClickEffect) => void;
-        showClickRipples: boolean;
-        settingsRefs: {
-          strokeWidth: React.MutableRefObject<number>;
-          pointSize: React.MutableRefObject<number>;
-          trailOpacity: React.MutableRefObject<number>;
-        };
-      }) => {
-        const {
-          trail,
-          startOffsetMs,
-          durationMs,
-          variedPoints,
-          clicksWithProgress,
-        } = trailState;
-
-        if (trail.points.length < 2) return null;
-        if (elapsedTimeMs < startOffsetMs) return null;
-
-        const trailElapsedMs = elapsedTimeMs - startOffsetMs;
-        const trailProgress = Math.min(1, trailElapsedMs / durationMs);
-
-        // Read current settings from refs
-        const strokeWidth = settingsRefs.strokeWidth.current!;
-        const pointSize = settingsRefs.pointSize.current!;
-        const trailOpacity = settingsRefs.trailOpacity.current!;
-
-        const cursorSize = 32;
-
-        const totalVariedPoints = variedPoints.length;
-        const exactVariedPosition = (totalVariedPoints - 1) * trailProgress;
-        const currentVariedIndex = Math.floor(exactVariedPosition);
-        const variedProgress = exactVariedPosition - currentVariedIndex;
-
-        const pointsToDraw: Array<{ x: number; y: number }> = [];
-        for (
-          let i = 0;
-          i <= Math.min(currentVariedIndex, totalVariedPoints - 1);
-          i++
-        ) {
-          pointsToDraw.push(variedPoints[i]);
-        }
-
-        if (currentVariedIndex < totalVariedPoints - 1 && variedProgress > 0) {
-          const p1 = variedPoints[currentVariedIndex];
-          const p2 = variedPoints[currentVariedIndex + 1];
-          const interpolatedPoint = {
-            x: p1.x + (p2.x - p1.x) * variedProgress,
-            y: p1.y + (p2.y - p1.y) * variedProgress,
-          };
-          pointsToDraw.push(interpolatedPoint);
-        }
-
-        const cursorPosition =
-          pointsToDraw.length > 0
-            ? pointsToDraw[pointsToDraw.length - 1]
-            : variedPoints[0] || { x: 0, y: 0 };
-
-        useEffect(() => {
-          if (!showRipples) return;
-          const trailKey = `trail-${trailIndex}`;
-          if (!spawnedClicksRef.current.has(trailKey)) {
-            spawnedClicksRef.current.set(trailKey, new Set());
-          }
-          const spawnedSet = spawnedClicksRef.current.get(trailKey)!;
-
-          clicksWithProgress.forEach((click, clickIdx) => {
-            if (trailProgress >= click.progress && !spawnedSet.has(clickIdx)) {
-              spawnedSet.add(clickIdx);
-
-              onSpawnClick({
-                id: `${trailIndex}-${clickIdx}-${Date.now()}`,
-                x: cursorPosition.x,
-                y: cursorPosition.y,
-                color: trail.color,
-                radiusFactor: Math.random(),
-                durationFactor: Math.random(),
-                startTime: Date.now(),
-                trailIndex,
-                holdDuration: click.duration, // Pass through hold duration if present
-              });
-            }
-          });
-        }, [
-          showRipples,
-          trailProgress,
-          clicksWithProgress,
-          cursorPosition,
-          trail.color,
-          trailIndex,
-          onSpawnClick,
-        ]);
-
-        const visiblePathData =
-          pointsToDraw.length >= 2
-            ? generatePathFromVariedPoints(pointsToDraw, "straight")
-            : "";
-
-        const visibleDots = pointsToDraw.slice(0, -1);
-
-        const currentPointIndex = Math.min(
-          Math.floor((trail.points.length - 1) * trailProgress),
-          trail.points.length - 1,
-        );
-        const currentCursorType = trail.points[currentPointIndex]?.cursor;
-        const CursorComponent = getCursorComponent(currentCursorType);
-
-        return (
-          <g key={`trail-${trailIndex}`}>
-            {visiblePathData && (
-              <path
-                d={visiblePathData}
-                fill="none"
-                stroke={trail.color}
-                strokeWidth={strokeWidth}
-                opacity={trailOpacity}
-                style={{ mixBlendMode: "multiply" }}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-
-            {pointSize > 0 &&
-              visibleDots.map((point, pointIndex) => (
-                <circle
-                  key={`point-${trailIndex}-${pointIndex}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={pointSize / 2}
-                  fill={trail.color}
-                  opacity={trailOpacity * 0.6}
-                  style={{ mixBlendMode: "multiply" }}
-                />
-              ))}
-
-            {trailProgress > 0 && trailProgress < 1 && (
-              <g
-                transform={`translate(${cursorPosition.x}, ${cursorPosition.y})`}
-              >
-                <g
-                  transform={`translate(${-12 * (cursorSize / 24)}, ${
-                    -4 * (cursorSize / 24)
-                  })`}
-                >
-                  <CursorComponent color={trail.color} size={cursorSize} />
-                </g>
-              </g>
-            )}
-          </g>
-        );
-      },
-      (prevProps, nextProps) => {
-        return prevProps.elapsedTimeMs === nextProps.elapsedTimeMs;
-      },
-    );
+    }, [trailStates, timeRange.duration, frozen]);
 
     return (
       <svg
@@ -322,19 +551,18 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           pointerEvents: "none",
         }}
       >
-        {trailStates.map((trailState, trailIndex) => (
+        {trailStates.map((ts, idx) => (
           <Trail
-            key={`trail-${trailIndex}`}
-            trailState={trailState}
-            trailIndex={trailIndex}
-            elapsedTimeMs={elapsedTimeMs}
-            onSpawnClick={handleSpawnClick}
-            showClickRipples={showClickRipples}
-            settingsRefs={{
-              strokeWidth: strokeWidthRef,
-              pointSize: pointSizeRef,
-              trailOpacity: trailOpacityRef,
+            key={`trail-${idx}`}
+            ref={(handle) => {
+              while (trailHandles.current.length <= idx) {
+                trailHandles.current.push(null);
+              }
+              trailHandles.current[idx] = handle;
             }}
+            trailState={ts}
+            trailIndex={idx}
+            generatePath={generatePath}
           />
         ))}
         {showClickRipples &&
@@ -360,13 +588,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     );
   },
   (prevProps, nextProps) => {
-    // Only re-render if trail states, time range, showClickRipples, frozen, or click settings change
-    // Visual settings (strokeWidth, pointSize, trailOpacity, animationSpeed) are handled via refs
     return (
       prevProps.trailStates === nextProps.trailStates &&
       prevProps.timeRange === nextProps.timeRange &&
       prevProps.showClickRipples === nextProps.showClickRipples &&
       prevProps.frozen === nextProps.frozen &&
+      prevProps.windowSize === nextProps.windowSize &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickMinDuration ===

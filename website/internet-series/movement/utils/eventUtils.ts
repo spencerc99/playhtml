@@ -1,16 +1,18 @@
 // ABOUTME: Shared utility functions for event processing across all event types
 // ABOUTME: Contains color palette, hashing, and domain extraction helpers
 
-// RISO-inspired color palette used consistently across all event types
+// Trail color palette — 8 evenly-spaced HSL hues (45° apart) with warm
+// saturation and constrained lightness. Inspired by minute-faces' time-color
+// mapping: vivid, harmonious, and legible over both light and dark backgrounds.
 export const RISO_COLORS = [
-  "rgb(0, 120, 191)", // Blue
-  "rgb(255, 102, 94)", // Bright Red
-  "rgb(0, 169, 92)", // Green
-  "rgb(255, 123, 75)", // Orange
-  "rgb(146, 55, 141)", // Purple
-  "rgb(255, 232, 0)", // Yellow
-  "rgb(255, 72, 176)", // Fluorescent Pink
-  "rgb(0, 131, 138)", // Teal
+  "hsl(10, 72%, 48%)",   // warm red
+  "hsl(55, 68%, 42%)",   // amber
+  "hsl(100, 55%, 40%)",  // moss green
+  "hsl(155, 60%, 38%)",  // teal
+  "hsl(210, 65%, 45%)",  // steel blue
+  "hsl(260, 55%, 48%)",  // violet
+  "hsl(310, 58%, 45%)",  // magenta
+  "hsl(35, 70%, 45%)",   // burnt orange
 ];
 
 // Luminosity for radial nodes (slime blobs). 1 = unchanged; >1 = brighter; <1 = darker.

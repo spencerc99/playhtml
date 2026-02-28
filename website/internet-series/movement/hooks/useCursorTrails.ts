@@ -11,43 +11,10 @@ import {
   extractDomain,
 } from "../utils/eventUtils";
 
-// Color derivation modes:
-// - "riso": cycle through RISO palette (default, current behavior)
-// - "session-hue": derive hue from trail start time (minute-faces style)
-// - "participant": stable color per participant ID
-export type TrailColorMode = "riso" | "session-hue" | "participant";
-
-/**
- * Derive an HSL color from a timestamp, inspired by minute-faces (AmbientClock).
- * Hue rotates with minute of day (6 per hour), lightness follows hour-of-day curve,
- * and each trailIndex within the session gets a slight hue offset for contrast.
- */
-function colorFromTimestamp(ts: number, trailIndex: number): string {
-  const d = new Date(ts);
-  const hour = d.getHours();
-  const minute = d.getMinutes();
-
-  // Hue: minute drives base hue (0-360 over 24 minutes, wrapping 15x/day)
-  const baseHue = (minute * 15) % 360;
-  // Offset each trail within the session by 35 degrees for variety
-  const hue = (baseHue + trailIndex * 35) % 360;
-
-  // Lightness: follows hour of day — bright midday, dark at night
-  // Constrained to 35-55% so trails are always visible
-  const hourCurve = Math.sin(((hour - 6) / 24) * Math.PI * 2) * 0.5 + 0.5;
-  const lightness = 35 + hourCurve * 20;
-
-  // Saturation: high and fixed for vivid trails
-  const saturation = 65 + (minute % 10) * 2;
-
-  return `hsl(${Math.round(hue)}, ${Math.round(saturation)}%, ${Math.round(lightness)}%)`;
-}
-
 // Settings interface for cursor trails
 export interface CursorTrailSettings {
   trailOpacity: number;
   randomizeColors: boolean;
-  colorMode?: TrailColorMode;
   domainFilter: string;
   eventFilter: {
     move: boolean;
@@ -171,20 +138,14 @@ export function useCursorTrails(
     });
 
     let trailColorIndex = 0;
-    const colorMode = settings.colorMode ?? (settings.randomizeColors ? "riso" : "participant");
-
     eventsByParticipantAndUrl.forEach((groupEvents) => {
       groupEvents.sort((a, b) => a.ts - b.ts);
 
       const pid = groupEvents[0].meta.pid;
 
-      // Determine color based on mode
+      // Determine color based on settings
       let color: string;
-      if (colorMode === "session-hue") {
-        // Will be set per-trail below using the trail's start timestamp
-        color = colorFromTimestamp(groupEvents[0].ts, trailColorIndex);
-        trailColorIndex++;
-      } else if (colorMode === "riso") {
+      if (settings.randomizeColors) {
         color = RISO_COLORS[trailColorIndex % RISO_COLORS.length];
         trailColorIndex++;
       } else {
@@ -284,14 +245,10 @@ export function useCursorTrails(
           if (currentTrail.length >= 2) {
             const startTime = currentTrail[0].ts;
             const endTime = currentTrail[currentTrail.length - 1].ts;
-            // In session-hue mode, derive each trail's color from its start time
-            const trailColor = colorMode === "session-hue"
-              ? colorFromTimestamp(startTime, trails.length)
-              : color;
 
             trails.push({
               points: [...currentTrail],
-              color: trailColor,
+              color,
               opacity: settings.trailOpacity,
               startTime,
               endTime,
@@ -347,13 +304,10 @@ export function useCursorTrails(
       if (currentTrail.length >= 2) {
         const startTime = currentTrail[0].ts;
         const endTime = currentTrail[currentTrail.length - 1].ts;
-        const trailColor = colorMode === "session-hue"
-          ? colorFromTimestamp(startTime, trails.length)
-          : color;
 
         trails.push({
           points: currentTrail,
-          color: trailColor,
+          color,
           opacity: settings.trailOpacity,
           startTime,
           endTime,

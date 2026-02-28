@@ -11,11 +11,31 @@ const CELL_SIZE = 32;
 /** Base scroll rate in px per real second at speed=1. */
 const SCROLL_SPEED_PX_S = 22;
 const SPEED_STORAGE_KEY = "keypresses-animation-speed";
+const RANDOMIZE_STORAGE_KEY = "keypresses-randomize-order";
 const DEFAULT_SPEED = 1.0;
 const MERGE_THRESHOLD_MS = 35000;
 const MAX_SESSIONS = 150;
 /** Empty cells inserted between sessions for visual breathing room. */
 const SESSION_GAP = 3;
+/**
+ * Virtual-time delay (ms) added to a session's entry time based on how far
+ * down the viewport it is when it activates.  A session entering at the very
+ * bottom gets the full delay; one at the top gets 0.  This ensures you see
+ * sequences start typing as they scroll into view rather than arriving already
+ * complete.  Scales proportionally with animation speed.
+ */
+const TYPING_INIT_DELAY_MS = 5000;
+/**
+ * Hard cap on cells allocated per session.
+ * Prevents very long sequences from leaving huge empty stretches in the grid.
+ * At 60 cols this is ~2 rows per session — enough for a sentence.
+ */
+const MAX_SESSION_CELLS = 130;
+/**
+ * Extra cells beyond finalText.length reserved for in-progress backspace
+ * animations (text grows before deletion brings it back down).
+ */
+const BACKSPACE_BUFFER = 12;
 
 const checkDevMode = () =>
   new URLSearchParams(window.location.search).has("dev");
@@ -165,8 +185,18 @@ interface SessionState {
   maxLength: number;
 }
 
+/** Fisher-Yates shuffle using Math.random — different every call. */
+function fisherYates<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 // ── Build sessions from raw events ────────────────────────────────────────────
-function buildSessions(events: CollectionEvent[]): SessionState[] {
+function buildSessions(events: CollectionEvent[], randomize: boolean): SessionState[] {
   const keyboardEvents = events.filter((e) => {
     if (e.type !== "keyboard") return false;
     const d = e.data as unknown as KeyboardEventData;
@@ -227,14 +257,23 @@ function buildSessions(events: CollectionEvent[]): SessionState[] {
 
   if (!raw.length) return [];
 
+  // Optionally shuffle before capping — seeded so the order is stable per load
+  const ordered = randomize ? fisherYates(raw) : raw;
+
   // Assign sequential grid positions and typography styles
   let nextGrid = 0;
-  return raw.slice(0, MAX_SESSIONS).map((r, i) => {
+  return ordered.slice(0, MAX_SESSIONS).map((r, i) => {
     const duration = calculateTypingDuration(r.sequence);
-    const maxLen = computeMaxLength(r.sequence);
     const style = SESSION_STYLES[Math.floor(seededRandom(i * 7.3 + 1) * SESSION_STYLES.length)];
     const seed = r.seed;
     const finalText = replaySequence(r.sequence, duration, seed);
+
+    // Allocate only as many cells as the final text needs, plus a small buffer
+    // for in-progress backspace animations (where text temporarily grows beyond
+    // its final length). Hard-cap so long sequences don't leave empty deserts.
+    const peakLen = computeMaxLength(r.sequence);
+    const maxLen = Math.min(peakLen, finalText.length + BACKSPACE_BUFFER, MAX_SESSION_CELLS);
+
     const gridStart = nextGrid;
     nextGrid += maxLen + SESSION_GAP;
     return { style, durationMs: duration, sequence: r.sequence, finalText, seed, gridStartIndex: gridStart, maxLength: maxLen };
@@ -254,6 +293,9 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
   const [animationSpeed, setAnimationSpeed] = useState<number>(() => {
     const v = localStorage.getItem(SPEED_STORAGE_KEY);
     return v ? parseFloat(v) : DEFAULT_SPEED;
+  });
+  const [randomize, setRandomize] = useState<boolean>(() => {
+    return localStorage.getItem(RANDOMIZE_STORAGE_KEY) === "true";
   });
   const [devMode] = useState(checkDevMode);
 
@@ -276,7 +318,7 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
 
   const animRef = useRef<number>();
 
-  const sessions = useMemo(() => buildSessions(events), [events]);
+  const sessions = useMemo(() => buildSessions(events, randomize), [events, randomize]);
   const totalCells = sessions.length
     ? sessions[sessions.length - 1].gridStartIndex + sessions[sessions.length - 1].maxLength
     : 0;
@@ -289,6 +331,10 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
     speedRef.current = animationSpeed;
     localStorage.setItem(SPEED_STORAGE_KEY, String(animationSpeed));
   }, [animationSpeed]);
+
+  useEffect(() => {
+    localStorage.setItem(RANDOMIZE_STORAGE_KEY, String(randomize));
+  }, [randomize]);
 
   useEffect(() => {
     colsRef.current = cols;
@@ -366,9 +412,18 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
         const sessionTopRow = Math.floor(session.gridStartIndex / currentCols);
         const sessionTopPx = sessionTopRow * CELL_SIZE;
 
-        // Activate the session the moment its first row scrolls into view
+        // Activate the session when its first row enters the viewport.
+        // Each session gets a seeded random delay multiplier so some arrive
+        // already partially typed (low multiplier) while others only begin
+        // when near the bottom of the screen (high multiplier).  The seed
+        // keeps each session's multiplier stable across frames and loop resets.
         if (!sessionEntryRef.current.has(si) && sessionTopPx < loopedScroll + viewportH) {
-          sessionEntryRef.current.set(si, virtualTimeRef.current);
+          const distFromViewportTop = Math.max(0, sessionTopPx - loopedScroll);
+          // Multiplier range: 0.1 (starts typing very early → arrives more done)
+          //                   to 1.6 (only kicks off near the bottom edge)
+          const delayMultiplier = 0.1 + seededRandom(session.seed * 3.7 + 13) * 1.5;
+          const delay = (distFromViewportTop / viewportH) * TYPING_INIT_DELAY_MS * delayMultiplier;
+          sessionEntryRef.current.set(si, virtualTimeRef.current + delay);
         }
 
         const entryVirtualTime = sessionEntryRef.current.get(si);
@@ -379,7 +434,8 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
 
           let char = "";
           if (entryVirtualTime !== undefined) {
-            const sessionElapsedMs = virtualTimeRef.current - entryVirtualTime;
+            // Clamp to 0: entryVirtualTime may be in the future during the delay window
+            const sessionElapsedMs = Math.max(0, virtualTimeRef.current - entryVirtualTime);
             // Use cached finalText once the session has fully typed out
             const currentText =
               sessionElapsedMs >= session.durationMs
@@ -446,6 +502,14 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
         {error && (
           <span className="info-error" title={error}>error</span>
         )}
+
+        <button
+          className={`toggle-btn${randomize ? " active" : ""}`}
+          onClick={() => setRandomize((r) => !r)}
+          title="randomize order"
+        >
+          ⇄ shuffle
+        </button>
 
         {devMode && (
           <label className="speed-control">

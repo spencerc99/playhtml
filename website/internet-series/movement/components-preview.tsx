@@ -178,17 +178,17 @@ function hourLightness(h: number): number {
   return curve[h] ?? 0;
 }
 
-// RISO palette — one hue per hour band (8 colors cycling across 24h)
-// rgb values extracted from RISO_COLORS in eventUtils.ts
+// Color palette — one hue per hour band (8 colors cycling across 24h)
+// rgb values matching RISO_COLORS HSL palette in eventUtils.ts
 const RISO_RGB: [number, number, number][] = [
-  [0, 120, 191],   // Blue
-  [255, 102, 94],  // Bright Red
-  [0, 169, 92],    // Green
-  [255, 123, 75],  // Orange
-  [146, 55, 141],  // Purple
-  [255, 232, 0],   // Yellow
-  [255, 72, 176],  // Fluorescent Pink
-  [0, 131, 138],   // Teal
+  [210, 51, 35],   // warm red
+  [180, 148, 34],  // amber
+  [92, 158, 46],   // moss green
+  [39, 155, 130],  // teal
+  [40, 110, 189],  // steel blue
+  [80, 55, 189],   // violet
+  [184, 48, 151],  // magenta
+  [195, 115, 35],  // burnt orange
 ];
 
 // Map an hour to a RISO color, preserving its luminance by scaling the RGB
