@@ -2,6 +2,7 @@ import { handleIngest } from './routes/ingest';
 import { handleRecent } from './routes/recent';
 import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
+import { handleParticipantUpsert } from './routes/participants';
 import type { Env } from './lib/supabase';
 
 /**
@@ -18,7 +19,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         },
       });
@@ -41,6 +42,12 @@ export default {
       return handleExport(request, env);
     }
     
+    // Match PUT /participants/:pid
+    const participantMatch = path.match(/^\/participants\/(.+)$/);
+    if (participantMatch && request.method === 'PUT') {
+      return handleParticipantUpsert(request, env, decodeURIComponent(participantMatch[1]));
+    }
+
     // Health check
     if (path === '/health' && request.method === 'GET') {
       return new Response(JSON.stringify({ status: 'ok' }), {

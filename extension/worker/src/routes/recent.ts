@@ -75,6 +75,24 @@ export async function handleRecent(
 
     // Transform back to CollectionEvent format (cap at limit)
     const rows = allRows.slice(0, limit);
+
+    // Look up cursor colors for all participants in this result set
+    const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
+    const participantColors = new Map<string, string>();
+
+    if (participantIds.length > 0) {
+      const { data: participants } = await supabase
+        .from('participants')
+        .select('pid, cursor_color')
+        .in('pid', participantIds);
+
+      if (participants) {
+        for (const p of participants) {
+          participantColors.set(p.pid, p.cursor_color);
+        }
+      }
+    }
+
     const events: CollectionEvent[] = rows.map((row: Record<string, unknown>) => ({
       id: row.id as string,
       type: row.type as CollectionEvent['type'],
@@ -87,6 +105,7 @@ export async function handleRecent(
         vw: row.viewport_width,
         vh: row.viewport_height,
         tz: row.timezone,
+        cursor_color: participantColors.get(row.participant_id as string) ?? null,
       } as EventMeta,
     }));
     

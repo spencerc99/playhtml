@@ -27,11 +27,12 @@ export function getValidEventTypes(): CollectionEventType[] {
  */
 export interface EventMeta {
   sid: string;      // Session ID (per browser session)
-  pid: string;      // Participant ID (anonymous, persistent)
+  pid: string;      // Participant ID (ECDSA public key)
   url: string;      // Current page URL
   vw: number;       // Viewport width
   vh: number;       // Viewport height
   tz: string;       // Timezone (e.g., "America/New_York")
+  cursor_color?: string | null;  // Hydrated by server from participants table
 }
 
 /**
