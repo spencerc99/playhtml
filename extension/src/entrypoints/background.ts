@@ -49,27 +49,56 @@ export default defineBackground(() => {
     }
   })
 
-  // Initialize player identity and game state
+  // ECDSA P-256 raw public key = 65 bytes uncompressed = 130 hex chars + 'pk_' = 133 chars.
+  // Old keys are 'pk_' + ~13 random chars from Math.random.
+  function isOldFormatKey(publicKey: string): boolean {
+    return !publicKey.startsWith('pk_') || publicKey.length < 100;
+  }
+
+  async function generateEcdsaKeypair(): Promise<{ publicKey: string; privateKey: JsonWebKey }> {
+    const keypair = await crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign', 'verify']
+    );
+
+    const pubRaw = await crypto.subtle.exportKey('raw', keypair.publicKey);
+    const pubHex = 'pk_' + Array.from(new Uint8Array(pubRaw))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const privJwk = await crypto.subtle.exportKey('jwk', keypair.privateKey);
+
+    return { publicKey: pubHex, privateKey: privJwk };
+  }
+
+  // Initialize player identity with ECDSA keypair, auto-upgrading old-format keys
   async function initializePlayerIdentity() {
     try {
-      const existingIdentity = await browser.storage.local.get(['playerIdentity'])
+      const existing = await browser.storage.local.get(['playerIdentity'])
 
-      if (!existingIdentity.playerIdentity) {
-        // Generate new identity
-        const identity = {
-          publicKey: generatePublicKey(),
-          privateKey: generatePrivateKey(),
-          playerStyle: {
-            colorPalette: [randomHslColor()],
-            animationStyle: 'gentle' as const,
-            interactionPatterns: []
-          },
-          createdAt: Date.now(),
-          discoveredSites: []
-        }
-
-        await browser.storage.local.set({ playerIdentity: identity })
+      if (existing.playerIdentity && !isOldFormatKey(existing.playerIdentity.publicKey)) {
+        return; // Valid ECDSA key, nothing to do
       }
+
+      // Generate new ECDSA keypair (fresh install or upgrading old key)
+      const { publicKey, privateKey } = await generateEcdsaKeypair();
+
+      const identity = {
+        publicKey,
+        privateKey,
+        playerStyle: existing.playerIdentity?.playerStyle ?? {
+          colorPalette: [randomHslColor()],
+          animationStyle: 'gentle' as const,
+          interactionPatterns: []
+        },
+        createdAt: existing.playerIdentity?.createdAt ?? Date.now(),
+        discoveredSites: existing.playerIdentity?.discoveredSites ?? []
+      }
+
+      await browser.storage.local.set({ playerIdentity: identity })
+
+      // Clear legacy participant ID key so getParticipantId() reads from playerIdentity
+      await browser.storage.local.remove('collection_participant_id')
     } catch (error) {
       console.error('Failed to initialize player identity:', error)
     }
@@ -80,15 +109,6 @@ export default defineBackground(() => {
     const s = 65 + Math.floor(Math.random() * 15); // 65-80%
     const l = 55 + Math.floor(Math.random() * 15); // 55-70%
     return `hsl(${hue}, ${s}%, ${l}%)`;
-  }
-
-  // Simple key generation (will be replaced with proper crypto)
-  function generatePublicKey(): string {
-    return 'pk_' + Math.random().toString(36).substring(2, 15)
-  }
-
-  function generatePrivateKey(): string {
-    return 'sk_' + Math.random().toString(36).substring(2, 15)
   }
 
   // Cross-site messaging coordination

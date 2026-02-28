@@ -1,73 +1,49 @@
+// ABOUTME: Provides participant and session identity for event collection
+// ABOUTME: Participant ID is the ECDSA public key from playerIdentity; session ID resets per browser session
+
 import browser from 'webextension-polyfill';
 
-const PARTICIPANT_ID_KEY = 'collection_participant_id';
-const SESSION_ID_KEY = 'collection_session_id';
-
 /**
- * Generate a random anonymous participant ID
- * This ID persists across browser sessions but is anonymous
- */
-function generateParticipantId(): string {
-  // Generate a random string (similar to ULID but simpler)
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 15);
-  return `pid_${timestamp}_${random}`;
-}
-
-/**
- * Generate a session ID (unique per browser session)
- */
-function generateSessionId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 15);
-  return `sid_${timestamp}_${random}`;
-}
-
-/**
- * Get or create participant ID
- * This ID is persistent and anonymous
+ * Get participant ID (the ECDSA public key from playerIdentity).
+ * Falls back to generating a temporary random ID if identity isn't initialized yet.
  */
 export async function getParticipantId(): Promise<string> {
   try {
-    const result = await browser.storage.local.get([PARTICIPANT_ID_KEY]);
-    
-    if (result[PARTICIPANT_ID_KEY]) {
-      return result[PARTICIPANT_ID_KEY];
+    const result = await browser.storage.local.get(['playerIdentity']);
+    if (result.playerIdentity?.publicKey) {
+      return result.playerIdentity.publicKey;
     }
-    
-    // Generate new participant ID
-    const participantId = generateParticipantId();
-    await browser.storage.local.set({ [PARTICIPANT_ID_KEY]: participantId });
-    
-    return participantId;
+
+    // Identity not yet initialized — generate temporary ID.
+    // This should only happen in a race condition before background.ts runs.
+    console.warn('[Participant] playerIdentity not found, using temporary ID');
+    return 'pk_temp_' + crypto.randomUUID();
   } catch (error) {
     console.error('Failed to get participant ID:', error);
-    // Fallback to in-memory ID if storage fails
-    return generateParticipantId();
+    return 'pk_temp_' + crypto.randomUUID();
   }
 }
 
+const SESSION_ID_KEY = 'collection_session_id';
+
 /**
- * Get or create session ID
- * This ID is unique per browser session
+ * Get or create session ID.
+ * Uses browser.storage.session so it resets when the browser closes.
  */
 export async function getSessionId(): Promise<string> {
   try {
-    const result = await browser.storage.local.get([SESSION_ID_KEY]);
-    
+    const result = await browser.storage.session.get([SESSION_ID_KEY]);
+
     if (result[SESSION_ID_KEY]) {
       return result[SESSION_ID_KEY];
     }
-    
-    // Generate new session ID
-    const sessionId = generateSessionId();
-    await browser.storage.local.set({ [SESSION_ID_KEY]: sessionId });
-    
+
+    const sessionId = 'sid_' + crypto.randomUUID();
+    await browser.storage.session.set({ [SESSION_ID_KEY]: sessionId });
     return sessionId;
   } catch (error) {
     console.error('Failed to get session ID:', error);
-    // Fallback to in-memory ID if storage fails
-    return generateSessionId();
+    return 'sid_' + crypto.randomUUID();
   }
 }
 
