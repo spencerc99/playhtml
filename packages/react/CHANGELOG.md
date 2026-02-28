@@ -1,5 +1,15 @@
 # Change Log
 
+## 0.9.1
+
+### Patch Changes
+
+- b7fc2e6: Fix built-in tag types (can-move, can-spin, etc.) ignoring custom properties set via withSharedState. Previously, only can-play elements read custom defaultData, onDrag, and other overrides from the DOM element. Now built-in tag initializers are merged with any custom properties, allowing withSharedState users to override defaultData and handlers for built-in capabilities. Also fix React setData/setMyAwareness callbacks to look up element handlers by actual tag instead of hardcoding can-play.
+- Updated dependencies [b7fc2e6]
+- Updated dependencies [2d16755]
+  - playhtml@2.7.1
+  - @playhtml/common@0.4.1
+
 ## 0.9.0
 
 ### Minor Changes
