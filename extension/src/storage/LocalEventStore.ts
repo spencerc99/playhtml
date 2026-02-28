@@ -9,7 +9,7 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 3; // Incremented for uploaded flag addition
+const DB_VERSION = 4;
 const STORE_NAME = "events";
 
 export interface QueryOptions {
@@ -123,6 +123,31 @@ export class LocalEventStore {
             }
           }
         }
+
+        // Add domain index for fast domain-scoped queries (v4)
+        if (oldVersion < 4) {
+          if (!store.indexNames.contains("domain")) {
+            store.createIndex("domain", "domain", { unique: false });
+            if (VERBOSE) {
+              console.log("[LocalEventStore] Added domain index");
+            }
+          }
+          // Backfill domain field on existing events
+          const tx = (event.target as IDBOpenDBRequest).transaction!;
+          const objStore = tx.objectStore(STORE_NAME);
+          const backfillReq = objStore.openCursor();
+          backfillReq.onsuccess = () => {
+            const cursor = backfillReq.result;
+            if (cursor) {
+              const evt = cursor.value;
+              if (!evt.domain && evt.meta?.url) {
+                evt.domain = extractDomain(evt.meta.url);
+                cursor.update(evt);
+              }
+              cursor.continue();
+            }
+          };
+        }
       };
     });
   }
@@ -145,7 +170,7 @@ export class LocalEventStore {
   ): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
-    console.log(`[LocalEventStore] Querying domain: ${domain}`, options);
+    if (VERBOSE) console.log(`[LocalEventStore] Querying domain: ${domain}`, options);
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -155,49 +180,36 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const urlIndex = store.index("url");
+      const domainIndex = store.index("domain");
 
       const events: CollectionEvent[] = [];
-      const request = urlIndex.openCursor();
+      const keyRange = IDBKeyRange.only(domain);
+      const request = domainIndex.openCursor(keyRange);
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
           const evt = cursor.value as CollectionEvent;
-          const eventDomain = extractDomain(evt.meta.url);
 
-          // Filter by domain
-          if (eventDomain === domain) {
-            // Apply optional filters
-            let include = true;
+          let include = true;
+          if (options.type && evt.type !== options.type) include = false;
+          if (options.startTs && evt.ts < options.startTs) include = false;
+          if (options.endTs && evt.ts > options.endTs) include = false;
 
-            if (options.type && evt.type !== options.type) {
-              include = false;
-            }
-            if (options.startTs && evt.ts < options.startTs) {
-              include = false;
-            }
-            if (options.endTs && evt.ts > options.endTs) {
-              include = false;
-            }
+          if (include) {
+            events.push(evt);
+          }
 
-            if (include) {
-              events.push(evt);
-            }
-
-            // Check limit
-            if (options.limit && events.length >= options.limit) {
-              resolve(events);
-              return;
-            }
+          if (options.limit && events.length >= options.limit) {
+            resolve(events);
+            return;
           }
 
           cursor.continue();
         } else {
-          // Sort by timestamp (ascending - oldest first)
           events.sort((a, b) => a.ts - b.ts);
-          console.log(
+          if (VERBOSE) console.log(
             `[LocalEventStore] Query complete: ${events.length} events for ${domain}`,
           );
           resolve(events);
@@ -225,6 +237,8 @@ export class LocalEventStore {
     await this.ensureInitialized();
 
     const normalizedUrl = normalizeUrl(url);
+    // Use the domain index to narrow the scan, then filter by normalized URL
+    const domain = extractDomain(url);
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -234,10 +248,11 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const urlIndex = store.index("url");
+      const domainIndex = store.index("domain");
 
       const events: CollectionEvent[] = [];
-      const request = urlIndex.openCursor();
+      const keyRange = IDBKeyRange.only(domain);
+      const request = domainIndex.openCursor(keyRange);
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
@@ -246,26 +261,16 @@ export class LocalEventStore {
           const evt = cursor.value as CollectionEvent;
           const eventNormalizedUrl = normalizeUrl(evt.meta.url);
 
-          // Filter by normalized URL
           if (eventNormalizedUrl === normalizedUrl) {
-            // Apply optional filters
             let include = true;
-
-            if (options.type && evt.type !== options.type) {
-              include = false;
-            }
-            if (options.startTs && evt.ts < options.startTs) {
-              include = false;
-            }
-            if (options.endTs && evt.ts > options.endTs) {
-              include = false;
-            }
+            if (options.type && evt.type !== options.type) include = false;
+            if (options.startTs && evt.ts < options.startTs) include = false;
+            if (options.endTs && evt.ts > options.endTs) include = false;
 
             if (include) {
               events.push(evt);
             }
 
-            // Check limit
             if (options.limit && events.length >= options.limit) {
               resolve(events);
               return;
@@ -274,7 +279,6 @@ export class LocalEventStore {
 
           cursor.continue();
         } else {
-          // Sort by timestamp (ascending - oldest first)
           events.sort((a, b) => a.ts - b.ts);
           resolve(events);
         }
@@ -298,29 +302,25 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const urlIndex = store.index("url");
+      const domainIndex = store.index("domain");
 
       let totalEvents = 0;
       const eventsByType: Record<string, number> = {};
       let firstVisit = Infinity;
       let lastVisit = 0;
 
-      const request = urlIndex.openCursor();
+      const keyRange = IDBKeyRange.only(domain);
+      const request = domainIndex.openCursor(keyRange);
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
           const evt = cursor.value as CollectionEvent;
-          const eventDomain = extractDomain(evt.meta.url);
-
-          if (eventDomain === domain) {
-            totalEvents++;
-            eventsByType[evt.type] = (eventsByType[evt.type] || 0) + 1;
-            firstVisit = Math.min(firstVisit, evt.ts);
-            lastVisit = Math.max(lastVisit, evt.ts);
-          }
-
+          totalEvents++;
+          eventsByType[evt.type] = (eventsByType[evt.type] || 0) + 1;
+          firstVisit = Math.min(firstVisit, evt.ts);
+          lastVisit = Math.max(lastVisit, evt.ts);
           cursor.continue();
         } else {
           resolve({
@@ -357,16 +357,19 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.openCursor();
+      const domainIndex = store.index("domain");
 
       const domainMap = new Map<string, { count: number; lastVisit: number }>();
+
+      // Walk the domain index — entries are grouped by key so this is efficient
+      const request = domainIndex.openCursor();
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
           const evt = cursor.value as CollectionEvent;
-          const domain = extractDomain(evt.meta.url);
+          const domain = evt.domain || extractDomain(evt.meta.url);
 
           if (domain) {
             const existing = domainMap.get(domain);
@@ -388,9 +391,7 @@ export class LocalEventStore {
             }),
           );
 
-          // Sort by last visit (most recent first)
           domains.sort((a, b) => b.lastVisit - a.lastVisit);
-
           resolve(domains);
         }
       };
@@ -573,6 +574,10 @@ export class LocalEventStore {
       transaction.onerror = () => reject(transaction.error);
 
       for (const event of events) {
+        // Ensure domain field is set for index lookups
+        if (!event.domain && event.meta?.url) {
+          event.domain = extractDomain(event.meta.url);
+        }
         store.put(event);
       }
     });

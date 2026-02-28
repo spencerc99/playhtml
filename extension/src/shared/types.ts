@@ -44,6 +44,7 @@ export interface CollectionEvent {
   ts: number;                    // Unix ms timestamp
   data: unknown;                 // Type-specific payload
   meta: EventMeta;
+  domain?: string;               // Extracted from meta.url, indexed for fast queries
 }
 
 /**
