@@ -69,16 +69,34 @@
     margin-bottom: 0;
     cursor: pointer;
     font: inherit;
+    position: relative;
 
     .identity-card__cursor {
       width: 32px;
       height: 32px;
-      transition: border-color 0.15s, background 0.15s;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    }
+
+    // Subtle underline indicator to hint at clickability
+    &::after {
+      content: '';
+      display: block;
+      width: 12px;
+      height: 2px;
+      border-radius: 1px;
+      background: $text-faint;
+      margin: 3px auto 0;
+      transition: background 0.15s;
     }
 
     &:hover .identity-card__cursor {
       border-color: $border-strong;
       background: $surface-hover;
+      box-shadow: 0 1px 4px $shadow;
+    }
+
+    &:hover::after {
+      background: $accent-teal;
     }
   }
 }

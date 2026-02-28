@@ -93,6 +93,13 @@
     border-radius: 6px;
   }
 
+  &__save-btn {
+    @include btn-teal;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+  }
+
   // ── Public key ────────────────────────────────────────────────────────────
 
   &__key-row {

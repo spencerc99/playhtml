@@ -36,14 +36,24 @@ function randomPrimaryColor(): string {
   return hslToHex(hue, 70, 60);
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props) {
-  const primaryColor = playerIdentity.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-  const [color, setColor] = useState(primaryColor);
+  const savedColor = playerIdentity.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+  const [color, setColor] = useState(savedColor);
   const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [storageStats, setStorageStats] = useState<{
     totalEvents: number;
+    estimatedSizeBytes: number;
   } | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
+
+  const hasColorChanged = color !== savedColor;
 
   useEffect(() => {
     (async () => {
@@ -52,37 +62,38 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
         if (response?.success && response.stats) {
           setStorageStats({
             totalEvents: response.stats.totalEvents ?? 0,
+            estimatedSizeBytes: response.stats.estimatedSizeBytes ?? 0,
           });
         }
       } catch {}
     })();
   }, []);
 
-  const handleColorChange = async (newColor: string) => {
-    setColor(newColor);
-
-    // Persist to storage
+  const handleSaveColor = async () => {
+    setSaving(true);
     try {
       const { playerIdentity: stored } = await browser.storage.local.get(["playerIdentity"]);
       if (stored) {
-        if (!stored.playerStyle) stored.playerStyle = { colorPalette: [newColor] };
+        if (!stored.playerStyle) stored.playerStyle = { colorPalette: [color] };
         else {
           const palette = Array.isArray(stored.playerStyle.colorPalette)
             ? stored.playerStyle.colorPalette
             : [];
-          palette[0] = newColor;
+          palette[0] = color;
           stored.playerStyle.colorPalette = palette;
         }
         await browser.storage.local.set({ playerIdentity: stored });
         onIdentityUpdated(stored);
 
-        // Sync to server (fire-and-forget)
+        // Sync to server
         try {
           const pid = await getParticipantId();
-          syncParticipantColor(pid, newColor);
+          await syncParticipantColor(pid, color);
         } catch {}
       }
-    } catch {}
+    } catch {} finally {
+      setSaving(false);
+    }
   };
 
   const handleCopyPublicKey = async () => {
@@ -114,7 +125,7 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
               ref={colorInputRef}
               type="color"
               value={color}
-              onChange={(e) => handleColorChange(e.target.value)}
+              onChange={(e) => setColor(e.target.value)}
               className="profile-section__color-input--hidden"
             />
             <button
@@ -130,11 +141,21 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
               type="button"
               aria-label="Re-roll color"
               title="Re-roll color"
-              onClick={() => handleColorChange(randomPrimaryColor())}
+              onClick={() => setColor(randomPrimaryColor())}
               className="profile-section__reroll-btn"
             >
               ↻
             </button>
+            {hasColorChanged && (
+              <button
+                type="button"
+                onClick={handleSaveColor}
+                disabled={saving}
+                className="profile-section__save-btn"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+            )}
           </div>
         </section>
 
@@ -167,12 +188,20 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
               </div>
             )}
             {storageStats && (
-              <div className="profile-section__stat">
-                <span className="profile-section__stat-value">
-                  {storageStats.totalEvents.toLocaleString()}
-                </span>
-                <span className="profile-section__stat-label">events stored</span>
-              </div>
+              <>
+                <div className="profile-section__stat">
+                  <span className="profile-section__stat-value">
+                    {storageStats.totalEvents.toLocaleString()}
+                  </span>
+                  <span className="profile-section__stat-label">events stored</span>
+                </div>
+                <div className="profile-section__stat">
+                  <span className="profile-section__stat-value">
+                    ~{formatBytes(storageStats.estimatedSizeBytes)}
+                  </span>
+                  <span className="profile-section__stat-label">local data</span>
+                </div>
+              </>
             )}
           </div>
         </section>
