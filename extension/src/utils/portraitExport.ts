@@ -9,19 +9,26 @@ export async function svgToImageBitmap(
   width: number,
   height: number,
 ): Promise<ImageBitmap> {
-  const serialized = new XMLSerializer().serializeToString(svgEl);
+  // Clone SVG and set explicit dimensions so it renders correctly as a standalone image
+  // (percentage width/height are unresolvable outside the DOM)
+  const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  if (!clone.getAttribute("viewBox")) {
+    clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  }
+
+  const serialized = new XMLSerializer().serializeToString(clone);
   const blob = new Blob([serialized], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
   try {
     const img = new Image();
-    img.width = width;
-    img.height = height;
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = reject;
       img.src = url;
     });
-    return await createImageBitmap(img, 0, 0, width, height);
+    return await createImageBitmap(img);
   } finally {
     URL.revokeObjectURL(url);
   }
