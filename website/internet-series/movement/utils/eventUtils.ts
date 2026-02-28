@@ -15,6 +15,108 @@ export const RISO_COLORS = [
   "hsl(35, 70%, 45%)",   // burnt orange
 ];
 
+// Tunable constants for time-based color derivation from a participant's
+// chosen cursor color. Inspired by minute-faces' time-of-day color model.
+export const SESSION_HUE_CONFIG = {
+  // Hue offset cycles fully each hour within this range (+/- half)
+  HOUR_HUE_RANGE: 40,
+  // Saturation offset cycles each hour within this range (+/- half)
+  HOUR_SAT_RANGE: 10,
+  // Lightness offset driven by hour-of-day (midnight = min, noon = max)
+  DAY_LIGHT_MIN: -15,
+  DAY_LIGHT_MAX: 10,
+};
+
+/**
+ * Parse a color string to { h, s, l } (h: 0-360, s: 0-100, l: 0-100).
+ * Accepts #RGB, #RRGGBB, or hsl(...) strings.
+ */
+export function parseColorToHsl(color: string): { h: number; s: number; l: number } | null {
+  // Handle hsl() strings
+  const hslMatch = color.match(/^hsl\(\s*(\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?\s*\)$/);
+  if (hslMatch) {
+    return { h: parseInt(hslMatch[1]), s: parseInt(hslMatch[2]), l: parseInt(hslMatch[3]) };
+  }
+
+  // Handle hex strings
+  let hex = color.replace('#', '');
+  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  if (hex.length !== 6) return null;
+
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+
+  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+/**
+ * Derive a time-varying color from a participant's base color and an event timestamp.
+ *
+ * - Hue + saturation cycle within their ranges each hour (driven by minute-of-hour)
+ * - Lightness varies across the day (darker at midnight, lighter at noon)
+ *
+ * Uses the participant's local timezone if available, otherwise UTC.
+ */
+export function deriveSessionColor(baseColor: string, timestamp: number, timezone?: string): string {
+  const base = parseColorToHsl(baseColor);
+  if (!base) return baseColor; // Unparseable — return as-is
+
+  const date = new Date(timestamp);
+  let hour: number;
+  let minute: number;
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric', minute: 'numeric', hour12: false,
+      }).formatToParts(date);
+      hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0');
+      minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0');
+    } catch {
+      hour = date.getUTCHours();
+      minute = date.getUTCMinutes();
+    }
+  } else {
+    hour = date.getUTCHours();
+    minute = date.getUTCMinutes();
+  }
+
+  const cfg = SESSION_HUE_CONFIG;
+
+  // Hue: sinusoidal cycle each hour within HOUR_HUE_RANGE
+  const minuteFraction = minute / 60;
+  const hueOffset = Math.sin(minuteFraction * Math.PI * 2) * (cfg.HOUR_HUE_RANGE / 2);
+
+  // Saturation: cosine cycle each hour (offset from hue) within HOUR_SAT_RANGE
+  const satOffset = Math.cos(minuteFraction * Math.PI * 2) * (cfg.HOUR_SAT_RANGE / 2);
+
+  // Lightness: cosine across 24h, peak at noon (hour 12), trough at midnight (hour 0)
+  const hourFraction = (hour + minute / 60) / 24;
+  const lightOffset = cfg.DAY_LIGHT_MIN +
+    (cfg.DAY_LIGHT_MAX - cfg.DAY_LIGHT_MIN) * (0.5 + 0.5 * Math.cos((hourFraction - 0.5) * Math.PI * 2));
+
+  const h = ((base.h + hueOffset) % 360 + 360) % 360;
+  const s = Math.max(0, Math.min(100, base.s + satOffset));
+  const l = Math.max(0, Math.min(100, base.l + lightOffset));
+
+  return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
+}
+
 // Luminosity for radial nodes (slime blobs). 1 = unchanged; >1 = brighter; <1 = darker.
 export const RADIAL_PALETTE_LUMINOSITY = 1.8;
 // Luminosity for radial edges (paths between nodes). Independent of node luminosity.

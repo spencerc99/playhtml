@@ -9,6 +9,7 @@ import {
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
   extractDomain,
+  deriveSessionColor,
 } from "../utils/eventUtils";
 
 // Settings interface for cursor trails
@@ -142,13 +143,19 @@ export function useCursorTrails(
       groupEvents.sort((a, b) => a.ts - b.ts);
 
       const pid = groupEvents[0].meta.pid;
+      const cursorColor = groupEvents[0].meta.cursor_color;
+      const timezone = groupEvents[0].meta.tz;
 
-      // Determine color based on settings
+      // Determine color: randomize > participant's chosen color > palette fallback
       let color: string;
       if (settings.randomizeColors) {
         color = RISO_COLORS[trailColorIndex % RISO_COLORS.length];
         trailColorIndex++;
+      } else if (cursorColor) {
+        // Derive from participant's chosen color + trail start time
+        color = deriveSessionColor(cursorColor, groupEvents[0].ts, timezone);
       } else {
+        // Fallback: hash pid into palette
         if (!participantColors.has(pid)) {
           participantColors.set(pid, getColorForParticipant(pid));
         }
