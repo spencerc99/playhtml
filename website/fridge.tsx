@@ -413,25 +413,12 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [input, setInput] = React.useState("");
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
-    const [cursorPos, setCursorPos] = React.useState<{
-      x: number;
-      y: number;
-    } | null>(null);
     const [wallInputValue, setWallInputValue] = React.useState(wall);
     const [showWallControls, setShowWallControls] = React.useState(false);
     const { deleteElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
-
-    // Track cursor position for desktop
-    useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-        setCursorPos({ x: e.clientX, y: e.clientY });
-      };
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
-    }, []);
 
     // Convert screen coordinates to fridge-relative content coordinates,
     // accounting for the zoom/pan transform on .content
@@ -444,7 +431,8 @@ const WordControls = withSharedState<FridgeWordType[]>(
       const panY = currentPan?.y ?? 0;
 
       // .content has transform: translate(panX, panY) scale(scale) with origin 0,0
-      // Convert screen point to content-space point
+      // CSS transforms apply right-to-left, so: screen = content * scale + pan
+      // Inverse: content = (screen - pan) / scale
       const contentX = (screenX - panX) / scale;
       const contentY = (screenY - panY) / scale;
 

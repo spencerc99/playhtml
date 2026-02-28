@@ -1059,11 +1059,16 @@ function maybeSetupTag(tag: TagType | string): void {
 
 /**
  * Returns true if the given element is set up properly for the given tag, false otherwise.
+ * Checks both built-in and custom (DOM element) validators, preferring the custom one.
  */
 function isElementValidForTag(
   element: HTMLElement,
   tag: TagType | string,
 ): boolean {
+  const customValidator = (element as any).isValidElementForTag;
+  if (typeof customValidator === "function") {
+    return customValidator(element);
+  }
   return (
     capabilitiesToInitializer[tag]?.isValidElementForTag?.(element) ?? true
   );

@@ -101,7 +101,7 @@ export function CanPlayElement<T extends object, V = any>({
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
       : tagInfo
     : { "can-play": "" };
-  const primaryTag = Object.keys(computedTagInfo)[0] as TagType;
+  const primaryTag = (Object.keys(computedTagInfo)[0] ?? TagType.CanPlay) as TagType;
 
   // Add loading attributes based on loading options
   const loadingAttributes: Record<string, string> = {};
