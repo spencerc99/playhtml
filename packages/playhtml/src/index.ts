@@ -817,9 +817,10 @@ function createPlayElementData<T extends TagType, TData = any>(
 }
 
 function isCorrectElementInitializer(
-  tagInfo: ElementInitializer,
+  tagInfo: ElementInitializer | Partial<ElementInitializer> | undefined,
 ): tagInfo is ElementInitializer {
   return (
+    tagInfo != null &&
     tagInfo.defaultData !== undefined &&
     (typeof tagInfo.defaultData === "object" ||
       typeof tagInfo.defaultData === "function") &&
@@ -827,33 +828,52 @@ function isCorrectElementInitializer(
   );
 }
 
+// Read custom element properties set by CanPlayElement (React) on the DOM node
+function getCustomElementProps(element: HTMLElement) {
+  const el = element as any;
+  const props: Partial<ElementInitializer> = {};
+  const keys: (keyof ElementInitializer)[] = [
+    "defaultData",
+    "defaultLocalData",
+    "myDefaultAwareness",
+    "updateElement",
+    "updateElementAwareness",
+    "onDrag",
+    "onDragStart",
+    "onClick",
+    "onMount",
+    "resetShortcut",
+    "debounceMs",
+    "isValidElementForTag",
+  ];
+  for (const key of keys) {
+    if (el[key] !== undefined) {
+      props[key] = el[key];
+    }
+  }
+  // Legacy alias
+  if (el.additionalSetup !== undefined && props.onMount === undefined) {
+    props.onMount = el.additionalSetup;
+  }
+  return props;
+}
+
 function getElementInitializerInfoForElement(
   tag: TagType | string,
   element: HTMLElement,
 ) {
+  const customProps = getCustomElementProps(element);
+
   if (tag === TagType.CanPlay) {
-    // TODO: this needs to handle multiple can-play functionalities?
-    const customElement = element as any;
-    const elementInitializerInfo: Required<
-      Omit<ElementInitializer, "additionalSetup">
-    > = {
-      defaultData: customElement.defaultData,
-      defaultLocalData: customElement.defaultLocalData,
-      myDefaultAwareness: customElement.myDefaultAwareness,
-      updateElement: customElement.updateElement,
-      updateElementAwareness: customElement.updateElementAwareness,
-      onDrag: customElement.onDrag,
-      onDragStart: customElement.onDragStart,
-      onClick: customElement.onClick,
-      onMount: customElement.onMount || customElement.additionalSetup,
-      resetShortcut: customElement.resetShortcut,
-      debounceMs: customElement.debounceMs,
-      isValidElementForTag: customElement.isValidElementForTag,
-    };
-    return elementInitializerInfo;
+    // For can-play, all properties come from the DOM element
+    return customProps as Required<Omit<ElementInitializer, "additionalSetup">>;
   }
 
-  return capabilitiesToInitializer[tag];
+  const builtIn = capabilitiesToInitializer[tag];
+  if (!builtIn) return undefined;
+
+  // Merge: built-in defaults overridden by any custom properties on the element
+  return { ...builtIn, ...customProps };
 }
 
 function onChangeAwareness() {

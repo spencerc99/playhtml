@@ -31,7 +31,7 @@ export type ReactElementInitializer<T = object, V = any> = Omit<
   id?: string;
 } & PlayableChildren<T, V>;
 
-export function getCurrentElementHandler(tag: TagType, id: string) {
+export function getCurrentElementHandler(tag: TagType | string, id: string) {
   return playhtml.elementHandlers?.get(tag)?.get(id);
 }
 

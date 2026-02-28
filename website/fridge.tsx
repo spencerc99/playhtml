@@ -81,20 +81,23 @@ function usePinchZoom() {
         const distance = getDistance(e.touches);
         const center = getCenter(e.touches);
 
-        // Calculate new scale from pinch
+        // Calculate new scale from pinch, anchored to pinch center
         const scaleChange = distance / gesture.initialDistance;
         let newScale = gesture.initialScale * scaleChange;
-        newScale = Math.max(0.5, Math.min(4, newScale)); // Clamp between 0.5x and 4x
+        newScale = Math.max(0.5, Math.min(4, newScale));
 
-        // Calculate pan from two-finger drag
+        // Pan from two-finger drag
         const dx = center.x - gesture.lastX;
         const dy = center.y - gesture.lastY;
 
-        setTransform((prev) => ({
-          scale: newScale,
-          x: prev.x + dx,
-          y: prev.y + dy,
-        }));
+        setTransform((prev) => {
+          const ratio = newScale / prev.scale;
+          return {
+            scale: newScale,
+            x: center.x - (center.x - prev.x) * ratio + dx,
+            y: center.y - (center.y - prev.y) * ratio + dy,
+          };
+        });
 
         gesture.lastX = center.x;
         gesture.lastY = center.y;
@@ -107,16 +110,21 @@ function usePinchZoom() {
       }
     };
 
-    // Desktop: ctrl/cmd + wheel = zoom, regular wheel/trackpad = pan
+    // Desktop: ctrl/cmd + wheel = zoom anchored to mouse, regular wheel/trackpad = pan
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
-        // Zoom with ctrl/cmd + scroll
+        // Zoom anchored to mouse position
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setTransform((prev) => ({
-          ...prev,
-          scale: Math.max(0.5, Math.min(4, prev.scale * delta)),
-        }));
+        setTransform((prev) => {
+          const newScale = Math.max(0.5, Math.min(4, prev.scale * delta));
+          const ratio = newScale / prev.scale;
+          return {
+            scale: newScale,
+            x: e.clientX - (e.clientX - prev.x) * ratio,
+            y: e.clientY - (e.clientY - prev.y) * ratio,
+          };
+        });
       } else {
         // Pan with regular scroll/trackpad
         e.preventDefault();
@@ -425,42 +433,45 @@ const WordControls = withSharedState<FridgeWordType[]>(
       return () => window.removeEventListener("mousemove", handleMouseMove);
     }, []);
 
-    // Get the fridge container's position to calculate relative coordinates
-    function getFridgeOffset(): { left: number; top: number } {
+    // Convert screen coordinates to fridge-relative content coordinates,
+    // accounting for the zoom/pan transform on .content
+    function screenToFridgeCoords(
+      screenX: number,
+      screenY: number,
+    ): { x: number; y: number } {
+      const scale = currentZoom ?? 1;
+      const panX = currentPan?.x ?? 0;
+      const panY = currentPan?.y ?? 0;
+
+      // .content has transform: translate(panX, panY) scale(scale) with origin 0,0
+      // Convert screen point to content-space point
+      const contentX = (screenX - panX) / scale;
+      const contentY = (screenY - panY) / scale;
+
+      // Get fridge position in content space by inverting the transform from its bounding rect
       const fridge = document.getElementById("fridge");
-      if (!fridge) return { left: 0, top: 0 };
+      if (!fridge) return { x: contentX, y: contentY };
       const rect = fridge.getBoundingClientRect();
+      const fridgeContentX = (rect.left - panX) / scale;
+      const fridgeContentY = (rect.top - panY) / scale;
+
       return {
-        left: rect.left + window.scrollX,
-        top: rect.top + window.scrollY,
+        x: contentX - fridgeContentX,
+        y: contentY - fridgeContentY,
       };
     }
 
-    // Get center of viewport position (relative to fridge container)
+    // Place new word at the center of the current viewport
     function getCenterPosition(): { x: number; y: number } {
-      const fridgeOffset = getFridgeOffset();
-      const viewportCenterX = window.scrollX + window.innerWidth / 2;
-      const viewportCenterY = window.scrollY + window.innerHeight / 2;
-      return {
-        x: viewportCenterX - fridgeOffset.left - 50,
-        y: viewportCenterY - fridgeOffset.top - 20,
-      };
+      return screenToFridgeCoords(
+        window.innerWidth / 2,
+        window.innerHeight / 2,
+      );
     }
 
     // Get position for new word based on how it was submitted
-    function getNewWordPosition(useCursor: boolean): { x: number; y: number } {
-      const isMobile = "ontouchstart" in window || window.innerWidth < 768;
-      // Use center for mobile, button clicks, or if no cursor position
-      if (isMobile || !useCursor || !cursorPos) {
-        return getCenterPosition();
-      }
-      // Use cursor position with slight offset (for Enter key submission)
-      // Convert viewport coordinates to fridge-relative coordinates
-      const fridgeOffset = getFridgeOffset();
-      return {
-        x: cursorPos.x + window.scrollX - fridgeOffset.left + 10,
-        y: cursorPos.y + window.scrollY - fridgeOffset.top + 10,
-      };
+    function getNewWordPosition(): { x: number; y: number } {
+      return getCenterPosition();
     }
 
     function clearMessage() {
@@ -480,7 +491,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
       }
     }, []);
 
-    function onSubmit(useCursor: boolean = false) {
+    function onSubmit() {
       if (!input) {
         return;
       }
@@ -517,7 +528,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         },
       });
 
-      const pos = getNewWordPosition(useCursor);
+      const pos = getNewWordPosition();
       setData((d) => {
         d.push({
           word: input,
@@ -637,7 +648,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
             placeholder="New word..."
             value={input}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && data.length < MaxWords) onSubmit(true);
+              if (e.key === "Enter" && data.length < MaxWords) onSubmit();
             }}
             maxLength={30}
             onChange={(e) => setInput(e.target.value.trim())}
@@ -653,7 +664,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
             }}
           />
           <button
-            onClick={() => onSubmit(false)}
+            onClick={onSubmit}
             disabled={!Boolean(input) || data.length >= MaxWords}
             style={{
               ...magnetButtonStyle,

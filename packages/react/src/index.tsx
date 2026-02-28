@@ -101,6 +101,7 @@ export function CanPlayElement<T extends object, V = any>({
       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
       : tagInfo
     : { "can-play": "" };
+  const primaryTag = Object.keys(computedTagInfo)[0] as TagType;
 
   // Add loading attributes based on loading options
   const loadingAttributes: Record<string, string> = {};
@@ -212,7 +213,7 @@ export function CanPlayElement<T extends object, V = any>({
         );
         return;
       }
-      const handler = getCurrentElementHandler(TagType.CanPlay, effectiveId);
+      const handler = getCurrentElementHandler(primaryTag, effectiveId);
       if (!handler) {
         console.warn(
           `[@playhtml/react] No handler found for element ${effectiveId}`,
@@ -226,7 +227,7 @@ export function CanPlayElement<T extends object, V = any>({
         ? getIdForElement(ref.current as unknown as HTMLElement)
         : undefined;
       if (!effectiveId) return;
-      getCurrentElementHandler(TagType.CanPlay, effectiveId)?.setMyAwareness(
+      getCurrentElementHandler(primaryTag, effectiveId)?.setMyAwareness(
         newLocalAwareness,
       );
     },
