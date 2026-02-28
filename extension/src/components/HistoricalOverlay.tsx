@@ -10,7 +10,7 @@ import {
   compositePagePortrait,
   pagePortraitFilename,
 } from "../utils/portraitExport";
-import { PortraitCard, type PortraitCardProps } from "./PortraitCard";
+import { PortraitCardDirectionA, type PortraitCardProps } from "./PortraitCard";
 
 // Import visualization components from movement
 import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
@@ -85,9 +85,16 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   const [filterMode, setFilterMode] = useState<FilterMode>("auto");
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
-  const [showPortraitCard, setShowPortraitCard] = useState(false);
+  const [devMode, setDevMode] = useState(false);
   const [portraitStats, setPortraitStats] = useState<PortraitCardProps | null>(null);
   const prevDomainRef = useRef<string>(extractDomain(currentUrl));
+
+  // Load dev mode setting from storage once on mount
+  useEffect(() => {
+    browser.storage.local.get(["dev_mode"]).then((result) => {
+      setDevMode(Boolean(result["dev_mode"]));
+    }).catch(() => {});
+  }, []);
 
   // When URL changes, reset filterMode only if the domain changed
   useEffect(() => {
@@ -105,6 +112,15 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   const actualMode = filterMode === "auto" ? filterScope.mode : filterMode;
   const domain = useMemo(() => extractDomain(currentUrl), [currentUrl]);
+
+  // Sync documentSpace with actualMode: domain view never uses doc space,
+  // page view defaults to doc space (trails shown relative to full scrollable page)
+  useEffect(() => {
+    setSettings((prev) => ({
+      ...prev,
+      documentSpace: actualMode !== "domain",
+    }));
+  }, [actualMode]);
 
   // Fetch only the event types that are enabled for rendering
   const requestedTypes = useMemo((): CollectionEventType[] => {
@@ -196,55 +212,30 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [visible]);
 
-  // Fetch portrait stats when card is toggled on, re-fetch when filter mode changes
+  // Fetch portrait stats on mount and when filter mode or domain changes
   useEffect(() => {
-    if (!showPortraitCard) return;
+    if (!visible) return;
     (async () => {
       try {
-        const { LocalEventStore } = await import("../storage/LocalEventStore");
-        const { extractDomain: extractDomainUtil } = await import("../utils/urlNormalization");
-        const store = new LocalEventStore();
-
-        const events = actualMode === "domain"
-          ? await store.queryByDomain(domain)
-          : await store.queryByUrl(currentUrl);
-
-        if (events.length === 0) return;
-
-        const counts = { cursor: 0, keyboard: 0, viewport: 0 };
-        const timestamps: number[] = [];
-        const uniqueUrls = new Set<string>();
-        events.forEach((e) => {
-          if (e.type === "cursor") counts.cursor++;
-          else if (e.type === "keyboard") counts.keyboard++;
-          else if (e.type === "viewport") counts.viewport++;
-          timestamps.push(e.ts);
-          if (e.meta?.url) uniqueUrls.add(e.meta.url);
+        const res: any = await browser.runtime.sendMessage({
+          type: "GET_DOMAIN_STATS",
+          domain,
         });
-
-        const screenTime = await store.getScreenTime();
-        const scopedSessions = actualMode === "domain"
-          ? screenTime.sessions.filter((s) => extractDomainUtil(s.url) === domain)
-          : screenTime.sessions.filter((s) => {
-              try { return new URL(s.url).pathname === new URL(currentUrl).pathname; } catch { return false; }
-            });
-        const totalTimeMs = scopedSessions.reduce((sum, s) => sum + s.durationMs, 0);
-
-        setPortraitStats({
-          domain: actualMode === "domain" ? domain : new URL(currentUrl).pathname,
-          totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
-          eventCounts: counts,
-          dateRange: {
-            oldest: new Date(Math.min(...timestamps)).toLocaleDateString(),
-            newest: new Date(Math.max(...timestamps)).toLocaleDateString(),
-          },
-          uniquePageCount: uniqueUrls.size,
-        });
+        if (res?.success && res.stats) {
+          setPortraitStats({
+            domain: actualMode === "domain" ? domain : new URL(currentUrl).pathname,
+            totalTimeMs: res.stats.totalTimeMs,
+            sessions: res.stats.sessions ?? [],
+            cursorDistancePx: res.stats.cursorDistancePx ?? 0,
+            dateRange: res.stats.dateRange,
+            uniquePageCount: res.stats.uniquePageCount,
+          });
+        }
       } catch (e) {
         console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
       }
     })();
-  }, [showPortraitCard, actualMode, currentUrl, domain]);
+  }, [visible, actualMode, currentUrl, domain]);
 
   // Track viewport size
   useEffect(() => {
@@ -380,35 +371,6 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     viewportSettings,
   );
 
-  // Compute event type counts (filtered by what's actually being visualized)
-  const eventCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      cursor: 0,
-      keyboard: 0,
-      viewport: 0,
-    };
-    events.forEach((evt) => {
-      // Only count events that are currently being visualized
-      if (
-        evt.type === "cursor" &&
-        (settings.showCursorTrails || settings.showCursorClicks)
-      ) {
-        counts.cursor++;
-      } else if (evt.type === "keyboard" && settings.showTyping) {
-        counts.keyboard++;
-      } else if (evt.type === "viewport" && settings.showScrolls) {
-        counts.viewport++;
-      }
-    });
-    return counts;
-  }, [
-    events,
-    settings.showCursorTrails,
-    settings.showCursorClicks,
-    settings.showTyping,
-    settings.showScrolls,
-  ]);
-
   // Compute date range
   const dateRange = useMemo(() => {
     if (events.length === 0) return null;
@@ -472,397 +434,228 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         background: "transparent",
       };
 
-  const infoBarStyles: React.CSSProperties = {
-    position: "fixed",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 2147483647,
-    pointerEvents: "auto",
-    display: "flex",
-    flexWrap: "wrap", // Allow wrapping on small screens
-    alignItems: "center",
-    gap: "16px",
-    padding: "12px 16px",
-    background: forceServerBackfill
-      ? "rgba(212, 184, 92, 0.15)"
-      : "rgba(250, 247, 242, 0.98)",
-    borderTop: forceServerBackfill
-      ? "2px solid rgba(212, 184, 92, 0.4)"
-      : "2px solid rgba(90, 78, 65, 0.15)",
-    boxShadow: "0 -4px 12px rgba(90, 78, 65, 0.1)",
-    backdropFilter: "blur(10px)",
-    fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
-    fontSize: "12px",
-  };
-
-  const infoSectionStyles: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    minWidth: "150px",
-    flex: "0 1 auto", // Allow shrinking on small screens
-  };
-
-  const domainStyles: React.CSSProperties = {
-    fontWeight: 700,
-    fontSize: "14px",
-    color: "#3d3833",
-    letterSpacing: "0.3px",
-  };
-
-  const dateRangeStyles: React.CSSProperties = {
-    fontSize: "11px",
-    color: "#8a8279",
-    fontWeight: 500,
-  };
-
-  const eventCountsStyles: React.CSSProperties = {
-    display: "flex",
-    flexWrap: "wrap", // Wrap on small screens
-    gap: "12px",
-    paddingLeft: "16px",
-    borderLeft: "2px solid rgba(90, 78, 65, 0.12)",
-  };
-
-  const countItemStyles: React.CSSProperties = {
-    display: "flex",
-    gap: "6px",
-    alignItems: "baseline",
-  };
-
-  const countLabelStyles: React.CSSProperties = {
-    fontSize: "11px",
-    color: "#8a8279",
-    fontWeight: 500,
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-  };
-
-  const countValueStyles: React.CSSProperties = {
-    fontSize: "14px",
-    fontWeight: 700,
-    color: "#3d3833",
-  };
-
-  const togglesContainerStyles: React.CSSProperties = {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "8px",
-    marginLeft: "auto",
-    paddingRight: "8px",
-  };
-
-  const toggleLabelStyles: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    cursor: "pointer",
-    userSelect: "none",
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "#3d3833",
-    letterSpacing: "0.3px",
-    textTransform: "uppercase",
-  };
-
-  const checkboxStyles: React.CSSProperties = {
-    cursor: "pointer",
-    width: "16px",
-    height: "16px",
-    accentColor: "#8b6b7f",
-  };
-
-  const closeButtonStyles: React.CSSProperties = {
-    background: "#3d3833",
-    color: "white",
+  // Shared micro-button style for action strip
+  const actionBtnBase: React.CSSProperties = {
+    background: "none",
     border: "none",
-    padding: "8px 16px",
-    borderRadius: "6px",
-    fontSize: "11px",
-    fontWeight: 700,
+    padding: "0 6px",
     cursor: "pointer",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    fontSize: "11px",
+    color: "rgba(61,56,51,0.6)",
     fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
-    transition: "background 0.2s, transform 0.1s",
+    lineHeight: 1,
+    transition: "color 0.15s",
+    whiteSpace: "nowrap" as const,
   };
 
-  const loadingStatusStyles: React.CSSProperties = {
-    fontSize: "12px",
-    color: "#8a8279",
-    fontWeight: 500,
-    marginLeft: "auto",
-  };
-
-  const errorStatusStyles: React.CSSProperties = {
-    fontSize: "12px",
-    color: "#9a5a3a",
-    fontWeight: 600,
-    marginLeft: "auto",
-  };
+  const scopeBtnStyle = (active: boolean): React.CSSProperties => ({
+    ...actionBtnBase,
+    color: active ? "#3d3833" : "rgba(61,56,51,0.4)",
+    fontWeight: active ? 600 : 400,
+  });
 
   return (
     <div style={overlayStyles} ref={containerRef}>
-      {/* Floating portrait card */}
-      {showPortraitCard && portraitStats && (
+      {/* Floating portrait card + action strip — bottom-right corner */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "20px",
+          right: "20px",
+          zIndex: 2147483647,
+          pointerEvents: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0",
+          width: "280px",
+        }}
+      >
+        {/* Portrait card */}
+        <div
+          style={{
+            position: "relative",
+            height: "160px",
+            borderRadius: "10px 10px 0 0",
+            overflow: "hidden",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
+            border: "1px solid rgba(61,56,51,0.12)",
+            borderBottom: "none",
+          }}
+        >
+          {portraitStats ? (
+            <PortraitCardDirectionA {...portraitStats} />
+          ) : (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "#f5f0e8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "11px",
+                color: "rgba(61,56,51,0.4)",
+                fontFamily: "'Martian Mono', monospace",
+              }}
+            >
+              {loading ? "loading..." : "no data"}
+            </div>
+          )}
+
+        </div>
+
+        {/* Action strip — two rows */}
+        <div
+          style={{
+            background: forceServerBackfill
+              ? "rgba(212,184,92,0.95)"
+              : "rgba(250,247,242,0.97)",
+            borderRadius: "0 0 10px 10px",
+            border: "1px solid rgba(61,56,51,0.12)",
+            borderTop: "1px solid rgba(61,56,51,0.08)",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+          }}
+        >
+          {/* Row 1: scope toggle + full portrait link */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "0 10px",
+              height: "30px",
+              borderBottom: "1px solid rgba(61,56,51,0.07)",
+              gap: "2px",
+            }}
+          >
+            <button
+              style={scopeBtnStyle(actualMode === "domain")}
+              onClick={() => setFilterMode("domain")}
+              title="Show all pages on this domain"
+            >
+              ◉ Domain
+            </button>
+            <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px" }}>|</span>
+            <button
+              style={scopeBtnStyle(actualMode !== "domain")}
+              onClick={() => setFilterMode("url")}
+              title="Show this page only"
+            >
+              ▤ Page
+            </button>
+            <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px", padding: "0 4px" }}>|</span>
+            <button
+              style={{ ...actionBtnBase, fontSize: "10px" }}
+              onClick={() => browser.runtime.sendMessage({ type: "OPEN_TAB", url: browser.runtime.getURL("portrait.html") })}
+              title="Open full internet portrait in new tab"
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#3d3833"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(61,56,51,0.6)"; }}
+            >
+              the internet ↗
+            </button>
+          </div>
+
+          {/* Row 2: save + close */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "0 10px",
+              height: "30px",
+            }}
+          >
+            <button
+              style={actionBtnBase}
+              onClick={handleCapturePagePortrait}
+              title="Save page portrait as image"
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#3d3833"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(61,56,51,0.6)"; }}
+            >
+              ↓ save image
+            </button>
+
+            <button
+              style={{ ...actionBtnBase, marginLeft: "auto" }}
+              onClick={onClose}
+              title="Close overlay"
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#3d3833"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(61,56,51,0.6)"; }}
+            >
+              close ✕
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Dev mode bottom bar — event type toggles and status */}
+      {devMode && (
         <div
           style={{
             position: "fixed",
-            bottom: "80px",
-            right: "20px",
-            zIndex: 2147483646,
-            pointerEvents: "none",
-            width: "380px",
-          }}
-        >
-          <PortraitCard {...portraitStats} />
-        </div>
-      )}
-
-      {/* Bottom info bar */}
-      <div style={infoBarStyles}>
-        <div style={infoSectionStyles}>
-          <div style={domainStyles}>
-            {actualMode === "domain" ? domain : filterScope.displayPath}
-          </div>
-          <div style={dateRangeStyles}>
-            {actualMode === "domain" ? "All pages" : "This page only"}
-            {forceServerBackfill && " • Server"}
-          </div>
-          {dateRange && (
-            <div style={{ ...dateRangeStyles, marginTop: "2px" }}>
-              {dateRange.oldest === dateRange.newest
-                ? dateRange.oldest
-                : `${dateRange.oldest} - ${dateRange.newest}`}
-            </div>
-          )}
-        </div>
-
-        {/* Filter mode toggle - minimal */}
-        <button
-          onClick={() =>
-            setFilterMode(actualMode === "domain" ? "url" : "domain")
-          }
-          title={
-            actualMode === "domain"
-              ? "Switch to this page only"
-              : "Switch to all pages"
-          }
-          style={{
-            background: "transparent",
-            border: "1px solid rgba(0, 0, 0, 0.2)",
-            padding: "4px 8px",
-            borderRadius: "4px",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 2147483647,
+            pointerEvents: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            padding: "8px 16px",
+            background: forceServerBackfill
+              ? "rgba(212,184,92,0.92)"
+              : "rgba(250,247,242,0.97)",
+            borderTop: "1px solid rgba(61,56,51,0.15)",
+            backdropFilter: "blur(8px)",
+            fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
             fontSize: "11px",
-            cursor: "pointer",
-            transition: "all 0.2s",
-            lineHeight: 1,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-            e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.3)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.2)";
-          }}
-        >
-          {actualMode === "domain" ? "◉ Domain" : "▤ Page"}
-        </button>
-
-        {!loading && events.length > 0 && (
-          <>
-            <div style={eventCountsStyles}>
-              <div style={countItemStyles}>
-                <span style={countLabelStyles}>Cursor:</span>
-                <span style={countValueStyles}>{eventCounts.cursor}</span>
-              </div>
-              <div style={countItemStyles}>
-                <span style={countLabelStyles}>Keyboard:</span>
-                <span style={countValueStyles}>{eventCounts.keyboard}</span>
-              </div>
-              <div style={countItemStyles}>
-                <span style={countLabelStyles}>Viewport:</span>
-                <span style={countValueStyles}>{eventCounts.viewport}</span>
-              </div>
-            </div>
-
-            <div style={togglesContainerStyles}>
-              <label style={toggleLabelStyles}>
-                <input
-                  type="checkbox"
-                  style={checkboxStyles}
-                  checked={settings.showCursorTrails}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      showCursorTrails: e.target.checked,
-                    })
-                  }
-                />
-                <span>Trails</span>
-              </label>
-              <label
-                style={toggleLabelStyles}
-                title="Show cursor positions relative to the full scrollable page"
-              >
-                <input
-                  type="checkbox"
-                  style={checkboxStyles}
-                  checked={settings.documentSpace}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      documentSpace: e.target.checked,
-                    })
-                  }
-                />
-                <span>Doc space</span>
-              </label>
-              <label style={toggleLabelStyles}>
-                <input
-                  type="checkbox"
-                  style={checkboxStyles}
-                  checked={settings.showCursorClicks}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      showCursorClicks: e.target.checked,
-                    })
-                  }
-                />
-                <span>Clicks</span>
-              </label>
-              <label style={toggleLabelStyles}>
-                <input
-                  type="checkbox"
-                  style={checkboxStyles}
-                  checked={settings.showTyping}
-                  onChange={(e) =>
-                    setSettings({ ...settings, showTyping: e.target.checked })
-                  }
-                />
-                <span>Typing</span>
-              </label>
-              <label style={toggleLabelStyles}>
-                <input
-                  type="checkbox"
-                  style={checkboxStyles}
-                  checked={settings.showScrolls}
-                  onChange={(e) =>
-                    setSettings({ ...settings, showScrolls: e.target.checked })
-                  }
-                />
-                <span>Scrolls</span>
-              </label>
-            </div>
-          </>
-        )}
-
-        {loading && (
-          <div style={loadingStatusStyles}>Loading historical data...</div>
-        )}
-        {error && <div style={errorStatusStyles}>{error}</div>}
-
-        <button
-          onClick={() => browser.runtime.sendMessage({ type: "OPEN_TAB", url: browser.runtime.getURL("portrait.html") })}
-          style={{
-            background: "none",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-            fontSize: "11px",
-            color: "#8a8279",
-            textDecoration: "none",
-            borderBottom: "1px solid rgba(138, 130, 121, 0.4)",
-            paddingBottom: "1px",
-            whiteSpace: "nowrap",
-            transition: "color 0.15s",
-            fontFamily: "inherit",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "#3d3833";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "#8a8279";
-          }}
-        >
-          full portrait →
-        </button>
-
-        {!loading && events.length > 0 && (
-          <button
-            onClick={() => setShowPortraitCard((p) => !p)}
-            title="Toggle portrait card"
-            style={{
-              background: showPortraitCard ? "rgba(61, 56, 51, 0.12)" : "none",
-              border: "1px solid rgba(0, 0, 0, 0.2)",
-              padding: "4px 8px",
-              borderRadius: "4px",
-              fontSize: "11px",
-              cursor: "pointer",
-              transition: "all 0.2s",
-              lineHeight: 1,
-              fontFamily: "inherit",
-              color: "#3d3833",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.3)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.2)";
-            }}
-          >
-            portrait
-          </button>
-        )}
-
-        <button
-          onClick={handleCapturePagePortrait}
-          title="Save as image"
-          style={{
-            background: "none",
-            border: "1px solid rgba(0, 0, 0, 0.2)",
-            padding: "4px 8px",
-            borderRadius: "4px",
-            fontSize: "11px",
-            cursor: "pointer",
-            transition: "all 0.2s",
-            lineHeight: 1,
-            fontFamily: "inherit",
             color: "#3d3833",
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-            e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.3)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "none";
-            e.currentTarget.style.borderColor = "rgba(0, 0, 0, 0.2)";
-          }}
         >
-          ↓ save
-        </button>
-
-        <button
-          onClick={onClose}
-          style={closeButtonStyles}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#2a2421";
-            e.currentTarget.style.transform = "translateY(-1px)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#3d3833";
-            e.currentTarget.style.transform = "translateY(0)";
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.transform = "translateY(0)";
-          }}
-        >
-          Close
-        </button>
-      </div>
+          <span style={{ fontWeight: 600, fontSize: "10px", letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(61,56,51,0.5)" }}>
+            dev
+          </span>
+          {[
+            { label: "Trails", key: "showCursorTrails" as const },
+            { label: "Doc space", key: "documentSpace" as const },
+            { label: "Clicks", key: "showCursorClicks" as const },
+            { label: "Typing", key: "showTyping" as const },
+            { label: "Scrolls", key: "showScrolls" as const },
+          ].map(({ label, key }) => (
+            <label
+              key={key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                cursor: "pointer",
+                userSelect: "none",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: settings[key] ? "#3d3833" : "rgba(61,56,51,0.4)",
+                letterSpacing: "0.03em",
+                textTransform: "uppercase",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={settings[key]}
+                onChange={(e) => setSettings({ ...settings, [key]: e.target.checked })}
+                style={{ cursor: "pointer", width: "14px", height: "14px", accentColor: "#4a9a8a" }}
+              />
+              {label}
+            </label>
+          ))}
+          {loading && (
+            <span style={{ marginLeft: "auto", color: "rgba(61,56,51,0.5)" }}>loading...</span>
+          )}
+          {error && (
+            <span style={{ marginLeft: "auto", color: "#9a5a3a" }}>{error}</span>
+          )}
+          {forceServerBackfill && (
+            <span style={{ color: "rgba(61,56,51,0.6)", fontSize: "10px" }}>• server</span>
+          )}
+        </div>
+      )}
 
       {/* RISO paper texture overlay */}
       <svg
@@ -920,6 +713,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               trailStates={trailStates}
               timeRange={timeRange}
               showClickRipples={!settings.showCursorClicks}
+              windowSize={settings.maxConcurrentTrails * 3}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 pointSize: settings.pointSize,
