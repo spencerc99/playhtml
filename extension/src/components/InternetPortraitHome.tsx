@@ -7,9 +7,10 @@ import type { PlayerIdentity } from "../types";
 import type { CollectorStatus } from "../collectors/types";
 import type { CollectionEvent } from "../collectors/types";
 import { TinyMovementPreview } from "./TinyMovementPreview";
-import { PortraitCard } from "./PortraitCard";
+import { PortraitCardDirectionA } from "./PortraitCard";
 import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
+import { FLAGS } from "../flags";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -20,6 +21,8 @@ interface Props {
 interface PortraitStats {
   domain: string;
   totalTimeMs: number | null;
+  sessions: { url: string; focusTs: number; blurTs: number; durationMs: number }[];
+  cursorDistancePx: number;
   eventCounts: { cursor: number; keyboard: number; viewport: number };
   dateRange: { oldest: string; newest: string } | null;
   uniquePageCount: number;
@@ -62,11 +65,16 @@ export function InternetPortraitHome({
         }
         // Try to pull recent cursor events for preview (best-effort)
         try {
-          const recent = await browser.tabs.sendMessage(tab.id, {
-            type: "GET_RECENT_EVENTS",
-          });
-          if (recent?.success && Array.isArray(recent.events)) {
-            setRecentCursorEvents(recent.events as CollectionEvent[]);
+          if (tab.url) {
+            const url = new URL(tab.url);
+            const domain = url.hostname.replace(/^www\./, '');
+            const recent = await browser.runtime.sendMessage({
+              type: "GET_RECENT_EVENTS",
+              domain,
+            });
+            if (recent?.success && Array.isArray(recent.events)) {
+              setRecentCursorEvents(recent.events as CollectionEvent[]);
+            }
           }
         } catch {}
       } catch (e) {
@@ -120,7 +128,7 @@ export function InternetPortraitHome({
     };
   }, []);
 
-  // Load portrait stats for current tab's domain via content script
+  // Load portrait stats for current tab's domain via background store
   useEffect(() => {
     (async () => {
       try {
@@ -128,9 +136,12 @@ export function InternetPortraitHome({
           active: true,
           currentWindow: true,
         });
-        if (!tab?.id) return;
-        const response = await browser.tabs.sendMessage(tab.id, {
+        if (!tab?.url) return;
+        const url = new URL(tab.url);
+        const domain = url.hostname.replace(/^www\./, '');
+        const response = await browser.runtime.sendMessage({
           type: "GET_DOMAIN_STATS",
+          domain,
         });
         if (response?.success && response.stats) {
           setPortraitStats(response.stats);
@@ -142,6 +153,7 @@ export function InternetPortraitHome({
   }, []);
 
   useEffect(() => {
+    if (!FLAGS.COPRESENCE) return;
     (async () => {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) return;
@@ -165,7 +177,7 @@ export function InternetPortraitHome({
           <p className="portrait-home__subtitle">
             An evolving portrait from your time on the internet
           </p>
-          {presenceCount !== null && presenceCount > 0 && (
+          {FLAGS.COPRESENCE && presenceCount !== null && presenceCount > 0 && (
             <span className="portrait-home__presence">
               {presenceCount} {presenceCount === 1 ? "person" : "people"} here
             </span>
@@ -227,13 +239,13 @@ export function InternetPortraitHome({
             <div className="preview-card__body">
               <TinyMovementPreview />
               {portraitStats && (
-                <PortraitCard
+                <PortraitCardDirectionA
                   domain={portraitStats.domain}
                   totalTimeMs={portraitStats.totalTimeMs}
-                  eventCounts={portraitStats.eventCounts}
+                  sessions={portraitStats.sessions ?? []}
+                  cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
                   dateRange={portraitStats.dateRange}
                   uniquePageCount={portraitStats.uniquePageCount}
-                  compact
                 />
               )}
               <div className="preview-card__label">Open Your Portrait</div>

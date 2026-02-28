@@ -14,6 +14,7 @@ interface CollectionsProps {
 
 const PRIVACY_LEVEL_KEY = "collection_keyboard_privacy_level";
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
+const DEV_MODE_KEY = "dev_mode";
 
 interface StorageStats {
   totalEvents: number;
@@ -38,6 +39,91 @@ function formatAge(ts: number): string {
   return `${months}mo`;
 }
 
+// ── Shared collector list UI ──────────────────────────────────────────────────
+// Renders collector cards with off/local/shared radio controls and the keyboard
+// privacy level sub-setting. Used by both Collections and SetupPage.
+
+export interface CollectorListProps {
+  modes: Record<string, "off" | "local" | "shared">;
+  onModeChange: (type: string, mode: "off" | "local" | "shared") => void;
+  keyboardPrivacyLevel: "abstract" | "full";
+  onKeyboardPrivacyChange: (level: "abstract" | "full") => void;
+}
+
+const COLLECTOR_DESCRIPTIONS: Record<string, string> = {
+  cursor: "Captures cursor movement, clicks, holds, and cursor style changes",
+  keyboard: "Captures typing frequency and location",
+  viewport: "Captures scroll position and viewport changes",
+  navigation: "Captures page navigation and session timing",
+};
+
+export function CollectorList({
+  modes,
+  onModeChange,
+  keyboardPrivacyLevel,
+  onKeyboardPrivacyChange,
+}: CollectorListProps) {
+  const types = getValidEventTypes();
+  return (
+    <div className="collections__collector-list">
+      {types.map((type) => {
+        const isActive = modes[type] && modes[type] !== "off";
+        return (
+          <div key={type} className={`collector-card${isActive ? " collector-card--active" : ""}`}>
+            <div className="collector-card__row">
+              <div className="collector-card__title-row">
+                <span aria-hidden className="collector-card__icon">
+                  <CollectorIcon type={type} />
+                </span>
+                <h3 className="collector-card__name">{type}</h3>
+              </div>
+              <div className="collector-card__modes">
+                {(["off", "local", "shared"] as const).map((opt) => (
+                  <label key={opt}>
+                    <input
+                      type="radio"
+                      name={`mode-${type}`}
+                      value={opt}
+                      checked={(modes[type] ?? "local") === opt}
+                      onChange={() => onModeChange(type, opt)}
+                    />
+                    {opt}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <p className="collector-card__description">
+              {COLLECTOR_DESCRIPTIONS[type] ?? ""}
+            </p>
+            {type === "keyboard" && isActive && (
+              <div className="collector-card__privacy-section">
+                <div className="collector-card__privacy-header">
+                  <div>
+                    <label className="collector-card__privacy-label">Privacy Level</label>
+                    <p className="collector-card__privacy-desc">
+                      {keyboardPrivacyLevel === "abstract"
+                        ? "Abstract: Typing frequency and location only (no text)"
+                        : "Full: Text content with PII redaction"}
+                    </p>
+                  </div>
+                  <select
+                    value={keyboardPrivacyLevel}
+                    onChange={(e) => onKeyboardPrivacyChange(e.target.value as "abstract" | "full")}
+                    className="collector-card__privacy-select"
+                  >
+                    <option value="abstract">Abstract</option>
+                    <option value="full">Full</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Collections({ onBack }: CollectionsProps) {
   const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,6 +137,7 @@ export function Collections({ onBack }: CollectionsProps) {
     Record<string, "off" | "local" | "shared">
   >({});
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
+  const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
     loadCollectors();
@@ -58,7 +145,26 @@ export function Collections({ onBack }: CollectionsProps) {
     loadFilterSubstrings();
     loadModes();
     loadStorageStats();
+    loadDevMode();
   }, []);
+
+  const loadDevMode = async () => {
+    try {
+      const result = await browser.storage.local.get([DEV_MODE_KEY]);
+      setDevMode(Boolean(result[DEV_MODE_KEY]));
+    } catch {
+      setDevMode(false);
+    }
+  };
+
+  const toggleDevMode = async (enabled: boolean) => {
+    try {
+      await browser.storage.local.set({ [DEV_MODE_KEY]: enabled });
+      setDevMode(enabled);
+    } catch (e) {
+      console.error("Failed to update dev mode:", e);
+    }
+  };
 
   const clearAllData = async () => {
     if (
@@ -420,137 +526,45 @@ export function Collections({ onBack }: CollectionsProps) {
           <span>Your browsing behaviors contribute to evolving artworks</span>
         </div>
 
-        <div className="collections__collector-list">
-          {collectors.map((collector) => {
-            const isActive =
-              modes[collector.type] && modes[collector.type] !== "off";
-            return (
-              <div
-                key={collector.type}
-                className={`collector-card${
-                  isActive ? " collector-card--active" : ""
-                }`}
-              >
-                <div className="collector-card__row">
-                  <div className="collector-card__title-row">
-                    <span aria-hidden className="collector-card__icon">
-                      <CollectorIcon type={collector.type} />
-                    </span>
-                    <h3 className="collector-card__name">{collector.type}</h3>
-                    {storageStats?.countsByType[collector.type] != null && (
-                      <span className="collector-card__count">
-                        {storageStats.countsByType[
-                          collector.type
-                        ].toLocaleString()}
-                      </span>
-                    )}
+        <CollectorList
+          modes={modes}
+          onModeChange={updateMode}
+          keyboardPrivacyLevel={keyboardPrivacyLevel}
+          onKeyboardPrivacyChange={updatePrivacyLevel}
+        />
+
+        {/* Filter substrings — only when keyboard is active and full fidelity */}
+        {(modes["keyboard"] ?? "local") !== "off" && keyboardPrivacyLevel === "full" && (
+          <div className="collector-card__filter-section">
+            <label className="collector-card__filter-label">Filter Sensitive Text</label>
+            <p className="collector-card__filter-desc">
+              Sequences containing these substrings will be redacted
+            </p>
+            <div className="collector-card__filter-input-row">
+              <input
+                type="text"
+                value={newFilterSubstring}
+                onChange={(e) => setNewFilterSubstring(e.target.value)}
+                onKeyPress={(e) => { if (e.key === "Enter") addFilterSubstring(); }}
+                placeholder="Enter substring..."
+              />
+              <button onClick={addFilterSubstring}>Add</button>
+            </div>
+            {filterSubstrings.length > 0 && (
+              <div className="collector-card__filter-tags">
+                {filterSubstrings.map((substring) => (
+                  <div key={substring} className="collector-card__filter-tag">
+                    <span>{substring}</span>
+                    <button onClick={() => removeFilterSubstring(substring)}>×</button>
                   </div>
-                  <div className="collector-card__modes">
-                    {(["off", "local", "shared"] as const).map((opt) => (
-                      <label key={opt}>
-                        <input
-                          type="radio"
-                          name={`mode-${collector.type}`}
-                          value={opt}
-                          checked={(modes[collector.type] || "local") === opt}
-                          onChange={() => updateMode(collector.type, opt)}
-                        />
-                        {opt === "local" ? "local" : opt}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <p className="collector-card__description">
-                  {collector.description}
-                </p>
-
-                {/* Privacy level sub-setting for keyboard collector */}
-                {collector.type === "keyboard" && isActive && (
-                  <>
-                    <div className="collector-card__privacy-section">
-                      <div className="collector-card__privacy-header">
-                        <div>
-                          <label className="collector-card__privacy-label">
-                            Privacy Level
-                          </label>
-                          <p className="collector-card__privacy-desc">
-                            {keyboardPrivacyLevel === "abstract"
-                              ? "Abstract: Typing frequency and location only (no text)"
-                              : "Full: Text content with PII redaction"}
-                          </p>
-                        </div>
-                        <select
-                          value={keyboardPrivacyLevel}
-                          onChange={(e) =>
-                            updatePrivacyLevel(
-                              e.target.value as "abstract" | "full",
-                            )
-                          }
-                          className="collector-card__privacy-select"
-                        >
-                          <option value="abstract">Abstract</option>
-                          <option value="full">Full</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Filter substrings section - only show when privacy level is 'full' */}
-                    {keyboardPrivacyLevel === "full" && (
-                      <div className="collector-card__filter-section">
-                        <label className="collector-card__filter-label">
-                          Filter Sensitive Text
-                        </label>
-                        <p className="collector-card__filter-desc">
-                          Sequences containing these substrings will be redacted
-                        </p>
-                        <div className="collector-card__filter-input-row">
-                          <input
-                            type="text"
-                            value={newFilterSubstring}
-                            onChange={(e) =>
-                              setNewFilterSubstring(e.target.value)
-                            }
-                            onKeyPress={(e) => {
-                              if (e.key === "Enter") addFilterSubstring();
-                            }}
-                            placeholder="Enter substring..."
-                          />
-                          <button onClick={addFilterSubstring}>Add</button>
-                        </div>
-
-                        {filterSubstrings.length > 0 && (
-                          <div className="collector-card__filter-tags">
-                            {filterSubstrings.map((substring) => (
-                              <div
-                                key={substring}
-                                className="collector-card__filter-tag"
-                              >
-                                <span>{substring}</span>
-                                <button
-                                  onClick={() =>
-                                    removeFilterSubstring(substring)
-                                  }
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {filterSubstrings.length === 0 && (
-                          <p className="collector-card__filter-empty">
-                            No filters added yet
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                ))}
               </div>
-            );
-          })}
-        </div>
+            )}
+            {filterSubstrings.length === 0 && (
+              <p className="collector-card__filter-empty">No filters added yet</p>
+            )}
+          </div>
+        )}
 
         <div className="collections__privacy-notice">
           All data is anonymous — no personal information is collected. You can
@@ -561,6 +575,21 @@ export function Collections({ onBack }: CollectionsProps) {
         <button className="collections__clear-btn" onClick={clearAllData}>
           Clear all local data
         </button>
+
+        <div className="collections__dev-mode">
+          <label className="collections__dev-mode-label">
+            <input
+              type="checkbox"
+              checked={devMode}
+              onChange={(e) => toggleDevMode(e.target.checked)}
+              className="collections__dev-mode-checkbox"
+            />
+            <div>
+              <span className="collections__dev-mode-title">Developer mode</span>
+              <span className="collections__dev-mode-desc">Shows advanced controls in the movement overlay</span>
+            </div>
+          </label>
+        </div>
       </main>
     </div>
   );

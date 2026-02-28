@@ -13,7 +13,7 @@ export function TinyMovementPreview() {
     height: 0,
   });
 
-  // Load up to 50 recent cursor events from the active tab (content script queries IndexedDB)
+  // Load up to 200 recent cursor events for the active tab's domain from background store
   useEffect(() => {
     (async () => {
       try {
@@ -21,9 +21,12 @@ export function TinyMovementPreview() {
           active: true,
           currentWindow: true,
         });
-        if (!tab?.id) return;
-        const res: any = await browser.tabs.sendMessage(tab.id, {
+        if (!tab?.url) return;
+        const url = new URL(tab.url);
+        const domain = url.hostname.replace(/^www\./, '');
+        const res: any = await browser.runtime.sendMessage({
           type: "GET_RECENT_EVENTS",
+          domain,
         });
         if (res?.success && Array.isArray(res.events)) {
           setEvents(res.events as CollectionEvent[]);

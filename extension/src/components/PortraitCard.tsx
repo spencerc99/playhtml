@@ -394,14 +394,16 @@ export function PortraitCard({
 // Stroke density scales with total time spent; colors use the RISO palette.
 // Text floats over a semi-transparent paper overlay. Fills available space.
 
-// RISO-inspired colors as [r,g,b] for canvas rendering
-const RISO_CANVAS_COLORS: [number, number, number][] = [
-  [0, 120, 191],   // Blue
-  [255, 102, 94],  // Bright Red
-  [0, 169, 92],    // Green
-  [255, 123, 75],  // Orange
-  [146, 55, 141],  // Purple
-  [0, 131, 138],   // Teal
+// Trail palette as [r,g,b] for canvas rendering — matches RISO_COLORS in eventUtils
+const CANVAS_PALETTE: [number, number, number][] = [
+  [210, 51, 35],   // warm red — hsl(10, 72%, 48%)
+  [180, 148, 34],  // amber — hsl(55, 68%, 42%)
+  [92, 158, 46],   // moss green — hsl(100, 55%, 40%)
+  [39, 155, 130],  // teal — hsl(155, 60%, 38%)
+  [40, 110, 189],  // steel blue — hsl(210, 65%, 45%)
+  [80, 55, 189],   // violet — hsl(260, 55%, 48%)
+  [184, 48, 151],  // magenta — hsl(310, 58%, 45%)
+  [195, 115, 35],  // burnt orange — hsl(35, 70%, 45%)
 ];
 
 export function PortraitCardDirectionA({
@@ -458,7 +460,7 @@ export function PortraitCardDirectionA({
     for (let i = 0; i < strokeCount; i++) {
       const hour = sampleHour();
       const w = weights[hour];
-      const [cr, cg, cb] = RISO_CANVAS_COLORS[(hour + i) % RISO_CANVAS_COLORS.length];
+      const [cr, cg, cb] = CANVAS_PALETTE[(hour + i) % CANVAS_PALETTE.length];
       const cx = ((hour + 0.5) / 24) * W + (rand() - 0.5) * jitterW;
       const sw = 0.5 + rand() * (W / 24) * 0.4;
       const sh = H * (0.3 + rand() * 0.7);
