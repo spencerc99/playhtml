@@ -1,5 +1,5 @@
 // ABOUTME: Styles for the full-page first-time setup wizard
-// ABOUTME: Covers welcome, customize, consent, and done steps
+// ABOUTME: Covers welcome, configure, and done steps
 
 @use "../styles/variables" as *;
 
@@ -13,35 +13,49 @@
   color: $text;
 
   &__inner {
+    position: relative;
+    z-index: 1;
     width: 100%;
-    max-width: 720px;
+    max-width: 560px;
   }
 }
 
 .setup-step {
+  &__trail-art {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+
   &__title {
     @include wordmark;
-    font-size: 28px;
-    margin-bottom: 8px;
+    font-size: 32px;
+    margin-bottom: 12px;
   }
 
   &__heading {
     @include heading;
     font-size: 20px;
-    margin-bottom: 8px;
+    margin-bottom: 16px;
   }
 
-  &__subtitle {
+  &__desc {
     font-size: 14px;
+    line-height: 1.6;
     color: $text-muted;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+    max-width: 460px;
   }
 
   &__field {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-top: 8px;
+    margin-bottom: 20px;
   }
 
   &__field-label {
@@ -53,14 +67,59 @@
   &__input {
     @include input-field;
     font-size: 14px;
-    max-width: 250px;
+    max-width: 280px;
   }
 
-  &__color-row {
+  // ── Sharing tabs ────────────────────────────────────────────────────────────
+
+  &__tabs {
+    display: inline-flex;
+    background: $surface;
+    border: 1px solid $border-strong;
+    border-radius: 24px;
+    padding: 3px;
+    gap: 2px;
+    margin-bottom: 20px;
+  }
+
+  &__tab {
+    @include btn-base;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 20px;
+    background: transparent;
+    color: $text-muted;
+    border: none;
+
+    &--active {
+      background: $accent-teal;
+      color: white;
+
+      &:hover { filter: brightness(0.97); }
+    }
+
+    &:not(&--active):hover {
+      background: $surface-hover;
+      color: $text;
+      filter: none;
+    }
+  }
+
+  // ── Collector list (reuses Collections card styles) ─────────────────────────
+
+  // Give the embedded CollectorList some bottom margin before the color section
+  .collections__collector-list {
+    margin-bottom: 20px;
+  }
+
+  // ── Color picker ────────────────────────────────────────────────────────────
+
+  &__color-section {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 12px;
+    gap: 8px;
+    margin-bottom: 24px;
   }
 
   &__color-picker-row {
@@ -69,13 +128,12 @@
     gap: 8px;
   }
 
-  &__color-input {
-    width: 48px;
-    height: 36px;
-    border: 1px solid $border-strong;
-    border-radius: 6px;
-    padding: 0;
-    cursor: pointer;
+  &__color-input--hidden {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 
   &__reroll-btn {
@@ -89,36 +147,33 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 56px;
-    height: 56px;
+    width: 52px;
+    height: 52px;
     background: $surface;
     border: 1px solid $border;
     border-radius: 8px;
-    margin-left: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+
+    &:hover {
+      border-color: $border-strong;
+      background: $surface-hover;
+    }
   }
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
 
   &__actions {
-    margin-top: 16px;
     display: flex;
     gap: 8px;
-  }
-
-  &__consent-actions {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
+    align-items: center;
   }
 
   &__btn-primary {
     @include btn-primary;
   }
+
   &__btn-secondary {
     @include btn-secondary;
-  }
-  &__btn-private {
-    @include btn-teal;
-  }
-  &__btn-collective {
-    @include btn-blue;
   }
 }
