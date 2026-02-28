@@ -9,22 +9,26 @@ interface PlayerIdentityCardProps {
   playerIdentity: PlayerIdentity;
   /** Compact inline mode: cursor icon only in bordered box, for header row */
   compact?: boolean;
+  onClick?: () => void;
 }
 
-export function PlayerIdentityCard({ playerIdentity, compact = false }: PlayerIdentityCardProps) {
+export function PlayerIdentityCard({ playerIdentity, compact = false, onClick }: PlayerIdentityCardProps) {
   const primaryColor = playerIdentity.playerStyle.colorPalette[0] ?? "#4a9a8a";
   const displayName = playerIdentity.name?.trim() || "Anonymous";
   const siteCount = playerIdentity.discoveredSites?.length ?? 0;
 
   if (compact) {
-    // TODO: clicking the cursor should navigate to a profile page where
-    // the user can view the full identity card and edit their info
     return (
-      <div className="identity-card identity-card--compact">
+      <button
+        type="button"
+        className="identity-card identity-card--compact"
+        onClick={onClick}
+        title="Profile settings"
+      >
         <div className="identity-card__cursor">
           <CursorSvg size={28} color={primaryColor} />
         </div>
-      </div>
+      </button>
     );
   }
 

@@ -99,6 +99,7 @@ export default defineBackground(() => {
       }
 
       await browser.storage.local.set({ playerIdentity: identity })
+      console.log('[Identity] Generated new ECDSA keypair, public key:', publicKey)
 
       // Clear legacy participant ID key so getParticipantId() reads from playerIdentity
       await browser.storage.local.remove('collection_participant_id')

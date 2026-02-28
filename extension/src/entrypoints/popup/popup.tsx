@@ -9,6 +9,7 @@ import { SiteStatus } from "../../components/SiteStatus";
 import { QuickActions } from "../../components/QuickActions";
 import { Collections } from "../../components/Collections";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
+import { ProfilePage } from "../../components/ProfilePage";
 import { Onboarding } from "../../components/Onboarding";
 import { FLAGS } from "../../flags";
 import {
@@ -35,7 +36,7 @@ function PlayHTMLPopup() {
     lastUpdated: 0,
   });
   const [currentView, setCurrentView] = useState<
-    "main" | "inventory" | "collections"
+    "main" | "inventory" | "collections" | "profile"
   >("main");
   const [devFeaturesEnabled, setDevFeaturesEnabled] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
@@ -316,6 +317,16 @@ function PlayHTMLPopup() {
     );
   }
 
+  if (currentView === "profile" && playerIdentity) {
+    return (
+      <ProfilePage
+        playerIdentity={playerIdentity}
+        onBack={() => setCurrentView("main")}
+        onIdentityUpdated={(updated) => setPlayerIdentity(updated)}
+      />
+    );
+  }
+
   if (currentView === "inventory") {
     return (
       <Inventory
@@ -337,6 +348,7 @@ function PlayHTMLPopup() {
         playerIdentity={playerIdentity}
         onViewCollections={() => setCurrentView("collections")}
         onViewHistory={toggleHistoricalOverlay}
+        onViewProfile={() => setCurrentView("profile")}
       />
     );
   }

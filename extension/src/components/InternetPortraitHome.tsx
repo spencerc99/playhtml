@@ -16,6 +16,7 @@ interface Props {
   playerIdentity: PlayerIdentity | null;
   onViewCollections: () => void;
   onViewHistory: () => void;
+  onViewProfile?: () => void;
 }
 
 interface PortraitStats {
@@ -32,6 +33,7 @@ export function InternetPortraitHome({
   playerIdentity,
   onViewCollections,
   onViewHistory,
+  onViewProfile,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +172,7 @@ export function InternetPortraitHome({
         <div className="portrait-home__header-row">
           <h1 className="portrait-home__wordmark">we were online</h1>
           {playerIdentity && (
-            <PlayerIdentityCard playerIdentity={playerIdentity} compact />
+            <PlayerIdentityCard playerIdentity={playerIdentity} compact onClick={onViewProfile} />
           )}
         </div>
         <div className="portrait-home__subtitle-row">

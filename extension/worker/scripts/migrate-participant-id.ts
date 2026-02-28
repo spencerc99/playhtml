@@ -1,12 +1,35 @@
 // ABOUTME: One-time migration to rewrite old pid_* participant IDs to ECDSA public key
 // ABOUTME: Run manually after extension generates new keypair
 
-// Usage: SUPABASE_URL=... SUPABASE_SECRET_KEY=... NEW_PID=pk_04a3... bun run scripts/migrate-participant-id.ts
+// Usage: NEW_PID=pk_04a3... bun run scripts/migrate-participant-id.ts
+// Reads SUPABASE_URL and SUPABASE_SECRET_KEY from .dev.vars automatically.
 
 import { createClient } from '@supabase/supabase-js';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+// Load .dev.vars (Cloudflare Workers local secrets format)
+function loadDevVars(): Record<string, string> {
+  const varsPath = resolve(import.meta.dir, '..', '.dev.vars');
+  try {
+    const content = readFileSync(varsPath, 'utf-8');
+    const vars: Record<string, string> = {};
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) continue;
+      vars[trimmed.slice(0, eqIndex)] = trimmed.slice(eqIndex + 1);
+    }
+    return vars;
+  } catch {
+    return {};
+  }
+}
+
+const devVars = loadDevVars();
+const SUPABASE_URL = process.env.SUPABASE_URL || devVars.SUPABASE_URL;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || devVars.SUPABASE_SECRET_KEY;
 const NEW_PID = process.env.NEW_PID;
 
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !NEW_PID) {
