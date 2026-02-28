@@ -3,7 +3,7 @@
 import browser from 'webextension-polyfill'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import type { QueryOptions } from '../storage/LocalEventStore'
-import { uploadEvents } from '../storage/sync'
+import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import type { CollectionEvent } from '../shared/types'
 
 const store = new LocalEventStore()
@@ -40,12 +40,15 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
       // First time installation - setup default identity
-      initializePlayerIdentity()
+      initializePlayerIdentity().then(() => syncIdentityToServer())
       // Open setup page in a new tab
       const url = browser.runtime.getURL('options.html')
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
+    } else {
+      // Extension updated — ensure key is upgraded, then sync
+      initializePlayerIdentity().then(() => syncIdentityToServer())
     }
   })
 
@@ -109,6 +112,15 @@ export default defineBackground(() => {
     const s = 65 + Math.floor(Math.random() * 15); // 65-80%
     const l = 55 + Math.floor(Math.random() * 15); // 55-70%
     return `hsl(${hue}, ${s}%, ${l}%)`;
+  }
+
+  // Sync participant identity (cursor color) to server on startup
+  async function syncIdentityToServer() {
+    try {
+      const { playerIdentity } = await browser.storage.local.get(['playerIdentity']);
+      if (!playerIdentity?.publicKey || !playerIdentity.playerStyle?.colorPalette?.[0]) return;
+      syncParticipantColor(playerIdentity.publicKey, playerIdentity.playerStyle.colorPalette[0]);
+    } catch {}
   }
 
   // Cross-site messaging coordination

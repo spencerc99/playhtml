@@ -20,6 +20,7 @@ export interface CollectionEvent {
     vw: number;
     vh: number;
     tz: string;
+    cursor_color?: string | null;
   };
 }
 

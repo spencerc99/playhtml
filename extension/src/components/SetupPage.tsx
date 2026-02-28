@@ -6,6 +6,8 @@ import { getValidEventTypes } from "../shared/types";
 import { CursorSvg } from "./icons";
 import { CollectorList } from "./Collections";
 import { TrailsHero } from "./TrailsHero";
+import { syncParticipantColor } from "../storage/sync";
+import { getParticipantId } from "../storage/participant";
 import "./SetupPage.scss";
 
 type Step = "welcome" | "configure" | "done";
@@ -133,6 +135,12 @@ export default function SetupPage() {
             playerIdentity.playerStyle.colorPalette = palette;
           }
           await browser.storage.local.set({ playerIdentity });
+
+          // Sync cursor color to server (fire-and-forget)
+          try {
+            const pid = await getParticipantId();
+            syncParticipantColor(pid, color);
+          } catch {}
         }
       } catch {}
 
