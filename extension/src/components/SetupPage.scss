@@ -43,6 +43,12 @@
     margin-bottom: 16px;
   }
 
+  &__subheading {
+    @include heading;
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+
   &__desc {
     font-size: 14px;
     line-height: 1.6;
@@ -108,7 +114,6 @@
 
   // ── Collector list (reuses Collections card styles) ─────────────────────────
 
-  // Give the embedded CollectorList some bottom margin before the color section
   .collections__collector-list {
     margin-bottom: 20px;
   }

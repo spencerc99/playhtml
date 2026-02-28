@@ -210,14 +210,6 @@ export default function SetupPage() {
               </button>
             </div>
 
-            {/* Reuse the same collector card UI from the settings page */}
-            <CollectorList
-              modes={collectorModes}
-              onModeChange={handleCollectorModeChange}
-              keyboardPrivacyLevel={keyboardFidelity}
-              onKeyboardPrivacyChange={handleKeyboardFidelityChange}
-            />
-
             <div className="setup-step__color-section">
               <label className="setup-step__field-label">Cursor color</label>
               <div className="setup-step__color-picker-row">
@@ -249,6 +241,16 @@ export default function SetupPage() {
                 </button>
               </div>
             </div>
+
+            <h3 className="setup-step__subheading">Data collection</h3>
+
+            {/* Reuse the same collector card UI from the settings page */}
+            <CollectorList
+              modes={collectorModes}
+              onModeChange={handleCollectorModeChange}
+              keyboardPrivacyLevel={keyboardFidelity}
+              onKeyboardPrivacyChange={handleKeyboardFidelityChange}
+            />
 
             <div className="setup-step__actions">
               <button onClick={() => setStep("welcome")} className="setup-step__btn-secondary">

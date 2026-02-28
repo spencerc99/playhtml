@@ -27,7 +27,10 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private currentTarget: string | undefined;
   private currentCursorStyle: string | undefined;
   private lastCursorStyle: string | undefined;
-  
+  private cursorChangeTimer: number | null = null;
+  private cursorChangeDebounce = 500; // ms - debounce rapid cursor style changes
+  private pendingCursorStyle: string | undefined;
+
   // Last sampled position (for movement threshold)
   private lastSampledX = 0;
   private lastSampledY = 0;
@@ -72,16 +75,26 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         // Create a simple selector (tag + id/class if available)
         this.currentTarget = getElementSelector(target);
 
-        // Detect cursor style changes
+        // Detect cursor style changes (debounced)
         const computedStyle = window.getComputedStyle(target);
         const cursorStyle = computedStyle.cursor || 'auto';
         this.currentCursorStyle = cursorStyle;
-        
-        // Emit cursor change event if style changed
-        if (this.lastCursorStyle !== undefined && this.lastCursorStyle !== cursorStyle) {
-          this.emitCursorChangeEvent();
+
+        if (this.lastCursorStyle === undefined) {
+          this.lastCursorStyle = cursorStyle;
+        } else if (this.lastCursorStyle !== cursorStyle) {
+          this.pendingCursorStyle = cursorStyle;
+          if (this.cursorChangeTimer === null) {
+            this.cursorChangeTimer = window.setTimeout(() => {
+              this.cursorChangeTimer = null;
+              // Only emit if cursor actually settled on a different style
+              if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
+                this.lastCursorStyle = this.pendingCursorStyle;
+                this.emitCursorChangeEvent();
+              }
+            }, this.cursorChangeDebounce);
+          }
         }
-        this.lastCursorStyle = cursorStyle;
       }
       
       // Schedule real-time update
@@ -193,6 +206,12 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     if (this.clickTimer !== null) {
       clearTimeout(this.clickTimer);
       this.clickTimer = null;
+    }
+
+    // Clear cursor change debounce timer
+    if (this.cursorChangeTimer !== null) {
+      clearTimeout(this.cursorChangeTimer);
+      this.cursorChangeTimer = null;
     }
     
     // Emit any pending click before stopping

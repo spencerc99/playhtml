@@ -280,7 +280,7 @@ describe("CursorCollector", () => {
 
       // Move to text element (cursor changes)
       simulateMouseMove(200, 200, textElement);
-      await advanceTime(20);
+      await advanceTime(600); // Wait for 500ms cursor change debounce
 
       // Should emit cursor_change event
       expect(emitCallback).toHaveBeenCalled();
