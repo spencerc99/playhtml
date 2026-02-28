@@ -69,7 +69,8 @@
     margin-bottom: 0;
     cursor: pointer;
     font: inherit;
-    position: relative;
+    flex-direction: column;
+    gap: 3px;
 
     .identity-card__cursor {
       width: 32px;
@@ -85,7 +86,6 @@
       height: 2px;
       border-radius: 1px;
       background: $text-faint;
-      margin: 3px auto 0;
       transition: background 0.15s;
     }
 
