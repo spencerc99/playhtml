@@ -36,6 +36,11 @@ async function flushPendingUploads(): Promise<void> {
 }
 
 export default defineBackground(() => {
+  // Allow content scripts to access storage.session (needed for session IDs)
+  browser.storage.session.setAccessLevel?.({
+    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
+  }).catch(() => {});
+
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
