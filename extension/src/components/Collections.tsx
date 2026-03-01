@@ -69,7 +69,12 @@ export function CollectorList({
       {types.map((type) => {
         const isActive = modes[type] && modes[type] !== "off";
         return (
-          <div key={type} className={`collector-card${isActive ? " collector-card--active" : ""}`}>
+          <div
+            key={type}
+            className={`collector-card${
+              isActive ? " collector-card--active" : ""
+            }`}
+          >
             <div className="collector-card__row">
               <div className="collector-card__title-row">
                 <span aria-hidden className="collector-card__icon">
@@ -99,7 +104,9 @@ export function CollectorList({
               <div className="collector-card__privacy-section">
                 <div className="collector-card__privacy-header">
                   <div>
-                    <label className="collector-card__privacy-label">Privacy Level</label>
+                    <label className="collector-card__privacy-label">
+                      Privacy Level
+                    </label>
                     <p className="collector-card__privacy-desc">
                       {keyboardPrivacyLevel === "abstract"
                         ? "Abstract: Typing frequency and location only (no text)"
@@ -108,7 +115,11 @@ export function CollectorList({
                   </div>
                   <select
                     value={keyboardPrivacyLevel}
-                    onChange={(e) => onKeyboardPrivacyChange(e.target.value as "abstract" | "full")}
+                    onChange={(e) =>
+                      onKeyboardPrivacyChange(
+                        e.target.value as "abstract" | "full",
+                      )
+                    }
                     className="collector-card__privacy-select"
                   >
                     <option value="abstract">Abstract</option>
@@ -174,15 +185,7 @@ export function Collections({ onBack }: CollectionsProps) {
     )
       return;
     try {
-      const [tab] = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      if (!tab?.id) {
-        alert("No active tab found.");
-        return;
-      }
-      const response = await browser.tabs.sendMessage(tab.id, {
+      const response = await browser.runtime.sendMessage({
         type: "CLEAR_ALL_EVENTS",
       });
       if (response?.success) {
@@ -191,21 +194,15 @@ export function Collections({ onBack }: CollectionsProps) {
         alert("Failed to clear data. Please try again.");
       }
     } catch {
-      alert("Failed to clear data. Make sure you're on a regular webpage.");
+      alert("Failed to clear data. Please try again.");
     }
   };
 
   const loadStorageStats = async () => {
     try {
-      const [tab] = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      if (!tab?.id) return;
-      const response = await browser.tabs.sendMessage(tab.id, {
+      const response = await browser.runtime.sendMessage({
         type: "GET_STORAGE_STATS",
       });
-      console.log("response", response);
       if (response?.success && response.stats) {
         setStorageStats(response.stats);
       }
@@ -521,9 +518,20 @@ export function Collections({ onBack }: CollectionsProps) {
         )}
 
         <div className="collections__context">
-          <strong>Participating in:</strong> Internet Movement
+          <strong>Participating in</strong>{" "}
+          <a
+            href="https://spencer.place/internet-series"
+            target="_blank"
+            rel="noreferrer"
+            className="collections__context-link"
+          >
+            Internet Movement
+          </a>
           <br />
-          <span>Your browsing behaviors contribute to evolving artworks</span>
+          <span>
+            Your cursor trails and browsing rhythms are woven into a living
+            visualization.
+          </span>
         </div>
 
         <CollectorList
@@ -534,42 +542,62 @@ export function Collections({ onBack }: CollectionsProps) {
         />
 
         {/* Filter substrings — only when keyboard is active and full fidelity */}
-        {(modes["keyboard"] ?? "local") !== "off" && keyboardPrivacyLevel === "full" && (
-          <div className="collector-card__filter-section">
-            <label className="collector-card__filter-label">Filter Sensitive Text</label>
-            <p className="collector-card__filter-desc">
-              Sequences containing these substrings will be redacted
-            </p>
-            <div className="collector-card__filter-input-row">
-              <input
-                type="text"
-                value={newFilterSubstring}
-                onChange={(e) => setNewFilterSubstring(e.target.value)}
-                onKeyPress={(e) => { if (e.key === "Enter") addFilterSubstring(); }}
-                placeholder="Enter substring..."
-              />
-              <button onClick={addFilterSubstring}>Add</button>
-            </div>
-            {filterSubstrings.length > 0 && (
-              <div className="collector-card__filter-tags">
-                {filterSubstrings.map((substring) => (
-                  <div key={substring} className="collector-card__filter-tag">
-                    <span>{substring}</span>
-                    <button onClick={() => removeFilterSubstring(substring)}>×</button>
-                  </div>
-                ))}
+        {(modes["keyboard"] ?? "local") !== "off" &&
+          keyboardPrivacyLevel === "full" && (
+            <div className="collector-card__filter-section">
+              <label className="collector-card__filter-label">
+                Filter Sensitive Text
+              </label>
+              <p className="collector-card__filter-desc">
+                Sequences containing these substrings will be redacted
+              </p>
+              <div className="collector-card__filter-input-row">
+                <input
+                  type="text"
+                  value={newFilterSubstring}
+                  onChange={(e) => setNewFilterSubstring(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") addFilterSubstring();
+                  }}
+                  placeholder="Enter substring..."
+                />
+                <button onClick={addFilterSubstring}>Add</button>
               </div>
-            )}
-            {filterSubstrings.length === 0 && (
-              <p className="collector-card__filter-empty">No filters added yet</p>
-            )}
-          </div>
-        )}
+              {filterSubstrings.length > 0 && (
+                <div className="collector-card__filter-tags">
+                  {filterSubstrings.map((substring) => (
+                    <div key={substring} className="collector-card__filter-tag">
+                      <span>{substring}</span>
+                      <button onClick={() => removeFilterSubstring(substring)}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {filterSubstrings.length === 0 && (
+                <p className="collector-card__filter-empty">
+                  No filters added yet
+                </p>
+              )}
+            </div>
+          )}
 
         <div className="collections__privacy-notice">
-          All data is anonymous — no personal information is collected. You can
-          pause collection anytime. Questions?{" "}
-          <a href="mailto:hi@spencer.place">hi@spencer.place</a>
+          {keyboardPrivacyLevel === "full" &&
+          (modes["keyboard"] ?? "local") !== "off" ? (
+            <>
+              Keyboard full-fidelity mode records typed text. Use filters above
+              to redact sensitive content. All other data is anonymous.{" "}
+              <a href="mailto:hi@spencer.place">hi@spencer.place</a>
+            </>
+          ) : (
+            <>
+              All data is anonymous — no personal information is collected. You
+              can pause collection anytime. Questions?{" "}
+              <a href="mailto:hi@spencer.place">hi@spencer.place</a>
+            </>
+          )}
         </div>
 
         <button className="collections__clear-btn" onClick={clearAllData}>
@@ -585,8 +613,12 @@ export function Collections({ onBack }: CollectionsProps) {
               className="collections__dev-mode-checkbox"
             />
             <div>
-              <span className="collections__dev-mode-title">Developer mode</span>
-              <span className="collections__dev-mode-desc">Shows advanced controls in the movement overlay</span>
+              <span className="collections__dev-mode-title">
+                Developer mode
+              </span>
+              <span className="collections__dev-mode-desc">
+                Shows advanced controls in the movement overlay
+              </span>
             </div>
           </label>
         </div>

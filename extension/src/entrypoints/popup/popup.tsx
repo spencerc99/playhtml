@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { Agentation } from "agentation";
+import React, { useState, useEffect, lazy, Suspense } from "react";
+// Agentation is a dev-only toolbar — loaded at runtime so it never appears in the production bundle
+const Agentation = import.meta.env.DEV
+  ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
+  : null;
 import { createRoot } from "react-dom/client";
 import "../../styles/popup.scss";
 import browser from "webextension-polyfill";
@@ -10,7 +13,6 @@ import { QuickActions } from "../../components/QuickActions";
 import { Collections } from "../../components/Collections";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { ProfilePage } from "../../components/ProfilePage";
-import { Onboarding } from "../../components/Onboarding";
 import { FLAGS } from "../../flags";
 import {
   PlayerIdentity,
@@ -301,7 +303,7 @@ function PlayHTMLPopup() {
             }}
             style={{
               padding: "10px 12px",
-              background: "#2563eb",
+              background: "var(--accent-teal, #4a9a8a)",
               color: "white",
               border: "none",
               borderRadius: 6,
@@ -407,7 +409,7 @@ function PlayHTMLPopup() {
           textAlign: "center",
         }}
       >
-        we were online v0.1.5
+        we were online v{browser.runtime.getManifest().version}
       </footer>
     </div>
   );
@@ -419,7 +421,11 @@ if (container) {
   const root = createRoot(container);
   root.render(
     <>
-      {process.env.NODE_ENV === "development" && <Agentation />}
+      {Agentation && (
+        <Suspense fallback={null}>
+          <Agentation />
+        </Suspense>
+      )}
       <PlayHTMLPopup />
     </>,
   );

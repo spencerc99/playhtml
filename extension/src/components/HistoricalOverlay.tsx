@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import browser from "webextension-polyfill";
 import { loadHistoricalData, type FilterMode } from "../storage/historyLoader";
+import { VERBOSE } from "../config";
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
 import { determineFilterScope, extractDomain } from "../utils/urlNormalization";
 import {
@@ -87,6 +88,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
   const [devMode, setDevMode] = useState(false);
   const [portraitStats, setPortraitStats] = useState<PortraitCardProps | null>(null);
+  const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
   const prevDomainRef = useRef<string>(extractDomain(currentUrl));
 
   // Load dev mode setting from storage once on mount
@@ -150,7 +152,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
 
-    console.log(
+    if (VERBOSE) console.log(
       `[HistoricalOverlay] Loading data - forceServerBackfill: ${forceServerBackfill}`,
     );
 
@@ -169,7 +171,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           },
         );
 
-        console.log(
+        if (VERBOSE) console.log(
           `[HistoricalOverlay] Loaded ${historicalEvents.length} total events`,
         );
         setEvents(historicalEvents);
@@ -231,8 +233,10 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             uniquePageCount: res.stats.uniquePageCount,
           });
         }
+        setPortraitStatsLoaded(true);
       } catch (e) {
         console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
+        setPortraitStatsLoaded(true);
       }
     })();
   }, [visible, actualMode, currentUrl, domain]);
@@ -484,7 +488,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         >
           {portraitStats ? (
             <PortraitCardDirectionA {...portraitStats} />
-          ) : (
+          ) : portraitStatsLoaded ? (
             <div
               style={{
                 position: "absolute",
@@ -498,9 +502,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                 fontFamily: "'Martian Mono', monospace",
               }}
             >
-              {loading ? "loading..." : "no data"}
+              no data
             </div>
-          )}
+          ) : null}
 
         </div>
 
@@ -704,6 +708,25 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           style={{ opacity: 0.3 }}
         />
       </svg>
+
+      {/* Loading / empty state for canvas area */}
+      {(loading || events.length === 0) && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "11px",
+            color: "rgba(61,56,51,0.4)",
+            fontFamily: "'Martian Mono', monospace",
+            pointerEvents: "none",
+          }}
+        >
+          {loading ? "loading..." : "no data"}
+        </div>
+      )}
 
       {/* Animation layers */}
       {!loading && events.length > 0 && (

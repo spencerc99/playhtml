@@ -19,6 +19,9 @@ export function Inventory({
   onRemoveItem,
   onClearInventory,
 }: InventoryProps) {
+  // SECURITY: This function interpolates user-controlled page data (textContent, imageUrl,
+  // tagName, CSS values) directly into an HTML string rendered via dangerouslySetInnerHTML.
+  // All fields are XSS vectors. Sanitize before enabling this feature for real users.
   const generateElementPreview = (item: InventoryItem): string => {
     // Handle legacy items that might have old snapshot format
     if (typeof item.data?.snapshot === "string") {
@@ -36,7 +39,7 @@ export function Inventory({
                style="max-width: 90px; max-height: 50px; object-fit: contain;" 
                onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
           <div style="display: none; font-size: 10px; color: #6b7280; text-align: center;">
-            📷 ${snapshot.metadata.tagName}
+            ${snapshot.metadata.tagName}
           </div>
         `;
       }
@@ -82,7 +85,7 @@ export function Inventory({
         justify-content: center;
         text-align: center;
       ">
-        📦 ${item.type}
+        ${item.type}
       </div>
     `;
   };
@@ -220,8 +223,10 @@ export function Inventory({
                           e.target as HTMLImageElement
                         ).src = `data:image/svg+xml;base64,${btoa(`
                           <svg width="32" height="32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                            <rect width="32" height="32" fill="#10b981" rx="4"/>
-                            <text x="16" y="20" font-family="Arial" font-size="12" fill="white" text-anchor="middle">🌐</text>
+                            <rect width="32" height="32" fill="#4a9a8a" rx="4"/>
+                            <circle cx="16" cy="16" r="8" fill="none" stroke="white" stroke-width="1.5"/>
+                            <ellipse cx="16" cy="16" rx="4" ry="8" fill="none" stroke="white" stroke-width="1.5"/>
+                            <line x1="8" y1="16" x2="24" y2="16" stroke="white" stroke-width="1.5"/>
                           </svg>
                         `)}`;
                       }}

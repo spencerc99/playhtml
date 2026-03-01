@@ -197,4 +197,16 @@
     font-weight: 700;
     font-family: $font-heading;
   }
+
+  &__empty {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    color: $text-muted;
+    text-align: center;
+    max-width: 160px;
+    line-height: 1.5;
+  }
 }

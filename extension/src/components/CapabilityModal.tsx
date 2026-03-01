@@ -113,7 +113,7 @@ export const CapabilityModal: React.FC<CapabilityModalProps> = ({
               e.currentTarget.style.backgroundColor = "#fbbf24";
             }}
           >
-            🎒 Collect Element
+            Collect Element
           </button>
           <p
             style={{

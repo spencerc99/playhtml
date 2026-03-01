@@ -6,6 +6,7 @@ import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
+import { FLAGS } from "../flags";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -1029,14 +1030,18 @@ export default defineContentScript({
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
+        if (FLAGS.COPRESENCE) {
+          extensionInstance = new PlayHTMLExtension();
+          extensionInstance.init();
+        }
         initializeCollectors().catch(console.error);
         setupModeChangeListener();
       });
     } else {
-      extensionInstance = new PlayHTMLExtension();
-      extensionInstance.init();
+      if (FLAGS.COPRESENCE) {
+        extensionInstance = new PlayHTMLExtension();
+        extensionInstance.init();
+      }
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }

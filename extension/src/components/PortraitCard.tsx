@@ -190,7 +190,7 @@ export function PortraitCard({
   uniquePageCount,
   compact = false,
 }: PortraitCardProps) {
-  const heroText = totalTimeMs !== null ? formatDuration(totalTimeMs) : "\u2014";
+  const heroText = formatDuration(totalTimeMs ?? 0);
   const dateLabel = dateRange ? formatDateRange(dateRange.oldest, dateRange.newest) : null;
   const distanceLabel = cursorDistancePx > 0 ? formatDistance(cursorDistancePx) : null;
 
@@ -417,7 +417,7 @@ export function PortraitCardDirectionA({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const weights = buildHourWeights(sessions);
-  const heroText = totalTimeMs !== null ? formatDuration(totalTimeMs) : "\u2014";
+  const heroText = formatDuration(totalTimeMs ?? 0);
   const dateLabel = dateRange ? formatDateRange(dateRange.oldest, dateRange.newest) : null;
   const distanceLabel = cursorDistancePx > 0 ? formatDistance(cursorDistancePx) : null;
 

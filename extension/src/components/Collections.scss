@@ -117,6 +117,15 @@
     }
   }
 
+  &__context-link {
+    color: $accent-teal;
+    text-decoration: underline;
+
+    &:hover {
+      color: $text;
+    }
+  }
+
   &__collector-list {
     display: flex;
     flex-direction: column;

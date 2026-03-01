@@ -245,21 +245,6 @@ const PortraitPage = () => {
               {exporting ? "exporting..." : "↓ export"}
             </button>
           )}
-          <button
-            onClick={() => window.close()}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-body)",
-              fontSize: "13px",
-              padding: "4px 8px",
-              borderRadius: "4px",
-            }}
-          >
-            close
-          </button>
         </div>
       </div>
 

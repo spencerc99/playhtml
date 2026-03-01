@@ -40,8 +40,8 @@ export async function loadHistoricalData(
   const domain = extractDomain(currentUrl);
   const normalizedCurrentUrl = normalizeUrl(currentUrl);
 
-  console.log(`[HistoryLoader] Loading data in ${actualMode} mode`);
-  console.log(`[HistoryLoader] Domain: ${domain}, URL: ${normalizedCurrentUrl}`);
+  if (VERBOSE) console.log(`[HistoryLoader] Loading data in ${actualMode} mode`);
+  if (VERBOSE) console.log(`[HistoryLoader] Domain: ${domain}, URL: ${normalizedCurrentUrl}`);
 
   const allEvents: CollectionEvent[] = [];
 
@@ -68,25 +68,25 @@ export async function loadHistoricalData(
       console.error(`[HistoryLoader] Failed to query ${type} from background:`, e);
     }
 
-    console.log(
+    if (VERBOSE) console.log(
       `[HistoryLoader] Found ${localEvents.length} local ${type} events`,
     );
 
     allEvents.push(...localEvents);
   }
 
-  console.log(`[HistoryLoader] Total local events: ${allEvents.length}`);
+  if (VERBOSE) console.log(`[HistoryLoader] Total local events: ${allEvents.length}`);
 
   // Only fetch from server if explicitly forced (via obscure keyboard shortcut)
   if (!forceServerBackfill) {
-    console.log(
+    if (VERBOSE) console.log(
       `[HistoryLoader] Using ${allEvents.length} local events`,
     );
     return sortEventsByTimestamp(allEvents);
   }
 
   // Forced server backfill (Ctrl+Shift+Alt+H)
-  console.log(
+  if (VERBOSE) console.log(
     `[HistoryLoader] Forcing server backfill (local: ${allEvents.length})`,
   );
 
@@ -99,14 +99,14 @@ export async function loadHistoricalData(
       types
     );
 
-    console.log(
+    if (VERBOSE) console.log(
       `[HistoryLoader] Fetched ${serverEvents.length} events from server`,
     );
 
     // Combine and deduplicate
     const combined = deduplicateEvents([...allEvents, ...serverEvents]);
 
-    console.log(
+    if (VERBOSE) console.log(
       `[HistoryLoader] Final combined events: ${combined.length}`,
     );
 
@@ -114,7 +114,7 @@ export async function loadHistoricalData(
   } catch (error) {
     console.error("[HistoryLoader] Failed to fetch from server:", error);
     // Return local data if server fetch failed
-    console.log(
+    if (VERBOSE) console.log(
       `[HistoryLoader] Returning ${allEvents.length} local events (server fetch failed)`,
     );
     return sortEventsByTimestamp(allEvents);
@@ -163,14 +163,14 @@ async function fetchServerEvents(
           const eventNormalizedUrl = normalizeUrl(e.meta.url);
           return eventNormalizedUrl === normalizedUrl;
         });
-        console.log(
+        if (VERBOSE) console.log(
           `[HistoryLoader] Filtered ${type} events to URL: ${events.length} remaining`,
         );
       }
 
       allEvents.push(...events);
 
-      console.log(
+      if (VERBOSE) console.log(
         `[HistoryLoader] Fetched ${events.length} ${type} events from server`,
       );
     } catch (error) {
@@ -181,7 +181,7 @@ async function fetchServerEvents(
     }
   }
 
-  console.log(
+  if (VERBOSE) console.log(
     `[HistoryLoader] Total server events fetched: ${allEvents.length}`,
   );
   return allEvents;

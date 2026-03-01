@@ -9,28 +9,12 @@ import { TrailsHero } from "./TrailsHero";
 import { syncParticipantColor } from "../storage/sync";
 import { getParticipantId } from "../storage/participant";
 import "./SetupPage.scss";
+import { hslToHex } from "../utils/color";
 
 type Step = "welcome" | "configure" | "done";
 type SharingMode = "local" | "shared";
 type CollectorMode = "off" | "local" | "shared";
 type KeyboardFidelity = "abstract" | "full";
-
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100;
-  l /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = Math.min(
-      1,
-      Math.max(0, l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)),
-    );
-    return Math.round(255 * color)
-      .toString(16)
-      .padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
 
 function randomPrimaryColor(): string {
   const hue = Math.floor(Math.random() * 360);
@@ -49,11 +33,13 @@ export default function SetupPage() {
   const [email, setEmail] = useState("");
   const [color, setColor] = useState<string>("");
   const [sharingMode, setSharingMode] = useState<SharingMode>("local");
-  const [collectorModes, setCollectorModes] = useState<Record<string, CollectorMode>>(
-    defaultModesFor("local"),
-  );
-  const [keyboardFidelity, setKeyboardFidelity] = useState<KeyboardFidelity>("full");
-  const [keyboardFidelityOverridden, setKeyboardFidelityOverridden] = useState(false);
+  const [collectorModes, setCollectorModes] = useState<
+    Record<string, CollectorMode>
+  >(defaultModesFor("local"));
+  const [keyboardFidelity, setKeyboardFidelity] =
+    useState<KeyboardFidelity>("full");
+  const [keyboardFidelityOverridden, setKeyboardFidelityOverridden] =
+    useState(false);
   const [busy, setBusy] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -62,7 +48,8 @@ export default function SetupPage() {
   useEffect(() => {
     const el = heroRef.current;
     if (!el) return;
-    const update = () => setHeroSize({ width: el.clientWidth, height: el.clientHeight });
+    const update = () =>
+      setHeroSize({ width: el.clientWidth, height: el.clientHeight });
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -72,7 +59,9 @@ export default function SetupPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { playerIdentity } = await browser.storage.local.get(["playerIdentity"]);
+        const { playerIdentity } = await browser.storage.local.get([
+          "playerIdentity",
+        ]);
         if (playerIdentity) {
           const existing = playerIdentity.playerStyle?.colorPalette?.[0];
           if (existing && typeof existing === "string") setColor(existing);
@@ -108,7 +97,8 @@ export default function SetupPage() {
     try {
       const types = getValidEventTypes();
       const toSet: Record<string, string> = {};
-      for (const t of types) toSet[`collection_mode_${t}`] = collectorModes[t] || sharingMode;
+      for (const t of types)
+        toSet[`collection_mode_${t}`] = collectorModes[t] || sharingMode;
       toSet["keyboard_display_mode"] = keyboardFidelity;
       toSet["onboarding_complete"] = "true";
       if (email.trim()) {
@@ -117,18 +107,24 @@ export default function SetupPage() {
         const formUrl =
           "https://docs.google.com/forms/d/e/1FAIpQLSe6rJ8uAflDqE-B07E8hTEiPwsis8xEqX0-E_uTuUXwRrH0PA/formResponse";
         const body = new URLSearchParams({ "entry.1423870775": email.trim() });
-        fetch(formUrl, { method: "POST", body, mode: "no-cors" }).catch(() => {});
+        fetch(formUrl, { method: "POST", body, mode: "no-cors" }).catch(
+          () => {},
+        );
       }
 
       await browser.storage.local.set(toSet);
 
       try {
-        const { playerIdentity } = await browser.storage.local.get(["playerIdentity"]);
+        const { playerIdentity } = await browser.storage.local.get([
+          "playerIdentity",
+        ]);
         if (playerIdentity) {
           if (!playerIdentity.playerStyle)
             playerIdentity.playerStyle = { colorPalette: [color] } as any;
           else {
-            const palette = Array.isArray(playerIdentity.playerStyle.colorPalette)
+            const palette = Array.isArray(
+              playerIdentity.playerStyle.colorPalette,
+            )
               ? playerIdentity.playerStyle.colorPalette
               : [];
             palette[0] = color;
@@ -141,17 +137,6 @@ export default function SetupPage() {
             const pid = await getParticipantId();
             syncParticipantColor(pid, color);
           } catch {}
-        }
-      } catch {}
-
-      try {
-        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-        if (tab?.id) {
-          for (const t of types) {
-            if (collectorModes[t] !== "off") {
-              await browser.tabs.sendMessage(tab.id, { type: "ENABLE_COLLECTOR", collectorType: t });
-            }
-          }
         }
       } catch {}
 
@@ -173,10 +158,13 @@ export default function SetupPage() {
             <p className="setup-step__desc">
               This extension quietly records how you move through the internet —
               your cursor trails, reading rhythm, time on pages — and turns it
-              into a living portrait of your digital presence. You choose how it's used.
+              into a living portrait of your digital presence. You choose how
+              it's used.
             </p>
             <div className="setup-step__field">
-              <label className="setup-step__field-label">Email (optional)</label>
+              <label className="setup-step__field-label">
+                Email (optional)
+              </label>
               <input
                 type="email"
                 value={email}
@@ -185,7 +173,10 @@ export default function SetupPage() {
                 className="setup-step__input"
               />
             </div>
-            <button onClick={() => setStep("configure")} className="setup-step__btn-primary">
+            <button
+              onClick={() => setStep("configure")}
+              className="setup-step__btn-primary"
+            >
               Get started
             </button>
           </section>
@@ -193,22 +184,7 @@ export default function SetupPage() {
 
         {step === "configure" && (
           <section className="setup-step">
-            <h2 className="setup-step__heading">How should we collect?</h2>
-
-            <div className="setup-step__tabs">
-              <button
-                className={`setup-step__tab${sharingMode === "local" ? " setup-step__tab--active" : ""}`}
-                onClick={() => handleSharingTabChange("local")}
-              >
-                Keep local
-              </button>
-              <button
-                className={`setup-step__tab${sharingMode === "shared" ? " setup-step__tab--active" : ""}`}
-                onClick={() => handleSharingTabChange("shared")}
-              >
-                Share anonymously
-              </button>
-            </div>
+            <h2 className="setup-step__heading">Personalize your portrait</h2>
 
             <div className="setup-step__color-section">
               <label className="setup-step__field-label">Cursor color</label>
@@ -242,7 +218,27 @@ export default function SetupPage() {
               </div>
             </div>
 
-            <h3 className="setup-step__subheading">Data collection</h3>
+            <h2 className="setup-step__heading">
+              Choose how your data is collected
+            </h2>
+            <div className="setup-step__tabs">
+              <button
+                className={`setup-step__tab${
+                  sharingMode === "local" ? " setup-step__tab--active" : ""
+                }`}
+                onClick={() => handleSharingTabChange("local")}
+              >
+                Keep local
+              </button>
+              <button
+                className={`setup-step__tab${
+                  sharingMode === "shared" ? " setup-step__tab--active" : ""
+                }`}
+                onClick={() => handleSharingTabChange("shared")}
+              >
+                Share anonymously
+              </button>
+            </div>
 
             {/* Reuse the same collector card UI from the settings page */}
             <CollectorList
@@ -253,10 +249,17 @@ export default function SetupPage() {
             />
 
             <div className="setup-step__actions">
-              <button onClick={() => setStep("welcome")} className="setup-step__btn-secondary">
+              <button
+                onClick={() => setStep("welcome")}
+                className="setup-step__btn-secondary"
+              >
                 Back
               </button>
-              <button onClick={applyConsent} className="setup-step__btn-primary" disabled={busy}>
+              <button
+                onClick={applyConsent}
+                className="setup-step__btn-primary"
+                disabled={busy}
+              >
                 Let's go
               </button>
             </div>
@@ -267,10 +270,14 @@ export default function SetupPage() {
           <section className="setup-step">
             <h2 className="setup-step__heading">All set!</h2>
             <p className="setup-step__desc">
-              You can close this tab and open the popup to explore your portrait.
+              You can close this tab and open the popup to explore your
+              portrait.
             </p>
             <div className="setup-step__actions">
-              <button onClick={() => window.close()} className="setup-step__btn-primary">
+              <button
+                onClick={() => window.close()}
+                className="setup-step__btn-primary"
+              >
                 Close
               </button>
             </div>

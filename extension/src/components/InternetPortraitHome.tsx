@@ -41,6 +41,7 @@ export function InternetPortraitHome({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef<number | null>(null);
   const tRef = useRef<number>(0);
+  const cursorEventsRef = useRef<CollectionEvent[] | null>(null);
   const [recentCursorEvents, setRecentCursorEvents] = useState<
     CollectionEvent[] | null
   >(null);
@@ -75,6 +76,7 @@ export function InternetPortraitHome({
               domain,
             });
             if (recent?.success && Array.isArray(recent.events)) {
+              cursorEventsRef.current = recent.events as CollectionEvent[];
               setRecentCursorEvents(recent.events as CollectionEvent[]);
             }
           }
@@ -95,7 +97,7 @@ export function InternetPortraitHome({
       ctx.fillStyle = "rgba(90,78,65,0.08)";
       ctx.fillRect(0, 0, w, h);
 
-      const events = recentCursorEvents || [];
+      const events = cursorEventsRef.current || [];
       tRef.current += 0.02;
       const maxPoints = Math.min(50, events.length);
       const start = Math.max(0, events.length - maxPoints);
@@ -240,7 +242,7 @@ export function InternetPortraitHome({
             </div>
             <div className="preview-card__body">
               <TinyMovementPreview />
-              {portraitStats && (
+              {portraitStats ? (
                 <PortraitCardDirectionA
                   domain={portraitStats.domain}
                   totalTimeMs={portraitStats.totalTimeMs}
@@ -249,6 +251,10 @@ export function InternetPortraitHome({
                   dateRange={portraitStats.dateRange}
                   uniquePageCount={portraitStats.uniquePageCount}
                 />
+              ) : (
+                <p className="preview-card__empty">
+                  Your portrait is being built. Browse a little and come back.
+                </p>
               )}
               <div className="preview-card__label">Open Your Portrait</div>
             </div>
