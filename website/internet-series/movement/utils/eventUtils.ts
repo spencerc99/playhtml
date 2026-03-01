@@ -5,42 +5,51 @@
 // saturation and constrained lightness. Inspired by minute-faces' time-color
 // mapping: vivid, harmonious, and legible over both light and dark backgrounds.
 export const RISO_COLORS = [
-  "hsl(10, 72%, 48%)",   // warm red
-  "hsl(55, 68%, 42%)",   // amber
-  "hsl(100, 55%, 40%)",  // moss green
-  "hsl(155, 60%, 38%)",  // teal
-  "hsl(210, 65%, 45%)",  // steel blue
-  "hsl(260, 55%, 48%)",  // violet
-  "hsl(310, 58%, 45%)",  // magenta
-  "hsl(35, 70%, 45%)",   // burnt orange
+  "hsl(10, 72%, 48%)", // warm red
+  "hsl(55, 68%, 42%)", // amber
+  "hsl(100, 55%, 40%)", // moss green
+  "hsl(155, 60%, 38%)", // teal
+  "hsl(210, 65%, 45%)", // steel blue
+  "hsl(260, 55%, 48%)", // violet
+  "hsl(310, 58%, 45%)", // magenta
+  "hsl(35, 70%, 45%)", // burnt orange
 ];
 
 // Tunable constants for time-based color derivation from a participant's
 // chosen cursor color. Inspired by minute-faces' time-of-day color model.
 export const SESSION_HUE_CONFIG = {
   // Hue offset cycles fully each hour within this range (+/- half)
-  HOUR_HUE_RANGE: 40,
+  HOUR_HUE_RANGE: 20,
   // Saturation offset cycles each hour within this range (+/- half)
   HOUR_SAT_RANGE: 10,
   // Lightness offset driven by hour-of-day (midnight = min, noon = max)
-  DAY_LIGHT_MIN: -15,
-  DAY_LIGHT_MAX: 10,
+  DAY_LIGHT_MIN: -20,
+  DAY_LIGHT_MAX: 20,
 };
 
 /**
  * Parse a color string to { h, s, l } (h: 0-360, s: 0-100, l: 0-100).
  * Accepts #RGB, #RRGGBB, or hsl(...) strings.
  */
-export function parseColorToHsl(color: string): { h: number; s: number; l: number } | null {
+export function parseColorToHsl(
+  color: string,
+): { h: number; s: number; l: number } | null {
   // Handle hsl() strings
-  const hslMatch = color.match(/^hsl\(\s*(\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?\s*\)$/);
+  const hslMatch = color.match(
+    /^hsl\(\s*(\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?\s*\)$/,
+  );
   if (hslMatch) {
-    return { h: parseInt(hslMatch[1]), s: parseInt(hslMatch[2]), l: parseInt(hslMatch[3]) };
+    return {
+      h: parseInt(hslMatch[1]),
+      s: parseInt(hslMatch[2]),
+      l: parseInt(hslMatch[3]),
+    };
   }
 
   // Handle hex strings
-  let hex = color.replace('#', '');
-  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  let hex = color.replace("#", "");
+  if (hex.length === 3)
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
   if (hex.length !== 6) return null;
 
   const r = parseInt(hex.slice(0, 2), 16) / 255;
@@ -61,7 +70,11 @@ export function parseColorToHsl(color: string): { h: number; s: number; l: numbe
     else h = ((r - g) / d + 4) / 6;
   }
 
-  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100),
+  };
 }
 
 /**
@@ -72,7 +85,11 @@ export function parseColorToHsl(color: string): { h: number; s: number; l: numbe
  *
  * Uses the participant's local timezone if available, otherwise UTC.
  */
-export function deriveSessionColor(baseColor: string, timestamp: number, timezone?: string): string {
+export function deriveSessionColor(
+  baseColor: string,
+  timestamp: number,
+  timezone?: string,
+): string {
   const base = parseColorToHsl(baseColor);
   if (!base) return baseColor; // Unparseable — return as-is
 
@@ -81,12 +98,14 @@ export function deriveSessionColor(baseColor: string, timestamp: number, timezon
   let minute: number;
   if (timezone) {
     try {
-      const parts = new Intl.DateTimeFormat('en-US', {
+      const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: timezone,
-        hour: 'numeric', minute: 'numeric', hour12: false,
+        hour: "numeric",
+        minute: "numeric",
+        hour12: false,
       }).formatToParts(date);
-      hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0');
-      minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0');
+      hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
+      minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
     } catch {
       hour = date.getUTCHours();
       minute = date.getUTCMinutes();
@@ -100,17 +119,21 @@ export function deriveSessionColor(baseColor: string, timestamp: number, timezon
 
   // Hue: sinusoidal cycle each hour within HOUR_HUE_RANGE
   const minuteFraction = minute / 60;
-  const hueOffset = Math.sin(minuteFraction * Math.PI * 2) * (cfg.HOUR_HUE_RANGE / 2);
+  const hueOffset =
+    Math.sin(minuteFraction * Math.PI * 2) * (cfg.HOUR_HUE_RANGE / 2);
 
   // Saturation: cosine cycle each hour (offset from hue) within HOUR_SAT_RANGE
-  const satOffset = Math.cos(minuteFraction * Math.PI * 2) * (cfg.HOUR_SAT_RANGE / 2);
+  const satOffset =
+    Math.cos(minuteFraction * Math.PI * 2) * (cfg.HOUR_SAT_RANGE / 2);
 
   // Lightness: cosine across 24h, peak at noon (hour 12), trough at midnight (hour 0)
   const hourFraction = (hour + minute / 60) / 24;
-  const lightOffset = cfg.DAY_LIGHT_MIN +
-    (cfg.DAY_LIGHT_MAX - cfg.DAY_LIGHT_MIN) * (0.5 + 0.5 * Math.cos((hourFraction - 0.5) * Math.PI * 2));
+  const lightOffset =
+    cfg.DAY_LIGHT_MIN +
+    (cfg.DAY_LIGHT_MAX - cfg.DAY_LIGHT_MIN) *
+      (0.5 + 0.5 * Math.cos((hourFraction - 0.5) * Math.PI * 2));
 
-  const h = ((base.h + hueOffset) % 360 + 360) % 360;
+  const h = (((base.h + hueOffset) % 360) + 360) % 360;
   const s = Math.max(0, Math.min(100, base.s + satOffset));
   const l = Math.max(0, Math.min(100, base.l + lightOffset));
 

@@ -53,7 +53,7 @@ async function getWorkerUrl(): Promise<string> {
       console.log('[Sync] Using custom worker URL from storage:', customUrl);
       return customUrl;
     }
-    
+
     // Use dev URL if in development mode
     const isDev = isDevelopment();
     if (isDev) {
@@ -61,7 +61,7 @@ async function getWorkerUrl(): Promise<string> {
       console.log('[Sync] Make sure wrangler dev is running: cd extension/worker && wrangler dev');
       return DEV_WORKER_URL;
     }
-    
+
     console.log('[Sync] Using production worker URL:', PROD_WORKER_URL);
     return PROD_WORKER_URL;
   } catch (error) {
@@ -122,7 +122,7 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
       console.log('[Sync] Uploads disabled for testing - events stored locally only');
       return; // Don't throw, so EventBuffer doesn't retry
     }
-    
+
     // If using localhost:8787 and it fails, provide helpful message
     if (workerUrl.includes('localhost:8787')) {
       console.warn('[Sync] Local worker not responding. Make sure wrangler dev is running:');

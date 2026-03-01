@@ -42,7 +42,7 @@ const MIN_ZOOM_CHANGE = 0.1; // 10% minimum zoom change
 export function useViewportScroll(
   events: CollectionEvent[],
   viewportSize: { width: number; height: number },
-  settings: ViewportScrollSettings
+  settings: ViewportScrollSettings,
 ): UseViewportScrollResult {
   // Filter to viewport events only
   const viewportEvents = useMemo(() => {
@@ -52,29 +52,14 @@ export function useViewportScroll(
   // Process viewport events into scroll animations
   const result = useMemo(() => {
     if (viewportEvents.length === 0 || viewportSize.width === 0) {
-      console.log("[Scroll] No viewport events or canvas not ready", {
-        viewportEventsCount: viewportEvents.length,
-        canvasWidth: viewportSize.width,
-      });
       return { animations: [], timeBounds: { min: 0, max: 0 } };
     }
-
-    console.log(
-      `[Scroll] Processing ${viewportEvents.length} viewport events`
-    );
 
     // Analyze event types BEFORE filtering
     const eventTypeCounts = new Map<string, number>();
     viewportEvents.forEach((event) => {
       const eventType = (event.data as any)?.event || "unknown";
       eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
-    });
-
-    const totalEvents = viewportEvents.length;
-    console.log(`[Scroll] Event type breakdown:`);
-    eventTypeCounts.forEach((count, type) => {
-      const percentage = ((count / totalEvents) * 100).toFixed(1);
-      console.log(`  ${type}: ${count} (${percentage}%)`);
     });
 
     // Apply domain filter
@@ -86,13 +71,8 @@ export function useViewportScroll(
       : viewportEvents;
 
     if (filteredEvents.length === 0) {
-      console.log("[Scroll] No events after domain filter");
       return { animations: [], timeBounds: { min: 0, max: 0 } };
     }
-
-    console.log(
-      `[Scroll] ${filteredEvents.length} events after domain filtering`
-    );
 
     // Group viewport events by session (pid + sid + url) with time windows
     const scrollsBySession = new Map<string, CollectionEvent[]>();
@@ -249,13 +229,13 @@ export function useViewportScroll(
           (e, i) =>
             i > 0 &&
             Math.abs(e.scrollY - compressedScrollEvents[i - 1].scrollY) >
-              0.000001
+              0.000001,
         );
         const hasScrollingX = compressedScrollEvents.some(
           (e, i) =>
             i > 0 &&
             Math.abs(e.scrollX - compressedScrollEvents[i - 1].scrollX) >
-              0.000001
+              0.000001,
         );
         const hasScrolling = hasScrollingY || hasScrollingX;
         const hasResize = compressedResizeEvents.length > 0;
@@ -295,13 +275,13 @@ export function useViewportScroll(
 
             // Keep only events within the capped duration
             cappedScrollEvents = compressedScrollEvents.filter(
-              (e) => e.timestamp <= cappedEndTime
+              (e) => e.timestamp <= cappedEndTime,
             );
             cappedResizeEvents = compressedResizeEvents.filter(
-              (e) => e.timestamp <= cappedEndTime
+              (e) => e.timestamp <= cappedEndTime,
             );
             cappedZoomEvents = compressedZoomEvents.filter(
-              (e) => e.timestamp <= cappedEndTime
+              (e) => e.timestamp <= cappedEndTime,
             );
 
             if (scrollAnimations.length < 3) {
@@ -309,7 +289,7 @@ export function useViewportScroll(
                 `[Scroll] Animation ${scrollAnimations.length} truncated: ` +
                   `${(originalDuration / 1000).toFixed(1)}s → ${(
                     MAX_VIEWPORT_ANIMATION_DURATION / 1000
-                  ).toFixed(1)}s`
+                  ).toFixed(1)}s`,
               );
             }
           }
@@ -357,30 +337,10 @@ export function useViewportScroll(
             endViewportHeight,
           };
 
-          if (scrollAnimations.length < 5) {
-            console.log(
-              `[Scroll] Animation ${scrollAnimations.length}: ` +
-                `scrollEvents=${anim.scrollEvents.length}, ` +
-                `resizeEvents=${anim.resizeEvents?.length || 0}, ` +
-                `zoomEvents=${anim.zoomEvents?.length || 0}, ` +
-                `duration=${(cappedEndTime - startTime).toFixed(0)}ms`
-            );
-          }
-
           scrollAnimations.push(anim);
         }
       });
     });
-
-    const sessionsWithScroll = scrollAnimations.length;
-    const sessionsFilteredOut = totalMergedSessions - sessionsWithScroll;
-
-    console.log(
-      `[Scroll] Created ${scrollAnimations.length} scroll animations from sessions`
-    );
-    console.log(
-      `[Scroll] Filtered out ${sessionsFilteredOut} sessions (no activity)`
-    );
 
     if (scrollAnimations.length === 0) {
       return { animations: [], timeBounds: { min: 0, max: 0 } };
@@ -438,19 +398,11 @@ export function useViewportScroll(
       return hasVisibleActivity;
     });
 
-    console.log(
-      `[Scroll] Filtered to ${visibleScrollAnimations.length}/${scrollAnimations.length} animations with visible activity`
-    );
-
     // Fall back to all animations if none have visible activity
     const animationsToUse =
       visibleScrollAnimations.length > 0
         ? visibleScrollAnimations
         : scrollAnimations;
-
-    console.log(
-      `[Scroll Dynamic] Returning ${animationsToUse.length} animations for dynamic rendering`
-    );
 
     // Calculate time bounds from all animations
     const allTimes = animationsToUse.flatMap((a) => [a.startTime, a.endTime]);
@@ -460,7 +412,12 @@ export function useViewportScroll(
         : { min: 0, max: 0 };
 
     return { animations: animationsToUse, timeBounds };
-  }, [viewportEvents, viewportSize.width, settings.domainFilter, settings.viewportEventFilter]);
+  }, [
+    viewportEvents,
+    viewportSize.width,
+    settings.domainFilter,
+    settings.viewportEventFilter,
+  ]);
 
   return result;
 }

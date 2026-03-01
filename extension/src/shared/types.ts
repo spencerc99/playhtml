@@ -45,6 +45,7 @@ export interface CollectionEvent {
   data: unknown;                 // Type-specific payload
   meta: EventMeta;
   domain?: string;               // Extracted from meta.url, indexed for fast queries
+  normalizedUrl?: string;        // Normalized meta.url (no query/hash), indexed for fast queries
 }
 
 /**

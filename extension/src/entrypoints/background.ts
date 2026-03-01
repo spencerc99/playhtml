@@ -129,6 +129,22 @@ export default defineBackground(() => {
     } catch {}
   }
 
+  // Hydrate cursor_color onto events from the local participant's identity.
+  // Mirrors the server-side hydration in worker/src/routes/recent.ts.
+  async function hydrateCursorColor(events: CollectionEvent[]): Promise<CollectionEvent[]> {
+    if (events.length === 0) return events
+    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
+    const colorByPid = new Map<string, string>()
+    if (playerIdentity?.publicKey && playerIdentity.playerStyle?.colorPalette?.[0]) {
+      colorByPid.set(playerIdentity.publicKey, playerIdentity.playerStyle.colorPalette[0])
+    }
+    for (const evt of events) {
+      const color = colorByPid.get(evt.meta.pid)
+      if (color) evt.meta.cursor_color = color
+    }
+    return events
+  }
+
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'GET_PLAYER_IDENTITY') {
@@ -191,6 +207,7 @@ export default defineBackground(() => {
     if (message.type === 'GET_RECENT_EVENTS') {
       const domain = message.domain as string
       store.queryByDomain(domain, { type: 'cursor', limit: 200 })
+        .then(hydrateCursorColor)
         .then((events) => sendResponse({ success: true, events }))
         .catch((e) => {
           console.error('[Background] GET_RECENT_EVENTS error:', e)
@@ -307,6 +324,7 @@ export default defineBackground(() => {
     if (message.type === 'GET_ALL_EVENTS') {
       const options = (message.options || {}) as QueryOptions
       store.getAllEvents(options)
+        .then(hydrateCursorColor)
         .then((events) => sendResponse({ success: true, events }))
         .catch((e) => {
           console.error('[Background] GET_ALL_EVENTS error:', e)
@@ -319,6 +337,7 @@ export default defineBackground(() => {
       const domain = message.domain as string
       const options = (message.options || {}) as QueryOptions
       store.queryByDomain(domain, options)
+        .then(hydrateCursorColor)
         .then((events) => sendResponse({ success: true, events }))
         .catch((e) => {
           console.error('[Background] QUERY_EVENTS_BY_DOMAIN error:', e)
@@ -331,6 +350,7 @@ export default defineBackground(() => {
       const url = message.url as string
       const options = (message.options || {}) as QueryOptions
       store.queryByUrl(url, options)
+        .then(hydrateCursorColor)
         .then((events) => sendResponse({ success: true, events }))
         .catch((e) => {
           console.error('[Background] QUERY_EVENTS_BY_URL error:', e)

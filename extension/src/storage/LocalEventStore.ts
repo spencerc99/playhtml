@@ -9,7 +9,7 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_NAME = "events";
 
 export interface QueryOptions {
@@ -104,7 +104,7 @@ export class LocalEventStore {
           store = transaction.objectStore(STORE_NAME);
         }
 
-        // Add url index for domain queries (v2)
+        // Add url index on raw meta.url (v2, dropped in v5)
         if (oldVersion < 2) {
           if (!store.indexNames.contains("url")) {
             store.createIndex("url", "meta.url", { unique: false });
@@ -132,7 +132,27 @@ export class LocalEventStore {
               console.log("[LocalEventStore] Added domain index");
             }
           }
-          // Backfill domain field on existing events
+        }
+
+        // Replace raw url index with normalizedUrl index (v5)
+        if (oldVersion < 5) {
+          // Drop the old url index (indexed raw meta.url which was never queried)
+          if (store.indexNames.contains("url")) {
+            store.deleteIndex("url");
+            if (VERBOSE) {
+              console.log("[LocalEventStore] Removed old url index");
+            }
+          }
+          if (!store.indexNames.contains("normalizedUrl")) {
+            store.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
+            if (VERBOSE) {
+              console.log("[LocalEventStore] Added normalizedUrl index");
+            }
+          }
+        }
+
+        // Backfill domain and normalizedUrl fields on existing events
+        if (oldVersion < 5) {
           const tx = (event.target as IDBOpenDBRequest).transaction!;
           const objStore = tx.objectStore(STORE_NAME);
           const backfillReq = objStore.openCursor();
@@ -140,10 +160,16 @@ export class LocalEventStore {
             const cursor = backfillReq.result;
             if (cursor) {
               const evt = cursor.value;
+              let updated = false;
               if (!evt.domain && evt.meta?.url) {
                 evt.domain = extractDomain(evt.meta.url);
-                cursor.update(evt);
+                updated = true;
               }
+              if (!evt.normalizedUrl && evt.meta?.url) {
+                evt.normalizedUrl = normalizeUrl(evt.meta.url);
+                updated = true;
+              }
+              if (updated) cursor.update(evt);
               cursor.continue();
             }
           };
@@ -225,10 +251,7 @@ export class LocalEventStore {
 
   /**
    * Query events by URL (normalized - strips query params and hash)
-   *
-   * Note: Currently does client-side filtering since we don't store
-   * normalized URLs. For better performance, consider storing normalized
-   * URLs in the future (see TASKS.md)
+   * Uses the normalizedUrl index for direct key lookup
    */
   async queryByUrl(
     url: string,
@@ -237,8 +260,6 @@ export class LocalEventStore {
     await this.ensureInitialized();
 
     const normalizedUrl = normalizeUrl(url);
-    // Use the domain index to narrow the scan, then filter by normalized URL
-    const domain = extractDomain(url);
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -248,33 +269,30 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const domainIndex = store.index("domain");
+      const urlIndex = store.index("normalizedUrl");
 
       const events: CollectionEvent[] = [];
-      const keyRange = IDBKeyRange.only(domain);
-      const request = domainIndex.openCursor(keyRange);
+      const keyRange = IDBKeyRange.only(normalizedUrl);
+      const request = urlIndex.openCursor(keyRange);
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
           const evt = cursor.value as CollectionEvent;
-          const eventNormalizedUrl = normalizeUrl(evt.meta.url);
 
-          if (eventNormalizedUrl === normalizedUrl) {
-            let include = true;
-            if (options.type && evt.type !== options.type) include = false;
-            if (options.startTs && evt.ts < options.startTs) include = false;
-            if (options.endTs && evt.ts > options.endTs) include = false;
+          let include = true;
+          if (options.type && evt.type !== options.type) include = false;
+          if (options.startTs && evt.ts < options.startTs) include = false;
+          if (options.endTs && evt.ts > options.endTs) include = false;
 
-            if (include) {
-              events.push(evt);
-            }
+          if (include) {
+            events.push(evt);
+          }
 
-            if (options.limit && events.length >= options.limit) {
-              resolve(events);
-              return;
-            }
+          if (options.limit && events.length >= options.limit) {
+            resolve(events);
+            return;
           }
 
           cursor.continue();
@@ -574,9 +592,14 @@ export class LocalEventStore {
       transaction.onerror = () => reject(transaction.error);
 
       for (const event of events) {
-        // Ensure domain field is set for index lookups
-        if (!event.domain && event.meta?.url) {
-          event.domain = extractDomain(event.meta.url);
+        // Ensure derived index fields are set
+        if (event.meta?.url) {
+          if (!event.domain) {
+            event.domain = extractDomain(event.meta.url);
+          }
+          if (!event.normalizedUrl) {
+            event.normalizedUrl = normalizeUrl(event.meta.url);
+          }
         }
         store.put(event);
       }
