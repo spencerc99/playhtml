@@ -16,7 +16,7 @@ const STORAGE_KEY = 'collection_enabled_collectors';
  * - Coordinates with sync service
  */
 export class CollectorManager {
-  private collectors: Map<CollectionEventType, BaseCollector> = new Map();
+  private collectors: Map<CollectionEventType, BaseCollector<any>> = new Map();
   private eventBuffer: EventBuffer;
   private initialized = false;
   
@@ -67,7 +67,7 @@ export class CollectorManager {
   /**
    * Register a collector
    */
-  registerCollector(collector: BaseCollector): void {
+  registerCollector(collector: BaseCollector<any>): void {
     if (VERBOSE) {
       console.log(`[CollectorManager] Registering collector: ${collector.type}`);
     }
@@ -186,7 +186,7 @@ export class CollectorManager {
   /**
    * Get a specific collector
    */
-  getCollector(type: CollectionEventType): BaseCollector | undefined {
+  getCollector(type: CollectionEventType): BaseCollector<any> | undefined {
     return this.collectors.get(type);
   }
   

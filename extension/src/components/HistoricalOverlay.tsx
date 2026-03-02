@@ -6,6 +6,7 @@ import browser from "webextension-polyfill";
 import { loadHistoricalData, type FilterMode } from "../storage/historyLoader";
 import { VERBOSE } from "../config";
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
+import type { CollectionEvent as MovementCollectionEvent } from "../../../website/internet-series/movement/types";
 import { determineFilterScope, extractDomain } from "../utils/urlNormalization";
 import {
   compositePagePortrait,
@@ -63,7 +64,7 @@ export const defaultSettings: OverlaySettings = {
   pointSize: 4,
   trailStyle: "chaotic",
   maxConcurrentTrails: 15,
-  randomizeColors: true,
+  randomizeColors: false,
   documentSpace: false,
 };
 
@@ -200,7 +201,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         e.preventDefault();
         setForceServerBackfill((prev) => {
           const newState = !prev;
-          console.log(
+          if (VERBOSE) console.log(
             `[HistoricalOverlay] Server backfill ${
               newState ? "enabled" : "disabled"
             }`,
@@ -283,7 +284,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
     documentCanvasSize,
-  } = useCursorTrails(events, viewportSize, cursorSettings);
+  } = useCursorTrails(events as unknown as MovementCollectionEvent[], viewportSize, cursorSettings);
 
   // Compute unified time range
   const timeRange = useMemo(() => {
@@ -349,7 +350,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   );
 
   const { typingStates } = useKeyboardTyping(
-    events,
+    events as unknown as MovementCollectionEvent[],
     viewportSize,
     keyboardSettings,
     timeRange.duration,
@@ -370,7 +371,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   );
 
   const { animations: scrollAnimations } = useViewportScroll(
-    events,
+    events as unknown as MovementCollectionEvent[],
     viewportSize,
     viewportSettings,
   );
@@ -785,6 +786,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                 textboxOpacity: 0.2,
                 keyboardShowCaret: true,
                 keyboardAnimationSpeed: 0.5,
+                keyboardDisplayMode: "full" as const,
               }}
             />
           )}

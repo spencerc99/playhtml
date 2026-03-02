@@ -440,6 +440,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
       if (trailStates.length === 0) return;
 
+      // Reset per-loop state so stale prevElapsed from a previous loop doesn't
+      // look like a wrap and trigger a mass re-spawn of all clicks at once.
+      prevElapsedRef.current = 0;
+      spawnedClicksRef.current.clear();
+      setActiveClickEffects([]);
+
       let startTime: number | null = null;
 
       const animate = (timestamp: number) => {

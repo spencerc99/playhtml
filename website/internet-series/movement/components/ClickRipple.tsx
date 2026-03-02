@@ -20,9 +20,11 @@ export const RippleEffect = memo(
   ({
     effect,
     settings: rippleSettings,
+    onComplete,
   }: {
     effect: ClickEffect;
     settings: RippleSettings;
+    onComplete?: (id: string) => void;
   }) => {
     const [now, setNow] = useState(Date.now());
     const [isAnimating, setIsAnimating] = useState(true);
@@ -82,6 +84,7 @@ export const RippleEffect = memo(
 
     if (isAnimating && allRingsComplete) {
       setIsAnimating(false);
+      onComplete?.(effect.id);
     }
 
     const rings = Array.from(

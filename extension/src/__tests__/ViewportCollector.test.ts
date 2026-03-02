@@ -18,8 +18,8 @@ describe("ViewportCollector", () => {
     window.scrollY = 0;
     document.documentElement.scrollLeft = 0;
     document.documentElement.scrollTop = 0;
-    document.documentElement.scrollWidth = 1024;
-    document.documentElement.scrollHeight = 2000;
+    Object.defineProperty(document.documentElement, 'scrollWidth', { value: 1024, writable: true, configurable: true });
+    Object.defineProperty(document.documentElement, 'scrollHeight', { value: 2000, writable: true, configurable: true });
     Object.defineProperty(window, "innerWidth", {
       value: 1024,
       writable: true,
@@ -127,7 +127,7 @@ describe("ViewportCollector", () => {
       collector.enable();
 
       // Set up horizontal scroll
-      document.documentElement.scrollWidth = 2000;
+      Object.defineProperty(document.documentElement, 'scrollWidth', { value: 2000, writable: true, configurable: true });
       simulateScroll(500, 0);
 
       await advanceTime(100);

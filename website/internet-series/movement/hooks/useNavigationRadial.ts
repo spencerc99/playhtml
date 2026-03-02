@@ -9,6 +9,7 @@ import {
   RadialState,
 } from "../types";
 import {
+  RISO_COLORS,
   RADIAL_ORGANIC_COLORS,
   RADIAL_EDGE_COLORS,
   extractDomain,

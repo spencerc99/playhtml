@@ -77,6 +77,7 @@ export interface NavigationEventData {
   title?: string;            // captured page title snapshot
   favicon_url?: string;      // captured page favicon URL snapshot
   metadata_hash?: string;    // hash(title+favicon) for snapshot dedupe
+  quantity?: number;         // dedupe count for repeated events
 }
 
 /**

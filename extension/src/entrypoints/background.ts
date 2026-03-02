@@ -5,6 +5,7 @@ import { LocalEventStore } from '../storage/LocalEventStore'
 import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import type { CollectionEvent } from '../shared/types'
+import { VERBOSE } from '../config'
 
 const store = new LocalEventStore()
 
@@ -37,7 +38,7 @@ async function flushPendingUploads(): Promise<void> {
 
 export default defineBackground(() => {
   // Allow content scripts to access storage.session (needed for session IDs)
-  browser.storage.session.setAccessLevel?.({
+  (browser.storage.session as any).setAccessLevel?.({
     accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
   }).catch(() => {});
 
@@ -104,7 +105,7 @@ export default defineBackground(() => {
       }
 
       await browser.storage.local.set({ playerIdentity: identity })
-      console.log('[Identity] Generated new ECDSA keypair, public key:', publicKey)
+      if (VERBOSE) console.log('[Identity] Generated new ECDSA keypair, public key:', publicKey)
 
       // Clear legacy participant ID key so getParticipantId() reads from playerIdentity
       await browser.storage.local.remove('collection_participant_id')
@@ -129,36 +130,35 @@ export default defineBackground(() => {
     } catch {}
   }
 
-  // Hydrate cursor_color onto events from the local participant's identity.
-  // Mirrors the server-side hydration in worker/src/routes/recent.ts.
+  // Hydrate cursor_color onto locally-stored events from the user's identity.
+  // All events in the local store are from this user (possibly under different
+  // pids due to identity migration), so we apply the color unconditionally.
   async function hydrateCursorColor(events: CollectionEvent[]): Promise<CollectionEvent[]> {
     if (events.length === 0) return events
     const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
-    const colorByPid = new Map<string, string>()
-    if (playerIdentity?.publicKey && playerIdentity.playerStyle?.colorPalette?.[0]) {
-      colorByPid.set(playerIdentity.publicKey, playerIdentity.playerStyle.colorPalette[0])
-    }
+    const cursorColor = playerIdentity?.playerStyle?.colorPalette?.[0]
+    if (!cursorColor) return events
     for (const evt of events) {
-      const color = colorByPid.get(evt.meta.pid)
-      if (color) evt.meta.cursor_color = color
+      evt.meta.cursor_color = cursorColor
     }
     return events
   }
 
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    const reply = sendResponse as (response?: any) => void;
     if (message.type === 'GET_PLAYER_IDENTITY') {
-      getPlayerIdentity().then(sendResponse)
+      getPlayerIdentity().then(reply)
       return true // Will respond asynchronously
     }
 
     if (message.type === 'UPDATE_SITE_DISCOVERY') {
-      updateSiteDiscovery(message.domain).then(sendResponse)
+      updateSiteDiscovery(message.domain).then(reply)
       return true
     }
 
     if (message.type === 'OPEN_TAB') {
-      browser.tabs.create({ url: message.url }).then(() => sendResponse({ success: true }))
+      browser.tabs.create({ url: message.url }).then(() => reply({ success: true }))
       return true
     }
 
@@ -166,9 +166,9 @@ export default defineBackground(() => {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore: captureVisibleTab overloads vary between polyfill types
       browser.tabs.captureVisibleTab({ format: 'png' }).then((dataUrl: string) => {
-        sendResponse({ dataUrl })
+        reply({ dataUrl })
       }).catch((err: Error) => {
-        sendResponse({ error: err.message })
+        reply({ error: err.message })
       })
       return true
     }
@@ -176,30 +176,30 @@ export default defineBackground(() => {
     if (message.type === 'STORE_EVENTS') {
       const events = (message.events || []) as CollectionEvent[]
       store.addEvents(events)
-        .then(() => sendResponse({ success: true }))
+        .then(() => reply({ success: true }))
         .catch((e) => {
           console.error('[Background] STORE_EVENTS error:', e)
-          sendResponse({ success: false })
+          reply({ success: false })
         })
       return true
     }
 
     if (message.type === 'FLUSH_PENDING_UPLOADS') {
       flushPendingUploads()
-        .then(() => sendResponse({ success: true }))
+        .then(() => reply({ success: true }))
         .catch((e) => {
           console.error('[Background] FLUSH_PENDING_UPLOADS error:', e)
-          sendResponse({ success: false })
+          reply({ success: false })
         })
       return true
     }
 
     if (message.type === 'GET_PENDING_COUNT') {
       store.getPendingEvents(10000)
-        .then((events) => sendResponse({ count: events.length }))
+        .then((events) => reply({ count: events.length }))
         .catch((e) => {
           console.error('[Background] GET_PENDING_COUNT error:', e)
-          sendResponse({ count: 0 })
+          reply({ count: 0 })
         })
       return true
     }
@@ -208,10 +208,10 @@ export default defineBackground(() => {
       const domain = message.domain as string
       store.queryByDomain(domain, { type: 'cursor', limit: 200 })
         .then(hydrateCursorColor)
-        .then((events) => sendResponse({ success: true, events }))
+        .then((events) => reply({ success: true, events }))
         .catch((e) => {
           console.error('[Background] GET_RECENT_EVENTS error:', e)
-          sendResponse({ success: false, events: [] })
+          reply({ success: false, events: [] })
         })
       return true
     }
@@ -222,7 +222,7 @@ export default defineBackground(() => {
         try {
           const domainStats = await store.getDomainStats(domain)
           if (domainStats.totalEvents === 0) {
-            sendResponse({ success: true, stats: null })
+            reply({ success: true, stats: null })
             return
           }
 
@@ -281,7 +281,7 @@ export default defineBackground(() => {
                 }
               : null
 
-          sendResponse({
+          reply({
             success: true,
             stats: {
               domain,
@@ -295,7 +295,7 @@ export default defineBackground(() => {
           })
         } catch (e) {
           console.error('[Background] GET_DOMAIN_STATS error:', e)
-          sendResponse({ success: false })
+          reply({ success: false })
         }
       })()
       return true
@@ -303,20 +303,20 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_STORAGE_STATS') {
       store.getStorageStats()
-        .then((stats) => sendResponse({ success: true, stats }))
+        .then((stats) => reply({ success: true, stats }))
         .catch((e) => {
           console.error('[Background] GET_STORAGE_STATS error:', e)
-          sendResponse({ success: false })
+          reply({ success: false })
         })
       return true
     }
 
     if (message.type === 'CLEAR_ALL_EVENTS') {
       store.clearAll()
-        .then(() => sendResponse({ success: true }))
+        .then(() => reply({ success: true }))
         .catch((e) => {
           console.error('[Background] CLEAR_ALL_EVENTS error:', e)
-          sendResponse({ success: false })
+          reply({ success: false })
         })
       return true
     }
@@ -325,10 +325,10 @@ export default defineBackground(() => {
       const options = (message.options || {}) as QueryOptions
       store.getAllEvents(options)
         .then(hydrateCursorColor)
-        .then((events) => sendResponse({ success: true, events }))
+        .then((events) => reply({ success: true, events }))
         .catch((e) => {
           console.error('[Background] GET_ALL_EVENTS error:', e)
-          sendResponse({ success: false, events: [] })
+          reply({ success: false, events: [] })
         })
       return true
     }
@@ -338,10 +338,10 @@ export default defineBackground(() => {
       const options = (message.options || {}) as QueryOptions
       store.queryByDomain(domain, options)
         .then(hydrateCursorColor)
-        .then((events) => sendResponse({ success: true, events }))
+        .then((events) => reply({ success: true, events }))
         .catch((e) => {
           console.error('[Background] QUERY_EVENTS_BY_DOMAIN error:', e)
-          sendResponse({ success: false, events: [] })
+          reply({ success: false, events: [] })
         })
       return true
     }
@@ -351,10 +351,10 @@ export default defineBackground(() => {
       const options = (message.options || {}) as QueryOptions
       store.queryByUrl(url, options)
         .then(hydrateCursorColor)
-        .then((events) => sendResponse({ success: true, events }))
+        .then((events) => reply({ success: true, events }))
         .catch((e) => {
           console.error('[Background] QUERY_EVENTS_BY_URL error:', e)
-          sendResponse({ success: false, events: [] })
+          reply({ success: false, events: [] })
         })
       return true
     }

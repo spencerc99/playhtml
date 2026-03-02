@@ -39,12 +39,12 @@ const loadSettings = () => {
     clickMaxDuration: 2500,
     clickStrokeWidth: 4,
     clickOpacity: 0.3,
-    clickNumRings: 6,
-    clickRingDelayMs: 360,
+    clickNumRings: 2,
+    clickRingDelayMs: 120,
     clickExpansionDuration: 12300,
     clickAnimationStopPoint: 0.45,
     showCursorTrails: true,
-    showCursorClicks: true,
+    showCursorClicks: false,
     eventFilter: {
       move: true,
       click: true,
@@ -53,7 +53,7 @@ const loadSettings = () => {
     },
     eventTypeFilter: {
       cursor: true,
-      keyboard: true,
+      keyboard: false,
       viewport: false,
       navigation: false,
     },
@@ -223,7 +223,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       availableDomains.length > 0 &&
       !availableDomains.includes(settings.domainFilter)
     ) {
-      setSettings((s) => ({ ...s, domainFilter: "" }));
+      setSettings((s: ReturnType<typeof loadSettings>) => ({ ...s, domainFilter: "" }));
     }
   }, [events.length]);
 
@@ -419,12 +419,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       textboxOpacity: settings.textboxOpacity,
       keyboardShowCaret: settings.keyboardShowCaret,
       keyboardAnimationSpeed: settings.keyboardAnimationSpeed,
+      keyboardDisplayMode: settings.keyboardDisplayMode,
     }),
     [
       settings.animationSpeed,
       settings.textboxOpacity,
       settings.keyboardShowCaret,
       settings.keyboardAnimationSpeed,
+      settings.keyboardDisplayMode,
     ],
   );
 

@@ -13,6 +13,7 @@ export interface PortraitCardProps {
   cursorDistancePx: number;
   dateRange: { oldest: string; newest: string } | null;
   uniquePageCount: number;
+  eventCounts?: { cursor: number; keyboard: number; viewport: number };
   /** Compact translucent overlay mode for embedding over animations */
   compact?: boolean;
 }

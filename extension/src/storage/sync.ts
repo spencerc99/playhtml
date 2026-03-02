@@ -26,7 +26,7 @@ function isDevelopment(): boolean {
     // Check build mode (WXT sets this when running `wxt dev`)
     if (typeof import.meta !== 'undefined' && import.meta.env) {
       const isDev = import.meta.env.DEV === true || import.meta.env.MODE === 'development';
-      if (isDev) {
+      if (isDev && VERBOSE) {
         console.log('[Sync] Development mode detected from build environment');
       }
       return isDev;
@@ -50,24 +50,20 @@ async function getWorkerUrl(): Promise<string> {
     const result = await browser.storage.local.get([STORAGE_KEYS.WORKER_URL]);
     if (result[STORAGE_KEYS.WORKER_URL]) {
       const customUrl = result[STORAGE_KEYS.WORKER_URL];
-      console.log('[Sync] Using custom worker URL from storage:', customUrl);
+      if (VERBOSE) console.log('[Sync] Using custom worker URL from storage:', customUrl);
       return customUrl;
     }
 
     // Use dev URL if in development mode
     const isDev = isDevelopment();
     if (isDev) {
-      console.log('[Sync] Using development worker URL:', DEV_WORKER_URL);
-      console.log('[Sync] Make sure wrangler dev is running: cd extension/worker && wrangler dev');
+      if (VERBOSE) console.log('[Sync] Using development worker URL:', DEV_WORKER_URL);
       return DEV_WORKER_URL;
     }
 
-    console.log('[Sync] Using production worker URL:', PROD_WORKER_URL);
     return PROD_WORKER_URL;
   } catch (error) {
     console.error('[Sync] Error getting worker URL:', error);
-    // Fallback to production
-    console.log('[Sync] Falling back to production worker URL:', PROD_WORKER_URL);
     return PROD_WORKER_URL;
   }
 }
@@ -119,7 +115,7 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
     
     // If using a non-existent URL (like localhost:9999), don't retry - it's disabled for testing
     if (workerUrl.includes('localhost:9999')) {
-      console.log('[Sync] Uploads disabled for testing - events stored locally only');
+      if (VERBOSE) console.log('[Sync] Uploads disabled for testing - events stored locally only');
       return; // Don't throw, so EventBuffer doesn't retry
     }
 
@@ -155,13 +151,6 @@ export async function syncParticipantColor(pid: string, cursorColor: string): Pr
   } catch (error) {
     console.warn('[Sync] Failed to sync participant color:', error);
   }
-}
-
-/**
- * Set worker URL (for configuration)
- */
-export async function setWorkerUrl(url: string): Promise<void> {
-  await browser.storage.local.set({ [STORAGE_KEYS.WORKER_URL]: url });
 }
 
 /**

@@ -13,6 +13,8 @@ export interface CollectionEvent {
     button?: number;
     duration?: number;
   };
+  domain?: string;
+  normalizedUrl?: string;
   meta: {
     pid: string;
     sid: string;

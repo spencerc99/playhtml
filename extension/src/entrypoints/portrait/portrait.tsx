@@ -2,6 +2,7 @@
 // ABOUTME: Loads all locally-collected events and passes them to MovementCanvas for rendering
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { PortraitCardDirectionA } from "../../components/PortraitCard";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import "../../styles/options.scss";
@@ -19,6 +20,7 @@ const PortraitPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [hovering, setHovering] = useState(false);
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
   const loadEvents = useCallback(async () => {
@@ -189,6 +191,8 @@ const PortraitPage = () => {
     setExporting(false);
   }, [portraitStats, trailStates, timeRange, domain, exporting]);
 
+  const overlayVisible = hovering || exporting;
+
   return (
     <div
       style={{
@@ -198,6 +202,8 @@ const PortraitPage = () => {
         position: "relative",
         background: "var(--bg)",
       }}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
     >
       {/* Header bar */}
       <div
@@ -225,7 +231,16 @@ const PortraitPage = () => {
         >
           we were online
         </span>
-        <div style={{ display: "flex", gap: "8px", pointerEvents: "auto" }}>
+        {/* Export button — disabled for now
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            pointerEvents: overlayVisible ? "auto" : "none",
+            opacity: overlayVisible ? 1 : 0,
+            transition: "opacity 0.3s ease",
+          }}
+        >
           {!loading && portraitStats && (
             <button
               onClick={handleExportDomainPortrait}
@@ -246,7 +261,31 @@ const PortraitPage = () => {
             </button>
           )}
         </div>
+        */}
       </div>
+
+      {/* Portrait card — bottom-left, always visible */}
+      {portraitStats && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 20,
+            left: 20,
+            zIndex: 200,
+            pointerEvents: "none",
+          }}
+        >
+          <PortraitCardDirectionA
+            domain={portraitStats.domain}
+            totalTimeMs={portraitStats.totalTimeMs}
+            sessions={portraitStats.sessions ?? []}
+            cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
+            dateRange={portraitStats.dateRange}
+            uniquePageCount={portraitStats.uniquePageCount}
+            compact
+          />
+        </div>
+      )}
 
       <MovementCanvas
         events={events}

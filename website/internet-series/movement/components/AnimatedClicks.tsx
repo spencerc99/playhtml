@@ -41,9 +41,19 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       setActiveClickEffects((prev) => [...prev, click]);
     }, []);
 
+    const handleClickComplete = useCallback((id: string) => {
+      setActiveClickEffects((prev) => prev.filter((e) => e.id !== id));
+    }, []);
+
     // Animation loop: same as AnimatedTrails (0..duration, scaled by speed, looping)
     useEffect(() => {
       if (scheduledClicks.length === 0 || timeRange.duration <= 0) return;
+
+      // Reset state when clicks or duration change so the spawn effect doesn't
+      // fire against a stale elapsedTimeMs and batch-spawn everything at once.
+      spawnedThisCycleRef.current.clear();
+      lastElapsedRef.current = 0;
+      setElapsedTimeMs(0);
 
       let startTime: number | null = null;
 
@@ -124,6 +134,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
             key={effect.id}
             effect={effect}
             settings={rippleSettings}
+            onComplete={handleClickComplete}
           />
         ))}
       </svg>

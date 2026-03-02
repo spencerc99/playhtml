@@ -896,7 +896,7 @@ export default defineContentScript({
     let collectorManager: CollectorManager | null = null;
     let overlayRoot: any = null;
     let overlayVisible = false;
-    let overlayReactModule: { default: any; createElement: any } | null = null;
+    let overlayReactModule: { createElement: any } | null = null;
     let HistoricalOverlayComponent: any = null;
 
     const renderOverlay = () => {
@@ -923,12 +923,13 @@ export default defineContentScript({
           // interacting with the overlay UI shouldn't pollute the data.
           collectorManager?.pauseAll();
 
-          const [{ default: React }, { createRoot }, { HistoricalOverlay }] =
+          const [ReactModule, { createRoot }, { HistoricalOverlay }] =
             await Promise.all([
               import('react'),
               import('react-dom/client'),
               import('../components/HistoricalOverlay'),
             ]);
+          const React = ReactModule.default ?? ReactModule;
 
           overlayReactModule = React;
           HistoricalOverlayComponent = HistoricalOverlay;
