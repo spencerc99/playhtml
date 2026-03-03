@@ -18,6 +18,7 @@
     "build-site": "vite build website --config vite.config.site.mts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && bun run build); done",
     "build-extension": "cd extension && bun run build",
+    "build-extension:website": "cd extension/website && bun run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build-packages && changeset publish",
