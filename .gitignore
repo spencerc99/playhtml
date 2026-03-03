@@ -38,7 +38,7 @@ dist-ssr
 
 .wxt
 .output
-packages/extension/build
+extension/dist
 
 internal-docs
 

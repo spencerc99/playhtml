@@ -1,3 +1,6 @@
+// ABOUTME: Test utilities for simulating browser events in collector tests.
+// ABOUTME: Provides helpers for mouse, scroll, resize, keyboard events, and time advancement.
+
 import { vi } from "vitest";
 
 /**

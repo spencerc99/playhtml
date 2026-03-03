@@ -1,3 +1,6 @@
+// ABOUTME: Configuration constants for the Cloudflare Worker.
+// ABOUTME: Controls debug verbosity and other worker-wide settings.
+
 /**
  * Configuration constants for the worker
  */

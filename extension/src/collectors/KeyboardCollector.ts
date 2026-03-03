@@ -1,3 +1,6 @@
+// ABOUTME: Captures keyboard input events with configurable privacy levels.
+// ABOUTME: Supports PII redaction, content filtering, and debounced typing session aggregation.
+
 import { BaseCollector } from './BaseCollector';
 import type { KeyboardEventData, TypingAction } from './types';
 import { normalizePosition, getElementSelector } from './types';

@@ -1,3 +1,6 @@
+// ABOUTME: Abstract base class for all browsing behavior collectors.
+// ABOUTME: Defines the lifecycle (start/stop), event emission, and real-time streaming interface.
+
 import type { CollectionEventType } from './types';
 
 /**

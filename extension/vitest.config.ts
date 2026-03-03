@@ -1,3 +1,6 @@
+// ABOUTME: Vitest configuration for the browser extension test suite.
+// ABOUTME: Sets up jsdom environment, test file patterns, and setup file paths.
+
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "url";
 

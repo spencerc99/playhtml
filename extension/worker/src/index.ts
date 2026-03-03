@@ -1,3 +1,6 @@
+// ABOUTME: Cloudflare Worker entry point for the event collection API.
+// ABOUTME: Routes HTTP requests to ingest, recent, stats, export, and participant handlers.
+
 import { handleIngest } from './routes/ingest';
 import { handleRecent } from './routes/recent';
 import { handleStats } from './routes/stats';

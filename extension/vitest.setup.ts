@@ -1,3 +1,6 @@
+// ABOUTME: Vitest setup file that mocks browser APIs for the extension test environment.
+// ABOUTME: Stubs window dimensions, devicePixelRatio, and other DOM properties.
+
 import { vi } from "vitest";
 
 // Mock window dimensions

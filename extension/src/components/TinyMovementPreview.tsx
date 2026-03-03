@@ -1,3 +1,6 @@
+// ABOUTME: Miniature cursor trail preview shown in the extension popup.
+// ABOUTME: Renders recent cursor events as animated trails using the movement visualization components.
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import type { CollectionEvent } from "../collectors/types";

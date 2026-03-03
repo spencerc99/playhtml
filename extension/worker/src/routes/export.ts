@@ -1,3 +1,6 @@
+// ABOUTME: Handles bulk export of collected event data as JSON.
+// ABOUTME: Admin-authenticated endpoint for extracting edition data from Supabase.
+
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
 

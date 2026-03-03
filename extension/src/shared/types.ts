@@ -1,6 +1,9 @@
+// ABOUTME: Shared type definitions used by both the browser extension and Cloudflare Worker.
+// ABOUTME: Defines the core event structure, event types, and validation helpers.
+
 /**
  * Shared types between extension and worker
- * 
+ *
  * These types define the core event structure that both the extension
  * (which collects events) and the worker (which validates and stores events)
  * need to agree on.

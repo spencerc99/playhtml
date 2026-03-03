@@ -1,8 +1,5 @@
-/**
- * SVG Cursor Shapes Library
- * 
- * Different cursor types for visualizing cursor style changes
- */
+// ABOUTME: SVG cursor shape components for visualizing different cursor styles.
+// ABOUTME: Provides arrow, pointer, text, grab, grabbing, and move cursor icons.
 
 import React from "react";
 

@@ -1,3 +1,6 @@
+// ABOUTME: Captures viewport changes including scroll, resize, and zoom events.
+// ABOUTME: Throttles and debounces events to avoid excessive data while preserving browsing patterns.
+
 import { BaseCollector } from "./BaseCollector";
 import type { ViewportEventData } from "./types";
 import { normalizeScroll } from "./types";

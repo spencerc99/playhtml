@@ -1,3 +1,6 @@
+// ABOUTME: Tests for NavigationCollector covering page load, tab visibility, and navigation events.
+// ABOUTME: Validates event data structure and lifecycle behavior.
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import type { NavigationEventData } from "../collectors/types";

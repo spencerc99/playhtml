@@ -1,3 +1,6 @@
+// ABOUTME: Interactive playground page for testing cursor trail visualizations.
+// ABOUTME: Renders live cursor movement with RISO-inspired colors and trail effects.
+
 import "./playground.scss";
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";

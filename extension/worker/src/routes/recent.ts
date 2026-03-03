@@ -1,3 +1,6 @@
+// ABOUTME: Serves recent browsing events filtered by domain for the historical overlay.
+// ABOUTME: Public endpoint that queries Supabase using the domain index for fast lookups.
+
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
 

@@ -1,3 +1,6 @@
+// ABOUTME: Integration tests for the full collector pipeline with CollectorManager.
+// ABOUTME: Tests collector coordination, event buffering, and upload flow end-to-end.
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";

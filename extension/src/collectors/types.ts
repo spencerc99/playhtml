@@ -1,6 +1,9 @@
+// ABOUTME: Core types for the browsing behavior collection system.
+// ABOUTME: Defines event data structures, normalization helpers, and collector-specific interfaces.
+
 /**
  * Core types for the Internet Collection System
- * 
+ *
  * These types define the structure for collecting browsing behaviors
  * to power collective artworks.
  */

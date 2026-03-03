@@ -1,3 +1,6 @@
+// ABOUTME: Supabase client factory and environment type definitions for the worker.
+// ABOUTME: Creates authenticated Supabase clients from Cloudflare Worker environment bindings.
+
 import { createClient } from '@supabase/supabase-js';
 
 /**

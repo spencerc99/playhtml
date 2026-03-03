@@ -1,3 +1,6 @@
+// ABOUTME: Handles ingestion of collected browsing events from the extension.
+// ABOUTME: Validates, rate-limits, and stores event batches in Supabase with page metadata.
+
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { VERBOSE } from '../config';
 import {

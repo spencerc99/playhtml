@@ -1,3 +1,6 @@
+// ABOUTME: Serves aggregated event statistics for the admin dashboard.
+// ABOUTME: Admin-authenticated endpoint returning counts and breakdowns from Supabase.
+
 import { createSupabaseClient, type Env } from '../lib/supabase';
 
 /**

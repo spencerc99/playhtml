@@ -1,3 +1,6 @@
+// ABOUTME: Tests for ViewportCollector covering scroll, resize, and zoom event capture.
+// ABOUTME: Validates throttling, debouncing, and normalized position data.
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import type { ViewportEventData } from "../collectors/types";

@@ -1,3 +1,6 @@
+// ABOUTME: Captures cursor movement, clicks, holds, and cursor style changes.
+// ABOUTME: Streams at 60fps to PartyKit for live visualization and samples sparsely for archival.
+
 import { BaseCollector } from './BaseCollector';
 import type { CursorEventData } from './types';
 import { normalizePosition, getElementSelector } from './types';

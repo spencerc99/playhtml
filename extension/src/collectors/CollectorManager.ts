@@ -1,3 +1,6 @@
+// ABOUTME: Orchestrates all collectors, managing their lifecycle and enabled/disabled state.
+// ABOUTME: Routes collected events to the EventBuffer and persists collector preferences.
+
 import browser from 'webextension-polyfill';
 import { BaseCollector } from './BaseCollector';
 import type { CollectionEventType, CollectorStatus } from './types';

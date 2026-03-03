@@ -1,3 +1,6 @@
+// ABOUTME: Tests for CursorCollector covering movement, clicks, holds, and cursor style tracking.
+// ABOUTME: Validates throttling, coordinate normalization, and event emission behavior.
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { CursorCollector } from "../collectors/CursorCollector";
 import type { CursorEventData } from "../collectors/types";
