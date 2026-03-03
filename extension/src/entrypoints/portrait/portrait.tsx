@@ -2,7 +2,7 @@
 // ABOUTME: Loads all locally-collected events and passes them to MovementCanvas for rendering
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { PortraitCardDirectionA } from "../../components/PortraitCard";
+import { PortraitCard } from "../../components/PortraitCard";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import "../../styles/options.scss";
@@ -275,14 +275,13 @@ const PortraitPage = () => {
             pointerEvents: "none",
           }}
         >
-          <PortraitCardDirectionA
+          <PortraitCard
             domain={portraitStats.domain}
             totalTimeMs={portraitStats.totalTimeMs}
             sessions={portraitStats.sessions ?? []}
             cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
             dateRange={portraitStats.dateRange}
             uniquePageCount={portraitStats.uniquePageCount}
-            compact
           />
         </div>
       )}

@@ -7,7 +7,7 @@ import type { PlayerIdentity } from "../types";
 import type { CollectorStatus } from "../collectors/types";
 import type { CollectionEvent } from "../collectors/types";
 import { TinyMovementPreview } from "./TinyMovementPreview";
-import { PortraitCardDirectionA } from "./PortraitCard";
+import { PortraitCard } from "./PortraitCard";
 import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
@@ -243,7 +243,7 @@ export function InternetPortraitHome({
             <div className="preview-card__body">
               <TinyMovementPreview />
               {portraitStats ? (
-                <PortraitCardDirectionA
+                <PortraitCard
                   domain={portraitStats.domain}
                   totalTimeMs={portraitStats.totalTimeMs}
                   sessions={portraitStats.sessions ?? []}

@@ -1,5 +1,5 @@
 // ABOUTME: Portrait card component showing browsing stats for a domain
-// ABOUTME: Supports full (dark poster) and compact (translucent overlay) layouts
+// ABOUTME: Canvas-textured card with vertical strokes mapped to 24h activity rhythm
 
 import React, { useEffect, useRef } from "react";
 import type { ScreenTimeSession } from "../storage/LocalEventStore";
@@ -14,8 +14,6 @@ export interface PortraitCardProps {
   dateRange: { oldest: string; newest: string } | null;
   uniquePageCount: number;
   eventCounts?: { cursor: number; keyboard: number; viewport: number };
-  /** Compact translucent overlay mode for embedding over animations */
-  compact?: boolean;
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -72,328 +70,7 @@ function buildHourWeights(sessions: ScreenTimeSession[]): number[] {
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
-const CREAM = "#faf7f2";
-const CREAM_MUTED = "rgba(250, 247, 242, 0.6)";
-const CREAM_FAINT = "rgba(250, 247, 242, 0.25)";
 const ACCENT_TEAL = "#4a9a8a";
-
-// ── Compact (overlay) styles ──────────────────────────────────────────────────
-
-const compactStyles = {
-  card: {
-    position: "absolute" as const,
-    inset: 0,
-    display: "flex",
-    flexDirection: "column" as const,
-    justifyContent: "flex-start",
-    padding: "16px 16px 44px",
-    background: "rgba(61, 56, 51, 0.55)",
-    backdropFilter: "blur(6px)",
-    WebkitBackdropFilter: "blur(6px)",
-    fontFamily: "'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, sans-serif",
-    color: CREAM,
-  },
-  domain: {
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "rgba(250, 247, 242, 0.7)",
-    letterSpacing: "0.06em",
-    textTransform: "uppercase" as const,
-    marginBottom: "6px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
-  },
-  heroRow: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: "6px",
-    marginBottom: "10px",
-  },
-  heroNumber: {
-    fontFamily: "'Lora', Georgia, serif",
-    fontSize: "32px",
-    fontWeight: 700,
-    color: CREAM,
-    lineHeight: 1,
-    letterSpacing: "-0.02em",
-  },
-  heroLabel: {
-    fontSize: "11px",
-    color: "rgba(250, 247, 242, 0.6)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.08em",
-  },
-  statRow: {
-    display: "flex",
-    gap: "16px",
-  },
-  statItem: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "1px",
-  },
-  statNumber: {
-    fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
-    fontSize: "14px",
-    fontWeight: 600,
-    color: CREAM,
-    lineHeight: 1.2,
-  },
-  statLabel: {
-    fontSize: "9px",
-    color: "rgba(250, 247, 242, 0.5)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.08em",
-  },
-} as const;
-
-// ── Time-of-day rhythm bar ────────────────────────────────────────────────────
-
-function RhythmBar({ sessions }: { sessions: ScreenTimeSession[] }) {
-  const weights = buildHourWeights(sessions);
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-end",
-        gap: "1.5px",
-        height: "24px",
-        marginBottom: "12px",
-      }}
-    >
-      {weights.map((w, i) => (
-        <div
-          key={i}
-          title={`${i}:00 — ${Math.round(w * 100)}%`}
-          style={{
-            flex: 1,
-            height: `${Math.max(2, Math.round(w * 24))}px`,
-            background: w > 0.05
-              ? `rgba(250, 247, 242, ${0.12 + w * 0.75})`
-              : "rgba(250, 247, 242, 0.06)",
-            borderRadius: "1px",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
-export function PortraitCard({
-  domain,
-  totalTimeMs,
-  sessions,
-  cursorDistancePx,
-  dateRange,
-  uniquePageCount,
-  compact = false,
-}: PortraitCardProps) {
-  const heroText = formatDuration(totalTimeMs ?? 0);
-  const dateLabel = dateRange ? formatDateRange(dateRange.oldest, dateRange.newest) : null;
-  const distanceLabel = cursorDistancePx > 0 ? formatDistance(cursorDistancePx) : null;
-
-  if (compact) {
-    return (
-      <div style={compactStyles.card}>
-        <div style={compactStyles.domain}>{domain}</div>
-        <div style={compactStyles.heroRow}>
-          <div style={compactStyles.heroNumber}>{heroText}</div>
-          <div style={compactStyles.heroLabel}>time spent</div>
-        </div>
-        <div style={compactStyles.statRow}>
-          {distanceLabel && (
-            <div style={compactStyles.statItem}>
-              <div style={compactStyles.statNumber}>{distanceLabel}</div>
-              <div style={compactStyles.statLabel}>moved</div>
-            </div>
-          )}
-          <div style={compactStyles.statItem}>
-            <div style={compactStyles.statNumber}>{uniquePageCount}</div>
-            <div style={compactStyles.statLabel}>pages</div>
-          </div>
-          {dateLabel && (
-            <div style={compactStyles.statItem}>
-              <div style={compactStyles.statNumber}>{dateLabel}</div>
-              <div style={compactStyles.statLabel}>since</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-start",
-        padding: "14px 16px 12px",
-        background: "rgba(26, 23, 20, 0.82)",
-        backdropFilter: "blur(8px)",
-        WebkitBackdropFilter: "blur(8px)",
-        borderRadius: "10px",
-        fontFamily: "'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, sans-serif",
-        color: CREAM,
-        minWidth: "220px",
-        maxWidth: "320px",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
-        border: "1px solid rgba(250, 247, 242, 0.08)",
-      }}
-    >
-      {/* Domain */}
-      <div
-        style={{
-          fontSize: "10px",
-          fontWeight: 600,
-          color: CREAM_MUTED,
-          letterSpacing: "0.07em",
-          textTransform: "uppercase",
-          marginBottom: "10px",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {domain}
-      </div>
-
-      {/* Hero: screen time */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "14px" }}>
-        <div
-          style={{
-            fontFamily: "'Lora', Georgia, serif",
-            fontSize: "36px",
-            fontWeight: 700,
-            color: CREAM,
-            lineHeight: 1,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          {heroText}
-        </div>
-        <div
-          style={{
-            fontSize: "10px",
-            color: CREAM_MUTED,
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-          }}
-        >
-          spent
-        </div>
-      </div>
-
-      {/* Time-of-day rhythm */}
-      {sessions.length > 0 && <RhythmBar sessions={sessions} />}
-
-      {/* Stats row */}
-      <div style={{ display: "flex", gap: "20px" }}>
-        {distanceLabel && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-            <div
-              style={{
-                fontFamily: "'Martian Mono', monospace",
-                fontSize: "13px",
-                fontWeight: 600,
-                color: CREAM,
-                lineHeight: 1.2,
-              }}
-            >
-              {distanceLabel}
-            </div>
-            <div
-              style={{
-                fontSize: "9px",
-                color: CREAM_MUTED,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              moved
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-          <div
-            style={{
-              fontFamily: "'Martian Mono', monospace",
-              fontSize: "13px",
-              fontWeight: 600,
-              color: CREAM,
-              lineHeight: 1.2,
-            }}
-          >
-            {uniquePageCount}
-          </div>
-          <div
-            style={{
-              fontSize: "9px",
-              color: CREAM_MUTED,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-            }}
-          >
-            pages
-          </div>
-        </div>
-
-        {dateLabel && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginLeft: "auto" }}>
-            <div
-              style={{
-                fontFamily: "'Martian Mono', monospace",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: CREAM_MUTED,
-                lineHeight: 1.2,
-              }}
-            >
-              {dateLabel}
-            </div>
-            <div
-              style={{
-                fontSize: "9px",
-                color: CREAM_FAINT,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              since
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Wordmark */}
-      <div
-        style={{
-          marginTop: "12px",
-          paddingTop: "10px",
-          borderTop: `1px solid ${CREAM_FAINT}`,
-          fontSize: "11px",
-          fontFamily: "'Source Serif 4', 'Lora', Georgia, serif",
-          fontStyle: "italic",
-          fontWeight: 200,
-          color: ACCENT_TEAL,
-          letterSpacing: "0.01em",
-        }}
-      >
-        we were online
-      </div>
-    </div>
-  );
-}
-
-// ── Direction A: Vertical texture card ────────────────────────────────────────
-// Vertical strokes mapped to the 24h timeline fill the card as a canvas texture.
-// Stroke density scales with total time spent; colors use the RISO palette.
-// Text floats over a semi-transparent paper overlay. Fills available space.
 
 // Trail palette as [r,g,b] for canvas rendering — matches RISO_COLORS in eventUtils
 const CANVAS_PALETTE: [number, number, number][] = [
@@ -407,7 +84,12 @@ const CANVAS_PALETTE: [number, number, number][] = [
   [195, 115, 35],  // burnt orange — hsl(35, 70%, 45%)
 ];
 
-export function PortraitCardDirectionA({
+// ── Component ─────────────────────────────────────────────────────────────────
+// Vertical strokes mapped to the 24h timeline fill the card as a canvas texture.
+// Stroke density scales with total time spent; colors use the RISO palette.
+// Text floats over a semi-transparent paper overlay. Fills available space.
+
+export function PortraitCard({
   domain,
   totalTimeMs,
   sessions,
@@ -472,10 +154,10 @@ export function PortraitCardDirectionA({
     }
   }, [weights.join(","), totalTimeMs]);
 
-  const DA_TEXT = "#3d3833";
-  const DA_TEXT_MUTED = "rgba(61,56,51,0.55)";
-  const DA_TEXT_FAINT = "rgba(61,56,51,0.35)";
-  const DA_BORDER = "rgba(61,56,51,0.2)";
+  const TEXT = "#3d3833";
+  const TEXT_MUTED = "rgba(61,56,51,0.55)";
+  const TEXT_FAINT = "rgba(61,56,51,0.35)";
+  const BORDER = "rgba(61,56,51,0.2)";
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
@@ -489,32 +171,32 @@ export function PortraitCardDirectionA({
         flexDirection: "column",
         boxSizing: "border-box",
         fontFamily: "'Atkinson Hyperlegible', sans-serif",
-        color: DA_TEXT,
+        color: TEXT,
       }}>
-        <div style={{ fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: DA_TEXT_MUTED, marginBottom: "8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: TEXT_MUTED, marginBottom: "8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {domain}
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: "5px", flex: 1 }}>
-          <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: "32px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: DA_TEXT }}>
+          <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: "32px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: TEXT }}>
             {heroText}
           </div>
-          <div style={{ fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: DA_TEXT_MUTED }}>spent</div>
+          <div style={{ fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: TEXT_MUTED }}>spent</div>
         </div>
-        <div style={{ borderTop: `1px solid ${DA_BORDER}`, paddingTop: "10px", display: "flex", gap: "14px", alignItems: "flex-end" }}>
+        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "10px", display: "flex", gap: "14px", alignItems: "flex-end" }}>
           {distanceLabel && (
             <div>
-              <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "11px", fontWeight: 500, color: DA_TEXT }}>{distanceLabel}</div>
-              <div style={{ fontSize: "8px", letterSpacing: "0.08em", textTransform: "uppercase", color: DA_TEXT_MUTED, marginTop: "2px" }}>moved</div>
+              <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "11px", fontWeight: 500, color: TEXT }}>{distanceLabel}</div>
+              <div style={{ fontSize: "8px", letterSpacing: "0.08em", textTransform: "uppercase", color: TEXT_MUTED, marginTop: "2px" }}>moved</div>
             </div>
           )}
           <div>
-            <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "11px", fontWeight: 500, color: DA_TEXT }}>{uniquePageCount}</div>
-            <div style={{ fontSize: "8px", letterSpacing: "0.08em", textTransform: "uppercase", color: DA_TEXT_MUTED, marginTop: "2px" }}>pages</div>
+            <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "11px", fontWeight: 500, color: TEXT }}>{uniquePageCount}</div>
+            <div style={{ fontSize: "8px", letterSpacing: "0.08em", textTransform: "uppercase", color: TEXT_MUTED, marginTop: "2px" }}>pages</div>
           </div>
           {dateLabel && (
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
               <div style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "11px", color: ACCENT_TEAL }}>we were online</div>
-              <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "8px", color: DA_TEXT_FAINT, marginTop: "2px" }}>{dateLabel}</div>
+              <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "8px", color: TEXT_FAINT, marginTop: "2px" }}>{dateLabel}</div>
             </div>
           )}
         </div>

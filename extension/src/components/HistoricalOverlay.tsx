@@ -12,7 +12,7 @@ import {
   compositePagePortrait,
   pagePortraitFilename,
 } from "../utils/portraitExport";
-import { PortraitCardDirectionA, type PortraitCardProps } from "./PortraitCard";
+import { PortraitCard, type PortraitCardProps } from "./PortraitCard";
 
 // Import visualization components from movement
 import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
@@ -488,7 +488,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           }}
         >
           {portraitStats ? (
-            <PortraitCardDirectionA {...portraitStats} />
+            <PortraitCard {...portraitStats} />
           ) : portraitStatsLoaded ? (
             <div
               style={{
