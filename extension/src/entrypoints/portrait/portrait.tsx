@@ -27,10 +27,20 @@ const PortraitPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const res: any = await browser.runtime.sendMessage({ type: "GET_ALL_EVENTS" });
+      // Cap at 200k events to stay well under the 64MiB sendMessage limit.
+      const res: any = await browser.runtime.sendMessage({
+        type: "GET_ALL_EVENTS",
+        options: { limit: 10_000 },
+      });
       setEvents((res?.events ?? []) as CollectionEvent[]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load local events");
+      const msg = err instanceof Error ? err.message : String(err);
+      // If we still hit the message size limit, surface a clear error
+      if (msg.includes("64MiB") || msg.includes("maximum allowed size")) {
+        setError("Too much data to load at once. Try clearing old events.");
+      } else {
+        setError(msg || "Failed to load local events");
+      }
       console.error("Error loading local events:", err);
     } finally {
       setLoading(false);

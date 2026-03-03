@@ -13,6 +13,13 @@ export default defineContentScript({
   runAt: "document_idle",
   cssInjectionMode: "ui",
   main() {
+    // Don't run collectors or extension features on extension-internal pages
+    // (portrait, popup, options, etc.) — they generate noise and can trigger
+    // the 64MiB sendMessage limit when the portrait page requests all events.
+    const proto = window.location.protocol;
+    if (proto === 'chrome-extension:' || proto === 'moz-extension:') {
+      return;
+    }
 
     let currentPresenceCount = 0;
 

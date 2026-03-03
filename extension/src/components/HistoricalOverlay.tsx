@@ -505,7 +505,16 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             >
               no data
             </div>
-          ) : null}
+          ) : (
+            <PortraitCard
+              domain={actualMode === "domain" ? domain : new URL(currentUrl).pathname}
+              totalTimeMs={null}
+              sessions={[]}
+              cursorDistancePx={0}
+              dateRange={null}
+              uniquePageCount={0}
+            />
+          )}
 
         </div>
 

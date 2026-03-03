@@ -37,7 +37,8 @@ function isDevelopment(): boolean {
     
     return false;
   } catch (error) {
-    console.error('[Sync] Error detecting development mode:', error);
+    // Service worker context may lack DOM APIs — this is expected, not an error.
+    if (VERBOSE) console.warn('[Sync] Error detecting development mode:', error);
     return false;
   }
 }
@@ -97,8 +98,12 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
     
     if (!response.ok) {
       const errorText = await response.text();
-      // If it's a 500 error, it might have partially succeeded
-      // But we'll still throw to be safe - upsert handles duplicates
+      // Index row size errors are permanent — the data itself is too large
+      // for the DB index. Log and discard rather than retrying forever.
+      if (errorText.includes('index row size') && errorText.includes('exceeds')) {
+        console.warn('[Sync] Dropping events with oversized index values:', errorText);
+        return;
+      }
       throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
     

@@ -99,6 +99,7 @@ export function PortraitCard({
 }: PortraitCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const isLoading = totalTimeMs === null;
   const weights = buildHourWeights(sessions);
   const heroText = formatDuration(totalTimeMs ?? 0);
   const dateLabel = dateRange ? formatDateRange(dateRange.oldest, dateRange.newest) : null;
@@ -158,6 +159,24 @@ export function PortraitCard({
   const TEXT_MUTED = "rgba(61,56,51,0.55)";
   const TEXT_FAINT = "rgba(61,56,51,0.35)";
   const BORDER = "rgba(61,56,51,0.2)";
+
+  if (isLoading) {
+    return (
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        background: "#f5f0e8",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "11px",
+        color: "rgba(61,56,51,0.4)",
+        fontFamily: "'Martian Mono', monospace",
+      }}>
+        loading...
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
