@@ -1,0 +1,184 @@
+// ABOUTME: Styles for the full-page first-time setup wizard
+// ABOUTME: Covers welcome, configure, and done steps
+
+@use "../styles/variables" as *;
+
+.setup-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: $bg;
+  color: $text;
+
+  &__inner {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+  }
+}
+
+.setup-step {
+  &__trail-art {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  &__title {
+    @include wordmark;
+    font-size: 32px;
+    margin-bottom: 12px;
+  }
+
+  &__heading {
+    @include heading;
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  &__subheading {
+    @include heading;
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+
+  &__desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: $text-muted;
+    margin-bottom: 20px;
+    max-width: 460px;
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+
+  &__field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: $text;
+  }
+
+  &__input {
+    @include input-field;
+    font-size: 14px;
+    max-width: 280px;
+  }
+
+  // ── Sharing tabs ────────────────────────────────────────────────────────────
+
+  &__tabs {
+    display: inline-flex;
+    background: $surface;
+    border: 1px solid $border-strong;
+    border-radius: 24px;
+    padding: 3px;
+    gap: 2px;
+    margin-bottom: 20px;
+  }
+
+  &__tab {
+    @include btn-base;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 20px;
+    background: transparent;
+    color: $text-muted;
+    border: none;
+
+    &--active {
+      background: $accent-teal;
+      color: white;
+
+      &:hover { filter: brightness(0.97); }
+    }
+
+    &:not(&--active):hover {
+      background: $surface-hover;
+      color: $text;
+      filter: none;
+    }
+  }
+
+  // ── Collector list (reuses Collections card styles) ─────────────────────────
+
+  .collections__collector-list {
+    margin-bottom: 20px;
+  }
+
+  // ── Color picker ────────────────────────────────────────────────────────────
+
+  &__color-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  &__color-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__color-input--hidden {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  &__reroll-btn {
+    @include btn-secondary;
+    padding: 8px 10px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  &__cursor-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+
+    &:hover {
+      border-color: $border-strong;
+      background: $surface-hover;
+    }
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  &__btn-primary {
+    @include btn-primary;
+  }
+
+  &__btn-secondary {
+    @include btn-secondary;
+  }
+}

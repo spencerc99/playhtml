@@ -1,0 +1,140 @@
+// ABOUTME: Design system tokens for the we were online extension
+// ABOUTME: Single source of truth — import this in every component stylesheet
+
+// ─── Color palette ───────────────────────────────────────────────────────────
+$bg:             #faf7f2;
+$surface:        #f5f0e8;
+$surface-hover:  #efe9df;
+$text:           #3d3833;
+$text-muted:     #8a8279;
+$text-faint:     #b5aea5;
+
+$border:         rgba(90, 78, 65, 0.12);
+$border-strong:  rgba(90, 78, 65, 0.25);
+$shadow:         rgba(90, 78, 65, 0.08);
+
+$accent-teal:    #4a9a8a;
+$accent-rust:    #c4724e;
+$accent-blue:    #5b8db8;
+$accent-gold:    #d4b85c;
+$accent-plum:    #8b6b7f;
+
+// Semantic tints
+$active-bg:      rgba(74, 154, 138, 0.08);
+$active-border:  rgba(74, 154, 138, 0.25);
+$shared-bg:      rgba(91, 141, 184, 0.08);
+$error-bg:       rgba(196, 114, 78, 0.08);
+$error-text:     #9a5a3a;
+$gold-bg:        rgba(212, 184, 92, 0.12);
+$gold-text:      #7a6020;
+
+// ─── Typography ──────────────────────────────────────────────────────────────
+$font-body:      'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, sans-serif;
+$font-heading:   'Lora', Georgia, serif;
+$font-mono:      'Martian Mono', 'Space Mono', 'Courier New', monospace;
+
+// The wordmark is always Source Serif 4 Extra Light Italic (or Lora italic as fallback)
+$font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
+
+// ─── CSS custom properties (emit on :root for runtime theming) ───────────────
+// Import this mixin with @include root-tokens() on :root in base.scss
+@mixin root-tokens {
+  --bg:             #{$bg};
+  --surface:        #{$surface};
+  --surface-hover:  #{$surface-hover};
+  --text:           #{$text};
+  --text-muted:     #{$text-muted};
+  --text-faint:     #{$text-faint};
+  --border:         #{$border};
+  --border-strong:  #{$border-strong};
+  --shadow:         #{$shadow};
+  --accent-teal:    #{$accent-teal};
+  --accent-rust:    #{$accent-rust};
+  --accent-blue:    #{$accent-blue};
+  --accent-gold:    #{$accent-gold};
+  --accent-plum:    #{$accent-plum};
+  --active-bg:      #{$active-bg};
+  --active-border:  #{$active-border};
+  --shared-bg:      #{$shared-bg};
+  --error-bg:       #{$error-bg};
+  --error-text:     #{$error-text};
+  --font-body:      #{$font-body};
+  --font-heading:   #{$font-heading};
+  --font-mono:      #{$font-mono};
+  --font-wordmark:  #{$font-wordmark};
+}
+
+// ─── Shared component mixins ─────────────────────────────────────────────────
+@mixin wordmark {
+  font-family: $font-wordmark;
+  font-style: italic;
+  font-weight: 200;
+  color: $text;
+}
+
+@mixin heading {
+  font-family: $font-heading;
+  color: $text;
+  font-weight: 600;
+}
+
+@mixin btn-base {
+  display: inline-block;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  font-family: $font-body;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s;
+
+  &:hover { filter: brightness(0.94); }
+  &:active { filter: brightness(0.88); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+@mixin btn-primary {
+  @include btn-base;
+  background: $text;
+  color: white;
+}
+
+@mixin btn-secondary {
+  @include btn-base;
+  background: $surface;
+  color: $text;
+  border: 1px solid $border-strong;
+}
+
+@mixin btn-teal {
+  @include btn-base;
+  background: $accent-teal;
+  color: white;
+}
+
+@mixin btn-blue {
+  @include btn-base;
+  background: $accent-blue;
+  color: white;
+}
+
+@mixin card {
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+@mixin input-field {
+  padding: 8px 10px;
+  font-family: $font-body;
+  font-size: 13px;
+  border: 1px solid $border-strong;
+  border-radius: 6px;
+  background: $bg;
+  color: $text;
+  outline: none;
+
+  &:focus { border-color: $accent-teal; }
+}

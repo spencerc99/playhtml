@@ -1,0 +1,205 @@
+// ABOUTME: Styles for the keypresses visualization grid.
+// ABOUTME: Defines cell sizing, grid layout, and animation for the typing heatmap display.
+
+$cell-size: 32px;
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #fafafa;
+  overflow-x: hidden;
+  overflow-y: auto; // The animation loop drives window.scrollTo() directly
+  --cell-size: #{$cell-size};
+}
+
+#keypresses-grid {
+  width: 100%;
+  position: relative;
+  // height is set inline by the component based on total rows
+}
+
+// Subtle grid-paper background — same cadence as experiment 8
+.grid-container {
+  display: grid;
+  gap: 0;
+  background: #fafafa;
+  background-image:
+    repeating-linear-gradient(#e8e8e8 0 1px, transparent 1px 100%),
+    repeating-linear-gradient(90deg, #e8e8e8 0 1px, transparent 1px 100%);
+  background-size: $cell-size $cell-size;
+  width: 100%;
+  // height is set inline
+}
+
+.grid-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Base font size; overridden inline per session
+  font-size: 22px;
+  font-family: "Courier Prime", "Courier New", monospace;
+  font-weight: 400;
+  color: transparent;
+  user-select: none;
+  width: $cell-size;
+  height: $cell-size;
+  flex-shrink: 0;
+  flex-grow: 0;
+  line-height: 1;
+  overflow: visible; // Allow slightly wider glyphs (serif W, M) to breathe
+
+  &.filled {
+    animation: appear 0.1s ease-out both;
+  }
+
+  &.empty {
+    color: transparent;
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+// ── Fixed info bar ────────────────────────────────────────────────────────────
+.info-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  padding: 0 1rem;
+  background: rgba(250, 250, 250, 0.94);
+  border-top: 1px solid #e4e4e4;
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-family: "Courier Prime", "Courier New", monospace;
+  font-size: 0.75rem;
+  color: #666;
+  z-index: 10;
+}
+
+.info-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #222;
+}
+
+.info-count {
+  color: #aaa;
+}
+
+.info-loading {
+  color: #bbb;
+  animation: pulse-text 1.4s ease-in-out infinite;
+}
+
+.info-error {
+  color: #c00;
+  cursor: help;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+// ── Dev-mode speed control ────────────────────────────────────────────────────
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #555;
+  user-select: none;
+  cursor: default;
+
+  input[type="range"] {
+    width: 90px;
+    height: 3px;
+    border-radius: 2px;
+    background: #ddd;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #333;
+      cursor: pointer;
+    }
+
+    &::-moz-range-thumb {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #333;
+      border: none;
+      cursor: pointer;
+    }
+  }
+}
+
+// ── Toggle / action buttons shared base ──────────────────────────────────────
+%bar-btn {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  color: #666;
+  line-height: 1.6;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+
+  &:hover:not(:disabled) {
+    background: #f0f0f0;
+    border-color: #bbb;
+    color: #111;
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+// ── Shuffle toggle button ─────────────────────────────────────────────────────
+.toggle-btn {
+  @extend %bar-btn;
+
+  &.active {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+
+    &:hover {
+      background: #333;
+      border-color: #333;
+      color: #fff;
+    }
+  }
+}
+
+// ── Refresh button ────────────────────────────────────────────────────────────
+.refresh-btn {
+  @extend %bar-btn;
+  margin-left: auto;
+  font-size: 1rem;
+  padding: 2px 8px;
+}

@@ -1,0 +1,406 @@
+// ABOUTME: Animated typing visualization component with character-by-character replay
+// ABOUTME: Handles typing animation, sequence replay, and blinking caret
+import React, { useState, useEffect, useRef, memo } from "react";
+import { TypingState, TypingAction, ActiveTyping } from "../types";
+
+interface TypingSettings {
+  animationSpeed: number;
+  textboxOpacity: number;
+  keyboardShowCaret: boolean;
+  keyboardAnimationSpeed: number;
+  keyboardDisplayMode: "full" | "abstract";
+}
+
+interface AnimatedTypingProps {
+  typingStates: TypingState[];
+  timeRange: { min: number; max: number; duration: number };
+  settings: TypingSettings;
+}
+
+// Seeded random for consistent variations
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// Calculate character reveal time with natural variations
+// Returns cumulative time offsets for each character
+function calculateCharacterTimings(
+  textLength: number,
+  baseDuration: number,
+  seed: number,
+): number[] {
+  // Handle edge cases
+  if (textLength <= 0) return [];
+  if (baseDuration <= 0) return new Array(textLength).fill(0);
+
+  const timings: number[] = [];
+  let cumulativeTime = 0;
+
+  for (let i = 0; i < textLength; i++) {
+    // Random speed variation: some chars fast (0.5x), some slow (1.5x)
+    const variation = 0.5 + seededRandom(seed + i) * 1.0; // 0.5 to 1.5
+    const charTime = (baseDuration / textLength) * variation;
+    cumulativeTime += charTime;
+    timings.push(cumulativeTime);
+  }
+
+  // Normalize so the last character appears at baseDuration
+  const totalTime = timings[timings.length - 1] || 1;
+  return timings.map((t) => (t / totalTime) * baseDuration);
+}
+
+// Replay sequence to get text at a specific elapsed time
+// Animates character-by-character with natural typing rhythm
+function replaySequence(
+  sequence: TypingAction[],
+  elapsedMs: number,
+  seed: number = 0,
+): string {
+  // Handle empty sequence
+  if (!sequence || sequence.length === 0) {
+    return "";
+  }
+
+  let text = "";
+  let actionSeed = seed;
+
+  for (let i = 0; i < sequence.length; i++) {
+    const action = sequence[i];
+    const nextAction = sequence[i + 1];
+
+    // Calculate time window for this action
+    const actionStartTime = action.timestamp;
+    // Use stable end time: either next action's start, or 2 seconds after this action
+    const actionEndTime = nextAction
+      ? nextAction.timestamp
+      : actionStartTime + 2000;
+
+    if (elapsedMs < actionStartTime) {
+      break; // Haven't reached this action yet
+    }
+
+    if (action.action === "type" && action.text) {
+      const textLength = action.text.length;
+      const timeInAction = elapsedMs - actionStartTime;
+      const actionDuration = actionEndTime - actionStartTime;
+
+      if (elapsedMs >= actionEndTime || textLength === 0) {
+        // Action complete, show all text
+        text += action.text;
+      } else if (timeInAction >= 0) {
+        // In progress - animate character by character with variations
+        const charTimings = calculateCharacterTimings(
+          textLength,
+          actionDuration,
+          actionSeed,
+        );
+
+        // Find how many characters should be visible
+        // Always show at least 1 character if we're past the action start time
+        let charsToShow = 1;
+        for (let j = 0; j < charTimings.length; j++) {
+          if (timeInAction >= charTimings[j]) {
+            charsToShow = j + 1;
+          } else {
+            break;
+          }
+        }
+
+        text += action.text.slice(0, charsToShow);
+        // Continue to show this partial text - don't break
+        // We'll return at the end of the loop with accumulated text
+      }
+      actionSeed += textLength; // Update seed for next action
+    } else if (action.action === "backspace" && action.deletedCount) {
+      const timeInAction = elapsedMs - actionStartTime;
+      const actionDuration = actionEndTime - actionStartTime;
+      const deleteCount = action.deletedCount || 0;
+
+      if (elapsedMs >= actionEndTime) {
+        // Backspace complete, remove all characters
+        const charsToDelete = Math.min(deleteCount, text.length);
+        text = text.slice(0, -charsToDelete);
+      } else if (timeInAction >= 0) {
+        // In progress - animate backspace character by character with variations
+        const charTimings = calculateCharacterTimings(
+          deleteCount,
+          actionDuration,
+          actionSeed,
+        );
+
+        // Find how many characters should be deleted
+        // Start with at least 1 character deletion if we're past the action start
+        let charsDeleted = 1;
+        for (let j = 0; j < charTimings.length; j++) {
+          if (timeInAction >= charTimings[j]) {
+            charsDeleted = j + 1;
+          } else {
+            break;
+          }
+        }
+
+        const charsToDelete = Math.min(charsDeleted, text.length);
+        text = text.slice(0, -charsToDelete);
+        // Continue to show this partial deletion - don't break
+      }
+      actionSeed += deleteCount; // Update seed for next action
+    }
+  }
+
+  return text;
+}
+
+// TypingBox Component - renders individual typing instance with classic input styling
+const TypingBox = memo(
+  ({
+    typing,
+    settings,
+  }: {
+    typing: ActiveTyping;
+    settings: TypingSettings;
+  }) => {
+    const {
+      x,
+      y,
+      currentText,
+      showCaret,
+      textboxSize,
+      fontSize,
+      positionOffset,
+      style,
+    } = typing;
+
+    // Map border style code to CSS border style
+    const getBorderStyle = (code: number | undefined): string => {
+      if (code === undefined) return "solid";
+      switch (code) {
+        case 1:
+          return "solid";
+        case 2:
+          return "dashed";
+        case 3:
+          return "dotted";
+        case 4:
+          return "double";
+        default:
+          return "solid"; // 0 or other
+      }
+    };
+
+    // Use captured styling if available, otherwise defaults
+    const borderRadius = style?.br !== undefined ? `${style.br}px` : "3px";
+    const borderStyle = getBorderStyle(style?.bs);
+
+    // Handle background color with minimum brightness for visibility
+    let backgroundColor: string;
+    let textColor: string;
+
+    if (style?.bg !== undefined) {
+      // Apply minimum luminosity of 0.85 to ensure visibility (even dark inputs stay light enough to see)
+      const luminosity = Math.max(0.85, style.bg);
+      const colorValue = Math.round(luminosity * 255);
+      backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
+
+      // Invert text color based on background luminosity
+      // If background is dark (< 0.5), use very light text for readability; otherwise dark text
+      textColor = "#222";
+    } else {
+      // Default light background with dark text
+      backgroundColor = "#fefefe";
+      textColor = "#222";
+    }
+
+    return (
+      <div
+        style={{
+          position: "absolute",
+          left: `${x + positionOffset.x}px`,
+          top: `${y + positionOffset.y}px`,
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "none",
+        }}
+      >
+        {/* Classic web input box with captured or default styling */}
+        <div
+          style={{
+            position: "relative",
+            width: `${textboxSize.width}px`,
+            minHeight: `${textboxSize.height}px`,
+            maxHeight: "500px", // Cap to prevent extremely tall boxes
+            border: `2px ${borderStyle} #999`,
+            borderRadius,
+            backgroundColor,
+            padding: "8px 10px",
+            fontFamily: "monospace",
+            fontSize: `${fontSize}px`,
+            color: textColor,
+            lineHeight: "1.5",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            overflow: "auto", // Allow scrolling if content exceeds maxHeight
+            // Classic inset shadow for input fields
+            boxShadow:
+              "inset 1px 1px 3px rgba(0, 0, 0, 0.15), 0 1px 0 rgba(255, 255, 255, 0.8)",
+            opacity: settings.textboxOpacity + 0.5, // Make more visible
+          }}
+        >
+          {/* Text content */}
+          <span style={{ position: "relative", zIndex: 1 }}>
+            {settings.keyboardDisplayMode === "abstract" ? (
+              // Abstract mode: redacted bars that preserve length/structure without revealing text
+              currentText.split("\n").map((line, i) => (
+                <span key={i} style={{ display: "block", lineHeight: "1.5" }}>
+                  {line.length > 0 ? (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: `${Math.max(8, line.length * fontSize * 0.55)}px`,
+                        height: `${fontSize * 0.75}px`,
+                        backgroundColor: textColor,
+                        opacity: 0.25,
+                        borderRadius: "2px",
+                        verticalAlign: "middle",
+                      }}
+                    />
+                  ) : (
+                    <br />
+                  )}
+                </span>
+              ))
+            ) : (
+              currentText
+            )}
+            {settings.keyboardShowCaret && showCaret && (
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "2px",
+                  height: `${fontSize * 1.2}px`,
+                  backgroundColor: textColor,
+                  marginLeft: "2px",
+                  verticalAlign: "text-bottom",
+                  animation: "blink 1.06s step-end infinite",
+                }}
+              />
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.typing.currentText === next.typing.currentText &&
+      prev.typing.showCaret === next.typing.showCaret
+    );
+  },
+);
+
+export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
+  ({ typingStates, timeRange, settings }) => {
+    const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
+    const [activeTypings, setActiveTypings] = useState<ActiveTyping[]>([]);
+    const animationRef = useRef<number>();
+
+    // Settings as refs (same pattern as AnimatedTrails)
+    const settingsRef = useRef(settings);
+
+    useEffect(() => {
+      settingsRef.current = settings;
+    }, [settings]);
+
+    // Animation loop (same as AnimatedTrails)
+    useEffect(() => {
+      if (typingStates.length === 0 || timeRange.duration === 0) {
+        setActiveTypings([]); // Clear active typings when no states
+        return;
+      }
+
+      let startTime: number | null = null;
+
+      const animate = (timestamp: number) => {
+        if (startTime === null) startTime = timestamp;
+
+        const realElapsed = timestamp - startTime;
+        const scaledElapsed = realElapsed * settingsRef.current.animationSpeed;
+        const loopedElapsed = scaledElapsed % timeRange.duration;
+
+        setElapsedTimeMs(loopedElapsed);
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      animationRef.current = requestAnimationFrame(animate);
+
+      return () => {
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
+      };
+    }, [typingStates, timeRange.duration]);
+
+    // Update active typings based on elapsedTimeMs
+    useEffect(() => {
+      const newActiveTypings: ActiveTyping[] = [];
+
+      typingStates.forEach((state, index) => {
+        const { startOffsetMs, durationMs } = state;
+
+        if (elapsedTimeMs < startOffsetMs) {
+          return; // Not started yet
+        }
+
+        const typingElapsed = elapsedTimeMs - startOffsetMs;
+
+        // Apply keyboard animation speed to slow down/speed up typing
+        const scaledElapsed =
+          typingElapsed * settingsRef.current.keyboardAnimationSpeed;
+
+        // Replay sequence to get current text
+        // If animation is finished, show final text (use durationMs as elapsed time)
+        const timeToReplay =
+          scaledElapsed > durationMs ? durationMs : scaledElapsed;
+        const seed = state.animation.x + state.animation.y; // Consistent seed per typing instance
+        const currentText = replaySequence(
+          state.animation.sequence,
+          timeToReplay,
+          seed,
+        );
+
+        // Only show blinking caret while actively typing (not after completion)
+        // Animation finishes when real elapsed time reaches durationMs / speed
+        const scaledDuration =
+          durationMs / settingsRef.current.keyboardAnimationSpeed;
+        const isTyping = typingElapsed <= scaledDuration;
+        const showCaret = isTyping && Math.floor(typingElapsed / 530) % 2 === 0;
+
+        newActiveTypings.push({
+          id: `typing-state-${index}`, // Use index to ensure uniqueness
+          x: state.animation.x,
+          y: state.animation.y,
+          color: state.animation.color,
+          currentText,
+          showCaret,
+          textboxSize: state.textboxSize,
+          fontSize: state.fontSize,
+          positionOffset: state.positionOffset,
+          style: state.style,
+        });
+      });
+
+      setActiveTypings(newActiveTypings);
+    }, [elapsedTimeMs, typingStates]);
+
+    return (
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {activeTypings.map((typing) => (
+          <TypingBox
+            key={typing.id}
+            typing={typing}
+            settings={settingsRef.current}
+          />
+        ))}
+      </div>
+    );
+  },
+);

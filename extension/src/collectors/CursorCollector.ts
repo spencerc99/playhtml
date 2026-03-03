@@ -1,0 +1,414 @@
+// ABOUTME: Captures cursor movement, clicks, holds, and cursor style changes.
+// ABOUTME: Streams at 60fps to PartyKit for live visualization and samples sparsely for archival.
+
+import { BaseCollector } from './BaseCollector';
+import type { CursorEventData } from './types';
+import { normalizePosition, getElementSelector } from './types';
+import { VERBOSE } from '../config';
+
+/**
+ * CursorCollector captures cursor movement with dual-layer approach:
+ * 
+ * 1. Real-time streaming (60fps) to PartyKit for live visualization
+ * 2. Sparse sampling (100ms) to EventBuffer for archival
+ */
+export class CursorCollector extends BaseCollector<CursorEventData> {
+  readonly type = 'cursor' as const;
+  readonly description = 'Captures cursor movement, clicks, holds, and cursor style changes';
+  
+  private mouseMoveHandler?: (e: MouseEvent) => void;
+  private animationFrameId?: number;
+  private sampleTimer: number | null = null;
+  protected sampleRate = 250; // ms between samples for archival
+  private realTimeRate = 16; // ~60fps for real-time (16ms)
+  private lastRealTimeTime = 0;
+  private minMovementThreshold = 15; // pixels - minimum movement to trigger a sample
+
+  // Current cursor state
+  private currentX = 0;
+  private currentY = 0;
+  private currentTarget: string | undefined;
+  private currentCursorStyle: string | undefined;
+  private lastCursorStyle: string | undefined;
+  private cursorChangeTimer: number | null = null;
+  private cursorChangeDebounce = 500; // ms - debounce rapid cursor style changes
+  private pendingCursorStyle: string | undefined;
+
+  // Last sampled position (for movement threshold)
+  private lastSampledX = 0;
+  private lastSampledY = 0;
+  
+  // Mouse event handlers
+  private mouseDownHandler?: (e: MouseEvent) => void;
+  private mouseUpHandler?: (e: MouseEvent) => void;
+  
+  // Click vs hold tracking
+  private mouseDownTime: number = 0;
+  private mouseDownButton: number = -1;
+  private mouseDownX: number = 0;
+  private mouseDownY: number = 0;
+  private mouseDownScrollX: number = 0;
+  private mouseDownScrollY: number = 0;
+  private holdThreshold = 250; // ms to distinguish click vs hold
+  
+  // Click debouncing (similar to zoom/resize/navigation)
+  private clickDebounce = 2000; // ms - wait for rapid clicks to settle
+  private clickTimer: number | null = null;
+  private clickQuantity = 0; // Count clicks during debounce window
+  private pendingClickData: CursorEventData | null = null; // Store last click data
+  
+  start(): void {
+    // Note: enable() already checks if enabled, so we don't need to check here
+    if (VERBOSE) {
+      console.log('[CursorCollector] Starting cursor collection...');
+    }
+    this.lastRealTimeTime = Date.now();
+
+    this.lastSampledX = this.currentX;
+    this.lastSampledY = this.currentY;
+    
+    // Set up mouse move handler
+    this.mouseMoveHandler = (e: MouseEvent) => {
+      this.currentX = e.clientX;
+      this.currentY = e.clientY;
+      
+      // Try to capture target element
+      const target = e.target as HTMLElement;
+      if (target instanceof HTMLElement) {
+        // Create a simple selector (tag + id/class if available)
+        this.currentTarget = getElementSelector(target);
+
+        // Detect cursor style changes (debounced)
+        const computedStyle = window.getComputedStyle(target);
+        const cursorStyle = computedStyle.cursor || 'auto';
+        this.currentCursorStyle = cursorStyle;
+
+        if (this.lastCursorStyle === undefined) {
+          this.lastCursorStyle = cursorStyle;
+        } else if (this.lastCursorStyle !== cursorStyle) {
+          this.pendingCursorStyle = cursorStyle;
+          if (this.cursorChangeTimer === null) {
+            this.cursorChangeTimer = window.setTimeout(() => {
+              this.cursorChangeTimer = null;
+              // Only emit if cursor actually settled on a different style
+              if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
+                this.lastCursorStyle = this.pendingCursorStyle;
+                this.emitCursorChangeEvent();
+              }
+            }, this.cursorChangeDebounce);
+          }
+        }
+      }
+      
+      // Schedule real-time update
+      this.scheduleRealTimeUpdate();
+
+      // Schedule archival sample if movement is significant enough
+      const dx = Math.abs(this.currentX - this.lastSampledX);
+      const dy = Math.abs(this.currentY - this.lastSampledY);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance >= this.minMovementThreshold) {
+        this.scheduleArchivalSample();
+      }
+    };
+    
+    document.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
+    if (VERBOSE) {
+      console.log('[CursorCollector] Mouse move listener attached');
+    }
+    
+    // Set up mouse down handler (for click/hold detection)
+    this.mouseDownHandler = (e: MouseEvent) => {
+      this.mouseDownTime = Date.now();
+      this.mouseDownButton = e.button;
+      this.mouseDownX = e.clientX;
+      this.mouseDownY = e.clientY;
+      this.mouseDownScrollX = window.scrollX;
+      this.mouseDownScrollY = window.scrollY;
+    };
+    
+    // Set up mouse up handler (for click/hold detection)
+    this.mouseUpHandler = (e: MouseEvent) => {
+      const duration = Date.now() - this.mouseDownTime;
+      const normalized = normalizePosition(
+        this.mouseDownX,
+        this.mouseDownY,
+        window.innerWidth,
+        window.innerHeight
+      );
+
+      const target = e.target as HTMLElement;
+      const targetSelector = target ? getElementSelector(target) : undefined;
+      
+      if (duration >= this.holdThreshold) {
+        // Hold events are emitted immediately (not debounced)
+        this.emitDiscreteEvent({
+          ...normalized,
+          scrollX: this.mouseDownScrollX,
+          scrollY: this.mouseDownScrollY,
+          t: targetSelector,
+          event: 'hold',
+          button: this.mouseDownButton,
+          duration: duration,
+        });
+      } else {
+        // Click events are debounced to handle rapid clicking
+        this.handleClick({
+          ...normalized,
+          scrollX: this.mouseDownScrollX,
+          scrollY: this.mouseDownScrollY,
+          t: targetSelector,
+          event: 'click',
+          button: this.mouseDownButton,
+        });
+      }
+      
+      this.mouseDownTime = 0;
+      this.mouseDownButton = -1;
+    };
+    
+    // Attach event listeners
+    document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
+    document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
+    
+    // Start animation frame loop for real-time updates
+    this.startRealTimeLoop();
+    if (VERBOSE) {
+      console.log('[CursorCollector] Started successfully');
+    }
+  }
+  
+  stop(): void {
+    if (this.mouseMoveHandler) {
+      document.removeEventListener('mousemove', this.mouseMoveHandler);
+      this.mouseMoveHandler = undefined;
+    }
+
+    if (this.mouseDownHandler) {
+      document.removeEventListener('mousedown', this.mouseDownHandler);
+      this.mouseDownHandler = undefined;
+    }
+
+    if (this.mouseUpHandler) {
+      document.removeEventListener('mouseup', this.mouseUpHandler);
+      this.mouseUpHandler = undefined;
+    }
+
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = undefined;
+    }
+
+    if (this.sampleTimer !== null) {
+      clearTimeout(this.sampleTimer);
+      this.sampleTimer = null;
+    }
+
+    // Clear click debounce timer
+    if (this.clickTimer !== null) {
+      clearTimeout(this.clickTimer);
+      this.clickTimer = null;
+    }
+
+    // Clear cursor change debounce timer
+    if (this.cursorChangeTimer !== null) {
+      clearTimeout(this.cursorChangeTimer);
+      this.cursorChangeTimer = null;
+    }
+    
+    // Emit any pending click before stopping
+    if (this.pendingClickData) {
+      const dataWithQuantity: CursorEventData = {
+        ...this.pendingClickData,
+        quantity: this.clickQuantity,
+      };
+      this.emitDiscreteEvent(dataWithQuantity);
+      this.pendingClickData = null;
+      this.clickQuantity = 0;
+    }
+  }
+  
+  /**
+   * Schedule a real-time update (throttled to ~60fps)
+   */
+  private scheduleRealTimeUpdate(): void {
+    const now = Date.now();
+    if (now - this.lastRealTimeTime >= this.realTimeRate) {
+      this.emitRealTimeData();
+      this.lastRealTimeTime = now;
+    }
+  }
+
+  /**
+   * Schedule an archival sample via timer (debounced to sampleRate ms)
+   * The timer fires once per sample window, capturing the last cursor position
+   */
+  private scheduleArchivalSample(): void {
+    if (this.sampleTimer !== null) return; // Already scheduled
+
+    this.sampleTimer = window.setTimeout(() => {
+      this.sampleTimer = null;
+      if (!this.enabled) return;
+      const sampled = this.sample();
+      if (sampled) {
+        this.lastSampledX = this.currentX;
+        this.lastSampledY = this.currentY;
+      }
+    }, this.sampleRate);
+  }
+  
+  /**
+   * Start animation frame loop for real-time streaming
+   */
+  private startRealTimeLoop(): void {
+    const loop = () => {
+      if (!this.enabled) return;
+      
+      // Emit real-time data if enough time has passed
+      const now = Date.now();
+      if (now - this.lastRealTimeTime >= this.realTimeRate) {
+        this.emitRealTimeData();
+        this.lastRealTimeTime = now;
+      }
+      
+      this.animationFrameId = requestAnimationFrame(loop);
+    };
+    
+    this.animationFrameId = requestAnimationFrame(loop);
+  }
+  
+  /**
+   * Emit real-time cursor data (for PartyKit streaming)
+   */
+  private emitRealTimeData(): void {
+    const normalized = normalizePosition(
+      this.currentX,
+      this.currentY,
+      window.innerWidth,
+      window.innerHeight
+    );
+    
+    const data: CursorEventData = {
+      x: normalized.x,
+      y: normalized.y,
+      t: this.currentTarget,
+      cursor: this.currentCursorStyle,
+      event: 'move',
+    };
+    
+    // Emit to real-time stream (PartyKit)
+    this.emitRealTime(data);
+  }
+  
+  /**
+   * Emit a discrete event (click, hold, cursor_change)
+   * These are emitted immediately to the buffer (not throttled)
+   */
+  private emitDiscreteEvent(data: CursorEventData): void {
+    if (!this.enabled) return;
+    
+    if (VERBOSE) {
+      console.log('[CursorCollector] Emitting discrete event:', data);
+    }
+    
+    // Emit to buffer for archival
+    this.emit(data);
+    
+    // Also emit to real-time stream for live visualization
+    this.emitRealTime(data);
+  }
+  
+  /**
+   * Handle click events with debouncing
+   * Similar to zoom/resize/navigation - debounces rapid clicks within 2s window
+   */
+  private handleClick(clickData: CursorEventData): void {
+    // Increment quantity counter for this debounce window
+    this.clickQuantity++;
+    
+    // Store the latest click data (position, target, button)
+    this.pendingClickData = clickData;
+    
+    // Clear existing timer
+    if (this.clickTimer !== null) {
+      clearTimeout(this.clickTimer);
+    }
+    
+    // Set new timer
+    this.clickTimer = window.setTimeout(() => {
+      if (this.pendingClickData) {
+        // Emit click event with quantity
+        const dataWithQuantity: CursorEventData = {
+          ...this.pendingClickData,
+          quantity: this.clickQuantity,
+        };
+        
+        if (VERBOSE) {
+          console.log(`[CursorCollector] Emitting click event (${this.clickQuantity} clicks):`, dataWithQuantity);
+        }
+        
+        this.emitDiscreteEvent(dataWithQuantity);
+        
+        // Reset state
+        this.pendingClickData = null;
+        this.clickQuantity = 0;
+      }
+      this.clickTimer = null;
+    }, this.clickDebounce);
+  }
+  
+  /**
+   * Emit cursor style change event
+   */
+  private emitCursorChangeEvent(): void {
+    const normalized = normalizePosition(
+      this.currentX,
+      this.currentY,
+      window.innerWidth,
+      window.innerHeight
+    );
+    
+    this.emitDiscreteEvent({
+      ...normalized,
+      t: this.currentTarget,
+      cursor: this.currentCursorStyle,
+      event: 'cursor_change',
+    });
+  }
+  
+  /**
+   * Sample current cursor state for archival
+   */
+  protected sample(): CursorEventData | null {
+    if (!this.enabled) {
+      console.warn('[CursorCollector] Sample called but collector is not enabled');
+      return null;
+    }
+
+    const normalized = normalizePosition(
+      this.currentX,
+      this.currentY,
+      window.innerWidth,
+      window.innerHeight
+    );
+
+    const data: CursorEventData = {
+      x: normalized.x,
+      y: normalized.y,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      t: this.currentTarget,
+      cursor: this.currentCursorStyle,
+      event: 'move',
+    };
+
+    // Emit to buffer for archival
+    if (VERBOSE) {
+      console.log('[CursorCollector] Sampling cursor position:', data);
+    }
+    this.emit(data);
+
+    return data;
+  }
+}

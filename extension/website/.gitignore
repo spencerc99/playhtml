@@ -9,8 +9,6 @@ lerna-debug.log*
 
 node_modules
 dist
-site
-site-dist
 dist-ssr
 *.local
 
@@ -24,22 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# dev persisted state
-.partykit
-.wrangler
-
-# secrets
-.env
-.dev.vars
-
-.claude
-
-
-.wxt
-.output
-extension/dist
-
-internal-docs
-
-.dev.vars

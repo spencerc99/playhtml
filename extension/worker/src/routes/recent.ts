@@ -1,0 +1,132 @@
+// ABOUTME: Serves recent browsing events filtered by domain for the historical overlay.
+// ABOUTME: Public endpoint that queries Supabase using the domain index for fast lookups.
+
+import { createSupabaseClient, type Env } from '../lib/supabase';
+import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
+
+/**
+ * Extract domain from URL, matching frontend logic
+ * Removes 'www.' prefix and returns hostname
+ */
+function extractDomain(url: string | null): string {
+  if (!url) return '';
+  try {
+    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return urlObj.hostname.replace('www.', '');
+  } catch {
+    return '';
+  }
+}
+
+/** Supabase/PostgREST returns at most 1000 rows per request; we paginate to satisfy larger limits. */
+const SUPABASE_PAGE_SIZE = 1000;
+
+/**
+ * GET /events/recent
+ * Get recent events for live artwork rendering
+ * Public endpoint (no auth required)
+ *
+ * Query parameters:
+ * - type: Event type filter (default: 'cursor')
+ * - limit: Maximum number of events (default: 1000, max: 5000). Pagination is used to return up to 5000.
+ * - domain: Domain filter (optional) - filters events by URL domain
+ */
+export async function handleRecent(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const type = url.searchParams.get('type') || 'cursor';
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 5000);
+    const domainFilter = url.searchParams.get('domain') || null;
+
+    const supabase = createSupabaseClient(env);
+    const allRows: Record<string, unknown>[] = [];
+
+    for (let offset = 0; offset < limit; offset += SUPABASE_PAGE_SIZE) {
+      const from = offset;
+      const to = offset + SUPABASE_PAGE_SIZE - 1;
+
+      // Build query with domain filter if provided
+      let query = supabase
+        .from('collection_events')
+        .select('*')
+        .eq('type', type);
+
+      // Add domain filter using indexed domain column
+      if (domainFilter) {
+        query = query.eq('domain', domainFilter);
+      }
+
+      const { data, error } = await query
+        .order('ts', { ascending: false })
+        .range(from, to);
+
+      if (error) {
+        console.error('Supabase query error:', error);
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch events', details: error.message }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const page = data ?? [];
+      allRows.push(...page);
+      if (page.length < SUPABASE_PAGE_SIZE) break;
+    }
+
+    // Transform back to CollectionEvent format (cap at limit)
+    const rows = allRows.slice(0, limit);
+
+    // Look up cursor colors for all participants in this result set
+    const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
+    const participantColors = new Map<string, string>();
+
+    if (participantIds.length > 0) {
+      const { data: participants } = await supabase
+        .from('participants')
+        .select('pid, cursor_color')
+        .in('pid', participantIds);
+
+      if (participants) {
+        for (const p of participants) {
+          participantColors.set(p.pid, p.cursor_color);
+        }
+      }
+    }
+
+    const events: CollectionEvent[] = rows.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      type: row.type as CollectionEvent['type'],
+      ts: new Date(row.ts as string).getTime(),
+      data: row.data as CollectionEvent['data'],
+      meta: {
+        pid: row.participant_id,
+        sid: row.session_id,
+        url: row.url,
+        vw: row.viewport_width,
+        vh: row.viewport_height,
+        tz: row.timezone,
+        cursor_color: participantColors.get(row.participant_id as string) ?? null,
+      } as EventMeta,
+    }));
+    
+    return new Response(
+      JSON.stringify(events),
+      { 
+        status: 200,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Recent events error:', error);
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}

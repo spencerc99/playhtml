@@ -1,0 +1,245 @@
+// ABOUTME: Core types for the browsing behavior collection system.
+// ABOUTME: Defines event data structures, normalization helpers, and collector-specific interfaces.
+
+/**
+ * Core types for the Internet Collection System
+ *
+ * These types define the structure for collecting browsing behaviors
+ * to power collective artworks.
+ */
+
+// Import shared types (used by both extension and worker)
+import type {
+  CollectionEvent as SharedCollectionEvent,
+  CollectionEventType as SharedCollectionEventType,
+  EventMeta as SharedEventMeta,
+} from '../shared/types';
+
+// Re-export shared types for backward compatibility
+export type CollectionEventType = SharedCollectionEventType;
+export type EventMeta = SharedEventMeta;
+export type CollectionEvent = SharedCollectionEvent;
+
+/**
+ * Cursor event types
+ */
+export type CursorEventType = 'move' | 'click' | 'hold' | 'cursor_change';
+
+/**
+ * Cursor-specific payload (compact format)
+ */
+export interface CursorEventData {
+  x: number;           // 0-1 normalized position
+  y: number;           // 0-1 normalized position
+  scrollX?: number;    // window.scrollX at capture time, raw pixels
+  scrollY?: number;    // window.scrollY at capture time, raw pixels
+  t?: string;          // Target element selector (optional)
+  cursor?: string;     // CSS cursor style (pointer, grab, text, etc.)
+  event?: CursorEventType;
+  button?: number;      // for click/hold: 0=left, 1=middle, 2=right
+  duration?: number;   // for hold: ms held
+  quantity?: number;   // number of events that occurred during debounce window (for clicks)
+}
+
+/**
+ * Click-specific payload
+ */
+export interface ClickEventData {
+  x: number;        // 0-1 normalized position
+  y: number;        // 0-1 normalized position
+  button: number;   // Mouse button (0=left, 1=middle, 2=right)
+  t?: string;       // Target element selector
+}
+
+/**
+ * Scroll-specific payload
+ */
+export interface ScrollEventData {
+  x: number;        // Scroll X position
+  y: number;        // Scroll Y position
+  dx: number;       // Delta X
+  dy: number;       // Delta Y
+}
+
+/**
+ * Navigation event types
+ */
+export type NavigationEventType = 'focus' | 'blur' | 'popstate' | 'beforeunload';
+
+/**
+ * Navigation-specific payload
+ */
+export interface NavigationEventData {
+  event: NavigationEventType;
+  url?: string;              // for popstate: new URL
+  from_url?: string;         // for beforeunload: URL being left
+  state?: unknown;           // for popstate: history state
+  visibility_state?: string; // for focus/blur: 'visible' or 'hidden'
+  page_ref?: string;         // stable ref derived from canonical URL
+  canonical_url?: string;    // URL normalized for page identity
+  title?: string;            // captured page title snapshot
+  favicon_url?: string;      // captured page favicon URL snapshot
+  metadata_hash?: string;    // hash(title+favicon) for snapshot dedupe
+  quantity?: number;         // dedupe count for repeated events
+}
+
+/**
+ * Viewport event types
+ */
+export type ViewportEventType = 'scroll' | 'resize' | 'zoom';
+
+/**
+ * Viewport-specific payload
+ */
+export interface ViewportEventData {
+  event: ViewportEventType;
+  // For scroll
+  scrollX?: number;            // 0-1 normalized (scrollLeft / scrollWidth)
+  scrollY?: number;            // 0-1 normalized (scrollTop / scrollHeight)
+  scrollDistancePx?: number;   // absolute pixel distance scrolled (deltaX + deltaY)
+  // For resize
+  width?: number;         // viewport width
+  height?: number;        // viewport height
+  // For zoom
+  zoom?: number;          // current zoom level (e.g., 1.0, 1.25, 1.5)
+  previous_zoom?: number; // previous zoom level (for tracking zoom delta)
+  // Quantity tracking (for resize and zoom)
+  quantity?: number;      // number of events that occurred during debounce window
+}
+
+/**
+ * Collector configuration
+ */
+export interface CollectorConfig {
+  enabled: boolean;
+  sampleRate?: number;  // ms between samples (for continuous collectors)
+}
+
+/**
+ * Collector status information
+ */
+export interface CollectorStatus {
+  type: CollectionEventType;
+  enabled: boolean;
+  description: string;
+  eventsCollected?: number;
+}
+
+/**
+ * Generate ULID (Universally Unique Lexicographically Sortable Identifier)
+ * Simple implementation - for production consider using a library
+ */
+export function generateULID(): string {
+  const now = Date.now();
+  const random = Math.random().toString(36).substring(2, 15);
+  return `${now.toString(36)}-${random}`;
+}
+
+/**
+ * Normalize cursor position to 0-1 range (viewport-independent)
+ * Rounds to 4 decimal places for storage efficiency while maintaining sub-pixel accuracy
+ * 
+ * Precision: 0.0001 ≈ 0.38px on 4K display (3840px), 0.77px on 8K
+ * Storage savings: ~6 bytes per event (significant at scale)
+ */
+export function normalizePosition(
+  x: number, 
+  y: number, 
+  viewportWidth: number, 
+  viewportHeight: number
+): { x: number; y: number } {
+  const normalizedX = x / viewportWidth;
+  const normalizedY = y / viewportHeight;
+  
+  return {
+    x: Math.round(Math.max(0, Math.min(1, normalizedX)) * 10000) / 10000,
+    y: Math.round(Math.max(0, Math.min(1, normalizedY)) * 10000) / 10000,
+  };
+}
+
+/**
+ * Normalize scroll position to 0-1 range
+ * Rounds to 4 decimal places for storage efficiency
+ */
+export function normalizeScroll(
+  scrollLeft: number,
+  scrollTop: number,
+  scrollWidth: number,
+  scrollHeight: number,
+  clientWidth: number,
+  clientHeight: number
+): { scrollX: number; scrollY: number } {
+  const maxScrollX = Math.max(0, scrollWidth - clientWidth);
+  const maxScrollY = Math.max(0, scrollHeight - clientHeight);
+
+  const normalizedX = maxScrollX > 0 ? scrollLeft / maxScrollX : 0;
+  const normalizedY = maxScrollY > 0 ? scrollTop / maxScrollY : 0;
+
+  return {
+    scrollX: Math.round(Math.max(0, Math.min(1, normalizedX)) * 10000) / 10000,
+    scrollY: Math.round(Math.max(0, Math.min(1, normalizedY)) * 10000) / 10000,
+  };
+}
+
+/**
+ * Get a simple CSS selector for an element
+ * Prefers ID, falls back to first class, then tag name
+ */
+export function getElementSelector(element: HTMLElement): string {
+  if (!element || !element.tagName) return '';
+
+  // Prefer ID
+  if (element.id) {
+    return `#${element.id}`;
+  }
+
+  // Fall back to first class
+  if (element.className && typeof element.className === 'string') {
+    const classes = element.className.split(' ').filter(Boolean);
+    if (classes.length > 0) {
+      return `.${classes[0]}`;
+    }
+  }
+
+  // Fall back to tag name
+  return element.tagName.toLowerCase();
+}
+
+/**
+ * Keyboard event types
+ */
+export type KeyboardEventType = 'type';
+
+/**
+ * Typing action in a sequence
+ */
+export interface TypingAction {
+  action: 'type' | 'backspace';
+  text?: string;           // For 'type': string of sequential characters typed (grouped)
+  deletedCount?: number;   // For 'backspace': number of characters deleted (assumed from end)
+  timestamp: number;      // Relative timestamp within batch (ms from first action in group)
+}
+
+/**
+ * Input styling captured on focus
+ */
+export interface InputStyling {
+  w: number;  // Width in pixels
+  h: number;  // Height in pixels
+  br: number; // Border radius in pixels (capped at 20)
+  bg: number; // Background luminosity 0-1 (for light/dark detection)
+  bs: number; // Border style: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
+}
+
+/**
+ * Keyboard-specific payload
+ */
+export interface KeyboardEventData {
+  x: number;              // 0-1 normalized position (captured on focus)
+  y: number;              // 0-1 normalized position (captured on focus)
+  t?: string;             // Element selector
+  event: KeyboardEventType;
+  sequence?: TypingAction[] | null; // Full sequence (null if abstract level, PII redacted if detected)
+  style?: InputStyling;   // Input box styling (optional for backwards compatibility)
+  ce?: boolean;           // True if element is contenteditable (Google Docs, etc.), false/undefined for input/textarea
+}

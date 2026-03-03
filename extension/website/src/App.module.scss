@@ -1,0 +1,61 @@
+// ABOUTME: Styles for the wewere.online homepage
+// ABOUTME: Centered wordmark over full-viewport animated trails
+
+@use './styles/variables' as *;
+
+.page {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: $bg;
+}
+
+.trails {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.wordmark {
+  font-family: $font-wordmark;
+  font-style: italic;
+  font-weight: 200;
+  font-size: clamp(2rem, 5vw, 4rem);
+  color: $text;
+  letter-spacing: -0.01em;
+}
+
+.tagline {
+  font-family: $font-body;
+  font-size: 0.875rem;
+  color: $text-muted;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+.cta {
+  margin-top: 8px;
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  color: $text-muted;
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 1px;
+  transition: color 0.15s;
+
+  &:hover {
+    color: $text;
+  }
+}

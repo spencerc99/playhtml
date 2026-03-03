@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy - we were online</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;0,700;1,600;1,700&family=Atkinson+Hyperlegible:wght@400;700&family=Source+Serif+4:ital,wght@1,200&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      * {
+        margin: 0;
+      }
+      body {
+        background: #faf7f2;
+        color: #3d3833;
+        font-family: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont,
+          sans-serif;
+        line-height: 1.7;
+        -webkit-font-smoothing: antialiased;
+        padding: 2rem 1.5rem 4rem;
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      a {
+        color: #4a9a8a;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      h1 {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 700;
+        font-size: 1.8rem;
+        margin-bottom: 0.25rem;
+      }
+      h2 {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 600;
+        font-size: 1.2rem;
+        margin-top: 2rem;
+        margin-bottom: 0.5rem;
+      }
+      p,
+      ul {
+        margin-bottom: 1rem;
+      }
+      ul {
+        padding-left: 1.5rem;
+      }
+      li {
+        margin-bottom: 0.35rem;
+      }
+      .subtitle {
+        color: #8a8279;
+        font-size: 0.95rem;
+        margin-bottom: 2rem;
+      }
+      .back {
+        display: inline-block;
+        margin-bottom: 1.5rem;
+        color: #8a8279;
+        text-decoration: none;
+        font-size: 0.9rem;
+      }
+      .back:hover {
+        color: #3d3833;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #e8e2d8;
+        margin: 2rem 0;
+      }
+      .limited-use {
+        background: #f5f0e8;
+        border-left: 3px solid #4a9a8a;
+        padding: 1rem 1.25rem;
+        margin: 1.5rem 0;
+        font-size: 0.95rem;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="back" href="/">&larr; wewere.online</a>
+    <h1>Privacy Policy</h1>
+    <p class="subtitle">Last updated: March 2, 2026</p>
+
+    <p>
+      <em>we were online</em> is an art project and browser extension by
+      <a href="https://spencer.place">Spencer Chang</a> that creates quiet
+      portraits of your time on the internet. This policy explains what data the
+      extension collects, how it is used, and your choices.
+    </p>
+
+    <h2>What the extension collects</h2>
+    <p>
+      The extension has four independent collectors, each of which you control.
+      Every collector can be set to <strong>off</strong>,
+      <strong>local-only</strong> (stored on your device, never uploaded), or
+      <strong>shared</strong> (uploaded to our server for the collective
+      portrait). All collectors start as off until you complete setup.
+    </p>
+    <ul>
+      <li>
+        <strong>Cursor:</strong> Mouse position (viewport-relative coordinates),
+        click events, cursor style, scroll offset at time of click.
+      </li>
+      <li>
+        <strong>Navigation:</strong> Page focus/blur, back/forward navigation,
+        page title, canonical URL, favicon URL.
+      </li>
+      <li>
+        <strong>Viewport:</strong> Scroll position (normalized), window resize
+        dimensions, browser zoom level.
+      </li>
+      <li>
+        <strong>Keyboard:</strong> Typing rhythm in text inputs. By default, all
+        typed characters are replaced with block characters, preserving only
+        cadence. Password fields are always excluded. You can choose full-text
+        mode, in which case common PII patterns (email, phone, SSN) are
+        automatically redacted, and you can add custom filter words.
+      </li>
+    </ul>
+
+    <h2>Metadata attached to every event</h2>
+    <p>Each collected event also includes:</p>
+    <ul>
+      <li>The full URL of the page you are on</li>
+      <li>Viewport width and height</li>
+      <li>Your timezone (e.g., "America/New_York")</li>
+      <li>
+        A persistent pseudonymous participant ID (a cryptographic public key
+        generated on your device)
+      </li>
+      <li>A session ID that resets when you close the browser</li>
+    </ul>
+
+    <h2>How your data is stored</h2>
+    <p>
+      <strong>Locally:</strong> All events are stored in your browser's
+      IndexedDB. This data never leaves your device unless you set a collector
+      to "shared" mode.
+    </p>
+    <p>
+      <strong>Server-side:</strong> Events from collectors set to "shared" are
+      uploaded to a Cloudflare Worker and stored in a Supabase database. Data is
+      retained indefinitely as part of the ongoing art archive. You can request
+      deletion at any time (see below).
+    </p>
+    <p>
+      All data in transit is encrypted via HTTPS. Server-side data is stored in
+      Supabase's managed infrastructure with encryption at rest.
+    </p>
+
+    <h2>How your data is used</h2>
+    <p>Your data is used solely to:</p>
+    <ul>
+      <li>
+        Generate visual portraits of internet activity (the core feature of the
+        extension)
+      </li>
+      <li>
+        Power the historical overlay that shows past activity on a given page or
+        domain
+      </li>
+      <li>
+        Contribute to the collective art visualization on the project website
+      </li>
+    </ul>
+    <p>
+      Your data is <strong>never</strong> used for advertising, analytics,
+      profiling, credit assessment, or any purpose beyond the art project
+      described above.
+    </p>
+
+    <h2>Who your data is shared with</h2>
+    <p>
+      Shared-mode events are processed by and stored in the following services:
+    </p>
+    <ul>
+      <li>
+        <strong>Cloudflare Workers</strong> &mdash; event ingestion and API
+      </li>
+      <li><strong>Supabase</strong> &mdash; persistent database</li>
+    </ul>
+    <p>
+      Your data is not sold, rented, or shared with any advertising platforms,
+      data brokers, or other third parties.
+    </p>
+    <p>
+      If you optionally provide your email during setup (for the mailing list),
+      it is submitted to Google Forms and is not linked to your browsing data.
+    </p>
+
+    <h2>Your choices and rights</h2>
+    <ul>
+      <li>
+        <strong>Control per collector:</strong> Each collector can be set to
+        off, local-only, or shared independently at any time from the extension
+        popup.
+      </li>
+      <li>
+        <strong>Local data:</strong> You can clear your local data at any time
+        by uninstalling the extension or clearing extension storage.
+      </li>
+      <li>
+        <strong>Deletion requests:</strong> To request deletion of your
+        server-side data, email
+        <a href="mailto:hi@spencer.place">hi@spencer.place</a>
+        with your participant ID (visible in the extension popup). We will
+        delete all associated records within 30 days.
+      </li>
+      <li>
+        <strong>No account required:</strong> The extension does not require you
+        to create an account. Your participant ID is a cryptographic key pair
+        generated locally and is not linked to your real identity.
+      </li>
+    </ul>
+
+    <h2>Permissions</h2>
+    <p>The extension requests the following browser permissions:</p>
+    <ul>
+      <li>
+        <strong>storage:</strong> Persist your settings, identity, and local
+        event data
+      </li>
+      <li>
+        <strong>tabs:</strong> Read the current tab URL for domain-scoped
+        features
+      </li>
+      <li>
+        <strong>Host permissions (all URLs):</strong> The extension runs on all
+        websites to collect interaction data when enabled
+      </li>
+    </ul>
+
+    <div class="limited-use">
+      <strong>Google API Services Limited Use Disclosure:</strong>
+      The use and transfer to any other product of information received from
+      Google APIs will adhere to the
+      <a
+        href="https://developer.chrome.com/docs/webstore/program-policies/limited-use"
+        >Chrome Web Store User Data Policy</a
+      >, including the Limited Use requirements.
+    </div>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      If this policy changes materially, the updated date at the top will be
+      revised. Continued use of the extension after changes constitutes
+      acceptance.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions or concerns? Reach out at
+      <a href="mailto:hi@spencer.place">hi@spencer.place</a>.
+    </p>
+
+    <hr />
+    <p style="color: #8a8279; font-size: 0.85rem">
+      Spencer Chang &middot;
+      <a href="https://spencer.place" style="color: #8a8279">spencer.place</a>
+    </p>
+  </body>
+</html>

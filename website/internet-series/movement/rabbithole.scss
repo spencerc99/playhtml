@@ -1,0 +1,191 @@
+/* ABOUTME: Styles for the Wikipedia rabbit hole falling-titles visualization */
+/* ABOUTME: Dark warm-toned full-screen layout with Lora serif typography */
+
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #1a1714;
+  overflow: hidden;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  color: #f0ebe3;
+}
+
+// ── Main container ─────────────────────────────────────────────────────────────
+#rabbithole-root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+// ── Vignette overlays ──────────────────────────────────────────────────────────
+.vignette {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  pointer-events: none;
+
+  &.vignette-top {
+    top: 0;
+    height: 140px;
+    background: linear-gradient(to bottom, #1a1714 0%, transparent 100%);
+  }
+
+  &.vignette-bottom {
+    // Sits just above the info bar
+    bottom: 44px;
+    height: 180px;
+    background: linear-gradient(to top, #1a1714 0%, transparent 100%);
+  }
+}
+
+// ── Falling title entries ──────────────────────────────────────────────────────
+// Positioned absolutely by the component; all motion via inline style
+.title-entry {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font-family: 'Lora', 'Georgia', serif;
+  font-weight: 700;
+  color: #faf7f2;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1.15;
+  will-change: transform, opacity, font-size;
+  max-width: 88vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// ── Loading / empty state ──────────────────────────────────────────────────────
+.empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 0.85rem;
+  color: #5a5450;
+  letter-spacing: 0.08em;
+  text-align: center;
+  animation: pulse-text 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+// ── Info bar ───────────────────────────────────────────────────────────────────
+.info-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  padding: 0 1rem;
+  background: rgba(26, 23, 20, 0.94);
+  border-top: 1px solid #2e2a26;
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: #7a7470;
+  z-index: 10;
+}
+
+.info-label {
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #b8b0a8;
+}
+
+.info-stat {
+  font-family: 'Martian Mono', monospace;
+  font-size: 0.68rem;
+  color: #5a5450;
+}
+
+.info-loading {
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  color: #3e3a36;
+  animation: pulse-text 1.2s ease-in-out infinite;
+}
+
+.info-error {
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  color: #c4724e;
+  cursor: help;
+}
+
+// ── Speed buttons ──────────────────────────────────────────────────────────────
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 0.7rem;
+  color: #5a5450;
+  user-select: none;
+}
+
+.speed-btn {
+  background: none;
+  border: 1px solid #2e2a26;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  cursor: pointer;
+  color: #5a5450;
+  font-family: 'Martian Mono', monospace;
+  line-height: 1.6;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+
+  &:hover {
+    background: #2a2520;
+    color: #b8b0a8;
+    border-color: #3e3a36;
+  }
+
+  &.active {
+    border-color: #6b6460;
+    color: #c8bfb4;
+    background: #252220;
+  }
+}
+
+// ── Refresh button ─────────────────────────────────────────────────────────────
+.refresh-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #2e2a26;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #5a5450;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  font-family: inherit;
+
+  &:hover:not(:disabled) {
+    background: #2a2520;
+    color: #c8bfb4;
+    border-color: #3e3a36;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}

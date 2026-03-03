@@ -1,0 +1,90 @@
+/* ABOUTME: Styles for the portrait card design directions preview page */
+/* ABOUTME: Light paper palette matching the extension popup */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,200;0,400;1,200;1,400&family=Lora:ital,wght@0,600;0,700;1,400&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #faf7f2;
+  color: #3d3833;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  min-height: 100vh;
+  padding: 48px 32px 80px;
+}
+
+.page-header {
+  margin-bottom: 56px;
+  border-bottom: 1px solid rgba(90,78,65,0.12);
+  padding-bottom: 24px;
+}
+
+.page-title {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+  font-weight: 200;
+  font-size: 28px;
+  color: #3d3833;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: #8a8279;
+  letter-spacing: 0.04em;
+}
+
+.mock-note {
+  font-size: 11px;
+  color: #b5aea5;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.variants-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.variant {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.variant-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b5aea5;
+  font-family: 'Martian Mono', monospace;
+}
+
+.variant-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #3d3833;
+  margin-top: 2px;
+}
+
+.variant-desc {
+  font-size: 12px;
+  color: #8a8279;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+@media (max-width: 1200px) {
+  .variants-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .variants-grid {
+    grid-template-columns: 1fr;
+  }
+}
