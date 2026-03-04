@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/common",
   "description": "Common types for playhtml packages",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "type": "module",
   "author": "Spencer Chang <spencerc99@gmail.com>",
