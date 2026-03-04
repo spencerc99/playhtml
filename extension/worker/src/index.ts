@@ -3,6 +3,7 @@
 
 import { handleIngest } from './routes/ingest';
 import { handleRecent } from './routes/recent';
+import { handleDailyCounts } from './routes/dailyCounts';
 import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
@@ -35,6 +36,10 @@ export default {
     
     if (path === '/events/recent' && request.method === 'GET') {
       return handleRecent(request, env);
+    }
+
+    if (path === '/events/daily-counts' && request.method === 'GET') {
+      return handleDailyCounts(request, env);
     }
     
     if (path === '/events/stats' && request.method === 'GET') {

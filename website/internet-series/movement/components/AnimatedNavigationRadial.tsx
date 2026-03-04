@@ -20,6 +20,8 @@ interface AnimatedNavigationRadialProps {
     maxParallelEdges?: number;
     /** When false, play through all sessions continuously without clearing between days */
     segmentByDay?: boolean;
+    /** "loop" restarts from session 0 at end; "cycle" wraps via modulo (default) */
+    playbackMode?: "cycle" | "loop";
     blob?: RadialBlobSettings;
   };
 }
@@ -511,6 +513,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
         }
 
         // Day segmentation: when next session is a different dayKey we clear canvas then start fresh
+        // Loop mode: when at the last session, restart from 0 with a clear transition
         if (phase === "pause") {
           const nextIdx =
             (currentSessionIndex + 1) % radialState.sessions.length;
@@ -521,11 +524,14 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
           const nextSession =
             radialState.sessions[sessionOrderRef.current[nextIdx] ?? 0];
           const segmentByDay = settings.segmentByDay ?? true;
+          const isLoopRestart =
+            (settings.playbackMode ?? "cycle") === "loop" && nextIdx === 0;
           const isNewDay =
-            segmentByDay &&
+            isLoopRestart ||
+            (segmentByDay &&
             nextSession &&
             currentSession &&
-            nextSession.dayKey !== currentSession.dayKey;
+            nextSession.dayKey !== currentSession.dayKey);
           const elapsed = timestamp - sessionStartTimeRef.current;
           const pauseDuration = isNewDay
             ? PAUSE_BETWEEN_DAYS
@@ -765,7 +771,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
       return () => {
         if (animationRef.current) cancelAnimationFrame(animationRef.current);
       };
-    }, [radialState, currentSessionIndex, phase, settings.maxParallelEdges, settings.segmentByDay]);
+    }, [radialState, currentSessionIndex, phase, settings.maxParallelEdges, settings.segmentByDay, settings.playbackMode]);
 
     if (!radialState || radialState.nodes.size === 0) return null;
 

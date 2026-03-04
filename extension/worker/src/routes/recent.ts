@@ -30,6 +30,8 @@ const SUPABASE_PAGE_SIZE = 1000;
  * - type: Event type filter (default: 'cursor')
  * - limit: Maximum number of events (default: 1000, max: 5000). Pagination is used to return up to 5000.
  * - domain: Domain filter (optional) - filters events by URL domain
+ * - from: ISO date string, inclusive lower bound on ts (optional)
+ * - to: ISO date string, inclusive upper bound on ts (optional)
  */
 export async function handleRecent(
   request: Request,
@@ -58,6 +60,12 @@ export async function handleRecent(
       if (domainFilter) {
         query = query.eq('domain', domainFilter);
       }
+
+      // Add date range filters
+      const fromDate = url.searchParams.get('from');
+      const toDate = url.searchParams.get('to');
+      if (fromDate) query = query.gte('ts', fromDate);
+      if (toDate) query = query.lte('ts', toDate);
 
       const { data, error } = await query
         .order('ts', { ascending: false })

@@ -1,6 +1,8 @@
 // ABOUTME: Type definitions for the Internet Movement visualization
 // ABOUTME: Shared types used across multiple components
 
+export type DayCounts = Map<string, number>;
+
 export interface CollectionEvent {
   id: string;
   type: string;

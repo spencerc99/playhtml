@@ -6,6 +6,7 @@
       "dependencies": {
         "@supabase/supabase-js": "^2.57.4",
         "canvas-confetti": "^1.9.2",
+        "html2canvas": "^1.4.1",
         "partykit": "0.0.108",
         "profane-words": "^1.5.11",
         "randomcolor": "^0.6.2",
@@ -32,7 +33,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.5",
+      "version": "0.1.7",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/react": "workspace:*",
@@ -83,7 +84,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -92,9 +93,9 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.5.1",
+      "version": "2.7.0",
       "dependencies": {
-        "@playhtml/common": "0.3.1",
+        "@playhtml/common": "0.4.0",
         "@syncedstore/core": "^0.6.0",
         "y-partykit": "^0.0.31",
         "yjs": "13.6.18",
@@ -111,11 +112,11 @@
     },
     "packages/react": {
       "name": "@playhtml/react",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
-        "@playhtml/common": "^0.3.0",
+        "@playhtml/common": "^0.4.0",
         "classnames": "^2.3.2",
-        "playhtml": "^2.5.0",
+        "playhtml": "^2.7.0",
         "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
         "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
       },

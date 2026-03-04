@@ -321,6 +321,16 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'GET_DAY_COUNTS') {
+      store.countEventsByDay()
+        .then((counts) => reply({ success: true, counts: Object.fromEntries(counts) }))
+        .catch((e) => {
+          console.error('[Background] GET_DAY_COUNTS error:', e)
+          reply({ success: false, counts: {} })
+        })
+      return true
+    }
+
     if (message.type === 'GET_ALL_EVENTS') {
       const options = (message.options || {}) as QueryOptions
       store.getAllEvents(options)

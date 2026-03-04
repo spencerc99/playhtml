@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import "../../styles/options.scss";
 import "../../../../website/internet-series/movement/movement.scss";
-import type { CollectionEvent } from "../../../../website/internet-series/movement/types";
+import type { CollectionEvent, DayCounts } from "../../../../website/internet-series/movement/types";
 import { MovementCanvas } from "../../../../website/internet-series/movement/components/MovementCanvas";
 import { useCursorTrails } from "../../../../website/internet-series/movement/hooks/useCursorTrails";
 import { extractDomain } from "../../../../website/internet-series/movement/utils/eventUtils";
@@ -21,6 +21,8 @@ const PortraitPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [hovering, setHovering] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
   const loadEvents = useCallback(async () => {
@@ -66,6 +68,25 @@ const PortraitPage = () => {
     });
     return topDomain;
   }, [events]);
+
+  // Fetch accurate per-day event counts (full scan, not capped like events)
+  useEffect(() => {
+    browser.runtime.sendMessage({ type: 'GET_DAY_COUNTS' })
+      .then((res: any) => {
+        if (res?.success && res.counts) {
+          setDayCounts(new Map(Object.entries(res.counts) as [string, number][]));
+        }
+      })
+      .catch((e: unknown) => console.error('[Portrait] GET_DAY_COUNTS error:', e));
+  }, []);
+
+  // Filter events to selected day when one is chosen
+  const visibleEvents = useMemo(() => {
+    if (!selectedDay) return events;
+    const from = new Date(selectedDay + "T00:00:00").getTime();
+    const to = new Date(selectedDay + "T23:59:59.999").getTime();
+    return events.filter((e) => e.ts >= from && e.ts <= to);
+  }, [events, selectedDay]);
 
   // Compute portrait stats for the export card
   const portraitStats = useMemo((): PortraitCardProps | null => {
@@ -297,10 +318,13 @@ const PortraitPage = () => {
       )}
 
       <MovementCanvas
-        events={events}
+        events={visibleEvents}
         loading={loading}
         error={error}
         fetchEvents={loadEvents}
+        dayCounts={dayCounts}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
       />
     </div>
   );

@@ -520,6 +520,41 @@ export class LocalEventStore {
   }
 
   /**
+   * Count events grouped by calendar day (YYYY-MM-DD) across all domains.
+   * Uses the ts index to iterate chronologically without loading full event objects.
+   */
+  async countEventsByDay(): Promise<Map<string, number>> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const tsIndex = store.index("ts");
+      const request = tsIndex.openKeyCursor();
+
+      const counts = new Map<string, number>();
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursor>).result;
+        if (cursor) {
+          const day = new Date(cursor.key as number).toISOString().slice(0, 10);
+          counts.set(day, (counts.get(day) ?? 0) + 1);
+          cursor.continue();
+        } else {
+          resolve(counts);
+        }
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
    * Compute screen time by pairing focus→blur navigation events.
    * Also sums scroll distance from viewport events.
    *

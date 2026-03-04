@@ -1,7 +1,7 @@
 // ABOUTME: Rendering component for the Internet Movement visualization
 // ABOUTME: Accepts events + fetch callback as props; owns settings state and all animation hooks
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
@@ -10,12 +10,14 @@ import { AnimatedTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
 import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
+import { DaySelector } from "./DaySelector";
 import { useCursorTrails } from "../hooks/useCursorTrails";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { extractDomain } from "../utils/eventUtils";
+import type { DayCounts } from "../types";
 
 const SETTINGS_STORAGE_KEY = "internet-movement-settings";
 
@@ -124,6 +126,9 @@ interface MovementCanvasProps {
   error: string | null;
   /** Called when user requests a data refresh (e.g. double-tap R or Controls button) */
   fetchEvents: () => void;
+  dayCounts?: DayCounts;
+  selectedDay?: string | null;
+  onSelectDay?: (day: string | null) => void;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -131,11 +136,32 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   loading,
   error,
   fetchEvents,
+  dayCounts,
+  selectedDay = null,
+  onSelectDay,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">("cycle");
+
+  const handleTogglePlaybackMode = useCallback(() => {
+    setDayPlaybackMode((m) => (m === "cycle" ? "loop" : "cycle"));
+  }, []);
+
+  const handleCapture = useCallback(async () => {
+    if (!containerRef.current) return;
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(containerRef.current, {
+      backgroundColor: "#faf9f6",
+      scale: 2,
+    });
+    const link = document.createElement("a");
+    link.download = `movement-${selectedDay ?? "all"}-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }, [selectedDay]);
 
   // Persist settings to localStorage
   useEffect(() => {
@@ -663,6 +689,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
                 edgeOpacity: settings.navigationEdgeOpacity,
                 maxParallelEdges: settings.navigationMaxParallelEdges,
                 segmentByDay: settings.navigationRadialSegmentByDay ?? true,
+                playbackMode: selectedDay ? dayPlaybackMode : "cycle",
                 blob: {
                   samples: settings.navigationRadialBlobSamples,
                   curveTension: settings.navigationRadialBlobCurveTension,
@@ -684,6 +711,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           )}
       </div>
+
+      {dayCounts && onSelectDay && (
+        <DaySelector
+          dayCounts={dayCounts}
+          selectedDay={selectedDay}
+          onSelectDay={onSelectDay}
+          playbackMode={dayPlaybackMode}
+          onTogglePlaybackMode={handleTogglePlaybackMode}
+          onCapture={handleCapture}
+        />
+      )}
     </div>
   );
 };
