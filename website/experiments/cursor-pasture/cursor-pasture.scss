@@ -1,15 +1,280 @@
 // ABOUTME: Styles for the cursor pasture experiment.
-// ABOUTME: Sets up full-viewport layout with hidden overflow.
+// ABOUTME: Pasture scene, drawing overlay, animations, and UI elements.
 @import "../../base.scss";
+
+// --- Layout ---
 
 html, body {
   overflow: hidden;
+  font-family: "Play", sans-serif;
 }
 
 #pasture {
   width: 100vw;
   height: 100vh;
+  position: relative;
+}
+
+// --- Pasture Background ---
+
+.pasture-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.pasture-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    hsl(30, 10%, 92%) 0%,
+    hsl(30, 8%, 88%) 50%,
+    hsl(30, 12%, 84%) 67%,
+    hsl(30, 10%, 80%) 100%
+  );
+
+  // Grain texture overlay
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.08;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+  }
+}
+
+// --- Horizon & Perched Cursors ---
+
+.horizon {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+}
+
+.perched-cursor {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  animation: twitch ease-in-out infinite;
+  transition: opacity 0.5s, filter 0.5s;
+
+  img {
+    width: 100%;
+    height: 100%;
+  }
+
+  &.ghost {
+    opacity: 0.25;
+    filter: blur(0.5px);
+  }
+
+  &.flying {
+    animation: flight 3s ease-in-out forwards;
+  }
+}
+
+@keyframes twitch {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(0.5px, -1px) rotate(0.5deg);
+  }
+  50% {
+    transform: translate(-0.5px, 0) rotate(-0.5deg);
+  }
+  75% {
+    transform: translate(0.5px, -0.5px) rotate(0.3deg);
+  }
+}
+
+@keyframes flight {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  20% {
+    transform: translate(20px, -80px) rotate(-10deg);
+  }
+  50% {
+    transform: translate(60px, -120px) rotate(5deg);
+  }
+  80% {
+    transform: translate(30px, -40px) rotate(-5deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+// --- UI Elements ---
+
+.pasture-ui {
+  position: fixed;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  pointer-events: none;
+  z-index: 10;
+
+  > * {
+    pointer-events: auto;
+  }
+}
+
+.online-count {
+  font-size: 0.85rem;
+  color: hsl(30, 10%, 50%);
+  user-select: none;
+}
+
+.redraw-button {
+  font-size: 0.8rem;
+  padding: 6px 14px;
+  border: 1px solid hsl(30, 10%, 70%);
+  border-radius: 6px;
+  background: hsla(30, 10%, 95%, 0.8);
+  color: hsl(30, 10%, 40%);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.2s, border-color 0.2s;
+
+  &:hover {
+    background: hsla(30, 10%, 90%, 0.9);
+    border-color: hsl(30, 10%, 55%);
+  }
+}
+
+// --- Drawing Overlay ---
+
+.drawing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: hsla(30, 10%, 20%, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.drawing-modal {
+  background: hsl(30, 10%, 96%);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 8px 40px hsla(0, 0%, 0%, 0.15);
+}
+
+// --- Drawing Canvas ---
+
+.drawing-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+
+  h2 {
+    font-size: 1.2rem;
+    font-weight: 400;
+    color: hsl(30, 10%, 35%);
+  }
+}
+
+.canvas-container {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+
+  // Checkerboard transparency pattern
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(45deg, hsl(30, 5%, 90%) 25%, transparent 25%),
+      linear-gradient(-45deg, hsl(30, 5%, 90%) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, hsl(30, 5%, 90%) 75%),
+      linear-gradient(-45deg, transparent 75%, hsl(30, 5%, 90%) 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  svg {
+    display: block;
+    cursor: crosshair;
+  }
+}
+
+.color-palette {
+  display: flex;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+  padding: 0;
+
+  &.active {
+    border-color: hsl(30, 10%, 35%);
+    transform: scale(1.15);
+  }
+
+  &:hover:not(.active) {
+    transform: scale(1.08);
+  }
+}
+
+.canvas-actions {
+  display: flex;
+  gap: 10px;
+
+  button {
+    padding: 8px 18px;
+    border: 1px solid hsl(30, 10%, 75%);
+    border-radius: 6px;
+    background: hsl(30, 10%, 98%);
+    color: hsl(30, 10%, 35%);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.2s, opacity 0.2s;
+
+    &:hover:not(:disabled) {
+      background: hsl(30, 10%, 92%);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &.done-button {
+      background: hsl(30, 10%, 30%);
+      color: hsl(30, 10%, 96%);
+      border-color: hsl(30, 10%, 30%);
+
+      &:hover:not(:disabled) {
+        background: hsl(30, 10%, 22%);
+      }
+    }
+  }
+}
+
+// --- Hide system cursor when drawing is active ---
+.drawing-overlay svg {
+  cursor: crosshair;
 }
