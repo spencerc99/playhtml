@@ -20,12 +20,16 @@ const CursorPasture = withSharedState(
     },
   },
   ({ data, setData }) => {
-    const { configureCursors, cursorPresences, getMyPlayerIdentity } =
-      usePlayContext();
+    const {
+      hasSynced,
+      configureCursors,
+      cursorPresences,
+      getMyPlayerIdentity,
+    } = usePlayContext();
     const [showDrawing, setShowDrawing] = useState(false);
     const [hasCheckedIdentity, setHasCheckedIdentity] = useState(false);
 
-    const myIdentity = getMyPlayerIdentity();
+    const myIdentity = hasSynced ? getMyPlayerIdentity() : null;
     const myPublicKey = myIdentity?.publicKey;
 
     const myCursor = useMemo(
@@ -45,12 +49,12 @@ const CursorPasture = withSharedState(
 
     // On first load, check if user needs to draw
     useEffect(() => {
-      if (!myPublicKey || hasCheckedIdentity) return;
+      if (!hasSynced || !myPublicKey || hasCheckedIdentity) return;
       setHasCheckedIdentity(true);
       if (!myCursor) {
         setShowDrawing(true);
       }
-    }, [myPublicKey, myCursor, hasCheckedIdentity]);
+    }, [hasSynced, myPublicKey, myCursor, hasCheckedIdentity]);
 
     // Set own CSS cursor when we have a drawing
     useEffect(() => {
@@ -64,6 +68,8 @@ const CursorPasture = withSharedState(
 
     // Configure custom cursor rendering for other users' live cursors
     useEffect(() => {
+      if (!hasSynced) return;
+
       const cursorsMap = new Map(
         data.cursors.map((c) => [c.creatorId, c])
       );
@@ -107,7 +113,7 @@ const CursorPasture = withSharedState(
           return null;
         },
       });
-    }, [data.cursors, cursorPresences, configureCursors]);
+    }, [hasSynced, data.cursors, cursorPresences, configureCursors]);
 
     const handleDrawingComplete = useCallback(
       (strokes: Stroke[]) => {
