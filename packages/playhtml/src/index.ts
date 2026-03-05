@@ -320,6 +320,7 @@ export interface CursorOptions {
   onCustomCursorRender?: (
     connectionId: string,
     element: HTMLElement,
+    playerIdentity?: PlayerIdentity,
   ) => HTMLElement | null;
   enableChat?: boolean;
   room?: CursorRoom;

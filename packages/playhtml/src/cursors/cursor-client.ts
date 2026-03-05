@@ -949,6 +949,7 @@ export class CursorClientAwareness {
       const customElement = this.options.onCustomCursorRender(
         connectionId,
         element,
+        playerIdentity,
       );
       if (customElement) {
         return customElement;

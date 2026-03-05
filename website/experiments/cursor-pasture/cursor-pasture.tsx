@@ -75,37 +75,13 @@ const CursorPasture = withSharedState(
       );
 
       configureCursors({
-        onCustomCursorRender: (connectionId, element) => {
-          // Find the publicKey for this connectionId from cursorPresences
-          let drawingForConnection: CursorDrawing | undefined;
-          cursorPresences.forEach((presence) => {
-            const pk = presence.playerIdentity?.publicKey;
-            if (pk) {
-              const drawing = cursorsMap.get(pk);
-              if (drawing) {
-                // Match by checking if this presence's data corresponds to the connectionId
-                // The connectionId IS the stable key in cursorPresences map
-                drawingForConnection = drawing;
-              }
-            }
-          });
+        onCustomCursorRender: (_connectionId, element, playerIdentity) => {
+          const publicKey = playerIdentity?.publicKey;
+          if (!publicKey) return null;
 
-          // Try direct lookup: cursorPresences is keyed by stableId (publicKey)
-          // but connectionId might be a clientId. Check both.
-          if (!drawingForConnection) {
-            const presence = cursorPresences.get(connectionId);
-            if (presence?.playerIdentity?.publicKey) {
-              drawingForConnection = cursorsMap.get(
-                presence.playerIdentity.publicKey
-              );
-            }
-          }
-
-          if (
-            drawingForConnection &&
-            drawingForConnection.strokes.length > 0
-          ) {
-            const svg = composeSvg(drawingForConnection.strokes, 40);
+          const drawing = cursorsMap.get(publicKey);
+          if (drawing && drawing.strokes.length > 0) {
+            const svg = composeSvg(drawing.strokes, 40);
             element.innerHTML = svg;
             element.style.pointerEvents = "none";
             return element;
@@ -113,7 +89,7 @@ const CursorPasture = withSharedState(
           return null;
         },
       });
-    }, [hasSynced, data.cursors, cursorPresences, configureCursors]);
+    }, [hasSynced, data.cursors, configureCursors]);
 
     const handleDrawingComplete = useCallback(
       (strokes: Stroke[]) => {
@@ -166,6 +142,7 @@ const CursorPasture = withSharedState(
             <div className="drawing-modal">
               <DrawingCanvas
                 onComplete={handleDrawingComplete}
+                onCancel={myCursor ? () => setShowDrawing(false) : undefined}
                 initialStrokes={myCursor?.strokes}
               />
             </div>

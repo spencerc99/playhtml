@@ -52,11 +52,13 @@ function getSvgPathFromStroke(points: number[][]): string {
 
 interface DrawingCanvasProps {
   onComplete: (strokes: Stroke[]) => void;
+  onCancel?: () => void;
   initialStrokes?: Stroke[];
 }
 
 export function DrawingCanvas({
   onComplete,
+  onCancel,
   initialStrokes,
 }: DrawingCanvasProps) {
   const [strokes, setStrokes] = useState<Stroke[]>(initialStrokes ?? []);
@@ -166,6 +168,9 @@ export function DrawingCanvas({
       </div>
 
       <div className="canvas-actions">
+        {onCancel && (
+          <button onClick={onCancel}>cancel</button>
+        )}
         <button onClick={handleUndo} disabled={!hasStrokes}>
           undo
         </button>
