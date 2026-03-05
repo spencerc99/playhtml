@@ -1,0 +1,15 @@
+// ABOUTME: Styles for the cursor pasture experiment.
+// ABOUTME: Sets up full-viewport layout with hidden overflow.
+@import "../../base.scss";
+
+html, body {
+  overflow: hidden;
+}
+
+#pasture {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
