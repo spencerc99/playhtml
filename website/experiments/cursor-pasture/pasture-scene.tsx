@@ -89,7 +89,7 @@ export function PastureScene({
         target.classList.add("flying");
         setTimeout(() => target.classList.remove("flying"), 4000);
       },
-      15000 + Math.random() * 15000
+      8000 + Math.random() * 7000
     );
 
     return () => clearInterval(flightTimerRef.current);
