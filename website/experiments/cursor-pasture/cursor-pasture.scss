@@ -1,5 +1,5 @@
 // ABOUTME: Styles for the cursor pasture experiment.
-// ABOUTME: Pasture scene, drawing overlay, animations, and UI elements.
+// ABOUTME: Meadow scene with sky/ground, clouds, perched cursors, flocks, drawing overlay.
 @import "../../base.scss";
 
 // --- Layout ---
@@ -28,22 +28,99 @@ html, body {
   inset: 0;
   background: linear-gradient(
     to bottom,
-    hsl(30, 10%, 92%) 0%,
-    hsl(30, 8%, 88%) 50%,
-    hsl(30, 12%, 84%) 67%,
-    hsl(30, 10%, 80%) 100%
+    hsl(210, 40%, 92%) 0%,
+    hsl(210, 35%, 90%) 25%,
+    hsl(200, 25%, 87%) 50%,
+    hsl(120, 15%, 78%) 65%,
+    hsl(100, 20%, 68%) 80%,
+    hsl(95, 22%, 58%) 100%
   );
+
+  // Warm sun glow in upper-right
+  &::before {
+    content: "";
+    position: absolute;
+    top: -10%;
+    right: -5%;
+    width: 50%;
+    height: 50%;
+    background: radial-gradient(
+      ellipse at center,
+      hsla(45, 80%, 90%, 0.3) 0%,
+      transparent 70%
+    );
+    pointer-events: none;
+  }
 
   // Grain texture overlay
   &::after {
     content: "";
     position: absolute;
     inset: 0;
-    opacity: 0.08;
+    opacity: 0.07;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-size: 200px;
     pointer-events: none;
   }
+}
+
+// --- Clouds ---
+
+.cloud {
+  position: absolute;
+  background: hsla(0, 0%, 100%, 0.5);
+  border-radius: 50px;
+  pointer-events: none;
+
+  &::before, &::after {
+    content: "";
+    position: absolute;
+    background: inherit;
+    border-radius: 50%;
+  }
+}
+
+.cloud-1 {
+  width: 120px;
+  height: 40px;
+  top: 12%;
+  left: -150px;
+  animation: cloud-drift 90s linear infinite;
+  opacity: 0.45;
+
+  &::before { width: 60px; height: 55px; top: -22px; left: 20px; }
+  &::after { width: 80px; height: 48px; top: -18px; left: 50px; }
+}
+
+.cloud-2 {
+  width: 90px;
+  height: 30px;
+  top: 22%;
+  left: -120px;
+  animation: cloud-drift 120s linear infinite;
+  animation-delay: -45s;
+  opacity: 0.3;
+
+  &::before { width: 45px; height: 42px; top: -18px; left: 15px; }
+  &::after { width: 55px; height: 35px; top: -14px; left: 35px; }
+}
+
+.cloud-3 {
+  width: 150px;
+  height: 45px;
+  top: 6%;
+  left: -180px;
+  animation: cloud-drift 150s linear infinite;
+  animation-delay: -80s;
+  opacity: 0.2;
+
+  &::before { width: 70px; height: 62px; top: -28px; left: 30px; }
+  &::after { width: 90px; height: 52px; top: -22px; left: 65px; }
+}
+
+@keyframes cloud-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(100vw + 300px)); }
 }
 
 // --- Sky & Perched Cursors ---
@@ -60,7 +137,7 @@ html, body {
   height: 48px;
   animation: bob ease-in-out infinite;
   transition: opacity 0.5s, filter 0.5s;
-  filter: drop-shadow(0 2px 8px hsla(30, 20%, 50%, 0.3));
+  filter: drop-shadow(0 2px 8px hsla(210, 20%, 50%, 0.25));
 
   img {
     width: 100%;
@@ -70,7 +147,7 @@ html, body {
 
   &.ghost {
     opacity: 0.2;
-    filter: blur(1px) drop-shadow(0 2px 8px hsla(30, 20%, 50%, 0.1));
+    filter: blur(1px) drop-shadow(0 2px 8px hsla(210, 20%, 50%, 0.1));
   }
 
   &.flying {
@@ -108,6 +185,42 @@ html, body {
   }
 }
 
+// --- Flocks ---
+
+.flock {
+  position: absolute;
+  left: 0;
+  animation: flock-drift linear infinite;
+  pointer-events: none;
+}
+
+.flock-cursor {
+  position: absolute;
+  filter: drop-shadow(0 2px 8px hsla(210, 20%, 50%, 0.25));
+
+  img {
+    width: 100%;
+    height: 100%;
+    opacity: 0.8;
+  }
+
+  &.ghost {
+    opacity: 0.2;
+    filter: blur(1px) drop-shadow(0 2px 8px hsla(210, 20%, 50%, 0.1));
+  }
+}
+
+.flock-cursor-bob {
+  width: 100%;
+  height: 100%;
+  animation: bob ease-in-out infinite;
+}
+
+@keyframes flock-drift {
+  from { transform: translateX(-200px); }
+  to { transform: translateX(calc(100vw + 200px)); }
+}
+
 // --- UI Elements ---
 
 .pasture-ui {
@@ -129,24 +242,24 @@ html, body {
 
 .online-count {
   font-size: 0.85rem;
-  color: hsl(30, 10%, 50%);
+  color: hsl(100, 10%, 40%);
   user-select: none;
 }
 
 .redraw-button {
   font-size: 0.8rem;
   padding: 6px 14px;
-  border: 1px solid hsl(30, 10%, 70%);
+  border: 1px solid hsl(100, 10%, 55%);
   border-radius: 6px;
-  background: hsla(30, 10%, 95%, 0.8);
-  color: hsl(30, 10%, 40%);
+  background: hsla(100, 10%, 95%, 0.8);
+  color: hsl(100, 10%, 35%);
   cursor: pointer;
   backdrop-filter: blur(4px);
   transition: background 0.2s, border-color 0.2s;
 
   &:hover {
-    background: hsla(30, 10%, 90%, 0.9);
-    border-color: hsl(30, 10%, 55%);
+    background: hsla(100, 10%, 90%, 0.9);
+    border-color: hsl(100, 10%, 45%);
   }
 }
 
@@ -159,7 +272,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: hsla(30, 10%, 20%, 0.5);
+  background: hsla(210, 15%, 20%, 0.5);
   backdrop-filter: blur(4px);
 }
 
