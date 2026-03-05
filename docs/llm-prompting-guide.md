@@ -53,7 +53,8 @@ React (withSharedState):
 
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
 - For awareness: { myDefaultAwareness: value } in config, use setMyAwareness
-- For events: useContext(PlayContext) → { registerPlayEventListener, dispatchPlayEvent }
+- For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
+- For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
 
 DATA UPDATES:
 
@@ -72,7 +73,7 @@ BUILT-IN CAPABILITIES (if they fit the use case):
 - can-spin: Rotatable element
 - can-grow: Click to scale up/down
 - can-duplicate: Click to clone element
-- can-hover: Shows who's hovering
+- can-mirror: Syncs all element changes automatically
 - Use these instead of can-play when possible
 
 CURSOR CONFIGURATION (optional):
@@ -82,7 +83,9 @@ Enable collaborative cursors to show where other users are:
 - Vanilla HTML: playhtml.init({ cursors: { enabled: true, room: "page" } })
 - React: <PlayProvider initOptions={{ cursors: { enabled: true, room: "page" } }}>
 - room options: "page" (same URL only), "domain" (entire site), "section" (same path prefix)
-- Access cursor data: window.cursors.allColors, window.cursors.count
+- Access cursor data: window.cursors.allColors (array of colors), window.cursors.color, window.cursors.name
+- Get user count: window.cursors.allColors.length
+- Listen for changes: window.cursors.on('allColors', callback)
 - See docs/cursors.md for proximity detection, filtering, styling
 
 DATA PERFORMANCE TIPS:
