@@ -1,5 +1,5 @@
-// ABOUTME: Renders the pasture background and perched/ghost cursors along the horizon.
-// ABOUTME: Handles idle twitching animations and occasional flight arcs.
+// ABOUTME: Renders the pasture background and perched/ghost cursors floating in the sky.
+// ABOUTME: Handles idle bobbing animations and occasional flight arcs.
 import React, { useEffect, useRef, useMemo } from "react";
 import { composeSvgDataUrl, type CursorDrawing } from "./svg-utils";
 
@@ -24,15 +24,16 @@ export function PastureScene({
 }: PastureSceneProps) {
   const flightTimerRef = useRef<ReturnType<typeof setInterval>>();
 
-  // Position each cursor along the horizon with deterministic randomness
+  // Position each cursor in the sky with deterministic randomness
   const positioned = useMemo(() => {
     return cursors.map((cursor) => {
       const rand = seededRandom(cursor.createdAt);
       const xPercent = 5 + rand() * 90; // 5% to 95% of viewport width
-      const yOffset = (rand() - 0.5) * 20; // ±10px from horizon
-      const animDelay = rand() * 8; // 0-8s animation delay
-      const twitchDuration = 3 + rand() * 4; // 3-7s twitch cycle
-      return { cursor, xPercent, yOffset, animDelay, twitchDuration };
+      const yPercent = 8 + rand() * 35; // 8% to 43% from top (upper portion)
+      const animDelay = rand() * 10; // 0-10s animation delay
+      const bobDuration = 4 + rand() * 6; // 4-10s bob cycle
+      const size = 40 + rand() * 20; // 40-60px
+      return { cursor, xPercent, yPercent, animDelay, bobDuration, size };
     });
   }, [cursors]);
 
@@ -49,7 +50,7 @@ export function PastureScene({
         if (perched.length === 0) return;
         const target = perched[Math.floor(Math.random() * perched.length)];
         target.classList.add("flying");
-        setTimeout(() => target.classList.remove("flying"), 3000);
+        setTimeout(() => target.classList.remove("flying"), 4000);
       },
       15000 + Math.random() * 15000
     );
@@ -60,13 +61,13 @@ export function PastureScene({
   return (
     <div className="pasture-scene">
       <div className="pasture-bg" />
-      <div className="horizon">
+      <div className="sky">
         {positioned.map(
-          ({ cursor, xPercent, yOffset, animDelay, twitchDuration }) => {
+          ({ cursor, xPercent, yPercent, animDelay, bobDuration, size }) => {
             const isOnline = onlineCreatorIds.has(cursor.creatorId);
             const isMine = cursor.creatorId === myCreatorId;
             const isGhost = isOnline || isMine;
-            const svgUrl = composeSvgDataUrl(cursor.strokes, 28);
+            const svgUrl = composeSvgDataUrl(cursor.strokes, Math.round(size));
 
             return (
               <div
@@ -74,9 +75,11 @@ export function PastureScene({
                 className={`perched-cursor ${isGhost ? "ghost" : ""}`}
                 style={{
                   left: `${xPercent}%`,
-                  bottom: `${33 + (yOffset / window.innerHeight) * 100}%`,
+                  top: `${yPercent}%`,
+                  width: `${size}px`,
+                  height: `${size}px`,
                   animationDelay: `${animDelay}s`,
-                  animationDuration: `${twitchDuration}s`,
+                  animationDuration: `${bobDuration}s`,
                 }}
               >
                 <img src={svgUrl} alt="cursor" draggable={false} />
