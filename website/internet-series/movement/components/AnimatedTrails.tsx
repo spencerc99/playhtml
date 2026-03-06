@@ -301,6 +301,11 @@ interface AnimatedTrailsProps {
   showClickRipples?: boolean;
   frozen?: boolean;
   windowSize?: number;
+  // When true, trail coordinates are in document space. The SVG viewBox is
+  // updated each animation frame to track window.scrollX/scrollY so trails
+  // appear glued to the page rather than to the fixed viewport. The overlay
+  // container must be position: fixed when using this mode.
+  documentSpace?: boolean;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -326,6 +331,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     showClickRipples = true,
     frozen = false,
     windowSize = 50,
+    documentSpace = false,
     settings,
   }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
@@ -334,6 +340,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
     const animationRef = useRef<number>();
     const spawnedClicksRef = useRef<Map<string, Set<number>>>(new Map());
+    const svgRef = useRef<SVGSVGElement>(null);
 
     const generatePath = useRef(createPathGenerator()).current;
 
@@ -387,6 +394,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const sortedFinishOrderRef = useRef(sortedFinishOrder);
     const windowSizeRef = useRef(windowSize);
     const showClickRipplesRef = useRef(showClickRipples);
+    const documentSpaceRef = useRef(documentSpace);
 
     useEffect(() => {
       trailStatesRef.current = trailStates;
@@ -400,6 +408,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     useEffect(() => {
       showClickRipplesRef.current = showClickRipples;
     }, [showClickRipples]);
+    useEffect(() => {
+      documentSpaceRef.current = documentSpace;
+    }, [documentSpace]);
 
     // Track which trail indices are currently visible, for ripple pruning.
     // Updated from rAF loop but only triggers a React re-render for ripple cleanup.
@@ -424,6 +435,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       if (frozen) {
         // Frozen: update all trails once at full progress
         requestAnimationFrame(() => {
+          if (documentSpaceRef.current && svgRef.current) {
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            svgRef.current.setAttribute("viewBox", `${window.scrollX} ${window.scrollY} ${vw} ${vh}`);
+          }
           const elapsed = timeRange.duration;
           for (let i = 0; i < trailStatesRef.current.length; i++) {
             const handle = trailHandles.current[i];
@@ -450,6 +466,17 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
       const animate = (timestamp: number) => {
         if (startTime === null) startTime = timestamp;
+
+        // In document space mode, shift the SVG viewBox to match the current
+        // scroll position so trails appear glued to the page rather than to
+        // the fixed viewport. Done imperatively here to avoid re-renders.
+        if (documentSpaceRef.current && svgRef.current) {
+          const scrollX = window.scrollX;
+          const scrollY = window.scrollY;
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+          svgRef.current.setAttribute("viewBox", `${scrollX} ${scrollY} ${vw} ${vh}`);
+        }
 
         const realElapsed = timestamp - startTime;
         const scaledElapsed = realElapsed * animationSpeedRef.current;
@@ -547,9 +574,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
     return (
       <svg
+        ref={svgRef}
         className="trails-svg"
         width="100%"
         height="100%"
+        preserveAspectRatio="none"
         style={{
           position: "absolute",
           top: 0,
@@ -600,6 +629,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.showClickRipples === nextProps.showClickRipples &&
       prevProps.frozen === nextProps.frozen &&
       prevProps.windowSize === nextProps.windowSize &&
+      prevProps.documentSpace === nextProps.documentSpace &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickMinDuration ===

@@ -50,6 +50,27 @@
     overflow: auto;
   }
 
+  &__nav-links {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  &__nav-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: $font-mono;
+    font-size: 10px;
+    color: $text-muted;
+    cursor: pointer;
+    transition: color 0.12s;
+
+    &:hover {
+      color: $accent-teal;
+    }
+  }
+
   &__footer {
     margin-top: 12px;
     padding-top: 12px;

@@ -253,11 +253,35 @@ export function InternetPortraitHome({
                 />
               ) : (
                 <p className="preview-card__empty">
-                  Your portrait is being built. Browse a little and come back.
+                  Your portrait is loading...
                 </p>
               )}
-              <div className="preview-card__label">Open Your Portrait</div>
+              <div className="preview-card__label">Open Portrait Overlay</div>
             </div>
+          </div>
+          <div className="portrait-home__nav-links">
+            <button
+              className="portrait-home__nav-link"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const url = browser.runtime.getURL("portrait.html");
+                await browser.tabs.create({ url });
+                window.close();
+              }}
+            >
+              portrait
+            </button>
+            <button
+              className="portrait-home__nav-link"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const url = browser.runtime.getURL("stats.html");
+                await browser.tabs.create({ url });
+                window.close();
+              }}
+            >
+              time
+            </button>
           </div>
         </section>
       </main>

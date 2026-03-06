@@ -1,19 +1,29 @@
 // ABOUTME: Visualization component for the Wikipedia rabbit hole page
 // ABOUTME: Animates page titles falling down the screen in step or continuous scroll mode
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface WikiTitle {
   title: string;
   ts: number;
+  url?: string;
+}
+
+interface DataStats {
+  totalFocusEvents: number;
+  wikiEvents: number;
+  nonWikiEvents: number;
 }
 
 interface Props {
   titles: WikiTitle[];
+  dataStats: DataStats | null;
   loading: boolean;
   error: string | null;
+  wikipediaOnly: boolean;
+  onToggleWikipediaOnly: () => void;
   onRefresh: () => void;
 }
 
@@ -78,14 +88,24 @@ function formatDateRange(titles: WikiTitle[]): string {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
+// ── Dev mode detection ─────────────────────────────────────────────────────────
+
+function isDevMode(): boolean {
+  return new URLSearchParams(window.location.search).has("dev");
+}
+
 export const RabbitHoleVisualization: React.FC<Props> = ({
   titles,
+  dataStats,
   loading,
   error,
+  wikipediaOnly,
+  onToggleWikipediaOnly,
   onRefresh,
 }) => {
   const [speed, setSpeed] = useState<SpeedKey>("normal");
   const [mode, setMode] = useState<Mode>("step");
+  const isDev = useMemo(() => isDevMode(), []);
 
   // Step mode state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -248,10 +268,47 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
     };
 
     rafRef.current = requestAnimationFrame(tick);
+
+    // Click handler: resolve which title row was clicked and open its URL
+    const handleCanvasClick = (e: MouseEvent) => {
+      const titles = titlesRef.current;
+      if (titles.length === 0) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const W = canvas.width;
+      const H = canvas.height;
+      const centerY = H / 2;
+      const baseFontSize = Math.max(
+        SCROLL_FONT_SIZE_MIN,
+        Math.round(SCROLL_FONT_SIZE_BASE * (W / 1440)),
+      );
+      const rowHeight = Math.round(baseFontSize * SCROLL_ROW_LINE_HEIGHT);
+
+      const totalRowsScrolled = scrollOffsetPxRef.current / rowHeight;
+      const intPart = Math.floor(totalRowsScrolled);
+      const fracPx = (totalRowsScrolled - intPart) * rowHeight;
+
+      // Determine which row the click landed in
+      const clickY = e.offsetY;
+      const yRelCenter = clickY - centerY;
+      // Inverse of: yOffset = i * rowHeight + fracPx  →  i = (yRelCenter - fracPx) / rowHeight
+      const i = Math.round((yRelCenter - fracPx) / rowHeight);
+      const titleIdx = (((intPart - i) % titles.length) + titles.length) % titles.length;
+      const entry = titles[titleIdx];
+      const url = entry.url ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(entry.title.replace(/ /g, "_"))}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    };
+
+    canvas.style.cursor = "pointer";
+    canvas.addEventListener("click", handleCanvasClick);
+
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      canvas.removeEventListener("click", handleCanvasClick);
     };
-  }, [mode]); // only restart when mode changes; speed/titles read via refs
+  }, [mode]); // only restart when mode changes; speed/titles/linksEnabled read via refs
 
   // Reset on fresh titles
   useEffect(() => {
@@ -270,7 +327,9 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
     return Array.from({ length: VISIBLE_COUNT }, (_, slot) => {
       const titleIdx =
         (((currentIndex - slot) % t.length) + t.length) % t.length;
-      return { slot, title: t[titleIdx].title };
+      const entry = t[titleIdx];
+      const url = entry.url ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(entry.title.replace(/ /g, "_"))}`;
+      return { slot, title: entry.title, url };
     });
   }, [titles, currentIndex, mode]);
 
@@ -294,27 +353,31 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
 
         {/* Step mode — DOM elements with CSS transitions */}
         {mode === "step" &&
-          stepSlots.map(({ slot, title }) => {
+          stepSlots.map(({ slot, title, url }) => {
             const t = slotFraction(slot);
             const fontSize = lerp(FONT_SIZE_MAX, FONT_SIZE_MIN, t);
             const opacity = lerp(1, 0.04, t);
             const yPx = STAGE_TOP_OFFSET + t * stageHeight;
+            const sharedStyle: React.CSSProperties = {
+              top: `${yPx}px`,
+              fontSize: `${fontSize}px`,
+              opacity,
+              color: slot === 0 ? "#faf7f2" : "#e8e0d8",
+              transition:
+                "top 0.6s ease-out, opacity 0.6s ease-out, font-size 0.6s ease-out",
+              zIndex: VISIBLE_COUNT - slot,
+            };
             return (
-              <div
+              <a
                 key={slot}
                 className="title-entry"
-                style={{
-                  top: `${yPx}px`,
-                  fontSize: `${fontSize}px`,
-                  opacity,
-                  color: slot === 0 ? "#faf7f2" : "#e8e0d8",
-                  transition:
-                    "top 0.6s ease-out, opacity 0.6s ease-out, font-size 0.6s ease-out",
-                  zIndex: VISIBLE_COUNT - slot,
-                }}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ ...sharedStyle, textDecoration: "none", cursor: "pointer" }}
               >
                 {title}
-              </div>
+              </a>
             );
           })}
 
@@ -326,7 +389,7 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
               position: "absolute",
               top: STAGE_TOP_OFFSET,
               left: 0,
-              pointerEvents: "none",
+              pointerEvents: "auto",
             }}
           />
         )}
@@ -379,6 +442,28 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
             </button>
           ))}
         </span>
+
+        {isDev && (
+          <span className="speed-control">
+            <button
+              className={`speed-btn${wikipediaOnly ? " active" : ""}`}
+              onClick={onToggleWikipediaOnly}
+              title="Toggle between Wikipedia-only and all browsed sites"
+            >
+              {wikipediaOnly ? "wikipedia only" : "all sites"}
+            </button>
+          </span>
+        )}
+
+        {isDev && !wikipediaOnly && dataStats && (
+          <span
+            className="info-stat"
+            title={`${dataStats.wikiEvents} wikipedia · ${dataStats.nonWikiEvents} other sites`}
+            style={{ opacity: 0.5, fontSize: "11px", cursor: "help" }}
+          >
+            {dataStats.wikiEvents}w + {dataStats.nonWikiEvents}o
+          </span>
+        )}
 
         <button className="refresh-btn" onClick={onRefresh} disabled={loading}>
           ↺

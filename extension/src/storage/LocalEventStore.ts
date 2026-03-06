@@ -484,7 +484,23 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.openCursor();
+      const tsIndex = store.index("ts");
+
+      // Build a key range from startTs/endTs if provided
+      let range: IDBKeyRange | null = null;
+      if (options.startTs && options.endTs) {
+        range = IDBKeyRange.bound(options.startTs, options.endTs);
+      } else if (options.startTs) {
+        range = IDBKeyRange.lowerBound(options.startTs);
+      } else if (options.endTs) {
+        range = IDBKeyRange.upperBound(options.endTs);
+      }
+
+      // When limited without a date range, iterate newest-first so we
+      // return the most recent events rather than the oldest.
+      const useReverse = !!options.limit && !range;
+      const direction: IDBCursorDirection = useReverse ? "prev" : "next";
+      const request = tsIndex.openCursor(range, direction);
 
       const events: CollectionEvent[] = [];
 
@@ -496,8 +512,6 @@ export class LocalEventStore {
           let include = true;
 
           if (options.type && evt.type !== options.type) include = false;
-          if (options.startTs && evt.ts < options.startTs) include = false;
-          if (options.endTs && evt.ts > options.endTs) include = false;
 
           if (include) {
             events.push(evt);
@@ -542,7 +556,9 @@ export class LocalEventStore {
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursor>).result;
         if (cursor) {
-          const day = new Date(cursor.key as number).toISOString().slice(0, 10);
+          // Use local timezone so day labels match local midnight boundaries
+          const d = new Date(cursor.key as number);
+          const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           counts.set(day, (counts.get(day) ?? 0) + 1);
           cursor.continue();
         } else {

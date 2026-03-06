@@ -6,6 +6,7 @@ import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import type { CollectionEvent } from '../shared/types'
 import { VERBOSE } from '../config'
+import { gzipString, gunzipToString } from '../utils/dataTransfer'
 
 const store = new LocalEventStore()
 
@@ -331,6 +332,17 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'GET_SCREEN_TIME') {
+      const options = (message.options || {}) as Pick<QueryOptions, 'startTs' | 'endTs'>
+      store.getScreenTime(options)
+        .then((result) => reply({ success: true, ...result }))
+        .catch((e) => {
+          console.error('[Background] GET_SCREEN_TIME error:', e)
+          reply({ success: false, totalMs: 0, sessions: [], totalScrollDistancePx: 0 })
+        })
+      return true
+    }
+
     if (message.type === 'GET_ALL_EVENTS') {
       const options = (message.options || {}) as QueryOptions
       store.getAllEvents(options)
@@ -366,6 +378,49 @@ export default defineBackground(() => {
           console.error('[Background] QUERY_EVENTS_BY_URL error:', e)
           reply({ success: false, events: [] })
         })
+      return true
+    }
+
+    if (message.type === 'GET_ALL_DOMAINS') {
+      store.getAllDomains()
+        .then((domains) => reply({ success: true, domains }))
+        .catch((e) => {
+          console.error('[Background] GET_ALL_DOMAINS error:', e)
+          reply({ success: false, domains: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'EXPORT_EVENTS') {
+      ;(async () => {
+        try {
+          const events = await store.getAllEvents()
+          const identity = await getPlayerIdentity()
+          const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), events, identity })
+          const compressed = await gzipString(payload)
+          reply({ success: true, data: Array.from(compressed) })
+        } catch (e) {
+          console.error('[Background] EXPORT_EVENTS error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'IMPORT_EVENTS') {
+      ;(async () => {
+        try {
+          const json = await gunzipToString(new Uint8Array(message.data as number[]))
+          const parsed = JSON.parse(json)
+          if (parsed.version !== 1) throw new Error('Unsupported export version')
+          const events = parsed.events as CollectionEvent[]
+          await store.addEvents(events)
+          reply({ success: true, imported: events.length })
+        } catch (e) {
+          console.error('[Background] IMPORT_EVENTS error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
       return true
     }
   })

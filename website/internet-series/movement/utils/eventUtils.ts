@@ -5,26 +5,28 @@
 // saturation and constrained lightness. Inspired by minute-faces' time-color
 // mapping: vivid, harmonious, and legible over both light and dark backgrounds.
 export const RISO_COLORS = [
-  "hsl(10, 72%, 48%)", // warm red
-  "hsl(55, 68%, 42%)", // amber
-  "hsl(100, 55%, 40%)", // moss green
-  "hsl(155, 60%, 38%)", // teal
-  "hsl(210, 65%, 45%)", // steel blue
-  "hsl(260, 55%, 48%)", // violet
-  "hsl(310, 58%, 45%)", // magenta
-  "hsl(35, 70%, 45%)", // burnt orange
+  "rgb(0, 120, 191)", // Blue
+  "rgb(255, 102, 94)", // Bright Red
+  "rgb(0, 169, 92)", // Green
+  "rgb(255, 123, 75)", // Orange
+  "rgb(146, 55, 141)", // Purple
+  "rgb(255, 232, 0)", // Yellow
+  "rgb(255, 72, 176)", // Fluorescent Pink
+  "rgb(0, 131, 138)", // Teal
 ];
-
 // Tunable constants for time-based color derivation from a participant's
 // chosen cursor color. Inspired by minute-faces' time-of-day color model.
+// TODO: right now its too extreme because the adjustments happen linearly. so its hard to recognize yours
+// ideally it would be more of a normal distribution so most of the stuff looks just like your color?
 export const SESSION_HUE_CONFIG = {
   // Hue offset cycles fully each hour within this range (+/- half)
-  HOUR_HUE_RANGE: 20,
-  // Saturation offset cycles each hour within this range (+/- half)
-  HOUR_SAT_RANGE: 10,
+  HOUR_HUE_RANGE: 5,
+  // Saturation offset cycles each hour between min and max
+  HOUR_SAT_MIN: -5,
+  HOUR_SAT_MAX: 5,
   // Lightness offset driven by hour-of-day (midnight = min, noon = max)
-  DAY_LIGHT_MIN: -20,
-  DAY_LIGHT_MAX: 20,
+  DAY_LIGHT_MIN: -7,
+  DAY_LIGHT_MAX: 15,
 };
 
 /**
@@ -122,9 +124,11 @@ export function deriveSessionColor(
   const hueOffset =
     Math.sin(minuteFraction * Math.PI * 2) * (cfg.HOUR_HUE_RANGE / 2);
 
-  // Saturation: cosine cycle each hour (offset from hue) within HOUR_SAT_RANGE
+  // Saturation: cosine cycle each hour between HOUR_SAT_MIN and HOUR_SAT_MAX
   const satOffset =
-    Math.cos(minuteFraction * Math.PI * 2) * (cfg.HOUR_SAT_RANGE / 2);
+    cfg.HOUR_SAT_MIN +
+    (cfg.HOUR_SAT_MAX - cfg.HOUR_SAT_MIN) *
+      (0.5 + 0.5 * Math.cos(minuteFraction * Math.PI * 2));
 
   // Lightness: cosine across 24h, peak at noon (hour 12), trough at midnight (hour 0)
   const hourFraction = (hour + minute / 60) / 24;

@@ -413,31 +413,22 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   if (!visible) return null;
 
-  const overlayStyles: React.CSSProperties = settings.documentSpace
-    ? {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: documentCanvasSize
-          ? `${documentCanvasSize.height}px`
-          : "100%",
-        zIndex: 2147483647,
-        pointerEvents: "none",
-        overflow: "visible",
-        background: "transparent",
-      }
-    : {
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        zIndex: 2147483647,
-        pointerEvents: "none",
-        overflow: "hidden",
-        background: "transparent",
-      };
+  // Always use position: fixed to avoid:
+  // 1. Extending the page's scrollable area (position: absolute inflates scroll height)
+  // 2. Containment issues when an ancestor has position/overflow set
+  // In doc mode, AnimatedTrails updates its SVG viewBox imperatively each frame
+  // to track window.scrollX/scrollY, making trails appear glued to the page.
+  const overlayStyles: React.CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    zIndex: 2147483647,
+    pointerEvents: "none",
+    overflow: "hidden",
+    background: "transparent",
+  };
 
   // Shared micro-button style for action strip
   const actionBtnBase: React.CSSProperties = {
@@ -747,6 +738,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               timeRange={timeRange}
               showClickRipples={!settings.showCursorClicks}
               windowSize={settings.maxConcurrentTrails * 3}
+              documentSpace={settings.documentSpace}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 pointSize: settings.pointSize,
