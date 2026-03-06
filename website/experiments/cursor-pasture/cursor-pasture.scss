@@ -156,14 +156,20 @@ html, body {
 }
 
 @keyframes bob {
-  0%, 100% {
+  0% {
     transform: translateY(0) rotate(0deg);
   }
-  30% {
-    transform: translateY(-14px) rotate(2.5deg);
+  25% {
+    transform: translateY(-14px) rotate(2deg);
   }
-  60% {
-    transform: translateY(6px) rotate(-1.5deg);
+  50% {
+    transform: translateY(2px) rotate(-0.5deg);
+  }
+  75% {
+    transform: translateY(-8px) rotate(1.5deg);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
   }
 }
 
@@ -171,14 +177,20 @@ html, body {
   0% {
     transform: translate(0, 0) rotate(0deg) scale(1);
   }
-  15% {
-    transform: translate(40px, -80px) rotate(-12deg) scale(1.15);
+  10% {
+    transform: translate(15px, -40px) rotate(-5deg) scale(1.05);
   }
-  40% {
-    transform: translate(110px, -130px) rotate(8deg) scale(1.1);
+  25% {
+    transform: translate(55px, -110px) rotate(-10deg) scale(1.15);
   }
-  70% {
-    transform: translate(60px, -40px) rotate(-5deg) scale(1);
+  45% {
+    transform: translate(100px, -120px) rotate(4deg) scale(1.1);
+  }
+  65% {
+    transform: translate(80px, -60px) rotate(-2deg) scale(1.05);
+  }
+  85% {
+    transform: translate(30px, -15px) rotate(1deg) scale(1);
   }
   100% {
     transform: translate(0, 0) rotate(0deg) scale(1);
