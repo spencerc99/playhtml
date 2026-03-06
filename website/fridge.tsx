@@ -31,6 +31,7 @@ function usePinchZoom() {
     initialDistance: 0,
     initialScale: 1,
     isTwoFinger: false,
+    isOneFinger: false,
     lastX: 0,
     lastY: 0,
   });
@@ -61,16 +62,34 @@ function usePinchZoom() {
       y: (touches[0].clientY + touches[1].clientY) / 2,
     });
 
+    // Check if touch target is a draggable word or the toolbox
+    const isInteractiveTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      return !!(
+        target.closest(".fridgeWordHolder") ||
+        target.closest(".fridge-toolbox") ||
+        target.closest("a") ||
+        target.closest("button") ||
+        target.closest("input")
+      );
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
+      const gesture = gestureRef.current;
       if (e.touches.length === 2) {
         e.preventDefault();
-        const gesture = gestureRef.current;
         gesture.isTwoFinger = true;
+        gesture.isOneFinger = false;
         gesture.initialDistance = getDistance(e.touches);
         gesture.initialScale = stateRef.current.scale;
         const center = getCenter(e.touches);
         gesture.lastX = center.x;
         gesture.lastY = center.y;
+      } else if (e.touches.length === 1 && !isInteractiveTarget(e.target)) {
+        // One-finger pan on empty space
+        gesture.isOneFinger = true;
+        gesture.lastX = e.touches[0].clientX;
+        gesture.lastY = e.touches[0].clientY;
       }
     };
 
@@ -101,12 +120,28 @@ function usePinchZoom() {
 
         gesture.lastX = center.x;
         gesture.lastY = center.y;
+      } else if (e.touches.length === 1 && gesture.isOneFinger) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - gesture.lastX;
+        const dy = e.touches[0].clientY - gesture.lastY;
+
+        setTransform((prev) => ({
+          ...prev,
+          x: prev.x + dx,
+          y: prev.y + dy,
+        }));
+
+        gesture.lastX = e.touches[0].clientX;
+        gesture.lastY = e.touches[0].clientY;
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
         gestureRef.current.isTwoFinger = false;
+      }
+      if (e.touches.length === 0) {
+        gestureRef.current.isOneFinger = false;
       }
     };
 
