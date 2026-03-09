@@ -331,6 +331,33 @@ export default function App() {
               as users, but as neighbors and stewards nurturing a home for
               generations to come.
             </p>
+
+            <b>open questions I'm exploring:</b>
+            <ol>
+              <li>
+                How do you foster{" "}
+                <a href="https://www.are.na/omayeli-arenyeka/solidarity-on-the-web">
+                  solidarity on the web
+                </a>
+                ?
+              </li>
+              <li>
+                What makes a digital space feel safe for you to express yourself
+                and how much of yourself do you need to reveal to feel genuinely
+                connected to a stranger online?
+              </li>
+              <li>
+                How can it feel genuinely good and meaningful to spend time
+                online without veering into addiction?
+              </li>
+              <li>
+                What can serve as a{" "}
+                <a href="https://www.poetryfoundation.org/poetrymagazine/articles/60484/the-third-thing">
+                  "third thing"
+                </a>{" "}
+                to help us find "joint rapture"?
+              </li>
+            </ol>
           </div>
         </section>
         <section className={`${styles.section} ${styles.bottomCta}`}>
