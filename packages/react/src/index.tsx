@@ -447,7 +447,7 @@ export function withSharedState<T extends object, V = any, P = any>(
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
-export { useCursorPresences } from "./hooks";
+export { useCursorPresences, useCursorZone } from "./hooks";
 export {
   CanMoveElement,
   CanSpinElement,

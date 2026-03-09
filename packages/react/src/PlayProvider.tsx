@@ -1,6 +1,6 @@
 import { PropsWithChildren, createContext, useEffect, useState } from "react";
 import playhtml from "./playhtml-singleton";
-import { InitOptions, CursorOptions } from "playhtml";
+import { InitOptions, CursorOptions, CursorZoneOptions } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
 import { CursorEvents, CursorPresenceView, PlayerIdentity } from "@playhtml/common";
 
@@ -22,6 +22,8 @@ export interface PlayContextInfo
    * Returns true if applied; false if cursor not found.
    */
   triggerCursorAnimation: (stableId: string, animationClass: string, durationMs?: number) => boolean;
+  registerCursorZone: (element: HTMLElement, options?: CursorZoneOptions) => void;
+  unregisterCursorZone: (elementId: string) => void;
   cursors: CursorEvents;
   cursorPresences: Map<string, CursorPresenceView>;
 }
@@ -61,6 +63,16 @@ export const PlayContext = createContext<PlayContextInfo>({
     );
   },
   deleteElementData: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  registerCursorZone: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  unregisterCursorZone: () => {
     throw new Error(
       "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
     );
@@ -123,6 +135,14 @@ export function PlayProvider({
   ): boolean => {
     if (!playhtml.cursorClient) return false;
     return playhtml.cursorClient.triggerCursorAnimation(stableId, animationClass, durationMs);
+  };
+
+  const registerCursorZone = (element: HTMLElement, options?: CursorZoneOptions) => {
+    playhtml.cursorClient?.registerZone(element, options);
+  };
+
+  const unregisterCursorZone = (elementId: string) => {
+    playhtml.cursorClient?.unregisterZone(elementId);
   };
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
@@ -189,6 +209,8 @@ export function PlayProvider({
         configureCursors,
         getMyPlayerIdentity,
         triggerCursorAnimation,
+        registerCursorZone,
+        unregisterCursorZone,
         cursors: cursorsState,
         cursorPresences,
       }}

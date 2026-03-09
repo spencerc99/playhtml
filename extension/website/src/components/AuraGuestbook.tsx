@@ -292,8 +292,7 @@ export const AuraGuestbook = withSharedState(
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const guestbookRef = useRef<HTMLDivElement>(null);
 
-    // TODO: Remove before shipping — use `data` instead of fallback
-    const entries = MOCK_ENTRIES;
+    const entries = data;
     // Oldest at bottom (lowest z-index), newest on top
     const sortedEntries = useMemo(
       () => [...entries].sort((a, b) => a.timestamp - b.timestamp),

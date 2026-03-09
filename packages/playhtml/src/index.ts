@@ -301,6 +301,11 @@ export type CursorRoom =
 
 export type CursorCoordinateMode = "relative" | "absolute";
 
+export interface CursorZoneOptions {
+  onCustomCursorRender?: (connectionId: string, element: HTMLElement) => HTMLElement | null;
+  getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
+}
+
 export interface CursorOptions {
   enabled?: boolean;
   playerIdentity?: PlayerIdentity;

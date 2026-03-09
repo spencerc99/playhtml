@@ -2,7 +2,7 @@
 // ABOUTME: Tracks persistent sit count via shared state; tilted cursor on hover, auto-sit once per session.
 
 import { useState, useEffect, useRef } from "react";
-import { withSharedState, usePlayContext } from "@playhtml/react";
+import { withSharedState, usePlayContext, useCursorZone } from "@playhtml/react";
 import styles from "./Bench.module.scss";
 
 interface BenchData {
@@ -23,10 +23,16 @@ function getTiltedCursorUrl(color: string): string {
 
 export const Bench = withSharedState<BenchData, any, BenchProps>(
   () => ({ defaultData: { sitCount: 0 } }),
-  ({ data, setData }, props) => {
+  ({ data, setData, ref }, props) => {
     const { cursors } = usePlayContext();
     const [hasSat, setHasSat] = useState(false);
     const hasSatRef = useRef(false);
+
+    // Register the bench as a cursor zone so remote cursors appear
+    // positioned relative to this element on every visitor's screen.
+    // The tilted cursor appearance is already handled by the CSS cursor
+    // property which gets broadcast as the pointer type.
+    useCursorZone(ref);
 
     useEffect(() => {
       const sat = sessionStorage.getItem(SESSION_KEY) === "true";

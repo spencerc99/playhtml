@@ -1,4 +1,5 @@
-// Basic cursor types shared between client and server
+// ABOUTME: Shared cursor types for real-time collaborative cursor rendering.
+// ABOUTME: Includes presence, identity, zone positioning, and event payloads.
 
 export type Cursor = {
   x: number;
@@ -17,18 +18,26 @@ export type PlayerIdentity = {
   createdAt?: number;
 };
 
+export type CursorZonePosition = {
+  zoneId: string;       // matches element.id of the zone element
+  relX: number;         // 0-1, percentage within zone element's bounding box
+  relY: number;         // 0-1
+};
+
 export type CursorPresence = {
   cursor?: Cursor | null;
   playerIdentity?: PlayerIdentity;
   lastSeen?: number;
   message?: string | null;
   page?: string;
+  zone?: CursorZonePosition | null;
 };
 
 // Slim cursor presence type for rendering (excludes internal fields)
 export type CursorPresenceView = {
   cursor: Cursor | null;
   playerIdentity?: PlayerIdentity;
+  zone?: CursorZonePosition | null;
 };
 
 // Event payloads for cursor-related global API updates

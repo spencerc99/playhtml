@@ -2,6 +2,7 @@ import type YPartyKitProvider from "y-partykit/provider";
 import {
   CursorPresence,
   CursorPresenceView,
+  CursorZonePosition,
   PlayerIdentity,
   Cursor,
   generatePersistentPlayerIdentity,
@@ -10,12 +11,13 @@ import {
   CursorEvents,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
-import type { CursorOptions } from "..";
+import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
+
 
 /** Cursor presence that has been validated: has cursor, playerIdentity with publicKey and primary color. */
 export type ValidCursorPresence = CursorPresence & {
@@ -306,18 +308,12 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   if (!cursorStyle.startsWith('url("')) {
     return;
   }
-  cursorStyle = cursorStyle.slice(5);
-
-  if (!cursorStyle.endsWith('"), auto') && !cursorStyle.endsWith('")')) {
+  // Extract the URL between url(" and the closing ")
+  const closeQuote = cursorStyle.indexOf('")', 5);
+  if (closeQuote === -1) {
     return;
   }
-  if (cursorStyle.endsWith('"), auto')) {
-    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 8);
-  } else {
-    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 2);
-  }
-
-  return cursorStyle;
+  return cursorStyle.slice(5, closeQuote);
 }
 
 export class CursorClientAwareness {
@@ -342,6 +338,9 @@ export class CursorClientAwareness {
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
+  private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
+  private currentZone: CursorZonePosition | null = null;
+  private cursorZoneState: Map<string, string | null> = new Map(); // clientId -> previous zoneId
 
   constructor(
     private provider: YPartyKitProvider,
@@ -604,6 +603,75 @@ export class CursorClientAwareness {
     this.isStylesAdded = true;
   }
 
+  // Build the onUpdate callback for a SpringAnimator. Position values are
+  // always in pixel space — zone-relative coordinates are resolved to pixels
+  // before being fed to the spring.
+  private createCursorPositionCallback(
+    clientId: string,
+  ): (position: { x: number; y: number }) => void {
+    return (position) => {
+      const el = this.cursors.get(clientId);
+      if (!el) return;
+
+      el.style.position = "fixed";
+      el.style.left = `${position.x}px`;
+      el.style.top = `${position.y}px`;
+      el.style.zIndex = "999999";
+      el.style.pointerEvents = "none";
+    };
+  }
+
+  // Apply zone-specific cursor styling, or revert to global styling when leaving a zone.
+  private applyZoneStyling(
+    cursorElement: HTMLElement,
+    cursorData: ValidCursorPresence,
+    zoneId: string | null,
+  ): void {
+    // Reset any previously applied zone styles
+    cursorElement.style.cssText = cursorElement.style.cssText; // keep structural styles
+
+    if (zoneId) {
+      const zoneEntry = this.zones.get(zoneId);
+      if (zoneEntry?.options?.getCursorStyle) {
+        const zoneStyles = zoneEntry.options.getCursorStyle(cursorData);
+        Object.assign(cursorElement.style, zoneStyles);
+        return;
+      }
+    }
+
+    // No zone or no zone-specific style: apply global getCursorStyle if present
+    if (this.options.getCursorStyle) {
+      const globalStyles = this.options.getCursorStyle(cursorData);
+      Object.assign(cursorElement.style, globalStyles);
+    }
+  }
+
+  private hitTestZones(clientX: number, clientY: number): CursorZonePosition | null {
+    let bestZone: CursorZonePosition | null = null;
+    let smallestArea = Infinity;
+
+    for (const [zoneId, { element }] of this.zones) {
+      if (!document.contains(element)) continue;
+      const rect = element.getBoundingClientRect();
+      if (
+        clientX >= rect.left && clientX <= rect.right &&
+        clientY >= rect.top && clientY <= rect.bottom
+      ) {
+        const area = rect.width * rect.height;
+        if (area < smallestArea) {
+          smallestArea = area;
+          bestZone = {
+            zoneId,
+            relX: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+            relY: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+          };
+        }
+      }
+    }
+
+    return bestZone;
+  }
+
   private setupCursorTracking(): void {
     const updateCursor = (e: MouseEvent) => {
       let pointer = "mouse";
@@ -644,6 +712,7 @@ export class CursorClientAwareness {
         y: storageCoords.y,
         pointer,
       };
+      this.currentZone = this.hitTestZones(e.clientX, e.clientY);
       this.throttledUpdateCursorAwareness();
 
       // Update visibility of all other cursors when our cursor moves
@@ -664,6 +733,7 @@ export class CursorClientAwareness {
           y: storageCoords.y,
           pointer: "touch",
         };
+        this.currentZone = this.hitTestZones(touch.clientX, touch.clientY);
         this.throttledUpdateCursorAwareness();
 
         // Update visibility of all other cursors when our cursor moves
@@ -748,6 +818,23 @@ export class CursorClientAwareness {
       const animator = this.cursorAnimators.get(stableId);
       if (!animator) continue;
 
+      // For cursors in a zone, re-resolve from the zone element's current
+      // bounding rect so the cursor tracks the element after scroll/resize.
+      if (valid.zone) {
+        const zoneEntry = this.zones.get(valid.zone.zoneId);
+        if (zoneEntry && document.contains(zoneEntry.element)) {
+          const rect = zoneEntry.element.getBoundingClientRect();
+          const cursorEl = this.cursors.get(stableId);
+          const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
+          const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
+          const zoneX = rect.left + valid.zone.relX * rect.width - offsetX;
+          const zoneY = rect.top + valid.zone.relY * rect.height - offsetY;
+          animator.snapTo({ x: zoneX, y: zoneY });
+          continue;
+        }
+        // Zone not found locally: fall through to viewport positioning
+      }
+
       const targetCoords = storageToClientCoordinates(
         valid.cursor.x,
         valid.cursor.y,
@@ -799,6 +886,7 @@ export class CursorClientAwareness {
       lastSeen: Date.now(),
       message: this.currentMessage,
       page: window.location.pathname,
+      zone: this.currentZone,
     };
 
     // Set cursor data in awareness using reserved field
@@ -850,12 +938,51 @@ export class CursorClientAwareness {
       this.updateCursorName(cursorElement, identity);
     }
 
-    // Convert from storage coordinates to client coordinates for target position
-    const targetCoords = storageToClientCoordinates(
-      cursor.x,
-      cursor.y,
-      this.coordinateMode,
-    );
+    // Resolve target position: zone-relative or viewport coordinates
+    const zone = cursorData.zone;
+    const prevZoneId = this.cursorZoneState.get(clientId) ?? null;
+    const currZoneId = zone?.zoneId ?? null;
+    const zoneChanged = prevZoneId !== currZoneId;
+    this.cursorZoneState.set(clientId, currZoneId);
+
+    let targetCoords: { x: number; y: number };
+    let inZone = false;
+
+    if (zone) {
+      const zoneEntry = this.zones.get(zone.zoneId);
+      if (zoneEntry && document.contains(zoneEntry.element)) {
+        // Resolve zone-relative (0-1) to viewport pixels via live bounding rect
+        const rect = zoneEntry.element.getBoundingClientRect();
+        // Center the cursor element on the target point by offsetting
+        // by half its rendered dimensions.
+        const cursorEl = this.cursors.get(clientId);
+        const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
+        const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
+        targetCoords = {
+          x: rect.left + zone.relX * rect.width - offsetX,
+          y: rect.top + zone.relY * rect.height - offsetY,
+        };
+        inZone = true;
+      } else {
+        // Zone not registered locally: fall back to viewport coordinates
+        targetCoords = storageToClientCoordinates(
+          cursor.x,
+          cursor.y,
+          this.coordinateMode,
+        );
+      }
+    } else {
+      targetCoords = storageToClientCoordinates(
+        cursor.x,
+        cursor.y,
+        this.coordinateMode,
+      );
+    }
+
+    // Apply zone-specific styling (or revert to global styling on zone exit)
+    if (zoneChanged) {
+      this.applyZoneStyling(cursorElement, cursorData, inZone ? currZoneId : null);
+    }
 
     const cursorSize = 20;
     const margin = 2;
@@ -872,32 +999,24 @@ export class CursorClientAwareness {
       Math.min(viewportHeight - margin, targetCoords.y),
     );
 
-    // Get or create spring animator for this cursor
+    // Spring always operates in pixel space. Zone-relative coords are resolved
+    // to pixels above (via getBoundingClientRect) before reaching the spring.
     let animator = this.cursorAnimators.get(clientId);
 
     if (!animator) {
-      // Create new animator with current target as initial position (no jump on first render).
-      // Resolve element by clientId in the callback so that when the cursor element is
-      // recreated (e.g. pointer type change mouse→touch), the animator still updates the
-      // current element from this.cursors, not a stale reference.
       animator = new SpringAnimator(
         { x: clampedTargetX, y: clampedTargetY },
-        (position) => {
-          const el = this.cursors.get(clientId);
-          if (el) {
-            el.style.position = "fixed";
-            el.style.left = `${position.x}px`;
-            el.style.top = `${position.y}px`;
-            el.style.zIndex = "999999";
-            el.style.pointerEvents = "none";
-          }
-        },
+        this.createCursorPositionCallback(clientId),
       );
       this.cursorAnimators.set(clientId, animator);
     }
 
-    // Update animator target to new position (triggers spring animation)
-    animator.setTarget({ x: clampedTargetX, y: clampedTargetY });
+    if (zoneChanged) {
+      // Snap on zone transition (no spring across coordinate spaces)
+      animator.snapTo({ x: clampedTargetX, y: clampedTargetY });
+    } else {
+      animator.setTarget({ x: clampedTargetX, y: clampedTargetY });
+    }
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
@@ -1061,12 +1180,13 @@ export class CursorClientAwareness {
       }, 300);
     }
 
-    // Clean up spring animator
+    // Clean up spring animator and zone state
     const animator = this.cursorAnimators.get(clientId);
     if (animator) {
       animator.destroy();
       this.cursorAnimators.delete(clientId);
     }
+    this.cursorZoneState.delete(clientId);
   }
 
   private savePlayerIdentityToStorage(): void {
@@ -1387,6 +1507,17 @@ export class CursorClientAwareness {
     }
   }
 
+  registerZone(element: HTMLElement, options?: CursorZoneOptions): void {
+    if (!element.id) {
+      throw new Error("[playhtml] Zone element must have an id attribute.");
+    }
+    this.zones.set(element.id, { element, options });
+  }
+
+  unregisterZone(elementId: string): void {
+    this.zones.delete(elementId);
+  }
+
   hideCursor(connectionId: string): void {
     const cursorElement = this.cursors.get(connectionId);
     if (cursorElement) {
@@ -1410,8 +1541,10 @@ export class CursorClientAwareness {
     this.cursorAnimators.forEach((animator) => animator.destroy());
     this.cursorAnimators.clear();
 
-    // Clean up spatial grid
+    // Clean up spatial grid and zone state
     this.spatialGrid.clear();
+    this.zones.clear();
+    this.cursorZoneState.clear();
 
     // Clean up chat
     if (this.chat) {
@@ -1507,6 +1640,7 @@ export class CursorClientAwareness {
           pointer: valid.cursor.pointer,
         },
         playerIdentity: valid.playerIdentity,
+        zone: valid.zone,
       });
     });
 
