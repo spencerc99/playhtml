@@ -373,7 +373,7 @@ export default function App() {
             </li>
             <li>
               <a
-                href="https://news.spencer.place/p/ti-09-the-internet-is-one-big-video"
+                href="https://www.youtube.com/watch?v=l-2t-N96Bn8"
                 target="_blank"
                 rel="noopener noreferrer"
               >
