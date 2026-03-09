@@ -48,12 +48,14 @@ function seededRandom(seed: number): number {
   return x - Math.floor(x);
 }
 
-// Cards spread across the container with random positions (not ordered by age)
-function getCardTransform(timestamp: number, index: number) {
+// Cards cluster near center first, spreading outward as the pile grows
+function getCardTransform(timestamp: number, index: number, total: number) {
   const seed = timestamp + index * 7919;
   const rotation = (seededRandom(seed) - 0.5) * 20; // -10 to +10 deg
-  // Fully random horizontal spread, not correlated with index order
-  const spreadX = 10 + seededRandom(seed + 3) * 80; // 10% to 90%
+  // Spread range grows with card count: few cards stay tight, many cards fill the width
+  const maxSpread = Math.min(40, 5 + total * 3); // 8% to 40% from center
+  const jitter = (seededRandom(seed + 3) - 0.5) * 2; // -1 to +1
+  const spreadX = 50 + jitter * maxSpread; // centered at 50%
   const jitterY = (seededRandom(seed + 2) - 0.5) * 40; // -20 to +20 px
   return { rotation, spreadX, jitterY };
 }
@@ -109,9 +111,9 @@ function VisitorOrbs({ entries }: { entries: GuestbookEntry[] }) {
       {visible.map((color, i) => {
         // Deterministic irregular placement
         const seed = i * 7919 + color.charCodeAt(1);
-        const offsetY = (seededRandom(seed) - 0.5) * 18; // -9 to +9 px vertical scatter
+        const offsetY = (seededRandom(seed) - 0.5) * 24; // -12 to +12 px vertical scatter
         const size = 10 + seededRandom(seed + 1) * 8; // 10-18px varied sizes
-        const marginLeft = -4 + (seededRandom(seed + 2) - 0.5) * 6; // -7 to -1 px overlap variation
+        const marginLeft = -2 + (seededRandom(seed + 2) - 0.5) * 8; // -6 to +2 px, more gaps
         return (
           <div
             key={`${color}-${i}`}
@@ -135,6 +137,148 @@ function VisitorOrbs({ entries }: { entries: GuestbookEntry[] }) {
   );
 }
 
+// TODO: Remove before shipping — temporary mock data for visual testing
+const MOCK_ENTRIES: GuestbookEntry[] = [
+  {
+    name: "mika",
+    color: "#c4724e",
+    message: "this is so cool, love the vibes",
+    timestamp: Date.now() - 1000 * 60 * 30,
+  },
+  {
+    name: "jess",
+    color: "#4a9a8a",
+    message: "stumbled here from the reel, glad i did",
+    timestamp: Date.now() - 1000 * 60 * 60 * 3,
+  },
+  {
+    name: "someone",
+    color: "#d4b85c",
+    message: "the internet needs more places like this",
+    timestamp: Date.now() - 1000 * 60 * 60 * 12,
+  },
+  {
+    name: "river",
+    color: "#5b8db8",
+    message: "i can see other people here??",
+    timestamp: Date.now() - 1000 * 60 * 60 * 24,
+  },
+  {
+    name: "sol",
+    color: "#8a6bb8",
+    message: "leaving my mark",
+    timestamp: Date.now() - 1000 * 60 * 60 * 48,
+  },
+  {
+    name: "anon",
+    color: "#b85b5b",
+    message: "we were here together, even if just for a moment",
+    timestamp: Date.now() - 1000 * 60 * 60 * 72,
+  },
+  {
+    name: "kira",
+    color: "#6bb88a",
+    message: "reminds me of old geocities days",
+    timestamp: Date.now() - 1000 * 60 * 60 * 120,
+  },
+  {
+    name: "ghost",
+    color: "#8a8279",
+    message: "hello from the other side of the screen",
+    timestamp: Date.now() - 1000 * 60 * 60 * 200,
+  },
+  {
+    name: "mika",
+    color: "#c4724e",
+    message: "this is so cool, love the vibes",
+    timestamp: Date.now() - 1000 * 60 * 30,
+  },
+  {
+    name: "jess",
+    color: "#4a9a8a",
+    message: "stumbled here from the reel, glad i did",
+    timestamp: Date.now() - 1000 * 60 * 60 * 3,
+  },
+  {
+    name: "someone",
+    color: "#d4b85c",
+    message: "the internet needs more places like this",
+    timestamp: Date.now() - 1000 * 60 * 60 * 12,
+  },
+  {
+    name: "river",
+    color: "#5b8db8",
+    message: "i can see other people here??",
+    timestamp: Date.now() - 1000 * 60 * 60 * 24,
+  },
+  {
+    name: "sol",
+    color: "#8a6bb8",
+    message: "leaving my mark",
+    timestamp: Date.now() - 1000 * 60 * 60 * 48,
+  },
+  {
+    name: "anon",
+    color: "#b85b5b",
+    message: "we were here together, even if just for a moment",
+    timestamp: Date.now() - 1000 * 60 * 60 * 72,
+  },
+  {
+    name: "kira",
+    color: "#6bb88a",
+    message: "reminds me of old geocities days",
+    timestamp: Date.now() - 1000 * 60 * 60 * 120,
+  },
+  {
+    name: "ghost",
+    color: "#8a8279",
+    message: "hello from the other side of the screen",
+    timestamp: Date.now() - 1000 * 60 * 60 * 200,
+  },
+  {
+    name: "jess",
+    color: "#4a9a8a",
+    message: "stumbled here from the reel, glad i did",
+    timestamp: Date.now() - 1000 * 60 * 60 * 3,
+  },
+  {
+    name: "someone",
+    color: "#d4b85c",
+    message: "the internet needs more places like this",
+    timestamp: Date.now() - 1000 * 60 * 60 * 12,
+  },
+  {
+    name: "river",
+    color: "#5b8db8",
+    message: "i can see other people here??",
+    timestamp: Date.now() - 1000 * 60 * 60 * 24,
+  },
+  {
+    name: "sol",
+    color: "#8a6bb8",
+    message: "leaving my mark",
+    timestamp: Date.now() - 1000 * 60 * 60 * 48,
+  },
+  {
+    name: "anon",
+    color: "#b85b5b",
+    message: "we were here together, even if just for a moment",
+    timestamp: Date.now() - 1000 * 60 * 60 * 72,
+  },
+  {
+    name: "kira",
+    color: "#6bb88a",
+    message: "reminds me of old geocities days",
+    timestamp: Date.now() - 1000 * 60 * 60 * 120,
+  },
+  {
+    name: "ghost",
+    color: "#8a8279",
+    message: "hello from the other side of the screen",
+    timestamp: Date.now() - 1000 * 60 * 60 * 200,
+  },
+];
+
 export const AuraGuestbook = withSharedState(
   { defaultData: [] as GuestbookEntry[] },
   ({ data, setData }) => {
@@ -148,7 +292,8 @@ export const AuraGuestbook = withSharedState(
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const guestbookRef = useRef<HTMLDivElement>(null);
 
-    const entries = data;
+    // TODO: Remove before shipping — use `data` instead of fallback
+    const entries = MOCK_ENTRIES;
     // Oldest at bottom (lowest z-index), newest on top
     const sortedEntries = useMemo(
       () => [...entries].sort((a, b) => a.timestamp - b.timestamp),
@@ -250,6 +395,7 @@ export const AuraGuestbook = withSharedState(
               const { rotation, spreadX, jitterY } = getCardTransform(
                 entry.timestamp,
                 i,
+                sortedEntries.length,
               );
               const ageFilter = getAgeFilter(entry.timestamp);
               const textureClass = getTextureClass(i);
@@ -359,6 +505,8 @@ export const AuraGuestbook = withSharedState(
             </div>
           )}
         </div>
+
+        <p className={styles.arrowHint}>use arrow keys to browse</p>
 
         {/* Compose — live preview card with inline editing */}
         {!hasSubmitted && (

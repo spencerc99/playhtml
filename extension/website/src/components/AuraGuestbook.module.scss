@@ -23,17 +23,12 @@
   justify-content: center;
   flex-wrap: wrap;
   padding: 4px 16px 12px;
-  gap: 0;
+  gap: 4px 2px;
 }
 
 .visitorOrb {
   border-radius: 50%;
   flex-shrink: 0;
-  transition: transform 0.2s ease;
-
-  &:hover {
-    transform: translateY(0) scale(1.4) !important;
-  }
 }
 
 .visitorOverflow {
@@ -89,6 +84,16 @@
   width: min(1200px, 90vw);
   margin-left: 50%;
   transform: translateX(-50%);
+  background: url("/corkboard-2.png") center / cover no-repeat;
+  border-radius: 6px;
+  padding: 16px;
+
+  @media (max-width: 480px) {
+    width: 100vw;
+    border-radius: 0;
+    padding: 16px 0;
+    overflow: hidden;
+  }
 }
 
 .pile {
@@ -100,15 +105,13 @@
 }
 
 .pileDimmed {
-  opacity: 0.15;
+  opacity: 0.4;
   pointer-events: none;
 }
 
-// Individual card — rectangles spread across the container
+// Individual card — rectangles pinned to the corkboard
 .card {
   position: absolute;
-  margin-left: -75px;
-  margin-top: -48px;
   width: 150px;
   height: 96px;
   border-radius: 4px;
@@ -122,11 +125,13 @@
   text-align: center;
   overflow: hidden;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 0.3s ease, filter 0.2s ease;
 
   &:hover {
     filter: brightness(1.12) saturate(1.15) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
   &:active {
@@ -138,8 +143,8 @@
   font-family: $font-body;
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
@@ -151,8 +156,8 @@
   font-family: $font-body;
   font-size: 0.6875rem;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.8);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -201,6 +206,7 @@
   align-items: center;
   text-align: center;
   gap: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
   animation: cardExpand 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -220,7 +226,7 @@
   font-size: 1rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .expandedMessage {
@@ -228,51 +234,52 @@
   font-size: 1rem;
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.95);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   word-break: break-word;
 }
 
 .expandedMeta {
   font-family: $font-body;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.65);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   margin-top: 4px;
 }
 
 .expandedClose {
-  background: none;
+  background: rgba(255, 255, 255, 0.7);
   border: none;
+  border-radius: 3px;
   font-family: $font-body;
   font-size: 0.75rem;
-  color: $text-muted;
+  color: $text;
   cursor: pointer;
   padding: 4px 16px;
   letter-spacing: 0.04em;
-  transition: color 0.15s;
-  border-bottom: 1px solid transparent;
+  transition: background 0.15s, color 0.15s;
 
   &:hover {
-    color: $text;
-    border-bottom-color: rgba($text, 0.2);
+    background: rgba(255, 255, 255, 0.9);
   }
 }
 
 .navButton {
   flex-shrink: 0;
-  background: none;
+  background: rgba(255, 255, 255, 0.6);
   border: none;
-  color: $text-muted;
+  border-radius: 50%;
+  color: $text;
   cursor: pointer;
-  padding: 8px 4px;
-  transition: color 0.15s, transform 0.15s;
+  padding: 8px;
+  transition: background 0.15s, transform 0.15s;
 
   &:hover:not(:disabled) {
-    color: $text;
-    transform: scale(1.15);
+    background: rgba(255, 255, 255, 0.85);
+    transform: scale(1.1);
   }
 
   &:disabled {
-    opacity: 0.15;
+    opacity: 0.25;
     cursor: default;
   }
 }
@@ -286,8 +293,8 @@
 }
 
 .composeCard {
-  width: 120px;
-  height: 80px;
+  width: 200px;
+  height: 120px;
   border-radius: 4px;
   border: 2px dashed rgba(255, 255, 255, 0.3);
   cursor: pointer;
@@ -304,7 +311,7 @@
 
 .composeCta {
   font-family: $font-body;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.85);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
@@ -346,22 +353,24 @@
   font-family: $font-body;
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-  background: none;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.12);
   border: none;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 3px 3px 0 0;
   outline: none;
   text-align: center;
   width: 80%;
-  padding: 2px 4px;
+  padding: 4px 6px;
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.55);
   }
 
   &:focus {
-    border-bottom-color: rgba(255, 255, 255, 0.6);
+    background: rgba(0, 0, 0, 0.18);
+    border-bottom-color: rgba(255, 255, 255, 0.7);
   }
 }
 
@@ -369,19 +378,24 @@
   font-family: $font-body;
   font-size: 0.8125rem;
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.95);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  background: none;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.12);
   border: none;
+  border-radius: 3px;
   outline: none;
   text-align: center;
   width: 100%;
   min-height: 60px;
   resize: none;
-  padding: 4px;
+  padding: 6px;
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  &:focus {
+    background: rgba(0, 0, 0, 0.18);
   }
 }
 
@@ -425,4 +439,13 @@
     opacity: 0.4;
     cursor: default;
   }
+}
+
+.arrowHint {
+  font-family: $font-body;
+  font-size: 0.6875rem;
+  color: $text-muted;
+  text-align: center;
+  margin-top: 8px;
+  opacity: 0.6;
 }

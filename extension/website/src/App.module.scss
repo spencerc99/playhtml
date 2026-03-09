@@ -17,7 +17,7 @@ $accent-rust: #c4724e;
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 1;
 }
 
 .content {
@@ -287,16 +287,70 @@ $accent-rust: #c4724e;
   }
 }
 
-.arrowHint {
-  font-family: $font-body;
-  font-size: 0.6875rem;
-  color: $text-muted;
-  text-align: center;
-  margin-top: 8px;
-  opacity: 0.6;
-}
-
 .bottomCta {
   text-align: center;
-  padding-bottom: 96px;
+  padding: 0 24px;
+}
+
+// --- Further reading ---
+
+.furtherReading {
+  padding-bottom: 32px;
+}
+
+.linkList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  a {
+    font-family: $font-body;
+    font-size: 0.9375rem;
+    color: $accent-teal;
+    text-decoration: none;
+    border-bottom: 1px solid rgba($accent-teal, 0.3);
+    padding-bottom: 1px;
+    transition: color 0.2s, border-color 0.2s;
+
+    &:hover {
+      color: darken($accent-teal, 8%);
+      border-color: $accent-teal;
+    }
+  }
+}
+
+// --- Footer ---
+
+.footer {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  text-align: center;
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  color: $text-muted;
+  line-height: 1.6;
+
+  a {
+    color: $text;
+    text-decoration: none;
+    border-bottom: 1px solid rgba($text, 0.2);
+    padding-bottom: 1px;
+    transition: color 0.15s, border-color 0.15s;
+
+    &:hover {
+      border-color: rgba($text, 0.5);
+    }
+  }
+
+  p {
+    margin: 0;
+  }
+
+  p + p {
+    margin-top: 4px;
+  }
 }

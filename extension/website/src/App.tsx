@@ -168,7 +168,7 @@ export default function App() {
             rel="noopener noreferrer"
             className={styles.cta}
           >
-            sign up for beta access
+            sign up to try it!
           </a>
           <div className={styles.scrollHint} aria-hidden="true">
             <svg
@@ -333,25 +333,73 @@ export default function App() {
             </p>
           </div>
         </section>
-
-        <section className={styles.section}>
-          <AuraGuestbook id="wewere-online-guestbook" />
-          <p className={styles.arrowHint}>use arrow keys to browse</p>
-        </section>
-
         <section className={`${styles.section} ${styles.bottomCta}`}>
-          <p className={styles.tagline} style={{ marginBottom: 16 }}>
-            interested?
-          </p>
           <a
             href="https://forms.gle/iX8Lfgcy3LW79EsRA"
             target="_blank"
             rel="noopener noreferrer"
             className={styles.cta}
           >
-            sign up for beta access
+            sign up to try it!
           </a>
         </section>
+
+        <section className={styles.section}>
+          <AuraGuestbook id="wewere-online-guestbook" />
+        </section>
+
+        <section className={`${styles.section} ${styles.furtherReading}`}>
+          <h2 className={styles.sectionHeading}>further reading</h2>
+          <ul className={styles.linkList}>
+            <li>
+              <a
+                href="https://news.spencer.place/p/alive-internet-theory"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                alive internet theory
+              </a>{" "}
+              on how we'll never let the Internet die
+            </li>
+            <li>
+              <a
+                href="https://news.spencer.place/p/ti-09-the-internet-is-one-big-video"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                the internet is one big video game
+              </a>{" "}
+              on how the Internet was meant to be a place to talk to one another
+            </li>
+            <li>
+              <a
+                href="https://news.spencer.place/p/ti-09-the-internet-is-one-big-video"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Perpetual motion machine
+              </a>{" "}
+              on searching for technology that propagates infinite cycles
+            </li>
+          </ul>
+        </section>
+
+        <footer className={styles.footer}>
+          <p>
+            stewarded by{" "}
+            <a
+              href="https://spencer.place"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              spencer
+            </a>
+          </p>
+          <p>
+            contact <a href="mailto:hi@spencer.place">hi@spencer.place</a> with
+            questions, provocations, ideas
+          </p>
+        </footer>
       </div>
 
       <PresenceIndicator />
