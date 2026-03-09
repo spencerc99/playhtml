@@ -1,0 +1,73 @@
+// ABOUTME: Styles for the sticky presence indicator pill.
+// ABOUTME: Positioned bottom-right with backdrop blur and colored dot layout.
+
+@use '../styles/variables' as *;
+
+.pill {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba($bg, 0.8);
+  backdrop-filter: blur(8px);
+  border-radius: 999px;
+  border: 1px solid rgba($text, 0.08);
+  font-family: $font-body;
+  font-size: 0.75rem;
+  color: $text-muted;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.dotWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.youLabel {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px;
+  line-height: 1;
+  color: $text-muted;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 3s ease-in-out infinite;
+}
+
+.dotYou {
+  width: 10px;
+  height: 10px;
+}
+
+.overflow {
+  font-size: 0.625rem;
+  color: $text-muted;
+  margin-left: 2px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

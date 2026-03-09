@@ -1,0 +1,428 @@
+// ABOUTME: Styles for the layered card guestbook — stacked like flyers on a pole.
+// ABOUTME: Cards have paper textures, aura glow, and expand to larger card view.
+
+@use "../styles/variables" as *;
+
+.guestbook {
+  width: 100%;
+}
+
+.heading {
+  font-family: $font-wordmark;
+  font-weight: 600;
+  font-size: 1.5rem;
+  color: $text;
+  margin-bottom: 16px;
+}
+
+// --- Visitor dots — irregular polka dots ---
+
+.visitorOrbs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 4px 16px 12px;
+  gap: 0;
+}
+
+.visitorOrb {
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: translateY(0) scale(1.4) !important;
+  }
+}
+
+.visitorOverflow {
+  font-family: $font-body;
+  font-size: 0.625rem;
+  color: $text-muted;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- Paper texture overlays via pseudo-elements ---
+// Three distinct textures using SVG noise at different frequencies
+
+@mixin paperTexture($frequency, $octaves, $opacity) {
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='#{$frequency}' numOctaves='#{$octaves}' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    mix-blend-mode: overlay;
+    opacity: $opacity;
+    pointer-events: none;
+  }
+}
+
+// Texture A: fine grain — like smooth cardstock
+.textureA {
+  position: relative;
+  @include paperTexture(1.2, 4, 0.35);
+}
+
+// Texture B: coarse fiber — like rough handmade paper
+.textureB {
+  position: relative;
+  @include paperTexture(0.5, 2, 0.4);
+}
+
+// Texture C: medium crosshatch — like linen paper
+.textureC {
+  position: relative;
+  @include paperTexture(0.8, 3, 0.3);
+}
+
+// --- Stacked card pile ---
+
+.pileContainer {
+  position: relative;
+  min-height: 220px;
+  margin-top: 24px;
+  // Break out of the section max-width to spread cards wide
+  width: min(1200px, 90vw);
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+.pile {
+  position: relative;
+  width: 100%;
+  height: 260px;
+  transition: opacity 0.3s ease;
+  overflow: visible;
+}
+
+.pileDimmed {
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+// Individual card — rectangles spread across the container
+.card {
+  position: absolute;
+  margin-left: -75px;
+  margin-top: -48px;
+  width: 150px;
+  height: 96px;
+  border-radius: 4px;
+  border: none;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease, filter 0.2s ease;
+
+  &:hover {
+    filter: brightness(1.12) saturate(1.15) !important;
+  }
+
+  &:active {
+    filter: brightness(0.95) !important;
+  }
+}
+
+.cardName {
+  font-family: $font-body;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.cardSnippet {
+  font-family: $font-body;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+// --- Expanded card view ---
+
+.expandedOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 200;
+  animation: fadeIn 0.3s ease forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.expandedLayout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+// Expanded card — larger version of the collapsed card
+.expandedCard {
+  width: clamp(260px, 55vw, 340px);
+  min-height: 180px;
+  border-radius: 6px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  animation: cardExpand 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cardExpand {
+  from {
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.expandedName {
+  font-family: $font-body;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.expandedMessage {
+  font-family: $font-body;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  word-break: break-word;
+}
+
+.expandedMeta {
+  font-family: $font-body;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}
+
+.expandedClose {
+  background: none;
+  border: none;
+  font-family: $font-body;
+  font-size: 0.75rem;
+  color: $text-muted;
+  cursor: pointer;
+  padding: 4px 16px;
+  letter-spacing: 0.04em;
+  transition: color 0.15s;
+  border-bottom: 1px solid transparent;
+
+  &:hover {
+    color: $text;
+    border-bottom-color: rgba($text, 0.2);
+  }
+}
+
+.navButton {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: $text-muted;
+  cursor: pointer;
+  padding: 8px 4px;
+  transition: color 0.15s, transform 0.15s;
+
+  &:hover:not(:disabled) {
+    color: $text;
+    transform: scale(1.15);
+  }
+
+  &:disabled {
+    opacity: 0.15;
+    cursor: default;
+  }
+}
+
+// --- Compose area ---
+
+.composeArea {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.composeCard {
+  width: 120px;
+  height: 80px;
+  border-radius: 4px;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.3s ease;
+
+  &:hover {
+    transform: scale(1.05) rotate(0deg) !important;
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+}
+
+.composeCta {
+  font-family: $font-body;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.composeExpanded {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: composeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes composeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Live preview card — looks like a real card with inputs inside
+.composeLiveCard {
+  width: clamp(240px, 60vw, 320px);
+  min-height: 160px;
+  border-radius: 6px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transform: rotate(-1deg);
+}
+
+.composeLiveName {
+  font-family: $font-body;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  background: none;
+  border: none;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+  outline: none;
+  text-align: center;
+  width: 80%;
+  padding: 2px 4px;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  &:focus {
+    border-bottom-color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+.composeLiveMessage {
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  background: none;
+  border: none;
+  outline: none;
+  text-align: center;
+  width: 100%;
+  min-height: 60px;
+  resize: none;
+  padding: 4px;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+}
+
+.composeLiveMeta {
+  font-size: 0.5625rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.composeError {
+  font-size: 0.75rem;
+  color: #c4724e;
+}
+
+.composeActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composeCancel,
+.composeSubmit {
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  padding: 3px 12px;
+  background: none;
+  border: 1px solid rgba($text, 0.15);
+  border-radius: 4px;
+  color: $text-muted;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+
+  &:hover:not(:disabled) {
+    color: $text;
+    border-color: rgba($text, 0.3);
+  }
+}
+
+.composeSubmit {
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

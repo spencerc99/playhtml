@@ -1,13 +1,15 @@
 // ABOUTME: Styles for the wewere.online homepage
-// ABOUTME: Centered wordmark over full-viewport animated trails
+// ABOUTME: Scrollable layout with fixed trails background, hero section, essay, guestbook
 
-@use './styles/variables' as *;
+@use "./styles/variables" as *;
+
+$accent-teal: #4a9a8a;
+$accent-rust: #c4724e;
 
 .page {
   position: relative;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
   background: $bg;
 }
 
@@ -15,18 +17,29 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  opacity: 0.9;
 }
 
 .content {
   position: relative;
   z-index: 1;
-  height: 100%;
+}
+
+.hero {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
   text-align: center;
+  padding: 0 24px;
+
+  & > * {
+    backdrop-filter: blur(2px);
+  }
 }
 
 .wordmark {
@@ -46,6 +59,73 @@
   text-transform: lowercase;
 }
 
+// --- Decorative site cards in the hero (absolutely positioned) ---
+
+.siteCard {
+  position: absolute;
+  width: clamp(160px, 20vw, 200px);
+  padding: 14px 18px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: $font-body;
+  font-size: clamp(0.6875rem, 1.2vw, 0.8125rem);
+  line-height: 1.45;
+  cursor: grab;
+  backdrop-filter: blur(2px);
+
+  // Paper texture overlay
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    mix-blend-mode: overlay;
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  @media (max-width: 480px) {
+    width: 170px;
+    font-size: 0.75rem;
+    padding: 10px 12px;
+  }
+}
+
+.siteCardTeal {
+  top: 15%;
+  right: 8%;
+  background: rgba($accent-teal, 0.12);
+  border: 2px dotted rgba($accent-teal, 0.45);
+  color: #3a7d6f;
+  transform: rotate(-2.5deg);
+  box-shadow: 0 2px 8px rgba($accent-teal, 0.08);
+
+  @media (max-width: 480px) {
+    top: 12%;
+    right: 4%;
+  }
+}
+
+.siteCardRust {
+  bottom: 18%;
+  left: 8%;
+  background: rgba($accent-rust, 0.1);
+  border: 2px dotted rgba($accent-rust, 0.4);
+  color: #a85f3f;
+  transform: rotate(1.8deg);
+  box-shadow: 0 2px 8px rgba($accent-rust, 0.08);
+
+  @media (max-width: 480px) {
+    bottom: 14%;
+    left: 4%;
+  }
+}
+
 .cta {
   margin-top: 8px;
   font-family: $font-body;
@@ -58,4 +138,165 @@
   &:hover {
     color: $text;
   }
+}
+
+.scrollHint {
+  margin-top: 32px;
+  color: $text-muted;
+  animation: scrollBounce 2s ease-in-out infinite;
+}
+
+@keyframes scrollBounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+// Gradient fade from trails into readable content area
+.section {
+  position: relative;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 64px 24px;
+  background-color: rgba($bg, 0.3);
+  overflow: visible;
+
+  @media (min-width: 769px) {
+    max-width: 800px;
+  }
+
+  @media (max-width: 480px) {
+    padding: 48px 20px;
+  }
+
+  &:first-of-type::before {
+    content: "";
+    position: absolute;
+    top: -120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100vw;
+    height: 120px;
+    background: linear-gradient(to bottom, transparent, $bg);
+    pointer-events: none;
+  }
+}
+
+.sectionHeading {
+  font-family: $font-wordmark;
+  font-weight: 600;
+  font-size: 1.5rem;
+  color: $text;
+  margin-bottom: 16px;
+}
+
+// --- Essay block ---
+
+.essayBlock {
+  font-family: $font-body;
+  line-height: 1.75;
+  color: $text;
+
+  p {
+    margin-bottom: 0.5em;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  em {
+    font-family: $font-wordmark;
+    font-style: italic;
+  }
+
+  a {
+    color: $accent-teal;
+    text-decoration: none;
+    border-bottom: 1px solid rgba($accent-teal, 0.3);
+    padding-bottom: 1px;
+    transition: color 0.2s, border-color 0.2s;
+
+    &:hover {
+      color: darken($accent-teal, 8%);
+      border-color: $accent-teal;
+    }
+  }
+}
+
+.benchesLine {
+  font-family: $font-wordmark;
+  font-weight: 600;
+  font-size: clamp(1.3rem, 3.5vw, 1.6rem);
+  line-height: 1.4;
+  color: $accent-rust;
+  margin: 1.5em 0;
+}
+
+// Marginalia: side content on desktop, inline on mobile
+.marginalia {
+  position: relative;
+
+  @media (min-width: 769px) {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+
+    // Keep the text at its natural width
+    > p,
+    > .benchesLine {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  @media (max-width: 768px) {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+// Left-side marginalia (aside before text in DOM)
+.marginaliaLeft {
+  @media (min-width: 769px) {
+    // Let the bench extend beyond the section boundary into the left margin
+    margin-left: -80px;
+  }
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
+}
+
+.marginaliaAside {
+  flex-shrink: 0;
+
+  @media (min-width: 769px) {
+    width: 200px;
+    position: sticky;
+    top: 24px;
+  }
+
+  @media (max-width: 768px) {
+    align-self: center;
+    margin-bottom: 1.25em;
+  }
+}
+
+.arrowHint {
+  font-family: $font-body;
+  font-size: 0.6875rem;
+  color: $text-muted;
+  text-align: center;
+  margin-top: 8px;
+  opacity: 0.6;
+}
+
+.bottomCta {
+  text-align: center;
+  padding-bottom: 96px;
 }

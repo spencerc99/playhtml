@@ -1,0 +1,50 @@
+// ABOUTME: Styles for the interactive bench marginalia element.
+// ABOUTME: Large bench image that extends into the margin on desktop, inline on mobile.
+
+@use "../styles/variables" as *;
+
+$accent-rust: #c4724e;
+
+.bench {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  user-select: none;
+
+  &:hover {
+    background-color: rgba($accent-rust, 0.06);
+  }
+
+  &:focus-visible {
+    outline: 1px solid $accent-rust;
+    outline-offset: 2px;
+  }
+}
+
+.benchImg {
+  width: 180px;
+  height: auto;
+  display: block;
+  user-select: none;
+  transition: transform 0.2s ease;
+
+  .bench:hover & {
+    transform: scale(1.05);
+  }
+
+  @media (max-width: 768px) {
+    width: 160px;
+  }
+}
+
+.sitCount {
+  font-family: $font-body;
+  font-size: 0.75rem;
+  color: $text-muted;
+  text-align: center;
+  line-height: 1.3;
+}

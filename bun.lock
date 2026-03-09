@@ -63,6 +63,10 @@
       "name": "wewere-online",
       "version": "0.0.0",
       "dependencies": {
+        "@playhtml/common": "workspace:*",
+        "@playhtml/react": "workspace:*",
+        "playhtml": "workspace:*",
+        "profane-words": "^1.5.11",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
         "sass": "^1.83.0",
