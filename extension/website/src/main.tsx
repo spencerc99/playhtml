@@ -10,9 +10,15 @@ import "./index.scss";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <PlayProvider
-      initOptions={{ cursors: { enabled: true, enableChat: false } }}
+      initOptions={{
+        cursors: {
+          enabled: true,
+          enableChat: false,
+          coordinateMode: "absolute",
+        },
+      }}
     >
       <App />
     </PlayProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );
