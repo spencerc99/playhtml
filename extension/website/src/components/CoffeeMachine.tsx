@@ -1,11 +1,18 @@
 // ABOUTME: Interactive coffee machine + cortado for the essay marginalia.
-// ABOUTME: Brew and drink actions dispatch play events so all visitors see animations.
+// ABOUTME: Shared state tracks phase and counts; play events trigger animations across clients.
 
 import { useEffect, useState, useCallback, useContext, useRef } from "react";
-import { PlayContext } from "@playhtml/react";
+import { withSharedState, PlayContext } from "@playhtml/react";
 import styles from "./CoffeeMachine.module.scss";
 
+type Phase = "idle" | "ready";
 type VisualState = "idle" | "brewing" | "ready" | "drinking";
+
+interface CoffeeData {
+  phase: Phase;
+  brewCount: number;
+  drinkCount: number;
+}
 
 interface CoffeeMachineProps {
   id: string;
@@ -14,157 +21,168 @@ interface CoffeeMachineProps {
 const BREW_DURATION_MS = 2500;
 const DRINK_DURATION_MS = 1200;
 
-export function CoffeeMachine({ id }: CoffeeMachineProps) {
-  const {
-    hasSynced,
-    dispatchPlayEvent,
-    registerPlayEventListener,
-    removePlayEventListener,
-  } = useContext(PlayContext);
+export const CoffeeMachine = withSharedState<CoffeeData, any, CoffeeMachineProps>(
+  () => ({
+    defaultData: { phase: "idle", brewCount: 0, drinkCount: 0 },
+  }),
+  ({ data, setData }, props) => {
+    const {
+      dispatchPlayEvent,
+      registerPlayEventListener,
+      removePlayEventListener,
+    } = useContext(PlayContext);
 
-  const [visualState, setVisualState] = useState<VisualState>("idle");
-  const [brewCount, setBrewCount] = useState(0);
-  const [drinkCount, setDrinkCount] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+    // Local animation state layered on top of the shared phase
+    const [animating, setAnimating] = useState<"brewing" | "drinking" | null>(
+      null,
+    );
+    const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Clean up any pending timeout on unmount
-  useEffect(() => {
-    return () => {
+    useEffect(() => {
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
+    }, []);
+
+    const runBrewAnimation = useCallback(() => {
       if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+      setAnimating("brewing");
 
-  // Run the brew animation sequence locally
-  const runBrewAnimation = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setVisualState("brewing");
+      timerRef.current = setTimeout(() => {
+        setAnimating(null);
+      }, BREW_DURATION_MS);
+    }, []);
 
-    timerRef.current = setTimeout(() => {
-      setVisualState("ready");
-    }, BREW_DURATION_MS);
-  }, []);
+    const runDrinkAnimation = useCallback(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setAnimating("drinking");
 
-  // Run the drink animation sequence locally
-  const runDrinkAnimation = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setVisualState("drinking");
+      timerRef.current = setTimeout(() => {
+        setAnimating(null);
+      }, DRINK_DURATION_MS);
+    }, []);
 
-    timerRef.current = setTimeout(() => {
-      setVisualState("idle");
-    }, DRINK_DURATION_MS);
-  }, []);
-
-  // Listen for brew and drink events from any client
-  useEffect(() => {
-    if (!hasSynced) return;
-
-    const brewListenerId = registerPlayEventListener("wewere-coffee-brew", {
-      onEvent: () => {
-        setBrewCount((c) => c + 1);
-        runBrewAnimation();
-      },
-    });
-
-    const drinkListenerId = registerPlayEventListener("wewere-coffee-drink", {
-      onEvent: () => {
-        setDrinkCount((c) => c + 1);
-        runDrinkAnimation();
-      },
-    });
-
-    return () => {
-      removePlayEventListener("wewere-coffee-brew", brewListenerId);
-      removePlayEventListener("wewere-coffee-drink", drinkListenerId);
-    };
-  }, [
-    hasSynced,
-    registerPlayEventListener,
-    removePlayEventListener,
-    runBrewAnimation,
-    runDrinkAnimation,
-  ]);
-
-  const handleClick = () => {
-    if (visualState === "idle") {
-      dispatchPlayEvent({
-        type: "wewere-coffee-brew",
-        eventPayload: {},
+    // Listen for animation-trigger events from any client
+    useEffect(() => {
+      const brewListenerId = registerPlayEventListener("wewere-coffee-brew", {
+        onEvent: () => {
+          runBrewAnimation();
+        },
       });
-    } else if (visualState === "ready") {
-      dispatchPlayEvent({
-        type: "wewere-coffee-drink",
-        eventPayload: {},
-      });
-    }
-  };
 
-  const isClickable = visualState === "idle" || visualState === "ready";
+      const drinkListenerId = registerPlayEventListener(
+        "wewere-coffee-drink",
+        {
+          onEvent: () => {
+            runDrinkAnimation();
+          },
+        },
+      );
 
-  const label =
-    visualState === "idle"
-      ? "brew a cortado?"
-      : visualState === "brewing"
-      ? "brewing..."
-      : visualState === "drinking"
-      ? "sipping..."
-      : "take a sip?";
+      return () => {
+        removePlayEventListener("wewere-coffee-brew", brewListenerId);
+        removePlayEventListener("wewere-coffee-drink", drinkListenerId);
+      };
+    }, [
+      registerPlayEventListener,
+      removePlayEventListener,
+      runBrewAnimation,
+      runDrinkAnimation,
+    ]);
 
-  return (
-    <div id={id} className={styles.coffee}>
-      <div
-        className={`${styles.scene} ${styles[visualState]}`}
-        onClick={isClickable ? handleClick : undefined}
-        role={isClickable ? "button" : undefined}
-        tabIndex={isClickable ? 0 : undefined}
-        onKeyDown={
-          isClickable
-            ? (e) => {
-                if (e.key === "Enter" || e.key === " ") handleClick();
-              }
-            : undefined
-        }
-      >
-        {/* Machine -- prominent when idle/brewing, background when ready/drinking */}
-        <img
-          src="/la-marzocco.png"
-          alt="Espresso machine"
-          className={`${styles.machineImg} ${
-            visualState === "ready" || visualState === "drinking"
-              ? styles.machineBackground
-              : ""
-          }`}
-          draggable={false}
-        />
+    const handleClick = () => {
+      if (data.phase === "idle" && !animating) {
+        setData((draft) => {
+          draft.phase = "ready";
+          draft.brewCount = (draft.brewCount ?? 0) + 1;
+        });
+        dispatchPlayEvent({
+          type: "wewere-coffee-brew",
+          eventPayload: {},
+        });
+      } else if (data.phase === "ready" && !animating) {
+        setData((draft) => {
+          draft.phase = "idle";
+          draft.drinkCount = (draft.drinkCount ?? 0) + 1;
+        });
+        dispatchPlayEvent({
+          type: "wewere-coffee-drink",
+          eventPayload: {},
+        });
+      }
+    };
 
-        {/* Cup -- empty when idle/brewing, full cortado when ready/drinking */}
-        <img
-          src={
-            visualState === "ready" || visualState === "drinking"
-              ? "/cortado.png"
-              : "/cortado-empty.png"
+    // Derive visual state: animation takes precedence, otherwise use shared phase
+    const visualState: VisualState = animating ?? data.phase;
+    const isClickable =
+      (data.phase === "idle" || data.phase === "ready") && !animating;
+
+    const label =
+      visualState === "idle"
+        ? "brew a cortado?"
+        : visualState === "brewing"
+          ? "brewing..."
+          : visualState === "drinking"
+            ? "sipping..."
+            : "take a sip?";
+
+    return (
+      <div id={props.id} className={styles.coffee}>
+        <div
+          className={`${styles.scene} ${styles[visualState]}`}
+          onClick={isClickable ? handleClick : undefined}
+          role={isClickable ? "button" : undefined}
+          tabIndex={isClickable ? 0 : undefined}
+          onKeyDown={
+            isClickable
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") handleClick();
+                }
+              : undefined
           }
-          alt={
-            visualState === "ready"
-              ? "A cortado ready to drink"
-              : "An empty cortado cup"
-          }
-          className={`${styles.cupImg} ${
-            visualState === "ready" || visualState === "drinking"
-              ? styles.cupReady
-              : ""
-          } ${visualState === "drinking" ? styles.cupDrinking : ""}`}
-          draggable={false}
-        />
+        >
+          {/* Machine -- prominent when idle/brewing, background when ready/drinking */}
+          <img
+            src="/la-marzocco.png"
+            alt="Espresso machine"
+            className={`${styles.machineImg} ${
+              visualState === "ready" || visualState === "drinking"
+                ? styles.machineBackground
+                : ""
+            }`}
+            draggable={false}
+          />
+
+          {/* Cup -- empty when idle/brewing, full cortado when ready/drinking */}
+          <img
+            src={
+              visualState === "ready" || visualState === "drinking"
+                ? "/cortado.png"
+                : "/cortado-empty.png"
+            }
+            alt={
+              visualState === "ready"
+                ? "A cortado ready to drink"
+                : "An empty cortado cup"
+            }
+            className={`${styles.cupImg} ${
+              visualState === "ready" || visualState === "drinking"
+                ? styles.cupReady
+                : ""
+            } ${visualState === "drinking" ? styles.cupDrinking : ""}`}
+            draggable={false}
+          />
+        </div>
+        <span className={styles.label}>
+          {label}
+          {(data.brewCount > 0 || data.drinkCount > 0) && (
+            <span className={styles.stats}>
+              {" "}
+              ({data.brewCount} brewed, {data.drinkCount} sipped)
+            </span>
+          )}
+        </span>
       </div>
-      <span className={styles.label}>
-        {label}
-        {(brewCount > 0 || drinkCount > 0) && (
-          <span className={styles.stats}>
-            {" "}
-            ({brewCount} brewed, {drinkCount} sipped)
-          </span>
-        )}
-      </span>
-    </div>
-  );
-}
+    );
+  },
+);
