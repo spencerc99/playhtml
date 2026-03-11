@@ -114,16 +114,21 @@ export class VirtualClient {
     this.record("write", { writeId, path, valueSize: JSON.stringify(value).length });
     this.lastWriteTs = Date.now();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let node: any = this.store.play;
+    // Use Y.Doc directly — SyncedStore's proxy doesn't support .push() on arrays.
+    const yMap = this.doc.getMap("play");
+    let current: Y.Map<unknown> = yMap;
     for (let i = 0; i < path.length - 1; i++) {
-      if (!node[path[i]]) node[path[i]] = [];
-      node = node[path[i]];
+      if (!current.has(path[i])) {
+        current.set(path[i], new Y.Map());
+      }
+      current = current.get(path[i]) as Y.Map<unknown>;
     }
-    if (!Array.isArray(node[path[path.length - 1]])) {
-      node[path[path.length - 1]] = [];
+    const arrayKey = path[path.length - 1];
+    if (!current.has(arrayKey)) {
+      current.set(arrayKey, new Y.Array());
     }
-    node[path[path.length - 1]].push(value);
+    const yArr = current.get(arrayKey) as Y.Array<unknown>;
+    yArr.push([value]);
 
     return writeId;
   }
