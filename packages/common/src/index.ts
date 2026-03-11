@@ -491,6 +491,16 @@ export const TagTypeToElement: DefaultTagInitializers = {
           applyMutationsInPlace(draft, mutations);
         });
       });
+
+      // Sync :hover state by toggling a data attribute that the MutationObserver
+      // will pick up and replicate to other clients. Users should style with
+      // [data-playhtml-hover] instead of :hover for synced hover effects.
+      element.addEventListener("mouseenter", () => {
+        element.setAttribute("data-playhtml-hover", "");
+      });
+      element.addEventListener("mouseleave", () => {
+        element.removeAttribute("data-playhtml-hover");
+      });
     },
     updateElement: ({ element, data }) => {
       const currentState = constructInitialState(element);
