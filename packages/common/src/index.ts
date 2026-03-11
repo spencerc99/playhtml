@@ -501,6 +501,48 @@ export const TagTypeToElement: DefaultTagInitializers = {
       element.addEventListener("mouseleave", () => {
         element.removeAttribute("data-playhtml-hover");
       });
+
+      // Sync :focus state similarly.
+      element.addEventListener(
+        "focusin",
+        () => {
+          element.setAttribute("data-playhtml-focus", "");
+        },
+      );
+      element.addEventListener(
+        "focusout",
+        () => {
+          element.removeAttribute("data-playhtml-focus");
+        },
+      );
+
+      // Sync form element internal state (checked, value, selectedIndex).
+      // These IDL properties don't trigger attribute mutations, so we listen
+      // for input/change events and push a full state snapshot.
+      const syncFormState = () => {
+        setDataAny((draft: any) => {
+          const current = constructInitialState(element) as HTMLElementState;
+          // Sync top-level form state
+          if (current.formState) {
+            draft.formState = current.formState;
+          }
+          // Sync child form state
+          if (current.children) {
+            for (let i = 0; i < current.children.length; i++) {
+              const childState = current.children[i];
+              if (
+                childState.nodeType === NodeType.HTMLElement &&
+                childState.formState &&
+                draft.children?.[i]
+              ) {
+                draft.children[i].formState = childState.formState;
+              }
+            }
+          }
+        });
+      };
+      element.addEventListener("input", syncFormState);
+      element.addEventListener("change", syncFormState);
     },
     updateElement: ({ element, data }) => {
       const currentState = constructInitialState(element);
@@ -539,6 +581,20 @@ function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
 
     for (const [key, value] of Object.entries(state1.attributes)) {
       if (state2.attributes[key] !== value) {
+        return false;
+      }
+    }
+
+    // Compare form state (checked, value, selectedIndex)
+    const fs1 = state1.formState;
+    const fs2 = state2.formState;
+    if (fs1 || fs2) {
+      if (!fs1 || !fs2) return false;
+      if (
+        fs1.checked !== fs2.checked ||
+        fs1.value !== fs2.value ||
+        fs1.selectedIndex !== fs2.selectedIndex
+      ) {
         return false;
       }
     }
@@ -636,6 +692,13 @@ interface HTMLElementState {
   tagName: string;
   attributes: { [key: string]: string };
   children: ElementState[];
+  // Captures IDL properties that aren't reflected as attributes (checkbox
+  // checked, input value, select selectedIndex, etc.)
+  formState?: {
+    checked?: boolean;
+    value?: string;
+    selectedIndex?: number;
+  };
 }
 interface TextState {
   nodeType: NodeType.Text;
@@ -741,6 +804,27 @@ function isValidNode(node: Node): node is HTMLElement | Text {
   return node instanceof HTMLElement || node instanceof Text;
 }
 
+function captureFormState(
+  element: HTMLElement
+): HTMLElementState["formState"] | undefined {
+  if (element instanceof HTMLInputElement) {
+    const state: HTMLElementState["formState"] = {};
+    if (element.type === "checkbox" || element.type === "radio") {
+      state.checked = element.checked;
+    } else {
+      state.value = element.value;
+    }
+    return state;
+  }
+  if (element instanceof HTMLTextAreaElement) {
+    return { value: element.value };
+  }
+  if (element instanceof HTMLSelectElement) {
+    return { selectedIndex: element.selectedIndex, value: element.value };
+  }
+  return undefined;
+}
+
 function constructInitialState(element: HTMLElement | Text): ElementState {
   if (element instanceof Text) {
     return {
@@ -749,7 +833,7 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
     };
   }
 
-  const state: ElementState = {
+  const state: HTMLElementState = {
     nodeType: NodeType.HTMLElement,
     tagName: element.tagName.toLowerCase(),
     attributes: {},
@@ -761,6 +845,12 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
     state.attributes[attr.name] = attr.value;
   }
 
+  // Capture form element IDL properties that aren't reflected as attributes
+  const formState = captureFormState(element);
+  if (formState) {
+    state.formState = formState;
+  }
+
   element.childNodes.forEach((child) => {
     if (isValidNode(child)) {
       state.children.push(constructInitialState(child));
@@ -768,6 +858,32 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
   });
 
   return state;
+}
+
+function applyFormState(
+  element: HTMLElement,
+  formState?: HTMLElementState["formState"]
+): void {
+  if (!formState) return;
+  if (element instanceof HTMLInputElement) {
+    if (
+      (element.type === "checkbox" || element.type === "radio") &&
+      formState.checked !== undefined
+    ) {
+      element.checked = formState.checked;
+    } else if (formState.value !== undefined) {
+      element.value = formState.value;
+    }
+  } else if (
+    element instanceof HTMLTextAreaElement &&
+    formState.value !== undefined
+  ) {
+    element.value = formState.value;
+  } else if (element instanceof HTMLSelectElement) {
+    if (formState.selectedIndex !== undefined) {
+      element.selectedIndex = formState.selectedIndex;
+    }
+  }
 }
 
 function updateElementFromState(
@@ -779,6 +895,7 @@ function updateElementFromState(
 
   if (newState.nodeType === NodeType.HTMLElement) {
     updateAttributesFromState(element as HTMLElement, newState);
+    applyFormState(element as HTMLElement, newState.formState);
 
     if (newState.children.length > 0) {
       updateChildrenFromState(element as HTMLElement, newState);
