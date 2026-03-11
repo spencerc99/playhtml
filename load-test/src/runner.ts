@@ -16,6 +16,7 @@ import {
 
 const TARGETS: Record<string, string> = {
   local: "localhost:1999",
+  staging: "staging.playhtml.spencerc99.partykit.dev",
   prod: "playhtml.spencerc99.partykit.dev",
 };
 

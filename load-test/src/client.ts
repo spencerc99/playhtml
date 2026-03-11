@@ -34,6 +34,7 @@ export class VirtualClient {
   private connected = false;
   private firstSynced = false;
   private connectTime = 0;
+  private lastWriteTs = 0;
 
   constructor(private opts: VirtualClientOptions) {
     this.clientId = opts.clientId;
@@ -60,6 +61,16 @@ export class VirtualClient {
         this.record("first-sync", { connectToSyncMs: Date.now() - this.connectTime });
       }
     });
+
+    // Track remote updates to measure write propagation latency.
+    // When we receive an update from the server (not our own local write),
+    // record the time since our last write as the round-trip time.
+    this.doc.on("update", (_update: Uint8Array, origin: unknown) => {
+      if (origin === this.provider && this.lastWriteTs > 0) {
+        const rttMs = Date.now() - this.lastWriteTs;
+        this.record("write-received", { rttMs });
+      }
+    });
   }
 
   connect() {
@@ -83,6 +94,7 @@ export class VirtualClient {
   write(path: string[], value: unknown) {
     const writeId = `${this.clientId}-${Date.now()}`;
     this.record("write", { writeId, path, valueSize: JSON.stringify(value).length });
+    this.lastWriteTs = Date.now();
 
     // Navigate/create nested path in store.play
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,6 +112,7 @@ export class VirtualClient {
   appendToArray(path: string[], value: unknown) {
     const writeId = `${this.clientId}-${Date.now()}`;
     this.record("write", { writeId, path, valueSize: JSON.stringify(value).length });
+    this.lastWriteTs = Date.now();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let node: any = this.store.play;
