@@ -42,6 +42,47 @@ body {
   font-style: italic;
 }
 
+.page-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.sidebar-nav {
+  position: sticky;
+  top: 48px;
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 24px;
+  padding-top: 4px;
+}
+
+.sidebar-nav__link {
+  display: block;
+  font-family: 'Martian Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #b5aea5;
+  text-decoration: none;
+  padding: 5px 8px;
+  border-left: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &:hover { color: #8a8279; }
+  &--active { color: #3d3833; border-left-color: #4a9a8a; }
+}
+
+.page-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .variants-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -83,8 +124,11 @@ body {
   }
 }
 
+.wiki-excerpt a { color: #0645ad; text-decoration: none; }
+
 @media (max-width: 700px) {
   .variants-grid {
     grid-template-columns: 1fr;
   }
+  .sidebar-nav { display: none; }
 }

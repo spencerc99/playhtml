@@ -88,15 +88,20 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   const [filterMode, setFilterMode] = useState<FilterMode>("auto");
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
   const [devMode, setDevMode] = useState(false);
-  const [portraitStats, setPortraitStats] = useState<PortraitCardProps | null>(null);
+  const [portraitStats, setPortraitStats] = useState<PortraitCardProps | null>(
+    null,
+  );
   const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
   const prevDomainRef = useRef<string>(extractDomain(currentUrl));
 
   // Load dev mode setting from storage once on mount
   useEffect(() => {
-    browser.storage.local.get(["dev_mode"]).then((result) => {
-      setDevMode(Boolean(result["dev_mode"]));
-    }).catch(() => {});
+    browser.storage.local
+      .get(["dev_mode"])
+      .then((result) => {
+        setDevMode(Boolean(result["dev_mode"]));
+      })
+      .catch(() => {});
   }, []);
 
   // When URL changes, reset filterMode only if the domain changed
@@ -153,9 +158,10 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
 
-    if (VERBOSE) console.log(
-      `[HistoricalOverlay] Loading data - forceServerBackfill: ${forceServerBackfill}`,
-    );
+    if (VERBOSE)
+      console.log(
+        `[HistoricalOverlay] Loading data - forceServerBackfill: ${forceServerBackfill}`,
+      );
 
     const loadData = async () => {
       setLoading(true);
@@ -172,9 +178,10 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           },
         );
 
-        if (VERBOSE) console.log(
-          `[HistoricalOverlay] Loaded ${historicalEvents.length} total events`,
-        );
+        if (VERBOSE)
+          console.log(
+            `[HistoricalOverlay] Loaded ${historicalEvents.length} total events`,
+          );
         setEvents(historicalEvents);
         setLoading(false);
       } catch (err) {
@@ -201,11 +208,12 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         e.preventDefault();
         setForceServerBackfill((prev) => {
           const newState = !prev;
-          if (VERBOSE) console.log(
-            `[HistoricalOverlay] Server backfill ${
-              newState ? "enabled" : "disabled"
-            }`,
-          );
+          if (VERBOSE)
+            console.log(
+              `[HistoricalOverlay] Server backfill ${
+                newState ? "enabled" : "disabled"
+              }`,
+            );
           return newState;
         });
       }
@@ -226,7 +234,8 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         });
         if (res?.success && res.stats) {
           setPortraitStats({
-            domain: actualMode === "domain" ? domain : new URL(currentUrl).pathname,
+            domain:
+              actualMode === "domain" ? domain : new URL(currentUrl).pathname,
             totalTimeMs: res.stats.totalTimeMs,
             sessions: res.stats.sessions ?? [],
             cursorDistancePx: res.stats.cursorDistancePx ?? 0,
@@ -284,7 +293,11 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
     documentCanvasSize,
-  } = useCursorTrails(events as unknown as MovementCollectionEvent[], viewportSize, cursorSettings);
+  } = useCursorTrails(
+    events as unknown as MovementCollectionEvent[],
+    viewportSize,
+    cursorSettings,
+  );
 
   // Compute unified time range
   const timeRange = useMemo(() => {
@@ -396,7 +409,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         console.error("[HistoricalOverlay] Capture failed:", response.error);
         return;
       }
-      const svgEl = document.querySelector(".trails-svg") as SVGSVGElement | null;
+      const svgEl = document.querySelector(
+        ".trails-svg",
+      ) as SVGSVGElement | null;
       if (!svgEl) {
         console.error("[HistoricalOverlay] Could not find .trails-svg element");
         return;
@@ -498,7 +513,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             </div>
           ) : (
             <PortraitCard
-              domain={actualMode === "domain" ? domain : new URL(currentUrl).pathname}
+              domain={
+                actualMode === "domain" ? domain : new URL(currentUrl).pathname
+              }
               totalTimeMs={null}
               sessions={[]}
               cursorDistancePx={0}
@@ -506,7 +523,6 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               uniquePageCount={0}
             />
           )}
-
         </div>
 
         {/* Action strip — two rows */}
@@ -540,7 +556,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             >
               ◉ Domain
             </button>
-            <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px" }}>|</span>
+            <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px" }}>
+              |
+            </span>
             <button
               style={scopeBtnStyle(actualMode !== "domain")}
               onClick={() => setFilterMode("url")}
@@ -548,13 +566,30 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             >
               ▤ Page
             </button>
-            <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px", padding: "0 4px" }}>|</span>
+            <span
+              style={{
+                color: "rgba(61,56,51,0.18)",
+                fontSize: "10px",
+                padding: "0 4px",
+              }}
+            >
+              |
+            </span>
             <button
               style={{ ...actionBtnBase, fontSize: "10px" }}
-              onClick={() => browser.runtime.sendMessage({ type: "OPEN_TAB", url: browser.runtime.getURL("portrait.html") })}
+              onClick={() =>
+                browser.runtime.sendMessage({
+                  type: "OPEN_TAB",
+                  url: browser.runtime.getURL("portrait.html"),
+                })
+              }
               title="Open full internet portrait in new tab"
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#3d3833"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(61,56,51,0.6)"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#3d3833";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+              }}
             >
               the internet ↗
             </button>
@@ -573,8 +608,12 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               style={actionBtnBase}
               onClick={handleCapturePagePortrait}
               title="Save page portrait as image"
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#3d3833"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(61,56,51,0.6)"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#3d3833";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+              }}
             >
               ↓ save image
             </button>
@@ -583,8 +622,12 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               style={{ ...actionBtnBase, marginLeft: "auto" }}
               onClick={onClose}
               title="Close overlay"
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#3d3833"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(61,56,51,0.6)"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#3d3833";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+              }}
             >
               close ✕
             </button>
@@ -611,12 +654,21 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               : "rgba(250,247,242,0.97)",
             borderTop: "1px solid rgba(61,56,51,0.15)",
             backdropFilter: "blur(8px)",
-            fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
+            fontFamily:
+              "'Martian Mono', 'Space Mono', 'Courier New', monospace",
             fontSize: "11px",
             color: "#3d3833",
           }}
         >
-          <span style={{ fontWeight: 600, fontSize: "10px", letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(61,56,51,0.5)" }}>
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: "10px",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "rgba(61,56,51,0.5)",
+            }}
+          >
             dev
           </span>
           {[
@@ -644,20 +696,33 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               <input
                 type="checkbox"
                 checked={settings[key]}
-                onChange={(e) => setSettings({ ...settings, [key]: e.target.checked })}
-                style={{ cursor: "pointer", width: "14px", height: "14px", accentColor: "#4a9a8a" }}
+                onChange={(e) =>
+                  setSettings({ ...settings, [key]: e.target.checked })
+                }
+                style={{
+                  cursor: "pointer",
+                  width: "14px",
+                  height: "14px",
+                  accentColor: "#4a9a8a",
+                }}
               />
               {label}
             </label>
           ))}
           {loading && (
-            <span style={{ marginLeft: "auto", color: "rgba(61,56,51,0.5)" }}>loading...</span>
+            <span style={{ marginLeft: "auto", color: "rgba(61,56,51,0.5)" }}>
+              loading...
+            </span>
           )}
           {error && (
-            <span style={{ marginLeft: "auto", color: "#9a5a3a" }}>{error}</span>
+            <span style={{ marginLeft: "auto", color: "#9a5a3a" }}>
+              {error}
+            </span>
           )}
           {forceServerBackfill && (
-            <span style={{ color: "rgba(61,56,51,0.6)", fontSize: "10px" }}>• server</span>
+            <span style={{ color: "rgba(61,56,51,0.6)", fontSize: "10px" }}>
+              • server
+            </span>
           )}
         </div>
       )}

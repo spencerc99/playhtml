@@ -1,9 +1,12 @@
 // ABOUTME: Preview page for PortraitCard design directions
 // ABOUTME: Shows distinct visual variants with mock browsing data for evaluation
-
+// Agentation is a dev-only toolbar — loaded at runtime so it never appears in the production bundle
 import "./components-preview.scss";
-import React, { useEffect, useRef, useState } from "react";
+import React, { lazy, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
+const Agentation = import.meta.env.DEV
+  ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
+  : null;
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
@@ -1009,16 +1012,24 @@ function useHorizontalTexture(
     if (totalWeight === 0) return;
     const cdf: number[] = [];
     let acc = 0;
-    for (const w of weights) { acc += w / totalWeight; cdf.push(acc); }
-    const sampleHour = () => { const u = rand(); for (let h = 0; h < 24; h++) if (u < cdf[h]) return h; return 23; };
+    for (const w of weights) {
+      acc += w / totalWeight;
+      cdf.push(acc);
+    }
+    const sampleHour = () => {
+      const u = rand();
+      for (let h = 0; h < 24; h++) if (u < cdf[h]) return h;
+      return 23;
+    };
 
     const activeHours = weights.filter((w) => w > 0).length;
     const jitterHeight = activeHours <= 2 ? height / 2 : height / 4;
 
     const totalMinutes = totalMs != null ? totalMs / 60_000 : undefined;
-    const strokeCount = totalMinutes != null
-      ? Math.min(2000, Math.round(totalMinutes * 15))
-      : 1800;
+    const strokeCount =
+      totalMinutes != null
+        ? Math.min(2000, Math.round(totalMinutes * 15))
+        : 1800;
 
     for (let i = 0; i < strokeCount; i++) {
       const hour = sampleHour();
@@ -1447,30 +1458,35 @@ function VariantG({ data, colorful }: { data: MockData; colorful: boolean }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const OTHER_VARIANTS: {
+  id: string;
   label: string;
   name: string;
   desc: string;
   Component: React.FC<{ data: MockData; colorful: boolean }>;
 }[] = [
   {
+    id: "section-dir-d",
     label: "Direction D",
     name: "Oversize type poster",
     desc: "One enormous number bleeds off the card. Hours and minutes stack at 148px. Stats are footnotes. Feels like a scoreboard or concert poster — the time is the whole statement.",
     Component: VariantD,
   },
   {
+    id: "section-dir-e",
     label: "Direction E",
     name: "Film strip / receipt",
     desc: "Tall, narrow, monospaced throughout. The texture runs as a full-bleed left column. Data is laid out receipt-style in labeled rows. Dense, intimate, archival.",
     Component: VariantE,
   },
   {
+    id: "section-dir-f",
     label: "Direction F",
     name: "Horizontal texture",
     desc: "Same layout as Direction A but with horizontal strokes — activity hours map to vertical position instead of horizontal.",
     Component: VariantF,
   },
   {
+    id: "section-dir-g",
     label: "Direction G",
     name: "Hour-dot grid",
     desc: "24 dots arranged in a 4×6 clock face. Size and opacity reflect activity weight × time-of-day lightness — at a glance you can see when you browse.",
@@ -1501,131 +1517,1149 @@ const BTN_STYLE: React.CSSProperties = {
   cursor: "pointer",
 };
 
-function PreviewPage() {
-  const [data, setData] = useState<MockData>(INITIAL_MOCK);
-  const [colorful, setColorful] = useState(false);
+// ── Link traces ───────────────────────────────────────────────────────────────
+
+interface LinkTraceData {
+  count: number;
+  recentColors: string[];
+  pageMax: number;
+}
+
+function linkIntensity(d: LinkTraceData): number {
+  if (d.pageMax === 0) return 0;
+  return Math.min(1, d.count / d.pageMax);
+}
+
+function ltHslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = Math.min(
+      1,
+      Math.max(0, l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)),
+    );
+    return Math.round(255 * c)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function ltHexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
+}
+
+function ltPickColors(n: number): string[] {
+  const seeds = [42, 137, 251, 88, 195, 314, 67, 200];
+  return seeds.slice(0, Math.min(n, seeds.length)).map((seed) => {
+    const hue = seed % 360;
+    const s = 65 + (seed % 15);
+    const l = 55 + ((seed * 7) % 15);
+    return ltHslToHex(hue, s, l);
+  });
+}
+
+function ltSmearGradient(colors: string[]): string {
+  if (colors.length === 0) return "transparent";
+  if (colors.length === 1) return colors[0];
+  const stops = colors.map(
+    (c, i) => `${c} ${((i / (colors.length - 1)) * 100).toFixed(0)}%`,
+  );
+  return `linear-gradient(105deg, ${stops.join(", ")})`;
+}
+
+const LT_PAGE_MAX = 800;
+
+// Each link gets its own slice of the color wheel so they're visually distinct.
+// offset staggers the starting seed index so neighboring links don't share hues.
+function ltPickColorsFor(n: number, offset: number): string[] {
+  const seeds = [42, 137, 251, 88, 195, 314, 67, 200, 179, 53, 280, 110];
+  return Array.from({ length: Math.min(n, 8) }, (_, i) => {
+    const seed = seeds[(i + offset) % seeds.length];
+    const hue = seed % 360;
+    const s = 65 + (seed % 15);
+    const l = 55 + ((seed * 7) % 15);
+    return ltHslToHex(hue, s, l);
+  });
+}
+
+const LT_EXCERPT_DATA: Record<string, LinkTraceData> = {
+  hypertext: {
+    count: 800,
+    recentColors: ltPickColorsFor(8, 0),
+    pageMax: LT_PAGE_MAX,
+  },
+  "world-wide-web": {
+    count: 120,
+    recentColors: ltPickColorsFor(5, 2),
+    pageMax: LT_PAGE_MAX,
+  },
+  "tim-berners-lee": {
+    count: 3,
+    recentColors: ltPickColorsFor(2, 4),
+    pageMax: LT_PAGE_MAX,
+  },
+  "distributed-computing": {
+    count: 45,
+    recentColors: ltPickColorsFor(3, 6),
+    pageMax: LT_PAGE_MAX,
+  },
+  cern: {
+    count: 600,
+    recentColors: ltPickColorsFor(7, 1),
+    pageMax: LT_PAGE_MAX,
+  },
+  url: { count: 18, recentColors: ltPickColorsFor(2, 3), pageMax: LT_PAGE_MAX },
+  html: {
+    count: 350,
+    recentColors: ltPickColorsFor(6, 5),
+    pageMax: LT_PAGE_MAX,
+  },
+  css: { count: 90, recentColors: ltPickColorsFor(4, 7), pageMax: LT_PAGE_MAX },
+  javascript: {
+    count: 700,
+    recentColors: ltPickColorsFor(8, 9),
+    pageMax: LT_PAGE_MAX,
+  },
+};
+
+type LtLinkRenderer = (props: {
+  href: string;
+  children: React.ReactNode;
+  data: LinkTraceData;
+}) => React.ReactElement;
+
+function LtLink({
+  href,
+  children,
+  data,
+  render: Render,
+}: {
+  href: string;
+  children: React.ReactNode;
+  data: LinkTraceData;
+  render: LtLinkRenderer;
+}) {
+  return (
+    <Render href={href} data={data}>
+      {children}
+    </Render>
+  );
+}
+
+function WikiExcerpt({ renderLink }: { renderLink: LtLinkRenderer }) {
+  const R = renderLink;
+  return (
+    <div
+      className="wiki-excerpt"
+      style={{
+        fontFamily: "Linux Libertine, Georgia, Times, serif",
+        fontSize: "14px",
+        lineHeight: "1.8",
+        color: "#202122",
+        background: "#fff",
+        border: "1px solid #a2a9b1",
+        borderRadius: "2px",
+        padding: "16px 20px",
+        maxWidth: "560px",
+      }}
+    >
+      <p style={{ margin: "0 0 10px" }}>
+        The{" "}
+        <LtLink href="hypertext" data={LT_EXCERPT_DATA["hypertext"]} render={R}>
+          hypertext
+        </LtLink>{" "}
+        transfer protocol underpins communication on the{" "}
+        <LtLink
+          href="world-wide-web"
+          data={LT_EXCERPT_DATA["world-wide-web"]}
+          render={R}
+        >
+          World Wide Web
+        </LtLink>
+        . First described by{" "}
+        <LtLink
+          href="tim-berners-lee"
+          data={LT_EXCERPT_DATA["tim-berners-lee"]}
+          render={R}
+        >
+          Tim Berners-Lee
+        </LtLink>{" "}
+        in 1989, the web was originally conceived as a{" "}
+        <LtLink
+          href="distributed-computing"
+          data={LT_EXCERPT_DATA["distributed-computing"]}
+          render={R}
+        >
+          distributed
+        </LtLink>{" "}
+        information management system for{" "}
+        <LtLink href="cern" data={LT_EXCERPT_DATA["cern"]} render={R}>
+          CERN
+        </LtLink>
+        .
+      </p>
+      <p style={{ margin: 0 }}>
+        The architecture relies on{" "}
+        <LtLink href="url" data={LT_EXCERPT_DATA["url"]} render={R}>
+          uniform resource locators
+        </LtLink>{" "}
+        to identify resources and{" "}
+        <LtLink href="html" data={LT_EXCERPT_DATA["html"]} render={R}>
+          HTML
+        </LtLink>{" "}
+        to structure documents. Modern browsers extend this with{" "}
+        <LtLink href="css" data={LT_EXCERPT_DATA["css"]} render={R}>
+          CSS
+        </LtLink>{" "}
+        for presentation and{" "}
+        <LtLink
+          href="javascript"
+          data={LT_EXCERPT_DATA["javascript"]}
+          render={R}
+        >
+          JavaScript
+        </LtLink>{" "}
+        for interactivity.
+      </p>
+    </div>
+  );
+}
+
+// Cursors that occasionally pass through a link and fade out while still over it.
+// Each cursor sweeps from one side to the other on a gentle arc, fading out mid-crossing.
+// Volume controls how many cursors are in the cycle: low=1, medium=2, high=3.
+function PassingCursors({
+  data,
+  linkWidth,
+}: {
+  data: LinkTraceData;
+  linkWidth: number;
+}) {
+  const t = linkIntensity(data);
+  if (t === 0 || linkWidth === 0) return null;
+
+  // 1 cursor at low volume, 2 at medium, 3 at high
+  const count = t < 0.2 ? 1 : t < 0.6 ? 2 : 3;
+  const colors = data.recentColors.slice(0, count);
+
+  // All cursors share one long cycle so there's a genuine long silence between bursts.
+  // wanderMs: how long each cursor wanders around the link before absorbing.
+  // staggerMs: gap between each cursor in the burst.
+  // burstMs: total time for all cursors in the burst.
+  // pauseMs: silence after the burst before it repeats.
+  const wanderMs = 7000; // cursor visible and moving for ~7 seconds
+  const staggerMs = 1200; // gap between each cursor in the burst
+  const burstMs = wanderMs + staggerMs * (count - 1);
+  const pauseMs = 22000 + (1 - t) * 8000; // 22s at high volume, up to 30s at low
+  const cycleMs = burstMs + pauseMs;
+
+  // Express wanderMs as a % of cycleMs for the keyframe.
+  const wanderPct = (wanderMs / cycleMs) * 100;
+  // The wander phase: cursor drifts back and forth across the link before absorbing.
+  // Phases: fade-in → drift right → drift left → drift to center → absorb at center → invisible
+  const fadeInPct = wanderPct * 0.06;
+  const drift1Pct = wanderPct * 0.28; // arrived on far side of link
+  const drift2Pct = wanderPct * 0.55; // drifted to near side
+  const drift3Pct = wanderPct * 0.75; // back toward center
+  const absorbStartPct = wanderPct * 0.88; // begin shrinking
+  const absorbEndPct = wanderPct * 0.97;   // fully absorbed
 
   return (
-    <div>
-      <div className="page-header">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "24px",
-          }}
-        >
-          <div>
-            <div className="page-title">portrait card — design directions</div>
-            <div className="page-subtitle">
-              six layout directions · same data across all variants
-            </div>
-            <div className="mock-note">
-              {data.domain} · {formatDuration(data.totalMs)} · {data.dateRange}{" "}
-              · {data.uniquePages} pages · {peakProfileLabel(data.sessions)}
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              marginTop: "4px",
-              flexShrink: 0,
-            }}
-          >
-            <button
-              onClick={() => setColorful((c) => !c)}
+    <span
+      aria-hidden
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: "50%",
+        height: 0,
+        pointerEvents: "none",
+        zIndex: 3,
+      }}
+    >
+      {colors.map((color, i) => {
+        const cursorScale = 0.9;
+        const w = 10 * cursorScale;
+        const h = 14 * cursorScale;
+        const ltr = i % 2 === 0;
+        // Each cursor starts at its stagger offset within the shared cycle
+        const delayMs = i * staggerMs;
+        // Drift targets in px, relative to the cursor's starting left position.
+        // ltr cursor starts at left:0, drifts rightward across the word.
+        // rtl cursor starts at right:0, drifts leftward.
+        // Keep all targets within [0, linkWidth - w] so cursor stays on the word.
+        const farSide = ltr ? linkWidth - w : -(linkWidth - w);
+        const nearSide = ltr ? linkWidth * 0.2 : -(linkWidth * 0.2);
+        const center = ltr ? linkWidth * 0.5 - w / 2 : -(linkWidth * 0.5 - w / 2);
+        const animName = `lt-wander-${count}-${i}`;
+        return (
+          <React.Fragment key={i}>
+            <style>{`
+              @keyframes ${animName} {
+                0%                              { transform: translateX(0px) translateY(0px) scale(1); opacity: 0; }
+                ${fadeInPct.toFixed(2)}%        { opacity: 0.72; }
+                ${drift1Pct.toFixed(2)}%        { transform: translateX(${farSide.toFixed(1)}px) translateY(-3px) scale(1); opacity: 0.68; }
+                ${drift2Pct.toFixed(2)}%        { transform: translateX(${nearSide.toFixed(1)}px) translateY(2px) scale(1); opacity: 0.65; }
+                ${drift3Pct.toFixed(2)}%        { transform: translateX(${center.toFixed(1)}px) translateY(-1px) scale(1); opacity: 0.70; }
+                ${absorbStartPct.toFixed(2)}%   { transform: translateX(${center.toFixed(1)}px) translateY(0px) scale(1); opacity: 0.65; }
+                ${absorbEndPct.toFixed(2)}%     { transform: translateX(${center.toFixed(1)}px) translateY(0px) scale(0.2); opacity: 0; }
+                100%                            { transform: translateX(${center.toFixed(1)}px) translateY(0px) scale(0.2); opacity: 0; }
+              }
+            `}</style>
+            <span
               style={{
-                ...BTN_STYLE,
-                color: colorful ? TEAL : TEXT_MUTED,
-                borderColor: colorful ? TEAL : BORDER_STRONG,
+                position: "absolute",
+                left: ltr ? 0 : undefined,
+                right: ltr ? undefined : 0,
+                top: -h / 2,
+                display: "inline-block",
+                animation: `${animName} ${(cycleMs / 1000).toFixed(2)}s linear ${(delayMs / 1000).toFixed(2)}s infinite`,
+                opacity: 0,
               }}
             >
-              {colorful ? "riso on" : "riso off"}
-            </button>
-            <button
-              onClick={() => setData(generateMockData())}
-              style={BTN_STYLE}
+              <svg
+                width={w} height={h}
+                viewBox="0 0 10 14"
+                fill="none"
+                style={{ display: "block", transform: ltr ? "none" : "scaleX(-1)" }}
+              >
+                <path
+                  d="M1 1L1 11.5L3.5 9L5.5 13L7 12.3L5 8.3L8.5 8.3L1 1Z"
+                  fill={color}
+                  stroke="white"
+                  strokeWidth="0.5"
+                  strokeOpacity="0.7"
+                />
+              </svg>
+            </span>
+          </React.Fragment>
+        );
+      })}
+    </span>
+  );
+}
+
+// Average all colors into a single muted hex for the nebula base wash.
+function averageHex(colors: string[]): string {
+  let rSum = 0, gSum = 0, bSum = 0;
+  for (const hex of colors) {
+    rSum += parseInt(hex.slice(1, 3), 16);
+    gSum += parseInt(hex.slice(3, 5), 16);
+    bSum += parseInt(hex.slice(5, 7), 16);
+  }
+  const n = colors.length;
+  const r = Math.round(rSum / n).toString(16).padStart(2, "0");
+  const g = Math.round(gSum / n).toString(16).padStart(2, "0");
+  const b = Math.round(bSum / n).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+
+// Pair colors into overlapping duos so no single color dominates.
+// Always returns pairs (last pair may overlap with the one before it).
+function pairColors(colors: string[]): [string, string][] {
+  if (colors.length <= 2) return [colors.length === 1 ? [colors[0], colors[0]] : [colors[0], colors[1]]];
+  const pairs: [string, string][] = [];
+  for (let i = 0; i < colors.length - 1; i += 2) {
+    pairs.push([colors[i], colors[i + 1]]);
+  }
+  // Odd count: last color pairs with its predecessor (overlap, not solo)
+  if (colors.length % 2 === 1) {
+    pairs.push([colors[colors.length - 2], colors[colors.length - 1]]);
+  }
+  return pairs;
+}
+
+// Build nebula-style background: a muted base wash with color blobs punctuating it.
+// Each blob is a radial-gradient positioned along the word's width.
+function smearNebulaLayers(
+  colors: string[],
+  baseOpacity: number,
+  blobOpacity: number,
+  t: number,
+): string[] {
+  if (colors.length === 0) return ["transparent"];
+
+  const avg = averageHex(colors);
+  // Base wash — desaturated average at low opacity
+  const baseFill = ltHexToRgba(avg, baseOpacity);
+
+  if (colors.length === 1) return [baseFill];
+
+  const pairs = pairColors(colors);
+  const layers: string[] = [];
+
+  // Each pair becomes a radial blob, spaced evenly with some jitter
+  for (let i = 0; i < pairs.length; i++) {
+    const [c1, c2] = pairs[i];
+    // Position: spread across 15%-85% of the width so blobs don't hug edges
+    const xPct = pairs.length === 1
+      ? 50
+      : 15 + (i / (pairs.length - 1)) * 70;
+    // Slight vertical offset so blobs don't stack perfectly
+    const yPct = 45 + (i % 2 === 0 ? -8 : 8);
+    // Blob size: small enough that there's negative space between them
+    const rPct = Math.max(15, (20 + t * 18) - pairs.length * 3);
+
+    // Each blob is a two-stop radial: inner color fading to transparent
+    const inner = ltHexToRgba(c1, blobOpacity);
+    const mid = ltHexToRgba(c2, blobOpacity * 0.5);
+    layers.push(
+      `radial-gradient(ellipse ${rPct}% 70% at ${xPct.toFixed(0)}% ${yPct}%, ${inner} 0%, ${mid} 50%, transparent 100%)`,
+    );
+  }
+
+  return [baseFill, ...layers];
+}
+
+function SmearLink({
+  children,
+  data,
+  showCursors = false,
+  opacityMul = 1,
+  saturationMul = 1,
+}: {
+  href: string;
+  children: React.ReactNode;
+  data: LinkTraceData;
+  showCursors?: boolean;
+  opacityMul?: number;
+  saturationMul?: number;
+}) {
+  const t = linkIntensity(data);
+  const colors = data.recentColors;
+  const blur = 1.5 + t * 4;
+  const baseOpacity = (0.15 + t * 0.2) * opacityMul;
+  const blobOpacity = (0.2 + t * 0.3) * opacityMul;
+  const vSpread = t * 3;
+  const hInset = Math.round((1 - t) * 15);
+  const satFilter = `saturate(${saturationMul.toFixed(2)})`;
+
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const [linkWidth, setLinkWidth] = useState(0);
+  useEffect(() => {
+    if (linkRef.current) setLinkWidth(linkRef.current.offsetWidth);
+  }, [children]);
+
+  const layers = smearNebulaLayers(colors, baseOpacity, blobOpacity, t);
+  // First layer is the solid base fill, rest are radial blobs
+  const baseFill = layers[0];
+  const blobLayers = layers.slice(1);
+
+  return (
+    <span style={{ position: "relative", display: "inline" }}>
+      <a
+        ref={linkRef}
+        href="#"
+        onClick={(e) => e.preventDefault()}
+        style={{ color: "#0645ad", textDecoration: "none", position: "relative", zIndex: 1 }}
+      >
+        {children}
+      </a>
+      {/* Base wash — muted average of all colors */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: `${hInset}%`,
+          right: `${hInset}%`,
+          top: `${-vSpread}px`,
+          bottom: `${-vSpread}px`,
+          background: baseFill,
+          filter: `blur(${blur.toFixed(1)}px) ${satFilter}`,
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+      {/* Color blobs — radial spots punctuating the base wash */}
+      {blobLayers.length > 0 && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: `${hInset}%`,
+            right: `${hInset}%`,
+            top: `${-vSpread}px`,
+            bottom: `${-vSpread}px`,
+            background: blobLayers.join(", "),
+            filter: `blur(${(blur * 0.7).toFixed(1)}px) ${satFilter}`,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+      {showCursors && <PassingCursors data={data} linkWidth={linkWidth} />}
+    </span>
+  );
+}
+
+function CursorSvg({
+  color,
+  opacity,
+  scale,
+}: {
+  color: string;
+  opacity: number;
+  scale: number;
+}) {
+  return (
+    <svg
+      width={10 * scale}
+      height={14 * scale}
+      viewBox="0 0 10 14"
+      fill="none"
+      style={{ display: "block" }}
+    >
+      <path
+        d="M1 1L1 11.5L3.5 9L5.5 13L7 12.3L5 8.3L8.5 8.3L1 1Z"
+        fill={color}
+        opacity={opacity}
+        stroke="white"
+        strokeWidth="0.5"
+        strokeOpacity={opacity * 0.6}
+      />
+    </svg>
+  );
+}
+
+function CursorsLink({
+  children,
+  data,
+}: {
+  href: string;
+  children: React.ReactNode;
+  data: LinkTraceData;
+}) {
+  const t = linkIntensity(data);
+  const colors = data.recentColors;
+  const visibleCount = Math.min(colors.length, Math.ceil(1 + t * 7));
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const [linkSize, setLinkSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    if (linkRef.current) {
+      setLinkSize({
+        w: linkRef.current.offsetWidth,
+        h: linkRef.current.offsetHeight,
+      });
+    }
+  }, [children]);
+
+  // Place cursors in a loose orbit around the link bounding box.
+  // Distribute by angle so they surround it — not just above.
+  const positions = colors.slice(0, visibleCount).map((_, i) => {
+    // Spread angles: start top-left, go clockwise, skip the pure-right zone (cursor tail obscures)
+    const angleStep = (Math.PI * 2) / visibleCount;
+    const angle = i * angleStep - Math.PI / 2; // start at top
+    // Elliptical orbit sized to the link: rx wider than the text, ry above/below line-height
+    const rx = linkSize.w / 2 + 10 + t * 6;
+    const ry = linkSize.h / 2 + 8 + t * 4;
+    const x = Math.cos(angle) * rx;
+    const y = Math.sin(angle) * ry;
+    return { x, y };
+  });
+  return (
+    <span style={{ position: "relative", display: "inline-block" }}>
+      <style>{`
+        @keyframes lt-drift-0 { from { transform: translateY(0px) rotate(-4deg); } to { transform: translateY(-3px) rotate(4deg); } }
+        @keyframes lt-drift-1 { from { transform: translateY(-2px) rotate(6deg); } to { transform: translateY(2px) rotate(-3deg); } }
+        @keyframes lt-drift-2 { from { transform: translateY(1px) rotate(-6deg); } to { transform: translateY(-3px) rotate(2deg); } }
+      `}</style>
+      {linkSize.w > 0 &&
+        colors.slice(0, visibleCount).map((color, i) => {
+          const scale = 0.8 + t * 0.3 - i * 0.04;
+          const cursorW = 10 * scale;
+          const cursorH = 14 * scale;
+          return (
+            <span
+              key={i}
+              aria-hidden
+              style={{
+                position: "absolute",
+                // Center of link is at 50% x, ~50% y; offset by cursor half-size so hotspot centers
+                left: `calc(50% + ${(positions[i].x - cursorW / 2).toFixed(
+                  1,
+                )}px)`,
+                top: `calc(50% + ${(positions[i].y - cursorH / 2).toFixed(
+                  1,
+                )}px)`,
+                pointerEvents: "none",
+                zIndex: 2,
+                animation: `lt-drift-${i % 3} ${
+                  2.2 + i * 0.35
+                }s ease-in-out infinite alternate`,
+                animationDelay: `${i * 0.25}s`,
+              }}
             >
-              randomize
-            </button>
-          </div>
+              <CursorSvg
+                color={color}
+                opacity={(0.4 + t * 0.3) * (1 - i * 0.07)}
+                scale={scale}
+              />
+            </span>
+          );
+        })}
+      <a
+        ref={linkRef}
+        href="#"
+        onClick={(e) => e.preventDefault()}
+        style={{
+          color: "#0645ad",
+          textDecoration: "none",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        {children}
+      </a>
+    </span>
+  );
+}
+
+// Direction 3a: Faded — heavily visited links bleach, staying recognizably blue
+// t=0: #0645ad (full link blue)  t=1: #6b9fd4 (lighter, still clearly a link)
+function FadedLink({
+  children,
+  data,
+}: {
+  href: string;
+  children: React.ReactNode;
+  data: LinkTraceData;
+}) {
+  const t = linkIntensity(data);
+  const r = Math.round(6 + t * (107 - 6));
+  const g = Math.round(69 + t * (159 - 69));
+  const b = Math.round(173 + t * (212 - 173));
+  return (
+    <a
+      href="#"
+      onClick={(e) => e.preventDefault()}
+      style={{
+        color: `rgb(${r}, ${g}, ${b})`,
+        textDecoration: "none",
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+// Direction 3b: Bold — heavily visited links darken and gain weight, staying blue
+// t=0: #0645ad 400  t=1: #022a6b 700
+function BoldLink({
+  children,
+  data,
+}: {
+  href: string;
+  children: React.ReactNode;
+  data: LinkTraceData;
+}) {
+  const t = linkIntensity(data);
+  const r = Math.round(6 + t * (2 - 6));
+  const g = Math.round(69 + t * (42 - 69));
+  const b = Math.round(173 + t * (107 - 173));
+  const weight = Math.round(400 + t * 300);
+  const spacing = (t * -0.02).toFixed(3);
+  return (
+    <a
+      href="#"
+      onClick={(e) => e.preventDefault()}
+      style={{
+        color: `rgb(${r}, ${g}, ${b})`,
+        textDecoration: "none",
+        fontWeight: weight,
+        letterSpacing: `${spacing}em`,
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+function LinkDirectionSection({
+  id,
+  label,
+  name,
+  desc,
+  renderLink,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  desc: string;
+  renderLink: LtLinkRenderer;
+}) {
+  return (
+    <div id={id} style={{ marginBottom: "48px" }}>
+      <div style={{ marginBottom: "16px" }}>
+        <div
+          style={{
+            fontFamily: "'Martian Mono', monospace",
+            fontSize: "10px",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase" as const,
+            color: TEXT_MUTED,
+            marginBottom: "4px",
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontFamily: "'Lora', Georgia, serif",
+            fontSize: "18px",
+            fontWeight: 600,
+            color: TEXT,
+            marginBottom: "4px",
+          }}
+        >
+          {name}
+        </div>
+        <div
+          style={{
+            fontSize: "12px",
+            color: TEXT_MUTED,
+            lineHeight: "1.5",
+            maxWidth: "520px",
+          }}
+        >
+          {desc}
         </div>
       </div>
+      <WikiExcerpt renderLink={renderLink} />
+    </div>
+  );
+}
 
-      {/* Density scaling — VariantA at different time amounts */}
-      <div style={{ padding: "0 40px 40px", maxWidth: "1200px" }}>
+function LinkTracesSection() {
+  const [colorCount, setColorCount] = useState(6);
+  const [smearOpacity, setSmearOpacity] = useState(0.6);
+  const [smearSaturation, setSmearSaturation] = useState(1.0);
+
+  function withSmearTuning(renderer: (p: any) => React.ReactElement): LtLinkRenderer {
+    return (p) =>
+      renderer({
+        ...p,
+        opacityMul: smearOpacity,
+        saturationMul: smearSaturation,
+        data: {
+          ...p.data,
+          recentColors: p.data.recentColors.slice(0, colorCount),
+        },
+      });
+  }
+
+  function withColorCount(renderer: LtLinkRenderer): LtLinkRenderer {
+    return (p) =>
+      renderer({
+        ...p,
+        data: {
+          ...p.data,
+          recentColors: p.data.recentColors.slice(0, colorCount),
+        },
+      });
+  }
+
+  const CTRL_STYLE: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontFamily: "'Martian Mono', monospace",
+    fontSize: "11px",
+    color: TEXT_MUTED,
+  };
+
+  return (
+    <div
+      id="section-link-traces"
+      style={{ padding: "0 40px 40px", maxWidth: "1200px" }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: "8px",
+        }}
+      >
         <div
           style={{
             fontFamily: "'Lora', Georgia, serif",
             fontSize: "22px",
             fontWeight: 600,
             color: TEXT,
-            marginBottom: "8px",
           }}
         >
-          Density scaling
+          Link traces
         </div>
+        <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
+          <label style={CTRL_STYLE}>
+            colors
+            <input
+              type="range"
+              min={1}
+              max={8}
+              value={colorCount}
+              onChange={(e) => setColorCount(Number(e.target.value))}
+              style={{ width: "60px", accentColor: TEAL }}
+            />
+            <span style={{ minWidth: "12px" }}>{colorCount}</span>
+          </label>
+          <label style={CTRL_STYLE}>
+            opacity
+            <input
+              type="range"
+              min={0}
+              max={200}
+              value={Math.round(smearOpacity * 100)}
+              onChange={(e) => setSmearOpacity(Number(e.target.value) / 100)}
+              style={{ width: "60px", accentColor: TEAL }}
+            />
+            <span style={{ minWidth: "28px" }}>{Math.round(smearOpacity * 100)}%</span>
+          </label>
+          <label style={CTRL_STYLE}>
+            saturation
+            <input
+              type="range"
+              min={0}
+              max={200}
+              value={Math.round(smearSaturation * 100)}
+              onChange={(e) => setSmearSaturation(Number(e.target.value) / 100)}
+              style={{ width: "60px", accentColor: TEAL }}
+            />
+            <span style={{ minWidth: "28px" }}>{Math.round(smearSaturation * 100)}%</span>
+          </label>
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          color: TEXT_MUTED,
+          fontFamily: "'Atkinson Hyperlegible', sans-serif",
+          marginBottom: "28px",
+        }}
+      >
+        Visual treatments showing click-through history on Wikipedia-style links
+        · links carry varied visit counts
+      </div>
+      <LinkDirectionSection
+        id="section-lt-smear"
+        label="Direction 1"
+        name="Glow smear"
+        desc="Color radiates from the letter shapes via text-shadow. Glow grows wider and more saturated with more visits."
+        renderLink={withSmearTuning((p) => <SmearLink {...p} />)}
+      />
+      <LinkDirectionSection
+        id="section-lt-smear-cursors"
+        label="Direction 1 + cursors"
+        name="Glow smear + passing cursors"
+        desc="Same glow smear, with occasional cursors that drift across the link and fade out while passing through — 1, 2, or 3 depending on visit volume."
+        renderLink={withSmearTuning((p) => <SmearLink {...p} showCursors />)}
+      />
+      <LinkDirectionSection
+        id="section-lt-cursors"
+        label="Direction 2"
+        name="Orbiting cursors"
+        desc="Cursors orbit the link in a ring, scaling with visit count."
+        renderLink={(p) => <CursorsLink {...p} />}
+      />
+      <LinkDirectionSection
+        id="section-lt-faded"
+        label="Direction 3a"
+        name="Faded"
+        desc="Heavily visited links bleach out — the text lightens and desaturates, as if the ink has been worn away by many fingers passing over the same spot."
+        renderLink={(p) => <FadedLink {...p} />}
+      />
+      <LinkDirectionSection
+        id="section-lt-bold"
+        label="Direction 3b"
+        name="Bold"
+        desc="Heavily visited links grow heavier and darker — the text gains weight and depth, as if the repeated attention has pressed the letters deeper into the page."
+        renderLink={(p) => <BoldLink {...p} />}
+      />
+    </div>
+  );
+}
+
+// ── Sidebar navigation ────────────────────────────────────────────────────────
+
+type Section = "portrait-card" | "link-patina";
+
+const PORTRAIT_NAV = [
+  { id: "section-density", label: "density" },
+  { id: "section-dir-a", label: "direction A" },
+  { id: "section-dir-d", label: "direction D" },
+  { id: "section-dir-e", label: "direction E" },
+  { id: "section-dir-f", label: "direction F" },
+  { id: "section-dir-g", label: "direction G" },
+];
+
+const LINK_PATINA_NAV = [
+  { id: "section-lt-smear",         label: "glow smear" },
+  { id: "section-lt-smear-cursors", label: "smear + cursors" },
+  { id: "section-lt-cursors",       label: "orbit cursors" },
+  { id: "section-lt-faded",         label: "faded" },
+  { id: "section-lt-bold",          label: "bold" },
+];
+
+function SidebarNav({
+  activeSection,
+  onSectionChange,
+}: {
+  activeSection: Section;
+  onSectionChange: (s: Section) => void;
+}) {
+  const [activeId, setActiveId] = useState<string>("");
+  const navItems =
+    activeSection === "portrait-card" ? PORTRAIT_NAV : LINK_PATINA_NAV;
+
+  useEffect(() => {
+    setActiveId("");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) setActiveId(entry.target.id);
+        }
+      },
+      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
+    );
+    for (const { id } of navItems) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [activeSection]);
+
+  return (
+    <nav className="sidebar-nav">
+      {(["portrait-card", "link-patina"] as Section[]).map((s) => (
+        <a
+          key={s}
+          href="#"
+          className={`sidebar-nav__link${
+            activeSection === s ? " sidebar-nav__link--active" : ""
+          }`}
+          style={{
+            fontWeight: activeSection === s ? 700 : undefined,
+            marginBottom: s === "portrait-card" ? "6px" : undefined,
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            onSectionChange(s);
+            window.location.hash = s;
+            window.scrollTo({ top: 0 });
+          }}
+        >
+          {s === "portrait-card" ? "portrait card" : "link patina"}
+        </a>
+      ))}
+      {activeSection !== "portrait-card" && (
         <div
           style={{
-            fontSize: "12px",
-            color: TEXT_MUTED,
-            fontFamily: "'Atkinson Hyperlegible', sans-serif",
-            marginBottom: "28px",
+            height: "1px",
+            background: "rgba(90,78,65,0.12)",
+            margin: "4px 8px 6px",
+          }}
+        />
+      )}
+      {activeSection === "portrait-card" && (
+        <div
+          style={{
+            height: "1px",
+            background: "rgba(90,78,65,0.12)",
+            margin: "4px 8px 6px",
+          }}
+        />
+      )}
+      {navItems.map(({ id, label }) => (
+        <a
+          key={id}
+          href={`#${id}`}
+          className={`sidebar-nav__link${
+            activeId === id ? " sidebar-nav__link--active" : ""
+          }`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+            setActiveId(id);
           }}
         >
-          How texture density grows with accumulated time (VariantA)
+          {label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+function PreviewPage() {
+  const [data, setData] = useState<MockData>(INITIAL_MOCK);
+  const [colorful, setColorful] = useState(false);
+  const [activeSection, setActiveSection] = useState<Section>(() => {
+    const hash = window.location.hash.slice(1);
+    return hash === "link-patina" ? "link-patina" : "portrait-card";
+  });
+
+  return (
+    <div className="page-layout">
+      <SidebarNav
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+      />
+      <div className="page-main">
+        <div className="page-header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "24px",
+            }}
+          >
+            <div>
+              <div className="page-title">
+                {activeSection === "portrait-card"
+                  ? "portrait card — design directions"
+                  : "link patina — design directions"}
+              </div>
+              <div className="page-subtitle">
+                {activeSection === "portrait-card"
+                  ? "six layout directions · same data across all variants"
+                  : "three visual treatments · links carry varied visit counts"}
+              </div>
+              {activeSection === "portrait-card" && (
+                <div className="mock-note">
+                  {data.domain} · {formatDuration(data.totalMs)} ·{" "}
+                  {data.dateRange} · {data.uniquePages} pages ·{" "}
+                  {peakProfileLabel(data.sessions)}
+                </div>
+              )}
+            </div>
+            {activeSection === "portrait-card" && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginTop: "4px",
+                  flexShrink: 0,
+                }}
+              >
+                <button
+                  onClick={() => setColorful((c) => !c)}
+                  style={{
+                    ...BTN_STYLE,
+                    color: colorful ? TEAL : TEXT_MUTED,
+                    borderColor: colorful ? TEAL : BORDER_STRONG,
+                  }}
+                >
+                  {colorful ? "riso on" : "riso off"}
+                </button>
+                <button
+                  onClick={() => setData(generateMockData())}
+                  style={BTN_STYLE}
+                >
+                  randomize
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-          {DENSITY_DATA.map(({ label, data }) => (
+        {activeSection === "portrait-card" && (
+          <>
+            {/* Density scaling — VariantA at different time amounts */}
             <div
-              key={label}
-              style={{ display: "flex", alignItems: "center", gap: "24px" }}
+              id="section-density"
+              style={{ padding: "0 40px 40px", maxWidth: "1200px" }}
             >
               <div
                 style={{
-                  width: "60px",
-                  flexShrink: 0,
-                  fontFamily: "'Martian Mono', monospace",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  color: TEXT_MUTED,
-                  textAlign: "right",
+                  fontFamily: "'Lora', Georgia, serif",
+                  fontSize: "22px",
+                  fontWeight: 600,
+                  color: TEXT,
+                  marginBottom: "8px",
                 }}
               >
-                {label}
+                Density scaling
               </div>
-              <VariantA data={data} colorful={false} />
-              <VariantA data={data} colorful={true} />
-            </div>
-          ))}
-        </div>
-      </div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: TEXT_MUTED,
+                  fontFamily: "'Atkinson Hyperlegible', sans-serif",
+                  marginBottom: "28px",
+                }}
+              >
+                How texture density grows with accumulated time (VariantA)
+              </div>
 
-      <div className="variants-grid">
-        <div className="variant">
-          <div>
-            <div className="variant-label">Direction A</div>
-            <div className="variant-name">Minimal + vertical texture</div>
-            <div className="variant-desc">
-              Vertical strokes mapped to the 24h timeline — dense columns where
-              you were active, light or dark based on time of day.
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "32px",
+                }}
+              >
+                {DENSITY_DATA.map(({ label, data }) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "24px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "60px",
+                        flexShrink: 0,
+                        fontFamily: "'Martian Mono', monospace",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        color: TEXT_MUTED,
+                        textAlign: "right",
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <VariantA data={data} colorful={false} />
+                    <VariantA data={data} colorful={true} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          <VariantA data={data} colorful={colorful} />
-        </div>
-        {OTHER_VARIANTS.map(({ label, name, desc, Component }) => (
-          <div className="variant" key={label}>
-            <div>
-              <div className="variant-label">{label}</div>
-              <div className="variant-name">{name}</div>
-              <div className="variant-desc">{desc}</div>
+
+            <div className="variants-grid">
+              <div id="section-dir-a" className="variant">
+                <div>
+                  <div className="variant-label">Direction A</div>
+                  <div className="variant-name">Minimal + vertical texture</div>
+                  <div className="variant-desc">
+                    Vertical strokes mapped to the 24h timeline — dense columns
+                    where you were active, light or dark based on time of day.
+                  </div>
+                </div>
+                <VariantA data={data} colorful={colorful} />
+              </div>
+              {OTHER_VARIANTS.map(({ id, label, name, desc, Component }) => (
+                <div id={id} className="variant" key={label}>
+                  <div>
+                    <div className="variant-label">{label}</div>
+                    <div className="variant-name">{name}</div>
+                    <div className="variant-desc">{desc}</div>
+                  </div>
+                  <Component data={data} colorful={colorful} />
+                </div>
+              ))}
             </div>
-            <Component data={data} colorful={colorful} />
-          </div>
-        ))}
+          </>
+        )}
+
+        {activeSection === "link-patina" && <LinkTracesSection />}
       </div>
     </div>
   );
@@ -1633,4 +2667,9 @@ function PreviewPage() {
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
-).render(<PreviewPage />);
+).render(
+  <>
+    <Agentation />
+    <PreviewPage />
+  </>,
+);
