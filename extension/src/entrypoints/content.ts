@@ -27,6 +27,7 @@ export default defineContentScript({
     class PlayHTMLExtension {
       private playerIdentity: any = null;
       private isInitialized = false;
+      private linkGlowManager: import("../features/LinkGlowManager").LinkGlowManager | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -884,6 +885,13 @@ export default defineContentScript({
           },
         });
         this.listenForPresenceCount();
+
+        if (location.hostname.endsWith("wikipedia.org")) {
+          const { LinkGlowManager } = await import("../features/LinkGlowManager");
+          const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+          this.linkGlowManager = new LinkGlowManager(color);
+          await this.linkGlowManager.init();
+        }
       }
 
       private listenForPresenceCount() {
