@@ -28,6 +28,7 @@ export default defineContentScript({
       private playerIdentity: any = null;
       private isInitialized = false;
       private linkGlowManager: import("../features/LinkGlowManager").LinkGlowManager | null = null;
+      private followManager: import("../features/FollowManager").FollowManager | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -892,6 +893,38 @@ export default defineContentScript({
           this.linkGlowManager = new LinkGlowManager(color);
           await this.linkGlowManager.init();
         }
+
+        // Follow manager for cursor following
+        const { FollowManager } = await import("../features/FollowManager");
+        this.followManager = new FollowManager(
+          () => (window as any).cursors?.presences ?? new Map(),
+          () => this.playerIdentity?.publicKey ?? "",
+          (fields) => (window as any).cursors?.setMyAwareness?.(fields),
+        );
+        this.followManager.init();
+
+        this.followManager.setMutualFollowCallback((active) => {
+          if ("cursors" in window) {
+            (window as any).cursors.enableChat = active;
+          }
+        });
+
+        // Broadcast navigatingTo awareness on same-origin link clicks
+        document.addEventListener("click", (e) => {
+          const link = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
+          if (!link || !link.href || link.target === "_blank") return;
+          try {
+            const url = new URL(link.href);
+            if (url.origin === location.origin) {
+              (window as any).cursors?.setMyAwareness?.({
+                navigatingTo: {
+                  url: url.pathname,
+                  title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
+                },
+              });
+            }
+          } catch { /* ignore invalid URLs */ }
+        }, { capture: true });
       }
 
       private listenForPresenceCount() {
