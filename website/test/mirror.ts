@@ -1,3 +1,3 @@
 import { playhtml } from "../../packages/playhtml/src";
 
-playhtml.init();
+playhtml.init({ developmentMode: true });

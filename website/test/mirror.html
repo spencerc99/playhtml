@@ -27,7 +27,7 @@
       .status { font-size: 0.85rem; color: #888; margin-top: 0.25rem; }
 
       /* Hover test: style via the synced data attribute */
-      #hover-box {
+      #m-hover {
         width: 200px;
         height: 100px;
         background: #e0e0e0;
@@ -38,14 +38,14 @@
         transition: background 0.2s, transform 0.2s;
         cursor: pointer;
       }
-      #hover-box[data-playhtml-hover] {
+      #m-hover[data-playhtml-hover] {
         background: #4caf50;
         color: white;
         transform: scale(1.05);
       }
 
       /* Focus test: style via the synced data attribute */
-      #focus-input[data-playhtml-focus] {
+      #m-focus[data-playhtml-focus] {
         outline: 3px solid #2196f3;
         background: #e3f2fd;
       }
@@ -84,35 +84,35 @@
     <h2>:hover (via data-playhtml-hover)</h2>
     <section>
       <label>Hover over the box — it should turn green on ALL connected clients.</label>
-      <div can-mirror id="hover-box">Hover me</div>
+      <div can-mirror id="m-hover">Hover me</div>
     </section>
 
     <!-- FOCUS -->
     <h2>:focus (via data-playhtml-focus)</h2>
     <section>
       <label>Click the input to focus — the blue outline should appear on all clients.</label>
-      <input can-mirror id="focus-input" type="text" placeholder="Click to focus" />
+      <input can-mirror id="m-focus" type="text" placeholder="Click to focus" />
     </section>
 
     <!-- TEXT INPUT -->
     <h2>Text input (value sync)</h2>
     <section>
       <label>Type in the input — value should sync across clients.</label>
-      <input can-mirror id="text-input" type="text" placeholder="Type here..." />
+      <input can-mirror id="m-text" type="text" placeholder="Type here..." />
     </section>
 
     <!-- TEXTAREA -->
     <h2>Textarea (value sync)</h2>
     <section>
       <label>Type in the textarea — value should sync.</label>
-      <textarea can-mirror id="textarea-input" rows="3" cols="40" placeholder="Type here..."></textarea>
+      <textarea can-mirror id="m-textarea" rows="3" cols="40" placeholder="Type here..."></textarea>
     </section>
 
     <!-- CHECKBOX -->
     <h2>Checkbox (checked sync)</h2>
     <section>
       <label>Toggle the checkbox — checked state should sync.</label>
-      <div can-mirror id="checkbox-mirror">
+      <div can-mirror id="m-checkbox">
         <label><input type="checkbox" /> I agree to the terms</label>
       </div>
     </section>
@@ -121,7 +121,7 @@
     <h2>Radio buttons (checked sync)</h2>
     <section>
       <label>Select a radio option — selection should sync.</label>
-      <div can-mirror id="radio-mirror">
+      <div can-mirror id="m-radio">
         <label><input type="radio" name="color" value="red" /> Red</label><br>
         <label><input type="radio" name="color" value="green" /> Green</label><br>
         <label><input type="radio" name="color" value="blue" checked /> Blue</label>
@@ -132,7 +132,7 @@
     <h2>Select dropdown (selectedIndex sync)</h2>
     <section>
       <label>Change the dropdown — selection should sync.</label>
-      <select can-mirror id="select-input">
+      <select can-mirror id="m-select">
         <option value="apple">Apple</option>
         <option value="banana">Banana</option>
         <option value="cherry">Cherry</option>
@@ -144,10 +144,10 @@
     <h2>Range slider (value sync)</h2>
     <section>
       <label>Drag the slider — position should sync.</label>
-      <input can-mirror id="range-input" type="range" min="0" max="100" value="50" style="width: 100%;" />
+      <input can-mirror id="m-range" type="range" min="0" max="100" value="50" style="width: 100%;" />
       <div class="status">Value: <span id="range-value">50</span></div>
       <script>
-        document.getElementById("range-input").addEventListener("input", (e) => {
+        document.getElementById("m-range").addEventListener("input", (e) => {
           document.getElementById("range-value").textContent = e.target.value;
         });
       </script>
@@ -157,14 +157,14 @@
     <h2>Color picker (value sync)</h2>
     <section>
       <label>Pick a color — it should sync.</label>
-      <input can-mirror id="color-input" type="color" value="#ff5722" />
+      <input can-mirror id="m-color" type="color" value="#ff5722" />
     </section>
 
     <!-- DETAILS / SUMMARY -->
     <h2>&lt;details&gt; open/closed (attribute sync)</h2>
     <section>
       <label>Toggle the details — open/closed state should sync (uses the native <code>open</code> attribute).</label>
-      <details can-mirror id="details-element">
+      <details can-mirror id="m-details">
         <summary>Click to expand</summary>
         <p>This content is hidden until the details element is opened. The <code>open</code> attribute is a regular DOM attribute, so the MutationObserver catches it automatically.</p>
       </details>
@@ -174,20 +174,20 @@
     <h2>contenteditable (text/child sync)</h2>
     <section>
       <label>Edit the text below — changes should sync.</label>
-      <div can-mirror id="editable-div" contenteditable="true">Edit this text collaboratively!</div>
+      <div can-mirror id="m-editable" contenteditable="true">Edit this text collaboratively!</div>
     </section>
 
     <!-- CLASS / ATTRIBUTE TOGGLE -->
     <h2>Attribute toggle (via button)</h2>
     <section>
       <label>Click the button to toggle a style attribute — should sync.</label>
-      <div can-mirror id="attr-toggle" style="padding: 1rem; background: #ffecb3; border-radius: 8px; transition: background 0.3s;">
+      <div can-mirror id="m-attrtoggle" style="padding: 1rem; background: #ffecb3; border-radius: 8px; transition: background 0.3s;">
         I change color when toggled
       </div>
       <button onclick="toggleAttr()">Toggle background</button>
       <script>
         function toggleAttr() {
-          const el = document.getElementById("attr-toggle");
+          const el = document.getElementById("m-attrtoggle");
           if (el.style.background === "rgb(255, 236, 179)" || el.style.background === "#ffecb3") {
             el.style.background = "#c8e6c9";
           } else {
@@ -201,7 +201,7 @@
     <h2>Child add/remove (childList sync)</h2>
     <section>
       <label>Add or remove children — should sync.</label>
-      <div can-mirror id="child-list" style="min-height: 2rem; border: 1px dashed #ccc; padding: 0.5rem;">
+      <div can-mirror id="m-childlist" style="min-height: 2rem; border: 1px dashed #ccc; padding: 0.5rem;">
         <span>Item 1</span>
       </div>
       <button onclick="addChild()">Add item</button>
@@ -210,13 +210,13 @@
         let childCount = 1;
         function addChild() {
           childCount++;
-          const el = document.getElementById("child-list");
+          const el = document.getElementById("m-childlist");
           const span = document.createElement("span");
           span.textContent = ` Item ${childCount}`;
           el.appendChild(span);
         }
         function removeChild2() {
-          const el = document.getElementById("child-list");
+          const el = document.getElementById("m-childlist");
           if (el.lastElementChild) {
             el.removeChild(el.lastElementChild);
           }
@@ -228,7 +228,7 @@
     <h2>Multiple form elements in one can-mirror container</h2>
     <section>
       <label>A form with mixed inputs inside a single can-mirror div.</label>
-      <div can-mirror id="mixed-form">
+      <div can-mirror id="m-mixedform">
         <div style="margin-bottom: 0.5rem;">
           <label>Name: <input type="text" placeholder="Your name" /></label>
         </div>

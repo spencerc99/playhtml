@@ -481,75 +481,134 @@ export const TagTypeToElement: DefaultTagInitializers = {
   },
   [TagType.CanMirror]: {
     defaultData: (element: HTMLElement) => constructInitialState(element),
-    onMount: ({ getElement, setData, getData }) => {
+    myDefaultAwareness: { hover: false, focus: false },
+    onMount: ({ getElement, setData, setMyAwareness }) => {
       const element = getElement();
 
+      // Ephemeral attributes managed via awareness, not Yjs state.
+      // The MutationObserver must ignore these to avoid polluting
+      // persistent state with transient per-user presence.
+      const EPHEMERAL_ATTRS = ["data-playhtml-hover", "data-playhtml-focus"];
+
       const setDataAny = setData as unknown as (data: any) => void;
-      observeElementChanges(element, (mutations) => {
-        // Apply granular, collaborative edits in place using the mutator form.
+
+      const observer = observeElementChanges(element, (mutations) => {
+        // Filter out mutations for ephemeral awareness-managed attributes
+        const persistentMutations = mutations.filter(
+          (m) =>
+            m.type !== "attributes" ||
+            !EPHEMERAL_ATTRS.includes(m.attributeName || "")
+        );
+        if (persistentMutations.length === 0) return;
         setDataAny((draft: any) => {
-          applyMutationsInPlace(draft, mutations);
+          applyMutationsInPlace(draft, persistentMutations);
         });
       });
+      // Store the observer on the element so updateElement can
+      // disconnect it while applying remote state. MutationObserver
+      // callbacks are async, so a boolean flag doesn't work.
+      (element as any).__playhtml_observer = observer;
 
-      // Sync :hover state by toggling a data attribute that the MutationObserver
-      // will pick up and replicate to other clients. Users should style with
-      // [data-playhtml-hover] instead of :hover for synced hover effects.
+      // Sync :hover via awareness (ephemeral, per-user).
+      // Style with [data-playhtml-hover] instead of :hover.
       element.addEventListener("mouseenter", () => {
+        setMyAwareness({ hover: true, focus: element.hasAttribute("data-playhtml-focus") });
         element.setAttribute("data-playhtml-hover", "");
       });
       element.addEventListener("mouseleave", () => {
+        setMyAwareness({ hover: false, focus: element.hasAttribute("data-playhtml-focus") });
         element.removeAttribute("data-playhtml-hover");
       });
 
-      // Sync :focus state similarly.
-      element.addEventListener(
-        "focusin",
-        () => {
-          element.setAttribute("data-playhtml-focus", "");
-        },
-      );
-      element.addEventListener(
-        "focusout",
-        () => {
-          element.removeAttribute("data-playhtml-focus");
-        },
-      );
+      // Sync :focus via awareness (ephemeral, per-user).
+      element.addEventListener("focusin", () => {
+        setMyAwareness({ hover: element.hasAttribute("data-playhtml-hover"), focus: true });
+        element.setAttribute("data-playhtml-focus", "");
+      });
+      element.addEventListener("focusout", () => {
+        setMyAwareness({ hover: element.hasAttribute("data-playhtml-hover"), focus: false });
+        element.removeAttribute("data-playhtml-focus");
+      });
 
       // Sync form element internal state (checked, value, selectedIndex).
       // These IDL properties don't trigger attribute mutations, so we listen
       // for input/change events and push a full state snapshot.
-      const syncFormState = () => {
+      const syncFormStateRecursive = (
+        currentState: HTMLElementState,
+        draft: any
+      ) => {
+        if (currentState.formState) {
+          draft.formState = currentState.formState;
+        }
+        if (currentState.children && draft.children) {
+          for (let i = 0; i < currentState.children.length; i++) {
+            const childState = currentState.children[i];
+            if (
+              childState.nodeType === NodeType.HTMLElement &&
+              draft.children[i]
+            ) {
+              syncFormStateRecursive(
+                childState as HTMLElementState,
+                draft.children[i]
+              );
+            }
+          }
+        }
+      };
+      const syncInputState = () => {
         setDataAny((draft: any) => {
           const current = constructInitialState(element) as HTMLElementState;
-          // Sync top-level form state
-          if (current.formState) {
-            draft.formState = current.formState;
-          }
-          // Sync child form state
+          syncFormStateRecursive(current, draft);
+          // Also sync children for contenteditable elements where
+          // text/child changes fire input events but not attribute
+          // mutations visible to the MutationObserver (subtree: false).
           if (current.children) {
-            for (let i = 0; i < current.children.length; i++) {
-              const childState = current.children[i];
-              if (
-                childState.nodeType === NodeType.HTMLElement &&
-                childState.formState &&
-                draft.children?.[i]
-              ) {
-                draft.children[i].formState = childState.formState;
-              }
-            }
+            draft.children.splice(0, draft.children.length, ...current.children);
           }
         });
       };
-      element.addEventListener("input", syncFormState);
-      element.addEventListener("change", syncFormState);
+      element.addEventListener("input", syncInputState);
+      element.addEventListener("change", syncInputState);
     },
     updateElement: ({ element, data }) => {
       const currentState = constructInitialState(element);
       if (areStatesEqual(currentState, data)) {
         return;
       }
+      // Disconnect the MutationObserver while applying remote state
+      // to prevent a feedback loop. MutationObserver callbacks are
+      // async, so a boolean flag gets cleared before they fire.
+      const obs: MutationObserver | undefined =
+        (element as any).__playhtml_observer;
+      if (obs) {
+        obs.takeRecords();
+        obs.disconnect();
+      }
       updateElementFromState(element, data);
+      if (obs) {
+        obs.observe(element, {
+          childList: true,
+          attributes: true,
+          subtree: false,
+          characterData: true,
+        });
+      }
+    },
+    updateElementAwareness: ({ element, awareness }) => {
+      // Any client hovering or focusing this element should show
+      // the visual indicator on all connected clients.
+      const anyHover = awareness.some((a) => a?.hover);
+      const anyFocus = awareness.some((a) => a?.focus);
+      if (anyHover) {
+        element.setAttribute("data-playhtml-hover", "");
+      } else {
+        element.removeAttribute("data-playhtml-hover");
+      }
+      if (anyFocus) {
+        element.setAttribute("data-playhtml-focus", "");
+      } else {
+        element.removeAttribute("data-playhtml-focus");
+      }
     },
   },
 };
@@ -739,7 +798,7 @@ function updateAttributes(state: ElementState, mutation: MutationRecord) {
     const attributeValue = mutation.target.getAttribute(attributeName);
     if (attributeValue !== null) {
       state.attributes[attributeName] = attributeValue;
-    } else {
+    } else if (attributeName in state.attributes) {
       delete state.attributes[attributeName];
     }
   }
@@ -936,7 +995,7 @@ function updateAttributesFromState(
   }
 
   Array.from(element.attributes).forEach((attr) => {
-    if (!attrs[attr.name]) element.removeAttribute(attr.name);
+    if (!(attr.name in attrs)) element.removeAttribute(attr.name);
   });
 }
 
@@ -944,42 +1003,30 @@ function updateChildrenFromState(
   element: HTMLElement,
   state: HTMLElementState
 ) {
-  // Mapping to track the processed state children
-  const processedChildren = new Set<Element | Text>();
+  const domChildren = Array.from(element.childNodes).filter(isValidNode);
 
-  // Update or create elements as necessary
-  state.children.forEach((childState) => {
-    // @ts-ignore
-    let childElement: HTMLElement | Text | undefined = Array.from(
-      element.childNodes
-    )
-      .filter(isValidNode)
-      .find(
-        (el) =>
-          // @ts-ignore
-          areStatesEqual(constructInitialState(el), childState) &&
-          !processedChildren.has(el)
-      );
+  // Update existing children in place by position
+  const commonLen = Math.min(domChildren.length, state.children.length);
+  for (let i = 0; i < commonLen; i++) {
+    updateElementFromState(
+      domChildren[i] as HTMLElement | Text,
+      state.children[i]
+    );
+  }
 
-    if (!childElement) {
-      // Create a new child element if not found
-      childElement =
-        childState.nodeType === NodeType.Text
-          ? document.createTextNode(childState.textContent)
-          : document.createElement(childState.tagName);
-      element.appendChild(childElement);
-    }
+  // Append any extra children from state
+  for (let i = commonLen; i < state.children.length; i++) {
+    const childState = state.children[i];
+    const newChild =
+      childState.nodeType === NodeType.Text
+        ? document.createTextNode(childState.textContent)
+        : document.createElement(childState.tagName);
+    element.appendChild(newChild);
+    updateElementFromState(newChild, childState);
+  }
 
-    processedChildren.add(childElement as Element | Text);
-    updateElementFromState(childElement as HTMLElement | Text, childState);
-  });
-
-  // Remove any remaining unused elements
-  Array.from(element.childNodes)
-    .filter(isValidNode)
-    .forEach((child) => {
-      if (!processedChildren.has(child)) {
-        element.removeChild(child);
-      }
-    });
+  // Remove excess DOM children
+  for (let i = domChildren.length - 1; i >= commonLen; i--) {
+    element.removeChild(domChildren[i]);
+  }
 }
