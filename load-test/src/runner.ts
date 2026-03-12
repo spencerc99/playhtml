@@ -40,12 +40,13 @@ function parseArgs() {
     duration: get("--duration") ? parseInt(get("--duration")!, 10) : undefined,
     rampUp: get("--ramp-up") ? parseInt(get("--ramp-up")!, 10) : undefined,
     target: get("--target") ?? "local",
+    room: get("--room"),
   };
 }
 
 async function runScenario(
   scenarioName: string,
-  params: ScenarioParams
+  params: ScenarioParams & { room?: string }
 ): Promise<void> {
   const scenario = scenarios[scenarioName];
   if (!scenario) {
@@ -54,7 +55,7 @@ async function runScenario(
   }
 
   const host = TARGETS[params.target] ?? params.target;
-  const roomId = `load-test-${scenarioName}-${Date.now()}`;
+  const roomId = params.room ?? `load-test-${scenarioName}-${Date.now()}`;
   const runId = randomUUID().slice(0, 8);
 
   console.log(`\nRun ${runId} -- scenario: ${scenarioName}, target: ${params.target} (${host})`);
@@ -175,12 +176,13 @@ async function main() {
       console.error(`Unknown scenario: ${args.scenario}. Available: ${Object.keys(scenarios).join(", ")}`);
       process.exit(1);
     }
-    const params: ScenarioParams = {
+    const params: ScenarioParams & { room?: string } = {
       ...scenario.defaults,
       maxUsers: args.maxUsers ?? 50,
       duration: args.duration ?? 60,
       rampUpSeconds: args.rampUp ?? scenario.defaults.rampUpSeconds,
       target: args.target,
+      room: args.room,
     };
     await runScenario(args.scenario, params);
     return;

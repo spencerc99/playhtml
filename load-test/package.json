@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun src/runner.ts"
+    "start": "bun src/runner.ts",
+    "distributed": "bun src/distributed.ts"
   },
   "dependencies": {
     "@syncedstore/core": "^0.6.0",
