@@ -117,9 +117,7 @@ export function cloneThroughFragments<P = any>(
       </>
     );
   } else if (!isDOMElement(element)) {
-    // TODO: FIX this type error
-    // @ts-ignore
-    return domProps(element, props);
+    return domProps(element, props) as React.ReactElement<P>;
   }
 
   return React.cloneElement(element, props);

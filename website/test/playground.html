@@ -157,6 +157,18 @@
         };
       </script>
 
+      <h2>Can-hover test</h2>
+      <div can-hover id="hoverBox" style="width: 200px; height: 100px; background: #e0e0e0; display: flex; align-items: center; justify-content: center; border-radius: 8px; transition: background 0.2s, transform 0.2s; cursor: pointer;">
+        Hover me
+      </div>
+      <style>
+        #hoverBox[data-playhtml-hover] {
+          background: #4caf50;
+          color: white;
+          transform: scale(1.05);
+        }
+      </style>
+
       <div can-mirror id="t6">red or blue</div>
       <button onclick="changeText()">red or blue</button>
       <div can-mirror id="contentEditable" contenteditable="true">
