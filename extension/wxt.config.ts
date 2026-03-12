@@ -22,6 +22,15 @@ export default defineConfig({
       page: "options.html",
       open_in_tab: true,
     },
+    browser_specific_settings: {
+      gecko: {
+        id: "we-were-online@spencerchang.com",
+        data_collection_permissions: {
+          required: ["browsingActivity", "websiteActivity"],
+          optional: ["technicalAndInteraction"],
+        },
+      },
+    },
   },
   modules: ["@wxt-dev/module-react"],
   outDir: "dist",
