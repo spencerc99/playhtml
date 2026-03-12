@@ -142,24 +142,6 @@ export class VirtualClient {
     this.record("awareness-sent");
   }
 
-  /** Watch for a specific writeId to appear in another client's update. */
-  observeWriteReceived(writeId: string): Promise<number> {
-    return new Promise((resolve) => {
-      const sent = Date.now();
-      const handler = () => {
-        // Simple heuristic: any incoming update after our write counts
-        this.doc.off("update", handler);
-        resolve(Date.now() - sent);
-      };
-      this.doc.on("update", handler);
-      // Timeout after 10s
-      setTimeout(() => {
-        this.doc.off("update", handler);
-        resolve(-1); // -1 = timed out
-      }, 10_000);
-    });
-  }
-
   getEvents(): ClientEvent[] {
     return [...this.events];
   }

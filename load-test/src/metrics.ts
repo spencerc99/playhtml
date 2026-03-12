@@ -13,7 +13,6 @@ export interface LatencySnapshot {
   propagationRate: number; // 0-1 (writes observed by others within timeout)
   writesPerSec: number;
   awarenessPerSec: number;
-  bytesPerSec: number;
 }
 
 export interface RunSummary {
@@ -76,7 +75,6 @@ export class MetricsCollector {
       propagationRate,
       writesPerSec: writes.length / windowSec,
       awarenessPerSec: awareness.length / windowSec,
-      bytesPerSec: 0, // TODO: wire up from provider stats if available
     };
 
     this.snapshots.push(snap);

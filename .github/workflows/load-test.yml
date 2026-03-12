@@ -1,4 +1,4 @@
-name: Distributed Load Test
+name: Load Test
 
 on:
   workflow_dispatch:
@@ -52,7 +52,7 @@ jobs:
     steps:
       - name: Generate shared room ID
         id: room
-        run: echo "id=load-test-distributed-${{ inputs.scenario }}-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+        run: echo "id=load-test-${{ inputs.scenario }}-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
 
       - name: Split users across workers
         id: split
@@ -114,7 +114,7 @@ jobs:
 
       - name: Print combined results
         run: |
-          echo "=== Distributed Load Test Results ==="
+          echo "=== Load Test Results ==="
           echo "Scenario: ${{ inputs.scenario }}"
           echo "Target: ${{ inputs.target }}"
           echo "Total users: ${{ inputs.users }} across ${{ inputs.workers }} workers"

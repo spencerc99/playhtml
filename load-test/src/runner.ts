@@ -71,7 +71,6 @@ async function runScenario(
 
   let tickIndex = 0;
   let lastSnapshot = startMs;
-  let lastSnapshotUserCount = 0;
 
   printSnapshotHeader();
 
@@ -102,13 +101,12 @@ async function runScenario(
     }
 
     // Snapshot every SNAPSHOT_INTERVAL_MS
-    if (Date.now() - lastSnapshot >= SNAPSHOT_INTERVAL_MS && clients.length !== lastSnapshotUserCount) {
-      // Collect all events since last snapshot
+    if (Date.now() - lastSnapshot >= SNAPSHOT_INTERVAL_MS) {
       for (const c of clients) allEvents.push(...c.getEvents());
       const snap = collector.snapshot(clients.length, allEvents, lastSnapshot, Date.now());
       printSnapshot(snap);
+      allEvents.length = 0;
       lastSnapshot = Date.now();
-      lastSnapshotUserCount = clients.length;
     }
 
     tickIndex++;
@@ -117,7 +115,9 @@ async function runScenario(
 
   // Final snapshot
   for (const c of clients) allEvents.push(...c.getEvents());
-  collector.snapshot(clients.length, allEvents, lastSnapshot, Date.now());
+  if (allEvents.length > 0) {
+    collector.snapshot(clients.length, allEvents, lastSnapshot, Date.now());
+  }
 
   // Disconnect all
   for (const c of clients) c.disconnect();
