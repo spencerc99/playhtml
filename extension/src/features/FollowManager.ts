@@ -12,6 +12,39 @@ export interface FollowState {
 const PROXIMITY_THRESHOLD = 400; // px
 const HINT_DISMISS_MS = 4000;
 
+function colorDot(color: string, extraStyles?: Partial<CSSStyleDeclaration>): HTMLSpanElement {
+  const dot = document.createElement("span");
+  Object.assign(dot.style, {
+    display: "inline-block",
+    width: "8px",
+    height: "8px",
+    borderRadius: "50%",
+    background: color,
+    ...extraStyles,
+  });
+  return dot;
+}
+
+function kbd(text: string): HTMLElement {
+  const el = document.createElement("kbd");
+  Object.assign(el.style, {
+    border: "1px solid rgba(90,78,65,0.3)",
+    borderRadius: "2px",
+    padding: "1px 4px",
+    fontFamily: "monospace",
+    fontSize: "11px",
+  });
+  el.textContent = text;
+  return el;
+}
+
+function muted(text: string, extraStyles?: Partial<CSSStyleDeclaration>): HTMLSpanElement {
+  const el = document.createElement("span");
+  Object.assign(el.style, { color: "#8a8279", ...extraStyles });
+  el.textContent = text;
+  return el;
+}
+
 export class FollowManager {
   private followState: FollowState | null = null;
   private hintShownForKeys = new Set<string>();
@@ -205,7 +238,12 @@ export class FollowManager {
       transition: "opacity 0.3s ease",
       whiteSpace: "nowrap",
     });
-    hint.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle"></span>press <kbd style="border:1px solid rgba(90,78,65,0.3);border-radius:2px;padding:1px 4px;font-family:monospace;font-size:11px">F</kbd> to follow`;
+    hint.append(
+      colorDot(color, { marginRight: "6px", verticalAlign: "middle" }),
+      "press ",
+      kbd("F"),
+      " to follow",
+    );
 
     document.body.appendChild(hint);
     this.hintElement = hint;
@@ -269,7 +307,7 @@ export class FollowManager {
       transition: "opacity 0.3s ease",
       opacity: "0",
     });
-    bar.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>following <span style="color:#8a8279;margin-left:4px">esc to stop</span>`;
+    bar.append(colorDot(color), "following ", muted("esc to stop", { marginLeft: "4px" }));
     document.body.appendChild(bar);
     this.statusBarElement = bar;
     requestAnimationFrame(() => {
@@ -377,7 +415,14 @@ export class FollowManager {
     this.onMutualFollow?.(true);
     if (this.statusBarElement && this.followState) {
       const color = this.followState.targetColor;
-      this.statusBarElement.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>following together <span style="color:#8a8279;margin-left:2px">/ to chat</span> <span style="color:#8a8279;margin-left:4px">esc to stop</span>`;
+      this.statusBarElement.textContent = "";
+      this.statusBarElement.append(
+        colorDot(color),
+        "following together ",
+        muted("/ to chat", { marginLeft: "2px" }),
+        muted(" "),
+        muted("esc to stop", { marginLeft: "4px" }),
+      );
     }
   }
 
@@ -412,7 +457,12 @@ export class FollowManager {
     });
     const displayTitle =
       title.length > 40 ? title.slice(0, 40) + "..." : title;
-    toast.innerHTML = `went to <strong>${displayTitle}</strong> <span style="color:#8a8279;margin-left:6px">press <kbd style="border:1px solid rgba(90,78,65,0.3);border-radius:2px;padding:1px 4px;font-family:monospace;font-size:11px">F</kbd> to follow</span>`;
+    const strong = document.createElement("strong");
+    strong.textContent = displayTitle;
+    const followHint = document.createElement("span");
+    Object.assign(followHint.style, { color: "#8a8279", marginLeft: "6px" });
+    followHint.append("press ", kbd("F"), " to follow");
+    toast.append("went to ", strong, followHint);
 
     document.body.appendChild(toast);
     this.navToastElement = toast;
@@ -440,7 +490,8 @@ export class FollowManager {
 
   private showLostToast(): void {
     if (this.statusBarElement) {
-      this.statusBarElement.innerHTML = `<span style="color:#8a8279">lost them</span>`;
+      this.statusBarElement.textContent = "";
+      this.statusBarElement.append(muted("lost them"));
       setTimeout(() => this.removeFollowUI(), 2000);
     }
   }

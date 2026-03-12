@@ -1525,9 +1525,16 @@ interface LinkTraceData {
   pageMax: number;
 }
 
+const INTENSITY_K = 0.1;
+const ABSOLUTE_RATE = 50;
+
 function linkIntensity(d: LinkTraceData): number {
-  if (d.pageMax === 0) return 0;
-  return Math.min(1, d.count / d.pageMax);
+  if (d.count <= 0 || d.pageMax <= 0) return 0;
+  const denom = Math.log(1 + d.pageMax * INTENSITY_K);
+  if (denom === 0) return 0;
+  const relative = Math.min(1, Math.log(1 + d.count * INTENSITY_K) / denom);
+  const absolute = 1 - Math.exp(-d.count / ABSOLUTE_RATE);
+  return absolute * (0.3 + 0.7 * relative);
 }
 
 function ltHslToHex(h: number, s: number, l: number): string {
@@ -1626,6 +1633,22 @@ const LT_EXCERPT_DATA: Record<string, LinkTraceData> = {
     recentColors: ltPickColorsFor(8, 9),
     pageMax: LT_PAGE_MAX,
   },
+  // Early-visit scenarios: single visitor on a fresh page
+  "single-visit-fresh": {
+    count: 1,
+    recentColors: ltPickColorsFor(1, 0),
+    pageMax: 1,
+  },
+  "few-visits-fresh": {
+    count: 3,
+    recentColors: ltPickColorsFor(1, 2),
+    pageMax: 5,
+  },
+  "single-visit-busy": {
+    count: 1,
+    recentColors: ltPickColorsFor(1, 4),
+    pageMax: LT_PAGE_MAX,
+  },
 };
 
 type LtLinkRenderer = (props: {
@@ -1645,10 +1668,21 @@ function LtLink({
   data: LinkTraceData;
   render: LtLinkRenderer;
 }) {
+  const t = linkIntensity(data);
+  const info = `count: ${data.count}, pageMax: ${data.pageMax}, colors: ${data.recentColors.length}, t: ${t.toFixed(4)}`;
   return (
-    <Render href={href} data={data}>
-      {children}
-    </Render>
+    <span
+      title={info}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigator.clipboard.writeText(info);
+      }}
+    >
+      <Render href={href} data={data}>
+        {children}
+      </Render>
+    </span>
   );
 }
 
@@ -1704,7 +1738,7 @@ function WikiExcerpt({ renderLink }: { renderLink: LtLinkRenderer }) {
         </LtLink>
         .
       </p>
-      <p style={{ margin: 0 }}>
+      <p style={{ margin: "0 0 10px" }}>
         The architecture relies on{" "}
         <LtLink href="url" data={LT_EXCERPT_DATA["url"]} render={R}>
           uniform resource locators
@@ -1727,6 +1761,36 @@ function WikiExcerpt({ renderLink }: { renderLink: LtLinkRenderer }) {
         </LtLink>{" "}
         for interactivity.
       </p>
+      <p style={{ margin: "0 0 10px" }}>
+        Early visit test:{" "}
+        <LtLink href="single-visit-fresh" data={LT_EXCERPT_DATA["single-visit-fresh"]} render={R}>
+          single click, fresh page
+        </LtLink>
+        ,{" "}
+        <LtLink href="few-visits-fresh" data={LT_EXCERPT_DATA["few-visits-fresh"]} render={R}>
+          3 clicks on small page
+        </LtLink>
+        ,{" "}
+        <LtLink href="single-visit-busy" data={LT_EXCERPT_DATA["single-visit-busy"]} render={R}>
+          single click, busy page
+        </LtLink>
+        .
+      </p>
+      <p style={{ margin: 0, maxWidth: "280px" }}>
+        Line-wrap stress test:{" "}
+        <LtLink
+          href="distributed-computing"
+          data={LT_EXCERPT_DATA["distributed-computing"]}
+          render={R}
+        >
+          distributed information management system
+        </LtLink>{" "}
+        spans multiple lines, and{" "}
+        <LtLink href="cern" data={LT_EXCERPT_DATA["cern"]} render={R}>
+          European Organization for Nuclear Research (CERN)
+        </LtLink>{" "}
+        wraps too.
+      </p>
     </div>
   );
 }
@@ -1736,13 +1800,33 @@ function WikiExcerpt({ renderLink }: { renderLink: LtLinkRenderer }) {
 // Volume controls how many cursors are in the cycle: low=1, medium=2, high=3.
 function PassingCursors({
   data,
-  linkWidth,
+  linkRef,
 }: {
   data: LinkTraceData;
-  linkWidth: number;
+  linkRef: React.RefObject<HTMLAnchorElement | null>;
 }) {
   const t = linkIntensity(data);
-  if (t === 0 || linkWidth === 0) return null;
+
+  // Get per-line-fragment rects so cursors anchor to actual text positions
+  const [fragments, setFragments] = useState<{ left: number; top: number; width: number; height: number }[]>([]);
+  useEffect(() => {
+    const el = linkRef.current;
+    if (!el) return;
+    const clientRects = Array.from(el.getClientRects());
+    if (clientRects.length === 0) return;
+    // Absolute children of an inline element are positioned relative to
+    // the first fragment's top-left, not getBoundingClientRect()'s origin.
+    const origin = clientRects[0];
+    const rects = clientRects.map((r) => ({
+      left: r.left - origin.left,
+      top: r.top - origin.top,
+      width: r.width,
+      height: r.height,
+    }));
+    setFragments(rects);
+  }, [linkRef]);
+
+  if (t === 0 || fragments.length === 0) return null;
 
   // 1 cursor at low volume, 2 at medium, 3 at high
   const count = t < 0.2 ? 1 : t < 0.6 ? 2 : 3;
@@ -1776,8 +1860,8 @@ function PassingCursors({
       style={{
         position: "absolute",
         left: 0,
-        right: 0,
-        top: "50%",
+        top: 0,
+        width: 0,
         height: 0,
         pointerEvents: "none",
         zIndex: 3,
@@ -1788,16 +1872,20 @@ function PassingCursors({
         const w = 10 * cursorScale;
         const h = 14 * cursorScale;
         const ltr = i % 2 === 0;
-        // Each cursor starts at its stagger offset within the shared cycle
         const delayMs = i * staggerMs;
-        // Drift targets in px, relative to the cursor's starting left position.
-        // ltr cursor starts at left:0, drifts rightward across the word.
-        // rtl cursor starts at right:0, drifts leftward.
-        // Keep all targets within [0, linkWidth - w] so cursor stays on the word.
-        const farSide = ltr ? linkWidth - w : -(linkWidth - w);
-        const nearSide = ltr ? linkWidth * 0.2 : -(linkWidth * 0.2);
-        const center = ltr ? linkWidth * 0.5 - w / 2 : -(linkWidth * 0.5 - w / 2);
+
+        // Assign each cursor to a line fragment (round-robin)
+        const frag = fragments[i % fragments.length];
+        const fragW = frag.width;
+
+        const farSide = ltr ? fragW - w : -(fragW - w);
+        const nearSide = ltr ? fragW * 0.2 : -(fragW * 0.2);
+        const center = ltr ? fragW * 0.5 - w / 2 : -(fragW * 0.5 - w / 2);
         const animName = `lt-wander-${count}-${i}`;
+
+        // Position at this fragment's start edge, vertically centered
+        const cursorLeft = ltr ? frag.left : frag.left + frag.width;
+        const cursorTop = frag.top + frag.height / 2 - h / 2;
         return (
           <React.Fragment key={i}>
             <style>{`
@@ -1815,9 +1903,8 @@ function PassingCursors({
             <span
               style={{
                 position: "absolute",
-                left: ltr ? 0 : undefined,
-                right: ltr ? undefined : 0,
-                top: -h / 2,
+                left: cursorLeft,
+                top: cursorTop,
                 display: "inline-block",
                 animation: `${animName} ${(cycleMs / 1000).toFixed(2)}s linear ${(delayMs / 1000).toFixed(2)}s infinite`,
                 opacity: 0,
@@ -1917,6 +2004,49 @@ function smearNebulaLayers(
   return [baseFill, ...layers];
 }
 
+// Build text-shadow layers that simulate the nebula glow blur.
+// text-shadow follows inline line wrapping, unlike absolute-positioned spans.
+// We use transparent text color + multiple offset shadows to create the halo.
+function buildGlowShadows(
+  colors: string[],
+  baseOpacity: number,
+  blobOpacity: number,
+  blur: number,
+  t: number,
+): string {
+  if (colors.length === 0) return "none";
+
+  const avg = averageHex(colors);
+  const avgRgba = ltHexToRgba(avg, baseOpacity * 0.7);
+
+  // Base wash: several overlapping shadows at the average color
+  const shadows: string[] = [
+    `0 0 ${(blur * 1.5).toFixed(1)}px ${avgRgba}`,
+    `0 0 ${(blur * 2.5).toFixed(1)}px ${avgRgba}`,
+  ];
+
+  // Color blobs: each pair gets offset shadows
+  if (colors.length > 1) {
+    const pairs = pairColors(colors);
+    for (let i = 0; i < pairs.length; i++) {
+      const [c1, c2] = pairs[i];
+      // Horizontal offset: spread blobs across the text
+      const xOff = pairs.length === 1
+        ? 0
+        : ((i / (pairs.length - 1)) - 0.5) * (4 + t * 6);
+      const yOff = (i % 2 === 0 ? -1 : 1) * (0.5 + t);
+      const inner = ltHexToRgba(c1, blobOpacity * 0.6);
+      const mid = ltHexToRgba(c2, blobOpacity * 0.4);
+      shadows.push(
+        `${xOff.toFixed(1)}px ${yOff.toFixed(1)}px ${(blur * 1.2).toFixed(1)}px ${inner}`,
+        `${(xOff * 0.7).toFixed(1)}px ${(-yOff).toFixed(1)}px ${(blur * 2).toFixed(1)}px ${mid}`,
+      );
+    }
+  }
+
+  return shadows.join(", ");
+}
+
 function SmearLink({
   children,
   data,
@@ -1936,65 +2066,41 @@ function SmearLink({
   const blur = 1.5 + t * 4;
   const baseOpacity = (0.15 + t * 0.2) * opacityMul;
   const blobOpacity = (0.2 + t * 0.3) * opacityMul;
-  const vSpread = t * 3;
-  const hInset = Math.round((1 - t) * 15);
-  const satFilter = `saturate(${saturationMul.toFixed(2)})`;
+  const vPad = Math.round(1 + t * 3);
+  const hPad = Math.round(1 + t * 2);
+  const satFilter = saturationMul !== 1 ? `saturate(${saturationMul.toFixed(2)})` : undefined;
 
   const linkRef = useRef<HTMLAnchorElement>(null);
-  const [linkWidth, setLinkWidth] = useState(0);
-  useEffect(() => {
-    if (linkRef.current) setLinkWidth(linkRef.current.offsetWidth);
-  }, [children]);
 
+  // Build the background layers for box-decoration-break: clone
   const layers = smearNebulaLayers(colors, baseOpacity, blobOpacity, t);
-  // First layer is the solid base fill, rest are radial blobs
-  const baseFill = layers[0];
-  const blobLayers = layers.slice(1);
+  const allBgs = layers.filter((l) => l !== "transparent");
+
+  const textShadow = buildGlowShadows(colors, baseOpacity, blobOpacity, blur, t);
 
   return (
-    <span style={{ position: "relative", display: "inline" }}>
-      <a
-        ref={linkRef}
-        href="#"
-        onClick={(e) => e.preventDefault()}
-        style={{ color: "#0645ad", textDecoration: "none", position: "relative", zIndex: 1 }}
-      >
-        {children}
-      </a>
-      {/* Base wash — muted average of all colors */}
-      <span
-        aria-hidden
-        style={{
-          position: "absolute",
-          left: `${hInset}%`,
-          right: `${hInset}%`,
-          top: `${-vSpread}px`,
-          bottom: `${-vSpread}px`,
-          background: baseFill,
-          filter: `blur(${blur.toFixed(1)}px) ${satFilter}`,
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-      {/* Color blobs — radial spots punctuating the base wash */}
-      {blobLayers.length > 0 && (
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: `${hInset}%`,
-            right: `${hInset}%`,
-            top: `${-vSpread}px`,
-            bottom: `${-vSpread}px`,
-            background: blobLayers.join(", "),
-            filter: `blur(${(blur * 0.7).toFixed(1)}px) ${satFilter}`,
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-      )}
-      {showCursors && <PassingCursors data={data} linkWidth={linkWidth} />}
-    </span>
+    <a
+      ref={linkRef}
+      href="#"
+      onClick={(e) => e.preventDefault()}
+      style={{
+        color: "#0645ad",
+        textDecoration: "none",
+        position: "relative",
+        // Inline backgrounds wrap with line breaks when box-decoration-break: clone
+        background: allBgs.length > 0 ? allBgs.join(", ") : undefined,
+        WebkitBoxDecorationBreak: "clone",
+        boxDecorationBreak: "clone" as any,
+        padding: allBgs.length > 0 ? `${vPad}px ${hPad}px` : undefined,
+        margin: allBgs.length > 0 ? `${-vPad}px ${-hPad}px` : undefined,
+        borderRadius: "2px",
+        textShadow,
+        filter: satFilter,
+      }}
+    >
+      {children}
+      {showCursors && <PassingCursors data={data} linkRef={linkRef} />}
+    </a>
   );
 }
 

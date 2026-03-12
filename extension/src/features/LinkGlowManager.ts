@@ -10,17 +10,20 @@ export interface LinkClickEntry {
 
 export interface PageLinkData {
   links: Record<string, LinkClickEntry>;
+  totalClicks: number;
 }
 
 export const MAX_RECENT_COLORS = 8;
+const DECAY_EVERY = 100;
+const DECAY_AMOUNT = 5;
 
 export class LinkGlowManager {
-  private data: PageLinkData = { links: {} };
+  private data: PageLinkData = { links: {}, totalClicks: 0 };
   private observer: IntersectionObserver | null = null;
   private visibleLinks = new Set<HTMLAnchorElement>();
   private cleanups: (() => void)[] = [];
   private handler: any = null;
-  private glowElements = new Map<HTMLAnchorElement, HTMLElement[]>();
+  private originalStyles = new Map<HTMLAnchorElement, Record<string, string>>();
 
   constructor(private playerColor: string) {}
 
@@ -32,7 +35,7 @@ export class LinkGlowManager {
     document.body.appendChild(anchor);
 
     const el = anchor as any;
-    el.defaultData = { links: {} } as PageLinkData;
+    el.defaultData = { links: {}, totalClicks: 0 } as PageLinkData;
     el.updateElement = ({ data }: { data: PageLinkData }) => {
       this.data = data;
       this.renderGlows();
@@ -65,17 +68,29 @@ export class LinkGlowManager {
         colors.push(this.playerColor);
         if (colors.length > MAX_RECENT_COLORS) colors.shift();
       }
+
+      draft.totalClicks = (draft.totalClicks ?? 0) + 1;
+      if (draft.totalClicks >= DECAY_EVERY) {
+        draft.totalClicks = 0;
+        for (const path of Object.keys(draft.links)) {
+          draft.links[path].count = Math.max(0, draft.links[path].count - DECAY_AMOUNT);
+          if (draft.links[path].count === 0) {
+            delete draft.links[path];
+          }
+        }
+      }
     });
   }
 
   private scanLinks(): void {
-    const content = document.querySelector("#mw-content-text");
-    if (!content) return;
+    const content = document.querySelector("#mw-content-text .mw-parser-output");
+    if (!content) {
+      return;
+    }
 
     const wikiLinks = content.querySelectorAll<HTMLAnchorElement>(
       'a[href^="/wiki/"]:not([href*=":"])'
     );
-
     this.observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -102,56 +117,48 @@ export class LinkGlowManager {
   }
 
   private removeGlow(link: HTMLAnchorElement): void {
-    const els = this.glowElements.get(link);
-    if (!els) return;
-    for (const el of els) el.remove();
-    this.glowElements.delete(link);
+    const saved = this.originalStyles.get(link);
+    if (!saved) return;
+    for (const [prop, val] of Object.entries(saved)) {
+      link.style.setProperty(prop, val);
+    }
+    this.originalStyles.delete(link);
   }
 
   private applyGlow(link: HTMLAnchorElement, style: GlowStyle): void {
-    const computed = getComputedStyle(link);
-    if (computed.position === "static") {
-      link.style.position = "relative";
-    }
-
-    this.removeGlow(link);
-
-    const els: HTMLElement[] = [];
-
-    const base = document.createElement("span");
-    base.setAttribute("aria-hidden", "true");
-    Object.assign(base.style, {
-      position: "absolute",
-      pointerEvents: "none",
-      zIndex: "0",
-      left: `${style.hInsetPct}%`,
-      right: `${style.hInsetPct}%`,
-      top: `${-style.vSpread}px`,
-      bottom: `${-style.vSpread}px`,
-      background: style.baseFill,
-      filter: style.baseFilter,
-    });
-    els.push(base);
-
-    if (style.blobLayers.length > 0) {
-      const blob = document.createElement("span");
-      blob.setAttribute("aria-hidden", "true");
-      Object.assign(blob.style, {
-        position: "absolute",
-        pointerEvents: "none",
-        zIndex: "0",
-        left: `${style.hInsetPct}%`,
-        right: `${style.hInsetPct}%`,
-        top: `${-style.vSpread}px`,
-        bottom: `${-style.vSpread}px`,
-        background: style.blobLayers.join(", "),
-        filter: style.blobFilter,
+    // Save original styles before first modification
+    if (!this.originalStyles.has(link)) {
+      this.originalStyles.set(link, {
+        background: link.style.background,
+        "box-decoration-break": link.style.getPropertyValue("box-decoration-break"),
+        "-webkit-box-decoration-break": link.style.getPropertyValue("-webkit-box-decoration-break"),
+        "text-shadow": link.style.textShadow,
+        padding: link.style.padding,
+        margin: link.style.margin,
+        "border-radius": link.style.borderRadius,
       });
-      els.push(blob);
     }
 
-    for (const el of els) link.appendChild(el);
-    this.glowElements.set(link, els);
+    const allBgs = [style.baseFill, ...style.blobLayers].filter(Boolean);
+    const vPad = Math.round(1 + style.vSpread);
+    const hPad = Math.round(1 + style.vSpread * 0.7);
+
+    // Build text-shadow for the soft halo effect
+    const blur = parseFloat(style.baseFilter.match(/blur\(([\d.]+)px\)/)?.[1] ?? "3");
+    const shadows = [
+      `0 0 ${(blur * 1.5).toFixed(1)}px ${style.baseFill}`,
+      `0 0 ${(blur * 2.5).toFixed(1)}px ${style.baseFill}`,
+    ];
+
+    Object.assign(link.style, {
+      background: allBgs.join(", "),
+      boxDecorationBreak: "clone",
+      WebkitBoxDecorationBreak: "clone",
+      textShadow: shadows.join(", "),
+      padding: `${vPad}px ${hPad}px`,
+      margin: `${-vPad}px ${-hPad}px`,
+      borderRadius: "2px",
+    });
   }
 
   private renderGlows(): void {
@@ -191,7 +198,7 @@ export class LinkGlowManager {
     this.cleanups = [];
 
     this.visibleLinks.clear();
-    this.glowElements.clear();
+    this.originalStyles.clear();
     this.handler = null;
   }
 }
