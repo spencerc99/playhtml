@@ -47,6 +47,8 @@ export class LinkGlowManager {
       playhtml.removePlayElement(anchor);
       anchor.remove();
     });
+
+    this.scanLinks();
   }
 
   recordClick(destPath: string): void {
@@ -63,6 +65,41 @@ export class LinkGlowManager {
       }
     });
   }
+
+  private scanLinks(): void {
+    const content = document.querySelector("#mw-content-text");
+    if (!content) return;
+
+    const wikiLinks = content.querySelectorAll<HTMLAnchorElement>(
+      'a[href^="/wiki/"]:not([href*=":"])'
+    );
+
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const link = entry.target as HTMLAnchorElement;
+          if (entry.isIntersecting) {
+            this.visibleLinks.add(link);
+          } else {
+            this.visibleLinks.delete(link);
+            this.removeGlow(link);
+          }
+        }
+        this.renderGlows();
+      },
+      { rootMargin: "100px 0px" }
+    );
+
+    for (const link of wikiLinks) {
+      const destPath = new URL(link.href).pathname;
+      const onClick = () => this.recordClick(destPath);
+      link.addEventListener("click", onClick);
+      this.cleanups.push(() => link.removeEventListener("click", onClick));
+      this.observer.observe(link);
+    }
+  }
+
+  private removeGlow(_link: HTMLAnchorElement): void {}
 
   private renderGlows(): void {}
 
