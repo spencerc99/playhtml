@@ -49,6 +49,17 @@ export default class PartyServer implements Party.Server {
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
 
+  // In-memory caches for hot-path data that rarely changes.
+  // Invalidated on writes via the set* methods.
+  private cachedSubscribers: Subscriber[] | null = null;
+  private cachedSharedRefs: SharedRefEntry[] | null = null;
+  private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
+    null;
+
+  // Pending bridge flush timer — batches bridge fan-out across rapid updates
+  private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly BRIDGE_DEBOUNCE_MS = 500;
+
   // Reuse the exact same options for all Y.Doc access
   readonly providerOptions: YPartyKitOptions = {
     load: async () => {
@@ -81,6 +92,8 @@ export default class PartyServer implements Party.Server {
       return doc;
     },
     callback: {
+      debounceWait: 3000,
+      debounceMaxWait: 15000,
       handler: async (doc: Y.Doc) => {
         // Skip autosave if we are performing a reset operation
         if (this.isSkippingSave) {
@@ -158,30 +171,51 @@ export default class PartyServer implements Party.Server {
   private adminHandler = new AdminHandler(this);
 
   async getSubscribers(): Promise<Subscriber[]> {
-    return (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+    if (this.cachedSubscribers !== null) return this.cachedSubscribers;
+    const subs =
+      ((await this.room.storage.get(STORAGE_KEYS.subscribers)) as
+        | Subscriber[]
+        | undefined) || [];
+    this.cachedSubscribers = subs;
+    return subs;
   }
 
   async setSubscribers(subscribers: Subscriber[]): Promise<void> {
+    this.cachedSubscribers = subscribers;
     await this.room.storage.put(STORAGE_KEYS.subscribers, subscribers);
   }
 
   async getSharedReferences(): Promise<SharedRefEntry[]> {
-    return (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+    if (this.cachedSharedRefs !== null) return this.cachedSharedRefs;
+    const refs =
+      ((await this.room.storage.get(STORAGE_KEYS.sharedReferences)) as
+        | SharedRefEntry[]
+        | undefined) || [];
+    this.cachedSharedRefs = refs;
+    return refs;
   }
 
   async setSharedReferences(references: SharedRefEntry[]): Promise<void> {
+    this.cachedSharedRefs = references;
     await this.room.storage.put(STORAGE_KEYS.sharedReferences, references);
   }
 
   async getSharedPermissions(): Promise<
     Record<string, SharedElementPermissions>
   > {
-    return (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    if (this.cachedSharedPerms !== null) return this.cachedSharedPerms;
+    const perms =
+      ((await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) as
+        | Record<string, SharedElementPermissions>
+        | undefined) || {};
+    this.cachedSharedPerms = perms;
+    return perms;
   }
 
   async setSharedPermissions(
     permissions: Record<string, SharedElementPermissions>
   ): Promise<void> {
+    this.cachedSharedPerms = permissions;
     await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
   }
 
@@ -1201,23 +1235,15 @@ export default class PartyServer implements Party.Server {
     }
   }
 
-  // Attach immediate observers to this room's doc to bridge changes without waiting for save callback
-  private async attachImmediateBridgeObservers(): Promise<void> {
-    if (this.observersAttached) return;
-    const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+  // Flush batched bridge updates to subscribers and source rooms
+  private async flushBridgeUpdates(yDoc: Y.Doc): Promise<void> {
+    const mainParty = this.room.context.parties.main;
+    const currentEpoch = await this.getResetEpoch();
 
-    // Handle source room updates for shared elements: on change, push to each subscribed consumer immediately
-    yDoc.on("update", async (_update: Uint8Array, origin: any) => {
-      // Ignore updates we just applied from a consumer pull to avoid echo
-      if (origin === ORIGIN_C2S) return;
-
-      const subscribers = await this.getSubscribers();
-      if (!subscribers.length) return;
-
+    // Push to subscribers (source -> consumer direction)
+    const subscribers = await this.getSubscribers();
+    if (subscribers.length) {
       const permissions = await this.getSharedPermissions();
-      const mainParty = this.room.context.parties.main;
-      // Export all subtrees of interest and push immediately
-      const currentEpoch = await this.getResetEpoch();
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.length) return;
@@ -1243,32 +1269,63 @@ export default class PartyServer implements Party.Server {
           });
         })
       );
-    });
+    }
 
-    // Handle consumer room updates for shared references: when our doc changes for tracked shared refs, push back to sources immediately
-    yDoc.on("update", async (_update: Uint8Array, origin: any) => {
-      // Ignore updates we just applied from a source push to avoid echo
-      if (origin === ORIGIN_S2C) return;
-      const mainParty = this.room.context.parties.main;
-      const refs = await this.getSharedReferences();
-      const currentEpoch = await this.getResetEpoch();
-      for (const { sourceRoomId, elementIds } of refs) {
-        if (!elementIds?.length) continue;
-        const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
-        if (!Object.keys(subtrees).length) continue;
-        const sourceRoom = mainParty.get(sourceRoomId);
-        const applyRequest: ApplySubtreesImmediateRequest = {
-          action: "apply-subtrees-immediate",
-          subtrees,
-          sender: this.room.id,
-          originKind: "consumer",
-          resetEpoch: currentEpoch ?? null,
-        };
-        await sourceRoom.fetch({
-          method: "POST",
-          body: JSON.stringify(applyRequest),
-        });
+    // Push back to sources (consumer -> source direction)
+    const refs = await this.getSharedReferences();
+    for (const { sourceRoomId, elementIds } of refs) {
+      if (!elementIds?.length) continue;
+      const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
+      if (!Object.keys(subtrees).length) continue;
+      const sourceRoom = mainParty.get(sourceRoomId);
+      const applyRequest: ApplySubtreesImmediateRequest = {
+        action: "apply-subtrees-immediate",
+        subtrees,
+        sender: this.room.id,
+        originKind: "consumer",
+        resetEpoch: currentEpoch ?? null,
+      };
+      await sourceRoom.fetch({
+        method: "POST",
+        body: JSON.stringify(applyRequest),
+      });
+    }
+  }
+
+  // Schedule a debounced bridge flush. Multiple rapid updates coalesce into one flush.
+  private scheduleBridgeFlush(yDoc: Y.Doc): void {
+    if (this.bridgeFlushTimer !== null) {
+      clearTimeout(this.bridgeFlushTimer);
+    }
+    this.bridgeFlushTimer = setTimeout(() => {
+      this.bridgeFlushTimer = null;
+      this.flushBridgeUpdates(yDoc).catch((err) => {
+        console.error("[PartyServer] Bridge flush failed:", err);
+      });
+    }, PartyServer.BRIDGE_DEBOUNCE_MS);
+  }
+
+  // Attach observers to this room's doc to bridge changes to shared element subscribers.
+  // Updates are debounced to avoid flooding subscribers with per-keystroke HTTP calls.
+  private async attachImmediateBridgeObservers(): Promise<void> {
+    if (this.observersAttached) return;
+    const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+
+    yDoc.on("update", (_update: Uint8Array, origin: any) => {
+      // Ignore echoed updates from bridge apply operations
+      if (origin === ORIGIN_C2S || origin === ORIGIN_S2C) return;
+
+      // Fast bail: if no subscribers or refs are cached, skip entirely
+      if (
+        this.cachedSubscribers !== null &&
+        this.cachedSubscribers.length === 0 &&
+        this.cachedSharedRefs !== null &&
+        this.cachedSharedRefs.length === 0
+      ) {
+        return;
       }
+
+      this.scheduleBridgeFlush(yDoc);
     });
 
     this.observersAttached = true;
