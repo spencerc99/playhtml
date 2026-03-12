@@ -23,8 +23,48 @@ export class LinkGlowManager {
   constructor(private playerColor: string) {}
 
   async init(): Promise<void> {
-    // Will be filled in subsequent tasks
+    const anchor = document.createElement("div");
+    anchor.id = `playhtml-link-glow-${encodeURIComponent(location.pathname)}`;
+    anchor.setAttribute("can-play", "");
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+
+    const el = anchor as any;
+    el.defaultData = { links: {} } as PageLinkData;
+    el.updateElement = ({ data }: { data: PageLinkData }) => {
+      this.data = data;
+      this.renderGlows();
+    };
+    el.updateElementAwareness = el.updateElement;
+
+    const { playhtml } = await import("playhtml");
+    playhtml.setupPlayElement(anchor, { ignoreIfAlreadySetup: true });
+
+    this.handler =
+      playhtml.elementHandlers?.get("can-play")?.get(anchor.id) ?? null;
+
+    this.cleanups.push(() => {
+      playhtml.removePlayElement(anchor);
+      anchor.remove();
+    });
   }
+
+  recordClick(destPath: string): void {
+    if (!this.handler) return;
+    this.handler.setData((draft: PageLinkData) => {
+      if (!draft.links[destPath]) {
+        draft.links[destPath] = { count: 0, recentColors: [] };
+      }
+      draft.links[destPath].count += 1;
+      const colors = draft.links[destPath].recentColors;
+      if (!colors.includes(this.playerColor)) {
+        colors.push(this.playerColor);
+        if (colors.length > MAX_RECENT_COLORS) colors.shift();
+      }
+    });
+  }
+
+  private renderGlows(): void {}
 
   destroy(): void {
     if (this.observer) {
