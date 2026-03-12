@@ -1,6 +1,8 @@
 // ABOUTME: Manages shared link-click glow state for anchor elements on a page.
 // ABOUTME: Tracks click counts and recent player colors per destination link.
 
+import { computeGlowStyle, type GlowStyle } from "./link-glow-renderer";
+
 export interface LinkClickEntry {
   count: number;
   recentColors: string[];
@@ -99,9 +101,83 @@ export class LinkGlowManager {
     }
   }
 
-  private removeGlow(_link: HTMLAnchorElement): void {}
+  private removeGlow(link: HTMLAnchorElement): void {
+    const els = this.glowElements.get(link);
+    if (!els) return;
+    for (const el of els) el.remove();
+    this.glowElements.delete(link);
+  }
 
-  private renderGlows(): void {}
+  private applyGlow(link: HTMLAnchorElement, style: GlowStyle): void {
+    const computed = getComputedStyle(link);
+    if (computed.position === "static") {
+      link.style.position = "relative";
+    }
+
+    this.removeGlow(link);
+
+    const els: HTMLElement[] = [];
+
+    const base = document.createElement("span");
+    base.setAttribute("aria-hidden", "true");
+    Object.assign(base.style, {
+      position: "absolute",
+      pointerEvents: "none",
+      zIndex: "0",
+      left: `${style.hInsetPct}%`,
+      right: `${style.hInsetPct}%`,
+      top: `${-style.vSpread}px`,
+      bottom: `${-style.vSpread}px`,
+      background: style.baseFill,
+      filter: style.baseFilter,
+    });
+    els.push(base);
+
+    if (style.blobLayers.length > 0) {
+      const blob = document.createElement("span");
+      blob.setAttribute("aria-hidden", "true");
+      Object.assign(blob.style, {
+        position: "absolute",
+        pointerEvents: "none",
+        zIndex: "0",
+        left: `${style.hInsetPct}%`,
+        right: `${style.hInsetPct}%`,
+        top: `${-style.vSpread}px`,
+        bottom: `${-style.vSpread}px`,
+        background: style.blobLayers.join(", "),
+        filter: style.blobFilter,
+      });
+      els.push(blob);
+    }
+
+    for (const el of els) link.appendChild(el);
+    this.glowElements.set(link, els);
+  }
+
+  private renderGlows(): void {
+    let pageMax = 0;
+    for (const entry of Object.values(this.data.links)) {
+      if (entry.count > pageMax) pageMax = entry.count;
+    }
+
+    for (const link of this.visibleLinks) {
+      const destPath = new URL(link.href).pathname;
+      const entry = this.data.links[destPath];
+
+      if (!entry || entry.count === 0) {
+        this.removeGlow(link);
+        continue;
+      }
+
+      const style = computeGlowStyle(entry.recentColors, entry.count, pageMax);
+      if (!style) {
+        this.removeGlow(link);
+        continue;
+      }
+
+      this.applyGlow(link, style);
+    }
+  }
 
   destroy(): void {
     if (this.observer) {
