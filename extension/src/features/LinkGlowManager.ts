@@ -38,7 +38,7 @@ export class LinkGlowManager {
     el.updateElementAwareness = el.updateElement;
 
     const { playhtml } = await import("playhtml");
-    playhtml.setupPlayElement(anchor, { ignoreIfAlreadySetup: true });
+    await playhtml.setupPlayElementForTag(anchor, "can-play");
 
     this.handler =
       playhtml.elementHandlers?.get("can-play")?.get(anchor.id) ?? null;
