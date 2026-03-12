@@ -13,7 +13,7 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
   updateElementAwareness?: (
-    data: ElementAwarenessEventHandlerData<T, U, V>
+    data: ElementAwarenessEventHandlerData<T, U, V>,
   ) => void;
 
   // Event handlers
@@ -21,15 +21,15 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   // Takes inspiration from https://github.com/react-grid-layout/react-draggable
   onDrag?: (
     e: MouseEvent | TouchEvent,
-    eventData: ElementEventHandlerData<T, U, V>
+    eventData: ElementEventHandlerData<T, U, V>,
   ) => void;
   onClick?: (
     e: MouseEvent,
-    eventData: ElementEventHandlerData<T, U, V>
+    eventData: ElementEventHandlerData<T, U, V>,
   ) => void;
   onDragStart?: (
     e: MouseEvent | TouchEvent,
-    eventData: ElementEventHandlerData<T, U, V>
+    eventData: ElementEventHandlerData<T, U, V>,
   ) => void;
   // @deprecated use onMount instead
   additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
@@ -146,8 +146,8 @@ export enum TagType {
   "CanToggle" = "can-toggle",
   "CanDuplicate" = "can-duplicate",
   "CanHover" = "can-hover",
-  "CanResize" = "can-resize",
   "CanMirror" = "can-mirror",
+  // "CanResize" = "can-resize",
   // "CanRearrange" = "can-rearrange",
   // "CanDrag" = "can-drag",
   // "CanDraw" = "can-draw",
@@ -223,7 +223,7 @@ const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 const cutCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='48' viewport='0 0 100 100' style='fill:black;font-size:24px;'><text y='50%'>✂️</text></svg>") 16 0,auto`;
 function canGrowCursorHandler(
   e: MouseEvent | KeyboardEvent,
-  { getData, getElement, getLocalData, setLocalData }: ElementSetupData
+  { getData, getElement, getLocalData, setLocalData }: ElementSetupData,
 ) {
   const data = getData();
   const localData = getLocalData();
@@ -294,7 +294,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
     },
     onDrag: (
       e: MouseEvent | TouchEvent,
-      { data, localData, setData, setLocalData, element }
+      { data, localData, setData, setLocalData, element },
     ) => {
       const { clientX, clientY } = getClientCoordinates(e);
       const { top, left, bottom, right } = element.getBoundingClientRect();
@@ -332,7 +332,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
     },
     onDrag: (
       e: MouseEvent | TouchEvent,
-      { data, localData, setData, setLocalData }
+      { data, localData, setData, setLocalData },
     ) => {
       const { clientX } = getClientCoordinates(e);
       // Calculate distance mouse has moved from the last known position
@@ -422,7 +422,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
         document.getElementById(localData.slice(-1)?.[0]) ?? null;
       if (!elementToDuplicate) {
         console.error(
-          `Element with id ${duplicateElementId} not found. Cannot duplicate.`
+          `Element with id ${duplicateElementId} not found. Cannot duplicate.`,
         );
         return;
       }
@@ -442,7 +442,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
         // By default insert after the latest element inserted (or the element to duplicate if none yet)
         elementToDuplicate!.parentNode!.insertBefore(
           newElement,
-          (lastElement || elementToDuplicate!).nextSibling
+          (lastElement || elementToDuplicate!).nextSibling,
         );
       }
 
@@ -480,7 +480,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       if (!document.getElementById(tagAttribute)) {
         console.warn(
-          `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`
+          `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`,
         );
       }
 

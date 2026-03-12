@@ -105,11 +105,6 @@ export default class PartyServer implements Party.Server {
 
         // This is called every few seconds if the document has changed
 
-        // convert the Yjs document to a Uint8Array
-        const content = Y.encodeStateAsUpdate(doc);
-        const base64Document = Buffer.from(content).toString("base64");
-        const documentSize = base64Document.length;
-
         // Get current reset epoch for logging and validation
         const serverResetEpoch = await this.getResetEpoch();
         const docResetEpoch = getDocResetEpoch(doc);
@@ -136,6 +131,33 @@ export default class PartyServer implements Party.Server {
           return;
         }
 
+        // Compact the doc before saving: rebuild from current JSON state to
+        // strip CRDT history and tombstones. This keeps the stored doc minimal
+        // so that cold-loading it on DO restart never exceeds the 128MB memory limit.
+        const rawSize = Y.encodeStateAsUpdate(doc).byteLength;
+        const currentPlayData = docToJson(doc);
+        let compactedBase64: string;
+
+        if (currentPlayData) {
+          const compactDoc = jsonToDoc(currentPlayData);
+          setDocResetEpoch(
+            compactDoc,
+            docResetEpoch ?? serverResetEpoch ?? Date.now()
+          );
+          compactedBase64 = encodeDocToBase64(compactDoc);
+          const compactedSize = Math.ceil(compactedBase64.length * 3 / 4);
+          if (compactedSize < rawSize) {
+            console.log(
+              `[PartyServer] Compacted: room=${this.room.id}, ${rawSize} -> ${compactedSize} bytes (${((1 - compactedSize / rawSize) * 100).toFixed(1)}% reduction)`
+            );
+          }
+        } else {
+          // Doc is empty — just encode as-is
+          compactedBase64 = encodeDocToBase64(doc);
+        }
+
+        const documentSize = compactedBase64.length;
+
         // Log structured information about the save
         console.log(
           `[PartyServer] Autosave: room=${
@@ -145,11 +167,11 @@ export default class PartyServer implements Party.Server {
           )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
         );
 
-        // Save the document to the database
+        // Save the compacted document to the database
         const { data: _data, error } = await supabase.from("documents").upsert(
           {
             name: this.room.id,
-            document: base64Document,
+            document: compactedBase64,
           },
           { onConflict: "name" }
         );
@@ -1047,12 +1069,45 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       // Extract current state as JSON
-      const currentPlayData = docToJson(liveYDoc);
+      let currentPlayData = docToJson(liveYDoc);
       console.log(
-        `[Hard Reset] Extracted play data: ${
+        `[Hard Reset] Extracted play data from live doc: ${
           currentPlayData ? "has data" : "empty"
         }`
       );
+
+      // If the live doc is empty (e.g. after a Cloudflare memory limit reset),
+      // fall back to the database as the source of truth to avoid data loss.
+      if (!currentPlayData) {
+        console.log(
+          `[Hard Reset] Live doc is empty, falling back to database...`
+        );
+        const { data: dbRow, error: dbError } = await supabase
+          .from("documents")
+          .select("document")
+          .eq("name", roomId)
+          .maybeSingle();
+
+        if (dbError) {
+          throw new Error(
+            `Failed to load fallback from database: ${dbError.message}`
+          );
+        }
+
+        if (dbRow?.document) {
+          const fallbackDoc = new Y.Doc();
+          Y.applyUpdate(
+            fallbackDoc,
+            new Uint8Array(Buffer.from(dbRow.document, "base64"))
+          );
+          currentPlayData = docToJson(fallbackDoc);
+          console.log(
+            `[Hard Reset] Loaded from database: ${
+              currentPlayData ? "has data" : "still empty"
+            }`
+          );
+        }
+      }
 
       // Calculate before size
       const beforeSize = encodeDocToBase64(liveYDoc).length;
@@ -1068,9 +1123,11 @@ export default class PartyServer implements Party.Server {
       let freshBase64: string;
       let afterSize: number;
 
-      // Handle empty room case
+      // Handle truly empty room (empty live doc AND empty database)
       if (!currentPlayData) {
-        console.log(`[Hard Reset] Room is empty, creating empty fresh doc...`);
+        console.log(
+          `[Hard Reset] Room is empty in both live doc and database, creating empty fresh doc...`
+        );
         const emptyDoc = new Y.Doc();
         setDocResetEpoch(emptyDoc, resetEpoch);
         freshBase64 = encodeDocToBase64(emptyDoc);
