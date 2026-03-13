@@ -9,7 +9,7 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 
@@ -44,8 +44,13 @@ export interface ScreenTimeSession {
   durationMs: number;
 }
 
-/** Pre-computed per-domain session aggregates, updated incrementally on each navigation event */
+/**
+ * Pre-computed aggregates, updated incrementally on each event.
+ * Stored both at domain level (key = domain) and page level (key = domain::normalizedUrl).
+ */
 export interface DomainStatsAggregate {
+  /** Lookup key: domain for domain-level, "domain::normalizedUrl" for page-level */
+  key: string;
   domain: string;
   totalTimeMs: number;
   /** Total ms spent per hour-of-day (index 0 = midnight, 23 = 11pm) */
@@ -54,6 +59,24 @@ export interface DomainStatsAggregate {
   /** Pending (unmatched) focus event — set on focus, cleared on blur/beforeunload */
   pendingFocusTs: number | null;
   pendingFocusUrl: string;
+  /** Running event counts by type */
+  eventsByType: Record<string, number>;
+  /** Earliest event timestamp */
+  firstVisit: number;
+  /** Latest event timestamp */
+  lastVisit: number;
+  /** Set of unique URLs seen (stored as array for JSON serialization, domain-level only) */
+  uniqueUrls: string[];
+  /** Set of event IDs that have been processed for session stats (prevents double-counting) */
+  processedNavIds: string[];
+}
+
+function domainStatsKey(domain: string): string {
+  return domain;
+}
+
+function pageStatsKey(domain: string, normalizedUrl: string): string {
+  return `${domain}::${normalizedUrl}`;
 }
 
 export interface ScreenTimeResult {
@@ -196,15 +219,15 @@ export class LocalEventStore {
           };
         }
 
-        // Add domain_stats store for pre-computed session aggregates (v6)
-        // Only creates the store here — data backfill runs after init via
-        // backfillSessionStats() so it doesn't block DB open.
-        if (oldVersion < 6) {
-          if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
-            db.createObjectStore(STATS_STORE_NAME, { keyPath: "domain" });
-            if (VERBOSE) {
-              console.log("[LocalEventStore] Created domain_stats store");
-            }
+        // v6: create domain_stats store (keyPath: "domain")
+        // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
+        if (oldVersion < 7) {
+          if (db.objectStoreNames.contains(STATS_STORE_NAME)) {
+            db.deleteObjectStore(STATS_STORE_NAME);
+          }
+          db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
+          if (VERBOSE) {
+            console.log("[LocalEventStore] Created domain_stats store (v7, keyPath: key)");
           }
         }
       };
@@ -239,16 +262,15 @@ export class LocalEventStore {
     if (hasData) return;
 
     if (VERBOSE) {
-      console.log("[LocalEventStore] Starting session stats backfill...");
+      console.log("[LocalEventStore] Starting domain stats backfill...");
     }
 
-    // Walk all navigation events via the type index
-    const allNavEvents = await new Promise<CollectionEvent[]>((resolve, reject) => {
+    // Walk ALL events to build complete aggregates (counts, timestamps, URLs, sessions)
+    const allEvents = await new Promise<CollectionEvent[]>((resolve, reject) => {
       const tx = this.db!.transaction([STORE_NAME], "readonly");
       const store = tx.objectStore(STORE_NAME);
-      const typeIndex = store.index("type");
       const events: CollectionEvent[] = [];
-      const req = typeIndex.openCursor(IDBKeyRange.only("navigation"));
+      const req = store.openCursor();
 
       req.onsuccess = () => {
         const cursor = req.result;
@@ -262,13 +284,28 @@ export class LocalEventStore {
       req.onerror = () => reject(req.error);
     });
 
-    // Group by domain
-    const navByDomain = new Map<string, CollectionEvent[]>();
-    for (const evt of allNavEvents) {
+    // Group events by aggregate key (domain-level + page-level)
+    const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
+
+    for (const evt of allEvents) {
       const dom = (evt as any).domain || extractDomain(evt.meta?.url);
-      if (dom) {
-        if (!navByDomain.has(dom)) navByDomain.set(dom, []);
-        navByDomain.get(dom)!.push(evt);
+      if (!dom) continue;
+
+      // Domain-level
+      const dKey = domainStatsKey(dom);
+      if (!keyToEvents.has(dKey)) {
+        keyToEvents.set(dKey, { domain: dom, events: [] });
+      }
+      keyToEvents.get(dKey)!.events.push(evt);
+
+      // Page-level
+      const nUrl = (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
+      if (nUrl) {
+        const pKey = pageStatsKey(dom, nUrl);
+        if (!keyToEvents.has(pKey)) {
+          keyToEvents.set(pKey, { domain: dom, events: [] });
+        }
+        keyToEvents.get(pKey)!.events.push(evt);
       }
     }
 
@@ -276,43 +313,11 @@ export class LocalEventStore {
     const tx = this.db!.transaction([STATS_STORE_NAME], "readwrite");
     const statsStore = tx.objectStore(STATS_STORE_NAME);
 
-    for (const [dom, events] of navByDomain) {
+    for (const [key, { domain, events }] of keyToEvents) {
+      const agg = LocalEventStore.emptyAggregate(key, domain);
+      // Sort events by timestamp so session pairing works correctly
       events.sort((a, b) => a.ts - b.ts);
-      const agg: DomainStatsAggregate = {
-        domain: dom,
-        totalTimeMs: 0,
-        hourBuckets: new Array(24).fill(0),
-        sessionCount: 0,
-        pendingFocusTs: null,
-        pendingFocusUrl: "",
-      };
-
-      let pendingFocusTs: number | null = null;
-      let pendingFocusUrl = "";
-
-      for (const evt of events) {
-        const d = evt.data as any;
-        if (d?.event === "focus") {
-          pendingFocusTs = evt.ts;
-          pendingFocusUrl = evt.meta?.url ?? "";
-        } else if (
-          (d?.event === "blur" || d?.event === "beforeunload") &&
-          pendingFocusTs !== null
-        ) {
-          const durationMs = evt.ts - pendingFocusTs;
-          if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
-            agg.totalTimeMs += durationMs;
-            agg.sessionCount++;
-            const hour = new Date(pendingFocusTs).getHours();
-            agg.hourBuckets[hour] += durationMs;
-          }
-          pendingFocusTs = null;
-          pendingFocusUrl = "";
-        }
-      }
-
-      agg.pendingFocusTs = pendingFocusTs;
-      agg.pendingFocusUrl = pendingFocusUrl;
+      LocalEventStore.applyEventsToAggregate(agg, events);
       statsStore.put(agg);
     }
 
@@ -323,7 +328,7 @@ export class LocalEventStore {
 
     if (VERBOSE) {
       console.log(
-        `[LocalEventStore] Backfilled session stats for ${navByDomain.size} domains`,
+        `[LocalEventStore] Backfilled domain stats for ${keyToEvents.size} keys`,
       );
     }
   }
@@ -497,10 +502,18 @@ export class LocalEventStore {
   }
 
   /**
-   * Read pre-computed session stats from the domain_stats store (O(1) lookup)
+   * Read pre-computed stats from the domain_stats store (O(1) lookup).
+   * Pass normalizedUrl to get page-level stats; omit for domain-level.
    */
-  async getSessionStats(domain: string): Promise<DomainStatsAggregate | null> {
+  async getSessionStats(
+    domain: string,
+    normalizedUrl?: string,
+  ): Promise<DomainStatsAggregate | null> {
     await this.ensureInitialized();
+
+    const key = normalizedUrl
+      ? pageStatsKey(domain, normalizedUrl)
+      : domainStatsKey(domain);
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -510,7 +523,7 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
-      const request = statsStore.get(domain);
+      const request = statsStore.get(key);
 
       request.onsuccess = () => resolve(request.result ?? null);
       request.onerror = () => reject(request.error);
@@ -786,15 +799,15 @@ export class LocalEventStore {
 
   /**
    * Add a batch of events using upsert (put), so duplicate IDs don't error.
-   * Navigation events incrementally update the domain_stats aggregate.
+   * Incrementally updates domain_stats aggregates.
    */
   async addEvents(events: CollectionEvent[]): Promise<void> {
     await this.ensureInitialized();
 
     if (events.length === 0) return;
 
-    // Collect navigation events grouped by domain for stats updates
-    const navByDomain = new Map<string, CollectionEvent[]>();
+    // Group events by domain for stats updates
+    const eventsByDomain = new Map<string, CollectionEvent[]>();
     for (const event of events) {
       if (event.meta?.url) {
         if (!event.domain) {
@@ -804,9 +817,9 @@ export class LocalEventStore {
           event.normalizedUrl = normalizeUrl(event.meta.url);
         }
       }
-      if (event.type === "navigation" && event.domain) {
-        if (!navByDomain.has(event.domain)) navByDomain.set(event.domain, []);
-        navByDomain.get(event.domain)!.push(event);
+      if (event.domain) {
+        if (!eventsByDomain.has(event.domain)) eventsByDomain.set(event.domain, []);
+        eventsByDomain.get(event.domain)!.push(event);
       }
     }
 
@@ -828,23 +841,115 @@ export class LocalEventStore {
       }
     });
 
-    // Update session aggregates in a separate transaction so a stats
+    // Update domain aggregates in a separate transaction so a stats
     // failure never blocks event storage
-    if (navByDomain.size > 0) {
+    if (eventsByDomain.size > 0) {
       try {
-        await this.updateSessionStats(navByDomain);
+        await this.updateDomainStats(eventsByDomain);
       } catch (e) {
-        console.error("[LocalEventStore] Failed to update session stats:", e);
+        console.error("[LocalEventStore] Failed to update domain stats:", e);
       }
     }
   }
 
+  private static emptyAggregate(key: string, domain: string): DomainStatsAggregate {
+    return {
+      key,
+      domain,
+      totalTimeMs: 0,
+      hourBuckets: new Array(24).fill(0),
+      sessionCount: 0,
+      pendingFocusTs: null,
+      pendingFocusUrl: "",
+      eventsByType: {},
+      firstVisit: 0,
+      lastVisit: 0,
+      uniqueUrls: [],
+      processedNavIds: [],
+    };
+  }
+
   /**
-   * Incrementally update pre-computed session aggregates for the given domains.
+   * Apply a batch of events to a single aggregate, mutating it in place.
+   * Returns the updated urlSet and processedSet for serialization.
    */
-  private async updateSessionStats(
-    navByDomain: Map<string, CollectionEvent[]>,
+  private static applyEventsToAggregate(
+    agg: DomainStatsAggregate,
+    events: CollectionEvent[],
+  ): void {
+    const urlSet = new Set(agg.uniqueUrls);
+    const processedSet = new Set(agg.processedNavIds);
+
+    for (const evt of events) {
+      agg.eventsByType[evt.type] = (agg.eventsByType[evt.type] ?? 0) + 1;
+      if (agg.firstVisit === 0 || evt.ts < agg.firstVisit) {
+        agg.firstVisit = evt.ts;
+      }
+      if (evt.ts > agg.lastVisit) {
+        agg.lastVisit = evt.ts;
+      }
+      if (evt.meta?.url) {
+        urlSet.add(evt.meta.url);
+      }
+
+      if (evt.type === "navigation") {
+        if (processedSet.has(evt.id)) continue;
+        processedSet.add(evt.id);
+
+        const d = evt.data as NavigationEventData;
+        if (d.event === "focus") {
+          agg.pendingFocusTs = evt.ts;
+          agg.pendingFocusUrl = evt.meta?.url ?? "";
+        } else if (
+          (d.event === "blur" || d.event === "beforeunload") &&
+          agg.pendingFocusTs !== null
+        ) {
+          const durationMs = evt.ts - agg.pendingFocusTs;
+          if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
+            agg.totalTimeMs += durationMs;
+            agg.sessionCount++;
+            const hour = new Date(agg.pendingFocusTs).getHours();
+            agg.hourBuckets[hour] += durationMs;
+          }
+          agg.pendingFocusTs = null;
+          agg.pendingFocusUrl = "";
+        }
+      }
+    }
+
+    agg.uniqueUrls = [...urlSet];
+    agg.processedNavIds = [...processedSet];
+  }
+
+  /**
+   * Incrementally update both domain-level and page-level aggregates.
+   */
+  private async updateDomainStats(
+    eventsByDomain: Map<string, CollectionEvent[]>,
   ): Promise<void> {
+    // Collect all aggregate keys we need to read/write
+    const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
+
+    for (const [dom, domainEvents] of eventsByDomain) {
+      // Domain-level aggregate
+      const dKey = domainStatsKey(dom);
+      if (!keyToEvents.has(dKey)) {
+        keyToEvents.set(dKey, { domain: dom, events: [] });
+      }
+      keyToEvents.get(dKey)!.events.push(...domainEvents);
+
+      // Page-level aggregates: group by normalizedUrl
+      for (const evt of domainEvents) {
+        const nUrl = (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
+        if (!nUrl) continue;
+        const pKey = pageStatsKey(dom, nUrl);
+        if (!keyToEvents.has(pKey)) {
+          keyToEvents.set(pKey, { domain: dom, events: [] });
+        }
+        keyToEvents.get(pKey)!.events.push(evt);
+      }
+    }
+
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
@@ -857,40 +962,13 @@ export class LocalEventStore {
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
 
-      for (const [dom, navEvents] of navByDomain) {
-        const getReq = statsStore.get(dom);
+      for (const [key, { domain, events }] of keyToEvents) {
+        const getReq = statsStore.get(key);
         getReq.onsuccess = () => {
-          const agg: DomainStatsAggregate = getReq.result ?? {
-            domain: dom,
-            totalTimeMs: 0,
-            hourBuckets: new Array(24).fill(0),
-            sessionCount: 0,
-            pendingFocusTs: null,
-            pendingFocusUrl: "",
-          };
+          const agg: DomainStatsAggregate =
+            getReq.result ?? LocalEventStore.emptyAggregate(key, domain);
 
-          navEvents.sort((a, b) => a.ts - b.ts);
-          for (const evt of navEvents) {
-            const d = evt.data as NavigationEventData;
-            if (d.event === "focus") {
-              agg.pendingFocusTs = evt.ts;
-              agg.pendingFocusUrl = evt.meta?.url ?? "";
-            } else if (
-              (d.event === "blur" || d.event === "beforeunload") &&
-              agg.pendingFocusTs !== null
-            ) {
-              const durationMs = evt.ts - agg.pendingFocusTs;
-              if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
-                agg.totalTimeMs += durationMs;
-                agg.sessionCount++;
-                const hour = new Date(agg.pendingFocusTs).getHours();
-                agg.hourBuckets[hour] += durationMs;
-              }
-              agg.pendingFocusTs = null;
-              agg.pendingFocusUrl = "";
-            }
-          }
-
+          LocalEventStore.applyEventsToAggregate(agg, events);
           statsStore.put(agg);
         };
       }
@@ -991,26 +1069,38 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], "readwrite");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      const transaction = this.db.transaction(
+        [STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      const evtStore = transaction.objectStore(STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      evtStore.clear();
+      statsStore.clear();
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
     });
   }
 
   async pruneOlderThan(cutoffTs: number): Promise<number> {
     await this.ensureInitialized();
 
-    return new Promise((resolve, reject) => {
+    const deleted = await new Promise<number>((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], "readwrite");
+      const transaction = this.db.transaction(
+        [STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
       const store = transaction.objectStore(STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const tsIndex = store.index("ts");
+
+      // Clear domain_stats — will be rebuilt from remaining events
+      statsStore.clear();
 
       const idsToDelete: string[] = [];
       const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs));
@@ -1023,34 +1113,33 @@ export class LocalEventStore {
           idsToDelete.push(evt.id);
           cursor.continue();
         } else {
-          // Delete collected IDs
-          let deleted = 0;
-          idsToDelete.forEach((id) => {
-            const deleteRequest = store.delete(id);
-            deleteRequest.onsuccess = () => {
-              deleted++;
-              if (deleted === idsToDelete.length) {
-                if (VERBOSE) {
-                  console.log(
-                    `[LocalEventStore] Pruned ${deleted} events older than ${new Date(
-                      cutoffTs,
-                    ).toISOString()}`,
-                  );
-                }
-                resolve(deleted);
-              }
-            };
-            deleteRequest.onerror = () => reject(deleteRequest.error);
-          });
-
-          // Handle empty case
-          if (idsToDelete.length === 0) {
-            resolve(0);
+          for (const id of idsToDelete) {
+            store.delete(id);
           }
+          transaction.oncomplete = () => {
+            if (VERBOSE) {
+              console.log(
+                `[LocalEventStore] Pruned ${idsToDelete.length} events older than ${new Date(
+                  cutoffTs,
+                ).toISOString()}`,
+              );
+            }
+            resolve(idsToDelete.length);
+          };
         }
       };
 
       request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
     });
+
+    // Rebuild domain_stats from remaining events
+    if (deleted > 0) {
+      await this.backfillSessionStats().catch((e) =>
+        console.error("[LocalEventStore] Stats rebuild after prune failed:", e),
+      );
+    }
+
+    return deleted;
   }
 }

@@ -10,7 +10,7 @@ export interface PortraitCardProps {
   /** Total cursor distance in pixels (sum of Euclidean distances between samples) */
   cursorDistancePx: number;
   dateRange: { oldest: string; newest: string } | null;
-  uniquePageCount: number;
+  uniquePageCount?: number;
   eventCounts?: { cursor: number; keyboard: number; viewport: number };
 }
 
@@ -311,29 +311,31 @@ export function PortraitCard({
               </div>
             </div>
           )}
-          <div>
-            <div
-              style={{
-                fontFamily: "'Martian Mono', monospace",
-                fontSize: "11px",
-                fontWeight: 500,
-                color: TEXT,
-              }}
-            >
-              {uniquePageCount}
+          {uniquePageCount != null && (
+            <div>
+              <div
+                style={{
+                  fontFamily: "'Martian Mono', monospace",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  color: TEXT,
+                }}
+              >
+                {uniquePageCount}
+              </div>
+              <div
+                style={{
+                  fontSize: "8px",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: TEXT_MUTED,
+                  marginTop: "2px",
+                }}
+              >
+                pages
+              </div>
             </div>
-            <div
-              style={{
-                fontSize: "8px",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: TEXT_MUTED,
-                marginTop: "2px",
-              }}
-            >
-              pages
-            </div>
-          </div>
+          )}
           {dateLabel && (
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
               <div

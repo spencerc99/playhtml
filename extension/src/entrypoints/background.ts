@@ -7,6 +7,7 @@ import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import type { CollectionEvent } from '../shared/types'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
+import { normalizeUrl } from '../utils/urlNormalization'
 
 const store = new LocalEventStore()
 
@@ -219,29 +220,23 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_DOMAIN_STATS') {
       const domain = message.domain as string
+      const rawUrl = message.url as string | undefined
+      const normalizedUrl = rawUrl ? normalizeUrl(rawUrl) : undefined
       ;(async () => {
         try {
-          // Session stats are pre-computed (O(1) lookup); only cursor events
-          // still need a capped scan for distance calculation
-          const [domainStats, sessionStats, cursorEvents] = await Promise.all([
-            store.getDomainStats(domain),
-            store.getSessionStats(domain).catch(() => null),
+          // All stats except cursor distance are pre-computed (O(1) lookup)
+          const [agg, cursorEvents] = await Promise.all([
+            store.getSessionStats(domain, normalizedUrl).catch(() => null),
             store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
           ])
 
-          if (domainStats.totalEvents === 0) {
+          if (!agg && cursorEvents.length === 0) {
             reply({ success: true, stats: null })
             return
           }
 
-          const totalTimeMs = sessionStats?.totalTimeMs ?? 0
-          const hourBuckets = sessionStats?.hourBuckets ?? new Array(24).fill(0)
-
-          // Collect unique URLs from the cursor events we loaded
-          const uniqueUrls = new Set<string>()
-          for (const e of cursorEvents) {
-            if (e.meta?.url) uniqueUrls.add(e.meta.url)
-          }
+          const totalTimeMs = agg?.totalTimeMs ?? 0
+          const hourBuckets = agg?.hourBuckets ?? new Array(24).fill(0)
 
           // Compute cursor distance: sum of Euclidean distances between consecutive move samples
           // Normalized positions (0-1) are scaled by assumed 1920×1080 viewport
@@ -258,10 +253,10 @@ export default defineBackground(() => {
           }
 
           const dateRange =
-            domainStats.firstVisit && domainStats.lastVisit
+            agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(domainStats.firstVisit).toLocaleDateString(),
-                  newest: new Date(domainStats.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
+                  newest: new Date(agg.lastVisit).toLocaleDateString(),
                 }
               : null
 
@@ -272,9 +267,10 @@ export default defineBackground(() => {
               totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
               hourBuckets,
               cursorDistancePx,
-              eventCounts: domainStats.eventsByType,
+              eventCounts: agg?.eventsByType ?? {},
               dateRange,
-              uniquePageCount: uniqueUrls.size,
+              // Only include uniquePageCount for domain-level stats (not page-level)
+              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
             },
           })
         } catch (e) {

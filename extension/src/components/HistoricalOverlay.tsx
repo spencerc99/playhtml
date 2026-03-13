@@ -233,6 +233,8 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         const res: any = await browser.runtime.sendMessage({
           type: "GET_DOMAIN_STATS",
           domain,
+          // Pass normalized URL for page-level stats lookup
+          ...(actualMode !== "domain" ? { url: currentUrl } : {}),
         });
         if (res?.success && res.stats) {
           setPortraitStats({
