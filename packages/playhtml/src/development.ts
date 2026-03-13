@@ -49,9 +49,9 @@ const DEV_STYLES = `
   bottom: 0;
   width: 48px;
   height: 120px;
-  background: #e8e0d4;
-  border: 2px solid;
-  border-color: #f5f0e8 #8a8279 #8a8279 #f5f0e8;
+  background: linear-gradient(135deg, #f0e9dd 0%, #e8e0d4 40%, #d8d0c4 100%);
+  border: 3px solid;
+  border-color: #f5f0e8 #7a7269 #6b6560 #ede6da;
   border-bottom: none;
   padding: 6px 6px 4px;
   cursor: grab;
@@ -60,9 +60,11 @@ const DEV_STYLES = `
   align-items: center;
   gap: 6px;
   z-index: 100000;
+  box-shadow: -2px 0 4px rgba(0,0,0,0.12), 2px 0 4px rgba(0,0,0,0.08), 0 -2px 6px rgba(0,0,0,0.1);
 }
 .ph-trigger:hover {
-  background: #f5f0e8;
+  background: linear-gradient(135deg, #f8f2e8 0%, #f0e9dd 40%, #e0d8cc 100%);
+  box-shadow: -2px 0 6px rgba(0,0,0,0.16), 2px 0 6px rgba(0,0,0,0.12), 0 -3px 8px rgba(0,0,0,0.14);
 }
 .ph-trigger.ph-dragging {
   cursor: grabbing;
@@ -76,16 +78,16 @@ const DEV_STYLES = `
 .ph-trigger-grip {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   align-items: center;
-  opacity: 0.4;
   flex: 1;
+  justify-content: center;
 }
 .ph-trigger-grip span {
   display: block;
-  width: 16px;
+  width: 20px;
   height: 2px;
-  background: #8a8279;
+  background: linear-gradient(180deg, #f5f0e8 0%, #8a8279 50%, #6b6560 100%);
 }
 .ph-bar {
   pointer-events: auto;
