@@ -360,6 +360,48 @@ const DEV_STYLES = `
   line-height: 1;
   white-space: nowrap;
 }
+.ph-search-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+.ph-search-input {
+  flex: 1;
+  padding: 3px 8px;
+  font-family: 'Martian Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  color: #3d3833;
+  background: #faf7f2;
+  border: 2px solid;
+  border-color: #8a8279 #f5f0e8 #f5f0e8 #8a8279;
+  outline: none;
+}
+.ph-search-input::placeholder {
+  color: #b0a99e;
+}
+.ph-search-input:focus {
+  border-color: #4a9a8a #d4cfc7 #d4cfc7 #4a9a8a;
+}
+.ph-tag-filter {
+  padding: 3px 6px;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 11px;
+  color: #3d3833;
+  background: #e8e0d4;
+  border: 2px solid;
+  border-color: #f5f0e8 #8a8279 #8a8279 #f5f0e8;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8279'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+}
+.ph-tag-filter:hover {
+  background-color: #f5f0e8;
+}
 .ph-empty {
   text-align: center;
   padding: 20px;
@@ -693,6 +735,8 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
   // ── Render data tree view ──
   const store = playhtml.syncedStore;
+  let searchQuery = "";
+  let tagFilter = "";
 
   function renderDataWalker() {
     dataArea.innerHTML = "";
@@ -735,6 +779,53 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     header.appendChild(headerActions);
     dataArea.appendChild(header);
 
+    // Search + tag filter bar
+    const searchBar = el("div", "ph-search-bar");
+
+    const searchInput = el("input", "ph-search-input");
+    searchInput.type = "text";
+    searchInput.placeholder = "Search by element ID...";
+    searchInput.value = searchQuery;
+    searchInput.oninput = () => {
+      searchQuery = searchInput.value;
+      renderDataWalker();
+    };
+    searchBar.appendChild(searchInput);
+
+    // Collect all tag types for the filter dropdown
+    const tagTypes = new Set<string>();
+    elementHandlers.forEach((_idMap, tagType) => tagTypes.add(tagType));
+
+    if (tagTypes.size > 1) {
+      const filterSelect = el("select", "ph-tag-filter");
+      const allOption = document.createElement("option");
+      allOption.value = "";
+      allOption.textContent = "All types";
+      filterSelect.appendChild(allOption);
+      tagTypes.forEach((tt) => {
+        const opt = document.createElement("option");
+        opt.value = tt;
+        opt.textContent = tt;
+        filterSelect.appendChild(opt);
+      });
+      filterSelect.value = tagFilter;
+      filterSelect.onchange = () => {
+        tagFilter = filterSelect.value;
+        renderDataWalker();
+      };
+      searchBar.appendChild(filterSelect);
+    }
+
+    dataArea.appendChild(searchBar);
+
+    // Restore focus to search input after re-render
+    requestAnimationFrame(() => {
+      if (searchQuery) {
+        searchInput.focus();
+        searchInput.setSelectionRange(searchQuery.length, searchQuery.length);
+      }
+    });
+
     // Check if there are any elements
     let hasElements = false;
     elementHandlers.forEach((idMap) => {
@@ -747,8 +838,15 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       dataArea.appendChild(empty);
     } else {
       // Build tree for each tag type and element
+      let matchCount = 0;
       elementHandlers.forEach((idMap, tagType) => {
+        // Apply tag filter
+        if (tagFilter && tagType !== tagFilter) return;
+
         idMap.forEach((handler, elementId) => {
+          // Apply search filter
+          if (searchQuery && !elementId.toLowerCase().includes(searchQuery.toLowerCase())) return;
+          matchCount++;
           const row = el("div", "ph-tree-item");
           row.setAttribute("data-element-id", elementId);
           row.setAttribute("data-tag-type", tagType);
@@ -797,6 +895,8 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           row.appendChild(resetBtn);
 
           // Children container (key-value pairs)
+          // TODO: make values editable inline (click to edit, enter to save back to store)
+          // TODO: add per-key reset and per-nested-level reset (not just per-element)
           const children = el("div", "ph-tree-children");
           const data = handler.data;
           if (data && typeof data === "object") {
@@ -832,6 +932,12 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           dataArea.appendChild(children);
         });
       });
+
+      if (matchCount === 0 && (searchQuery || tagFilter)) {
+        const noMatch = el("div", "ph-empty");
+        noMatch.textContent = "No elements match the current filter.";
+        dataArea.appendChild(noMatch);
+      }
     }
 
     // Shared elements section
