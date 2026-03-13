@@ -358,10 +358,14 @@ const DEV_STYLES = `
 .ph-json-bracket { color: #8a8279; }
 .ph-json-count { color: #8a8279; font-size: 10px; margin: 0 2px; }
 .ph-json-row {
-  padding: 1px 0 1px 16px;
+  padding: 2px 0 2px 16px;
   font-family: 'Martian Mono', 'SF Mono', monospace;
   font-size: 11px;
   border-left: 1px solid #d4cfc7;
+  margin-left: 2px;
+}
+.ph-json-nested .ph-json-row {
+  margin-left: 0;
 }
 .ph-json-expandable {
   cursor: pointer;
@@ -1088,11 +1092,20 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           const children = el("div", "ph-tree-children");
           renderJsonTree(children, handler.data, 0);
 
-          // Toggle expand/collapse
-          toggle.onclick = (e) => {
-            e.stopPropagation();
+          // Toggle expand/collapse — clicking anywhere on the row
+          function toggleExpand() {
             const expanded = children.classList.toggle("ph-expanded");
             toggle.textContent = expanded ? "\u25BC" : "\u25B6";
+          }
+          toggle.onclick = (e) => {
+            e.stopPropagation();
+            toggleExpand();
+          };
+          row.onclick = (e) => {
+            // Don't toggle if clicking reset button or element name (which scrolls)
+            const target = e.target as HTMLElement;
+            if (target.closest(".ph-tree-reset") || target.closest(".ph-tree-el-name")) return;
+            toggleExpand();
           };
 
           dataArea.appendChild(row);
