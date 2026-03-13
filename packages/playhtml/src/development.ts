@@ -48,8 +48,8 @@ const DEV_STYLES = `
   pointer-events: auto;
   position: fixed;
   bottom: 0;
-  width: 44px;
-  height: 80px;
+  width: 48px;
+  height: 120px;
   background: #e8e0d4;
   border: 2px solid;
   border-color: #f5f0e8 #8a8279 #8a8279 #f5f0e8;
@@ -69,8 +69,8 @@ const DEV_STYLES = `
   cursor: grabbing;
 }
 .ph-trigger img {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
 }
 .ph-trigger-grip {
@@ -271,7 +271,6 @@ const DEV_STYLES = `
   height: 6px;
   cursor: ns-resize;
   background: #d4cfc7;
-  border-bottom: 1px solid #8a8279;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -316,22 +315,25 @@ const DEV_STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 18px;
-  background: #c4bdb2;
-  border: 1px solid;
-  border-color: #e8e0d4 #8a8279 #8a8279 #e8e0d4;
+  width: 26px;
+  height: 20px;
+  background: #e8e0d4;
+  border: 2px solid;
+  border-color: #f5f0e8 #8a8279 #8a8279 #f5f0e8;
   cursor: pointer;
-  color: #6b6560;
+  color: #3d3833;
   padding: 0;
 }
 .ph-status .ph-minimize-btn:hover {
-  background: #b0a99e;
-  color: #3d3833;
+  background: #f5f0e8;
+}
+.ph-status .ph-minimize-btn:active {
+  border-color: #8a8279 #f5f0e8 #f5f0e8 #8a8279;
+  background: #d4cfc7;
 }
 .ph-status .ph-minimize-btn svg {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 .ph-empty {
   text-align: center;
@@ -521,7 +523,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   trigger.appendChild(grip);
 
   // Center trigger horizontally on mount
-  let triggerLeft = (window.innerWidth - 44) / 2;
+  let triggerLeft = (window.innerWidth - 48) / 2;
   trigger.style.left = `${triggerLeft}px`;
 
   // ── Bottom bar ──
@@ -533,6 +535,18 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   // Toolbar column
   const toolbar = el("div", "ph-toolbar");
 
+  // Inspect button (top of toolbar)
+  const inspectBtn = el("button", "ph-btn");
+  inspectBtn.innerHTML = ICONS.inspect;
+  inspectBtn.title = "Inspect";
+  toolbar.appendChild(inspectBtn);
+
+  // Spacer pushes logo to bottom
+  const toolbarSpacer = el("div");
+  toolbarSpacer.style.flex = "1";
+  toolbar.appendChild(toolbarSpacer);
+
+  // Logo at bottom of toolbar
   const logoBtn = el("div", "ph-logo-btn");
   const logoImg = el("img", undefined, {
     src: LOGO_URL,
@@ -540,15 +554,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   });
   logoBtn.appendChild(logoImg);
   toolbar.appendChild(logoBtn);
-
-  const divider = el("div", "ph-divider");
-  toolbar.appendChild(divider);
-
-  // Inspect button
-  const inspectBtn = el("button", "ph-btn");
-  inspectBtn.innerHTML = ICONS.inspect;
-  inspectBtn.title = "Inspect";
-  toolbar.appendChild(inspectBtn);
 
   // Data area
   const dataArea = el("div", "ph-data");
