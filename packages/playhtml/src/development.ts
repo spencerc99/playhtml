@@ -10,7 +10,6 @@ const LOGO_URL = "https://playhtml.fun/icon.png";
 // ─── SVG Icons (inline, no dependencies) ───────────────────────────────
 const ICONS = {
   inspect: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>`,
-  refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
   minimize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="12" x2="18" y2="12"/></svg>`,
 };
 
@@ -357,7 +356,7 @@ const DEV_STYLES = `
   align-items: center;
 }
 .ph-search-input {
-  flex: 1;
+  width: 180px;
   padding: 3px 8px;
   font-family: 'Martian Mono', 'SF Mono', monospace;
   font-size: 11px;
@@ -768,14 +767,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       searchBar.appendChild(filterSelect);
     }
 
-    const refreshBtn = el("button", "ph-btn");
-    refreshBtn.innerHTML = ICONS.refresh;
-    refreshBtn.title = "Refresh";
-    refreshBtn.style.width = "20px";
-    refreshBtn.style.height = "20px";
-    refreshBtn.onclick = () => renderDataWalker();
-    searchBar.appendChild(refreshBtn);
-
     const resetAllBtn = el("button", "ph-reset-btn");
     resetAllBtn.textContent = "Reset All";
     resetAllBtn.onclick = () => {
@@ -981,6 +972,28 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       deactivateInspect();
     }
   }
+
+  // ── Auto-refresh when new playhtml elements appear ──
+  let lastElementCount = 0;
+  elementHandlers.forEach((idMap) => { lastElementCount += idMap.size; });
+
+  const elementObserver = new MutationObserver(() => {
+    let currentCount = 0;
+    elementHandlers.forEach((idMap) => { currentCount += idMap.size; });
+    if (currentCount !== lastElementCount) {
+      lastElementCount = currentCount;
+      if (bar.classList.contains("ph-open")) {
+        updateStatusCounts();
+        renderDataWalker();
+      }
+    }
+  });
+  elementObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class"],
+  });
 
   // ── Trigger drag behavior ──
   let triggerDragStartX = 0;
