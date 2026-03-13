@@ -519,15 +519,18 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   sep1.textContent = "\u00B7";
   status.appendChild(sep1);
 
-  // Element count
-  let totalElements = 0;
-  elementHandlers.forEach((idMap) => {
-    totalElements += idMap.size;
-  });
-  const elCount = document.createTextNode(
-    `${totalElements} element${totalElements !== 1 ? "s" : ""}`
-  );
-  status.appendChild(elCount);
+  // Element count (updated on open)
+  const elCountNode = document.createTextNode("");
+  status.appendChild(elCountNode);
+
+  function updateElementCount() {
+    let total = 0;
+    elementHandlers.forEach((idMap) => {
+      total += idMap.size;
+    });
+    elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
+  }
+  updateElementCount();
 
   const sep2 = el("span", "ph-sep");
   sep2.textContent = "\u00B7";
@@ -768,6 +771,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   function open() {
     trigger.style.display = "none";
     bar.classList.add("ph-open");
+    updateElementCount();
     renderDataWalker();
   }
 
