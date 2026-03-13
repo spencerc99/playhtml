@@ -523,7 +523,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   trigger.appendChild(grip);
 
   // Center trigger horizontally on mount
-  let triggerLeft = (window.innerWidth - 48) / 2;
+  let triggerLeft = window.innerWidth - 48 - 16;
   trigger.style.left = `${triggerLeft}px`;
 
   // ── Bottom bar ──
