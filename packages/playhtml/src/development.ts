@@ -350,10 +350,11 @@ const DEV_STYLES = `
   transform: translateX(-50%);
   background: #d4cfc7;
   padding: 0 4px;
-  font-size: 8px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8a8279;
+  font-weight: 700;
+  color: #4a9a8a;
   line-height: 1;
   white-space: nowrap;
 }
