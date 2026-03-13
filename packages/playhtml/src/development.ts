@@ -358,14 +358,9 @@ const DEV_STYLES = `
 .ph-json-bracket { color: #8a8279; }
 .ph-json-count { color: #8a8279; font-size: 10px; margin: 0 2px; }
 .ph-json-row {
-  padding: 2px 0 2px 16px;
+  padding: 2px 0 2px 4px;
   font-family: 'Martian Mono', 'SF Mono', monospace;
   font-size: 11px;
-  border-left: 1px solid #d4cfc7;
-  margin-left: 2px;
-}
-.ph-json-nested .ph-json-row {
-  margin-left: 0;
 }
 .ph-json-expandable {
   cursor: pointer;
@@ -383,6 +378,9 @@ const DEV_STYLES = `
 }
 .ph-json-nested {
   display: block;
+  margin-left: 14px;
+  padding-left: 6px;
+  border-left: 1px solid #d4cfc7;
 }
 .ph-json-nested.ph-collapsed {
   display: none;
