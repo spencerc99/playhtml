@@ -26,6 +26,7 @@ const BADGE_COLORS: Record<string, string> = {
   "can-play": "#3d3833",
   "can-hover": "#5b8db8",
 };
+const BADGE_FALLBACK = "#8a8279";
 
 // ─── CSS (injected once into the document) ─────────────────────────────
 const DEV_STYLES = `
@@ -570,21 +571,199 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   root.appendChild(inspectTooltip);
   document.body.appendChild(root);
 
-  // ── Render data placeholder ──
-  function renderDataHeader() {
+  // ── Render data tree view ──
+  const store = playhtml.syncedStore;
+
+  function renderDataWalker() {
     dataArea.innerHTML = "";
+
+    // Header row with refresh + reset all
     const header = el("div", "ph-data-header");
-    header.textContent = "Elements + Data";
+    const titleSpan = document.createElement("span");
+    titleSpan.textContent = "Elements + Data";
+    header.appendChild(titleSpan);
+
+    const headerActions = document.createElement("span");
+    headerActions.style.display = "flex";
+    headerActions.style.gap = "4px";
+    headerActions.style.alignItems = "center";
+
+    const refreshBtn = el("button", "ph-btn");
+    refreshBtn.innerHTML = ICONS.refresh;
+    refreshBtn.title = "Refresh";
+    refreshBtn.style.width = "18px";
+    refreshBtn.style.height = "18px";
+    refreshBtn.onclick = () => renderDataWalker();
+    headerActions.appendChild(refreshBtn);
+
+    const resetAllBtn = el("button", "ph-reset-btn");
+    resetAllBtn.textContent = "Reset All";
+    resetAllBtn.onclick = () => {
+      if (!window.confirm("Reset all playhtml element data?")) return;
+      elementHandlers.forEach((_idMap, tagType) => {
+        if (store[tagType]) {
+          const keys = Object.keys(store[tagType]);
+          for (const key of keys) {
+            delete store[tagType][key];
+          }
+        }
+      });
+      renderDataWalker();
+    };
+    headerActions.appendChild(resetAllBtn);
+
+    header.appendChild(headerActions);
     dataArea.appendChild(header);
-    // BADGE_COLORS used by the tree renderer (Task 3)
-    void BADGE_COLORS;
+
+    // Check if there are any elements
+    let hasElements = false;
+    elementHandlers.forEach((idMap) => {
+      if (idMap.size > 0) hasElements = true;
+    });
+
+    if (!hasElements) {
+      const empty = el("div", "ph-empty");
+      empty.textContent = "No playhtml elements found.";
+      dataArea.appendChild(empty);
+    } else {
+      // Build tree for each tag type and element
+      elementHandlers.forEach((idMap, tagType) => {
+        idMap.forEach((handler, elementId) => {
+          const row = el("div", "ph-tree-item");
+
+          // Toggle triangle
+          const toggle = el("span", "ph-tree-toggle");
+          toggle.textContent = "\u25B6";
+
+          // Badge
+          const badge = el("span", "ph-tree-badge");
+          badge.textContent = tagType;
+          badge.style.background = BADGE_COLORS[tagType] || BADGE_FALLBACK;
+
+          // Element name
+          const elName = el("span", "ph-tree-el-name");
+          elName.textContent = `#${elementId}`;
+          elName.title = "Click to scroll to element";
+          elName.onclick = (e) => {
+            e.stopPropagation();
+            const target = document.getElementById(elementId);
+            if (target) {
+              target.scrollIntoView({ behavior: "smooth", block: "center" });
+              target.classList.add("ph-flash");
+              target.addEventListener(
+                "animationend",
+                () => target.classList.remove("ph-flash"),
+                { once: true }
+              );
+            }
+          };
+
+          // Per-element reset
+          const resetBtn = el("button", "ph-tree-reset");
+          resetBtn.textContent = "reset";
+          resetBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (store[tagType]) {
+              delete store[tagType][elementId];
+            }
+            renderDataWalker();
+          };
+
+          row.appendChild(toggle);
+          row.appendChild(badge);
+          row.appendChild(elName);
+          row.appendChild(resetBtn);
+
+          // Children container (key-value pairs)
+          const children = el("div", "ph-tree-children");
+          const data = handler.data;
+          if (data && typeof data === "object") {
+            for (const [key, value] of Object.entries(data)) {
+              const child = el("div", "ph-tree-child");
+              const keySpan = el("span", "ph-tree-key");
+              keySpan.textContent = key + ": ";
+              const valSpan = el("span", "ph-tree-value");
+              valSpan.textContent =
+                typeof value === "object"
+                  ? JSON.stringify(value)
+                  : String(value);
+              child.appendChild(keySpan);
+              child.appendChild(valSpan);
+              children.appendChild(child);
+            }
+          } else if (data !== undefined && data !== null) {
+            const child = el("div", "ph-tree-child");
+            const valSpan = el("span", "ph-tree-value");
+            valSpan.textContent = String(data);
+            child.appendChild(valSpan);
+            children.appendChild(child);
+          }
+
+          // Toggle expand/collapse
+          toggle.onclick = (e) => {
+            e.stopPropagation();
+            const expanded = children.classList.toggle("ph-expanded");
+            toggle.textContent = expanded ? "\u25BC" : "\u25B6";
+          };
+
+          dataArea.appendChild(row);
+          dataArea.appendChild(children);
+        });
+      });
+    }
+
+    // Shared elements section
+    const shared = listSharedElements();
+    if (shared.length > 0) {
+      const dividerEl = document.createElement("hr");
+      dividerEl.style.border = "none";
+      dividerEl.style.borderTop = "1px solid #d4cfc7";
+      dividerEl.style.margin = "6px 0";
+      dataArea.appendChild(dividerEl);
+
+      const sharedHeader = el("div", "ph-data-header");
+      sharedHeader.textContent = "Shared Elements";
+      sharedHeader.style.fontSize = "10px";
+      dataArea.appendChild(sharedHeader);
+
+      for (const entry of shared) {
+        const row = el("div", "ph-tree-item");
+
+        const badge = el("span", "ph-tree-badge");
+        if (entry.type === "source") {
+          badge.textContent = "SRC";
+          badge.style.background = "#4a9a8a";
+        } else {
+          badge.textContent = "REF";
+          badge.style.background = "#5b8db8";
+        }
+
+        const elName = el("span", "ph-tree-el-name");
+        elName.textContent = `#${entry.elementId}`;
+        elName.title = entry.dataSource;
+        elName.onclick = (e) => {
+          e.stopPropagation();
+          entry.element.scrollIntoView({ behavior: "smooth", block: "center" });
+          entry.element.classList.add("ph-flash");
+          entry.element.addEventListener(
+            "animationend",
+            () => entry.element.classList.remove("ph-flash"),
+            { once: true }
+          );
+        };
+
+        row.appendChild(badge);
+        row.appendChild(elName);
+        dataArea.appendChild(row);
+      }
+    }
   }
 
   // ── Open / Close ──
   function open() {
     trigger.style.display = "none";
     bar.classList.add("ph-open");
-    renderDataHeader();
+    renderDataWalker();
   }
 
   function close() {
