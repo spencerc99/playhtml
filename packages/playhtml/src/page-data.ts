@@ -33,7 +33,7 @@ export function createPageDataChannel<T>(
 
   // Ensure the store entry and proxy exist
   storePlay[PAGE_TAG] ??= {};
-  const proxy = ensureProxy<T>(PAGE_TAG, name, defaultValue);
+  ensureProxy<T>(PAGE_TAG, name, defaultValue);
 
   // Set up shared listener set for this channel if it doesn't exist
   if (!channelListeners.has(name)) {
@@ -84,7 +84,10 @@ export function createPageDataChannel<T>(
 
     setData(data: T | ((draft: T) => void)): void {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
-      const currentProxy = getProxy(PAGE_TAG, name) as T;
+      const currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
+      if (!currentProxy) {
+        throw new Error(`PageDataChannel "${name}" proxy not found — data may have been cleaned up`);
+      }
       if (typeof data === "function") {
         doc.transact(() => {
           (data as (draft: T) => void)(currentProxy);
