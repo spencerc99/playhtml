@@ -15,6 +15,16 @@ import { captureDomPortrait, domainPortraitFilename } from "../../utils/portrait
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 
+/** Convert sessions to hour buckets (total ms per hour-of-day) for PortraitCard */
+function sessionsToHourBuckets(sessions: ScreenTimeSession[]): number[] {
+  const buckets = new Array(24).fill(0);
+  for (const s of sessions) {
+    const hour = new Date(s.focusTs).getHours();
+    buckets[hour] += s.durationMs;
+  }
+  return buckets;
+}
+
 const PortraitPage = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,7 +141,7 @@ const PortraitPage = () => {
     return {
       domain: "",
       totalTimeMs: screenTime ? screenTime.totalMs : null,
-      sessions: screenTime?.sessions ?? [],
+      hourBuckets: screenTime ? sessionsToHourBuckets(screenTime.sessions) : new Array(24).fill(0),
       cursorDistancePx,
       eventCounts: counts,
       dateRange: { oldest, newest },
@@ -278,7 +288,7 @@ const PortraitPage = () => {
           <PortraitCard
             domain={portraitStats.domain}
             totalTimeMs={portraitStats.totalTimeMs}
-            sessions={portraitStats.sessions ?? []}
+            hourBuckets={portraitStats.hourBuckets ?? new Array(24).fill(0)}
             cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
             dateRange={portraitStats.dateRange}
             uniquePageCount={portraitStats.uniquePageCount}

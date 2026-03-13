@@ -2,13 +2,11 @@
 // ABOUTME: Canvas-textured card with vertical strokes mapped to 24h activity rhythm
 
 import React, { useEffect, useRef } from "react";
-import type { ScreenTimeSession } from "../storage/LocalEventStore";
-
 export interface PortraitCardProps {
   domain: string;
   totalTimeMs: number | null;
-  /** Sessions with focusTs timestamps — used to derive time-of-day rhythm */
-  sessions: ScreenTimeSession[];
+  /** Pre-computed total ms per hour-of-day (index 0 = midnight, 23 = 11pm) */
+  hourBuckets: number[];
   /** Total cursor distance in pixels (sum of Euclidean distances between samples) */
   cursorDistancePx: number;
   dateRange: { oldest: string; newest: string } | null;
@@ -69,15 +67,9 @@ export function formatDistance(px: number): string {
 }
 
 /**
- * Build a 24-slot hour weight array (index 0 = midnight, 23 = 11pm).
- * Each slot holds total ms spent in that hour, normalized to [0, 1].
+ * Normalize raw hour buckets (total ms per hour) to [0, 1] weights.
  */
-function buildHourWeights(sessions: ScreenTimeSession[]): number[] {
-  const buckets = new Array(24).fill(0);
-  for (const s of sessions) {
-    const hour = new Date(s.focusTs).getHours();
-    buckets[hour] += s.durationMs;
-  }
+function normalizeHourBuckets(buckets: number[]): number[] {
   const max = Math.max(...buckets, 1);
   return buckets.map((v) => v / max);
 }
@@ -106,7 +98,7 @@ const CANVAS_PALETTE: [number, number, number][] = [
 export function PortraitCard({
   domain,
   totalTimeMs,
-  sessions,
+  hourBuckets,
   cursorDistancePx,
   dateRange,
   uniquePageCount,
@@ -114,7 +106,7 @@ export function PortraitCard({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const isLoading = totalTimeMs === null;
-  const weights = buildHourWeights(sessions);
+  const weights = normalizeHourBuckets(hourBuckets);
   const heroText = formatDuration(totalTimeMs ?? 0);
   const dateLabel = dateRange
     ? formatDateRange(dateRange.oldest, dateRange.newest)

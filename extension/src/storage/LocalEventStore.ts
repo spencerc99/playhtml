@@ -9,8 +9,9 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_NAME = "events";
+const STATS_STORE_NAME = "domain_stats";
 
 export interface QueryOptions {
   type?: CollectionEventType;
@@ -41,6 +42,18 @@ export interface ScreenTimeSession {
   focusTs: number;
   blurTs: number;
   durationMs: number;
+}
+
+/** Pre-computed per-domain session aggregates, updated incrementally on each navigation event */
+export interface DomainStatsAggregate {
+  domain: string;
+  totalTimeMs: number;
+  /** Total ms spent per hour-of-day (index 0 = midnight, 23 = 11pm) */
+  hourBuckets: number[];
+  sessionCount: number;
+  /** Pending (unmatched) focus event — set on focus, cleared on blur/beforeunload */
+  pendingFocusTs: number | null;
+  pendingFocusUrl: string;
 }
 
 export interface ScreenTimeResult {
@@ -80,6 +93,10 @@ export class LocalEventStore {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => reject(request.error);
+      request.onblocked = () => {
+        console.warn("[LocalEventStore] DB upgrade blocked by another connection");
+      };
+
       request.onsuccess = () => {
         this.db = request.result;
         this.isInitialized = true;
@@ -87,6 +104,10 @@ export class LocalEventStore {
           console.log("[LocalEventStore] Initialized successfully");
         }
         resolve();
+        // Backfill session stats in the background (non-blocking)
+        this.backfillSessionStats().catch((e) =>
+          console.error("[LocalEventStore] Session stats backfill failed:", e),
+        );
       };
 
       request.onupgradeneeded = (event) => {
@@ -174,6 +195,18 @@ export class LocalEventStore {
             }
           };
         }
+
+        // Add domain_stats store for pre-computed session aggregates (v6)
+        // Only creates the store here — data backfill runs after init via
+        // backfillSessionStats() so it doesn't block DB open.
+        if (oldVersion < 6) {
+          if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
+            db.createObjectStore(STATS_STORE_NAME, { keyPath: "domain" });
+            if (VERBOSE) {
+              console.log("[LocalEventStore] Created domain_stats store");
+            }
+          }
+        }
       };
     });
   }
@@ -184,6 +217,114 @@ export class LocalEventStore {
   private async ensureInitialized(): Promise<void> {
     if (!this.isInitialized) {
       await this.init();
+    }
+  }
+
+  /**
+   * One-time backfill: compute session aggregates from existing navigation events.
+   * Skips if domain_stats already has data (idempotent).
+   */
+  private async backfillSessionStats(): Promise<void> {
+    if (!this.db) return;
+
+    // Check if backfill already ran (any row in domain_stats means it did)
+    const hasData = await new Promise<boolean>((resolve, reject) => {
+      const tx = this.db!.transaction([STATS_STORE_NAME], "readonly");
+      const store = tx.objectStore(STATS_STORE_NAME);
+      const countReq = store.count();
+      countReq.onsuccess = () => resolve(countReq.result > 0);
+      countReq.onerror = () => reject(countReq.error);
+    });
+
+    if (hasData) return;
+
+    if (VERBOSE) {
+      console.log("[LocalEventStore] Starting session stats backfill...");
+    }
+
+    // Walk all navigation events via the type index
+    const allNavEvents = await new Promise<CollectionEvent[]>((resolve, reject) => {
+      const tx = this.db!.transaction([STORE_NAME], "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const typeIndex = store.index("type");
+      const events: CollectionEvent[] = [];
+      const req = typeIndex.openCursor(IDBKeyRange.only("navigation"));
+
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          events.push(cursor.value as CollectionEvent);
+          cursor.continue();
+        } else {
+          resolve(events);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    // Group by domain
+    const navByDomain = new Map<string, CollectionEvent[]>();
+    for (const evt of allNavEvents) {
+      const dom = (evt as any).domain || extractDomain(evt.meta?.url);
+      if (dom) {
+        if (!navByDomain.has(dom)) navByDomain.set(dom, []);
+        navByDomain.get(dom)!.push(evt);
+      }
+    }
+
+    // Compute and write aggregates
+    const tx = this.db!.transaction([STATS_STORE_NAME], "readwrite");
+    const statsStore = tx.objectStore(STATS_STORE_NAME);
+
+    for (const [dom, events] of navByDomain) {
+      events.sort((a, b) => a.ts - b.ts);
+      const agg: DomainStatsAggregate = {
+        domain: dom,
+        totalTimeMs: 0,
+        hourBuckets: new Array(24).fill(0),
+        sessionCount: 0,
+        pendingFocusTs: null,
+        pendingFocusUrl: "",
+      };
+
+      let pendingFocusTs: number | null = null;
+      let pendingFocusUrl = "";
+
+      for (const evt of events) {
+        const d = evt.data as any;
+        if (d?.event === "focus") {
+          pendingFocusTs = evt.ts;
+          pendingFocusUrl = evt.meta?.url ?? "";
+        } else if (
+          (d?.event === "blur" || d?.event === "beforeunload") &&
+          pendingFocusTs !== null
+        ) {
+          const durationMs = evt.ts - pendingFocusTs;
+          if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
+            agg.totalTimeMs += durationMs;
+            agg.sessionCount++;
+            const hour = new Date(pendingFocusTs).getHours();
+            agg.hourBuckets[hour] += durationMs;
+          }
+          pendingFocusTs = null;
+          pendingFocusUrl = "";
+        }
+      }
+
+      agg.pendingFocusTs = pendingFocusTs;
+      agg.pendingFocusUrl = pendingFocusUrl;
+      statsStore.put(agg);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    if (VERBOSE) {
+      console.log(
+        `[LocalEventStore] Backfilled session stats for ${navByDomain.size} domains`,
+      );
     }
   }
 
@@ -351,6 +492,27 @@ export class LocalEventStore {
         }
       };
 
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Read pre-computed session stats from the domain_stats store (O(1) lookup)
+   */
+  async getSessionStats(domain: string): Promise<DomainStatsAggregate | null> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const request = statsStore.get(domain);
+
+      request.onsuccess = () => resolve(request.result ?? null);
       request.onerror = () => reject(request.error);
     });
   }
@@ -623,36 +785,114 @@ export class LocalEventStore {
   }
 
   /**
-   * Add a batch of events using upsert (put), so duplicate IDs don't error
+   * Add a batch of events using upsert (put), so duplicate IDs don't error.
+   * Navigation events incrementally update the domain_stats aggregate.
    */
   async addEvents(events: CollectionEvent[]): Promise<void> {
     await this.ensureInitialized();
 
     if (events.length === 0) return;
 
-    return new Promise((resolve, reject) => {
+    // Collect navigation events grouped by domain for stats updates
+    const navByDomain = new Map<string, CollectionEvent[]>();
+    for (const event of events) {
+      if (event.meta?.url) {
+        if (!event.domain) {
+          event.domain = extractDomain(event.meta.url);
+        }
+        if (!event.normalizedUrl) {
+          event.normalizedUrl = normalizeUrl(event.meta.url);
+        }
+      }
+      if (event.type === "navigation" && event.domain) {
+        if (!navByDomain.has(event.domain)) navByDomain.set(event.domain, []);
+        navByDomain.get(event.domain)!.push(event);
+      }
+    }
+
+    // Write events to the main store
+    await new Promise<void>((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
         return;
       }
 
       const transaction = this.db.transaction([STORE_NAME], "readwrite");
-      const store = transaction.objectStore(STORE_NAME);
+      const evtStore = transaction.objectStore(STORE_NAME);
 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
 
       for (const event of events) {
-        // Ensure derived index fields are set
-        if (event.meta?.url) {
-          if (!event.domain) {
-            event.domain = extractDomain(event.meta.url);
+        evtStore.put(event);
+      }
+    });
+
+    // Update session aggregates in a separate transaction so a stats
+    // failure never blocks event storage
+    if (navByDomain.size > 0) {
+      try {
+        await this.updateSessionStats(navByDomain);
+      } catch (e) {
+        console.error("[LocalEventStore] Failed to update session stats:", e);
+      }
+    }
+  }
+
+  /**
+   * Incrementally update pre-computed session aggregates for the given domains.
+   */
+  private async updateSessionStats(
+    navByDomain: Map<string, CollectionEvent[]>,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readwrite");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+
+      for (const [dom, navEvents] of navByDomain) {
+        const getReq = statsStore.get(dom);
+        getReq.onsuccess = () => {
+          const agg: DomainStatsAggregate = getReq.result ?? {
+            domain: dom,
+            totalTimeMs: 0,
+            hourBuckets: new Array(24).fill(0),
+            sessionCount: 0,
+            pendingFocusTs: null,
+            pendingFocusUrl: "",
+          };
+
+          navEvents.sort((a, b) => a.ts - b.ts);
+          for (const evt of navEvents) {
+            const d = evt.data as NavigationEventData;
+            if (d.event === "focus") {
+              agg.pendingFocusTs = evt.ts;
+              agg.pendingFocusUrl = evt.meta?.url ?? "";
+            } else if (
+              (d.event === "blur" || d.event === "beforeunload") &&
+              agg.pendingFocusTs !== null
+            ) {
+              const durationMs = evt.ts - agg.pendingFocusTs;
+              if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
+                agg.totalTimeMs += durationMs;
+                agg.sessionCount++;
+                const hour = new Date(agg.pendingFocusTs).getHours();
+                agg.hourBuckets[hour] += durationMs;
+              }
+              agg.pendingFocusTs = null;
+              agg.pendingFocusUrl = "";
+            }
           }
-          if (!event.normalizedUrl) {
-            event.normalizedUrl = normalizeUrl(event.meta.url);
-          }
-        }
-        store.put(event);
+
+          statsStore.put(agg);
+        };
       }
     });
   }

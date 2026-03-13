@@ -172,7 +172,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           currentUrl,
           filterMode,
           {
-            limit: 5000,
+            limit: 1000,
             types: requestedTypes,
             forceServerBackfill,
           },
@@ -223,7 +223,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [visible]);
 
-  // Fetch portrait stats on mount and when filter mode or domain changes
+  // Fetch portrait stats when overlay is visible.
+  // The GET_DOMAIN_STATS handler now only loads navigation + cursor events
+  // (instead of ALL events), so IndexedDB contention with the main load is minimal.
   useEffect(() => {
     if (!visible) return;
     (async () => {
@@ -237,7 +239,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             domain:
               actualMode === "domain" ? domain : new URL(currentUrl).pathname,
             totalTimeMs: res.stats.totalTimeMs,
-            sessions: res.stats.sessions ?? [],
+            hourBuckets: res.stats.hourBuckets ?? new Array(24).fill(0),
             cursorDistancePx: res.stats.cursorDistancePx ?? 0,
             dateRange: res.stats.dateRange,
             uniquePageCount: res.stats.uniquePageCount,
@@ -517,7 +519,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                 actualMode === "domain" ? domain : new URL(currentUrl).pathname
               }
               totalTimeMs={null}
-              sessions={[]}
+              hourBuckets={new Array(24).fill(0)}
               cursorDistancePx={0}
               dateRange={null}
               uniquePageCount={0}

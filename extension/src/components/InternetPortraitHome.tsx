@@ -22,7 +22,7 @@ interface Props {
 interface PortraitStats {
   domain: string;
   totalTimeMs: number | null;
-  sessions: { url: string; focusTs: number; blurTs: number; durationMs: number }[];
+  hourBuckets: number[];
   cursorDistancePx: number;
   eventCounts: { cursor: number; keyboard: number; viewport: number };
   dateRange: { oldest: string; newest: string } | null;
@@ -246,7 +246,7 @@ export function InternetPortraitHome({
                 <PortraitCard
                   domain={portraitStats.domain}
                   totalTimeMs={portraitStats.totalTimeMs}
-                  sessions={portraitStats.sessions ?? []}
+                  hourBuckets={portraitStats.hourBuckets ?? new Array(24).fill(0)}
                   cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
                   dateRange={portraitStats.dateRange}
                   uniquePageCount={portraitStats.uniquePageCount}

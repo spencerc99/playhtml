@@ -221,54 +221,37 @@ export default defineBackground(() => {
       const domain = message.domain as string
       ;(async () => {
         try {
-          const domainStats = await store.getDomainStats(domain)
+          // Session stats are pre-computed (O(1) lookup); only cursor events
+          // still need a capped scan for distance calculation
+          const [domainStats, sessionStats, cursorEvents] = await Promise.all([
+            store.getDomainStats(domain),
+            store.getSessionStats(domain).catch(() => null),
+            store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
+          ])
+
           if (domainStats.totalEvents === 0) {
             reply({ success: true, stats: null })
             return
           }
 
-          const events = await store.queryByDomain(domain)
+          const totalTimeMs = sessionStats?.totalTimeMs ?? 0
+          const hourBuckets = sessionStats?.hourBuckets ?? new Array(24).fill(0)
 
-          const uniqueUrls = new Set(events.map((e) => e.meta.url).filter(Boolean))
-
-          const counts = { cursor: 0, keyboard: 0, viewport: 0 }
-          events.forEach((e) => {
-            if (e.type === 'cursor') counts.cursor++
-            else if (e.type === 'keyboard') counts.keyboard++
-            else if (e.type === 'viewport') counts.viewport++
-          })
-
-          const navEvents = events
-            .filter((e) => e.type === 'navigation')
-            .sort((a, b) => a.ts - b.ts)
-          let pendingFocusTs: number | null = null
-          let pendingFocusUrl = ''
-          let totalTimeMs = 0
-          const sessions: { url: string; focusTs: number; blurTs: number; durationMs: number }[] = []
-          for (const evt of navEvents) {
-            const d = evt.data as any
-            if (d.event === 'focus') {
-              pendingFocusTs = evt.ts
-              pendingFocusUrl = evt.meta?.url ?? ''
-            } else if ((d.event === 'blur' || d.event === 'beforeunload') && pendingFocusTs !== null) {
-              const durationMs = evt.ts - pendingFocusTs
-              if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
-                totalTimeMs += durationMs
-                sessions.push({ url: pendingFocusUrl, focusTs: pendingFocusTs, blurTs: evt.ts, durationMs })
-              }
-              pendingFocusTs = null
-            }
+          // Collect unique URLs from the cursor events we loaded
+          const uniqueUrls = new Set<string>()
+          for (const e of cursorEvents) {
+            if (e.meta?.url) uniqueUrls.add(e.meta.url)
           }
 
           // Compute cursor distance: sum of Euclidean distances between consecutive move samples
           // Normalized positions (0-1) are scaled by assumed 1920×1080 viewport
-          const cursorEvents = events
-            .filter((e) => e.type === 'cursor' && (e.data as any).event === 'move')
+          const moveEvents = cursorEvents
+            .filter((e) => (e.data as any).event === 'move')
             .sort((a, b) => a.ts - b.ts)
           let cursorDistancePx = 0
-          for (let i = 1; i < cursorEvents.length; i++) {
-            const prev = cursorEvents[i - 1].data as any
-            const curr = cursorEvents[i].data as any
+          for (let i = 1; i < moveEvents.length; i++) {
+            const prev = moveEvents[i - 1].data as any
+            const curr = moveEvents[i].data as any
             const dx = (curr.x - prev.x) * 1920
             const dy = (curr.y - prev.y) * 1080
             cursorDistancePx += Math.sqrt(dx * dx + dy * dy)
@@ -287,9 +270,9 @@ export default defineBackground(() => {
             stats: {
               domain,
               totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
-              sessions,
+              hourBuckets,
               cursorDistancePx,
-              eventCounts: counts,
+              eventCounts: domainStats.eventsByType,
               dateRange,
               uniquePageCount: uniqueUrls.size,
             },
