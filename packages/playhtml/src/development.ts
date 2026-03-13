@@ -48,25 +48,44 @@ const DEV_STYLES = `
   pointer-events: auto;
   position: fixed;
   bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  width: 44px;
+  height: 80px;
   background: #e8e0d4;
   border: 2px solid;
   border-color: #f5f0e8 #8a8279 #8a8279 #f5f0e8;
   border-bottom: none;
-  padding: 6px 16px 4px;
-  cursor: pointer;
+  padding: 6px 6px 4px;
+  cursor: grab;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   z-index: 100000;
 }
 .ph-trigger:hover {
   background: #f5f0e8;
 }
+.ph-trigger.ph-dragging {
+  cursor: grabbing;
+}
 .ph-trigger img {
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
+}
+.ph-trigger-grip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  opacity: 0.4;
+  flex: 1;
+}
+.ph-trigger-grip span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  background: #8a8279;
 }
 .ph-bar {
   pointer-events: auto;
@@ -167,12 +186,17 @@ const DEV_STYLES = `
   letter-spacing: 0.5px;
   color: #c4724e;
   cursor: pointer;
-  background: none;
-  border: 1px solid #c4724e;
-  padding: 1px 6px;
+  background: #e8e0d4;
+  border: 2px solid;
+  border-color: #f5f0e8 #8a8279 #8a8279 #f5f0e8;
+  padding: 2px 8px;
 }
 .ph-reset-btn:hover {
-  background: rgba(196, 114, 78, 0.1);
+  background: #f5f0e8;
+}
+.ph-reset-btn:active {
+  border-color: #8a8279 #f5f0e8 #f5f0e8 #8a8279;
+  background: #d4cfc7;
 }
 .ph-tree-item {
   padding: 3px 0 3px 14px;
@@ -243,15 +267,32 @@ const DEV_STYLES = `
   border-left: 1px solid #d4cfc7;
   margin-left: 14px;
 }
+.ph-resize-handle {
+  height: 6px;
+  cursor: ns-resize;
+  background: #d4cfc7;
+  border-bottom: 1px solid #8a8279;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ph-resize-handle::after {
+  content: '';
+  width: 40px;
+  height: 2px;
+  background: #8a8279;
+  opacity: 0.5;
+}
 .ph-status {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 3px 10px;
   background: #d4cfc7;
-  border-top: 1px solid #8a8279;
+  border-bottom: 1px solid #8a8279;
   font-family: 'Martian Mono', 'SF Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   color: #6b6560;
   flex-shrink: 0;
 }
@@ -275,8 +316,8 @@ const DEV_STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 16px;
+  width: 24px;
+  height: 18px;
   background: #c4bdb2;
   border: 1px solid;
   border-color: #e8e0d4 #8a8279 #8a8279 #e8e0d4;
@@ -289,8 +330,8 @@ const DEV_STYLES = `
   color: #3d3833;
 }
 .ph-status .ph-minimize-btn svg {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 .ph-empty {
   text-align: center;
@@ -472,6 +513,17 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   });
   trigger.appendChild(triggerImg);
 
+  // Grip lines below logo
+  const grip = el("div", "ph-trigger-grip");
+  for (let i = 0; i < 4; i++) {
+    grip.appendChild(document.createElement("span"));
+  }
+  trigger.appendChild(grip);
+
+  // Center trigger horizontally on mount
+  let triggerLeft = (window.innerWidth - 44) / 2;
+  trigger.style.left = `${triggerLeft}px`;
+
   // ── Bottom bar ──
   const bar = el("div", "ph-bar");
 
@@ -503,7 +555,10 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
   barMain.appendChild(toolbar);
   barMain.appendChild(dataArea);
-  bar.appendChild(barMain);
+
+  // Resize handle at very top of bar
+  const resizeHandle = el("div", "ph-resize-handle");
+  bar.appendChild(resizeHandle);
 
   // ── Status line ──
   const status = el("div", "ph-status");
@@ -558,7 +613,9 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   minimizeBtn.title = "Minimize";
   status.appendChild(minimizeBtn);
 
+  // Status line above main content
   bar.appendChild(status);
+  bar.appendChild(barMain);
 
   // ── Inspect tooltip (hidden, for later use) ──
   const inspectTooltip = el("div", "ph-inspect-tooltip");
@@ -785,8 +842,59 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
   }
 
-  trigger.onclick = () => open();
+  // ── Trigger drag behavior ──
+  let triggerDragStartX = 0;
+  let triggerDragStartLeft = 0;
+  let triggerDidDrag = false;
+
+  trigger.addEventListener("mousedown", (e: MouseEvent) => {
+    triggerDragStartX = e.clientX;
+    triggerDragStartLeft = triggerLeft;
+    triggerDidDrag = false;
+    trigger.classList.add("ph-dragging");
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - triggerDragStartX;
+      if (Math.abs(dx) > 5) triggerDidDrag = true;
+      triggerLeft = Math.max(0, Math.min(window.innerWidth - 44, triggerDragStartLeft + dx));
+      trigger.style.left = `${triggerLeft}px`;
+    };
+
+    const onUp = () => {
+      trigger.classList.remove("ph-dragging");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      if (!triggerDidDrag) open();
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
   minimizeBtn.onclick = () => close();
+
+  // ── Resize handle drag behavior ──
+  let barHeight = 220;
+
+  resizeHandle.addEventListener("mousedown", (e: MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = barHeight;
+
+    const onMove = (ev: MouseEvent) => {
+      const dy = startY - ev.clientY;
+      barHeight = Math.max(120, Math.min(500, startHeight + dy));
+      bar.style.height = `${barHeight}px`;
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
 
   // ── Helpers: find tag type and handler for an element ID ──
   function lookupHandler(elementId: string): { tagType: string; handler: any } | null {
