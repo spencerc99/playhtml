@@ -335,6 +335,28 @@ const DEV_STYLES = `
   width: 12px;
   height: 12px;
 }
+.ph-status-field {
+  position: relative;
+  border: 1px solid #8a8279;
+  padding: 2px 8px 2px 8px;
+  margin: -2px 0;
+  display: inline-flex;
+  align-items: center;
+}
+.ph-status-field-label {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #d4cfc7;
+  padding: 0 4px;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8a8279;
+  line-height: 1;
+  white-space: nowrap;
+}
 .ph-empty {
   text-align: center;
   padding: 20px;
@@ -614,22 +636,31 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   sep2.textContent = "\u00B7";
   status.appendChild(sep2);
 
-  // Room path
+  // Room field
   let decodedRoom: string;
   try {
     decodedRoom = decodeURIComponent(playhtml.roomId);
   } catch {
     decodedRoom = playhtml.roomId;
   }
-  const roomLabel = document.createTextNode(decodedRoom);
-  status.appendChild(roomLabel);
+  const roomField = el("span", "ph-status-field");
+  const roomFieldLabel = el("span", "ph-status-field-label");
+  roomFieldLabel.textContent = "room";
+  roomField.appendChild(roomFieldLabel);
+  roomField.appendChild(document.createTextNode(decodedRoom));
+  status.appendChild(roomField);
 
   const sep3 = el("span", "ph-sep");
   sep3.textContent = "\u00B7";
   status.appendChild(sep3);
 
-  const hostLabel = document.createTextNode(playhtml.host);
-  status.appendChild(hostLabel);
+  // Host field
+  const hostField = el("span", "ph-status-field");
+  const hostFieldLabel = el("span", "ph-status-field-label");
+  hostFieldLabel.textContent = "host";
+  hostField.appendChild(hostFieldLabel);
+  hostField.appendChild(document.createTextNode(playhtml.host));
+  status.appendChild(hostField);
 
   // Minimize button
   const minimizeBtn = el("button", "ph-minimize-btn");
