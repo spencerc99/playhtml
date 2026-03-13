@@ -1,3 +1,5 @@
+// ABOUTME: Shared types, interfaces, and capability initializers for the playhtml library.
+// ABOUTME: Exports element capabilities, event handler types, and built-in tag definitions.
 import { canMirrorInitializer, type ElementState } from "./canMirror";
 export type { ElementState } from "./canMirror";
 
@@ -216,6 +218,28 @@ export * from "./sharedElements";
 
 // Export cursor types
 export * from "./cursor-types";
+import type { Cursor, PlayerIdentity } from "./cursor-types";
+
+export interface PageDataChannel<T> {
+  getData(): T;
+  setData(data: T | ((draft: T) => void)): void;
+  onUpdate(callback: (data: T) => void): () => void;
+  destroy(): void;
+}
+
+export type PresenceView<T extends Record<string, unknown> = Record<string, unknown>> = {
+  playerIdentity?: PlayerIdentity;
+  cursor: Cursor | null;
+} & T;
+
+export interface PresenceAPI {
+  setMyPresence(channel: string, data: unknown): void;
+  getPresences(): Map<string, PresenceView>;
+  onPresenceChange(
+    callback: (presences: Map<string, PresenceView>) => void,
+  ): () => void;
+  getMyIdentity(): PlayerIdentity;
+}
 
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
       16 0,
