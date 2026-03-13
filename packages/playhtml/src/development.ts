@@ -231,7 +231,6 @@ const DEV_STYLES = `
   font-size: 12px;
 }
 .ph-tree-reset {
-  margin-left: auto;
   font-family: 'Atkinson Hyperlegible', sans-serif;
   font-size: 10px;
   color: #c4724e;
@@ -241,6 +240,7 @@ const DEV_STYLES = `
   background: none;
   border: none;
   padding: 0;
+  margin-left: 4px;
 }
 .ph-tree-item:hover > .ph-tree-reset {
   opacity: 1;
@@ -770,9 +770,9 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     resetAllBtn.textContent = "Reset All";
     resetAllBtn.onclick = () => {
       if (!window.confirm("Reset all playhtml element data?")) return;
-      elementHandlers.forEach((idMap, tagType) => {
-        idMap.forEach((_handler, elementId) => {
-          playhtml.deleteElementData(tagType, elementId);
+      elementHandlers.forEach((idMap) => {
+        idMap.forEach((handler) => {
+          handler.setData(handler.defaultData);
         });
       });
       renderDataWalker();
@@ -841,12 +841,12 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
             }
           };
 
-          // Per-element reset
+          // Per-element reset (restore to default data)
           const resetBtn = el("button", "ph-tree-reset");
           resetBtn.textContent = "reset";
           resetBtn.onclick = (e) => {
             e.stopPropagation();
-            playhtml.deleteElementData(tagType, elementId);
+            handler.setData(handler.defaultData);
             renderDataWalker();
           };
 
