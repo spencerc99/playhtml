@@ -1,5 +1,22 @@
 # Change Log
 
+## 0.10.0
+
+### Minor Changes
+
+- 09e380f: Add cursor zones: elements can be registered as zones so that remote cursors are positioned relative to the zone element rather than using absolute viewport coordinates. This enables accurate cursor presence within scrollable containers, embedded editors, and other bounded regions. Adds `CursorZonePosition` type and `zone` field to cursor presence in common, cursor zone registry with zone-relative broadcasting and rendering in the core library, and `useCursorZone` hook with `registerCursorZone`/`unregisterCursorZone` on PlayContext in React.
+
+### Patch Changes
+
+- b7fc2e6: Fix built-in tag types (can-move, can-spin, etc.) ignoring custom properties set via withSharedState. Previously, only can-play elements read custom defaultData, onDrag, and other overrides from the DOM element. Now built-in tag initializers are merged with any custom properties, allowing withSharedState users to override defaultData and handlers for built-in capabilities. Also fix React setData/setMyAwareness callbacks to look up element handlers by actual tag instead of hardcoding can-play.
+- Updated dependencies [b7fc2e6]
+- Updated dependencies [09768d4]
+- Updated dependencies [09768d4]
+- Updated dependencies [09e380f]
+- Updated dependencies [2d16755]
+  - playhtml@2.8.0
+  - @playhtml/common@0.5.0
+
 ## 0.9.0
 
 ### Minor Changes

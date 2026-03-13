@@ -270,7 +270,11 @@ These capabilities are common ones that have been designed and created by the co
 
 **EXPERIMENTAL: USE WITH CAUTION**
 
-Automatically syncs all styles and children of an element. This is a really powerful and expressive way to code as you normally do but have it be automatically collaborative. Still in testing and may have some bugs. NOTE that anyone can change the styles using their dev console and have it also sync across. Restricting values to certain ranges or values will soon be supported.
+Automatically syncs attributes, children, form element state (checkboxes, radios, selects, text inputs), and contenteditable content of an element. This is a powerful way to code as you normally do but have it be automatically collaborative. Hover and focus states are synced ephemerally via awareness--style with `[data-playhtml-hover]` and `[data-playhtml-focus]` attribute selectors instead of `:hover`/`:focus`. Still in testing and may have some bugs. NOTE that anyone can change synced values using their dev console and have it sync across. Restricting values to certain ranges or values will soon be supported.
+
+### `can-hover`
+
+Syncs hover state across all connected clients via awareness. When any client hovers the element, all clients see the `data-playhtml-hover` attribute set on it. No persistent data is stored--hover state is purely ephemeral. Style with `[data-playhtml-hover]` instead of `:hover` to reflect collaborative hover state.
 
 ### `can-move`
 

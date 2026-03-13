@@ -1,3 +1,6 @@
+import { canMirrorInitializer, type ElementState } from "./canMirror";
+export type { ElementState } from "./canMirror";
+
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 
 // TODO: should be able to have set of allowable elements
@@ -267,6 +270,11 @@ export type DefaultTagInitializers = {
   [TagType.CanToggle]: ElementInitializer<{ on: boolean } | boolean>;
   [TagType.CanGrow]: ElementInitializer<{ scale: number }, GrowLocalData>;
   [TagType.CanDuplicate]: ElementInitializer<string[], string[]>;
+  [TagType.CanHover]: ElementInitializer<
+    Record<string, never>,
+    undefined,
+    { hover: boolean }
+  >;
   [TagType.CanMirror]: ElementInitializer<ElementState>;
 };
 
@@ -479,380 +487,31 @@ export const TagTypeToElement: DefaultTagInitializers = {
       return true;
     },
   },
-  [TagType.CanMirror]: {
-    defaultData: (element: HTMLElement) => constructInitialState(element),
-    onMount: ({ getElement, setData, getData }) => {
+  // TODO: auto-duplicate :hover CSS rules to [data-playhtml-hover] via CSSOM
+  // so users don't need to manually rewrite their hover styles.
+  [TagType.CanHover]: {
+    defaultData: {},
+    myDefaultAwareness: { hover: false },
+    onMount: ({ getElement, setMyAwareness }) => {
       const element = getElement();
-
-      const setDataAny = setData as unknown as (data: any) => void;
-      observeElementChanges(element, (mutations) => {
-        // Apply granular, collaborative edits in place using the mutator form.
-        setDataAny((draft: any) => {
-          applyMutationsInPlace(draft, mutations);
-        });
+      element.addEventListener("mouseenter", () => {
+        setMyAwareness({ hover: true });
+        element.setAttribute("data-playhtml-hover", "");
+      });
+      element.addEventListener("mouseleave", () => {
+        setMyAwareness({ hover: false });
+        element.removeAttribute("data-playhtml-hover");
       });
     },
-    updateElement: ({ element, data }) => {
-      const currentState = constructInitialState(element);
-      if (areStatesEqual(currentState, data)) {
-        return;
+    updateElement: () => {},
+    updateElementAwareness: ({ element, awareness }) => {
+      const anyHover = awareness.some((a) => a?.hover);
+      if (anyHover) {
+        element.setAttribute("data-playhtml-hover", "");
+      } else {
+        element.removeAttribute("data-playhtml-hover");
       }
-      updateElementFromState(element, data);
     },
   },
+  [TagType.CanMirror]: canMirrorInitializer,
 };
-
-function isHTMLElementState(state: ElementState): state is HTMLElementState {
-  return state.nodeType === NodeType.HTMLElement;
-}
-
-function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
-  if (state1.nodeType !== state2.nodeType) {
-    return false;
-  }
-
-  if (state1.nodeType === NodeType.Text && state2.nodeType === NodeType.Text) {
-    return state1.textContent === state2.textContent;
-  }
-
-  if (isHTMLElementState(state1) && isHTMLElementState(state2)) {
-    if (state1.tagName !== state2.tagName) {
-      return false;
-    }
-
-    if (
-      Object.keys(state1.attributes).length !==
-      Object.keys(state2.attributes).length
-    ) {
-      return false;
-    }
-
-    for (const [key, value] of Object.entries(state1.attributes)) {
-      if (state2.attributes[key] !== value) {
-        return false;
-      }
-    }
-
-    if (state1.children.length !== state2.children.length) {
-      return false;
-    }
-
-    for (let i = 0; i < state1.children.length; i++) {
-      if (!areStatesEqual(state1.children[i], state2.children[i])) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-function observeElementChanges(
-  element: HTMLElement,
-  callback: (mutations: MutationRecord[]) => void,
-  options?: {
-    childList?: boolean;
-    attributes?: boolean;
-    characterData?: boolean;
-    attributeFilter?: string[];
-  }
-): MutationObserver {
-  // Options for the observer (which mutations to observe)
-  const defaultOptions = {
-    childList: true,
-    attributes: true,
-    // NOTE: this makes it such that innerhtml changes aren't picked up.. for now let's just be okay with that
-    // can get around this by putting subtree to true but ignoring any target that isn't the immediate element's content
-    subtree: false,
-    characterData: true,
-  };
-
-  // Merge default options with provided options
-  const config = { ...defaultOptions, ...options };
-
-  // Callback function to execute when mutations are observed
-  const mutationCallback = (mutationsList: MutationRecord[]) => {
-    const filteredMutations = mutationsList.filter((mutation) => {
-      // TODO: actually not sure if this line does anything lol but nothing unexpected is happening yet...
-      if (mutation.target !== element) {
-        return false;
-      }
-
-      if (config.childList && mutation.type === "childList") {
-        return true;
-      }
-
-      if (config.attributes && mutation.type === "attributes") {
-        if (config.attributeFilter) {
-          if (config.attributeFilter.includes(mutation.attributeName || "")) {
-            return true;
-          }
-        } else {
-          return true;
-        }
-      }
-
-      if (config.characterData && mutation.type === "characterData") {
-        return true;
-      }
-
-      if (config.subtree && mutation.type === "childList") {
-        return true;
-      }
-
-      return false;
-    });
-
-    callback(filteredMutations);
-  };
-  // Create an observer instance linked to the callback function
-  const observer = new MutationObserver(mutationCallback);
-
-  // Start observing the target element with the configured options
-  observer.observe(element, config);
-
-  // Return the observer instance in case you need to stop observing later
-  return observer;
-}
-
-enum NodeType {
-  Text = "Text",
-  HTMLElement = "HTMLElement",
-}
-
-type ElementState = HTMLElementState | TextState;
-interface HTMLElementState {
-  nodeType: NodeType.HTMLElement;
-  tagName: string;
-  attributes: { [key: string]: string };
-  children: ElementState[];
-}
-interface TextState {
-  nodeType: NodeType.Text;
-  textContent: string;
-}
-
-/**
- * Applies a list of DOM MutationRecord patches directly to the provided
- * ElementState. This is used with the mutator setData form so that nested
- * arrays/objects are updated incrementally (push/splice, assign/remove),
- * enabling conflict-free collaborative edits under SyncedStore/Yjs.
- */
-function applyMutationsInPlace(
-  state: ElementState,
-  mutations: MutationRecord[]
-): void {
-  mutations.forEach((mutation) => {
-    switch (mutation.type) {
-      case "attributes":
-        updateAttributes(state, mutation);
-        break;
-      case "childList":
-        updateChildList(state, mutation);
-        break;
-      case "characterData":
-        updateCharacterData(state, mutation);
-        break;
-    }
-  });
-}
-
-function updateAttributes(state: ElementState, mutation: MutationRecord) {
-  if (state.nodeType === NodeType.Text) {
-    return;
-  }
-  if (mutation.target instanceof HTMLElement) {
-    const attributeName = mutation.attributeName!;
-    const attributeValue = mutation.target.getAttribute(attributeName);
-    if (attributeValue !== null) {
-      state.attributes[attributeName] = attributeValue;
-    } else {
-      delete state.attributes[attributeName];
-    }
-  }
-}
-
-function updateChildList(state: ElementState, mutation: MutationRecord) {
-  if (state.nodeType === NodeType.Text) {
-    return;
-  }
-
-  if (mutation.removedNodes.length) {
-    mutation.removedNodes.forEach((node) => {
-      if (!isValidNode(node)) {
-        return;
-      }
-      const nodeState = constructInitialState(node);
-      const indexToRemove = state.children.findIndex((child) =>
-        areStatesEqual(child, nodeState)
-      );
-      if (indexToRemove === -1) {
-        // console.log("[remove] returning early!");
-        return;
-      }
-
-      state.children.splice(indexToRemove, 1);
-    });
-  }
-
-  if (mutation.addedNodes.length) {
-    mutation.addedNodes.forEach((node: Node) => {
-      if (!isValidNode(node)) {
-        return;
-      }
-      // check to make sure this node is not already added.
-      const nodeState = constructInitialState(node);
-      if (state.children.find((child) => areStatesEqual(child, nodeState))) {
-        // console.log("[add] returning early!");
-        return;
-      }
-
-      state.children.push(nodeState);
-    });
-  }
-}
-function updateCharacterData(state: ElementState, mutation: MutationRecord) {
-  const target = mutation.target;
-  switch (state.nodeType) {
-    case NodeType.Text:
-      if (target instanceof Text) {
-        state.textContent = target.textContent || "";
-        return true;
-      }
-      break;
-    case NodeType.HTMLElement:
-      break;
-  }
-
-  return false;
-}
-
-function isValidNode(node: Node): node is HTMLElement | Text {
-  return node instanceof HTMLElement || node instanceof Text;
-}
-
-function constructInitialState(element: HTMLElement | Text): ElementState {
-  if (element instanceof Text) {
-    return {
-      nodeType: NodeType.Text,
-      textContent: element.textContent || "",
-    };
-  }
-
-  const state: ElementState = {
-    nodeType: NodeType.HTMLElement,
-    tagName: element.tagName.toLowerCase(),
-    attributes: {},
-    children: [],
-  };
-
-  // @ts-ignore
-  for (const attr of element.attributes) {
-    state.attributes[attr.name] = attr.value;
-  }
-
-  element.childNodes.forEach((child) => {
-    if (isValidNode(child)) {
-      state.children.push(constructInitialState(child));
-    }
-  });
-
-  return state;
-}
-
-function updateElementFromState(
-  element: HTMLElement | Text,
-  newState: ElementState
-) {
-  // console.log("updating element from state", element, newState);
-  updateCharacterDataFromState(element, newState);
-
-  if (newState.nodeType === NodeType.HTMLElement) {
-    updateAttributesFromState(element as HTMLElement, newState);
-
-    if (newState.children.length > 0) {
-      updateChildrenFromState(element as HTMLElement, newState);
-    }
-  }
-}
-
-function updateCharacterDataFromState(
-  element: HTMLElement | Text,
-  state: ElementState
-) {
-  if (!state) {
-    return;
-  }
-
-  if (state.nodeType === NodeType.Text) {
-    if (element.textContent !== state.textContent) {
-      element.textContent = state.textContent || "";
-    }
-  }
-  //  Ignore text content for html since its handled by children
-}
-
-function updateAttributesFromState(
-  element: HTMLElement,
-  state: HTMLElementState
-) {
-  if (!state) {
-    return;
-  }
-  // Set new attributes from state
-  const attrs: Record<string, string> =
-    (state as any).attributes && typeof (state as any).attributes === "object"
-      ? ((state as any).attributes as Record<string, string>)
-      : {};
-  for (const [key, value] of Object.entries(attrs)) {
-    if (element.getAttribute(key) !== value) element.setAttribute(key, value);
-  }
-
-  Array.from(element.attributes).forEach((attr) => {
-    if (!attrs[attr.name]) element.removeAttribute(attr.name);
-  });
-}
-
-function updateChildrenFromState(
-  element: HTMLElement,
-  state: HTMLElementState
-) {
-  // Mapping to track the processed state children
-  const processedChildren = new Set<Element | Text>();
-
-  // Update or create elements as necessary
-  state.children.forEach((childState) => {
-    // @ts-ignore
-    let childElement: HTMLElement | Text | undefined = Array.from(
-      element.childNodes
-    )
-      .filter(isValidNode)
-      .find(
-        (el) =>
-          // @ts-ignore
-          areStatesEqual(constructInitialState(el), childState) &&
-          !processedChildren.has(el)
-      );
-
-    if (!childElement) {
-      // Create a new child element if not found
-      childElement =
-        childState.nodeType === NodeType.Text
-          ? document.createTextNode(childState.textContent)
-          : document.createElement(childState.tagName);
-      element.appendChild(childElement);
-    }
-
-    processedChildren.add(childElement as Element | Text);
-    updateElementFromState(childElement as HTMLElement | Text, childState);
-  });
-
-  // Remove any remaining unused elements
-  Array.from(element.childNodes)
-    .filter(isValidNode)
-    .forEach((child) => {
-      if (!processedChildren.has(child)) {
-        element.removeChild(child);
-      }
-    });
-}

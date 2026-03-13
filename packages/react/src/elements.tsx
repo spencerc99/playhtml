@@ -194,14 +194,11 @@ export function CanHoverElement({
         );
 
         return React.cloneElement(
-          React.Children.only(renderedChildren) as any,
+          React.Children.only(renderedChildren) as React.ReactElement<{ className?: string }>,
           {
             className: classNames(
-              // TODO: fix these type errors
-              // @ts-ignore
-              renderedChildren?.props?.className,
-              // @ts-ignore
-              awareness.some((ele) => ele.isHovering) ? "hovering" : ""
+              (renderedChildren?.props as { className?: string })?.className,
+              awareness.some((ele: { isHovering?: boolean }) => ele.isHovering) ? "hovering" : ""
             ),
           }
         );
