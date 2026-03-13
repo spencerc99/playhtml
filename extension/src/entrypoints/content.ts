@@ -906,6 +906,12 @@ export default defineContentScript({
     let overlayReactModule: { createElement: any } | null = null;
     let HistoricalOverlayComponent: any = null;
 
+    // HUD overlay state
+    let hudRoot: any = null;
+    let hudVisible = false;
+    let hudReactModule: { createElement: any } | null = null;
+    let BrowsingHudComponent: any = null;
+
     const renderOverlay = () => {
       if (!overlayRoot || !overlayReactModule || !HistoricalOverlayComponent) return;
       overlayRoot.render(
@@ -972,6 +978,68 @@ export default defineContentScript({
       } catch (error) {
         console.error('[HistoricalOverlay] Failed to toggle overlay:', error);
         overlayVisible = false;
+      }
+    };
+
+    // ── HUD overlay toggle ──
+    const renderHud = () => {
+      if (!hudRoot || !hudReactModule || !BrowsingHudComponent) return;
+      hudRoot.render(
+        hudReactModule.createElement(BrowsingHudComponent, {
+          visible: true,
+          onClose: () => toggleBrowsingHud(),
+        })
+      );
+    };
+
+    const toggleBrowsingHud = async () => {
+      try {
+        hudVisible = !hudVisible;
+
+        if (hudVisible) {
+          if (VERBOSE) {
+            console.log('[BrowsingHud] Activating HUD...');
+          }
+
+          const [ReactModule, { createRoot }, { BrowsingHud }] =
+            await Promise.all([
+              import('react'),
+              import('react-dom/client'),
+              import('../components/BrowsingHud'),
+            ]);
+          const React = ReactModule.default ?? ReactModule;
+
+          hudReactModule = React;
+          BrowsingHudComponent = BrowsingHud;
+
+          const container = document.createElement('div');
+          container.id = 'playhtml-browsing-hud-root';
+          document.body.appendChild(container);
+
+          hudRoot = createRoot(container);
+          renderHud();
+
+          if (VERBOSE) {
+            console.log('[BrowsingHud] HUD activated');
+          }
+        } else {
+          if (hudRoot) {
+            hudRoot.unmount();
+            hudRoot = null;
+          }
+
+          const container = document.getElementById('playhtml-browsing-hud-root');
+          if (container) {
+            container.remove();
+          }
+
+          if (VERBOSE) {
+            console.log('[BrowsingHud] HUD deactivated');
+          }
+        }
+      } catch (error) {
+        console.error('[BrowsingHud] Failed to toggle HUD:', error);
+        hudVisible = false;
       }
     };
 
@@ -1060,6 +1128,11 @@ export default defineContentScript({
         e.preventDefault();
         toggleHistoricalOverlay();
       }
+      // Keyboard shortcut for HUD (Cmd/Ctrl+Shift+D)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        toggleBrowsingHud();
+      }
     });
 
     // Listen for messages from popup/devtools
@@ -1089,6 +1162,12 @@ export default defineContentScript({
         if (message.type === "TOGGLE_HISTORICAL_OVERLAY") {
           toggleHistoricalOverlay();
           sendResponse({ success: true, visible: overlayVisible });
+          return true;
+        }
+
+        if (message.type === "TOGGLE_BROWSING_HUD") {
+          toggleBrowsingHud();
+          sendResponse({ success: true, visible: hudVisible });
           return true;
         }
 

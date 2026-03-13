@@ -243,6 +243,19 @@ function PlayHTMLPopup() {
     }
   };
 
+  const toggleBrowsingHud = async () => {
+    if (!currentTab?.id) return;
+
+    try {
+      await browser.tabs.sendMessage(currentTab.id, {
+        type: "TOGGLE_BROWSING_HUD",
+      });
+      window.close(); // Close popup
+    } catch (error) {
+      console.error("Failed to toggle browsing HUD:", error);
+    }
+  };
+
   const bagEnabled = devFeaturesEnabled || FLAGS.COPRESENCE;
 
   const pingContentScript = async () => {
@@ -394,6 +407,7 @@ function PlayHTMLPopup() {
           onViewInventory={() => setCurrentView("inventory")}
           onViewCollections={() => setCurrentView("collections")}
           onViewHistory={toggleHistoricalOverlay}
+          onToggleHud={toggleBrowsingHud}
           inventory={inventory}
           showBagFeatures={bagEnabled}
         />

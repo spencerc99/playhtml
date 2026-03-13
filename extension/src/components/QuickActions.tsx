@@ -10,6 +10,7 @@ interface QuickActionsProps {
   onViewInventory: () => void;
   onViewCollections: () => void;
   onViewHistory: () => void;
+  onToggleHud: () => void;
   inventory: GameInventory;
   showBagFeatures?: boolean;
 }
@@ -20,6 +21,7 @@ export function QuickActions({
   onViewInventory,
   onViewCollections,
   onViewHistory,
+  onToggleHud,
   inventory,
   showBagFeatures = true,
 }: QuickActionsProps) {
@@ -45,6 +47,9 @@ export function QuickActions({
         </button>
         <button onClick={onViewHistory} className="btn-history">
           View Page History
+        </button>
+        <button onClick={onToggleHud} className="btn-hud">
+          Browsing HUD
         </button>
       </div>
     </section>

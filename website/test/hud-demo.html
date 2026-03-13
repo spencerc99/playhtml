@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Browsing HUD - a dashboard for surfing the web" />
+    <title>Browsing HUD | playhtml</title>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        font-family: 'Martian Mono', 'Space Mono', 'Courier New', monospace;
+        background: #1a1814;
+        color: #e8dcc8;
+        min-height: 300vh; /* Tall page for scroll testing */
+      }
+
+      .hero {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        text-align: center;
+        padding: 0 24px;
+      }
+
+      .hero h1 {
+        font-size: 32px;
+        font-weight: 300;
+        letter-spacing: 0.2em;
+        color: #d4b85c;
+        text-transform: uppercase;
+      }
+
+      .hero p {
+        max-width: 480px;
+        font-size: 12px;
+        line-height: 1.8;
+        color: rgba(232,220,200,0.5);
+        letter-spacing: 0.05em;
+      }
+
+      .hero .hint {
+        margin-top: 24px;
+        font-size: 10px;
+        color: rgba(232,220,200,0.3);
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        padding: 8px 16px;
+        border: 1px solid rgba(232,220,200,0.1);
+        border-radius: 4px;
+      }
+
+      .section {
+        padding: 80px 24px;
+        max-width: 640px;
+        margin: 0 auto;
+      }
+
+      .section h2 {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: rgba(232,220,200,0.4);
+        margin-bottom: 16px;
+      }
+
+      .section p {
+        font-size: 12px;
+        line-height: 2;
+        color: rgba(232,220,200,0.6);
+      }
+
+      .gauge-preview {
+        display: flex;
+        gap: 24px;
+        justify-content: center;
+        flex-wrap: wrap;
+        padding: 40px 0;
+      }
+
+      .gauge-card {
+        background: rgba(232,220,200,0.03);
+        border: 1px solid rgba(232,220,200,0.06);
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        min-width: 120px;
+      }
+
+      .gauge-card h3 {
+        font-size: 9px;
+        color: rgba(232,220,200,0.35);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .gauge-card .value {
+        font-size: 20px;
+        color: #d4b85c;
+        font-weight: 600;
+      }
+
+      .clickable-area {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        padding: 40px 0;
+      }
+
+      .clickable-area button {
+        background: rgba(232,220,200,0.05);
+        border: 1px solid rgba(232,220,200,0.1);
+        border-radius: 6px;
+        padding: 24px 16px;
+        color: rgba(232,220,200,0.5);
+        font-family: inherit;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 0.05em;
+      }
+
+      .clickable-area button:hover {
+        background: rgba(232,220,200,0.08);
+        border-color: rgba(232,220,200,0.2);
+        color: #e8dcc8;
+      }
+
+      .clickable-area button:active {
+        transform: scale(0.97);
+      }
+
+      .typing-area {
+        padding: 40px 0;
+      }
+
+      .typing-area textarea {
+        width: 100%;
+        min-height: 120px;
+        background: rgba(0,0,0,0.3);
+        border: 1px solid rgba(232,220,200,0.1);
+        border-radius: 6px;
+        padding: 16px;
+        color: #e8dcc8;
+        font-family: inherit;
+        font-size: 12px;
+        line-height: 1.6;
+        resize: vertical;
+      }
+
+      .typing-area textarea::placeholder {
+        color: rgba(232,220,200,0.2);
+      }
+
+      .typing-area textarea:focus {
+        outline: none;
+        border-color: rgba(212,184,92,0.3);
+      }
+
+      .spacer {
+        height: 60vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .spacer p {
+        font-size: 10px;
+        color: rgba(232,220,200,0.15);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <h1>Browsing HUD</h1>
+      <p>
+        A heads-up display for surfing the web. Like a car dashboard but for
+        your browser — measuring scroll velocity, cursor distance, click rate,
+        page depth, and attention.
+      </p>
+      <div class="hint">
+        The HUD is active around the edges of your screen. Scroll, click, type, and move your cursor to see the gauges respond.
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>What it measures</h2>
+      <div class="gauge-preview">
+        <div class="gauge-card">
+          <h3>Speedometer</h3>
+          <div class="value" id="speed-display">0</div>
+          <p style="font-size: 8px; color: rgba(232,220,200,0.3)">px/s scroll</p>
+        </div>
+        <div class="gauge-card">
+          <h3>Odometer</h3>
+          <div class="value" id="distance-display">0</div>
+          <p style="font-size: 8px; color: rgba(232,220,200,0.3)">px traveled</p>
+        </div>
+        <div class="gauge-card">
+          <h3>Tachometer</h3>
+          <div class="value" id="cpm-display">0</div>
+          <p style="font-size: 8px; color: rgba(232,220,200,0.3)">clicks/min</p>
+        </div>
+        <div class="gauge-card">
+          <h3>Attention</h3>
+          <div class="value" id="fuel-display">100%</div>
+          <p style="font-size: 8px; color: rgba(232,220,200,0.3)">fuel gauge</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Click zone</h2>
+      <p>Click these buttons to see the tachometer respond.</p>
+      <div class="clickable-area">
+        <button onclick="this.textContent = parseInt(this.textContent || '0') + 1">0</button>
+        <button onclick="this.textContent = parseInt(this.textContent || '0') + 1">0</button>
+        <button onclick="this.textContent = parseInt(this.textContent || '0') + 1">0</button>
+        <button onclick="this.textContent = parseInt(this.textContent || '0') + 1">0</button>
+        <button onclick="this.textContent = parseInt(this.textContent || '0') + 1">0</button>
+        <button onclick="this.textContent = parseInt(this.textContent || '0') + 1">0</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Type here</h2>
+      <p>Type to see the keystroke counter climb.</p>
+      <div class="typing-area">
+        <textarea placeholder="start typing to see the HUD respond..."></textarea>
+      </div>
+    </div>
+
+    <div class="spacer">
+      <p>keep scrolling</p>
+    </div>
+
+    <div class="section">
+      <h2>The bottom</h2>
+      <p>
+        You've reached the end. Your depth gauge should read 100%.
+        The compass has rotated a full cycle. The odometer records
+        every pixel of the journey.
+      </p>
+      <p style="margin-top: 16px;">
+        Every browsing session is a trip. This HUD makes the invisible
+        mechanics of web surfing visible — the velocity, the distance,
+        the attention, the rhythm.
+      </p>
+    </div>
+
+    <div id="hud-root"></div>
+    <script type="module" src="./hud-demo.ts"></script>
+  </body>
+</html>

@@ -21,4 +21,5 @@
   .btn-inventory       { @include btn-base; background: $accent-plum; color: white; width: 100%; }
   .btn-collections     { @include btn-teal; width: 100%; }
   .btn-history         { @include btn-base; background: $accent-gold; color: $text; width: 100%; }
+  .btn-hud             { @include btn-secondary; width: 100%; }
 }
