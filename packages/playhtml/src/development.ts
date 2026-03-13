@@ -349,6 +349,38 @@ const DEV_STYLES = `
   line-height: 1;
   white-space: nowrap;
 }
+.ph-json-string { color: #c4724e; }
+.ph-json-number { color: #5b8db8; }
+.ph-json-boolean { color: #d4b85c; }
+.ph-json-null { color: #8a8279; font-style: italic; }
+.ph-json-bracket { color: #8a8279; }
+.ph-json-count { color: #8a8279; font-size: 10px; margin: 0 2px; }
+.ph-json-row {
+  padding: 1px 0 1px 16px;
+  font-family: 'Martian Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  border-left: 1px solid #d4cfc7;
+}
+.ph-json-expandable {
+  cursor: pointer;
+  user-select: none;
+}
+.ph-json-expandable:hover {
+  background: #faf7f2;
+}
+.ph-json-toggle {
+  color: #8a8279;
+  font-size: 8px;
+  margin-right: 4px;
+  display: inline-block;
+  width: 10px;
+}
+.ph-json-nested {
+  display: block;
+}
+.ph-json-nested.ph-collapsed {
+  display: none;
+}
 .ph-search-bar {
   display: flex;
   gap: 6px;
@@ -722,6 +754,185 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   root.appendChild(inspectTooltip);
   document.body.appendChild(root);
 
+  // ── JSON tree renderer ──
+  function renderJsonValue(container: HTMLElement, value: unknown, depth: number, key?: string) {
+    if (value === null) {
+      const row = el("div", "ph-json-row");
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      const v = el("span", "ph-json-null");
+      v.textContent = "null";
+      row.appendChild(v);
+      container.appendChild(row);
+      return;
+    }
+
+    if (value === undefined) {
+      const row = el("div", "ph-json-row");
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      const v = el("span", "ph-json-null");
+      v.textContent = "undefined";
+      row.appendChild(v);
+      container.appendChild(row);
+      return;
+    }
+
+    if (typeof value === "string") {
+      const row = el("div", "ph-json-row");
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      const v = el("span", "ph-json-string");
+      v.textContent = value.length > 80 ? `"${value.substring(0, 80)}..."` : `"${value}"`;
+      if (value.length > 80) v.title = value;
+      row.appendChild(v);
+      container.appendChild(row);
+      return;
+    }
+
+    if (typeof value === "number") {
+      const row = el("div", "ph-json-row");
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      const v = el("span", "ph-json-number");
+      v.textContent = String(value);
+      row.appendChild(v);
+      container.appendChild(row);
+      return;
+    }
+
+    if (typeof value === "boolean") {
+      const row = el("div", "ph-json-row");
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      const v = el("span", "ph-json-boolean");
+      v.textContent = String(value);
+      row.appendChild(v);
+      container.appendChild(row);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      const row = el("div", "ph-json-row ph-json-expandable");
+      const toggle = el("span", "ph-json-toggle");
+      const nested = el("div", "ph-json-nested");
+      const shouldAutoExpand = value.length <= 5 && depth <= 2;
+
+      toggle.textContent = shouldAutoExpand ? "\u25BC" : "\u25B6";
+      if (!shouldAutoExpand) nested.classList.add("ph-collapsed");
+
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      row.appendChild(toggle);
+      const bracket = el("span", "ph-json-bracket");
+      bracket.textContent = "[";
+      row.appendChild(bracket);
+      const count = el("span", "ph-json-count");
+      count.textContent = String(value.length);
+      row.appendChild(count);
+      const bracketClose = el("span", "ph-json-bracket");
+      bracketClose.textContent = "]";
+      row.appendChild(bracketClose);
+
+      row.onclick = (e) => {
+        e.stopPropagation();
+        const collapsed = nested.classList.toggle("ph-collapsed");
+        toggle.textContent = collapsed ? "\u25B6" : "\u25BC";
+      };
+
+      for (let i = 0; i < value.length; i++) {
+        renderJsonValue(nested, value[i], depth + 1, String(i));
+      }
+
+      container.appendChild(row);
+      container.appendChild(nested);
+      return;
+    }
+
+    if (typeof value === "object") {
+      const keys = Object.keys(value as Record<string, unknown>);
+      const row = el("div", "ph-json-row ph-json-expandable");
+      const toggle = el("span", "ph-json-toggle");
+      const nested = el("div", "ph-json-nested");
+      const shouldAutoExpand = keys.length <= 5 && depth <= 2;
+
+      toggle.textContent = shouldAutoExpand ? "\u25BC" : "\u25B6";
+      if (!shouldAutoExpand) nested.classList.add("ph-collapsed");
+
+      if (key !== undefined) {
+        const k = el("span", "ph-tree-key");
+        k.textContent = key + ": ";
+        row.appendChild(k);
+      }
+      row.appendChild(toggle);
+      const bracket = el("span", "ph-json-bracket");
+      bracket.textContent = "{";
+      row.appendChild(bracket);
+      const count = el("span", "ph-json-count");
+      count.textContent = String(keys.length);
+      row.appendChild(count);
+      const bracketClose = el("span", "ph-json-bracket");
+      bracketClose.textContent = "}";
+      row.appendChild(bracketClose);
+
+      row.onclick = (e) => {
+        e.stopPropagation();
+        const collapsed = nested.classList.toggle("ph-collapsed");
+        toggle.textContent = collapsed ? "\u25B6" : "\u25BC";
+      };
+
+      for (const k of keys) {
+        renderJsonValue(nested, (value as Record<string, unknown>)[k], depth + 1, k);
+      }
+
+      container.appendChild(row);
+      container.appendChild(nested);
+      return;
+    }
+
+    // Fallback for anything else
+    const row = el("div", "ph-json-row");
+    if (key !== undefined) {
+      const k = el("span", "ph-tree-key");
+      k.textContent = key + ": ";
+      row.appendChild(k);
+    }
+    row.appendChild(document.createTextNode(String(value)));
+    container.appendChild(row);
+  }
+
+  function renderJsonTree(container: HTMLElement, data: unknown, depth: number) {
+    if (data === null || data === undefined) {
+      const v = el("span", "ph-json-null");
+      v.textContent = String(data);
+      container.appendChild(v);
+    } else if (typeof data === "object" && !Array.isArray(data)) {
+      for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+        renderJsonValue(container, value, depth, key);
+      }
+    } else {
+      renderJsonValue(container, data, depth);
+    }
+  }
+
   // ── Render data tree view ──
   let searchQuery = "";
   let tagFilter = "";
@@ -869,32 +1080,11 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           row.appendChild(elName);
           row.appendChild(resetBtn);
 
-          // Children container (key-value pairs)
+          // Children container (recursive JSON tree)
           // TODO: make values editable inline (click to edit, enter to save back to store)
           // TODO: add per-key reset and per-nested-level reset (not just per-element)
           const children = el("div", "ph-tree-children");
-          const data = handler.data;
-          if (data && typeof data === "object") {
-            for (const [key, value] of Object.entries(data)) {
-              const child = el("div", "ph-tree-child");
-              const keySpan = el("span", "ph-tree-key");
-              keySpan.textContent = key + ": ";
-              const valSpan = el("span", "ph-tree-value");
-              valSpan.textContent =
-                typeof value === "object"
-                  ? JSON.stringify(value)
-                  : String(value);
-              child.appendChild(keySpan);
-              child.appendChild(valSpan);
-              children.appendChild(child);
-            }
-          } else if (data !== undefined && data !== null) {
-            const child = el("div", "ph-tree-child");
-            const valSpan = el("span", "ph-tree-value");
-            valSpan.textContent = String(data);
-            child.appendChild(valSpan);
-            children.appendChild(child);
-          }
+          renderJsonTree(children, handler.data, 0);
 
           // Toggle expand/collapse
           toggle.onclick = (e) => {
