@@ -72,6 +72,7 @@ const DEV_STYLES = `
   width: 36px;
   height: 36px;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 4px #5b8db8);
 }
 .ph-trigger-grip {
   display: flex;
@@ -125,6 +126,7 @@ const DEV_STYLES = `
 .ph-toolbar .ph-logo-btn img {
   width: 28px;
   height: 28px;
+  filter: drop-shadow(0 0 4px #5b8db8);
 }
 .ph-toolbar .ph-divider {
   height: 1px;
