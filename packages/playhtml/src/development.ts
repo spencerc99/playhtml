@@ -850,6 +850,20 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
             renderDataWalker();
           };
 
+          // Highlight element on page when hovering tree row
+          row.onmouseenter = () => {
+            const target = document.getElementById(elementId);
+            if (target) {
+              target.classList.add("ph-inspect-highlight", "ph-inspect-highlight-hover");
+            }
+          };
+          row.onmouseleave = () => {
+            const target = document.getElementById(elementId);
+            if (target) {
+              target.classList.remove("ph-inspect-highlight", "ph-inspect-highlight-hover");
+            }
+          };
+
           row.appendChild(toggle);
           row.appendChild(badge);
           row.appendChild(elName);
