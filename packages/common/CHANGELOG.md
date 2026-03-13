@@ -1,5 +1,17 @@
 # @playhtml/common
 
+## 0.5.0
+
+### Minor Changes
+
+- 09768d4: Add can-hover capability for syncing hover state across connected clients via awareness. Style with [data-playhtml-hover] instead of :hover to reflect collaborative hover state.
+- 09e380f: Add cursor zones: elements can be registered as zones so that remote cursors are positioned relative to the zone element rather than using absolute viewport coordinates. This enables accurate cursor presence within scrollable containers, embedded editors, and other bounded regions. Adds `CursorZonePosition` type and `zone` field to cursor presence in common, cursor zone registry with zone-relative broadcasting and rendering in the core library, and `useCursorZone` hook with `registerCursorZone`/`unregisterCursorZone` on PlayContext in React.
+
+### Patch Changes
+
+- 09768d4: Fix can-mirror feedback loops and improve state syncing. Breaks infinite MutationObserver/updateElement loop by disconnecting the observer during remote state application. Moves hover and focus to awareness for ephemeral per-user syncing. Fixes boolean attribute stripping (e.g. details open). Switches to positional child matching to avoid unnecessary DOM destruction. Makes form state sync recursive for nested inputs like radio groups. Adds contenteditable support via input event child syncing. Extracts can-mirror logic into dedicated canMirror.ts file.
+- 2d16755: Fix room normalization: strip www. prefix so that www.example.com and example.com resolve to the same room. Use "LOCAL" identifier for file:// protocol rooms (empty host) to make them easily identifiable for cleanup. Default cursor coordinate mode changed to absolute so cursors track document position across scroll and zoom.
+
 ## 0.4.0
 
 ### Minor Changes
