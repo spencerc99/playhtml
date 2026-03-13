@@ -26,6 +26,8 @@ import {
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
+import { createPresenceAPI } from "./presence";
+import type { PresenceAPI } from "@playhtml/common";
 import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
@@ -148,6 +150,7 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YPartyKitProvider;
 let cursorProvider: YPartyKitProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
+let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
@@ -605,6 +608,14 @@ async function initPlayHTML({
     cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
   }
 
+  // Create presence API — always available, wraps whichever awareness provider exists
+  const presenceProvider = cursorClient?.getProvider() ?? yprovider;
+  const presenceIdentity = cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity();
+  presenceAPI = createPresenceAPI({
+    getAwareness: () => presenceProvider.awareness,
+    getPlayerIdentity: () => presenceIdentity,
+  });
+
   if (extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
       capabilitiesToInitializer[tag] = tagInfo;
@@ -1016,6 +1027,7 @@ export interface PlayHTMLComponents {
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
+  presence: PresenceAPI;
   createPageData: typeof createPageData;
   // Debug / Dev helpers
   roomId: string;
@@ -1046,6 +1058,12 @@ export const playhtml: PlayHTMLComponents = {
   removePlayEventListener,
   get cursorClient() {
     return cursorClient;
+  },
+  get presence() {
+    if (!presenceAPI) {
+      throw new Error("playhtml.presence is not available before init()");
+    }
+    return presenceAPI;
   },
   // Filled after init
   get roomId() {
