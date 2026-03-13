@@ -457,6 +457,9 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
   // ── State ──
   let inspectMode = false;
+  let selectedElementId: string | null = null;
+  let hoveredElement: HTMLElement | null = null;
+  const inspectLabels: HTMLElement[] = [];
 
   // ── Root ──
   const root = el("div");
@@ -630,6 +633,8 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       elementHandlers.forEach((idMap, tagType) => {
         idMap.forEach((handler, elementId) => {
           const row = el("div", "ph-tree-item");
+          row.setAttribute("data-element-id", elementId);
+          row.setAttribute("data-tag-type", tagType);
 
           // Toggle triangle
           const toggle = el("span", "ph-tree-toggle");
@@ -773,15 +778,201 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     if (inspectMode) {
       inspectMode = false;
       inspectBtn.classList.remove("ph-active");
+      deactivateInspect();
     }
   }
 
   trigger.onclick = () => open();
   minimizeBtn.onclick = () => close();
 
+  // ── Helpers: find tag type and handler for an element ID ──
+  function lookupHandler(elementId: string): { tagType: string; handler: any } | null {
+    let result: { tagType: string; handler: any } | null = null;
+    elementHandlers.forEach((idMap, tagType) => {
+      if (idMap.has(elementId)) {
+        result = { tagType, handler: idMap.get(elementId) };
+      }
+    });
+    return result;
+  }
+
+  // ── Scroll tree to a specific element row and expand it ──
+  function scrollTreeToElement(elementId: string) {
+    const row = dataArea.querySelector(
+      `.ph-tree-item[data-element-id="${elementId}"]`
+    ) as HTMLElement | null;
+    if (!row) return;
+    row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Expand the children container that follows this row
+    const children = row.nextElementSibling;
+    if (children && children.classList.contains("ph-tree-children")) {
+      children.classList.add("ph-expanded");
+      const toggle = row.querySelector(".ph-tree-toggle");
+      if (toggle) toggle.textContent = "\u25BC";
+    }
+  }
+
+  // ── Inspect mode: activate / deactivate ──
+  function activateInspect() {
+    const elements = document.querySelectorAll("[class*='__playhtml-']");
+    elements.forEach((domEl) => {
+      const htmlEl = domEl as HTMLElement;
+      htmlEl.classList.add("ph-inspect-highlight");
+      // Inject ID label
+      const elId = htmlEl.id;
+      if (elId) {
+        const label = el("div", "ph-inspect-label");
+        label.textContent = `#${elId}`;
+        htmlEl.appendChild(label);
+        inspectLabels.push(label);
+      }
+    });
+  }
+
+  function deactivateInspect() {
+    // Remove highlight classes from all elements
+    document
+      .querySelectorAll(
+        ".ph-inspect-highlight, .ph-inspect-highlight-hover, .ph-inspect-selected"
+      )
+      .forEach((domEl) => {
+        domEl.classList.remove(
+          "ph-inspect-highlight",
+          "ph-inspect-highlight-hover",
+          "ph-inspect-selected"
+        );
+      });
+    // Remove injected labels
+    for (const label of inspectLabels) {
+      label.remove();
+    }
+    inspectLabels.length = 0;
+    // Hide tooltip
+    inspectTooltip.style.display = "none";
+    hoveredElement = null;
+  }
+
   // ── Inspect button toggle ──
   inspectBtn.onclick = () => {
     inspectMode = !inspectMode;
     inspectBtn.classList.toggle("ph-active", inspectMode);
+    if (inspectMode) {
+      activateInspect();
+    } else {
+      deactivateInspect();
+    }
   };
+
+  // ── Mousemove handler: hover highlight and tooltip ──
+  document.addEventListener("mousemove", (event) => {
+    if (!inspectMode) return;
+
+    const target = (event.target as HTMLElement).closest(
+      "[class*='__playhtml-']"
+    ) as HTMLElement | null;
+
+    if (target && target !== hoveredElement) {
+      // Remove hover from previous
+      if (hoveredElement) {
+        hoveredElement.classList.remove("ph-inspect-highlight-hover");
+      }
+      hoveredElement = target;
+      target.classList.add("ph-inspect-highlight-hover");
+
+      // Look up handler data
+      const elId = target.id;
+      const info = elId ? lookupHandler(elId) : null;
+
+      if (info) {
+        ttType.textContent = info.tagType;
+        ttId.textContent = `#${elId}`;
+
+        // Clear old data rows (everything after the header)
+        while (inspectTooltip.childNodes.length > 1) {
+          inspectTooltip.removeChild(inspectTooltip.lastChild!);
+        }
+
+        // Add data rows
+        const data = info.handler.data;
+        if (data && typeof data === "object") {
+          for (const [key, value] of Object.entries(data)) {
+            const ttRow = el("div", "ph-tt-row");
+            const ttKey = el("span", "ph-tt-key");
+            ttKey.textContent = key + ": ";
+            const ttVal = el("span", "ph-tt-val");
+            ttVal.textContent =
+              typeof value === "object" ? JSON.stringify(value) : String(value);
+            ttRow.appendChild(ttKey);
+            ttRow.appendChild(ttVal);
+            inspectTooltip.appendChild(ttRow);
+          }
+        }
+
+        // Position tooltip
+        const rect = target.getBoundingClientRect();
+        const placeAbove = rect.top > 80;
+        inspectTooltip.style.left = `${rect.left}px`;
+        if (placeAbove) {
+          inspectTooltip.style.top = "";
+          inspectTooltip.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+        } else {
+          inspectTooltip.style.bottom = "";
+          inspectTooltip.style.top = `${rect.bottom + 4}px`;
+        }
+        inspectTooltip.style.display = "block";
+      }
+    } else if (!target) {
+      if (hoveredElement) {
+        hoveredElement.classList.remove("ph-inspect-highlight-hover");
+        hoveredElement = null;
+      }
+      inspectTooltip.style.display = "none";
+    }
+  });
+
+  // ── Click handler (capture): select element in inspect mode ──
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (!inspectMode) return;
+
+      // Let dev UI clicks through
+      const devRoot = document.getElementById("playhtml-dev-root");
+      if (devRoot && devRoot.contains(event.target as Node)) return;
+
+      const target = (event.target as HTMLElement).closest(
+        "[class*='__playhtml-']"
+      ) as HTMLElement | null;
+
+      if (target) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Remove previous selection
+        document
+          .querySelectorAll(".ph-inspect-selected")
+          .forEach((domEl) => domEl.classList.remove("ph-inspect-selected"));
+
+        // Apply selection
+        target.classList.add("ph-inspect-selected");
+        const elId = target.id;
+        selectedElementId = elId || null;
+
+        // Log handler data
+        const info = elId ? lookupHandler(elId) : null;
+        if (info) {
+          console.log(
+            `[playhtml inspect] ${info.tagType} #${selectedElementId}`,
+            info.handler.data
+          );
+        }
+
+        // Auto-scroll tree
+        if (elId) {
+          scrollTreeToElement(elId);
+        }
+      }
+    },
+    true
+  );
 }
