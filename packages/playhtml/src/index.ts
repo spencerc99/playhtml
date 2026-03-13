@@ -33,6 +33,8 @@ import {
   isSharedReadOnly,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
+import type { PageDataChannel } from "@playhtml/common";
+import { createPageDataChannel, PAGE_TAG } from "./page-data";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
@@ -989,6 +991,17 @@ function setupElements(): void {
   firstSetup = false;
 }
 
+function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
+  return createPageDataChannel(name, defaultValue, {
+    ensureProxy: ensureElementProxy,
+    getProxy: (tag, id) => proxyByTagAndId.get(tag)?.get(id),
+    doc,
+    storePlay: store.play,
+    proxyByTagAndId,
+    yObserverByKey,
+  });
+}
+
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElements: typeof setupElements;
@@ -1003,6 +1016,7 @@ export interface PlayHTMLComponents {
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
+  createPageData: typeof createPageData;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -1040,6 +1054,7 @@ export const playhtml: PlayHTMLComponents = {
   get host() {
     return __currentHost;
   },
+  createPageData,
   listSharedElements: devListSharedElements,
 };
 
@@ -1047,6 +1062,10 @@ export const playhtml: PlayHTMLComponents = {
  * Performs any necessary setup for a playhtml TagType. Safe to call repeatedly.
  */
 function maybeSetupTag(tag: TagType | string): void {
+  if (tag === PAGE_TAG) {
+    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
+  }
+
   if (elementHandlers.has(tag)) {
     return;
   }
