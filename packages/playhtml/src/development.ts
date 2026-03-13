@@ -574,6 +574,14 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   const connLabel = document.createTextNode("connected");
   status.appendChild(connLabel);
 
+  const sepClients = el("span", "ph-sep");
+  sepClients.textContent = "\u00B7";
+  status.appendChild(sepClients);
+
+  // Client count (updated on open)
+  const clientCountNode = document.createTextNode("");
+  status.appendChild(clientCountNode);
+
   const sep1 = el("span", "ph-sep");
   sep1.textContent = "\u00B7";
   status.appendChild(sep1);
@@ -582,14 +590,25 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   const elCountNode = document.createTextNode("");
   status.appendChild(elCountNode);
 
-  function updateElementCount() {
+  function updateStatusCounts() {
+    // Client count via awareness
+    let clients = 1;
+    try {
+      const provider = playhtml.cursorClient?.getProvider();
+      if (provider) {
+        clients = provider.awareness.getStates().size;
+      }
+    } catch {}
+    clientCountNode.textContent = `${clients} client${clients !== 1 ? "s" : ""}`;
+
+    // Element count
     let total = 0;
     elementHandlers.forEach((idMap) => {
       total += idMap.size;
     });
     elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
   }
-  updateElementCount();
+  updateStatusCounts();
 
   const sep2 = el("span", "ph-sep");
   sep2.textContent = "\u00B7";
@@ -832,7 +851,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   function open() {
     trigger.style.display = "none";
     bar.classList.add("ph-open");
-    updateElementCount();
+    updateStatusCounts();
     renderDataWalker();
   }
 
