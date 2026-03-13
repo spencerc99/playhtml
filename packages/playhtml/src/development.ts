@@ -171,16 +171,6 @@ const DEV_STYLES = `
 .ph-data::-webkit-scrollbar-thumb {
   background: #d4cfc7;
 }
-.ph-data-header {
-  font-family: 'Lora', Georgia, serif;
-  font-weight: 700;
-  font-size: 13px;
-  color: #3d3833;
-  margin: 0 0 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 .ph-reset-btn {
   font-family: 'Atkinson Hyperlegible', sans-serif;
   font-size: 10px;
@@ -741,45 +731,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   function renderDataWalker() {
     dataArea.innerHTML = "";
 
-    // Header row with refresh + reset all
-    const header = el("div", "ph-data-header");
-    const titleSpan = document.createElement("span");
-    titleSpan.textContent = "Elements + Data";
-    header.appendChild(titleSpan);
-
-    const headerActions = document.createElement("span");
-    headerActions.style.display = "flex";
-    headerActions.style.gap = "4px";
-    headerActions.style.alignItems = "center";
-
-    const refreshBtn = el("button", "ph-btn");
-    refreshBtn.innerHTML = ICONS.refresh;
-    refreshBtn.title = "Refresh";
-    refreshBtn.style.width = "18px";
-    refreshBtn.style.height = "18px";
-    refreshBtn.onclick = () => renderDataWalker();
-    headerActions.appendChild(refreshBtn);
-
-    const resetAllBtn = el("button", "ph-reset-btn");
-    resetAllBtn.textContent = "Reset All";
-    resetAllBtn.onclick = () => {
-      if (!window.confirm("Reset all playhtml element data?")) return;
-      elementHandlers.forEach((_idMap, tagType) => {
-        if (store[tagType]) {
-          const keys = Object.keys(store[tagType]);
-          for (const key of keys) {
-            delete store[tagType][key];
-          }
-        }
-      });
-      renderDataWalker();
-    };
-    headerActions.appendChild(resetAllBtn);
-
-    header.appendChild(headerActions);
-    dataArea.appendChild(header);
-
-    // Search + tag filter bar
+    // Search + filter + actions bar (single row)
     const searchBar = el("div", "ph-search-bar");
 
     const searchInput = el("input", "ph-search-input");
@@ -815,6 +767,30 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       };
       searchBar.appendChild(filterSelect);
     }
+
+    const refreshBtn = el("button", "ph-btn");
+    refreshBtn.innerHTML = ICONS.refresh;
+    refreshBtn.title = "Refresh";
+    refreshBtn.style.width = "20px";
+    refreshBtn.style.height = "20px";
+    refreshBtn.onclick = () => renderDataWalker();
+    searchBar.appendChild(refreshBtn);
+
+    const resetAllBtn = el("button", "ph-reset-btn");
+    resetAllBtn.textContent = "Reset All";
+    resetAllBtn.onclick = () => {
+      if (!window.confirm("Reset all playhtml element data?")) return;
+      elementHandlers.forEach((_idMap, tagType) => {
+        if (store[tagType]) {
+          const keys = Object.keys(store[tagType]);
+          for (const key of keys) {
+            delete store[tagType][key];
+          }
+        }
+      });
+      renderDataWalker();
+    };
+    searchBar.appendChild(resetAllBtn);
 
     dataArea.appendChild(searchBar);
 
