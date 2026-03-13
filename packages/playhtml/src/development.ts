@@ -723,7 +723,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   document.body.appendChild(root);
 
   // ── Render data tree view ──
-  const store = playhtml.syncedStore;
   let searchQuery = "";
   let tagFilter = "";
 
@@ -771,13 +770,10 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     resetAllBtn.textContent = "Reset All";
     resetAllBtn.onclick = () => {
       if (!window.confirm("Reset all playhtml element data?")) return;
-      elementHandlers.forEach((_idMap, tagType) => {
-        if (store[tagType]) {
-          const keys = Object.keys(store[tagType]);
-          for (const key of keys) {
-            delete store[tagType][key];
-          }
-        }
+      elementHandlers.forEach((idMap, tagType) => {
+        idMap.forEach((_handler, elementId) => {
+          playhtml.deleteElementData(tagType, elementId);
+        });
       });
       renderDataWalker();
     };
@@ -850,9 +846,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           resetBtn.textContent = "reset";
           resetBtn.onclick = (e) => {
             e.stopPropagation();
-            if (store[tagType]) {
-              delete store[tagType][elementId];
-            }
+            playhtml.deleteElementData(tagType, elementId);
             renderDataWalker();
           };
 
