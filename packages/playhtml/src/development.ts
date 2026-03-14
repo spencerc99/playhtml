@@ -1,4 +1,4 @@
-// ABOUTME: Dev tools UI for playhtml — bottom bar with element inspector, data tree, and connection status.
+// ABOUTME: Dev tools UI for playhtml — right sidebar with element inspector, data tree, and connection status.
 // ABOUTME: Renders a RollerCoaster Tycoon-inspired toolbar with warm colors, beveled edges, and no rounded corners.
 
 import type { PlayHTMLComponents } from "./index";
@@ -30,9 +30,9 @@ const BADGE_FALLBACK = "#8a8279";
 const DEV_STYLES = `
 #playhtml-dev-root {
   position: fixed;
-  bottom: 0;
-  left: 0;
+  top: 0;
   right: 0;
+  bottom: 0;
   z-index: 100000;
   font-family: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 12px;
@@ -46,28 +46,26 @@ const DEV_STYLES = `
 .ph-trigger {
   pointer-events: auto;
   position: fixed;
-  bottom: 0;
-  width: 48px;
-  height: 120px;
+  bottom: 16px;
+  right: 0;
+  width: 120px;
+  height: 48px;
   background: linear-gradient(135deg, #f0e9dd 0%, #e8e0d4 40%, #d8d0c4 100%);
   border: 3px solid;
   border-color: #f5f0e8 #7a7269 #6b6560 #ede6da;
-  border-bottom: none;
-  padding: 6px 6px 4px;
-  cursor: grab;
+  border-right: none;
+  padding: 4px 6px;
+  cursor: pointer;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   z-index: 100000;
-  box-shadow: -2px 0 4px rgba(0,0,0,0.12), 2px 0 4px rgba(0,0,0,0.08), 0 -2px 6px rgba(0,0,0,0.1);
+  box-shadow: -2px 0 4px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08), 0 -2px 6px rgba(0,0,0,0.1);
 }
 .ph-trigger:hover {
   background: linear-gradient(135deg, #f8f2e8 0%, #f0e9dd 40%, #e0d8cc 100%);
-  box-shadow: -2px 0 6px rgba(0,0,0,0.16), 2px 0 6px rgba(0,0,0,0.12), 0 -3px 8px rgba(0,0,0,0.14);
-}
-.ph-trigger.ph-dragging {
-  cursor: grabbing;
+  box-shadow: -2px 0 6px rgba(0,0,0,0.16), 0 2px 6px rgba(0,0,0,0.12), 0 -3px 8px rgba(0,0,0,0.14);
 }
 .ph-trigger img {
   width: 36px;
@@ -77,28 +75,39 @@ const DEV_STYLES = `
 }
 .ph-trigger-grip {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  gap: 3px;
   align-items: center;
   flex: 1;
   justify-content: center;
 }
 .ph-trigger-grip span {
   display: block;
-  width: 20px;
-  height: 2px;
+  width: 2px;
+  height: 16px;
   background: linear-gradient(180deg, #f5f0e8 0%, #8a8279 50%, #6b6560 100%);
 }
 .ph-bar {
   pointer-events: auto;
   display: none;
-  flex-direction: column;
+  flex-direction: row;
   background: #e8e0d4;
-  border-top: 3px solid #3d3833;
-  height: 220px;
+  border-left: 3px solid #3d3833;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 400px;
 }
 .ph-bar.ph-open {
   display: flex;
+}
+.ph-bar-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .ph-bar-main {
   display: flex;
@@ -264,25 +273,27 @@ const DEV_STYLES = `
   margin-left: 14px;
 }
 .ph-resize-handle {
-  height: 6px;
-  cursor: ns-resize;
+  width: 6px;
+  cursor: ew-resize;
   background: #d4cfc7;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  border-right: 1px solid #8a8279;
 }
 .ph-resize-handle::after {
   content: '';
-  width: 40px;
-  height: 2px;
+  width: 2px;
+  height: 40px;
   background: #8a8279;
   opacity: 0.5;
 }
 .ph-status {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   padding: 3px 10px;
   background: #d4cfc7;
   border-bottom: 1px solid #8a8279;
@@ -617,11 +628,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   }
   trigger.appendChild(grip);
 
-  // Center trigger horizontally on mount
-  let triggerLeft = window.innerWidth - 48 - 16;
-  trigger.style.left = `${triggerLeft}px`;
-
-  // ── Bottom bar ──
+  // ── Sidebar bar ──
   const bar = el("div", "ph-bar");
 
   // Bar main area (toolbar + data)
@@ -656,9 +663,11 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   barMain.appendChild(toolbar);
   barMain.appendChild(dataArea);
 
-  // Resize handle at very top of bar
+  // Resize handle on left edge of sidebar
   const resizeHandle = el("div", "ph-resize-handle");
-  bar.appendChild(resizeHandle);
+
+  // Content wrapper (status + bar-main, vertical column)
+  const barContent = el("div", "ph-bar-content");
 
   // ── Status line ──
   const status = el("div", "ph-status");
@@ -741,9 +750,11 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   minimizeBtn.title = "Minimize";
   status.appendChild(minimizeBtn);
 
-  // Status line above main content
-  bar.appendChild(status);
-  bar.appendChild(barMain);
+  // Assemble bar: resize handle | content column (status + main)
+  barContent.appendChild(status);
+  barContent.appendChild(barMain);
+  bar.appendChild(resizeHandle);
+  bar.appendChild(barContent);
 
   // ── Inspect tooltip (hidden, for later use) ──
   const inspectTooltip = el("div", "ph-inspect-tooltip");
@@ -1044,20 +1055,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           // Element name
           const elName = el("span", "ph-tree-el-name");
           elName.textContent = `#${elementId}`;
-          elName.title = "Click to scroll to element";
-          elName.onclick = (e) => {
-            e.stopPropagation();
-            const target = document.getElementById(elementId);
-            if (target) {
-              target.scrollIntoView({ behavior: "smooth", block: "center" });
-              target.classList.add("ph-flash");
-              target.addEventListener(
-                "animationend",
-                () => target.classList.remove("ph-flash"),
-                { once: true }
-              );
-            }
-          };
 
           // Per-element reset (restore to default data)
           const resetBtn = el("button", "ph-tree-reset");
@@ -1093,20 +1090,36 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           const children = el("div", "ph-tree-children");
           renderJsonTree(children, handler.data, 0);
 
-          // Toggle expand/collapse — clicking anywhere on the row
+          // Toggle expand/collapse
           function toggleExpand() {
             const expanded = children.classList.toggle("ph-expanded");
             toggle.textContent = expanded ? "\u25BC" : "\u25B6";
           }
+          // Triangle click: just toggle expand/collapse
           toggle.onclick = (e) => {
             e.stopPropagation();
             toggleExpand();
           };
+          // Row click: scroll to element + highlight + expand data
           row.onclick = (e) => {
-            // Don't toggle if clicking reset button or element name (which scrolls)
-            const target = e.target as HTMLElement;
-            if (target.closest(".ph-tree-reset") || target.closest(".ph-tree-el-name")) return;
-            toggleExpand();
+            const clickTarget = e.target as HTMLElement;
+            // Let triangle and reset handle their own clicks
+            if (clickTarget.closest(".ph-tree-toggle") || clickTarget.closest(".ph-tree-reset")) return;
+            // Scroll to element and flash
+            const domTarget = document.getElementById(elementId);
+            if (domTarget) {
+              domTarget.scrollIntoView({ behavior: "smooth", block: "center" });
+              domTarget.classList.add("ph-flash");
+              domTarget.addEventListener(
+                "animationend",
+                () => domTarget.classList.remove("ph-flash"),
+                { once: true }
+              );
+            }
+            // Expand data if not already
+            if (!children.classList.contains("ph-expanded")) {
+              toggleExpand();
+            }
           };
 
           dataArea.appendChild(row);
@@ -1168,10 +1181,14 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
   }
 
+  // ── Sidebar width state ──
+  let sidebarWidth = 400;
+
   // ── Open / Close ──
   function open() {
     trigger.style.display = "none";
     bar.classList.add("ph-open");
+    document.body.style.marginRight = `${sidebarWidth}px`;
     updateStatusCounts();
     renderDataWalker();
   }
@@ -1179,6 +1196,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   function close() {
     trigger.style.display = "";
     bar.classList.remove("ph-open");
+    document.body.style.marginRight = "";
     // Exit inspect mode if active
     if (inspectMode) {
       inspectMode = false;
@@ -1209,49 +1227,19 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     attributeFilter: ["class"],
   });
 
-  // ── Trigger drag behavior ──
-  let triggerDragStartX = 0;
-  let triggerDragStartLeft = 0;
-  let triggerDidDrag = false;
-
-  trigger.addEventListener("mousedown", (e: MouseEvent) => {
-    triggerDragStartX = e.clientX;
-    triggerDragStartLeft = triggerLeft;
-    triggerDidDrag = false;
-    trigger.classList.add("ph-dragging");
-
-    const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - triggerDragStartX;
-      if (Math.abs(dx) > 5) triggerDidDrag = true;
-      triggerLeft = Math.max(0, Math.min(window.innerWidth - 44, triggerDragStartLeft + dx));
-      trigger.style.left = `${triggerLeft}px`;
-    };
-
-    const onUp = () => {
-      trigger.classList.remove("ph-dragging");
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      if (!triggerDidDrag) open();
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
+  // ── Trigger click to open ──
+  trigger.addEventListener("click", () => open());
 
   minimizeBtn.onclick = () => close();
 
   // ── Resize handle drag behavior ──
-  let barHeight = 220;
-
   resizeHandle.addEventListener("mousedown", (e: MouseEvent) => {
     e.preventDefault();
-    const startY = e.clientY;
-    const startHeight = barHeight;
 
     const onMove = (ev: MouseEvent) => {
-      const dy = startY - ev.clientY;
-      barHeight = Math.max(120, Math.min(500, startHeight + dy));
-      bar.style.height = `${barHeight}px`;
+      sidebarWidth = Math.max(280, Math.min(700, window.innerWidth - ev.clientX));
+      bar.style.width = `${sidebarWidth}px`;
+      document.body.style.marginRight = `${sidebarWidth}px`;
     };
 
     const onUp = () => {
