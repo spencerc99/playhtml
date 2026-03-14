@@ -473,42 +473,6 @@ const DEV_STYLES = `
   z-index: 99999;
   white-space: nowrap;
 }
-.ph-inspect-tooltip {
-  position: fixed;
-  z-index: 100001;
-  background: #3d3833;
-  color: #faf7f2;
-  border: 2px solid;
-  border-color: #6b6560 #3d3833 #3d3833 #6b6560;
-  padding: 6px 10px;
-  font-family: 'Martian Mono', monospace;
-  font-size: 12px;
-  min-width: 180px;
-  max-width: 300px;
-  pointer-events: none;
-  display: none;
-}
-.ph-inspect-tooltip .ph-tt-header {
-  margin-bottom: 3px;
-  display: flex;
-  gap: 6px;
-}
-.ph-inspect-tooltip .ph-tt-type {
-  color: #4a9a8a;
-}
-.ph-inspect-tooltip .ph-tt-id {
-  color: #faf7f2;
-}
-.ph-inspect-tooltip .ph-tt-row {
-  display: flex;
-  gap: 4px;
-}
-.ph-inspect-tooltip .ph-tt-key {
-  color: #8a8279;
-}
-.ph-inspect-tooltip .ph-tt-val {
-  color: #c4724e;
-}
 @keyframes ph-flash {
   0% { outline: 3px solid #d4b85c; outline-offset: 2px; }
   100% { outline: 3px solid transparent; outline-offset: 2px; }
@@ -744,20 +708,9 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   bar.appendChild(resizeHandle);
   bar.appendChild(barContent);
 
-  // ── Inspect tooltip (hidden, for later use) ──
-  const inspectTooltip = el("div", "ph-inspect-tooltip");
-
-  const ttHeader = el("div", "ph-tt-header");
-  const ttType = el("span", "ph-tt-type");
-  const ttId = el("span", "ph-tt-id");
-  ttHeader.appendChild(ttType);
-  ttHeader.appendChild(ttId);
-  inspectTooltip.appendChild(ttHeader);
-
   // ── Assemble root ──
   root.appendChild(trigger);
   root.appendChild(bar);
-  root.appendChild(inspectTooltip);
   document.body.appendChild(root);
 
   // ── JSON tree renderer ──
@@ -1301,8 +1254,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       label.remove();
     }
     inspectLabels.length = 0;
-    // Hide tooltip
-    inspectTooltip.style.display = "none";
     hoveredElement = null;
   }
 
@@ -1317,7 +1268,13 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
   };
 
-  // ── Mousemove handler: hover highlight and tooltip ──
+  // TODO: Rework inspect mode into a focused detail view for a single element
+  // (like Chrome DevTools element inspector). Clicking an element on the page
+  // should open a detailed panel showing: synced data, awareness state,
+  // capability config, and live-updating preview. The current inspect mode
+  // just duplicates what the tree row hover already does.
+
+  // ── Mousemove handler: hover highlight on page elements ──
   document.addEventListener("mousemove", (event) => {
     if (!inspectMode) return;
 
@@ -1326,61 +1283,16 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     ) as HTMLElement | null;
 
     if (target && target !== hoveredElement) {
-      // Remove hover from previous
       if (hoveredElement) {
         hoveredElement.classList.remove("ph-inspect-highlight-hover");
       }
       hoveredElement = target;
       target.classList.add("ph-inspect-highlight-hover");
-
-      // Look up handler data
-      const elId = target.id;
-      const info = elId ? lookupHandler(elId) : null;
-
-      if (info) {
-        ttType.textContent = info.tagType;
-        ttId.textContent = `#${elId}`;
-
-        // Clear old data rows (everything after the header)
-        while (inspectTooltip.childNodes.length > 1) {
-          inspectTooltip.removeChild(inspectTooltip.lastChild!);
-        }
-
-        // Add data rows
-        const data = info.handler.data;
-        if (data && typeof data === "object") {
-          for (const [key, value] of Object.entries(data)) {
-            const ttRow = el("div", "ph-tt-row");
-            const ttKey = el("span", "ph-tt-key");
-            ttKey.textContent = key + ": ";
-            const ttVal = el("span", "ph-tt-val");
-            ttVal.textContent =
-              typeof value === "object" ? JSON.stringify(value) : String(value);
-            ttRow.appendChild(ttKey);
-            ttRow.appendChild(ttVal);
-            inspectTooltip.appendChild(ttRow);
-          }
-        }
-
-        // Position tooltip
-        const rect = target.getBoundingClientRect();
-        const placeAbove = rect.top > 80;
-        inspectTooltip.style.left = `${rect.left}px`;
-        if (placeAbove) {
-          inspectTooltip.style.top = "";
-          inspectTooltip.style.bottom = `${window.innerHeight - rect.top + 4}px`;
-        } else {
-          inspectTooltip.style.bottom = "";
-          inspectTooltip.style.top = `${rect.bottom + 4}px`;
-        }
-        inspectTooltip.style.display = "block";
-      }
     } else if (!target) {
       if (hoveredElement) {
         hoveredElement.classList.remove("ph-inspect-highlight-hover");
         hoveredElement = null;
       }
-      inspectTooltip.style.display = "none";
     }
   });
 
