@@ -19,7 +19,7 @@ interface PageDataDeps {
   ensureProxy: <T>(tag: string, id: string, defaultData: T) => T;
   getProxy: (tag: string, id: string) => unknown;
   doc: Y.Doc;
-  storePlay: Record<string, Record<string, unknown>>;
+  storePlay: Partial<Record<string, Record<string, unknown>>>;
   proxyByTagAndId: Map<string, Map<string, any>>;
   yObserverByKey: Map<string, (events: any[]) => void>;
 }
