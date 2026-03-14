@@ -1056,6 +1056,11 @@ export const playhtml: PlayHTMLComponents = {
   registerPlayEventListener,
   removePlayEventListener,
   get cursorClient() {
+    if (typeof console !== "undefined" && cursorClient) {
+      console.warn(
+        "[playhtml] cursorClient is deprecated. Use playhtml.presence instead.",
+      );
+    }
     return cursorClient;
   },
   get presence() {
