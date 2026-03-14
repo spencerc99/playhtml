@@ -110,39 +110,34 @@ const DEV_STYLES = `
   overflow: hidden;
 }
 .ph-bar-main {
-  display: flex;
-  align-items: stretch;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .ph-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
   background: linear-gradient(180deg, #ede6da 0%, #d4cfc7 100%);
-  border-right: 2px solid #8a8279;
+  border-bottom: 1px solid #8a8279;
   flex-shrink: 0;
 }
 .ph-toolbar .ph-logo-btn {
-  width: 36px;
-  height: 36px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: default;
 }
 .ph-toolbar .ph-logo-btn img {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   filter: drop-shadow(0 0 4px #5b8db8);
-}
-.ph-toolbar .ph-divider {
-  height: 1px;
-  background: #8a8279;
-  margin: 2px;
-  opacity: 0.4;
 }
 .ph-btn {
   display: inline-flex;
@@ -291,16 +286,20 @@ const DEV_STYLES = `
 }
 .ph-status {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  padding: 3px 10px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 10px;
   background: #d4cfc7;
   border-bottom: 1px solid #8a8279;
   font-family: 'Martian Mono', 'SF Mono', monospace;
-  font-size: 12px;
+  font-size: 11px;
   color: #6b6560;
   flex-shrink: 0;
+}
+.ph-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .ph-status .ph-dot {
   width: 5px;
@@ -317,8 +316,7 @@ const DEV_STYLES = `
 .ph-status .ph-sep {
   color: #b0a99e;
 }
-.ph-status .ph-minimize-btn {
-  margin-left: auto;
+.ph-minimize-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -330,15 +328,16 @@ const DEV_STYLES = `
   cursor: pointer;
   color: #3d3833;
   padding: 0;
+  margin-left: auto;
 }
-.ph-status .ph-minimize-btn:hover {
+.ph-minimize-btn:hover {
   background: #f5f0e8;
 }
-.ph-status .ph-minimize-btn:active {
+.ph-minimize-btn:active {
   border-color: #8a8279 #f5f0e8 #f5f0e8 #8a8279;
   background: #d4cfc7;
 }
-.ph-status .ph-minimize-btn svg {
+.ph-minimize-btn svg {
   width: 12px;
   height: 12px;
 }
@@ -631,24 +630,16 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   // ── Sidebar bar ──
   const bar = el("div", "ph-bar");
 
-  // Bar main area (toolbar + data)
-  const barMain = el("div", "ph-bar-main");
+  // Resize handle on left edge of sidebar
+  const resizeHandle = el("div", "ph-resize-handle");
 
-  // Toolbar column
+  // Content wrapper (vertical column)
+  const barContent = el("div", "ph-bar-content");
+
+  // Toolbar (horizontal header row)
   const toolbar = el("div", "ph-toolbar");
 
-  // Inspect button (top of toolbar)
-  const inspectBtn = el("button", "ph-btn");
-  inspectBtn.innerHTML = ICONS.inspect;
-  inspectBtn.title = "Inspect";
-  toolbar.appendChild(inspectBtn);
-
-  // Spacer pushes logo to bottom
-  const toolbarSpacer = el("div");
-  toolbarSpacer.style.flex = "1";
-  toolbar.appendChild(toolbarSpacer);
-
-  // Logo at bottom of toolbar
+  // Logo
   const logoBtn = el("div", "ph-logo-btn");
   const logoImg = el("img", undefined, {
     src: LOGO_URL,
@@ -657,68 +648,49 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   logoBtn.appendChild(logoImg);
   toolbar.appendChild(logoBtn);
 
-  // Data area
-  const dataArea = el("div", "ph-data");
+  // Inspect button
+  const inspectBtn = el("button", "ph-btn");
+  inspectBtn.innerHTML = ICONS.inspect;
+  inspectBtn.title = "Inspect";
+  inspectBtn.style.width = "26px";
+  inspectBtn.style.height = "22px";
+  toolbar.appendChild(inspectBtn);
 
-  barMain.appendChild(toolbar);
-  barMain.appendChild(dataArea);
+  // Spacer pushes minimize to right
+  const toolbarSpacer = el("div");
+  toolbarSpacer.style.flex = "1";
+  toolbar.appendChild(toolbarSpacer);
 
-  // Resize handle on left edge of sidebar
-  const resizeHandle = el("div", "ph-resize-handle");
+  // Minimize button (top right)
+  const minimizeBtn = el("button", "ph-minimize-btn");
+  minimizeBtn.innerHTML = ICONS.minimize;
+  minimizeBtn.title = "Minimize";
+  toolbar.appendChild(minimizeBtn);
 
-  // Content wrapper (status + bar-main, vertical column)
-  const barContent = el("div", "ph-bar-content");
+  barContent.appendChild(toolbar);
 
-  // ── Status line ──
+  // ── Status line (two rows) ──
   const status = el("div", "ph-status");
 
+  // Row 1: connection + counts
+  const statusRow1 = el("div", "ph-status-row");
   const dot = el("span", "ph-dot ph-connected");
-  status.appendChild(dot);
-
-  const connLabel = document.createTextNode("connected");
-  status.appendChild(connLabel);
-
+  statusRow1.appendChild(dot);
+  statusRow1.appendChild(document.createTextNode("connected"));
   const sepClients = el("span", "ph-sep");
   sepClients.textContent = "\u00B7";
-  status.appendChild(sepClients);
-
-  // Client count (updated on open)
+  statusRow1.appendChild(sepClients);
   const clientCountNode = document.createTextNode("");
-  status.appendChild(clientCountNode);
-
+  statusRow1.appendChild(clientCountNode);
   const sep1 = el("span", "ph-sep");
   sep1.textContent = "\u00B7";
-  status.appendChild(sep1);
-
-  // Element count (updated on open)
+  statusRow1.appendChild(sep1);
   const elCountNode = document.createTextNode("");
-  status.appendChild(elCountNode);
+  statusRow1.appendChild(elCountNode);
+  status.appendChild(statusRow1);
 
-  function updateStatusCounts() {
-    // Client count via awareness
-    let clients = 1;
-    try {
-      const provider = playhtml.cursorClient?.getProvider();
-      if (provider) {
-        clients = provider.awareness.getStates().size;
-      }
-    } catch {}
-    clientCountNode.textContent = `${clients} client${clients !== 1 ? "s" : ""}`;
-
-    // Element count
-    let total = 0;
-    elementHandlers.forEach((idMap) => {
-      total += idMap.size;
-    });
-    elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
-  }
-  updateStatusCounts();
-
-  const sep2 = el("span", "ph-sep");
-  sep2.textContent = "\u00B7";
-  status.appendChild(sep2);
-
-  // Room field
+  // Row 2: room + host
+  const statusRow2 = el("div", "ph-status-row");
   let decodedRoom: string;
   try {
     decodedRoom = decodeURIComponent(playhtml.roomId);
@@ -730,28 +702,44 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   roomFieldLabel.textContent = "room";
   roomField.appendChild(roomFieldLabel);
   roomField.appendChild(document.createTextNode(decodedRoom));
-  status.appendChild(roomField);
+  statusRow2.appendChild(roomField);
 
-  const sep3 = el("span", "ph-sep");
-  sep3.textContent = "\u00B7";
-  status.appendChild(sep3);
+  const sep2 = el("span", "ph-sep");
+  sep2.textContent = "\u00B7";
+  statusRow2.appendChild(sep2);
 
-  // Host field
   const hostField = el("span", "ph-status-field");
   const hostFieldLabel = el("span", "ph-status-field-label");
   hostFieldLabel.textContent = "host";
   hostField.appendChild(hostFieldLabel);
   hostField.appendChild(document.createTextNode(playhtml.host));
-  status.appendChild(hostField);
+  statusRow2.appendChild(hostField);
+  status.appendChild(statusRow2);
 
-  // Minimize button
-  const minimizeBtn = el("button", "ph-minimize-btn");
-  minimizeBtn.innerHTML = ICONS.minimize;
-  minimizeBtn.title = "Minimize";
-  status.appendChild(minimizeBtn);
+  function updateStatusCounts() {
+    let clients = 1;
+    try {
+      const provider = playhtml.cursorClient?.getProvider();
+      if (provider) {
+        clients = provider.awareness.getStates().size;
+      }
+    } catch {}
+    clientCountNode.textContent = `${clients} client${clients !== 1 ? "s" : ""}`;
 
-  // Assemble bar: resize handle | content column (status + main)
+    let total = 0;
+    elementHandlers.forEach((idMap) => {
+      total += idMap.size;
+    });
+    elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
+  }
+  updateStatusCounts();
+
   barContent.appendChild(status);
+
+  // Data area (takes remaining space)
+  const barMain = el("div", "ph-bar-main");
+  const dataArea = el("div", "ph-data");
+  barMain.appendChild(dataArea);
   barContent.appendChild(barMain);
   bar.appendChild(resizeHandle);
   bar.appendChild(barContent);
