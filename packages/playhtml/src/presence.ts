@@ -58,6 +58,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     awarenessListenerAttached = true;
 
     getAwareness().on("change", () => {
+      if (listeners.size === 0) return;
       const states = getAwareness().getStates();
       const fingerprint = presenceFingerprint(states as Map<number, Record<string, unknown>>);
       if (fingerprint === lastPresenceFingerprint) return;
