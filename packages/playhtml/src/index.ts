@@ -150,6 +150,7 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YPartyKitProvider;
 let cursorProvider: YPartyKitProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
+let cursorClientDeprecationWarned = false;
 let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -1002,6 +1003,9 @@ function setupElements(): void {
 }
 
 function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
+  if (!hasSynced) {
+    throw new Error("playhtml.createPageData is not available before init()");
+  }
   return createPageDataChannel(name, defaultValue, {
     ensureProxy: ensureElementProxy,
     getProxy: (tag, id) => proxyByTagAndId.get(tag)?.get(id),
@@ -1056,7 +1060,8 @@ export const playhtml: PlayHTMLComponents = {
   registerPlayEventListener,
   removePlayEventListener,
   get cursorClient() {
-    if (typeof console !== "undefined" && cursorClient) {
+    if (typeof console !== "undefined" && cursorClient && !cursorClientDeprecationWarned) {
+      cursorClientDeprecationWarned = true;
       console.warn(
         "[playhtml] cursorClient is deprecated. Use playhtml.presence instead.",
       );
