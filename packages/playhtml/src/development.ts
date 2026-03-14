@@ -249,6 +249,9 @@ const DEV_STYLES = `
 }
 .ph-tree-children {
   display: none;
+  margin-left: 14px;
+  padding-left: 6px;
+  border-left: 1px solid #d4cfc7;
 }
 .ph-tree-children.ph-expanded {
   display: block;
