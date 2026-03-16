@@ -13,6 +13,9 @@ const DB_VERSION = 7;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 
+// Aggregate key for cross-domain totals (all browsing activity combined)
+const GLOBAL_STATS_KEY = "__global__";
+
 export interface QueryOptions {
   type?: CollectionEventType;
   limit?: number;
@@ -65,6 +68,9 @@ export interface DomainStatsAggregate {
   firstVisit: number;
   /** Latest event timestamp */
   lastVisit: number;
+  // TODO: uniqueUrls and processedNavIds grow unboundedly on the __global__
+  // aggregate (every URL/nav ID ever seen). Consider tracking just a count for
+  // uniqueUrls, and capping or clearing processedNavIds after backfill completes.
   /** Set of unique URLs seen (stored as array for JSON serialization, domain-level only) */
   uniqueUrls: string[];
   /** Set of event IDs that have been processed for session stats (prevents double-counting) */
@@ -284,10 +290,15 @@ export class LocalEventStore {
       req.onerror = () => reject(req.error);
     });
 
-    // Group events by aggregate key (domain-level + page-level)
+    // Group events by aggregate key (global + domain-level + page-level)
     const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
 
+    // Global aggregate: all events regardless of domain
+    keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events: [] });
+
     for (const evt of allEvents) {
+      keyToEvents.get(GLOBAL_STATS_KEY)!.events.push(evt);
+
       const dom = (evt as any).domain || extractDomain(evt.meta?.url);
       if (!dom) continue;
 
@@ -524,6 +535,27 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const request = statsStore.get(key);
+
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Read the global (all-domains) aggregate from the domain_stats store (O(1) lookup).
+   */
+  async getGlobalStats(): Promise<DomainStatsAggregate | null> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const request = statsStore.get(GLOBAL_STATS_KEY);
 
       request.onsuccess = () => resolve(request.result ?? null);
       request.onerror = () => reject(request.error);
@@ -927,10 +959,15 @@ export class LocalEventStore {
   private async updateDomainStats(
     eventsByDomain: Map<string, CollectionEvent[]>,
   ): Promise<void> {
-    // Collect all aggregate keys we need to read/write
+    // Collect all aggregate keys we need to read/write (global + domain + page)
     const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
 
+    // Global aggregate: receives ALL events from every domain
+    keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events: [] });
+
     for (const [dom, domainEvents] of eventsByDomain) {
+      keyToEvents.get(GLOBAL_STATS_KEY)!.events.push(...domainEvents);
+
       // Domain-level aggregate
       const dKey = domainStatsKey(dom);
       if (!keyToEvents.has(dKey)) {

@@ -78,54 +78,59 @@ const PortraitPage = () => {
       .catch((e: unknown) => console.error('[Portrait] GET_DAY_COUNTS error:', e));
   }, []);
 
-  // Fetch screen time from background using ALL navigation events (no event limit).
-  // The main events load uses limit:10_000 which gets filled by cursor/keyboard events,
-  // causing navigation events from older sessions to be cut off — so we query them separately.
-  const [screenTime, setScreenTime] = useState<{
+  // Screen time stats: uses pre-computed global aggregate for unfiltered view,
+  // falls back to GET_SCREEN_TIME for day-filtered views.
+  const [globalStats, setGlobalStats] = useState<{
+    totalTimeMs: number;
+    hourBuckets: number[];
+    uniqueUrlCount: number;
+    firstVisit: number;
+    lastVisit: number;
+  } | null>(null);
+  const [dayScreenTime, setDayScreenTime] = useState<{
     totalMs: number;
     sessions: ScreenTimeSession[];
   } | null>(null);
 
   useEffect(() => {
-    // Reset to null immediately so PortraitCard shows its loading state while the
-    // new screen time is being fetched for the updated date filter.
-    setScreenTime(null);
-
-    const options: Record<string, unknown> = {};
     if (selectedDay) {
-      options.startTs = new Date(selectedDay + "T00:00:00").getTime();
-      options.endTs = new Date(selectedDay + "T23:59:59.999").getTime();
+      // Day filter: global aggregate doesn't support date ranges, so
+      // fall back to GET_SCREEN_TIME with date bounds.
+      setGlobalStats(null);
+      setDayScreenTime(null);
+      const startTs = new Date(selectedDay + "T00:00:00").getTime();
+      const endTs = new Date(selectedDay + "T23:59:59.999").getTime();
+      browser.runtime.sendMessage({ type: 'GET_SCREEN_TIME', options: { startTs, endTs } })
+        .then((res: any) => {
+          if (res?.success) {
+            setDayScreenTime({ totalMs: res.totalMs, sessions: res.sessions });
+          }
+        })
+        .catch((e: unknown) => console.error('[Portrait] GET_SCREEN_TIME error:', e));
+      return;
     }
-    browser.runtime.sendMessage({ type: 'GET_SCREEN_TIME', options })
+    // No day filter: use pre-computed global stats (O(1) read)
+    setDayScreenTime(null);
+    browser.runtime.sendMessage({ type: 'GET_GLOBAL_STATS' })
       .then((res: any) => {
-        if (res?.success) {
-          setScreenTime({ totalMs: res.totalMs, sessions: res.sessions });
+        if (res?.success && res.stats) {
+          setGlobalStats({
+            totalTimeMs: res.stats.totalTimeMs,
+            hourBuckets: res.stats.hourBuckets,
+            uniqueUrlCount: res.stats.uniqueUrlCount,
+            firstVisit: res.stats.firstVisit,
+            lastVisit: res.stats.lastVisit,
+          });
+        } else {
+          setGlobalStats(null);
         }
       })
-      .catch((e: unknown) => console.error('[Portrait] GET_SCREEN_TIME error:', e));
+      .catch((e: unknown) => console.error('[Portrait] GET_GLOBAL_STATS error:', e));
   }, [selectedDay]);
 
-  // Compute portrait stats for the card — cursor distance derived from the (limited)
-  // event set; screen time comes from the unlimited GET_SCREEN_TIME fetch above.
+  // Build portrait card props from whichever data source is available.
   const portraitStats = useMemo((): PortraitCardProps | null => {
-    if (events.length === 0) return null;
-
-    const counts = { cursor: 0, keyboard: 0, viewport: 0 };
-    const timestamps: number[] = [];
-    const uniqueUrls = new Set<string>();
-
-    for (const evt of events) {
-      if (evt.type === "cursor") counts.cursor++;
-      else if (evt.type === "keyboard") counts.keyboard++;
-      else if (evt.type === "viewport") counts.viewport++;
-      timestamps.push(evt.ts);
-      if (evt.meta?.url) uniqueUrls.add(evt.meta.url);
-    }
-
-    const oldest = new Date(Math.min(...timestamps)).toLocaleDateString();
-    const newest = new Date(Math.max(...timestamps)).toLocaleDateString();
-
-    // Compute cursor distance from the sampled event set
+    // Cursor distance is always derived from the (capped) event set
     const cursorMoves = events
       .filter((e) => e.type === "cursor" && (e.data as any).event === "move")
       .sort((a, b) => a.ts - b.ts);
@@ -138,16 +143,53 @@ const PortraitPage = () => {
       cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
     }
 
+    // Unfiltered: use pre-computed global aggregate
+    if (globalStats && !selectedDay) {
+      return {
+        domain: "",
+        totalTimeMs: globalStats.totalTimeMs,
+        hourBuckets: globalStats.hourBuckets,
+        cursorDistancePx,
+        dateRange: globalStats.firstVisit && globalStats.lastVisit
+          ? {
+              oldest: new Date(globalStats.firstVisit).toLocaleDateString(),
+              newest: new Date(globalStats.lastVisit).toLocaleDateString(),
+            }
+          : null,
+        uniquePageCount: globalStats.uniqueUrlCount,
+      };
+    }
+
+    // Day-filtered: use GET_SCREEN_TIME result for accurate per-day stats
+    if (selectedDay && dayScreenTime) {
+      const uniqueUrls = new Set<string>();
+      for (const evt of events) {
+        if (evt.meta?.url) uniqueUrls.add(evt.meta.url);
+      }
+      return {
+        domain: "",
+        totalTimeMs: dayScreenTime.totalMs,
+        hourBuckets: sessionsToHourBuckets(dayScreenTime.sessions),
+        cursorDistancePx,
+        dateRange: selectedDay
+          ? { oldest: selectedDay, newest: selectedDay }
+          : null,
+        uniquePageCount: uniqueUrls.size,
+      };
+    }
+
+    // Still loading or no data
+    if (events.length === 0) return null;
+
+    // Events loaded but screen time not yet — show card with null time (loading)
     return {
       domain: "",
-      totalTimeMs: screenTime ? screenTime.totalMs : null,
-      hourBuckets: screenTime ? sessionsToHourBuckets(screenTime.sessions) : new Array(24).fill(0),
+      totalTimeMs: null,
+      hourBuckets: new Array(24).fill(0),
       cursorDistancePx,
-      eventCounts: counts,
-      dateRange: { oldest, newest },
-      uniquePageCount: uniqueUrls.size,
+      dateRange: null,
     };
-  }, [events, screenTime]);
+  }, [events, globalStats, dayScreenTime, selectedDay]);
 
   // Compute trail states for frozen export
   const viewportSize = useMemo(() => ({ width: 800, height: 1000 }), []);

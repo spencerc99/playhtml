@@ -223,17 +223,33 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [visible]);
 
-  // Fetch portrait stats when overlay is visible.
-  // The GET_DOMAIN_STATS handler now only loads navigation + cursor events
-  // (instead of ALL events), so IndexedDB contention with the main load is minimal.
+  // ── Portrait stats fetch ──────────────────────────────────────────────────
+  //
+  // Reads pre-computed aggregates from the background's domain_stats store
+  // (O(1) IndexedDB lookup — no event scanning). The response drives the
+  // PortraitCard which has two states:
+  //
+  //   portraitStats === null && !portraitStatsLoaded  →  PortraitCard loading
+  //   portraitStats !== null                          →  PortraitCard renders
+  //   portraitStats === null && portraitStatsLoaded   →  "no data" placeholder
+  //
+  // The background returns totalTimeMs as a number (0 if no sessions).
+  // It only returns stats: null when there is zero data for the domain/page.
+  //
   useEffect(() => {
     if (!visible) return;
+
+    // Reset both flags so the card shows its loading state during re-fetch
+    // (e.g. when switching between domain/page mode or navigating to a new URL)
+    setPortraitStats(null);
+    setPortraitStatsLoaded(false);
+
     (async () => {
       try {
         const res: any = await browser.runtime.sendMessage({
           type: "GET_DOMAIN_STATS",
           domain,
-          // Pass normalized URL for page-level stats lookup
+          // Page-level lookup: pass the raw URL (background normalizes it)
           ...(actualMode !== "domain" ? { url: currentUrl } : {}),
         });
         if (res?.success && res.stats) {

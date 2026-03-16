@@ -17,6 +17,7 @@ interface Props {
   onViewCollections: () => void;
   onViewHistory: () => void;
   onViewProfile?: () => void;
+  onViewBagSettings?: () => void;
 }
 
 interface PortraitStats {
@@ -34,6 +35,7 @@ export function InternetPortraitHome({
   onViewCollections,
   onViewHistory,
   onViewProfile,
+  onViewBagSettings,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export function InternetPortraitHome({
   const [portraitStats, setPortraitStats] = useState<PortraitStats | null>(
     null,
   );
+  const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
 
   useEffect(() => {
     const loadStatuses = async () => {
@@ -132,7 +135,10 @@ export function InternetPortraitHome({
     };
   }, []);
 
-  // Load portrait stats for current tab's domain via background store
+  // Load portrait stats for current tab's domain via background store.
+  // Uses the same two-flag pattern as HistoricalOverlay: portraitStats holds
+  // the data (null = not yet received), portraitStatsLoaded distinguishes
+  // "still fetching" from "fetched but empty" to avoid perpetual loading.
   useEffect(() => {
     (async () => {
       try {
@@ -140,7 +146,10 @@ export function InternetPortraitHome({
           active: true,
           currentWindow: true,
         });
-        if (!tab?.url) return;
+        if (!tab?.url) {
+          setPortraitStatsLoaded(true);
+          return;
+        }
         const url = new URL(tab.url);
         const domain = url.hostname.replace(/^www\./, '');
         const response = await browser.runtime.sendMessage({
@@ -150,8 +159,9 @@ export function InternetPortraitHome({
         if (response?.success && response.stats) {
           setPortraitStats(response.stats);
         }
+        setPortraitStatsLoaded(true);
       } catch {
-        // Best-effort — portrait card is optional
+        setPortraitStatsLoaded(true);
       }
     })();
   }, []);
@@ -253,7 +263,9 @@ export function InternetPortraitHome({
                 />
               ) : (
                 <p className="preview-card__empty">
-                  Your portrait is loading...
+                  {portraitStatsLoaded
+                    ? "No data for this site yet"
+                    : "Your portrait is loading..."}
                 </p>
               )}
               <div className="preview-card__label">Open Portrait Overlay</div>
@@ -283,6 +295,14 @@ export function InternetPortraitHome({
               time
             </button>
           </div>
+          {onViewBagSettings && (
+            <button
+              className="portrait-home__nav-link portrait-home__bag-settings-link"
+              onClick={onViewBagSettings}
+            >
+              bag settings
+            </button>
+          )}
         </section>
       </main>
 

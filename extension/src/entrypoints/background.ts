@@ -224,18 +224,22 @@ export default defineBackground(() => {
       const normalizedUrl = rawUrl ? normalizeUrl(rawUrl) : undefined
       ;(async () => {
         try {
-          // All stats except cursor distance are pre-computed (O(1) lookup)
+          // Screen time and hour buckets are pre-computed in domain_stats (O(1)).
+          // Only cursor distance requires scanning events (capped at 2000).
           const [agg, cursorEvents] = await Promise.all([
             store.getSessionStats(domain, normalizedUrl).catch(() => null),
             store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
           ])
 
+          // Only return null stats when there is truly no data at all.
+          // PortraitCard interprets totalTimeMs === null as "loading" —
+          // returning null here when we just have zero time would cause
+          // the card to appear stuck forever.
           if (!agg && cursorEvents.length === 0) {
             reply({ success: true, stats: null })
             return
           }
 
-          const totalTimeMs = agg?.totalTimeMs ?? 0
           const hourBuckets = agg?.hourBuckets ?? new Array(24).fill(0)
 
           // Compute cursor distance: sum of Euclidean distances between consecutive move samples
@@ -264,7 +268,7 @@ export default defineBackground(() => {
             success: true,
             stats: {
               domain,
-              totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
+              totalTimeMs: agg?.totalTimeMs ?? 0,
               hourBuckets,
               cursorDistancePx,
               eventCounts: agg?.eventsByType ?? {},
@@ -278,6 +282,33 @@ export default defineBackground(() => {
           reply({ success: false })
         }
       })()
+      return true
+    }
+
+    if (message.type === 'GET_GLOBAL_STATS') {
+      store.getGlobalStats()
+        .then((agg) => {
+          if (!agg) {
+            reply({ success: true, stats: null })
+            return
+          }
+          reply({
+            success: true,
+            stats: {
+              totalTimeMs: agg.totalTimeMs,
+              hourBuckets: agg.hourBuckets,
+              sessionCount: agg.sessionCount,
+              eventsByType: agg.eventsByType,
+              firstVisit: agg.firstVisit,
+              lastVisit: agg.lastVisit,
+              uniqueUrlCount: agg.uniqueUrls.length,
+            },
+          })
+        })
+        .catch((e) => {
+          console.error('[Background] GET_GLOBAL_STATS error:', e)
+          reply({ success: false })
+        })
       return true
     }
 

@@ -2,14 +2,39 @@
 // ABOUTME: Canvas-textured card with vertical strokes mapped to 24h activity rhythm
 
 import React, { useEffect, useRef } from "react";
+
+// ── PortraitCard data contract ───────────────────────────────────────────────
+//
+// This component has exactly two visual states:
+//
+//   1. LOADING  — totalTimeMs === null
+//      Shows a centered "loading..." placeholder. Use this only while the
+//      background fetch is genuinely in flight. Once data arrives, always pass
+//      a number (even 0) so the card renders.
+//
+//   2. READY    — totalTimeMs is a number (including 0)
+//      Renders the full card: canvas texture, hero duration, distance, pages,
+//      and date range. Zero is valid — it means "we have data, but no
+//      completed focus/blur session pairs were recorded."
+//
+// There is no "error" or "empty" state inside PortraitCard. The parent is
+// responsible for showing "no data" when there are no stats at all (e.g. by
+// checking whether stats are null before mounting PortraitCard).
+//
+// Pitfall: passing totalTimeMs as null when the aggregate has zero sessions
+// causes perpetual loading. Always pass 0 when data exists but has no
+// completed focus/blur session pairs.
+//
 export interface PortraitCardProps {
   domain: string;
+  /** Total screen time in ms. null = still loading; 0 = no sessions recorded. */
   totalTimeMs: number | null;
   /** Pre-computed total ms per hour-of-day (index 0 = midnight, 23 = 11pm) */
   hourBuckets: number[];
   /** Total cursor distance in pixels (sum of Euclidean distances between samples) */
   cursorDistancePx: number;
   dateRange: { oldest: string; newest: string } | null;
+  /** Omit for page-level stats where the count is always 1 */
   uniquePageCount?: number;
   eventCounts?: { cursor: number; keyboard: number; viewport: number };
 }
