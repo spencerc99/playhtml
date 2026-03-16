@@ -2,6 +2,7 @@
 // ABOUTME: Follow state, scroll tethering, and cross-page navigation via presence API.
 
 import type { PresenceAPI } from "@playhtml/common";
+import { isWikiArticleUrl } from "../custom-sites/wikipedia";
 
 export interface FollowState {
   targetPublicKey: string;
@@ -92,16 +93,26 @@ export class FollowManager {
   }
 
   // Called by cursor options onProximityEntered
-  onProximityEntered(identity: any): void {
+  onProximityEntered(
+    identity: any,
+    positions?: { ours: { x: number; y: number }; theirs: { x: number; y: number } },
+  ): void {
     if (this.followState) return;
     const publicKey = identity?.publicKey;
     const color = identity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
     if (!publicKey) return;
 
-    if (!this.hintShownForKeys.has(publicKey)) {
-      this.nearestTarget = { publicKey, color };
-      this.hintShownForKeys.add(publicKey);
-      this.showHint(window.innerWidth / 2, window.innerHeight - 100, color);
+    this.nearestTarget = { publicKey, color };
+
+    // Show hint near the midpoint between the two cursors
+    if (!this.hintElement) {
+      const hintX = positions
+        ? (positions.ours.x + positions.theirs.x) / 2
+        : window.innerWidth / 2;
+      const hintY = positions
+        ? (positions.ours.y + positions.theirs.y) / 2
+        : window.innerHeight / 2;
+      this.showHint(hintX, hintY, color);
     }
   }
 
@@ -109,6 +120,7 @@ export class FollowManager {
   onProximityLeft(connectionId: string): void {
     if (this.nearestTarget?.publicKey === connectionId) {
       this.nearestTarget = null;
+      this.removeHint();
     }
   }
 
@@ -310,8 +322,11 @@ export class FollowManager {
   // --- Scroll tether ---
 
   private startScrollTether(): void {
+    // Suppress the user-override detection for scroll events we cause
+    let programmaticScroll = false;
     const onScroll = () => {
-      this.userOverrideUntil = Date.now() + 2000;
+      if (programmaticScroll) return;
+      this.userOverrideUntil = Date.now() + 3000;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     this.cleanups.push(() => window.removeEventListener("scroll", onScroll));
@@ -326,17 +341,20 @@ export class FollowManager {
       const target = presences.get(this.followState.targetPublicKey);
       if (!target?.cursor) return;
 
+      // Keep the target cursor centered in viewport
       const targetY = target.cursor.y;
-      const viewTop = window.scrollY;
-      const viewBottom = viewTop + window.innerHeight;
-      const margin = window.innerHeight * 0.2;
+      const desiredScroll = targetY - window.innerHeight / 2;
+      const diff = desiredScroll - window.scrollY;
 
-      if (targetY > viewTop + margin && targetY < viewBottom - margin) return;
-
-      const targetScroll = targetY - window.innerHeight / 2;
-      const diff = targetScroll - window.scrollY;
-      const speed = Math.min(Math.abs(diff) * 0.03, 4);
-      window.scrollBy(0, Math.sign(diff) * speed);
+      // Smooth lerp toward desired position
+      if (Math.abs(diff) > 2) {
+        programmaticScroll = true;
+        window.scrollTo({
+          top: window.scrollY + diff * 0.15,
+          behavior: "instant",
+        });
+        requestAnimationFrame(() => { programmaticScroll = false; });
+      }
     };
 
     this.tetherRafId = requestAnimationFrame(tick);
@@ -357,9 +375,13 @@ export class FollowManager {
       const presences = this.presence.getPresences();
       const target = presences.get(this.followState.targetPublicKey);
 
-      if ((target as any)?.navigatingTo && !this.pendingNavUrl) {
-        const nav = (target as any).navigatingTo;
-        this.showNavToast(nav.url, nav.title);
+      const nav = (target as any)?.navigatingTo;
+      if (nav && !this.pendingNavUrl) {
+        if (isWikiArticleUrl(nav.url)) {
+          this.showNavToast(nav.url, nav.title);
+        } else {
+          this.showLeftToast();
+        }
       }
 
       // Mutual follow detection
@@ -464,6 +486,17 @@ export class FollowManager {
       this.navToastElement = null;
     }
     this.pendingNavUrl = null;
+  }
+
+  private showLeftToast(): void {
+    if (this.statusBarElement && this.followState) {
+      this.statusBarElement.textContent = "";
+      this.statusBarElement.append(
+        colorDot(this.followState.targetColor),
+        " left Wikipedia",
+      );
+      setTimeout(() => this.unfollow(), 3000);
+    }
   }
 
   private showLostToast(): void {

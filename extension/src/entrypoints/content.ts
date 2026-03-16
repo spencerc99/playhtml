@@ -887,8 +887,10 @@ export default defineContentScript({
           cursors: {
             enabled: true,
             playerIdentity: this.playerIdentity,
-            onProximityEntered: (identity: any) => {
-              followManager?.onProximityEntered(identity);
+            coordinateMode: "absolute",
+            proximityThreshold: 400,
+            onProximityEntered: (identity: any, positions: any) => {
+              followManager?.onProximityEntered(identity, positions);
             },
             onProximityLeft: (connectionId: string) => {
               followManager?.onProximityLeft(connectionId);
@@ -896,13 +898,6 @@ export default defineContentScript({
           },
         });
         this.listenForPresenceCount();
-
-        if (location.hostname.endsWith("wikipedia.org")) {
-          const { LinkGlowManager } = await import("../features/LinkGlowManager");
-          const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-          this.linkGlowManager = new LinkGlowManager(color, playhtml.createPageData);
-          this.linkGlowManager.init();
-        }
 
         // Follow manager for cursor following
         followManager = new FollowManager(playhtml.presence);
@@ -915,20 +910,14 @@ export default defineContentScript({
           }
         });
 
-        // Broadcast navigatingTo awareness on same-origin link clicks
-        document.addEventListener("click", (e) => {
-          const link = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
-          if (!link || !link.href || link.target === "_blank") return;
-          try {
-            const url = new URL(link.href);
-            if (url.origin === location.origin) {
-              playhtml.presence.setMyPresence("navigatingTo", {
-                url: url.pathname,
-                title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
-              });
-            }
-          } catch { /* ignore invalid URLs */ }
-        }, { capture: true });
+        // Initialize domain-specific features (link glow, nav broadcast, etc.)
+        const { initCustomSite } = await import("../custom-sites");
+        const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+        await initCustomSite({
+          createPageData: playhtml.createPageData,
+          presence: playhtml.presence,
+          playerColor: color,
+        });
       }
 
       private listenForPresenceCount() {
