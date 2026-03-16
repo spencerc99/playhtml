@@ -150,7 +150,6 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YPartyKitProvider;
 let cursorProvider: YPartyKitProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
-let cursorClientDeprecationWarned = false;
 let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -1065,12 +1064,6 @@ export const playhtml: PlayHTMLComponents = {
   registerPlayEventListener,
   removePlayEventListener,
   get cursorClient() {
-    if (typeof console !== "undefined" && cursorClient && !cursorClientDeprecationWarned) {
-      cursorClientDeprecationWarned = true;
-      console.warn(
-        "[playhtml] cursorClient is deprecated. Use playhtml.presence instead.",
-      );
-    }
     return cursorClient;
   },
   get presence() {
