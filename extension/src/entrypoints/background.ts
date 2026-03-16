@@ -225,10 +225,13 @@ export default defineBackground(() => {
       ;(async () => {
         try {
           // Screen time and hour buckets are pre-computed in domain_stats (O(1)).
-          // Only cursor distance requires scanning events (capped at 2000).
-          const [agg, cursorEvents] = await Promise.all([
+          // Cursor distance requires scanning cursor events (capped at 2000).
+          // Page-level aggregates provide per-page time for the stats page's
+          // expanded domain view (also pre-computed, key range scan).
+          const [agg, cursorEvents, pageAggs] = await Promise.all([
             store.getSessionStats(domain, normalizedUrl).catch(() => null),
             store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
+            store.getPageStats(domain).catch(() => [] as never[]),
           ])
 
           // Only return null stats when there is truly no data at all.
@@ -256,6 +259,24 @@ export default defineBackground(() => {
             cursorDistancePx += Math.sqrt(dx * dx + dy * dy)
           }
 
+          // Build per-page breakdown from page-level aggregates for the stats
+          // page's expanded domain view. Each page aggregate yields one entry
+          // per session so computeTopPages() can sum and count correctly.
+          const sessions: Array<{ url: string; focusTs: number; blurTs: number; durationMs: number }> = []
+          for (const p of pageAggs) {
+            const url = p.key.slice(domain.length + 2) // strip "domain::" prefix → normalizedUrl
+            // Emit one synthetic session per recorded session so visit counts are accurate
+            const perSessionMs = p.sessionCount > 0 ? p.totalTimeMs / p.sessionCount : p.totalTimeMs
+            for (let i = 0; i < Math.max(1, p.sessionCount); i++) {
+              sessions.push({
+                url,
+                focusTs: p.firstVisit,
+                blurTs: p.lastVisit,
+                durationMs: perSessionMs,
+              })
+            }
+          }
+
           const dateRange =
             agg?.firstVisit && agg?.lastVisit
               ? {
@@ -273,6 +294,7 @@ export default defineBackground(() => {
               cursorDistancePx,
               eventCounts: agg?.eventsByType ?? {},
               dateRange,
+              sessions,
               // Only include uniquePageCount for domain-level stats (not page-level)
               uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
             },

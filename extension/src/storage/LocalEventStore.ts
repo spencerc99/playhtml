@@ -563,6 +563,40 @@ export class LocalEventStore {
   }
 
   /**
+   * Read all page-level aggregates for a domain from the domain_stats store.
+   * Page keys use the format "domain::normalizedUrl", so we scan the key range
+   * ["domain::", "domain::\uffff") to find them.
+   */
+  async getPageStats(domain: string): Promise<DomainStatsAggregate[]> {
+    await this.ensureInitialized();
+
+    const prefix = `${domain}::`;
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const range = IDBKeyRange.bound(prefix, prefix + "\uffff", false, false);
+      const results: DomainStatsAggregate[] = [];
+      const request = statsStore.openCursor(range);
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          results.push(cursor.value as DomainStatsAggregate);
+          cursor.continue();
+        } else {
+          resolve(results);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
    * Get all domains with stored events
    */
   async getAllDomains(): Promise<
