@@ -27,7 +27,6 @@ export default defineContentScript({
     class PlayHTMLExtension {
       private playerIdentity: any = null;
       private isInitialized = false;
-      private linkGlowManager: import("../features/LinkGlowManager").LinkGlowManager | null = null;
       private followManager: import("../features/FollowManager").FollowManager | null = null;
 
       async init() {
