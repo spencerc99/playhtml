@@ -9,7 +9,7 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 
@@ -227,13 +227,14 @@ export class LocalEventStore {
 
         // v6: create domain_stats store (keyPath: "domain")
         // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
-        if (oldVersion < 7) {
+        // v8: force rebuild to populate page-level + global aggregates added after v7
+        if (oldVersion < 8) {
           if (db.objectStoreNames.contains(STATS_STORE_NAME)) {
             db.deleteObjectStore(STATS_STORE_NAME);
           }
           db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
           if (VERBOSE) {
-            console.log("[LocalEventStore] Created domain_stats store (v7, keyPath: key)");
+            console.log("[LocalEventStore] Created domain_stats store (v8, keyPath: key)");
           }
         }
       };
