@@ -3,9 +3,10 @@
 
 import type { PageDataChannel, PresenceAPI } from "@playhtml/common";
 
-interface CustomSiteDeps {
+export interface CustomSiteDeps {
   createPageData: <T>(name: string, defaultValue: T) => PageDataChannel<T>;
   presence: PresenceAPI;
+  cursorClient: any;
   playerColor: string;
 }
 

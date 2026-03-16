@@ -1,7 +1,8 @@
 // ABOUTME: Wikipedia-specific collaborative browsing features.
-// ABOUTME: Link glow visualization and navigation broadcast for article links.
+// ABOUTME: Link glow visualization, cursor following, and navigation broadcast for article links.
 
-import type { PageDataChannel, PresenceAPI } from "@playhtml/common";
+import type { CustomSiteDeps } from "./index";
+import { FollowManager } from "../features/FollowManager";
 
 // Matches /wiki/ArticleName but not /wiki/Special: /wiki/Talk: etc.
 export function isWikiArticleUrl(url: string): boolean {
@@ -13,13 +14,7 @@ export function isWikiArticleUrl(url: string): boolean {
   }
 }
 
-interface WikiDeps {
-  createPageData: <T>(name: string, defaultValue: T) => PageDataChannel<T>;
-  presence: PresenceAPI;
-  playerColor: string;
-}
-
-export async function initWikipedia(deps: WikiDeps): Promise<() => void> {
+export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   const cleanups: (() => void)[] = [];
 
   // Link glow
@@ -27,6 +22,24 @@ export async function initWikipedia(deps: WikiDeps): Promise<() => void> {
   const glowManager = new LinkGlowManager(deps.playerColor, deps.createPageData);
   glowManager.init();
   cleanups.push(() => glowManager.destroy());
+
+  // Follow manager
+  const followManager = new FollowManager(deps.presence);
+  followManager.init();
+  cleanups.push(() => followManager.destroy());
+
+  // Wire proximity detection into the cursor client
+  if (deps.cursorClient) {
+    deps.cursorClient.configure({
+      proximityThreshold: 400,
+      onProximityEntered: (identity: any, positions: any) => {
+        followManager.onProximityEntered(identity, positions);
+      },
+      onProximityLeft: (connectionId: string) => {
+        followManager.onProximityLeft(connectionId);
+      },
+    });
+  }
 
   // Broadcast navigatingTo on Wikipedia article link clicks.
   // Intercept the click, broadcast presence, wait for sync, then navigate.
