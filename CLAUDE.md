@@ -123,6 +123,11 @@ Bun automatically handles workspace linking. When making changes across packages
 - Reset shortcuts use modifier keys (shift, ctrl, alt, meta)
 - Custom event listeners can be added in `onMount`
 
+## Documentation
+
+- `docs/`: Public developer-facing and user-facing documentation only.
+- `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).
+
 ## Project-Specific Notes
 
 - The project uses Bun as the package manager and task runner
