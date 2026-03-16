@@ -132,3 +132,4 @@ Bun automatically handles workspace linking. When making changes across packages
 - The website uses a multi-page app (MPA) structure with glob-based HTML discovery
 - Workspace dependencies are automatically linked by Bun
 - Examples and demos are critical for showcasing capabilities
+- When making any changes to the core packages (playhtml, common, react), you should also make sure to add a changeset in .changeset/

@@ -169,6 +169,38 @@ body {
   }
 }
 
+// ── Date filter select ─────────────────────────────────────────────────────
+.date-select {
+  background: none;
+  border: 1px solid #2e2a26;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.68rem;
+  cursor: pointer;
+  color: #5a5450;
+  font-family: "Martian Mono", monospace;
+  line-height: 1.6;
+  appearance: none;
+  -webkit-appearance: none;
+
+  &:hover {
+    background: #2a2520;
+    color: #b8b0a8;
+    border-color: #3e3a36;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #6b6460;
+    color: #c8bfb4;
+  }
+
+  option {
+    background: #1a1714;
+    color: #b8b0a8;
+  }
+}
+
 // ── Refresh button ─────────────────────────────────────────────────────────────
 .refresh-btn {
   margin-left: auto;

@@ -2,7 +2,7 @@
 // ABOUTME: Fetches navigation events from the server, optionally filtered to Wikipedia only or all titled pages.
 
 import "./rabbithole.scss";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 import { RabbitHoleVisualization, WikiTitle } from "./components/RabbitHoleVisualization";
 
@@ -78,6 +78,7 @@ function processEvents(events: NavigationEvent[], wikipediaOnly: boolean): Proce
   const wikiEvents = allFocus.filter(
     (e) =>
       e.meta.url.includes("wikipedia.org") &&
+      /\/wiki\//.test(e.meta.url) &&
       !e.meta.url.match(/^https?:\/\/(www\.)?wikipedia\.org\/?$/),
   );
   const nonWikiEvents = allFocus.filter((e) => !e.meta.url.includes("wikipedia.org"));
@@ -101,7 +102,9 @@ function processEvents(events: NavigationEvent[], wikipediaOnly: boolean): Proce
   for (const ev of focused) {
     const url = ev.data.canonical_url ?? ev.data.url ?? ev.meta.url;
     const title = cleanTitle(ev.data.title, url);
-    if (!title || title === "Main Page" || title.startsWith("Talk:")) continue;
+    if (!title || title === "Main Page") continue;
+    // Skip Wikipedia namespace pages (Special:, Talk:, User:, Category:, etc.)
+    if (/^[A-Za-z_]+:/.test(title)) continue;
     // Deduplicate consecutive identical titles
     if (title === prevTitle) continue;
     titles.push({ title, ts: ev.ts, url });
@@ -126,18 +129,29 @@ function buildApiUrl(wikipediaOnly: boolean): string {
   return `${API_URL}?${params}`;
 }
 
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+function tsToDateStr(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dateStrRange(dateStr: string): [number, number] {
+  const start = new Date(dateStr + "T00:00:00");
+  const end = new Date(dateStr + "T23:59:59.999");
+  return [start.getTime(), end.getTime()];
+}
+
 // ── Root component ─────────────────────────────────────────────────────────────
 
 const RabbitHole = () => {
-  const [titles, setTitles] = useState<WikiTitle[]>([]);
+  const [allTitles, setAllTitles] = useState<WikiTitle[]>([]);
   const [dataStats, setDataStats] = useState<DataStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [wikipediaOnly, setWikipediaOnly] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  // fetchEvents closes over the current wikipediaOnly so the correct server
-  // filter is applied. Changing the toggle re-creates this callback which
-  // triggers a fresh network request via the useEffect below.
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -148,7 +162,7 @@ const RabbitHole = () => {
         throw new Error(`Failed to fetch navigation events: ${response.status}`);
       const data: NavigationEvent[] = await response.json();
       const result = processEvents(data, wikipediaOnly);
-      setTitles(result.titles);
+      setAllTitles(result.titles);
       setDataStats(result.stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch events");
@@ -162,15 +176,44 @@ const RabbitHole = () => {
     fetchEvents();
   }, [fetchEvents]);
 
+  const { availableDates, dateCounts } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of allTitles) {
+      const d = tsToDateStr(t.ts);
+      counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+    return {
+      availableDates: [...counts.keys()].sort(),
+      dateCounts: counts,
+    };
+  }, [allTitles]);
+
+  const filteredTitles = useMemo(() => {
+    if (!selectedDate) return allTitles;
+    const [start, end] = dateStrRange(selectedDate);
+    return allTitles.filter((t) => t.ts >= start && t.ts <= end);
+  }, [allTitles, selectedDate]);
+
+  // Reset date filter if the selected date is no longer available
+  useEffect(() => {
+    if (selectedDate && !availableDates.includes(selectedDate)) {
+      setSelectedDate(null);
+    }
+  }, [availableDates, selectedDate]);
+
   return (
     <RabbitHoleVisualization
-      titles={titles}
+      titles={filteredTitles}
       dataStats={dataStats}
       loading={loading}
       error={error}
       wikipediaOnly={wikipediaOnly}
       onToggleWikipediaOnly={() => setWikipediaOnly((v) => !v)}
       onRefresh={fetchEvents}
+      availableDates={availableDates}
+      dateCounts={dateCounts}
+      selectedDate={selectedDate}
+      onSelectDate={setSelectedDate}
     />
   );
 };
