@@ -2,10 +2,13 @@
 // ABOUTME: Port of the SmearLink rendering logic from components-preview.tsx for vanilla DOM.
 
 export interface GlowStyle {
-  baseFill: string;
-  baseFilter: string;
+  // Background layers for inline path (radial gradients on top, base fill last)
+  bgLayers: string[];
+  // Radial gradient blob layers only (for pseudo-element path)
   blobLayers: string[];
-  blobFilter: string;
+  // Base fill color for drop-shadow and ::before background
+  baseFill: string;
+  blur: number;
   vSpread: number;
   hInsetPct: number;
 }
@@ -100,8 +103,9 @@ function smearNebulaLayers(
 // Lower k = more clicks needed before glow becomes visible.
 const INTENSITY_K = 0.1;
 // Controls how many absolute clicks before the effect reaches full strength.
-// At count=1 → ~0.05, count=5 → ~0.22, count=20 → ~0.63, count=50 → ~0.92.
 const ABSOLUTE_RATE = 50;
+// Opacity reduction for inline rendering (no blur available)
+const INLINE_OPACITY_MUL = 0.4;
 
 export function computeIntensity(count: number, maxCount: number): number {
   if (count <= 0 || maxCount <= 0) return 0;
@@ -124,18 +128,24 @@ export function computeGlowStyle(
   const blur = 1.5 + t * 4;
   const baseOpacity = 0.15 + t * 0.2;
   const blobOpacity = 0.2 + t * 0.3;
-  const vSpread = t * 3;
+  const vSpread = t * 1.5;
   const hInsetPct = Math.round((1 - t) * 15);
 
+  // Full-opacity layers for pseudo-element blur path
   const layers = smearNebulaLayers(colors, baseOpacity, blobOpacity, t);
   const baseFill = layers[0];
   const blobLayers = layers.slice(1);
 
+  // Reduced-opacity layers for inline background path (no blur available)
+  const inlineLayers = smearNebulaLayers(colors, baseOpacity * INLINE_OPACITY_MUL, blobOpacity * INLINE_OPACITY_MUL, t);
+  const filtered = inlineLayers.filter((l) => l !== "transparent");
+  const bgLayers = [...filtered.slice(1), filtered[0]].filter(Boolean);
+
   return {
-    baseFill,
-    baseFilter: `blur(${blur.toFixed(1)}px)`,
+    bgLayers,
     blobLayers,
-    blobFilter: `blur(${(blur * 0.7).toFixed(1)}px)`,
+    baseFill,
+    blur,
     vSpread,
     hInsetPct,
   };
