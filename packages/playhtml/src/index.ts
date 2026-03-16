@@ -623,6 +623,10 @@ async function initPlayHTML({
   if (developmentMode) {
     setupDevUI(playhtml);
   }
+  // TODO: expose a way to activate the dev tools UI on any page at runtime
+  // (e.g. window.playhtml.showDevTools()) so it can be triggered from the
+  // browser console or from an admin panel without requiring developmentMode
+  // in the init config. This would call setupDevUI(playhtml) on demand.
 
   // Mark all discovered playhtml elements as loading before sync
   markAllElementsAsLoading();
