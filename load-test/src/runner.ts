@@ -199,4 +199,6 @@ Scenarios: ${Object.keys(scenarios).join(", ")}
   `);
 }
 
-main().catch(console.error);
+main()
+  .catch(console.error)
+  .finally(() => process.exit(0));

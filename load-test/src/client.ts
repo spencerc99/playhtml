@@ -79,7 +79,8 @@ export class VirtualClient {
   }
 
   disconnect() {
-    this.provider.disconnect();
+    this.provider.destroy();
+    this.doc.destroy();
   }
 
   isConnected() {
