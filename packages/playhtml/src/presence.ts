@@ -37,7 +37,6 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     return deps.getAwareness();
   }
 
-  // Build a fingerprint scoped to a specific channel across all users.
   function channelFingerprint(
     states: Map<number, Record<string, unknown>>,
     channel: string,
@@ -50,13 +49,11 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
 
       let channelValue: unknown;
       if (channel === "cursor") {
-        // Cursor channel reads from __playhtml_cursors__.cursor
         const cursorState = state[CURSOR_FIELD] as
           | { cursor?: unknown }
           | undefined;
         channelValue = cursorState?.cursor;
       } else {
-        // Custom channels read from __presence__[channel]
         const presence = state[PRESENCE_FIELD] as Record<string, unknown> | undefined;
         channelValue = presence?.[channel];
       }
@@ -78,7 +75,13 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       if (listeners.size === 0) return;
       const states = getAwareness().getStates();
 
-      // Check each channel listener's fingerprint independently
+      // Cache buildPresences() so multiple listeners in the same event share the result
+      let cachedPresences: Map<string, PresenceView> | null = null;
+      const getPresencesOnce = () => {
+        if (!cachedPresences) cachedPresences = buildPresences();
+        return cachedPresences;
+      };
+
       for (const listener of listeners.values()) {
         const fingerprint = channelFingerprint(
           states as Map<number, Record<string, unknown>>,
@@ -86,7 +89,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
         );
         if (fingerprint === listener.lastFingerprint) continue;
         listener.lastFingerprint = fingerprint;
-        listener.callback(buildPresences());
+        listener.callback(getPresencesOnce());
       }
     });
   }
@@ -115,6 +118,16 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     return view;
   }
 
+  // Stable ID for self, consistent with getStableIdForAwareness
+  function getSelfStableId(): string {
+    const awareness = getAwareness();
+    const localState = awareness.getLocalState();
+    if (localState) {
+      return getStableIdForAwareness(localState, awareness.clientID);
+    }
+    return deps.getPlayerIdentity().publicKey;
+  }
+
   function buildPresences(): Map<string, PresenceView> {
     const presences = new Map<string, PresenceView>();
     const awareness = getAwareness();
@@ -133,20 +146,11 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
 
     // Ensure self is always present even if awareness hasn't synced
     if (!selfSeen) {
-      const myIdentity = deps.getPlayerIdentity();
       const localState = awareness.getLocalState() ?? {};
-      const customChannels = (localState[PRESENCE_FIELD] as Record<string, unknown>) ?? {};
-      const view: PresenceView = {
-        playerIdentity: myIdentity,
-        cursor: null,
-        isMe: true,
-      };
-      for (const [key, value] of Object.entries(customChannels)) {
-        if (!SYSTEM_FIELDS.has(key) && value != null) {
-          (view as Record<string, unknown>)[key] = value;
-        }
-      }
-      presences.set(myIdentity.publicKey, view);
+      const view = buildViewFromState(localState, true);
+      // Use identity for playerIdentity since cursor state may not be set
+      view.playerIdentity = deps.getPlayerIdentity();
+      presences.set(getSelfStableId(), view);
     }
 
     return presences;

@@ -156,7 +156,10 @@ let presenceAPI: PresenceAPI | null = null;
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
-const yObserverByKey = new Map<string, (events: any[]) => void>();
+const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
+// Page data channel tracking, scoped here so init() can clear them
+const pageDataRefCounts = new Map<string, number>();
+const pageDataListeners = new Map<string, Set<(data: any) => void>>();
 // Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
 // Allows us to distinguish programmatic remote-applied changes from local user writes.
 // moved below (single declaration)
@@ -1013,6 +1016,8 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
     storePlay: store.play,
     proxyByTagAndId,
     yObserverByKey,
+    channelRefCounts: pageDataRefCounts,
+    channelListeners: pageDataListeners,
   });
 }
 

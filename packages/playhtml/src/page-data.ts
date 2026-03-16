@@ -8,11 +8,6 @@ import type * as Y from "yjs";
 
 const PAGE_TAG = "__page__";
 
-// Per-channel ref count and observer tracking
-const channelRefCounts = new Map<string, number>();
-const channelObservers = new Map<string, () => void>();
-const channelListeners = new Map<string, Set<(data: any) => void>>();
-
 export { PAGE_TAG };
 
 interface PageDataDeps {
@@ -21,7 +16,10 @@ interface PageDataDeps {
   doc: Y.Doc;
   storePlay: Partial<Record<string, Record<string, unknown>>>;
   proxyByTagAndId: Map<string, Map<string, any>>;
-  yObserverByKey: Map<string, (events: any[]) => void>;
+  yObserverByKey: Map<string, (...args: unknown[]) => void>;
+  // Per-init-cycle tracking, scoped to avoid leaking across init() calls
+  channelRefCounts: Map<string, number>;
+  channelListeners: Map<string, Set<(data: any) => void>>;
 }
 
 export function createPageDataChannel<T>(
@@ -29,7 +27,10 @@ export function createPageDataChannel<T>(
   defaultValue: T,
   deps: PageDataDeps,
 ): PageDataChannel<T> {
-  const { ensureProxy, getProxy, doc, storePlay, proxyByTagAndId, yObserverByKey } = deps;
+  const {
+    ensureProxy, getProxy, doc, storePlay, proxyByTagAndId,
+    yObserverByKey, channelRefCounts, channelListeners,
+  } = deps;
 
   // Ensure the store entry and proxy exist
   storePlay[PAGE_TAG] ??= {};
@@ -49,7 +50,6 @@ export function createPageDataChannel<T>(
   channelRefCounts.set(name, refCount);
 
   if (refCount === 1) {
-    // Attach deep observer on the Yjs value
     const yVal = getYjsValue(storePlay[PAGE_TAG]?.[name]);
     if (yVal && typeof (yVal as any).observeDeep === "function") {
       let scheduled = false;
@@ -61,16 +61,13 @@ export function createPageDataChannel<T>(
           const currentProxy = storePlay[PAGE_TAG]?.[name];
           if (!currentProxy) return;
           const plain = clonePlain(currentProxy) as T;
-          // Notify all listeners across all handles
           for (const cb of listeners) {
             cb(plain);
           }
         });
       };
       (yVal as any).observeDeep(observer);
-      const key = `${PAGE_TAG}:${name}`;
-      yObserverByKey.set(key, observer);
-      channelObservers.set(name, observer);
+      yObserverByKey.set(`${PAGE_TAG}:${name}`, observer);
     }
   }
 
@@ -112,33 +109,28 @@ export function createPageDataChannel<T>(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
-      // Remove this handle's listeners
       for (const cb of handleListeners) {
         listeners.delete(cb);
       }
       handleListeners.clear();
 
-      // Decrement ref count
       const remaining = (channelRefCounts.get(name) ?? 1) - 1;
       channelRefCounts.set(name, remaining);
 
       if (remaining <= 0) {
-        // Last handle — clean up observer and proxy
         channelRefCounts.delete(name);
         channelListeners.delete(name);
 
         const key = `${PAGE_TAG}:${name}`;
-        const obs = channelObservers.get(name);
+        const obs = yObserverByKey.get(key);
         if (obs) {
           const yVal = getYjsValue(storePlay[PAGE_TAG]?.[name]);
           if (yVal && typeof (yVal as any).unobserveDeep === "function") {
             (yVal as any).unobserveDeep(obs);
           }
           yObserverByKey.delete(key);
-          channelObservers.delete(name);
         }
 
-        // Clean up proxy
         const tagMap = proxyByTagAndId.get(PAGE_TAG);
         if (tagMap) {
           tagMap.delete(name);
