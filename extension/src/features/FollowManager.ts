@@ -323,31 +323,39 @@ export class FollowManager {
   // --- Scroll tether ---
 
   private startScrollTether(): void {
-    // Suppress the user-override detection for scroll events we cause
     let programmaticScroll = false;
+    let lastTargetY: number | null = null;
+
     const onScroll = () => {
       if (programmaticScroll) return;
-      this.userOverrideUntil = Date.now() + 3000;
+      // Follower scrolled manually — pause until followed cursor moves
+      this.userOverrideUntil = Date.now() + 60000;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     this.cleanups.push(() => window.removeEventListener("scroll", onScroll));
 
     const tick = () => {
       this.tetherRafId = requestAnimationFrame(tick);
-
       if (!this.followState) return;
-      if (Date.now() < this.userOverrideUntil) return;
 
       const presences = this.presence.getPresences();
       const target = presences.get(this.followState.targetPublicKey);
       if (!target?.cursor) return;
 
-      // Keep the target cursor centered in viewport
       const targetY = target.cursor.y;
+
+      // If the followed person's cursor moved vertically, re-engage tether
+      if (lastTargetY !== null && Math.abs(targetY - lastTargetY) > 5) {
+        this.userOverrideUntil = 0;
+      }
+      lastTargetY = targetY;
+
+      if (Date.now() < this.userOverrideUntil) return;
+
+      // Keep target cursor centered in viewport
       const desiredScroll = targetY - window.innerHeight / 2;
       const diff = desiredScroll - window.scrollY;
 
-      // Smooth lerp toward desired position
       if (Math.abs(diff) > 2) {
         programmaticScroll = true;
         window.scrollTo({
