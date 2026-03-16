@@ -24,25 +24,34 @@ describe("playhtml.presence", () => {
 
   it("setMyPresence sets a named channel", () => {
     playhtml.presence.setMyPresence("test-channel", { value: 42 });
-    // We can't directly read our own presence from getPresences (self excluded),
-    // but we can verify it doesn't throw
   });
 
   it("setMyPresence with null clears a channel", () => {
     playhtml.presence.setMyPresence("test-channel", { value: 42 });
     playhtml.presence.setMyPresence("test-channel", null);
-    // Should not throw
   });
 
-  it("getPresences returns a Map (empty in single-client test)", () => {
+  it("getPresences includes self with isMe flag", () => {
     const presences = playhtml.presence.getPresences();
     expect(presences).toBeInstanceOf(Map);
-    // In a single-client test, self is excluded, so map should be empty
-    expect(presences.size).toBe(0);
+    // Single-client test: should have exactly one entry (self)
+    expect(presences.size).toBe(1);
+    const self = Array.from(presences.values())[0];
+    expect(self.isMe).toBe(true);
   });
 
-  it("onPresenceChange returns an unsubscribe function", () => {
-    const unsub = playhtml.presence.onPresenceChange(() => {});
+  it("getPresences includes custom presence channels", () => {
+    playhtml.presence.setMyPresence("status", { text: "online" });
+    const presences = playhtml.presence.getPresences();
+    const self = Array.from(presences.values()).find((p) => p.isMe)!;
+    expect((self as any).status).toEqual({ text: "online" });
+
+    // Clean up
+    playhtml.presence.setMyPresence("status", null);
+  });
+
+  it("onPresenceChange requires a channel and returns unsubscribe", () => {
+    const unsub = playhtml.presence.onPresenceChange("status", () => {});
     expect(unsub).toBeTypeOf("function");
     unsub();
   });

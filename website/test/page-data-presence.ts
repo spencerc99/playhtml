@@ -83,11 +83,10 @@ async function main() {
   const statusListEl = document.getElementById("statusList")!;
   const debugStateEl = document.getElementById("debugState")!;
 
-  function renderPresences(presences: Map<string, any>) {
-    // User list
+  function renderUserList(presences: Map<string, any>) {
     if (presences.size === 0) {
       userListEl.innerHTML =
-        '<li style="color: #8a8279;">(no other users)</li>';
+        '<li style="color: #8a8279;">(no users)</li>';
     } else {
       userListEl.innerHTML = "";
       presences.forEach((p, id) => {
@@ -95,21 +94,24 @@ async function main() {
         const color =
           p.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#999";
         const name = p.playerIdentity?.name ?? id.slice(0, 12) + "...";
+        const meTag = p.isMe ? " (you)" : "";
         const cursorInfo = p.cursor
           ? ` [cursor: ${Math.round(p.cursor.x)}, ${Math.round(p.cursor.y)}]`
           : "";
-        li.innerHTML = `<span class="color-dot" style="background:${color}"></span>${name}${cursorInfo}`;
+        li.innerHTML = `<span class="color-dot" style="background:${color}"></span>${name}${meTag}${cursorInfo}`;
         userListEl.appendChild(li);
       });
     }
+  }
 
-    // Status list
+  function renderStatuses(presences: Map<string, any>) {
     const statuses: string[] = [];
     presences.forEach((p, id) => {
       if (p.status) {
         const name =
           p.playerIdentity?.name ?? id.slice(0, 12) + "...";
-        statuses.push(`${name}: ${p.status.text}`);
+        const meTag = p.isMe ? " (you)" : "";
+        statuses.push(`${name}${meTag}: ${p.status.text}`);
       }
     });
     if (statuses.length === 0) {
@@ -120,8 +122,10 @@ async function main() {
         .map((s) => `<li>${s}</li>`)
         .join("");
     }
+  }
 
-    // Debug
+  function renderDebug() {
+    const presences = playhtml.presence.getPresences();
     const debugData: Record<string, any> = {};
     presences.forEach((p, id) => {
       debugData[id.slice(0, 12)] = p;
@@ -138,8 +142,22 @@ async function main() {
   }
 
   // Initial render
-  renderPresences(playhtml.presence.getPresences());
-  playhtml.presence.onPresenceChange(renderPresences);
+  const initialPresences = playhtml.presence.getPresences();
+  renderUserList(initialPresences);
+  renderStatuses(initialPresences);
+  renderDebug();
+
+  // Subscribe to cursor changes for user list (includes position)
+  playhtml.presence.onPresenceChange("cursor", (presences) => {
+    renderUserList(presences);
+    renderDebug();
+  });
+
+  // Subscribe to status changes
+  playhtml.presence.onPresenceChange("status", (presences) => {
+    renderStatuses(presences);
+    renderDebug();
+  });
 
   // --- Presence: Custom Channels ---
 

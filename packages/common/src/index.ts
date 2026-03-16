@@ -230,12 +230,14 @@ export interface PageDataChannel<T> {
 export type PresenceView<T extends Record<string, unknown> = Record<string, unknown>> = {
   playerIdentity?: PlayerIdentity;
   cursor: Cursor | null;
+  isMe: boolean;
 } & T;
 
 export interface PresenceAPI {
   setMyPresence(channel: string, data: unknown): void;
   getPresences(): Map<string, PresenceView>;
   onPresenceChange(
+    channel: string,
     callback: (presences: Map<string, PresenceView>) => void,
   ): () => void;
   getMyIdentity(): PlayerIdentity;
