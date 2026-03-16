@@ -1,0 +1,128 @@
+name: Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Scenario to run"
+        required: true
+        type: choice
+        options:
+          - cursor-storm
+          - fridge
+          - mirror
+          - live-chat
+      users:
+        description: "Total users (split across workers)"
+        required: true
+        default: "500"
+      workers:
+        description: "Number of parallel workers"
+        required: true
+        default: "4"
+        type: choice
+        options:
+          - "2"
+          - "4"
+          - "8"
+      duration:
+        description: "Hold duration in seconds"
+        required: true
+        default: "60"
+      ramp_up:
+        description: "Ramp-up time in seconds"
+        required: true
+        default: "90"
+      target:
+        description: "Target server"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - prod
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      room_id: ${{ steps.room.outputs.id }}
+      users_per_worker: ${{ steps.split.outputs.users_per_worker }}
+      worker_indices: ${{ steps.split.outputs.indices }}
+    steps:
+      - name: Generate shared room ID
+        id: room
+        run: echo "id=load-test-${{ inputs.scenario }}-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Split users across workers
+        id: split
+        run: |
+          TOTAL=${{ inputs.users }}
+          WORKERS=${{ inputs.workers }}
+          PER_WORKER=$((TOTAL / WORKERS))
+          echo "users_per_worker=$PER_WORKER" >> "$GITHUB_OUTPUT"
+          # Build JSON array of worker indices: [0, 1, 2, ...]
+          INDICES=$(python3 -c "import json; print(json.dumps(list(range($WORKERS))))")
+          echo "indices=$INDICES" >> "$GITHUB_OUTPUT"
+
+  worker:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker_index: ${{ fromJson(needs.setup.outputs.worker_indices) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: cd load-test && bun install
+
+      - name: Run load test
+        run: |
+          bun load-test/src/runner.ts \
+            --scenario ${{ inputs.scenario }} \
+            --users ${{ needs.setup.outputs.users_per_worker }} \
+            --duration ${{ inputs.duration }} \
+            --ramp-up ${{ inputs.ramp_up }} \
+            --target ${{ inputs.target }} \
+            --room ${{ needs.setup.outputs.room_id }} \
+            2>&1 | tee results.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-worker-${{ matrix.worker_index }}
+          path: |
+            results.txt
+            load-test/data/runs.db
+
+  summary:
+    needs: [setup, worker]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: results-worker-*
+          merge-multiple: false
+
+      - name: Print combined results
+        run: |
+          echo "=== Load Test Results ==="
+          echo "Scenario: ${{ inputs.scenario }}"
+          echo "Target: ${{ inputs.target }}"
+          echo "Total users: ${{ inputs.users }} across ${{ inputs.workers }} workers"
+          echo "Room: ${{ needs.setup.outputs.room_id }}"
+          echo ""
+          for dir in results-worker-*/; do
+            WORKER=$(basename "$dir")
+            echo "--- $WORKER ---"
+            cat "$dir/results.txt" 2>/dev/null || echo "(no output)"
+            echo ""
+          done
