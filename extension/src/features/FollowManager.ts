@@ -3,6 +3,7 @@
 
 import type { PresenceAPI } from "@playhtml/common";
 import { isWikiArticleUrl } from "../custom-sites/wikipedia";
+import { OffscreenIndicator } from "./OffscreenIndicator";
 
 export interface FollowState {
   targetPublicKey: string;
@@ -69,6 +70,13 @@ export class FollowManager {
   // Mutual follow callback
   private onMutualFollow: ((active: boolean) => void) | null = null;
 
+  // "Being followed" state
+  private followerBarElement: HTMLElement | null = null;
+  private currentFollowers = new Set<string>();
+
+  // Off-screen cursor indicators
+  private offscreenIndicator = new OffscreenIndicator();
+
   constructor(private presence: PresenceAPI) {}
 
   init(): void {
@@ -91,6 +99,8 @@ export class FollowManager {
     this.cleanups.push(() =>
       document.removeEventListener("keydown", onKeyDown),
     );
+
+    this.watchForFollowers();
   }
 
   // Called by cursor options onProximityEntered
@@ -130,6 +140,10 @@ export class FollowManager {
     this.removeFollowUI();
     this.removeNavToast();
     this.stopScrollTether();
+    this.offscreenIndicator.destroy();
+    this.followerBarElement?.remove();
+    this.followerBarElement = null;
+    this.currentFollowers.clear();
     for (const cleanup of this.cleanups) cleanup();
     this.cleanups = [];
   }
@@ -203,6 +217,7 @@ export class FollowManager {
     this.removeFollowUI();
     this.removeNavToast();
     this.stopScrollTether();
+    this.offscreenIndicator.destroy();
   }
 
   // --- Hint UI ---
@@ -343,6 +358,15 @@ export class FollowManager {
       if (!target?.cursor) return;
 
       const targetY = target.cursor.y;
+
+      // Update off-screen indicator for the followed cursor
+      const targetClientY = targetY - window.scrollY;
+      this.offscreenIndicator.update(
+        this.followState.targetPublicKey,
+        target.cursor.x,
+        targetClientY,
+        this.followState.targetColor,
+      );
 
       // If the followed person's cursor moved vertically, re-engage tether
       if (lastTargetY !== null && Math.abs(targetY - lastTargetY) > 5) {
@@ -528,5 +552,92 @@ export class FollowManager {
       this.statusBarElement.append(muted("lost them"));
       setTimeout(() => this.removeFollowUI(), 2000);
     }
+  }
+
+  // --- "Being followed" detection ---
+
+  private watchForFollowers(): void {
+    const check = () => {
+      const presences = this.presence.getPresences();
+      const myKey = this.presence.getMyIdentity().publicKey;
+      const followers = new Set<string>();
+
+      presences.forEach((p, id) => {
+        if ((p as any).following === myKey && !p.isMe) {
+          followers.add(id);
+        }
+      });
+
+      // Detect changes
+      const gained = [...followers].filter(id => !this.currentFollowers.has(id));
+      const lost = [...this.currentFollowers].filter(id => !followers.has(id));
+
+      if (gained.length > 0 || lost.length > 0) {
+        // Remove off-screen indicators for followers who left
+        for (const id of lost) {
+          this.offscreenIndicator.remove(id);
+        }
+        this.currentFollowers = followers;
+        this.updateFollowerBar(presences);
+      }
+
+      // Update off-screen indicators for current followers
+      presences.forEach((p, id) => {
+        if ((p as any).following === myKey && !p.isMe && p.cursor) {
+          const color = p.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#8a8279";
+          const clientY = p.cursor.y - window.scrollY;
+          this.offscreenIndicator.update(id, p.cursor.x, clientY, color);
+        }
+      });
+    };
+
+    const interval = setInterval(check, 500);
+    this.cleanups.push(() => clearInterval(interval));
+  }
+
+  private updateFollowerBar(presences: Map<string, any>): void {
+    if (this.currentFollowers.size === 0) {
+      this.followerBarElement?.remove();
+      this.followerBarElement = null;
+      return;
+    }
+
+    if (!this.followerBarElement) {
+      this.followerBarElement = document.createElement("div");
+      Object.assign(this.followerBarElement.style, {
+        position: "fixed",
+        top: "16px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
+        fontSize: "11px",
+        color: "#8a8279",
+        background: "rgba(250, 247, 242, 0.9)",
+        border: "1px solid rgba(90, 78, 65, 0.15)",
+        borderRadius: "4px",
+        padding: "4px 10px",
+        zIndex: "2147483645",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        transition: "opacity 0.3s ease",
+        opacity: "0",
+      });
+      document.body.appendChild(this.followerBarElement);
+      requestAnimationFrame(() => {
+        if (this.followerBarElement) this.followerBarElement.style.opacity = "1";
+      });
+    }
+
+    this.followerBarElement.textContent = "";
+    for (const id of this.currentFollowers) {
+      const p = presences.get(id);
+      const color = p?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#8a8279";
+      this.followerBarElement.append(colorDot(color, { width: "6px", height: "6px" }));
+    }
+    const count = this.currentFollowers.size;
+    this.followerBarElement.append(
+      muted(`${count} following you`, { fontSize: "11px" }),
+    );
   }
 }
