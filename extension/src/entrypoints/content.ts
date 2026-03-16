@@ -877,12 +877,22 @@ export default defineContentScript({
           return;
         }
 
+        // Pre-import FollowManager so we can wire proximity callbacks into init
+        const { FollowManager } = await import("../features/FollowManager");
+        let followManager: InstanceType<typeof FollowManager> | null = null;
+
         // Initialize PlayHTML for presence-only — no element capabilities needed
         const { playhtml } = await import("playhtml");
         await playhtml.init({
           cursors: {
             enabled: true,
             playerIdentity: this.playerIdentity,
+            onProximityEntered: (identity: any) => {
+              followManager?.onProximityEntered(identity);
+            },
+            onProximityLeft: (connectionId: string) => {
+              followManager?.onProximityLeft(connectionId);
+            },
           },
         });
         this.listenForPresenceCount();
@@ -890,20 +900,16 @@ export default defineContentScript({
         if (location.hostname.endsWith("wikipedia.org")) {
           const { LinkGlowManager } = await import("../features/LinkGlowManager");
           const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-          this.linkGlowManager = new LinkGlowManager(color);
-          await this.linkGlowManager.init();
+          this.linkGlowManager = new LinkGlowManager(color, playhtml.createPageData);
+          this.linkGlowManager.init();
         }
 
         // Follow manager for cursor following
-        const { FollowManager } = await import("../features/FollowManager");
-        this.followManager = new FollowManager(
-          () => (window as any).cursors?.presences ?? new Map(),
-          () => this.playerIdentity?.publicKey ?? "",
-          (fields) => (window as any).cursors?.setMyAwareness?.(fields),
-        );
-        this.followManager.init();
+        followManager = new FollowManager(playhtml.presence);
+        followManager.init();
+        this.followManager = followManager;
 
-        this.followManager.setMutualFollowCallback((active) => {
+        followManager.setMutualFollowCallback((active) => {
           if ("cursors" in window) {
             (window as any).cursors.enableChat = active;
           }
@@ -916,11 +922,9 @@ export default defineContentScript({
           try {
             const url = new URL(link.href);
             if (url.origin === location.origin) {
-              (window as any).cursors?.setMyAwareness?.({
-                navigatingTo: {
-                  url: url.pathname,
-                  title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
-                },
+              playhtml.presence.setMyPresence("navigatingTo", {
+                url: url.pathname,
+                title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
               });
             }
           } catch { /* ignore invalid URLs */ }

@@ -1,5 +1,7 @@
 // ABOUTME: Handles the "follow someone" interaction on shared pages.
-// ABOUTME: Proximity detection, follow state, scroll tethering, and cross-page navigation.
+// ABOUTME: Follow state, scroll tethering, and cross-page navigation via presence API.
+
+import type { PresenceAPI } from "@playhtml/common";
 
 export interface FollowState {
   targetPublicKey: string;
@@ -9,7 +11,6 @@ export interface FollowState {
   userOverrideUntil: number;
 }
 
-const PROXIMITY_THRESHOLD = 400; // px
 const HINT_DISMISS_MS = 4000;
 
 function colorDot(color: string, extraStyles?: Partial<CSSStyleDeclaration>): HTMLSpanElement {
@@ -51,7 +52,6 @@ export class FollowManager {
   private hintElement: HTMLElement | null = null;
   private hintTimeout: ReturnType<typeof setTimeout> | null = null;
   private nearestTarget: { publicKey: string; color: string } | null = null;
-  private mousePos = { x: 0, y: 0 };
   private cleanups: (() => void)[] = [];
 
   // UI elements
@@ -68,11 +68,7 @@ export class FollowManager {
   // Mutual follow callback
   private onMutualFollow: ((active: boolean) => void) | null = null;
 
-  constructor(
-    private getPresences: () => Map<string, any>,
-    private getMyPublicKey: () => string,
-    private setMyAwareness: (fields: Record<string, any>) => void,
-  ) {}
+  constructor(private presence: PresenceAPI) {}
 
   init(): void {
     // Check for stored follow intent from cross-page navigation
@@ -87,22 +83,33 @@ export class FollowManager {
       }
     }
 
-    // Mouse tracking
-    const onMouseMove = (e: MouseEvent) => {
-      this.mousePos = { x: e.pageX, y: e.pageY };
-      this.checkProximity();
-    };
-    document.addEventListener("mousemove", onMouseMove);
-    this.cleanups.push(() =>
-      document.removeEventListener("mousemove", onMouseMove),
-    );
-
     // Keyboard handler
     const onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
     document.addEventListener("keydown", onKeyDown);
     this.cleanups.push(() =>
       document.removeEventListener("keydown", onKeyDown),
     );
+  }
+
+  // Called by cursor options onProximityEntered
+  onProximityEntered(identity: any): void {
+    if (this.followState) return;
+    const publicKey = identity?.publicKey;
+    const color = identity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+    if (!publicKey) return;
+
+    if (!this.hintShownForKeys.has(publicKey)) {
+      this.nearestTarget = { publicKey, color };
+      this.hintShownForKeys.add(publicKey);
+      this.showHint(window.innerWidth / 2, window.innerHeight - 100, color);
+    }
+  }
+
+  // Called by cursor options onProximityLeft
+  onProximityLeft(connectionId: string): void {
+    if (this.nearestTarget?.publicKey === connectionId) {
+      this.nearestTarget = null;
+    }
   }
 
   destroy(): void {
@@ -116,36 +123,6 @@ export class FollowManager {
 
   setMutualFollowCallback(cb: (active: boolean) => void): void {
     this.onMutualFollow = cb;
-  }
-
-  private checkProximity(): void {
-    if (this.followState) return;
-
-    const presences = this.getPresences();
-    const myKey = this.getMyPublicKey();
-    let nearest: { key: string; color: string; dist: number } | null = null;
-
-    for (const [stableId, presence] of presences) {
-      if (stableId === myKey || !presence.cursor) continue;
-      const dx = presence.cursor.x - this.mousePos.x;
-      const dy = presence.cursor.y - this.mousePos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < PROXIMITY_THRESHOLD) {
-        const color =
-          presence.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-        if (!nearest || dist < nearest.dist) {
-          nearest = { key: stableId, color, dist };
-        }
-      }
-    }
-
-    if (nearest && !this.hintShownForKeys.has(nearest.key)) {
-      this.nearestTarget = { publicKey: nearest.key, color: nearest.color };
-      this.hintShownForKeys.add(nearest.key);
-      this.showHint(this.mousePos.x, this.mousePos.y, nearest.color);
-    } else if (!nearest) {
-      this.nearestTarget = null;
-    }
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -201,7 +178,7 @@ export class FollowManager {
       scrollTetherActive: true,
       userOverrideUntil: 0,
     };
-    this.setMyAwareness({ following: publicKey });
+    this.presence.setMyPresence("following", publicKey);
     this.showFollowUI();
     this.startScrollTether();
     this.watchTargetNavigation();
@@ -209,7 +186,7 @@ export class FollowManager {
 
   private unfollow(): void {
     this.followState = null;
-    this.setMyAwareness({ following: undefined });
+    this.presence.setMyPresence("following", null);
     this.removeFollowUI();
     this.removeNavToast();
     this.stopScrollTether();
@@ -345,7 +322,7 @@ export class FollowManager {
       if (!this.followState) return;
       if (Date.now() < this.userOverrideUntil) return;
 
-      const presences = this.getPresences();
+      const presences = this.presence.getPresences();
       const target = presences.get(this.followState.targetPublicKey);
       if (!target?.cursor) return;
 
@@ -377,23 +354,24 @@ export class FollowManager {
   private watchTargetNavigation(): void {
     const check = () => {
       if (!this.followState) return;
-      const presences = this.getPresences();
+      const presences = this.presence.getPresences();
       const target = presences.get(this.followState.targetPublicKey);
 
-      if (target?.navigatingTo && !this.pendingNavUrl) {
-        this.showNavToast(target.navigatingTo.url, target.navigatingTo.title);
+      if ((target as any)?.navigatingTo && !this.pendingNavUrl) {
+        const nav = (target as any).navigatingTo;
+        this.showNavToast(nav.url, nav.title);
       }
 
       // Mutual follow detection
       if (
-        target?.following === this.getMyPublicKey() &&
+        (target as any)?.following === this.presence.getMyIdentity().publicKey &&
         this.followState &&
         !this.followState.mutualFollow
       ) {
         this.followState.mutualFollow = true;
         this.onMutualFollowStart();
       } else if (
-        target?.following !== this.getMyPublicKey() &&
+        (target as any)?.following !== this.presence.getMyIdentity().publicKey &&
         this.followState?.mutualFollow
       ) {
         this.followState.mutualFollow = false;

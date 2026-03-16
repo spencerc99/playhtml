@@ -2,6 +2,7 @@
 // ABOUTME: Tracks click counts and recent player colors per destination link.
 
 import { computeGlowStyle } from "./link-glow-renderer";
+import type { PageDataChannel } from "@playhtml/common";
 
 export interface LinkClickEntry {
   count: number;
@@ -24,42 +25,35 @@ export class LinkGlowManager {
   private observer: IntersectionObserver | null = null;
   private visibleLinks = new Set<HTMLAnchorElement>();
   private cleanups: (() => void)[] = [];
-  private handler: any = null;
+  private channel: PageDataChannel<PageLinkData> | null = null;
   private originalStyles = new Map<HTMLAnchorElement, Record<string, string>>();
   private linkClasses = new Map<HTMLAnchorElement, string>();
   private styleEl: HTMLStyleElement | null = null;
 
-  constructor(private playerColor: string) {}
+  constructor(
+    private playerColor: string,
+    private createPageData: <T>(name: string, defaultValue: T) => PageDataChannel<T>,
+  ) {}
 
-  async init(): Promise<void> {
-    const anchor = document.createElement("div");
-    anchor.id = `playhtml-link-glow-${encodeURIComponent(location.pathname)}`;
-    anchor.setAttribute("can-play", "");
-    anchor.style.display = "none";
-    document.body.appendChild(anchor);
-
-    // Injected stylesheet for pseudo-element blur on single-line links
+  init(): void {
     this.styleEl = document.createElement("style");
     this.styleEl.id = "playhtml-link-glow-styles";
     document.head.appendChild(this.styleEl);
 
-    const el = anchor as any;
-    el.defaultData = { links: {}, totalClicks: 0 } as PageLinkData;
-    el.updateElement = ({ data }: { data: PageLinkData }) => {
+    this.channel = this.createPageData<PageLinkData>(
+      `link-glows:${location.pathname}`,
+      { links: {}, totalClicks: 0 },
+    );
+
+    this.channel.onUpdate((data) => {
       this.data = data;
       this.renderGlows();
-    };
-    el.updateElementAwareness = el.updateElement;
+    });
 
-    const { playhtml } = await import("playhtml");
-    await playhtml.setupPlayElementForTag(anchor, "can-play");
-
-    this.handler =
-      playhtml.elementHandlers?.get("can-play")?.get(anchor.id) ?? null;
+    this.data = this.channel.getData();
 
     this.cleanups.push(() => {
-      playhtml.removePlayElement(anchor);
-      anchor.remove();
+      this.channel?.destroy();
       this.styleEl?.remove();
     });
 
@@ -67,8 +61,8 @@ export class LinkGlowManager {
   }
 
   recordClick(destPath: string): void {
-    if (!this.handler) return;
-    this.handler.setData((draft: PageLinkData) => {
+    if (!this.channel) return;
+    this.channel.setData((draft: PageLinkData) => {
       if (!draft.links[destPath]) {
         draft.links[destPath] = { count: 0, recentColors: [] };
       }
@@ -279,6 +273,6 @@ export class LinkGlowManager {
     this.visibleLinks.clear();
     this.originalStyles.clear();
     this.linkClasses.clear();
-    this.handler = null;
+    this.channel = null;
   }
 }
