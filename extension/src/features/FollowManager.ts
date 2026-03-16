@@ -78,6 +78,7 @@ export class FollowManager {
       sessionStorage.removeItem("playhtml-follow-target");
       try {
         const { publicKey, color } = JSON.parse(stored);
+        this.presence.setMyPresence("navigatingTo", null);
         setTimeout(() => this.follow(publicKey, color), 1000);
       } catch {
         /* ignore invalid stored data */
@@ -370,17 +371,23 @@ export class FollowManager {
   // --- Navigation watching ---
 
   private watchTargetNavigation(): void {
+    let lastSeenNav: { url: string; title: string } | null = null;
+
     const check = () => {
       if (!this.followState) return;
       const presences = this.presence.getPresences();
       const target = presences.get(this.followState.targetPublicKey);
 
+      // Track the latest navigatingTo value
       const nav = (target as any)?.navigatingTo;
-      if (nav && !this.pendingNavUrl) {
-        if (isWikiArticleUrl(nav.url)) {
-          this.showNavToast(nav.url, nav.title);
-        } else {
-          this.showLeftToast();
+      if (nav) {
+        lastSeenNav = nav;
+        if (!this.pendingNavUrl) {
+          if (isWikiArticleUrl(nav.url)) {
+            this.showNavToast(nav.url, nav.title);
+          } else {
+            this.showLeftToast();
+          }
         }
       }
 
@@ -400,14 +407,22 @@ export class FollowManager {
         this.onMutualFollowEnd();
       }
 
-      // Target went offline
+      // Target went offline — check lastSeenNav before declaring lost
       if (!target && this.followState) {
-        this.showLostToast();
-        this.unfollow();
+        if (lastSeenNav && !this.pendingNavUrl) {
+          if (isWikiArticleUrl(lastSeenNav.url)) {
+            this.showNavToast(lastSeenNav.url, lastSeenNav.title);
+          } else {
+            this.showLeftToast();
+          }
+        } else if (!this.pendingNavUrl) {
+          this.showLostToast();
+          this.unfollow();
+        }
       }
     };
 
-    const interval = setInterval(check, 200);
+    const interval = setInterval(check, 150);
     this.cleanups.push(() => clearInterval(interval));
   }
 
