@@ -85,7 +85,7 @@ function saveSettings(mode: Mode, speed: SpeedKey) {
   } catch { /* ignore */ }
 }
 
-const RANDOMIZE_ORDER = true;
+const RANDOMIZE_ORDER = false;
 
 const VISIBLE_COUNT = 10;
 const FONT_SIZE_MAX = 64;
@@ -320,11 +320,9 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
 
   // ── Wall mode rAF loop ────────────────────────────────────────────────────
 
-  // Find the largest font size where the joined text fits the canvas area.
   // Find the font size where the text fills the viewport as a tight rectangle.
-  // The text repeats to fill all available lines, so the last row is always full.
-  // We want the largest font where the number of lines that fit the height
-  // is enough to contain at least one full copy of the text.
+  // We want the text to just barely overflow rather than leaving empty rows,
+  // so the last visible row is always full or nearly full.
   const fitFontSize = useCallback((
     ctx: CanvasRenderingContext2D,
     text: string,
@@ -332,13 +330,16 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
     H: number,
     padding: number,
   ): number => {
-    let lo = WALL_FONT_MIN;
-    let hi = WALL_FONT_MAX;
-    while (hi - lo > 1) {
-      const mid = Math.floor((lo + hi) / 2);
-      const lineH = mid * WALL_LINE_HEIGHT;
-      ctx.font = `700 ${mid}px 'Lora', 'Georgia', serif`;
-      // Count how many lines one copy of the text needs
+    // For each candidate font size, measure how well the text fills the viewport.
+    // We want: textLines ~= maxLines. Prefer slight overflow (textLines > maxLines)
+    // over significant underfill (textLines << maxLines).
+    let bestSize = WALL_FONT_MIN;
+    let bestScore = Infinity;
+
+    for (let size = WALL_FONT_MIN; size <= WALL_FONT_MAX; size++) {
+      const lineH = size * WALL_LINE_HEIGHT;
+      ctx.font = `700 ${size}px 'Lora', 'Georgia', serif`;
+
       let curX = padding;
       let lines = 1;
       for (let i = 0; i < text.length; i++) {
@@ -349,12 +350,24 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
         }
         curX += cw;
       }
-      // How many lines fit the viewport?
+
       const maxLines = Math.floor((H - padding) / lineH);
-      // The text must fit at least once within the available lines
-      if (lines <= maxLines) lo = mid; else hi = mid;
+      if (maxLines < 1) continue;
+
+      // How far off from a perfect fill? Negative = overflow, positive = underfill.
+      const diff = maxLines - lines;
+
+      // Score: prefer slight overflow (diff = -1 or 0) over underfill (diff = +3).
+      // Penalize underfill more heavily than overflow.
+      const score = diff >= 0 ? diff * 2 : Math.abs(diff);
+
+      if (score < bestScore || (score === bestScore && size > bestSize)) {
+        bestScore = score;
+        bestSize = size;
+      }
     }
-    return lo;
+
+    return bestSize;
   }, []);
 
   useEffect(() => {
@@ -428,7 +441,9 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       ctx.textBaseline = "top";
       ctx.textAlign = "left";
 
-      // Build the visible text from the current starting title, looping to fill viewport
+      // Build the visible text from the current starting title.
+      // During reveal, show titles one at a time (no repeat).
+      // During scroll, loop to fill the viewport.
       const startIdx = allRevealed ? wallStartIdxRef.current : 0;
       const revealedCount = allRevealed ? titles.length : wallRevealedRef.current;
 
@@ -437,9 +452,13 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       let i = 0;
       let done = false;
 
-      // Keep rendering titles (looping) until the viewport is full.
-      // During reveal, stop after revealedCount titles (no repeat).
+      if (revealedCount === 0) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
       while (!done) {
+        // During reveal, stop after showing each revealed title once
         if (!allRevealed && i >= revealedCount) break;
 
         const ti = (startIdx + (i % titles.length)) % titles.length;
@@ -461,7 +480,7 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       }
 
       // Stash layout info for click handler
-      (canvas as any).__wallState = { startIdx, revealedCount, fontSize, padding };
+      (canvas as any).__wallState = { startIdx, fontSize, padding };
 
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -476,11 +495,14 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       const state = (canvas as any).__wallState;
       if (!state) return;
 
-      const { startIdx, revealedCount, fontSize, padding: pad } = state;
+      const { startIdx, fontSize, padding: pad } = state;
       const lineH = fontSize * WALL_LINE_HEIGHT;
       const W = canvas.width;
       const H = canvas.height;
       const allRevealed = wallRevealedRef.current >= titles.length;
+      const revealedCount = allRevealed ? titles.length : wallRevealedRef.current;
+
+      if (revealedCount === 0) return;
 
       ctx.font = `700 ${fontSize}px 'Lora', 'Georgia', serif`;
 
