@@ -170,23 +170,6 @@ export class FollowManager {
   }
 
   private handleFollowKey(): void {
-    // If nav toast is showing, follow to that URL
-    if (this.pendingNavUrl && this.followState) {
-      const url = this.pendingNavUrl;
-      const targetKey = this.followState.targetPublicKey;
-      const targetColor = this.followState.targetColor;
-      this.removeNavToast();
-      sessionStorage.setItem(
-        "playhtml-follow-target",
-        JSON.stringify({
-          publicKey: targetKey,
-          color: targetColor,
-        }),
-      );
-      window.location.href = url;
-      return;
-    }
-
     if (this.followState) {
       this.unfollow();
       return;
@@ -416,7 +399,7 @@ export class FollowManager {
         lastSeenNav = nav;
         if (!this.pendingNavUrl) {
           if (isWikiArticleUrl(nav.url)) {
-            this.showNavToast(nav.url, nav.title);
+            this.showNavCountdown(nav.url, nav.title);
           } else {
             this.showLeftToast();
           }
@@ -443,7 +426,7 @@ export class FollowManager {
       if (!target && this.followState) {
         if (lastSeenNav && !this.pendingNavUrl) {
           if (isWikiArticleUrl(lastSeenNav.url)) {
-            this.showNavToast(lastSeenNav.url, lastSeenNav.title);
+            this.showNavCountdown(lastSeenNav.url, lastSeenNav.title);
           } else {
             this.showLeftToast();
           }
@@ -477,11 +460,16 @@ export class FollowManager {
     this.onMutualFollow?.(false);
   }
 
-  // --- Nav toast ---
+  // --- Nav countdown ---
 
-  private showNavToast(url: string, title: string): void {
+  private navCountdownInterval: ReturnType<typeof setInterval> | null = null;
+
+  private showNavCountdown(url: string, title: string): void {
     this.removeNavToast();
     this.pendingNavUrl = url;
+
+    const displayTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
+    let remaining = 3;
 
     const toast = document.createElement("div");
     Object.assign(toast.style, {
@@ -502,28 +490,48 @@ export class FollowManager {
       opacity: "0",
       whiteSpace: "nowrap",
     });
-    const displayTitle =
-      title.length > 40 ? title.slice(0, 40) + "..." : title;
-    const strong = document.createElement("strong");
-    strong.textContent = displayTitle;
-    const followHint = document.createElement("span");
-    Object.assign(followHint.style, { color: "#8a8279", marginLeft: "6px" });
-    followHint.append("press ", kbd("F"), " to follow");
-    toast.append("went to ", strong, followHint);
+
+    const updateText = () => {
+      toast.textContent = "";
+      const strong = document.createElement("strong");
+      strong.textContent = displayTitle;
+      toast.append("following to ", strong, ` ${remaining}...`);
+      toast.append(document.createElement("br"));
+      toast.append(muted("esc to cancel", { fontSize: "11px" }));
+    };
+    updateText();
 
     document.body.appendChild(toast);
     this.navToastElement = toast;
-    requestAnimationFrame(() => {
-      toast.style.opacity = "1";
-    });
+    requestAnimationFrame(() => { toast.style.opacity = "1"; });
 
-    this.navToastTimeout = setTimeout(() => {
-      this.removeNavToast();
-      this.unfollow();
-    }, 8000);
+    this.navCountdownInterval = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        this.navigateToFollowed(url);
+      } else {
+        updateText();
+      }
+    }, 1000);
+  }
+
+  private navigateToFollowed(url: string): void {
+    if (!this.followState) return;
+    const targetKey = this.followState.targetPublicKey;
+    const targetColor = this.followState.targetColor;
+    this.removeNavToast();
+    sessionStorage.setItem(
+      "playhtml-follow-target",
+      JSON.stringify({ publicKey: targetKey, color: targetColor }),
+    );
+    window.location.href = url;
   }
 
   private removeNavToast(): void {
+    if (this.navCountdownInterval) {
+      clearInterval(this.navCountdownInterval);
+      this.navCountdownInterval = null;
+    }
     if (this.navToastTimeout) {
       clearTimeout(this.navToastTimeout);
       this.navToastTimeout = null;
