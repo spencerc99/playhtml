@@ -340,7 +340,17 @@ export class CursorClientAwareness {
   private coordinateMode: "relative" | "absolute";
   private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
   private currentZone: CursorZonePosition | null = null;
-  private cursorZoneState: Map<string, string | null> = new Map(); // clientId -> previous zoneId
+  private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
+  // Maps Yjs clientId -> stableId (publicKey). Multiple clientIds can map to
+  // the same stableId when a user has multiple tabs open. Used to:
+  // (a) skip rendering our own cursor from other tabs
+  // (b) collapse multiple tabs from the same remote user into one cursor
+  // (c) clean up cursor elements correctly when a clientId disconnects
+  private clientIdToStableId: Map<number, string> = new Map();
+  // Tracks pending fade-out removal timeouts by stableId so they can be
+  // cancelled if a new update arrives for the same stableId (e.g. when one
+  // tab disconnects but another tab of the same user is still active).
+  private pendingRemovals: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   constructor(
     private provider: YPartyKitProvider,
@@ -401,42 +411,54 @@ export class CursorClientAwareness {
     removed: number[],
   ): void {
     const states = this.provider.awareness.getStates();
-
-    // Handle added and updated cursors (only render when we have valid presence)
     const myClientId = this.provider.awareness.clientID;
+    const myPublicKey = this.playerIdentity.publicKey;
+
     [...added, ...updated].forEach((clientId) => {
-      const valid = getValidCursorPresence(
-        states.get(clientId) as Record<string, unknown> | undefined,
-        clientId,
-      );
-      if (clientId === myClientId) {
-        // Skip our own cursor (we render it separately)
-      } else if (valid) {
-        this.updateCursor(clientId.toString(), valid);
-      } else {
-        // Invalid or missing presence: remove any existing cursor so we don't leave a stale DOM element
-        this.removeCursor(clientId.toString());
+      const state = states.get(clientId) as Record<string, unknown> | undefined;
+      const stableId = state
+        ? getStableIdForAwareness(state, clientId)
+        : String(clientId);
+
+      this.clientIdToStableId.set(clientId, stableId);
+
+      // Skip our own cursor: both this tab AND other tabs with the same publicKey
+      if (clientId === myClientId || stableId === myPublicKey) {
+        return;
       }
 
-      // Track messages for chat CTA (use raw state so we see message even if identity invalid)
-      const cursorData = states.get(clientId)?.[CURSOR_AWARENESS_FIELD];
-      if (cursorData?.message) {
-        this.otherUsersWithMessages.add(clientId.toString());
+      const valid = getValidCursorPresence(state, clientId);
+      if (valid) {
+        this.updateCursor(stableId, valid);
       } else {
-        this.otherUsersWithMessages.delete(clientId.toString());
+        if (!this.hasOtherClientForStableId(stableId, clientId)) {
+          this.removeCursor(stableId);
+        }
+      }
+
+      // Track messages for chat CTA (keyed by stableId)
+      const cursorData = state?.[CURSOR_AWARENESS_FIELD];
+      if ((cursorData as any)?.message) {
+        this.otherUsersWithMessages.add(stableId);
+      } else {
+        this.otherUsersWithMessages.delete(stableId);
       }
     });
 
-    // Handle removed cursors
     removed.forEach((clientId) => {
-      this.removeCursor(clientId.toString());
-      this.otherUsersWithMessages.delete(clientId.toString());
+      const stableId = this.clientIdToStableId.get(clientId);
+      this.clientIdToStableId.delete(clientId);
+
+      if (stableId) {
+        this.otherUsersWithMessages.delete(stableId);
+        if (!this.hasOtherClientForStableId(stableId, clientId)) {
+          this.removeCursor(stableId);
+        }
+      }
     });
 
-    // Rebuild spatial grid with updated cursor data
     this.rebuildSpatialGrid();
 
-    // Recompute all player colors from current awareness states
     this.allPlayerColors.clear();
     states.forEach((clientState, clientId) => {
       const valid = getValidCursorPresence(
@@ -451,9 +473,15 @@ export class CursorClientAwareness {
     this.updateGlobalColors();
     this.updateChatCTA();
     this.checkProximityOptimized();
-
-    // Notify cursor presence listeners of changes
     this.notifyCursorPresenceListeners();
+  }
+
+  // Returns true if any clientId other than the excluded one maps to the given stableId.
+  private hasOtherClientForStableId(stableId: string, excludeClientId: number): boolean {
+    for (const [cid, sid] of this.clientIdToStableId) {
+      if (sid === stableId && cid !== excludeClientId) return true;
+    }
+    return false;
   }
 
   private rebuildSpatialGrid(): void {
@@ -461,9 +489,16 @@ export class CursorClientAwareness {
 
     const states = this.provider.awareness.getStates();
     const myClientId = this.provider.awareness.clientID;
+    const myPublicKey = this.playerIdentity.publicKey;
 
     states.forEach((clientState, clientId) => {
       if (clientId === myClientId) return;
+
+      const stableId = getStableIdForAwareness(
+        clientState as Record<string, unknown>,
+        clientId,
+      );
+      if (stableId === myPublicKey) return;
 
       const valid = getValidCursorPresence(
         clientState as Record<string, unknown>,
@@ -477,7 +512,7 @@ export class CursorClientAwareness {
         this.coordinateMode,
       );
       this.spatialGrid.insert({
-        id: clientId.toString(),
+        id: stableId,
         x: clientCoords.x,
         y: clientCoords.y,
         data: valid,
@@ -797,6 +832,7 @@ export class CursorClientAwareness {
   private repositionAllCursors(): void {
     const states = this.provider.awareness.getStates();
     const localClientId = this.provider.awareness.clientID;
+    const myPublicKey = this.playerIdentity.publicKey;
     const cursorSize = 20;
     const margin = 2;
     const viewportWidth = window.innerWidth;
@@ -808,6 +844,7 @@ export class CursorClientAwareness {
         numericId,
       );
       if (numericId === localClientId) continue;
+      if (stableId === myPublicKey) continue;
 
       const valid = getValidCursorPresence(
         state as Record<string, unknown>,
@@ -897,9 +934,21 @@ export class CursorClientAwareness {
   }
 
   private updateCursor(
-    clientId: string,
+    stableId: string,
     cursorData: ValidCursorPresence,
   ): void {
+    // Cancel any pending fade-out removal -- this cursor is still active
+    const pendingTimeout = this.pendingRemovals.get(stableId);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+      this.pendingRemovals.delete(stableId);
+      const existingEl = this.cursors.get(stableId);
+      if (existingEl) {
+        existingEl.classList.remove("playhtml-cursor-fade-out");
+        existingEl.classList.add("playhtml-cursor-fade-in");
+      }
+    }
+
     const identity = cursorData.playerIdentity;
 
     // Check if this cursor should be rendered
@@ -907,11 +956,11 @@ export class CursorClientAwareness {
       this.options.shouldRenderCursor &&
       !this.options.shouldRenderCursor(cursorData)
     ) {
-      this.removeCursor(clientId);
+      this.removeCursor(stableId);
       return;
     }
 
-    let cursorElement = this.cursors.get(clientId);
+    let cursorElement = this.cursors.get(stableId);
     const cursor = cursorData.cursor;
 
     // Check if cursor element needs to be recreated due to pointer type change
@@ -926,11 +975,11 @@ export class CursorClientAwareness {
         identity,
         cursor.pointer,
         cursorData.message,
-        clientId,
+        stableId,
         cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
-      this.cursors.set(clientId, cursorElement);
+      this.cursors.set(stableId, cursorElement);
       document.body.appendChild(cursorElement);
     } else if (cursorElement) {
       // Update existing cursor with new message and name
@@ -940,10 +989,10 @@ export class CursorClientAwareness {
 
     // Resolve target position: zone-relative or viewport coordinates
     const zone = cursorData.zone;
-    const prevZoneId = this.cursorZoneState.get(clientId) ?? null;
+    const prevZoneId = this.cursorZoneState.get(stableId) ?? null;
     const currZoneId = zone?.zoneId ?? null;
     const zoneChanged = prevZoneId !== currZoneId;
-    this.cursorZoneState.set(clientId, currZoneId);
+    this.cursorZoneState.set(stableId, currZoneId);
 
     let targetCoords: { x: number; y: number };
     let inZone = false;
@@ -955,7 +1004,7 @@ export class CursorClientAwareness {
         const rect = zoneEntry.element.getBoundingClientRect();
         // Center the cursor element on the target point by offsetting
         // by half its rendered dimensions.
-        const cursorEl = this.cursors.get(clientId);
+        const cursorEl = this.cursors.get(stableId);
         const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
         const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
         targetCoords = {
@@ -1001,14 +1050,14 @@ export class CursorClientAwareness {
 
     // Spring always operates in pixel space. Zone-relative coords are resolved
     // to pixels above (via getBoundingClientRect) before reaching the spring.
-    let animator = this.cursorAnimators.get(clientId);
+    let animator = this.cursorAnimators.get(stableId);
 
     if (!animator) {
       animator = new SpringAnimator(
         { x: clampedTargetX, y: clampedTargetY },
-        this.createCursorPositionCallback(clientId),
+        this.createCursorPositionCallback(stableId),
       );
-      this.cursorAnimators.set(clientId, animator);
+      this.cursorAnimators.set(stableId, animator);
     }
 
     if (zoneChanged) {
@@ -1168,25 +1217,31 @@ export class CursorClientAwareness {
     `;
   }
 
-  private removeCursor(clientId: string): void {
-    const element = this.cursors.get(clientId);
+  private removeCursor(stableId: string): void {
+    const element = this.cursors.get(stableId);
     if (element) {
       element.classList.remove("playhtml-cursor-fade-in");
       element.classList.add("playhtml-cursor-fade-out");
 
-      setTimeout(() => {
+      // Cancel any existing pending removal for this stableId
+      const existing = this.pendingRemovals.get(stableId);
+      if (existing) clearTimeout(existing);
+
+      const timeout = setTimeout(() => {
         element.remove();
-        this.cursors.delete(clientId);
+        this.cursors.delete(stableId);
+        this.pendingRemovals.delete(stableId);
       }, 300);
+      this.pendingRemovals.set(stableId, timeout);
     }
 
     // Clean up spring animator and zone state
-    const animator = this.cursorAnimators.get(clientId);
+    const animator = this.cursorAnimators.get(stableId);
     if (animator) {
       animator.destroy();
-      this.cursorAnimators.delete(clientId);
+      this.cursorAnimators.delete(stableId);
     }
-    this.cursorZoneState.delete(clientId);
+    this.cursorZoneState.delete(stableId);
   }
 
   private savePlayerIdentityToStorage(): void {
@@ -1545,6 +1600,11 @@ export class CursorClientAwareness {
     this.spatialGrid.clear();
     this.zones.clear();
     this.cursorZoneState.clear();
+
+    // Clean up dedup tracking
+    this.clientIdToStableId.clear();
+    this.pendingRemovals.forEach((timeout) => clearTimeout(timeout));
+    this.pendingRemovals.clear();
 
     // Clean up chat
     if (this.chat) {
