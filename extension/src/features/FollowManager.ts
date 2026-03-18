@@ -50,7 +50,6 @@ function muted(text: string, extraStyles?: Partial<CSSStyleDeclaration>): HTMLSp
 
 export class FollowManager {
   private followState: FollowState | null = null;
-  private hintShownForKeys = new Set<string>();
   private hintElement: HTMLElement | null = null;
   private hintTimeout: ReturnType<typeof setTimeout> | null = null;
   private nearestTarget: { publicKey: string; color: string } | null = null;
@@ -448,10 +447,8 @@ export class FollowManager {
       this.statusBarElement.textContent = "";
       this.statusBarElement.append(
         colorDot(color),
-        "following together ",
-        muted("/ to chat", { marginLeft: "2px" }),
-        muted(" "),
-        muted("esc to stop", { marginLeft: "4px" }),
+        " browsing together ",
+        muted("esc to leave", { marginLeft: "4px" }),
       );
     }
   }

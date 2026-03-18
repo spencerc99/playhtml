@@ -31,7 +31,7 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   // Wire proximity detection into the cursor client
   if (deps.cursorClient) {
     deps.cursorClient.configure({
-      proximityThreshold: 400,
+      proximityThreshold: 250,
       onProximityEntered: (identity: any, positions: any) => {
         followManager.onProximityEntered(identity, positions);
       },
