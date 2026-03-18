@@ -759,16 +759,16 @@ export class CursorClientAwareness {
 
     // Reposition all remote cursors when scroll or zoom changes, since
     // absolute-mode coordinates are document-relative but cursors render
-    // with position:fixed.
-    let viewportChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    // with position:fixed. Uses rAF-based throttle so cursors track
+    // smoothly during continuous scrolling (a trailing debounce would
+    // leave inactive cursors frozen until scrolling stops).
+    let viewportChangeRaf: number | null = null;
     const repositionOnViewportChange = () => {
-      if (viewportChangeTimer !== null) {
-        clearTimeout(viewportChangeTimer);
-      }
-      viewportChangeTimer = setTimeout(() => {
-        viewportChangeTimer = null;
+      if (viewportChangeRaf !== null) return;
+      viewportChangeRaf = requestAnimationFrame(() => {
+        viewportChangeRaf = null;
         this.repositionAllCursors();
-      }, 150);
+      });
     };
     window.addEventListener("scroll", repositionOnViewportChange, {
       passive: true,
