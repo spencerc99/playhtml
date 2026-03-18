@@ -64,6 +64,9 @@ vi.mock("y-partykit/provider", () => {
       emit(t: string, ...args: any[]) {
         (this.listeners[t] || []).forEach((cb) => cb(...args));
       }
+      destroy() {
+        this.listeners = {};
+      }
     },
   };
 });
