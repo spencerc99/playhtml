@@ -41,6 +41,12 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     });
   }
 
+  // Ambient presence count
+  const { PresenceCountPill } = await import("../features/PresenceCountPill");
+  const presencePill = new PresenceCountPill(deps.presence);
+  presencePill.init();
+  cleanups.push(() => presencePill.destroy());
+
   // Broadcast navigatingTo on Wikipedia article link clicks.
   // Intercept the click, broadcast presence, wait for sync, then navigate.
   const onClick = (e: MouseEvent) => {
