@@ -642,18 +642,32 @@ export class CursorClientAwareness {
   // always in pixel space — zone-relative coordinates are resolved to pixels
   // before being fed to the spring.
   private createCursorPositionCallback(
-    clientId: string,
+    stableId: string,
   ): (position: { x: number; y: number }) => void {
     return (position) => {
-      const el = this.cursors.get(clientId);
+      const el = this.cursors.get(stableId);
       if (!el) return;
 
-      el.style.position = "fixed";
+      // In absolute mode, use position:absolute so the browser handles
+      // scroll compositing natively (no per-frame repositioning needed).
+      // In relative mode, use position:fixed since coords are viewport-relative.
+      el.style.position = this.coordinateMode === "absolute" ? "absolute" : "fixed";
       el.style.left = `${position.x}px`;
       el.style.top = `${position.y}px`;
       el.style.zIndex = "999999";
       el.style.pointerEvents = "none";
     };
+  }
+
+  // Resolves storage coordinates to the coordinate space used for positioning.
+  // In absolute mode, storage coords are already document coords and cursors
+  // use position:absolute, so no conversion needed. In relative mode, we
+  // convert to viewport pixels for position:fixed.
+  private resolveTargetCoords(storageX: number, storageY: number): { x: number; y: number } {
+    if (this.coordinateMode === "absolute") {
+      return { x: storageX, y: storageY };
+    }
+    return storageToClientCoordinates(storageX, storageY, this.coordinateMode);
   }
 
   // Apply zone-specific cursor styling, or revert to global styling when leaving a zone.
@@ -826,17 +840,15 @@ export class CursorClientAwareness {
     });
   }
 
-  // Re-derive client positions for all remote cursors from their stored
-  // document coordinates. Called when scroll/zoom changes so that fixed-
-  // position cursor elements track the correct content location.
+  // Re-derive positions for all remote cursors. In relative mode, this is
+  // needed on every scroll/resize since cursors use position:fixed with
+  // viewport-relative coords. In absolute mode, non-zone cursors use
+  // position:absolute and the browser handles scroll — only zone cursors
+  // need re-resolution (getBoundingClientRect changes on scroll).
   private repositionAllCursors(): void {
     const states = this.provider.awareness.getStates();
     const localClientId = this.provider.awareness.clientID;
     const myPublicKey = this.playerIdentity.publicKey;
-    const cursorSize = 20;
-    const margin = 2;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
 
     for (const [numericId, state] of states) {
       const stableId = getStableIdForAwareness(
@@ -864,32 +876,31 @@ export class CursorClientAwareness {
           const cursorEl = this.cursors.get(stableId);
           const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
           const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
-          const zoneX = rect.left + valid.zone.relX * rect.width - offsetX;
-          const zoneY = rect.top + valid.zone.relY * rect.height - offsetY;
-          animator.snapTo({ x: zoneX, y: zoneY });
+          const zoneViewportX = rect.left + valid.zone.relX * rect.width - offsetX;
+          const zoneViewportY = rect.top + valid.zone.relY * rect.height - offsetY;
+          if (this.coordinateMode === "absolute") {
+            animator.snapTo({
+              x: zoneViewportX + window.scrollX,
+              y: zoneViewportY + window.scrollY,
+            });
+          } else {
+            animator.snapTo({ x: zoneViewportX, y: zoneViewportY });
+          }
           continue;
         }
-        // Zone not found locally: fall through to viewport positioning
+        // Zone not found locally: fall through
       }
+
+      // In absolute mode, non-zone cursors use position:absolute with
+      // document coords — the browser handles scroll, nothing to do.
+      if (this.coordinateMode === "absolute") continue;
 
       const targetCoords = storageToClientCoordinates(
         valid.cursor.x,
         valid.cursor.y,
         this.coordinateMode,
       );
-
-      const clampedX = Math.max(
-        -cursorSize + margin,
-        Math.min(viewportWidth - margin, targetCoords.x),
-      );
-      const clampedY = Math.max(
-        -cursorSize + margin,
-        Math.min(viewportHeight - margin, targetCoords.y),
-      );
-
-      // Jump directly instead of animating — scroll/zoom changes should
-      // feel instant, not springy.
-      animator.snapTo({ x: clampedX, y: clampedY });
+      animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
     }
 
     this.updateAllCursorVisibility();
@@ -1007,25 +1018,25 @@ export class CursorClientAwareness {
         const cursorEl = this.cursors.get(stableId);
         const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
         const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
-        targetCoords = {
-          x: rect.left + zone.relX * rect.width - offsetX,
-          y: rect.top + zone.relY * rect.height - offsetY,
-        };
+        const zoneViewportX = rect.left + zone.relX * rect.width - offsetX;
+        const zoneViewportY = rect.top + zone.relY * rect.height - offsetY;
+        if (this.coordinateMode === "absolute") {
+          // getBoundingClientRect returns viewport coords; convert to document
+          // coords since absolute-mode cursors use position:absolute.
+          targetCoords = {
+            x: zoneViewportX + window.scrollX,
+            y: zoneViewportY + window.scrollY,
+          };
+        } else {
+          targetCoords = { x: zoneViewportX, y: zoneViewportY };
+        }
         inZone = true;
       } else {
-        // Zone not registered locally: fall back to viewport coordinates
-        targetCoords = storageToClientCoordinates(
-          cursor.x,
-          cursor.y,
-          this.coordinateMode,
-        );
+        // Zone not registered locally: fall back
+        targetCoords = this.resolveTargetCoords(cursor.x, cursor.y);
       }
     } else {
-      targetCoords = storageToClientCoordinates(
-        cursor.x,
-        cursor.y,
-        this.coordinateMode,
-      );
+      targetCoords = this.resolveTargetCoords(cursor.x, cursor.y);
     }
 
     // Apply zone-specific styling (or revert to global styling on zone exit)
@@ -1033,20 +1044,24 @@ export class CursorClientAwareness {
       this.applyZoneStyling(cursorElement, cursorData, inZone ? currZoneId : null);
     }
 
-    const cursorSize = 20;
-    const margin = 2;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // Clamp target position to viewport bounds
-    const clampedTargetX = Math.max(
-      -cursorSize + margin,
-      Math.min(viewportWidth - margin, targetCoords.x),
-    );
-    const clampedTargetY = Math.max(
-      -cursorSize + margin,
-      Math.min(viewportHeight - margin, targetCoords.y),
-    );
+    // In relative (fixed) mode, clamp to viewport so cursors stay visible.
+    // In absolute mode, coords are document-space — no clamping needed.
+    let clampedTargetX = targetCoords.x;
+    let clampedTargetY = targetCoords.y;
+    if (this.coordinateMode === "relative") {
+      const cursorSize = 20;
+      const margin = 2;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      clampedTargetX = Math.max(
+        -cursorSize + margin,
+        Math.min(viewportWidth - margin, targetCoords.x),
+      );
+      clampedTargetY = Math.max(
+        -cursorSize + margin,
+        Math.min(viewportHeight - margin, targetCoords.y),
+      );
+    }
 
     // Spring always operates in pixel space. Zone-relative coords are resolved
     // to pixels above (via getBoundingClientRect) before reaching the spring.
