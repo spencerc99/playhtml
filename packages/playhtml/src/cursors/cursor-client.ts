@@ -806,11 +806,10 @@ export class CursorClientAwareness {
       this.showAllCursors();
     });
 
-    // Reposition all remote cursors when scroll or zoom changes, since
-    // absolute-mode coordinates are document-relative but cursors render
-    // with position:fixed. Uses rAF-based throttle so cursors track
-    // smoothly during continuous scrolling (a trailing debounce would
-    // leave inactive cursors frozen until scrolling stops).
+    // Reposition remote cursors on scroll/zoom/resize. In relative mode,
+    // cursors use position:fixed so viewport coords must be recalculated.
+    // In absolute mode, only zone cursors need re-resolution (their
+    // bounding rects change on scroll). Uses rAF-based throttle.
     let viewportChangeRaf: number | null = null;
     const repositionOnViewportChange = () => {
       if (viewportChangeRaf !== null) return;
@@ -1522,10 +1521,10 @@ export class CursorClientAwareness {
       this.coordinateMode,
     );
 
-    this.cursors.forEach((cursorElement, clientId) => {
+    this.cursors.forEach((cursorElement, stableId) => {
       // Get cursor data from spatial grid
       const gridItems = this.spatialGrid.getAll();
-      const cursorData = gridItems.find((item) => item.id === clientId)?.data;
+      const cursorData = gridItems.find((item) => item.id === stableId)?.data;
 
       if (cursorData && cursorData.cursor) {
         // Convert their cursor to client coordinates (same as updateCursor/checkProximityOptimized)
@@ -1763,24 +1762,7 @@ export class CursorClientAwareness {
       return this.triggerSelfCursorAnimation(animationClass, durationMs);
     }
 
-    // Find the awareness clientId that corresponds to this stableId
-    const states = this.provider.awareness.getStates();
-    let targetClientId: string | null = null;
-
-    states.forEach((state, clientId) => {
-      if (targetClientId) return;
-      const sid = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (sid === stableId) {
-        targetClientId = String(clientId);
-      }
-    });
-
-    if (!targetClientId) return false;
-
-    const el = this.cursors.get(targetClientId);
+    const el = this.cursors.get(stableId);
     if (!el) return false;
 
     const targetEl: HTMLElement =
