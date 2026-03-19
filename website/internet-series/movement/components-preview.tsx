@@ -1526,7 +1526,7 @@ import {
   applySingleLineGlow,
   buildPseudoElementCSS,
   type GlowStyle,
-} from "../../extension/src/features/link-glow-renderer";
+} from "@extension/features/link-glow-renderer";
 
 interface LinkTraceData {
   count: number;

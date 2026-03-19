@@ -128,8 +128,8 @@ export function computeGlowStyle(
   const t = computeIntensity(count, pageMax);
   if (t < 0.01) return null;
   const blur = 1.5 + t * 4;
-  const baseOpacity = (0.15 + t * 0.2) * OPACITY_MUL;
-  const blobOpacity = (0.2 + t * 0.3) * OPACITY_MUL;
+  const baseOpacity = (0.05 + t * 0.3) * OPACITY_MUL;
+  const blobOpacity = (0.08 + t * 0.42) * OPACITY_MUL;
   const vSpread = t * 1.5;
   const hInsetPct = Math.round((1 - t) * 15);
 
