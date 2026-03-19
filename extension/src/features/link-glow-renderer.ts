@@ -116,6 +116,83 @@ export function computeIntensity(count: number, maxCount: number): number {
   return absolute * (0.3 + 0.7 * relative);
 }
 
+// Apply glow styles to a link element. For single-line links, adds a CSS class
+// (pseudo-element rules must be injected separately via buildGlowCssRules).
+// For multi-line links, applies inline backgrounds + drop-shadow.
+export function applyGlowToLink(
+  link: HTMLAnchorElement,
+  style: GlowStyle,
+  wraps: boolean,
+  className?: string,
+): void {
+  const hPad = Math.round(1 + style.vSpread * 0.7);
+
+  if (wraps) {
+    Object.assign(link.style, {
+      background: style.bgLayers.length > 0 ? style.bgLayers.join(", ") : undefined,
+      boxDecorationBreak: "clone",
+      WebkitBoxDecorationBreak: "clone",
+      filter: [
+        `drop-shadow(0 0 ${style.blur.toFixed(1)}px ${style.baseFill})`,
+        `drop-shadow(0 0 ${(style.blur * 0.5).toFixed(1)}px ${style.baseFill})`,
+      ].join(" "),
+      padding: `0.5px ${hPad}px`,
+      margin: `-0.5px ${-hPad}px`,
+      borderRadius: "2px",
+    });
+  } else {
+    if (className) link.classList.add(className);
+    Object.assign(link.style, {
+      position: "relative",
+      zIndex: "1",
+      boxDecorationBreak: "clone",
+      WebkitBoxDecorationBreak: "clone",
+    });
+  }
+}
+
+// Generate CSS rules for pseudo-element blur on a single-line link.
+export function buildGlowCssRules(className: string, style: GlowStyle): string[] {
+  const rules: string[] = [];
+  const { hInsetPct: hInset, vSpread, baseFill, blur, blobLayers } = style;
+
+  rules.push(`
+    .${className}::before {
+      content: "";
+      position: absolute;
+      left: ${hInset}%;
+      right: ${hInset}%;
+      top: ${-vSpread}px;
+      bottom: ${-vSpread}px;
+      background: ${baseFill};
+      filter: blur(${blur.toFixed(1)}px);
+      border-radius: 2px;
+      pointer-events: none;
+      z-index: 0;
+    }
+  `);
+
+  if (blobLayers.length > 0) {
+    rules.push(`
+      .${className}::after {
+        content: "";
+        position: absolute;
+        left: ${hInset}%;
+        right: ${hInset}%;
+        top: ${-vSpread}px;
+        bottom: ${-vSpread}px;
+        background: ${blobLayers.join(", ")};
+        filter: blur(${(blur * 0.7).toFixed(1)}px);
+        border-radius: 2px;
+        pointer-events: none;
+        z-index: 0;
+      }
+    `);
+  }
+
+  return rules;
+}
+
 export function computeGlowStyle(
   colors: string[],
   count: number,

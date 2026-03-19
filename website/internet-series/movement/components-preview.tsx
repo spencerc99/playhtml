@@ -3,6 +3,12 @@
 // Agentation is a dev-only toolbar — loaded at runtime so it never appears in the production bundle
 import "./components-preview.scss";
 import React, { lazy, useEffect, useId, useRef, useState } from "react";
+import {
+  computeGlowStyle,
+  computeIntensity,
+  applyGlowToLink,
+  buildGlowCssRules,
+} from "../../../extension/src/features/link-glow-renderer";
 import ReactDOM from "react-dom/client";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
@@ -1525,16 +1531,8 @@ interface LinkTraceData {
   pageMax: number;
 }
 
-const INTENSITY_K = 0.1;
-const ABSOLUTE_RATE = 50;
-
 function linkIntensity(d: LinkTraceData): number {
-  if (d.count <= 0 || d.pageMax <= 0) return 0;
-  const denom = Math.log(1 + d.pageMax * INTENSITY_K);
-  if (denom === 0) return 0;
-  const relative = Math.min(1, Math.log(1 + d.count * INTENSITY_K) / denom);
-  const absolute = 1 - Math.exp(-d.count / ABSOLUTE_RATE);
-  return absolute * (0.3 + 0.7 * relative);
+  return computeIntensity(d.count, d.pageMax);
 }
 
 function ltHslToHex(h: number, s: number, l: number): string {
@@ -2051,8 +2049,6 @@ function SmearLink({
   children,
   data,
   showCursors = false,
-  opacityMul = 1,
-  saturationMul = 1,
 }: {
   href: string;
   children: React.ReactNode;
@@ -2061,108 +2057,38 @@ function SmearLink({
   opacityMul?: number;
   saturationMul?: number;
 }) {
-  const t = linkIntensity(data);
-  const colors = data.recentColors;
-  const blur = 1.5 + t * 4;
-  const baseOpacity = (0.15 + t * 0.2) * opacityMul;
-  const blobOpacity = (0.2 + t * 0.3) * opacityMul;
-  const vSpread = t * 1.5;
-  const hInset = Math.round((1 - t) * 15);
-  const satFilter = saturationMul !== 1 ? `saturate(${saturationMul.toFixed(2)})` : undefined;
-
   const linkRef = useRef<HTMLAnchorElement>(null);
   const rawId = useId();
   const cls = `smear-${rawId.replace(/:/g, "")}`;
+  const [cssRules, setCssRules] = useState("");
 
-  const layers = smearNebulaLayers(colors, baseOpacity, blobOpacity, t);
-  const baseFill = layers[0];
-  const blobLayers = layers.slice(1);
-
-  // Multi-line fallback: lower opacity to compensate for no blur
-  const inlineOpacityMul = 0.4;
-  const inlineLayers = smearNebulaLayers(colors, baseOpacity * inlineOpacityMul, blobOpacity * inlineOpacityMul, t);
-  const filteredInline = inlineLayers.filter((l) => l !== "transparent");
-  const inlineBgs = [...filteredInline.slice(1), filteredInline[0]].filter(Boolean);
-  const inlineBaseFill = inlineLayers[0];
-  const hasGlow = t > 0 && colors.length > 0;
-
-  // Detect whether the link wraps across multiple lines
-  const [wraps, setWraps] = useState(false);
   useEffect(() => {
     const el = linkRef.current;
     if (!el) return;
-    setWraps(el.getClientRects().length > 1);
-  }, [children]);
 
-  // Single-line: pseudo-elements with filter: blur() for full nebula effect
-  const pseudoBase = `
-    .${cls}::before {
-      content: "";
-      position: absolute;
-      left: ${hInset}%;
-      right: ${hInset}%;
-      top: ${-vSpread}px;
-      bottom: ${-vSpread}px;
-      background: ${baseFill};
-      filter: blur(${blur.toFixed(1)}px)${satFilter ? ` ${satFilter}` : ""};
-      border-radius: 2px;
-      pointer-events: none;
-      z-index: 0;
+    const style = computeGlowStyle(data.recentColors, data.count, data.pageMax);
+    if (!style) return;
+
+    const wraps = el.getClientRects().length > 1;
+    applyGlowToLink(el, style, wraps, wraps ? undefined : cls);
+
+    if (!wraps) {
+      setCssRules(buildGlowCssRules(cls, style).join("\n"));
+    } else {
+      setCssRules("");
     }
-  `;
-  const pseudoBlobs = blobLayers.length > 0 ? `
-    .${cls}::after {
-      content: "";
-      position: absolute;
-      left: ${hInset}%;
-      right: ${hInset}%;
-      top: ${-vSpread}px;
-      bottom: ${-vSpread}px;
-      background: ${blobLayers.join(", ")};
-      filter: blur(${(blur * 0.7).toFixed(1)}px)${satFilter ? ` ${satFilter}` : ""};
-      border-radius: 2px;
-      pointer-events: none;
-      z-index: 0;
-    }
-  ` : "";
-
-  // Multi-line: inline backgrounds clone per fragment via box-decoration-break,
-  // with drop-shadow to approximate the blur halo
-  const vPad = Math.round(1 + vSpread);
-  const hPad = Math.round(1 + vSpread * 0.7);
-  const dropShadows = hasGlow ? [
-    `drop-shadow(0 0 ${blur.toFixed(1)}px ${inlineBaseFill})`,
-    `drop-shadow(0 0 ${(blur * 0.5).toFixed(1)}px ${inlineBaseFill})`,
-  ] : [];
-
-  const usePseudo = hasGlow && !wraps;
-  const useInline = hasGlow && wraps;
+  }, [data.count, data.pageMax, data.recentColors, cls]);
 
   return (
     <>
-      {usePseudo && <style>{pseudoBase}{pseudoBlobs}</style>}
+      {cssRules && <style>{cssRules}</style>}
       <a
         ref={linkRef}
         href="#"
         onClick={(e) => e.preventDefault()}
-        className={usePseudo ? cls : undefined}
-        style={{
-          color: "#0645ad",
-          textDecoration: "none",
-          position: "relative",
-          WebkitBoxDecorationBreak: "clone",
-          boxDecorationBreak: "clone" as any,
-          background: useInline && inlineBgs.length > 0 ? inlineBgs.join(", ") : undefined,
-          padding: useInline ? `0.5px ${hPad}px` : undefined,
-          margin: useInline ? `-0.5px ${-hPad}px` : undefined,
-          borderRadius: useInline ? "2px" : undefined,
-          filter: [
-            ...(useInline ? dropShadows : []),
-            satFilter,
-          ].filter(Boolean).join(" ") || undefined,
-        }}
+        style={{ color: "#0645ad", textDecoration: "none" }}
       >
-        <span style={{ position: "relative", zIndex: 1 }}>{children}</span>
+        {children}
         {showCursors && <PassingCursors data={data} linkRef={linkRef} />}
       </a>
     </>

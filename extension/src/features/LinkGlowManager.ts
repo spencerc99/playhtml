@@ -1,7 +1,7 @@
 // ABOUTME: Manages shared link-click glow state for anchor elements on a page.
 // ABOUTME: Tracks click counts and recent player colors per destination link.
 
-import { computeGlowStyle } from "./link-glow-renderer";
+import { computeGlowStyle, applyGlowToLink, buildGlowCssRules } from "./link-glow-renderer";
 import type { PageDataChannel } from "@playhtml/common";
 
 export interface LinkClickEntry {
@@ -46,11 +46,13 @@ export class LinkGlowManager {
     );
 
     this.channel.onUpdate((data) => {
+      console.log("[LinkGlow] data updated", Object.keys(data.links).length, "links, totalClicks:", data.totalClicks);
       this.data = data;
       this.renderGlows();
     });
 
     this.data = this.channel.getData();
+    console.log("[LinkGlow] initial data", Object.keys(this.data.links).length, "links");
 
     this.cleanups.push(() => {
       this.channel?.destroy();
@@ -62,6 +64,7 @@ export class LinkGlowManager {
 
   recordClick(destPath: string): void {
     if (!this.channel) return;
+    console.log("[LinkGlow] recordClick", destPath, "channel:", !!this.channel);
     this.channel.setData((draft: PageLinkData) => {
       if (!draft.links[destPath]) {
         draft.links[destPath] = { count: 0, recentColors: [] };
@@ -145,9 +148,10 @@ export class LinkGlowManager {
     style: NonNullable<ReturnType<typeof computeGlowStyle>>,
     wraps: boolean,
   ): void {
-    // Save original styles before first modification
     if (!this.originalStyles.has(link)) {
       this.originalStyles.set(link, {
+        position: link.style.position,
+        "z-index": link.style.zIndex,
         background: link.style.background,
         "box-decoration-break": link.style.getPropertyValue("box-decoration-break"),
         "-webkit-box-decoration-break": link.style.getPropertyValue("-webkit-box-decoration-break"),
@@ -158,33 +162,8 @@ export class LinkGlowManager {
       });
     }
 
-    const hPad = Math.round(1 + style.vSpread * 0.7);
-
-    if (wraps) {
-      // Multi-line: inline backgrounds + drop-shadow fallback
-      const dropShadows = [
-        `drop-shadow(0 0 ${style.blur.toFixed(1)}px ${style.baseFill})`,
-        `drop-shadow(0 0 ${(style.blur * 0.5).toFixed(1)}px ${style.baseFill})`,
-      ];
-      Object.assign(link.style, {
-        background: style.bgLayers.length > 0 ? style.bgLayers.join(", ") : undefined,
-        boxDecorationBreak: "clone",
-        WebkitBoxDecorationBreak: "clone",
-        filter: dropShadows.join(" "),
-        padding: `0.5px ${hPad}px`,
-        margin: `-0.5px ${-hPad}px`,
-        borderRadius: "2px",
-      });
-    } else {
-      // Single-line: pseudo-elements with blur via injected stylesheet
-      const cls = this.getOrCreateClass(link);
-      link.classList.add(cls);
-      Object.assign(link.style, {
-        position: "relative",
-        boxDecorationBreak: "clone",
-        WebkitBoxDecorationBreak: "clone",
-      });
-    }
+    const cls = wraps ? undefined : this.getOrCreateClass(link);
+    applyGlowToLink(link, style, wraps, cls);
   }
 
   private renderGlows(): void {
@@ -195,7 +174,10 @@ export class LinkGlowManager {
 
     // Collect pseudo-element CSS rules for single-line links
     const cssRules: string[] = [];
+    const dataLinks = Object.keys(this.data.links);
+    console.log("[LinkGlow] renderGlows:", dataLinks.length, "links with data,", this.visibleLinks.size, "visible, pageMax:", pageMax);
 
+    let matched = 0;
     for (const link of this.visibleLinks) {
       const destPath = new URL(link.href).pathname;
       const entry = this.data.links[destPath];
@@ -205,8 +187,10 @@ export class LinkGlowManager {
         continue;
       }
 
+      matched++;
       const style = computeGlowStyle(entry.recentColors, entry.count, pageMax);
       if (!style) {
+        console.log("[LinkGlow] computeGlowStyle returned null for", destPath, "count:", entry.count, "pageMax:", pageMax);
         this.removeGlow(link);
         continue;
       }
@@ -216,42 +200,11 @@ export class LinkGlowManager {
 
       if (!wraps) {
         const cls = this.linkClasses.get(link)!;
-        const hInset = style.hInsetPct;
-        const vSpread = style.vSpread;
-        cssRules.push(`
-          .${cls}::before {
-            content: "";
-            position: absolute;
-            left: ${hInset}%;
-            right: ${hInset}%;
-            top: ${-vSpread}px;
-            bottom: ${-vSpread}px;
-            background: ${style.baseFill};
-            filter: blur(${style.blur.toFixed(1)}px);
-            border-radius: 2px;
-            pointer-events: none;
-            z-index: 0;
-          }
-        `);
-        if (style.blobLayers.length > 0) {
-          cssRules.push(`
-            .${cls}::after {
-              content: "";
-              position: absolute;
-              left: ${hInset}%;
-              right: ${hInset}%;
-              top: ${-vSpread}px;
-              bottom: ${-vSpread}px;
-              background: ${style.blobLayers.join(", ")};
-              filter: blur(${(style.blur * 0.7).toFixed(1)}px);
-              border-radius: 2px;
-              pointer-events: none;
-              z-index: 0;
-            }
-          `);
-        }
+        cssRules.push(...buildGlowCssRules(cls, style));
       }
     }
+
+    console.log("[LinkGlow] matched:", matched, "styled:", cssRules.length, "rules");
 
     // Update the injected stylesheet
     if (this.styleEl) {
