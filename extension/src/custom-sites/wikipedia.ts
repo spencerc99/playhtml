@@ -41,9 +41,18 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     });
   }
 
-  // Ambient presence count
+  // Domain-wide lobby for cross-page awareness
+  const lobby = deps.createPresenceRoom("lobby");
+  lobby.presence.setMyPresence("page", {
+    url: location.href,
+    title: document.title.replace(/ - Wikipedia$/, ""),
+    color: deps.playerColor,
+  });
+  cleanups.push(() => lobby.destroy());
+
+  // Ambient presence count + jump-to-someone
   const { PresenceCountPill } = await import("../features/PresenceCountPill");
-  const presencePill = new PresenceCountPill(deps.presence);
+  const presencePill = new PresenceCountPill(deps.presence, lobby.presence);
   presencePill.init();
   cleanups.push(() => presencePill.destroy());
 

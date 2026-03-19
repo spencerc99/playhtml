@@ -1,10 +1,11 @@
 // ABOUTME: Dispatches custom site logic based on the current domain.
 // ABOUTME: Each site module initializes domain-specific collaborative features.
 
-import type { PageDataChannel, PresenceAPI } from "@playhtml/common";
+import type { PageDataChannel, PresenceAPI, PresenceRoom } from "@playhtml/common";
 
 export interface CustomSiteDeps {
   createPageData: <T>(name: string, defaultValue: T) => PageDataChannel<T>;
+  createPresenceRoom: (name: string) => PresenceRoom;
   presence: PresenceAPI;
   cursorClient: any;
   playerColor: string;
