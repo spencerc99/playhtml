@@ -42,22 +42,26 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   }
 
   // Domain-wide lobby for cross-page awareness
-  const lobby = deps.createPresenceRoom("lobby");
-  lobby.presence.setMyPresence("page", {
-    url: location.href,
-    title: document.title.replace(/ - Wikipedia$/, ""),
-    color: deps.playerColor,
-  });
-  cleanups.push(() => lobby.destroy());
+  let lobbyPresence = deps.presence; // fallback to page presence if lobby unavailable
+  if (typeof deps.createPresenceRoom === "function") {
+    const lobby = deps.createPresenceRoom("lobby");
+    lobby.presence.setMyPresence("page", {
+      url: location.href,
+      title: document.title.replace(/ - Wikipedia$/, ""),
+      color: deps.playerColor,
+    });
+    lobbyPresence = lobby.presence;
+    cleanups.push(() => lobby.destroy());
+  }
 
   // Ambient presence count + jump-to-someone
   const { PresenceCountPill } = await import("../features/PresenceCountPill");
-  const presencePill = new PresenceCountPill(deps.presence, lobby.presence);
+  const presencePill = new PresenceCountPill(deps.presence, lobbyPresence);
   presencePill.init();
   cleanups.push(() => presencePill.destroy());
 
   // Broadcast navigatingTo on Wikipedia article link clicks.
-  // Intercept the click, broadcast presence, wait for sync, then navigate.
+  // Only delay navigation when someone is following — solo users get instant clicks.
   const onClick = (e: MouseEvent) => {
     const link = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
     if (!link || !link.href || link.target === "_blank") return;
@@ -67,15 +71,17 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       if (url.origin !== location.origin) return;
       if (!isWikiArticleUrl(url.href)) return;
 
-      // Delay navigation so the awareness update has time to sync
-      e.preventDefault();
-      deps.presence.setMyPresence("navigatingTo", {
-        url: url.href,
-        title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
-      });
-      setTimeout(() => {
-        window.location.href = url.href;
-      }, 200);
+      if (followManager.hasFollowers()) {
+        // Delay navigation so followers see the navigatingTo awareness update
+        e.preventDefault();
+        deps.presence.setMyPresence("navigatingTo", {
+          url: url.href,
+          title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
+        });
+        setTimeout(() => {
+          window.location.href = url.href;
+        }, 200);
+      }
     } catch { /* ignore invalid URLs */ }
   };
   document.addEventListener("click", onClick, { capture: true });

@@ -59,8 +59,11 @@ export class FollowManager {
   private vignetteElement: HTMLElement | null = null;
   private statusBarElement: HTMLElement | null = null;
   private navToastElement: HTMLElement | null = null;
-  private navToastTimeout: ReturnType<typeof setTimeout> | null = null;
   private pendingNavUrl: string | null = null;
+
+  // Navigation watching
+  private navWatchInterval: ReturnType<typeof setInterval> | null = null;
+  private leftToastTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Scroll tether
   private tetherRafId: number | null = null;
@@ -138,6 +141,7 @@ export class FollowManager {
     this.removeHint();
     this.removeFollowUI();
     this.removeNavToast();
+    this.stopNavWatch();
     this.stopScrollTether();
     this.offscreenIndicator.destroy();
     this.followerBarElement?.remove();
@@ -149,6 +153,10 @@ export class FollowManager {
 
   setMutualFollowCallback(cb: (active: boolean) => void): void {
     this.onMutualFollow = cb;
+  }
+
+  hasFollowers(): boolean {
+    return this.currentFollowers.size > 0;
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -198,8 +206,13 @@ export class FollowManager {
     this.presence.setMyPresence("following", null);
     this.removeFollowUI();
     this.removeNavToast();
+    this.stopNavWatch();
     this.stopScrollTether();
     this.offscreenIndicator.destroy();
+    if (this.leftToastTimeout) {
+      clearTimeout(this.leftToastTimeout);
+      this.leftToastTimeout = null;
+    }
   }
 
   // --- Hint UI ---
@@ -436,8 +449,15 @@ export class FollowManager {
       }
     };
 
-    const interval = setInterval(check, 150);
-    this.cleanups.push(() => clearInterval(interval));
+    this.stopNavWatch();
+    this.navWatchInterval = setInterval(check, 150);
+  }
+
+  private stopNavWatch(): void {
+    if (this.navWatchInterval) {
+      clearInterval(this.navWatchInterval);
+      this.navWatchInterval = null;
+    }
   }
 
   private onMutualFollowStart(): void {
@@ -529,10 +549,6 @@ export class FollowManager {
       clearInterval(this.navCountdownInterval);
       this.navCountdownInterval = null;
     }
-    if (this.navToastTimeout) {
-      clearTimeout(this.navToastTimeout);
-      this.navToastTimeout = null;
-    }
     if (this.navToastElement) {
       this.navToastElement.remove();
       this.navToastElement = null;
@@ -547,7 +563,7 @@ export class FollowManager {
         colorDot(this.followState.targetColor),
         " left Wikipedia",
       );
-      setTimeout(() => this.unfollow(), 3000);
+      this.leftToastTimeout = setTimeout(() => this.unfollow(), 3000);
     }
   }
 
