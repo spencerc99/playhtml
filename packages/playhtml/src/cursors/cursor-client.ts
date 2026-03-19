@@ -444,8 +444,10 @@ export class CursorClientAwareness {
       }
 
       // Track messages for chat CTA (keyed by stableId)
-      const cursorData = state?.[CURSOR_AWARENESS_FIELD];
-      if ((cursorData as any)?.message) {
+      const cursorData = state?.[CURSOR_AWARENESS_FIELD] as
+        | { message?: string | null }
+        | undefined;
+      if (cursorData?.message) {
         this.otherUsersWithMessages.add(stableId);
       } else {
         this.otherUsersWithMessages.delete(stableId);
@@ -1534,7 +1536,7 @@ export class CursorClientAwareness {
       const cursorData = gridItems.find((item) => item.id === stableId)?.data;
 
       if (cursorData && cursorData.cursor) {
-        // Convert their cursor to client coordinates (same as updateCursor/checkProximityOptimized)
+        // Convert to viewport coordinates for distance calculation
         const theirClientCoords = storageToClientCoordinates(
           cursorData.cursor.x,
           cursorData.cursor.y,
