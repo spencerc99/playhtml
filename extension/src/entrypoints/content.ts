@@ -891,7 +891,7 @@ export default defineContentScript({
         const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
         await initCustomSite({
           createPageData: playhtml.createPageData,
-          createPresenceRoom: (playhtml as any).createPresenceRoom,
+          createPresenceRoom: playhtml.createPresenceRoom,
           presence: playhtml.presence,
           cursorClient: playhtml.cursorClient,
           playerColor: color,
