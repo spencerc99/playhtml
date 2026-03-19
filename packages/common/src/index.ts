@@ -243,6 +243,11 @@ export interface PresenceAPI {
   getMyIdentity(): PlayerIdentity;
 }
 
+export interface PresenceRoom {
+  presence: PresenceAPI;
+  destroy: () => void;
+}
+
 const growCursor: string = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='44' height='53' viewport='0 0 100 100' style='fill:black;font-size:26px;'><text y='40%'>🚿</text></svg>")
       16 0,
     auto`;

@@ -27,7 +27,7 @@ import {
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
 import { createPresenceAPI } from "./presence";
-import type { PresenceAPI } from "@playhtml/common";
+import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
@@ -1024,6 +1024,33 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   });
 }
 
+function createPresenceRoom(name: string): PresenceRoom {
+  if (!hasSynced) {
+    throw new Error("playhtml.createPresenceRoom is not available before init()");
+  }
+
+  const roomId = normalizeRoomId(window.location.host, name);
+  const roomDoc = new Y.Doc();
+  const provider = new YPartyKitProvider(__currentHost, roomId, roomDoc);
+
+  const presence = createPresenceAPI({
+    getAwareness: () => provider.awareness,
+    getPlayerIdentity: () =>
+      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+  });
+
+  let destroyed = false;
+  return {
+    presence,
+    destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
+      provider.destroy();
+      roomDoc.destroy();
+    },
+  };
+}
+
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElements: typeof setupElements;
@@ -1040,6 +1067,7 @@ export interface PlayHTMLComponents {
   cursorClient: CursorClientAwareness | null;
   presence: PresenceAPI;
   createPageData: typeof createPageData;
+  createPresenceRoom: typeof createPresenceRoom;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -1084,6 +1112,7 @@ export const playhtml: PlayHTMLComponents = {
     return __currentHost;
   },
   createPageData,
+  createPresenceRoom,
   listSharedElements: devListSharedElements,
 };
 
