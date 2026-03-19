@@ -104,7 +104,9 @@ function smearNebulaLayers(
 const INTENSITY_K = 0.1;
 // Controls how many absolute clicks before the effect reaches full strength.
 const ABSOLUTE_RATE = 50;
-// Opacity reduction for inline rendering (no blur available)
+// Base opacity multiplier (tuned in preview: 60%)
+const OPACITY_MUL = 0.6;
+// Additional reduction for inline rendering (no blur available)
 const INLINE_OPACITY_MUL = 0.4;
 
 export function computeIntensity(count: number, maxCount: number): number {
@@ -114,83 +116,6 @@ export function computeIntensity(count: number, maxCount: number): number {
   const relative = Math.min(1, Math.log(1 + count * INTENSITY_K) / denom);
   const absolute = 1 - Math.exp(-count / ABSOLUTE_RATE);
   return absolute * (0.3 + 0.7 * relative);
-}
-
-// Apply glow styles to a link element. For single-line links, adds a CSS class
-// (pseudo-element rules must be injected separately via buildGlowCssRules).
-// For multi-line links, applies inline backgrounds + drop-shadow.
-export function applyGlowToLink(
-  link: HTMLAnchorElement,
-  style: GlowStyle,
-  wraps: boolean,
-  className?: string,
-): void {
-  const hPad = Math.round(1 + style.vSpread * 0.7);
-
-  if (wraps) {
-    Object.assign(link.style, {
-      background: style.bgLayers.length > 0 ? style.bgLayers.join(", ") : undefined,
-      boxDecorationBreak: "clone",
-      WebkitBoxDecorationBreak: "clone",
-      filter: [
-        `drop-shadow(0 0 ${style.blur.toFixed(1)}px ${style.baseFill})`,
-        `drop-shadow(0 0 ${(style.blur * 0.5).toFixed(1)}px ${style.baseFill})`,
-      ].join(" "),
-      padding: `0.5px ${hPad}px`,
-      margin: `-0.5px ${-hPad}px`,
-      borderRadius: "2px",
-    });
-  } else {
-    if (className) link.classList.add(className);
-    Object.assign(link.style, {
-      position: "relative",
-      zIndex: "1",
-      boxDecorationBreak: "clone",
-      WebkitBoxDecorationBreak: "clone",
-    });
-  }
-}
-
-// Generate CSS rules for pseudo-element blur on a single-line link.
-export function buildGlowCssRules(className: string, style: GlowStyle): string[] {
-  const rules: string[] = [];
-  const { hInsetPct: hInset, vSpread, baseFill, blur, blobLayers } = style;
-
-  rules.push(`
-    .${className}::before {
-      content: "";
-      position: absolute;
-      left: ${hInset}%;
-      right: ${hInset}%;
-      top: ${-vSpread}px;
-      bottom: ${-vSpread}px;
-      background: ${baseFill};
-      filter: blur(${blur.toFixed(1)}px);
-      border-radius: 2px;
-      pointer-events: none;
-      z-index: 0;
-    }
-  `);
-
-  if (blobLayers.length > 0) {
-    rules.push(`
-      .${className}::after {
-        content: "";
-        position: absolute;
-        left: ${hInset}%;
-        right: ${hInset}%;
-        top: ${-vSpread}px;
-        bottom: ${-vSpread}px;
-        background: ${blobLayers.join(", ")};
-        filter: blur(${(blur * 0.7).toFixed(1)}px);
-        border-radius: 2px;
-        pointer-events: none;
-        z-index: 0;
-      }
-    `);
-  }
-
-  return rules;
 }
 
 export function computeGlowStyle(
@@ -203,17 +128,17 @@ export function computeGlowStyle(
   const t = computeIntensity(count, pageMax);
   if (t < 0.01) return null;
   const blur = 1.5 + t * 4;
-  const baseOpacity = 0.15 + t * 0.2;
-  const blobOpacity = 0.2 + t * 0.3;
+  const baseOpacity = (0.15 + t * 0.2) * OPACITY_MUL;
+  const blobOpacity = (0.2 + t * 0.3) * OPACITY_MUL;
   const vSpread = t * 1.5;
   const hInsetPct = Math.round((1 - t) * 15);
 
-  // Full-opacity layers for pseudo-element blur path
+  // Pseudo-element blur path layers
   const layers = smearNebulaLayers(colors, baseOpacity, blobOpacity, t);
   const baseFill = layers[0];
   const blobLayers = layers.slice(1);
 
-  // Reduced-opacity layers for inline background path (no blur available)
+  // Inline background path layers (further reduced for no blur)
   const inlineLayers = smearNebulaLayers(colors, baseOpacity * INLINE_OPACITY_MUL, blobOpacity * INLINE_OPACITY_MUL, t);
   const filtered = inlineLayers.filter((l) => l !== "transparent");
   const bgLayers = [...filtered.slice(1), filtered[0]].filter(Boolean);
