@@ -104,8 +104,12 @@ function smearNebulaLayers(
 const INTENSITY_K = 0.1;
 // Controls how many absolute clicks before the effect reaches full strength.
 const ABSOLUTE_RATE = 50;
-// Base opacity multiplier (tuned in preview: 60%)
-const OPACITY_MUL = 0.6;
+// Opacity range: S-curve from MIN to MAX via t^POWER
+const BASE_OPACITY_MIN = 0.02;
+const BASE_OPACITY_MAX = 0.55;
+const BLOB_OPACITY_MIN = 0.03;
+const BLOB_OPACITY_MAX = 0.65;
+const OPACITY_POWER = 2;
 // Additional reduction for inline rendering (no blur available)
 const INLINE_OPACITY_MUL = 0.4;
 
@@ -128,8 +132,9 @@ export function computeGlowStyle(
   const t = computeIntensity(count, pageMax);
   if (t < 0.01) return null;
   const blur = 1.5 + t * 4;
-  const baseOpacity = (0.05 + t * 0.3) * OPACITY_MUL;
-  const blobOpacity = (0.08 + t * 0.42) * OPACITY_MUL;
+  const curve = Math.pow(t, OPACITY_POWER);
+  const baseOpacity = BASE_OPACITY_MIN + (BASE_OPACITY_MAX - BASE_OPACITY_MIN) * curve;
+  const blobOpacity = BLOB_OPACITY_MIN + (BLOB_OPACITY_MAX - BLOB_OPACITY_MIN) * curve;
   const vSpread = t * 1.5;
   const hInsetPct = Math.round((1 - t) * 15);
 
