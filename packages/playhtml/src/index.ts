@@ -1039,9 +1039,12 @@ function createPresenceRoom(name: string): PresenceRoom {
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
   });
 
+  let destroyed = false;
   return {
     presence,
     destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
       provider.destroy();
       roomDoc.destroy();
     },

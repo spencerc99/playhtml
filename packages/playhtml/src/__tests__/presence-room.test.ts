@@ -1,16 +1,18 @@
 // ABOUTME: Tests for playhtml.createPresenceRoom() API.
 // ABOUTME: Verifies the returned PresenceRoom has the correct shape and error handling.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { playhtml } from "../index";
 
 describe("createPresenceRoom", () => {
   describe("before init", () => {
-    it("throws if called before init", () => {
-      // createPresenceRoom is on the playhtml object but requires init first.
-      // We can't easily test this without a fresh module, so we verify
-      // the function exists and trust the hasSynced guard from code review.
-      expect(playhtml.createPresenceRoom).toBeTypeOf("function");
+    it("throws if called before init", async () => {
+      vi.resetModules();
+      delete (globalThis as any).playhtml;
+      const mod = await import("../index");
+      expect(() => mod.playhtml.createPresenceRoom("test")).toThrowError(
+        /not available before init/,
+      );
     });
   });
 
@@ -81,11 +83,16 @@ describe("createPresenceRoom", () => {
       expect(() => room.destroy()).not.toThrow();
     });
 
+    it("destroy is safe to call twice", () => {
+      const room = playhtml.createPresenceRoom("double-destroy");
+      room.destroy();
+      expect(() => room.destroy()).not.toThrow();
+    });
+
     it("different room names create independent rooms", () => {
       const roomA = playhtml.createPresenceRoom("room-a");
       const roomB = playhtml.createPresenceRoom("room-b");
       try {
-        // They should be distinct objects with independent presence
         expect(roomA).not.toBe(roomB);
         expect(roomA.presence).not.toBe(roomB.presence);
       } finally {
