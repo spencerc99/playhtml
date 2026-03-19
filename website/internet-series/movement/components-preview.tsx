@@ -3,12 +3,6 @@
 // Agentation is a dev-only toolbar — loaded at runtime so it never appears in the production bundle
 import "./components-preview.scss";
 import React, { lazy, useEffect, useId, useRef, useState } from "react";
-import {
-  computeGlowStyle,
-  computeIntensity,
-  applyGlowToLink,
-  buildGlowCssRules,
-} from "../../../extension/src/features/link-glow-renderer";
 import ReactDOM from "react-dom/client";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
@@ -1525,6 +1519,15 @@ const BTN_STYLE: React.CSSProperties = {
 
 // ── Link traces ───────────────────────────────────────────────────────────────
 
+import {
+  computeIntensity,
+  computeGlowStyle,
+  applyInlineGlow,
+  applySingleLineGlow,
+  buildPseudoElementCSS,
+  type GlowStyle,
+} from "../../extension/src/features/link-glow-renderer";
+
 interface LinkTraceData {
   count: number;
   recentColors: string[];
@@ -1552,12 +1555,6 @@ function ltHslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-function ltHexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
-}
 
 function ltPickColors(n: number): string[] {
   const seeds = [42, 137, 251, 88, 195, 314, 67, 200];
@@ -1930,120 +1927,8 @@ function PassingCursors({
   );
 }
 
-// Average all colors into a single muted hex for the nebula base wash.
-function averageHex(colors: string[]): string {
-  let rSum = 0, gSum = 0, bSum = 0;
-  for (const hex of colors) {
-    rSum += parseInt(hex.slice(1, 3), 16);
-    gSum += parseInt(hex.slice(3, 5), 16);
-    bSum += parseInt(hex.slice(5, 7), 16);
-  }
-  const n = colors.length;
-  const r = Math.round(rSum / n).toString(16).padStart(2, "0");
-  const g = Math.round(gSum / n).toString(16).padStart(2, "0");
-  const b = Math.round(bSum / n).toString(16).padStart(2, "0");
-  return `#${r}${g}${b}`;
-}
 
-// Pair colors into overlapping duos so no single color dominates.
-// Always returns pairs (last pair may overlap with the one before it).
-function pairColors(colors: string[]): [string, string][] {
-  if (colors.length <= 2) return [colors.length === 1 ? [colors[0], colors[0]] : [colors[0], colors[1]]];
-  const pairs: [string, string][] = [];
-  for (let i = 0; i < colors.length - 1; i += 2) {
-    pairs.push([colors[i], colors[i + 1]]);
-  }
-  // Odd count: last color pairs with its predecessor (overlap, not solo)
-  if (colors.length % 2 === 1) {
-    pairs.push([colors[colors.length - 2], colors[colors.length - 1]]);
-  }
-  return pairs;
-}
 
-// Build nebula-style background: a muted base wash with color blobs punctuating it.
-// Each blob is a radial-gradient positioned along the word's width.
-function smearNebulaLayers(
-  colors: string[],
-  baseOpacity: number,
-  blobOpacity: number,
-  t: number,
-): string[] {
-  if (colors.length === 0) return ["transparent"];
-
-  const avg = averageHex(colors);
-  // Base wash — desaturated average at low opacity
-  const baseFill = ltHexToRgba(avg, baseOpacity);
-
-  if (colors.length === 1) return [baseFill];
-
-  const pairs = pairColors(colors);
-  const layers: string[] = [];
-
-  // Each pair becomes a radial blob, spaced evenly with some jitter
-  for (let i = 0; i < pairs.length; i++) {
-    const [c1, c2] = pairs[i];
-    // Position: spread across 15%-85% of the width so blobs don't hug edges
-    const xPct = pairs.length === 1
-      ? 50
-      : 15 + (i / (pairs.length - 1)) * 70;
-    // Slight vertical offset so blobs don't stack perfectly
-    const yPct = 45 + (i % 2 === 0 ? -8 : 8);
-    // Blob size: small enough that there's negative space between them
-    const rPct = Math.max(15, (20 + t * 18) - pairs.length * 3);
-
-    // Each blob is a two-stop radial: inner color fading to transparent
-    const inner = ltHexToRgba(c1, blobOpacity);
-    const mid = ltHexToRgba(c2, blobOpacity * 0.5);
-    layers.push(
-      `radial-gradient(ellipse ${rPct}% 70% at ${xPct.toFixed(0)}% ${yPct}%, ${inner} 0%, ${mid} 50%, transparent 100%)`,
-    );
-  }
-
-  return [baseFill, ...layers];
-}
-
-// Build text-shadow layers that simulate the nebula glow blur.
-// text-shadow follows inline line wrapping, unlike absolute-positioned spans.
-// We use transparent text color + multiple offset shadows to create the halo.
-function buildGlowShadows(
-  colors: string[],
-  baseOpacity: number,
-  blobOpacity: number,
-  blur: number,
-  t: number,
-): string {
-  if (colors.length === 0) return "none";
-
-  const avg = averageHex(colors);
-  const avgRgba = ltHexToRgba(avg, baseOpacity * 0.7);
-
-  // Base wash: several overlapping shadows at the average color
-  const shadows: string[] = [
-    `0 0 ${(blur * 1.5).toFixed(1)}px ${avgRgba}`,
-    `0 0 ${(blur * 2.5).toFixed(1)}px ${avgRgba}`,
-  ];
-
-  // Color blobs: each pair gets offset shadows
-  if (colors.length > 1) {
-    const pairs = pairColors(colors);
-    for (let i = 0; i < pairs.length; i++) {
-      const [c1, c2] = pairs[i];
-      // Horizontal offset: spread blobs across the text
-      const xOff = pairs.length === 1
-        ? 0
-        : ((i / (pairs.length - 1)) - 0.5) * (4 + t * 6);
-      const yOff = (i % 2 === 0 ? -1 : 1) * (0.5 + t);
-      const inner = ltHexToRgba(c1, blobOpacity * 0.6);
-      const mid = ltHexToRgba(c2, blobOpacity * 0.4);
-      shadows.push(
-        `${xOff.toFixed(1)}px ${yOff.toFixed(1)}px ${(blur * 1.2).toFixed(1)}px ${inner}`,
-        `${(xOff * 0.7).toFixed(1)}px ${(-yOff).toFixed(1)}px ${(blur * 2).toFixed(1)}px ${mid}`,
-      );
-    }
-  }
-
-  return shadows.join(", ");
-}
 
 function SmearLink({
   children,
@@ -2054,30 +1939,35 @@ function SmearLink({
   children: React.ReactNode;
   data: LinkTraceData;
   showCursors?: boolean;
-  opacityMul?: number;
-  saturationMul?: number;
 }) {
   const linkRef = useRef<HTMLAnchorElement>(null);
   const rawId = useId();
   const cls = `smear-${rawId.replace(/:/g, "")}`;
-  const [cssRules, setCssRules] = useState("");
 
+  const style = computeGlowStyle(data.recentColors, data.count, data.pageMax);
+
+  // Detect whether the link wraps across multiple lines
+  const [wraps, setWraps] = useState(false);
   useEffect(() => {
     const el = linkRef.current;
     if (!el) return;
+    setWraps(el.getClientRects().length > 1);
+  }, [children]);
 
-    const style = computeGlowStyle(data.recentColors, data.count, data.pageMax);
-    if (!style) return;
+  // Apply glow via shared rendering functions
+  useEffect(() => {
+    const el = linkRef.current;
+    if (!el || !style) return;
 
-    const wraps = el.getClientRects().length > 1;
-    applyGlowToLink(el, style, wraps, wraps ? undefined : cls);
-
-    if (!wraps) {
-      setCssRules(buildGlowCssRules(cls, style).join("\n"));
+    if (wraps) {
+      applyInlineGlow(el, style);
     } else {
-      setCssRules("");
+      applySingleLineGlow(el, cls);
     }
-  }, [data.count, data.pageMax, data.recentColors, cls]);
+  }, [style, wraps, cls]);
+
+  // Generate pseudo-element CSS for single-line links
+  const cssRules = style && !wraps ? buildPseudoElementCSS(cls, style).join("\n") : "";
 
   return (
     <>
@@ -2086,9 +1976,13 @@ function SmearLink({
         ref={linkRef}
         href="#"
         onClick={(e) => e.preventDefault()}
-        style={{ color: "#0645ad", textDecoration: "none" }}
+        style={{
+          color: "#0645ad",
+          textDecoration: "none",
+          position: "relative",
+        }}
       >
-        {children}
+        <span style={{ position: "relative", zIndex: 1 }}>{children}</span>
         {showCursors && <PassingCursors data={data} linkRef={linkRef} />}
       </a>
     </>
@@ -2334,21 +2228,6 @@ function LinkDirectionSection({
 
 function LinkTracesSection() {
   const [colorCount, setColorCount] = useState(6);
-  const [smearOpacity, setSmearOpacity] = useState(0.6);
-  const [smearSaturation, setSmearSaturation] = useState(1.0);
-
-  function withSmearTuning(renderer: (p: any) => React.ReactElement): LtLinkRenderer {
-    return (p) =>
-      renderer({
-        ...p,
-        opacityMul: smearOpacity,
-        saturationMul: smearSaturation,
-        data: {
-          ...p.data,
-          recentColors: p.data.recentColors.slice(0, colorCount),
-        },
-      });
-  }
 
   function withColorCount(renderer: LtLinkRenderer): LtLinkRenderer {
     return (p) =>
@@ -2407,28 +2286,6 @@ function LinkTracesSection() {
             <span style={{ minWidth: "12px" }}>{colorCount}</span>
           </label>
           <label style={CTRL_STYLE}>
-            opacity
-            <input
-              type="range"
-              min={0}
-              max={200}
-              value={Math.round(smearOpacity * 100)}
-              onChange={(e) => setSmearOpacity(Number(e.target.value) / 100)}
-              style={{ width: "60px", accentColor: TEAL }}
-            />
-            <span style={{ minWidth: "28px" }}>{Math.round(smearOpacity * 100)}%</span>
-          </label>
-          <label style={CTRL_STYLE}>
-            saturation
-            <input
-              type="range"
-              min={0}
-              max={200}
-              value={Math.round(smearSaturation * 100)}
-              onChange={(e) => setSmearSaturation(Number(e.target.value) / 100)}
-              style={{ width: "60px", accentColor: TEAL }}
-            />
-            <span style={{ minWidth: "28px" }}>{Math.round(smearSaturation * 100)}%</span>
           </label>
         </div>
       </div>
@@ -2448,14 +2305,14 @@ function LinkTracesSection() {
         label="Direction 1"
         name="Glow smear"
         desc="Color radiates from the letter shapes via text-shadow. Glow grows wider and more saturated with more visits."
-        renderLink={withSmearTuning((p) => <SmearLink {...p} />)}
+        renderLink={withColorCount((p) => <SmearLink {...p} />)}
       />
       <LinkDirectionSection
         id="section-lt-smear-cursors"
         label="Direction 1 + cursors"
         name="Glow smear + passing cursors"
         desc="Same glow smear, with occasional cursors that drift across the link and fade out while passing through — 1, 2, or 3 depending on visit volume."
-        renderLink={withSmearTuning((p) => <SmearLink {...p} showCursors />)}
+        renderLink={withColorCount((p) => <SmearLink {...p} showCursors />)}
       />
       <LinkDirectionSection
         id="section-lt-cursors"

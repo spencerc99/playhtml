@@ -1,7 +1,7 @@
 // ABOUTME: Manages shared link-click glow state for anchor elements on a page.
 // ABOUTME: Tracks click counts and recent player colors per destination link.
 
-import { computeGlowStyle } from "./link-glow-renderer";
+import { computeGlowStyle, applyInlineGlow, applySingleLineGlow, buildPseudoElementCSS } from "./link-glow-renderer";
 import type { PageDataChannel } from "@playhtml/common";
 
 export interface LinkClickEntry {
@@ -145,7 +145,6 @@ export class LinkGlowManager {
     style: NonNullable<ReturnType<typeof computeGlowStyle>>,
     wraps: boolean,
   ): void {
-    // Save original styles before first modification
     if (!this.originalStyles.has(link)) {
       this.originalStyles.set(link, {
         position: link.style.position,
@@ -160,33 +159,10 @@ export class LinkGlowManager {
       });
     }
 
-    const hPad = Math.round(1 + style.vSpread * 0.7);
-
     if (wraps) {
-      // Multi-line: inline backgrounds + drop-shadow fallback
-      const dropShadows = [
-        `drop-shadow(0 0 ${style.blur.toFixed(1)}px ${style.baseFill})`,
-        `drop-shadow(0 0 ${(style.blur * 0.5).toFixed(1)}px ${style.baseFill})`,
-      ];
-      Object.assign(link.style, {
-        background: style.bgLayers.length > 0 ? style.bgLayers.join(", ") : undefined,
-        boxDecorationBreak: "clone",
-        WebkitBoxDecorationBreak: "clone",
-        filter: dropShadows.join(" "),
-        padding: `0.5px ${hPad}px`,
-        margin: `-0.5px ${-hPad}px`,
-        borderRadius: "2px",
-      });
+      applyInlineGlow(link, style);
     } else {
-      // Single-line: pseudo-elements with blur via injected stylesheet
-      const cls = this.getOrCreateClass(link);
-      link.classList.add(cls);
-      Object.assign(link.style, {
-        position: "relative",
-        zIndex: "1",
-        boxDecorationBreak: "clone",
-        WebkitBoxDecorationBreak: "clone",
-      });
+      applySingleLineGlow(link, this.getOrCreateClass(link));
     }
   }
 
@@ -219,40 +195,7 @@ export class LinkGlowManager {
 
       if (!wraps) {
         const cls = this.linkClasses.get(link)!;
-        const hInset = style.hInsetPct;
-        const vSpread = style.vSpread;
-        cssRules.push(`
-          .${cls}::before {
-            content: "";
-            position: absolute;
-            left: ${hInset}%;
-            right: ${hInset}%;
-            top: ${-vSpread}px;
-            bottom: ${-vSpread}px;
-            background: ${style.baseFill};
-            filter: blur(${style.blur.toFixed(1)}px);
-            border-radius: 2px;
-            pointer-events: none;
-            z-index: 0;
-          }
-        `);
-        if (style.blobLayers.length > 0) {
-          cssRules.push(`
-            .${cls}::after {
-              content: "";
-              position: absolute;
-              left: ${hInset}%;
-              right: ${hInset}%;
-              top: ${-vSpread}px;
-              bottom: ${-vSpread}px;
-              background: ${style.blobLayers.join(", ")};
-              filter: blur(${(style.blur * 0.7).toFixed(1)}px);
-              border-radius: 2px;
-              pointer-events: none;
-              z-index: 0;
-            }
-          `);
-        }
+        cssRules.push(...buildPseudoElementCSS(cls, style));
       }
     }
 
