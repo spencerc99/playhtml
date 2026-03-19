@@ -416,9 +416,16 @@ export class CursorClientAwareness {
 
     [...added, ...updated].forEach((clientId) => {
       const state = states.get(clientId) as Record<string, unknown> | undefined;
-      const stableId = state
+      let stableId = state
         ? getStableIdForAwareness(state, clientId)
         : String(clientId);
+
+      // When cursor awareness is cleared (e.g. beforeunload sets it to null),
+      // getStableIdForAwareness falls back to String(clientId). Use the
+      // previously known stableId so we can find and remove the right cursor.
+      if (stableId === String(clientId)) {
+        stableId = this.clientIdToStableId.get(clientId) ?? stableId;
+      }
 
       this.clientIdToStableId.set(clientId, stableId);
 
