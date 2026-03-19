@@ -4,6 +4,7 @@
     { "scenario": "cursor-storm", "maxUsers": 500, "duration": 120, "rampUpSeconds": 60 },
     { "scenario": "live-chat",    "maxUsers": 200, "duration": 120, "rampUpSeconds": 40 },
     { "scenario": "fridge",       "maxUsers": 100, "duration": 120, "rampUpSeconds": 30 },
-    { "scenario": "mirror",       "maxUsers": 100, "duration": 120, "rampUpSeconds": 30 }
+    { "scenario": "mirror",       "maxUsers": 100, "duration": 120, "rampUpSeconds": 30 },
+    { "scenario": "lobby-presence", "maxUsers": 10000, "duration": 180, "rampUpSeconds": 120 }
   ]
 }

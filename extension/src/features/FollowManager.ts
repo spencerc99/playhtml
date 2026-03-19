@@ -51,6 +51,7 @@ function muted(text: string, extraStyles?: Partial<CSSStyleDeclaration>): HTMLSp
 export class FollowManager {
   private followState: FollowState | null = null;
   private hintElement: HTMLElement | null = null;
+  private nearbyCursors = new Map<string, { color: string; dist: number }>();
   private hintTimeout: ReturnType<typeof setTimeout> | null = null;
   private nearestTarget: { publicKey: string; color: string } | null = null;
   private cleanups: (() => void)[] = [];
@@ -115,26 +116,49 @@ export class FollowManager {
     const color = identity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
     if (!publicKey) return;
 
-    this.nearestTarget = { publicKey, color };
+    // Track all nearby cursors, pick the closest
+    const dist = positions
+      ? Math.sqrt(
+          (positions.ours.x - positions.theirs.x) ** 2 +
+          (positions.ours.y - positions.theirs.y) ** 2,
+        )
+      : Infinity;
 
-    // Show hint near the midpoint between the two cursors
-    if (!this.hintElement) {
-      const hintX = positions
-        ? (positions.ours.x + positions.theirs.x) / 2
-        : window.innerWidth / 2;
-      const hintY = positions
-        ? (positions.ours.y + positions.theirs.y) / 2
-        : window.innerHeight / 2;
-      this.showHint(hintX, hintY, color);
-    }
+    this.nearbyCursors.set(publicKey, { color, dist });
+    this.updateNearestAndHint(positions);
   }
 
   // Called by cursor options onProximityLeft
   onProximityLeft(connectionId: string): void {
+    this.nearbyCursors.delete(connectionId);
     if (this.nearestTarget?.publicKey === connectionId) {
+      this.updateNearestAndHint();
+    }
+  }
+
+  private updateNearestAndHint(
+    positions?: { ours: { x: number; y: number }; theirs: { x: number; y: number } },
+  ): void {
+    // Find the closest nearby cursor
+    let closest: { publicKey: string; color: string; dist: number } | null = null;
+    for (const [key, val] of this.nearbyCursors) {
+      if (!closest || val.dist < closest.dist) {
+        closest = { publicKey: key, color: val.color, dist: val.dist };
+      }
+    }
+
+    if (!closest) {
       this.nearestTarget = null;
       this.removeHint();
+      return;
     }
+
+    this.nearestTarget = { publicKey: closest.publicKey, color: closest.color };
+
+    // Position hint near the other cursor (offset slightly)
+    const hintX = positions?.theirs?.x ?? window.innerWidth / 2;
+    const hintY = positions?.theirs?.y ?? window.innerHeight / 2;
+    this.showHint(hintX, hintY, closest.color);
   }
 
   destroy(): void {
@@ -218,13 +242,18 @@ export class FollowManager {
   // --- Hint UI ---
 
   private showHint(x: number, y: number, color: string): void {
-    this.removeHint();
+    // If hint exists, just update position
+    if (this.hintElement) {
+      this.hintElement.style.left = `${x + 20}px`;
+      this.hintElement.style.top = `${y - 30}px`;
+      return;
+    }
 
     const hint = document.createElement("div");
     Object.assign(hint.style, {
       position: "fixed",
       left: `${x + 20}px`,
-      top: `${y + 20}px`,
+      top: `${y - 30}px`,
       fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
       fontSize: "12px",
       color: "#3d3833",
@@ -235,7 +264,7 @@ export class FollowManager {
       zIndex: "2147483647",
       pointerEvents: "none",
       opacity: "0",
-      transition: "opacity 0.3s ease",
+      transition: "opacity 0.3s ease, left 0.1s ease, top 0.1s ease",
       whiteSpace: "nowrap",
     });
     hint.append(
