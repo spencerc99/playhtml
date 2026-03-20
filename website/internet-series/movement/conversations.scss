@@ -135,6 +135,8 @@ $fill-warm: rgba(61, 56, 51, 0.07);
   padding: 9px 14px;
   font-size: 13px;
   line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 // Shape variants (applied via data attribute or class)
