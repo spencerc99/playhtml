@@ -34,4 +34,12 @@ export default defineConfig({
   },
   modules: ["@wxt-dev/module-react"],
   outDir: "dist",
+  // Force ASCII output so Chrome doesn't reject content scripts as "not UTF-8
+  // encoded" — esbuild can emit non-ASCII characters in string literals which
+  // Chrome's manifest loader misidentifies as invalid encoding.
+  vite: () => ({
+    esbuild: {
+      charset: "ascii",
+    },
+  }),
 });

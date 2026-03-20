@@ -310,11 +310,13 @@ export default function App() {
               >
                 playhtml
               </a>
-              , an open-source library for creating shared experiences, anyone
-              can design custom experiences that interact with the game from
-              individual websites. Rather than one monolithic platform, I want
-              millions of tiny internets to flourish each finding new ways to
-              express care, whimsy, and joy digitally.
+              , an open-source library for creating shared experiences, the game
+              is designed to be customized and extended by its players.
+              Individual websites can create interactions that respond to live
+              events on other websites and change behavior depending on a user’s
+              history and personality. Traditional domain silos become open
+              islands that grow dense with connection and come alive with the
+              personality of dozens of personal websites.
             </p>
 
             <p>
@@ -366,6 +368,7 @@ export default function App() {
             target="_blank"
             rel="noopener noreferrer"
             className={styles.cta}
+            style={{ fontSize: "2em" }}
           >
             sign up to try it!
           </a>
