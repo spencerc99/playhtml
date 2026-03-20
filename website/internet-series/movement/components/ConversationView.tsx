@@ -49,6 +49,20 @@ function replayToFinalText(sequence: TypingAction[]): string {
   return text;
 }
 
+/** Filter out key-repeat spam (e.g. "sssssss") by checking character diversity. */
+function isRepeatSpam(text: string): boolean {
+  if (text.length < 5) return false;
+  const charCounts = new Map<string, number>();
+  for (const c of text) {
+    charCounts.set(c, (charCounts.get(c) ?? 0) + 1);
+  }
+  // If any single character makes up > 70% of the text, it's spam
+  for (const count of charCounts.values()) {
+    if (count / text.length > 0.7) return true;
+  }
+  return false;
+}
+
 interface ProcessedEvent {
   event: CollectionEvent;
   text: string;
@@ -71,6 +85,7 @@ function buildMessages(
 
     const text = replayToFinalText(data.sequence).trim();
     if (text.length < MIN_MESSAGE_LENGTH) continue;
+    if (isRepeatSpam(text)) continue;
 
     const domain = extractDomain(e.meta?.url ?? "") || "unknown";
     processed.push({ event: e, text, domain });
