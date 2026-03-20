@@ -868,9 +868,47 @@ export default defineContentScript({
         }, 3000);
       }
 
+      private hasNativePlayhtml(): boolean {
+        // Check multiple signals — window.playhtml may not be set yet if the
+        // page's script loads async, but the cursor styles element is injected
+        // synchronously during init.
+        return (
+          "playhtml" in window ||
+          !!document.getElementById("playhtml-cursor-styles") ||
+          !!document.querySelector("script[src*='playhtml']")
+        );
+      }
+
+      private injectIdentityIntoNativePlayhtml() {
+        const tryInject = () => {
+          const ph = (window as any).playhtml;
+          if (ph?.cursorClient && this.playerIdentity) {
+            ph.cursorClient.configure({ playerIdentity: this.playerIdentity });
+            if (VERBOSE) {
+              console.log("[Content] Injected extension identity into native playhtml");
+            }
+            return true;
+          }
+          return false;
+        };
+
+        // window.playhtml may not be set yet — poll briefly
+        if (tryInject()) return;
+        let attempts = 0;
+        const interval = setInterval(() => {
+          if (tryInject() || ++attempts > 20) {
+            clearInterval(interval);
+          }
+        }, 250);
+      }
+
       private async setupPresenceDetection() {
-        if ("playhtml" in window) {
-          // Page already initialized PlayHTML — tap into existing window.cursors if available
+        if (this.hasNativePlayhtml()) {
+          // Page already has its own playhtml instance — don't init a second
+          // one or we get duplicate cursors and element init errors.
+          // Instead, inject the extension's identity into the existing instance
+          // so the user's chosen color/key takes precedence.
+          this.injectIdentityIntoNativePlayhtml();
           this.listenForPresenceCount();
           return;
         }
