@@ -1,8 +1,9 @@
 // ABOUTME: Renders keyboard events as an animated chat conversation between websites
 // ABOUTME: Processes events into messages, manages animation state, renders bubbles with typing indicators
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { CollectionEvent, KeyboardEventData } from "../types";
+import { CollectionEvent, KeyboardEventData, TypingAction } from "../types";
 import { hashString, seededRandom } from "../utils/styleUtils";
+import { extractDomain } from "../utils/eventUtils";
 
 const MIN_MESSAGE_LENGTH = 3;
 const SAME_DOMAIN_GROUP_THRESHOLD_MS = 60_000;
@@ -35,6 +36,25 @@ interface DomainIdentity {
   side: "left" | "right";
 }
 
+/** Replay a typing sequence to its final text (apply all types and backspaces). */
+function replayToFinalText(sequence: TypingAction[]): string {
+  let text = "";
+  for (const action of sequence) {
+    if (action.action === "type" && action.text) {
+      text += action.text;
+    } else if (action.action === "backspace" && action.deletedCount) {
+      text = text.slice(0, -Math.min(action.deletedCount, text.length));
+    }
+  }
+  return text;
+}
+
+interface ProcessedEvent {
+  event: CollectionEvent;
+  text: string;
+  domain: string;
+}
+
 function buildMessages(
   events: CollectionEvent[],
   startTime: Date | null,
@@ -42,23 +62,32 @@ function buildMessages(
   const start = startTime ?? DEFAULT_START;
   const startTs = start.getTime();
 
-  const filtered = events.filter((e) => {
-    if (e.ts < startTs) return false;
+  // Process events: extract real text from sequence, domain from meta.url
+  const processed: ProcessedEvent[] = [];
+  for (const e of events) {
+    if (e.ts < startTs) continue;
     const data = e.data as unknown as KeyboardEventData;
-    const text = data?.t;
-    return typeof text === "string" && text.trim().length >= MIN_MESSAGE_LENGTH;
-  });
+    if (!data?.sequence || data.sequence.length === 0) continue;
 
-  filtered.sort((a, b) => a.ts - b.ts);
+    const text = replayToFinalText(data.sequence).trim();
+    if (text.length < MIN_MESSAGE_LENGTH) continue;
 
+    const domain = extractDomain(e.meta?.url ?? "") || "unknown";
+    processed.push({ event: e, text, domain });
+  }
+
+  // Sort chronologically
+  processed.sort((a, b) => a.event.ts - b.event.ts);
+
+  // Assign domain identities (deterministic via hash)
   const domainIdentities = new Map<string, DomainIdentity>();
   let nextSideIndex = 0;
 
   function getDomainIdentity(domain: string): DomainIdentity {
     if (domainIdentities.has(domain)) return domainIdentities.get(domain)!;
     const hash = hashString(domain);
-    const fillClass = FILL_CLASSES[Math.abs(hash) % FILL_CLASSES.length];
-    const fontClass = FONT_CLASSES[Math.abs(hash) % FONT_CLASSES.length];
+    const fillClass = FILL_CLASSES[hash % FILL_CLASSES.length];
+    const fontClass = FONT_CLASSES[hash % FONT_CLASSES.length];
     const side: "left" | "right" = nextSideIndex % 2 === 0 ? "left" : "right";
     nextSideIndex++;
     const identity = { fillClass, fontClass, side };
@@ -66,25 +95,20 @@ function buildMessages(
     return identity;
   }
 
+  // Build message list with grouping info
   const messages: ConversationMessage[] = [];
-  for (let i = 0; i < filtered.length; i++) {
-    const event = filtered[i];
-    const data = event.data as unknown as KeyboardEventData;
-    const text = (data.t ?? "").trim();
-    const domain = event.domain ?? "unknown";
+  for (let i = 0; i < processed.length; i++) {
+    const { event, text, domain } = processed[i];
     const identity = getDomainIdentity(domain);
 
     const shapeClass =
-      SHAPE_CLASSES[Math.abs(hashString(event.id)) % SHAPE_CLASSES.length];
+      SHAPE_CLASSES[hashString(event.id) % SHAPE_CLASSES.length];
 
-    const prevDomain = i > 0 ? (filtered[i - 1].domain ?? "unknown") : null;
-    const nextDomain =
-      i < filtered.length - 1
-        ? (filtered[i + 1].domain ?? "unknown")
-        : null;
-    const prevTs = i > 0 ? filtered[i - 1].ts : 0;
-    const nextTs =
-      i < filtered.length - 1 ? filtered[i + 1].ts : Infinity;
+    // Determine clustering: same domain within threshold
+    const prevDomain = i > 0 ? processed[i - 1].domain : null;
+    const nextDomain = i < processed.length - 1 ? processed[i + 1].domain : null;
+    const prevTs = i > 0 ? processed[i - 1].event.ts : 0;
+    const nextTs = i < processed.length - 1 ? processed[i + 1].event.ts : Infinity;
 
     const sameAsPrev =
       prevDomain === domain && event.ts - prevTs < SAME_DOMAIN_GROUP_THRESHOLD_MS;
