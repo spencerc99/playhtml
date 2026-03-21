@@ -347,7 +347,20 @@ export function ConversationView({
     let currentIndex = 0;
 
     function showNextMessage() {
-      if (currentIndex >= messages.length) return;
+      if (currentIndex >= messages.length) {
+        // Loop: pause, then restart from the beginning
+        addTimeout(() => {
+          currentIndex = 0;
+          setVisibleCount(0);
+          setShowTyping(false);
+          setTypingText("");
+          if (streamRef.current) {
+            streamRef.current.scrollTo({ top: 0 });
+          }
+          addTimeout(showNextMessage, 500);
+        }, 3000);
+        return;
+      }
 
       const msg = messages[currentIndex];
       const typingDuration = Math.min(
