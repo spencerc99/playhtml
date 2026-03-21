@@ -14,8 +14,11 @@ const FILL_CLASSES = ["fill-0", "fill-1", "fill-2", "fill-3", "fill-4"];
 const SHAPE_CLASSES = ["shape-0", "shape-1", "shape-2", "shape-3"];
 const FONT_CLASSES = ["font-0", "font-1", "font-2"];
 
-// Default start date if none provided via URL param
-const DEFAULT_START = new Date("2026-03-15T09:00:00");
+// Default: show all data (epoch 0 = no filtering)
+const DEFAULT_START = new Date(0);
+
+// Double-tap threshold for 'd' key to toggle config panel
+const DOUBLE_TAP_MS = 400;
 
 interface ConversationMessage {
   id: string;
@@ -34,6 +37,11 @@ interface DomainIdentity {
   fillClass: string;
   fontClass: string;
   side: "left" | "right";
+}
+
+interface DomainStats {
+  domain: string;
+  count: number;
 }
 
 /** Replay a typing sequence to its final text (apply all types and backspaces). */
@@ -69,17 +77,10 @@ interface ProcessedEvent {
   domain: string;
 }
 
-function buildMessages(
-  events: CollectionEvent[],
-  startTime: Date | null,
-): ConversationMessage[] {
-  const start = startTime ?? DEFAULT_START;
-  const startTs = start.getTime();
-
-  // Process events: extract real text from sequence, domain from meta.url
+/** Pre-process all events into usable messages (before start time filtering). */
+function processEvents(events: CollectionEvent[]): ProcessedEvent[] {
   const processed: ProcessedEvent[] = [];
   for (const e of events) {
-    if (e.ts < startTs) continue;
     const data = e.data as unknown as KeyboardEventData;
     if (!data?.sequence || data.sequence.length === 0) continue;
 
@@ -90,9 +91,29 @@ function buildMessages(
     const domain = extractDomain(e.meta?.url ?? "") || "unknown";
     processed.push({ event: e, text, domain });
   }
-
-  // Sort chronologically
   processed.sort((a, b) => a.event.ts - b.event.ts);
+  return processed;
+}
+
+/** Count messages per domain for the histogram. */
+function getDomainStats(processed: ProcessedEvent[]): DomainStats[] {
+  const counts = new Map<string, number>();
+  for (const p of processed) {
+    counts.set(p.domain, (counts.get(p.domain) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([domain, count]) => ({ domain, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function buildMessages(
+  processed: ProcessedEvent[],
+  startTime: Date,
+): ConversationMessage[] {
+  const startTs = startTime.getTime();
+  const filtered = startTs > 0
+    ? processed.filter((p) => p.event.ts >= startTs)
+    : processed;
 
   // Assign domain identities (deterministic via hash)
   const domainIdentities = new Map<string, DomainIdentity>();
@@ -112,18 +133,18 @@ function buildMessages(
 
   // Build message list with grouping info
   const messages: ConversationMessage[] = [];
-  for (let i = 0; i < processed.length; i++) {
-    const { event, text, domain } = processed[i];
+  for (let i = 0; i < filtered.length; i++) {
+    const { event, text, domain } = filtered[i];
     const identity = getDomainIdentity(domain);
 
     const shapeClass =
       SHAPE_CLASSES[hashString(event.id) % SHAPE_CLASSES.length];
 
     // Determine clustering: same domain within threshold
-    const prevDomain = i > 0 ? processed[i - 1].domain : null;
-    const nextDomain = i < processed.length - 1 ? processed[i + 1].domain : null;
-    const prevTs = i > 0 ? processed[i - 1].event.ts : 0;
-    const nextTs = i < processed.length - 1 ? processed[i + 1].event.ts : Infinity;
+    const prevDomain = i > 0 ? filtered[i - 1].domain : null;
+    const nextDomain = i < filtered.length - 1 ? filtered[i + 1].domain : null;
+    const prevTs = i > 0 ? filtered[i - 1].event.ts : 0;
+    const nextTs = i < filtered.length - 1 ? filtered[i + 1].event.ts : Infinity;
 
     const sameAsPrev =
       prevDomain === domain && event.ts - prevTs < SAME_DOMAIN_GROUP_THRESHOLD_MS;
@@ -147,6 +168,105 @@ function buildMessages(
   return messages;
 }
 
+// ── Config Panel ──────────────────────────────────────────────────────────────
+
+interface ConfigPanelProps {
+  startTime: Date;
+  onStartTimeChange: (date: Date) => void;
+  onRestart: () => void;
+  domainStats: DomainStats[];
+  totalMessages: number;
+  visibleMessages: number;
+}
+
+function ConfigPanel({
+  startTime,
+  onStartTimeChange,
+  onRestart,
+  domainStats,
+  totalMessages,
+  visibleMessages,
+}: ConfigPanelProps) {
+  const maxCount = domainStats.length > 0 ? domainStats[0].count : 1;
+
+  // Format start time for the datetime-local input
+  const startTimeValue = startTime.getTime() > 0
+    ? startTime.toISOString().slice(0, 16)
+    : "";
+
+  return (
+    <div className="config-panel">
+      <div className="config-header">
+        <span className="config-title">configuration</span>
+        <span className="config-hint">press d twice to close</span>
+      </div>
+
+      <div className="config-section">
+        <label className="config-label">start from</label>
+        <div className="config-row">
+          <input
+            type="datetime-local"
+            className="config-input"
+            value={startTimeValue}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val) {
+                onStartTimeChange(new Date(val));
+              } else {
+                onStartTimeChange(new Date(0));
+              }
+            }}
+          />
+          {startTime.getTime() > 0 && (
+            <button
+              className="config-clear"
+              onClick={() => onStartTimeChange(new Date(0))}
+              title="show all"
+            >
+              clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="config-section">
+        <label className="config-label">
+          {visibleMessages} / {totalMessages} messages
+        </label>
+        <button className="config-btn" onClick={onRestart}>
+          restart animation
+        </button>
+      </div>
+
+      <div className="config-section">
+        <label className="config-label">domains</label>
+        <div className="config-histogram">
+          {domainStats.slice(0, 12).map((ds) => (
+            <div key={ds.domain} className="histogram-row">
+              <img
+                className="histogram-favicon"
+                src={FAVICON_URL(ds.domain)}
+                alt=""
+                loading="lazy"
+              />
+              <span className="histogram-domain">{ds.domain}</span>
+              <div className="histogram-bar-track">
+                <div
+                  className="histogram-bar-fill"
+                  style={{ width: `${(ds.count / maxCount) * 100}%` }}
+                />
+              </div>
+              <span className="histogram-count">{ds.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
 interface ConversationViewProps {
   events: CollectionEvent[];
   loading: boolean;
@@ -158,19 +278,28 @@ export function ConversationView({
   events,
   loading,
   error,
-  startTime,
+  startTime: initialStartTime,
 }: ConversationViewProps) {
+  const [startTime, setStartTime] = useState<Date>(initialStartTime ?? DEFAULT_START);
+  const [showConfig, setShowConfig] = useState(false);
+
+  // Pre-process all events once (independent of start time)
+  const allProcessed = useMemo(() => processEvents(events), [events]);
+  const domainStats = useMemo(() => getDomainStats(allProcessed), [allProcessed]);
+
+  // Build messages filtered by start time
   const messages = useMemo(
-    () => buildMessages(events, startTime),
-    [events, startTime],
+    () => buildMessages(allProcessed, startTime),
+    [allProcessed, startTime],
   );
 
   const [visibleCount, setVisibleCount] = useState(0);
   const [showTyping, setShowTyping] = useState(false);
   const [typingText, setTypingText] = useState("");
-  const [animationKey, setAnimationKey] = useState(0); // increment to restart
+  const [animationKey, setAnimationKey] = useState(0);
   const streamRef = useRef<HTMLDivElement>(null);
   const timeoutsRef = useRef<number[]>([]);
+  const lastDPressRef = useRef<number>(0);
 
   const clearTimeouts = useCallback(() => {
     timeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -181,6 +310,22 @@ export function ConversationView({
     const id = window.setTimeout(fn, ms);
     timeoutsRef.current.push(id);
     return id;
+  }, []);
+
+  // Double-tap 'd' to toggle config panel
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "d" || e.target !== document.body) return;
+      const now = Date.now();
+      if (now - lastDPressRef.current < DOUBLE_TAP_MS) {
+        setShowConfig((s) => !s);
+        lastDPressRef.current = 0;
+      } else {
+        lastDPressRef.current = now;
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   // Auto-scroll to bottom when new content appears
@@ -256,7 +401,11 @@ export function ConversationView({
     setAnimationKey((k) => k + 1);
   }, [clearTimeouts]);
 
-  const startDisplay = startTime ?? DEFAULT_START;
+  const handleStartTimeChange = useCallback((date: Date) => {
+    setStartTime(date);
+    // Restart animation with new time range
+    setAnimationKey((k) => k + 1);
+  }, []);
 
   if (loading) {
     return (
@@ -279,15 +428,28 @@ export function ConversationView({
   const currentlyTyping =
     typingText && visibleCount > 0 ? messages[visibleCount - 1] : null;
 
+  const subtitleText = startTime.getTime() > 0
+    ? `starting from ${startTime.toISOString().slice(0, 16).replace("T", " ")}`
+    : `${messages.length} messages`;
+
   return (
     <div className="conversations-page">
       <div className="conversations-title">internet conversations</div>
-      <div className="conversations-subtitle">
-        starting from{" "}
-        {startDisplay.toISOString().slice(0, 16).replace("T", " ")}
-      </div>
+      <div className="conversations-subtitle">{subtitleText}</div>
+
+      {showConfig && (
+        <ConfigPanel
+          startTime={startTime}
+          onStartTimeChange={handleStartTimeChange}
+          onRestart={handleRestart}
+          domainStats={domainStats}
+          totalMessages={allProcessed.length}
+          visibleMessages={messages.length}
+        />
+      )}
+
       <div className="conversations-stream" ref={streamRef}>
-        {fullyVisible.map((msg, i) => {
+        {fullyVisible.map((msg) => {
           const isBeingTyped = currentlyTyping?.id === msg.id;
           const displayText = isBeingTyped ? typingText : msg.text;
           const time = new Date(msg.timestamp);
