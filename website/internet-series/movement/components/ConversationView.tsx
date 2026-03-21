@@ -455,20 +455,29 @@ export function ConversationView({
       <div className="conversations-subtitle">{subtitleText}</div>
 
       <div className="conversations-stream" ref={streamRef}>
-        {fullyVisible.map((msg) => {
+        {fullyVisible.map((msg, i) => {
           const isBeingTyped = currentlyTyping?.id === msg.id;
           const displayText = isBeingTyped ? typingText : msg.text;
           const time = new Date(msg.timestamp);
           const timeStr = `${time.getHours().toString().padStart(2, "0")}:${time.getMinutes().toString().padStart(2, "0")}`;
 
+          const prevDate = i > 0 ? new Date(fullyVisible[i - 1].timestamp) : null;
+          const showDateDivider = !prevDate ||
+            time.toDateString() !== prevDate.toDateString();
+
           // Rotation based on message id hash
           const rotation = seededRandom(hashString(msg.id), 0) * 0.6 - 0.3;
 
           return (
-            <div
-              key={msg.id}
-              className={`msg-row ${msg.side}`}
-            >
+            <React.Fragment key={msg.id}>
+              {showDateDivider && (
+                <div className="date-divider">
+                  {time.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              )}
+              <div
+                className={`msg-row ${msg.side}`}
+              >
               {msg.side === "left" && (
                 <div
                   className={`msg-avatar ${msg.showAvatar ? "" : "hidden"}`}
@@ -509,6 +518,7 @@ export function ConversationView({
                 </div>
               )}
             </div>
+            </React.Fragment>
           );
         })}
 

@@ -64,6 +64,35 @@ $fill-warm: rgba(61, 56, 51, 0.07);
   margin: 0 auto;
 }
 
+// Date dividers between days
+.date-divider {
+  text-align: center;
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text-faint;
+  letter-spacing: 0.5px;
+  margin: 20px 0 14px;
+  position: relative;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: $border;
+  }
+
+  &::before {
+    left: 0;
+  }
+
+  &::after {
+    right: 0;
+  }
+}
+
 // Message rows
 .msg-row {
   margin-bottom: 10px;
