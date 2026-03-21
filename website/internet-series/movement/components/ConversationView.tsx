@@ -428,28 +428,35 @@ export function ConversationView({
   const currentlyTyping =
     typingText && visibleCount > 0 ? messages[visibleCount - 1] : null;
 
-  const subtitleText = startTime.getTime() > 0
-    ? `starting from ${startTime.toISOString().slice(0, 16).replace("T", " ")}`
-    : `${messages.length} messages`;
+  // Show the effective start date (filtered or earliest message)
+  const effectiveStart = startTime.getTime() > 0
+    ? startTime
+    : messages.length > 0 ? new Date(messages[0].timestamp) : null;
+  const subtitleText = effectiveStart
+    ? `starting from ${effectiveStart.toISOString().slice(0, 16).replace("T", " ")}`
+    : "no messages";
 
   return (
-    <div className="conversations-page">
-      <div className="conversations-title">internet conversations</div>
-      <div className="conversations-subtitle">{subtitleText}</div>
-
+    <div className={`conversations-page ${showConfig ? "with-sidebar" : ""}`}>
       {showConfig && (
-        <ConfigPanel
-          startTime={startTime}
-          onStartTimeChange={handleStartTimeChange}
-          onRestart={handleRestart}
-          domainStats={domainStats}
-          totalMessages={allProcessed.length}
-          visibleMessages={messages.length}
-        />
+        <div className="config-sidebar">
+          <ConfigPanel
+            startTime={startTime}
+            onStartTimeChange={handleStartTimeChange}
+            onRestart={handleRestart}
+            domainStats={domainStats}
+            totalMessages={allProcessed.length}
+            visibleMessages={messages.length}
+          />
+        </div>
       )}
 
-      <div className="conversations-stream" ref={streamRef}>
-        {fullyVisible.map((msg) => {
+      <div className="conversations-main">
+        <div className="conversations-title">internet conversations</div>
+        <div className="conversations-subtitle">{subtitleText}</div>
+
+        <div className="conversations-stream" ref={streamRef}>
+          {fullyVisible.map((msg) => {
           const isBeingTyped = currentlyTyping?.id === msg.id;
           const displayText = isBeingTyped ? typingText : msg.text;
           const time = new Date(msg.timestamp);
@@ -515,9 +522,10 @@ export function ConversationView({
         )}
       </div>
 
-      <button className="conversations-restart" onClick={handleRestart}>
-        restart
-      </button>
+        <button className="conversations-restart" onClick={handleRestart}>
+          restart
+        </button>
+      </div>
     </div>
   );
 }

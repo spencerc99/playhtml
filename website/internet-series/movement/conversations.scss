@@ -21,9 +21,27 @@ $fill-warm: rgba(61, 56, 51, 0.07);
   font-family: "Atkinson Hyperlegible", -apple-system, sans-serif;
   color: $text;
   display: flex;
+  flex-direction: row;
+  justify-content: center;
+  padding: 48px 16px 120px;
+  gap: 24px;
+}
+
+.conversations-main {
+  display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 16px 120px;
+  flex: 1;
+  max-width: 440px;
+}
+
+// Sidebar layout
+.config-sidebar {
+  position: sticky;
+  top: 48px;
+  align-self: flex-start;
+  width: 260px;
+  flex-shrink: 0;
 }
 
 .conversations-title {
@@ -48,6 +66,7 @@ $fill-warm: rgba(61, 56, 51, 0.07);
 .conversations-stream {
   width: 100%;
   max-width: 400px;
+  margin: 0 auto;
 }
 
 // Message rows
@@ -207,12 +226,10 @@ $fill-warm: rgba(61, 56, 51, 0.07);
 // Config panel (toggled with double-tap 'd')
 .config-panel {
   width: 100%;
-  max-width: 400px;
   background: $surface;
   border: 1px solid $border;
   border-radius: 8px;
   padding: 16px;
-  margin-bottom: 24px;
   animation: msg-enter 0.2s ease;
 }
 
