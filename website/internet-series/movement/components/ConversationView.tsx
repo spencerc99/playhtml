@@ -437,7 +437,7 @@ export function ConversationView({
     : "no messages";
 
   return (
-    <div className={`conversations-page ${showConfig ? "with-sidebar" : ""}`}>
+    <div className="conversations-page">
       {showConfig && (
         <div className="config-sidebar">
           <ConfigPanel
@@ -451,12 +451,11 @@ export function ConversationView({
         </div>
       )}
 
-      <div className="conversations-main">
-        <div className="conversations-title">internet conversations</div>
-        <div className="conversations-subtitle">{subtitleText}</div>
+      <div className="conversations-title">internet conversations</div>
+      <div className="conversations-subtitle">{subtitleText}</div>
 
-        <div className="conversations-stream" ref={streamRef}>
-          {fullyVisible.map((msg) => {
+      <div className="conversations-stream" ref={streamRef}>
+        {fullyVisible.map((msg) => {
           const isBeingTyped = currentlyTyping?.id === msg.id;
           const displayText = isBeingTyped ? typingText : msg.text;
           const time = new Date(msg.timestamp);
@@ -522,10 +521,9 @@ export function ConversationView({
         )}
       </div>
 
-        <button className="conversations-restart" onClick={handleRestart}>
-          restart
-        </button>
-      </div>
+      <button className="conversations-restart" onClick={handleRestart}>
+        restart
+      </button>
     </div>
   );
 }
