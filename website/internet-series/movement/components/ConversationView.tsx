@@ -14,6 +14,7 @@ const EXCLUDED_DOMAINS_KEY = "conversations-excluded-domains";
 const SORT_MODE_KEY = "conversations-sort-mode";
 const MAX_CONSECUTIVE_KEY = "conversations-max-consecutive";
 const DEFAULT_MAX_CONSECUTIVE = 4;
+const START_HOUR_KEY = "conversations-start-hour";
 
 type SortMode = "day" | "time";
 
@@ -135,6 +136,7 @@ function buildMessages(
   excludedDomains: Set<string>,
   sortMode: SortMode,
   maxConsecutive: number,
+  startHour: number,
 ): ConversationMessage[] {
   const startTs = startTime.getTime();
   let filtered = processed.filter((p) => {
@@ -143,8 +145,12 @@ function buildMessages(
     return true;
   });
 
-  // In time mode, sort by time-of-day instead of absolute timestamp
+  // In time mode, sort by time-of-day and filter by startHour
   if (sortMode === "time") {
+    if (startHour > 0) {
+      const startMs = startHour * 3600000;
+      filtered = filtered.filter((p) => timeOfDayMs(p.event.ts) >= startMs);
+    }
     filtered = [...filtered].sort((a, b) => timeOfDayMs(a.event.ts) - timeOfDayMs(b.event.ts));
   }
 
@@ -236,6 +242,8 @@ interface ConfigPanelProps {
   onSortModeChange: (mode: SortMode) => void;
   maxConsecutive: number;
   onMaxConsecutiveChange: (n: number) => void;
+  startHour: number;
+  onStartHourChange: (h: number) => void;
   totalMessages: number;
   visibleMessages: number;
 }
@@ -252,6 +260,8 @@ function ConfigPanel({
   onSortModeChange,
   maxConsecutive,
   onMaxConsecutiveChange,
+  startHour,
+  onStartHourChange,
   totalMessages,
   visibleMessages,
 }: ConfigPanelProps) {
@@ -323,6 +333,30 @@ function ConfigPanel({
           </button>
         </div>
       </div>
+
+      {sortMode === "time" && (
+        <div className="config-section">
+          <label className="config-label">
+            start from: {String(Math.floor(startHour)).padStart(2, "0")}:{String(Math.round((startHour % 1) * 60)).padStart(2, "0")}
+          </label>
+          <input
+            type="range"
+            className="config-range"
+            min={0}
+            max={23.5}
+            step={0.5}
+            value={startHour}
+            onChange={(e) => onStartHourChange(parseFloat(e.target.value))}
+          />
+          <div className="config-range-labels">
+            <span>00:00</span>
+            <span>06:00</span>
+            <span>12:00</span>
+            <span>18:00</span>
+            <span>23:30</span>
+          </div>
+        </div>
+      )}
 
       <div className="config-section">
         <label className="config-label">
@@ -425,6 +459,10 @@ export function ConversationView({
     const stored = localStorage.getItem(MAX_CONSECUTIVE_KEY);
     return stored !== null ? parseInt(stored, 10) : DEFAULT_MAX_CONSECUTIVE;
   });
+  const [startHour, setStartHour] = useState(() => {
+    const stored = localStorage.getItem(START_HOUR_KEY);
+    return stored !== null ? parseFloat(stored) : 0;
+  });
 
   const handleToggleDomain = useCallback((domain: string) => {
     setExcludedDomains((prev) => {
@@ -458,15 +496,23 @@ export function ConversationView({
     setAnimationKey((k) => k + 1);
   }, []);
 
+  const handleStartHourChange = useCallback((h: number) => {
+    setStartHour(h);
+    localStorage.setItem(START_HOUR_KEY, String(h));
+    animationIndexRef.current = 0;
+    setVisibleCount(0);
+    setAnimationKey((k) => k + 1);
+  }, []);
+
   // Pre-process all events once (independent of start time)
   const allProcessed = useMemo(() => processEvents(events), [events]);
   const domainStats = useMemo(() => getDomainStats(allProcessed), [allProcessed]);
   const dateCounts = useMemo(() => getDateCounts(allProcessed), [allProcessed]);
 
-  // Build messages filtered by start time, excluded domains, sort mode, max consecutive
+  // Build messages filtered by start time, excluded domains, sort mode, max consecutive, start hour
   const messages = useMemo(
-    () => buildMessages(allProcessed, startTime, excludedDomains, sortMode, maxConsecutive),
-    [allProcessed, startTime, excludedDomains, sortMode, maxConsecutive],
+    () => buildMessages(allProcessed, startTime, excludedDomains, sortMode, maxConsecutive, startHour),
+    [allProcessed, startTime, excludedDomains, sortMode, maxConsecutive, startHour],
   );
 
   const [visibleCount, setVisibleCount] = useState(0);
@@ -663,6 +709,8 @@ export function ConversationView({
             onSortModeChange={handleSortModeChange}
             maxConsecutive={maxConsecutive}
             onMaxConsecutiveChange={handleMaxConsecutiveChange}
+            startHour={startHour}
+            onStartHourChange={handleStartHourChange}
             totalMessages={allProcessed.length}
             visibleMessages={messages.length}
           />
@@ -680,8 +728,8 @@ export function ConversationView({
           const timeStr = `${time.getHours().toString().padStart(2, "0")}:${time.getMinutes().toString().padStart(2, "0")}`;
 
           const prevDate = i > 0 ? new Date(fullyVisible[i - 1].timestamp) : null;
-          const showDateDivider = !prevDate ||
-            time.toDateString() !== prevDate.toDateString();
+          const showDateDivider = sortMode === "day" && (!prevDate ||
+            time.toDateString() !== prevDate.toDateString());
 
           // Rotation based on message id hash
           const rotation = seededRandom(hashString(msg.id), 0) * 0.6 - 0.3;
