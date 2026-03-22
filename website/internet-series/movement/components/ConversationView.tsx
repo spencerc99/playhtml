@@ -329,7 +329,7 @@ function ConfigPanel({
           type="range"
           className="config-range"
           min={0.5}
-          max={20}
+          max={10}
           step={0.5}
           value={speed}
           onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
@@ -338,7 +338,6 @@ function ConfigPanel({
           <span>0.5x</span>
           <span>5x</span>
           <span>10x</span>
-          <span>20x</span>
         </div>
       </div>
 
@@ -589,13 +588,15 @@ export function ConversationView({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Auto-scroll to bottom when new content appears
+  // Auto-scroll page to keep newest content visible
   useEffect(() => {
     if (streamRef.current) {
-      const el = streamRef.current;
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      const lastChild = streamRef.current.lastElementChild;
+      if (lastChild) {
+        lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
     }
-  }, [visibleCount, showTyping]);
+  }, [visibleCount, showTyping, typingText]);
 
   // Resume animation when new messages arrive (from pagination)
   useEffect(() => {
