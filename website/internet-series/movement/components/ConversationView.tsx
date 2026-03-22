@@ -95,6 +95,16 @@ function processEvents(events: CollectionEvent[]): ProcessedEvent[] {
   return processed;
 }
 
+/** Count messages per calendar date (YYYY-MM-DD). */
+function getDateCounts(processed: ProcessedEvent[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const p of processed) {
+    const date = new Date(p.event.ts).toISOString().slice(0, 10);
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** Count messages per domain for the histogram. */
 function getDomainStats(processed: ProcessedEvent[]): DomainStats[] {
   const counts = new Map<string, number>();
@@ -175,6 +185,7 @@ interface ConfigPanelProps {
   onStartTimeChange: (date: Date) => void;
   onRestart: () => void;
   domainStats: DomainStats[];
+  dateCounts: Map<string, number>;
   totalMessages: number;
   visibleMessages: number;
 }
@@ -184,14 +195,19 @@ function ConfigPanel({
   onStartTimeChange,
   onRestart,
   domainStats,
+  dateCounts,
   totalMessages,
   visibleMessages,
 }: ConfigPanelProps) {
   const maxCount = domainStats.length > 0 ? domainStats[0].count : 1;
 
-  // Format start time for the datetime-local input
-  const startTimeValue = startTime.getTime() > 0
-    ? startTime.toISOString().slice(0, 16)
+  // Sort dates chronologically
+  const sortedDates = Array.from(dateCounts.entries())
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  // Current selected date (from startTime)
+  const selectedDate = startTime.getTime() > 0
+    ? startTime.toISOString().slice(0, 10)
     : "";
 
   return (
@@ -202,31 +218,26 @@ function ConfigPanel({
       </div>
 
       <div className="config-section">
-        <label className="config-label">start from</label>
-        <div className="config-row">
-          <input
-            type="datetime-local"
-            className="config-input"
-            value={startTimeValue}
-            onChange={(e) => {
-              const val = e.target.value;
+        <label className="config-label">start from date</label>
+        <select
+          className="config-select"
+          value={selectedDate}
+          onChange={(e) => {
+            const val = e.target.value;
               if (val) {
-                onStartTimeChange(new Date(val));
+                onStartTimeChange(new Date(val + "T00:00:00"));
               } else {
                 onStartTimeChange(new Date(0));
               }
             }}
-          />
-          {startTime.getTime() > 0 && (
-            <button
-              className="config-clear"
-              onClick={() => onStartTimeChange(new Date(0))}
-              title="show all"
-            >
-              clear
-            </button>
-          )}
-        </div>
+          >
+            <option value="">all dates ({totalMessages})</option>
+            {sortedDates.map(([date, count]) => (
+              <option key={date} value={date}>
+                {date} ({count})
+              </option>
+            ))}
+          </select>
       </div>
 
       <div className="config-section">
@@ -290,6 +301,7 @@ export function ConversationView({
   // Pre-process all events once (independent of start time)
   const allProcessed = useMemo(() => processEvents(events), [events]);
   const domainStats = useMemo(() => getDomainStats(allProcessed), [allProcessed]);
+  const dateCounts = useMemo(() => getDateCounts(allProcessed), [allProcessed]);
 
   // Build messages filtered by start time
   const messages = useMemo(
@@ -484,6 +496,7 @@ export function ConversationView({
             onStartTimeChange={handleStartTimeChange}
             onRestart={handleRestart}
             domainStats={domainStats}
+            dateCounts={dateCounts}
             totalMessages={allProcessed.length}
             visibleMessages={messages.length}
           />
