@@ -11,6 +11,11 @@ const FAVICON_URL = (domain: string) =>
   `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
 
 const EXCLUDED_DOMAINS_KEY = "conversations-excluded-domains";
+const SORT_MODE_KEY = "conversations-sort-mode";
+const MAX_CONSECUTIVE_KEY = "conversations-max-consecutive";
+const DEFAULT_MAX_CONSECUTIVE = 4;
+
+type SortMode = "day" | "time";
 
 const FILL_CLASSES = ["fill-0", "fill-1", "fill-2", "fill-3", "fill-4"];
 const SHAPE_CLASSES = ["shape-0", "shape-1", "shape-2", "shape-3"];
@@ -118,17 +123,48 @@ function getDomainStats(processed: ProcessedEvent[]): DomainStats[] {
     .sort((a, b) => b.count - a.count);
 }
 
+/** Extract time-of-day in ms from midnight for time-mode sorting. */
+function timeOfDayMs(ts: number): number {
+  const d = new Date(ts);
+  return d.getHours() * 3600000 + d.getMinutes() * 60000 + d.getSeconds() * 1000 + d.getMilliseconds();
+}
+
 function buildMessages(
   processed: ProcessedEvent[],
   startTime: Date,
   excludedDomains: Set<string>,
+  sortMode: SortMode,
+  maxConsecutive: number,
 ): ConversationMessage[] {
   const startTs = startTime.getTime();
-  const filtered = processed.filter((p) => {
+  let filtered = processed.filter((p) => {
     if (startTs > 0 && p.event.ts < startTs) return false;
     if (excludedDomains.has(p.domain)) return false;
     return true;
   });
+
+  // In time mode, sort by time-of-day instead of absolute timestamp
+  if (sortMode === "time") {
+    filtered = [...filtered].sort((a, b) => timeOfDayMs(a.event.ts) - timeOfDayMs(b.event.ts));
+  }
+
+  // Apply max consecutive limit: skip messages that would exceed the cap
+  if (maxConsecutive > 0) {
+    const capped: ProcessedEvent[] = [];
+    let runDomain = "";
+    let runCount = 0;
+    for (const p of filtered) {
+      if (p.domain === runDomain) {
+        runCount++;
+        if (runCount > maxConsecutive) continue;
+      } else {
+        runDomain = p.domain;
+        runCount = 1;
+      }
+      capped.push(p);
+    }
+    filtered = capped;
+  }
 
   // Assign domain identities (deterministic via hash)
   const domainIdentities = new Map<string, DomainIdentity>();
@@ -155,6 +191,9 @@ function buildMessages(
     const shapeClass =
       SHAPE_CLASSES[hashString(event.id) % SHAPE_CLASSES.length];
 
+    // Use time-of-day as timestamp in time mode for display
+    const displayTs = sortMode === "time" ? timeOfDayMs(event.ts) : event.ts;
+
     // Determine clustering: same domain within threshold
     const prevDomain = i > 0 ? filtered[i - 1].domain : null;
     const nextDomain = i < filtered.length - 1 ? filtered[i + 1].domain : null;
@@ -170,7 +209,7 @@ function buildMessages(
       id: event.id,
       text,
       domain,
-      timestamp: event.ts,
+      timestamp: sortMode === "time" ? event.ts : event.ts,
       fillClass: identity.fillClass,
       shapeClass,
       fontClass: identity.fontClass,
@@ -193,6 +232,10 @@ interface ConfigPanelProps {
   dateCounts: Map<string, number>;
   excludedDomains: Set<string>;
   onToggleDomain: (domain: string) => void;
+  sortMode: SortMode;
+  onSortModeChange: (mode: SortMode) => void;
+  maxConsecutive: number;
+  onMaxConsecutiveChange: (n: number) => void;
   totalMessages: number;
   visibleMessages: number;
 }
@@ -205,9 +248,14 @@ function ConfigPanel({
   dateCounts,
   excludedDomains,
   onToggleDomain,
+  sortMode,
+  onSortModeChange,
+  maxConsecutive,
+  onMaxConsecutiveChange,
   totalMessages,
   visibleMessages,
 }: ConfigPanelProps) {
+  const [domainSearch, setDomainSearch] = useState("");
   const maxCount = domainStats.length > 0 ? domainStats[0].count : 1;
 
   // Sort dates chronologically
@@ -259,6 +307,38 @@ function ConfigPanel({
       </div>
 
       <div className="config-section">
+        <label className="config-label">sort order</label>
+        <div className="config-toggle-row">
+          <button
+            className={`config-toggle ${sortMode === "day" ? "active" : ""}`}
+            onClick={() => onSortModeChange("day")}
+          >
+            by day
+          </button>
+          <button
+            className={`config-toggle ${sortMode === "time" ? "active" : ""}`}
+            onClick={() => onSortModeChange("time")}
+          >
+            by time of day
+          </button>
+        </div>
+      </div>
+
+      <div className="config-section">
+        <label className="config-label">
+          max consecutive per domain: {maxConsecutive === 0 ? "off" : maxConsecutive}
+        </label>
+        <input
+          type="range"
+          className="config-range"
+          min={0}
+          max={20}
+          value={maxConsecutive}
+          onChange={(e) => onMaxConsecutiveChange(parseInt(e.target.value, 10))}
+        />
+      </div>
+
+      <div className="config-section">
         <label className="config-label">
           domains
           {excludedDomains.size > 0 && (
@@ -267,33 +347,42 @@ function ConfigPanel({
             </span>
           )}
         </label>
+        <input
+          type="text"
+          className="config-search"
+          placeholder="search domains..."
+          value={domainSearch}
+          onChange={(e) => setDomainSearch(e.target.value)}
+        />
         <div className="config-histogram">
-          {domainStats.slice(0, 15).map((ds) => {
-            const excluded = excludedDomains.has(ds.domain);
-            return (
-              <div
-                key={ds.domain}
-                className={`histogram-row ${excluded ? "excluded" : ""}`}
-                onClick={() => onToggleDomain(ds.domain)}
-                title={excluded ? "click to include" : "click to exclude"}
-              >
-                <img
-                  className="histogram-favicon"
-                  src={FAVICON_URL(ds.domain)}
-                  alt=""
-                  loading="lazy"
-                />
-                <span className="histogram-domain">{ds.domain}</span>
-                <div className="histogram-bar-track">
-                  <div
-                    className="histogram-bar-fill"
-                    style={{ width: `${(ds.count / maxCount) * 100}%` }}
+          {domainStats
+            .filter((ds) => !domainSearch || ds.domain.includes(domainSearch.toLowerCase()))
+            .map((ds) => {
+              const excluded = excludedDomains.has(ds.domain);
+              return (
+                <div
+                  key={ds.domain}
+                  className={`histogram-row ${excluded ? "excluded" : ""}`}
+                  onClick={() => onToggleDomain(ds.domain)}
+                  title={excluded ? "click to include" : "click to exclude"}
+                >
+                  <img
+                    className="histogram-favicon"
+                    src={FAVICON_URL(ds.domain)}
+                    alt=""
+                    loading="lazy"
                   />
+                  <span className="histogram-domain">{ds.domain}</span>
+                  <div className="histogram-bar-track">
+                    <div
+                      className="histogram-bar-fill"
+                      style={{ width: `${(ds.count / maxCount) * 100}%` }}
+                    />
+                  </div>
+                  <span className="histogram-count">{ds.count}</span>
                 </div>
-                <span className="histogram-count">{ds.count}</span>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
     </div>
@@ -329,6 +418,13 @@ export function ConversationView({
       return new Set();
     }
   });
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    return (localStorage.getItem(SORT_MODE_KEY) as SortMode) || "day";
+  });
+  const [maxConsecutive, setMaxConsecutive] = useState(() => {
+    const stored = localStorage.getItem(MAX_CONSECUTIVE_KEY);
+    return stored !== null ? parseInt(stored, 10) : DEFAULT_MAX_CONSECUTIVE;
+  });
 
   const handleToggleDomain = useCallback((domain: string) => {
     setExcludedDomains((prev) => {
@@ -346,15 +442,31 @@ export function ConversationView({
     setAnimationKey((k) => k + 1);
   }, []);
 
+  const handleSortModeChange = useCallback((mode: SortMode) => {
+    setSortMode(mode);
+    localStorage.setItem(SORT_MODE_KEY, mode);
+    animationIndexRef.current = 0;
+    setVisibleCount(0);
+    setAnimationKey((k) => k + 1);
+  }, []);
+
+  const handleMaxConsecutiveChange = useCallback((n: number) => {
+    setMaxConsecutive(n);
+    localStorage.setItem(MAX_CONSECUTIVE_KEY, String(n));
+    animationIndexRef.current = 0;
+    setVisibleCount(0);
+    setAnimationKey((k) => k + 1);
+  }, []);
+
   // Pre-process all events once (independent of start time)
   const allProcessed = useMemo(() => processEvents(events), [events]);
   const domainStats = useMemo(() => getDomainStats(allProcessed), [allProcessed]);
   const dateCounts = useMemo(() => getDateCounts(allProcessed), [allProcessed]);
 
-  // Build messages filtered by start time and excluded domains
+  // Build messages filtered by start time, excluded domains, sort mode, max consecutive
   const messages = useMemo(
-    () => buildMessages(allProcessed, startTime, excludedDomains),
-    [allProcessed, startTime, excludedDomains],
+    () => buildMessages(allProcessed, startTime, excludedDomains, sortMode, maxConsecutive),
+    [allProcessed, startTime, excludedDomains, sortMode, maxConsecutive],
   );
 
   const [visibleCount, setVisibleCount] = useState(0);
@@ -547,6 +659,10 @@ export function ConversationView({
             dateCounts={dateCounts}
             excludedDomains={excludedDomains}
             onToggleDomain={handleToggleDomain}
+            sortMode={sortMode}
+            onSortModeChange={handleSortModeChange}
+            maxConsecutive={maxConsecutive}
+            onMaxConsecutiveChange={handleMaxConsecutiveChange}
             totalMessages={allProcessed.length}
             visibleMessages={messages.length}
           />
