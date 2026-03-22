@@ -10,6 +10,8 @@ const SAME_DOMAIN_GROUP_THRESHOLD_MS = 60_000;
 const FAVICON_URL = (domain: string) =>
   `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
 
+const EXCLUDED_DOMAINS_KEY = "conversations-excluded-domains";
+
 const FILL_CLASSES = ["fill-0", "fill-1", "fill-2", "fill-3", "fill-4"];
 const SHAPE_CLASSES = ["shape-0", "shape-1", "shape-2", "shape-3"];
 const FONT_CLASSES = ["font-0", "font-1", "font-2"];
@@ -119,11 +121,14 @@ function getDomainStats(processed: ProcessedEvent[]): DomainStats[] {
 function buildMessages(
   processed: ProcessedEvent[],
   startTime: Date,
+  excludedDomains: Set<string>,
 ): ConversationMessage[] {
   const startTs = startTime.getTime();
-  const filtered = startTs > 0
-    ? processed.filter((p) => p.event.ts >= startTs)
-    : processed;
+  const filtered = processed.filter((p) => {
+    if (startTs > 0 && p.event.ts < startTs) return false;
+    if (excludedDomains.has(p.domain)) return false;
+    return true;
+  });
 
   // Assign domain identities (deterministic via hash)
   const domainIdentities = new Map<string, DomainIdentity>();
@@ -186,6 +191,8 @@ interface ConfigPanelProps {
   onRestart: () => void;
   domainStats: DomainStats[];
   dateCounts: Map<string, number>;
+  excludedDomains: Set<string>;
+  onToggleDomain: (domain: string) => void;
   totalMessages: number;
   visibleMessages: number;
 }
@@ -196,6 +203,8 @@ function ConfigPanel({
   onRestart,
   domainStats,
   dateCounts,
+  excludedDomains,
+  onToggleDomain,
   totalMessages,
   visibleMessages,
 }: ConfigPanelProps) {
@@ -250,26 +259,41 @@ function ConfigPanel({
       </div>
 
       <div className="config-section">
-        <label className="config-label">domains</label>
+        <label className="config-label">
+          domains
+          {excludedDomains.size > 0 && (
+            <span className="config-excluded-count">
+              {" "}({excludedDomains.size} hidden)
+            </span>
+          )}
+        </label>
         <div className="config-histogram">
-          {domainStats.slice(0, 12).map((ds) => (
-            <div key={ds.domain} className="histogram-row">
-              <img
-                className="histogram-favicon"
-                src={FAVICON_URL(ds.domain)}
-                alt=""
-                loading="lazy"
-              />
-              <span className="histogram-domain">{ds.domain}</span>
-              <div className="histogram-bar-track">
-                <div
-                  className="histogram-bar-fill"
-                  style={{ width: `${(ds.count / maxCount) * 100}%` }}
+          {domainStats.slice(0, 15).map((ds) => {
+            const excluded = excludedDomains.has(ds.domain);
+            return (
+              <div
+                key={ds.domain}
+                className={`histogram-row ${excluded ? "excluded" : ""}`}
+                onClick={() => onToggleDomain(ds.domain)}
+                title={excluded ? "click to include" : "click to exclude"}
+              >
+                <img
+                  className="histogram-favicon"
+                  src={FAVICON_URL(ds.domain)}
+                  alt=""
+                  loading="lazy"
                 />
+                <span className="histogram-domain">{ds.domain}</span>
+                <div className="histogram-bar-track">
+                  <div
+                    className="histogram-bar-fill"
+                    style={{ width: `${(ds.count / maxCount) * 100}%` }}
+                  />
+                </div>
+                <span className="histogram-count">{ds.count}</span>
               </div>
-              <span className="histogram-count">{ds.count}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -297,16 +321,40 @@ export function ConversationView({
 }: ConversationViewProps) {
   const [startTime, setStartTime] = useState<Date>(initialStartTime ?? DEFAULT_START);
   const [showConfig, setShowConfig] = useState(false);
+  const [excludedDomains, setExcludedDomains] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(EXCLUDED_DOMAINS_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const handleToggleDomain = useCallback((domain: string) => {
+    setExcludedDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(domain)) {
+        next.delete(domain);
+      } else {
+        next.add(domain);
+      }
+      localStorage.setItem(EXCLUDED_DOMAINS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+    animationIndexRef.current = 0;
+    setVisibleCount(0);
+    setAnimationKey((k) => k + 1);
+  }, []);
 
   // Pre-process all events once (independent of start time)
   const allProcessed = useMemo(() => processEvents(events), [events]);
   const domainStats = useMemo(() => getDomainStats(allProcessed), [allProcessed]);
   const dateCounts = useMemo(() => getDateCounts(allProcessed), [allProcessed]);
 
-  // Build messages filtered by start time
+  // Build messages filtered by start time and excluded domains
   const messages = useMemo(
-    () => buildMessages(allProcessed, startTime),
-    [allProcessed, startTime],
+    () => buildMessages(allProcessed, startTime, excludedDomains),
+    [allProcessed, startTime, excludedDomains],
   );
 
   const [visibleCount, setVisibleCount] = useState(0);
@@ -497,6 +545,8 @@ export function ConversationView({
             onRestart={handleRestart}
             domainStats={domainStats}
             dateCounts={dateCounts}
+            excludedDomains={excludedDomains}
+            onToggleDomain={handleToggleDomain}
             totalMessages={allProcessed.length}
             visibleMessages={messages.length}
           />
