@@ -15,6 +15,7 @@ const SORT_MODE_KEY = "conversations-sort-mode";
 const MAX_CONSECUTIVE_KEY = "conversations-max-consecutive";
 const DEFAULT_MAX_CONSECUTIVE = 4;
 const START_HOUR_KEY = "conversations-start-hour";
+const SPEED_KEY = "conversations-speed";
 
 type SortMode = "day" | "time";
 
@@ -244,6 +245,8 @@ interface ConfigPanelProps {
   onMaxConsecutiveChange: (n: number) => void;
   startHour: number;
   onStartHourChange: (h: number) => void;
+  speed: number;
+  onSpeedChange: (s: number) => void;
   totalMessages: number;
   visibleMessages: number;
 }
@@ -262,6 +265,8 @@ function ConfigPanel({
   onMaxConsecutiveChange,
   startHour,
   onStartHourChange,
+  speed,
+  onSpeedChange,
   totalMessages,
   visibleMessages,
 }: ConfigPanelProps) {
@@ -314,6 +319,27 @@ function ConfigPanel({
         <button className="config-btn" onClick={onRestart}>
           restart animation
         </button>
+      </div>
+
+      <div className="config-section">
+        <label className="config-label">
+          speed: {speed}x
+        </label>
+        <input
+          type="range"
+          className="config-range"
+          min={0.5}
+          max={20}
+          step={0.5}
+          value={speed}
+          onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+        />
+        <div className="config-range-labels">
+          <span>0.5x</span>
+          <span>5x</span>
+          <span>10x</span>
+          <span>20x</span>
+        </div>
       </div>
 
       <div className="config-section">
@@ -463,6 +489,10 @@ export function ConversationView({
     const stored = localStorage.getItem(START_HOUR_KEY);
     return stored !== null ? parseFloat(stored) : 0;
   });
+  const [speed, setSpeed] = useState(() => {
+    const stored = localStorage.getItem(SPEED_KEY);
+    return stored !== null ? parseFloat(stored) : 1;
+  });
 
   const handleToggleDomain = useCallback((domain: string) => {
     setExcludedDomains((prev) => {
@@ -504,6 +534,11 @@ export function ConversationView({
     setAnimationKey((k) => k + 1);
   }, []);
 
+  const handleSpeedChange = useCallback((s: number) => {
+    setSpeed(s);
+    localStorage.setItem(SPEED_KEY, String(s));
+  }, []);
+
   // Pre-process all events once (independent of start time)
   const allProcessed = useMemo(() => processEvents(events), [events]);
   const domainStats = useMemo(() => getDomainStats(allProcessed), [allProcessed]);
@@ -524,6 +559,8 @@ export function ConversationView({
   const timeoutsRef = useRef<number[]>([]);
   const lastDPressRef = useRef<number>(0);
   const animationIndexRef = useRef(0);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
 
   const clearTimeouts = useCallback(() => {
     timeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -600,10 +637,8 @@ export function ConversationView({
       }
 
       const msg = messages[currentIndex];
-      const typingDuration = Math.min(
-        1500,
-        Math.max(500, msg.text.length * 30),
-      );
+      const s = speedRef.current;
+      const typingDuration = Math.min(1500, Math.max(500, msg.text.length * 30)) / s;
 
       // Phase 1: Show typing indicator
       setShowTyping(true);
@@ -620,11 +655,11 @@ export function ConversationView({
           if (charIndex < chars.length) {
             charIndex++;
             setTypingText(msg.text.slice(0, charIndex));
-            addTimeout(typeNextChar, 30);
+            addTimeout(typeNextChar, 30 / speedRef.current);
           } else {
             // Phase 3: Done typing, pause then next message
             setTypingText("");
-            const pause = 200 + Math.random() * 200;
+            const pause = (200 + Math.random() * 200) / speedRef.current;
             currentIndex++;
             animationIndexRef.current = currentIndex;
             addTimeout(showNextMessage, pause);
@@ -637,7 +672,7 @@ export function ConversationView({
 
     // Start after a brief initial delay only on first run
     if (currentIndex === 0) {
-      addTimeout(showNextMessage, 500);
+      addTimeout(showNextMessage, 500 / speedRef.current);
     } else {
       showNextMessage();
     }
@@ -711,6 +746,8 @@ export function ConversationView({
             onMaxConsecutiveChange={handleMaxConsecutiveChange}
             startHour={startHour}
             onStartHourChange={handleStartHourChange}
+            speed={speed}
+            onSpeedChange={handleSpeedChange}
             totalMessages={allProcessed.length}
             visibleMessages={messages.length}
           />
