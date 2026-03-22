@@ -272,6 +272,8 @@ interface ConversationViewProps {
   loading: boolean;
   error: string | null;
   startTime: Date | null;
+  hasMore?: boolean;
+  onNeedMore?: () => void;
 }
 
 export function ConversationView({
@@ -279,6 +281,8 @@ export function ConversationView({
   loading,
   error,
   startTime: initialStartTime,
+  hasMore = false,
+  onNeedMore,
 }: ConversationViewProps) {
   const [startTime, setStartTime] = useState<Date>(initialStartTime ?? DEFAULT_START);
   const [showConfig, setShowConfig] = useState(false);
@@ -297,9 +301,11 @@ export function ConversationView({
   const [showTyping, setShowTyping] = useState(false);
   const [typingText, setTypingText] = useState("");
   const [animationKey, setAnimationKey] = useState(0);
+  const [waitingForMore, setWaitingForMore] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
   const timeoutsRef = useRef<number[]>([]);
   const lastDPressRef = useRef<number>(0);
+  const animationIndexRef = useRef(0);
 
   const clearTimeouts = useCallback(() => {
     timeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -336,18 +342,44 @@ export function ConversationView({
     }
   }, [visibleCount, showTyping]);
 
+  // Resume animation when new messages arrive (from pagination)
+  useEffect(() => {
+    if (waitingForMore && messages.length > animationIndexRef.current) {
+      setWaitingForMore(false);
+    }
+  }, [messages.length, waitingForMore]);
+
   // Animation loop
   useEffect(() => {
     if (messages.length === 0) return;
+    if (waitingForMore) return;
     clearTimeouts();
-    setVisibleCount(0);
-    setShowTyping(false);
-    setTypingText("");
 
-    let currentIndex = 0;
+    let currentIndex = animationIndexRef.current;
 
     function showNextMessage() {
-      if (currentIndex >= messages.length) return;
+      if (currentIndex >= messages.length) {
+        if (hasMore && onNeedMore) {
+          // Request more data — pause animation until new messages arrive
+          animationIndexRef.current = currentIndex;
+          setWaitingForMore(true);
+          onNeedMore();
+        } else {
+          // All data exhausted — loop after a pause
+          addTimeout(() => {
+            currentIndex = 0;
+            animationIndexRef.current = 0;
+            setVisibleCount(0);
+            setShowTyping(false);
+            setTypingText("");
+            if (streamRef.current) {
+              streamRef.current.scrollTo({ top: 0 });
+            }
+            addTimeout(showNextMessage, 500);
+          }, 3000);
+        }
+        return;
+      }
 
       const msg = messages[currentIndex];
       const typingDuration = Math.min(
@@ -376,6 +408,7 @@ export function ConversationView({
             setTypingText("");
             const pause = 200 + Math.random() * 200;
             currentIndex++;
+            animationIndexRef.current = currentIndex;
             addTimeout(showNextMessage, pause);
           }
         }
@@ -384,17 +417,23 @@ export function ConversationView({
       }, typingDuration);
     }
 
-    // Start after a brief initial delay
-    addTimeout(showNextMessage, 500);
+    // Start after a brief initial delay only on first run
+    if (currentIndex === 0) {
+      addTimeout(showNextMessage, 500);
+    } else {
+      showNextMessage();
+    }
 
     return clearTimeouts;
-  }, [messages, animationKey, clearTimeouts, addTimeout]);
+  }, [messages, animationKey, waitingForMore, hasMore, onNeedMore, clearTimeouts, addTimeout]);
 
   const handleRestart = useCallback(() => {
     clearTimeouts();
+    animationIndexRef.current = 0;
     setVisibleCount(0);
     setShowTyping(false);
     setTypingText("");
+    setWaitingForMore(false);
     if (streamRef.current) {
       streamRef.current.scrollTo({ top: 0 });
     }
