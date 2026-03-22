@@ -588,15 +588,29 @@ export function ConversationView({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Auto-scroll page to keep newest content visible
+  // Scroll-lock: auto-scroll only when locked on
+  const [scrollLocked, setScrollLocked] = useState(true);
+
+  // Detect user scroll — lock on when near bottom, unlock when scrolling away
   useEffect(() => {
-    if (streamRef.current) {
+    function handleScroll() {
+      const nearBottom =
+        window.innerHeight + window.scrollY >= document.body.scrollHeight - 100;
+      setScrollLocked(nearBottom);
+    }
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll when locked
+  useEffect(() => {
+    if (scrollLocked && streamRef.current) {
       const lastChild = streamRef.current.lastElementChild;
       if (lastChild) {
         lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
       }
     }
-  }, [visibleCount, showTyping, typingText]);
+  }, [visibleCount, showTyping, scrollLocked]);
 
   // Resume animation when new messages arrive (from pagination)
   useEffect(() => {
@@ -838,6 +852,18 @@ export function ConversationView({
       <button className="conversations-restart" onClick={handleRestart}>
         restart
       </button>
+
+      {!scrollLocked && (
+        <button
+          className="conversations-follow"
+          onClick={() => {
+            setScrollLocked(true);
+            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+          }}
+        >
+          follow
+        </button>
+      )}
     </div>
   );
 }
