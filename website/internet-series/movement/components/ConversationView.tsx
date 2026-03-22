@@ -590,13 +590,27 @@ export function ConversationView({
 
   // Scroll-lock: auto-scroll only when locked on
   const [scrollLocked, setScrollLocked] = useState(true);
+  const lastScrollYRef = useRef(0);
+  const programmaticScrollRef = useRef(false);
 
-  // Detect user scroll — lock on when near bottom, unlock when scrolling away
+  // Detect user scrolling up to unlock, reaching bottom to re-lock
   useEffect(() => {
     function handleScroll() {
+      // Ignore scrolls we triggered programmatically
+      if (programmaticScrollRef.current) return;
+
+      const currentY = window.scrollY;
       const nearBottom =
-        window.innerHeight + window.scrollY >= document.body.scrollHeight - 100;
-      setScrollLocked(nearBottom);
+        window.innerHeight + currentY >= document.body.scrollHeight - 150;
+
+      if (nearBottom) {
+        setScrollLocked(true);
+      } else if (currentY < lastScrollYRef.current - 10) {
+        // User scrolled up by more than 10px
+        setScrollLocked(false);
+      }
+
+      lastScrollYRef.current = currentY;
     }
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
@@ -607,7 +621,12 @@ export function ConversationView({
     if (scrollLocked && streamRef.current) {
       const lastChild = streamRef.current.lastElementChild;
       if (lastChild) {
+        programmaticScrollRef.current = true;
         lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+        // Reset flag after scroll animation completes
+        setTimeout(() => {
+          programmaticScrollRef.current = false;
+        }, 500);
       }
     }
   }, [visibleCount, showTyping, scrollLocked]);
@@ -857,8 +876,12 @@ export function ConversationView({
         <button
           className="conversations-follow"
           onClick={() => {
+            programmaticScrollRef.current = true;
             setScrollLocked(true);
             window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+            setTimeout(() => {
+              programmaticScrollRef.current = false;
+            }, 500);
           }}
         >
           follow
