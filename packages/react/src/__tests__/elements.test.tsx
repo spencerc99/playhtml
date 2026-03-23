@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 import "@testing-library/dom";
 import { CanPlayElement } from "../index";
-import { TagType, TagTypeToElement } from "@playhtml/common";
+import { TagType } from "@playhtml/common";
 import type { ElementAwarenessEventHandlerData } from "@playhtml/common";
 
 describe("CanPlayElement with built-in capabilities", () => {
