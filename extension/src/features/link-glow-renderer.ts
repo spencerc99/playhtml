@@ -107,8 +107,8 @@ const ABSOLUTE_RATE = 50;
 // Opacity range: linear in t (computeIntensity already provides the curve)
 const BASE_OPACITY_MIN = 0.03;
 const BASE_OPACITY_MAX = 0.5;
-const BLOB_OPACITY_MIN = 0.04;
-const BLOB_OPACITY_MAX = 0.6;
+const BLOB_OPACITY_MIN = 0.12;
+const BLOB_OPACITY_MAX = 0.7;
 // Additional reduction for inline rendering (no blur available)
 const INLINE_OPACITY_MUL = 0.4;
 
