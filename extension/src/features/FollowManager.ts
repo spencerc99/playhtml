@@ -51,6 +51,7 @@ function muted(text: string, extraStyles?: Partial<CSSStyleDeclaration>): HTMLSp
 export class FollowManager {
   private followState: FollowState | null = null;
   private hintElement: HTMLElement | null = null;
+  private hintTrackingRaf: number | null = null;
   private nearbyCursors = new Map<string, { color: string; dist: number }>();
   private hintTimeout: ReturnType<typeof setTimeout> | null = null;
   private nearestTarget: { publicKey: string; color: string } | null = null;
@@ -284,12 +285,44 @@ export class FollowManager {
       hint.style.opacity = "1";
     });
     this.hintTimeout = setTimeout(() => this.removeHint(), HINT_DISMISS_MS);
+
+    // Continuously track the nearest cursor's rendered position
+    this.startHintTracking();
+  }
+
+  private startHintTracking(): void {
+    if (this.hintTrackingRaf) return;
+
+    const track = () => {
+      this.hintTrackingRaf = requestAnimationFrame(track);
+      if (!this.hintElement || !this.nearestTarget) return;
+
+      // Find the playhtml cursor DOM element for the nearest target
+      const cursorEls = document.querySelectorAll(".playhtml-cursor-other");
+      for (const el of cursorEls) {
+        const htmlEl = el as HTMLElement;
+        // Match by checking the element's position is reasonable
+        const rect = htmlEl.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          const cx = Math.max(10, Math.min(window.innerWidth - 160, rect.left + 20));
+          const cy = Math.max(10, Math.min(window.innerHeight - 40, rect.top - 30));
+          this.hintElement!.style.left = `${cx}px`;
+          this.hintElement!.style.top = `${cy}px`;
+          break; // use first visible cursor (works for 1-on-1)
+        }
+      }
+    };
+    this.hintTrackingRaf = requestAnimationFrame(track);
   }
 
   private removeHint(): void {
     if (this.hintTimeout) {
       clearTimeout(this.hintTimeout);
       this.hintTimeout = null;
+    }
+    if (this.hintTrackingRaf) {
+      cancelAnimationFrame(this.hintTrackingRaf);
+      this.hintTrackingRaf = null;
     }
     if (this.hintElement) {
       this.hintElement.remove();
