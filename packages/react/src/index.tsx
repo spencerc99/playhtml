@@ -266,11 +266,18 @@ export function CanPlayElement<T extends object, V = any>({
   // Warn when no explicit id is provided. Without one, the core library falls
   // back to hashing element.outerHTML, which can produce different IDs across
   // browsers and break real-time collaboration.
-  const childId = (renderedChildren?.props as { id?: string })?.id;
+  const childProps = renderedChildren?.props as { id?: string; className?: string } | undefined;
+  const childId = childProps?.id;
   if (!id && !childId && !dataSource) {
+    const childType = typeof renderedChildren?.type === "string"
+      ? `<${renderedChildren.type}>`
+      : renderedChildren?.type?.name
+        ? `<${(renderedChildren.type as { name: string }).name}>`
+        : "<unknown>";
+    const classHint = childProps?.className ? ` (className="${childProps.className}")` : "";
     console.warn(
-      `[@playhtml/react] Child element should have an "id" prop for cross-browser sync to work. ` +
-      `Without a stable id, each browser may get independent state. ` +
+      `[@playhtml/react] <${primaryTag}> wrapping ${childType}${classHint} has no "id" prop. ` +
+      `Cross-browser sync requires a stable id. ` +
       `Add an id to your child element, e.g. <div id="my-element">`,
     );
   }
