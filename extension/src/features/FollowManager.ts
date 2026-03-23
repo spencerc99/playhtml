@@ -155,9 +155,9 @@ export class FollowManager {
 
     this.nearestTarget = { publicKey: closest.publicKey, color: closest.color };
 
-    // Position hint near the other cursor (offset slightly)
-    const hintX = positions?.theirs?.x ?? window.innerWidth / 2;
-    const hintY = positions?.theirs?.y ?? window.innerHeight / 2;
+    // Convert document coords to viewport coords for the fixed-position hint
+    const hintX = positions ? positions.theirs.x - window.scrollX : window.innerWidth / 2;
+    const hintY = positions ? positions.theirs.y - window.scrollY : window.innerHeight / 2;
     this.showHint(hintX, hintY, closest.color);
   }
 
@@ -242,18 +242,22 @@ export class FollowManager {
   // --- Hint UI ---
 
   private showHint(x: number, y: number, color: string): void {
+    // Clamp to viewport
+    const cx = Math.max(10, Math.min(window.innerWidth - 160, x + 20));
+    const cy = Math.max(10, Math.min(window.innerHeight - 40, y - 30));
+
     // If hint exists, just update position
     if (this.hintElement) {
-      this.hintElement.style.left = `${x + 20}px`;
-      this.hintElement.style.top = `${y - 30}px`;
+      this.hintElement.style.left = `${cx}px`;
+      this.hintElement.style.top = `${cy}px`;
       return;
     }
 
     const hint = document.createElement("div");
     Object.assign(hint.style, {
       position: "fixed",
-      left: `${x + 20}px`,
-      top: `${y - 30}px`,
+      left: `${cx}px`,
+      top: `${cy}px`,
       fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
       fontSize: "12px",
       color: "#3d3833",
