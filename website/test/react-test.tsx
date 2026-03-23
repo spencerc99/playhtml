@@ -34,6 +34,7 @@ const Candle = withSharedState(
     return (
       <img
         src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+        id="candle"
         selector-id=".candle"
         className="candle"
         onClick={() => {
@@ -103,6 +104,7 @@ const WithSharedStateCanPlayWithLoading = withSharedState(
         textShadow: "0 1px 3px rgba(0,0,0,0.3)",
         cursor: "pointer",
       }}
+      id="pulse-counter"
       onClick={() => setData({ count: data.count + 1 })}
     >
       can-play (pulse) - {data.count}
