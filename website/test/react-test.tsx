@@ -125,6 +125,52 @@ ReactDOM.createRoot(
     }}
   >
     <div>
+      {/* Verification section: one element per built-in capability */}
+      <div style={{ padding: "20px", border: "2px solid #333", margin: "20px 0" }}>
+        <h3>Built-in Capability Verification</h3>
+        <p style={{ marginBottom: "12px", color: "#666" }}>
+          Each element below should respond to its interaction. Drag = move/spin, click = toggle/grow.
+        </p>
+        <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div>
+            <strong>CanMove</strong> (drag)
+            <CanMoveElement>
+              <div style={{ width: 80, height: 80, background: "#4a9a8a", borderRadius: 8, cursor: "grab" }} />
+            </CanMoveElement>
+          </div>
+          <div>
+            <strong>CanSpin</strong> (drag)
+            <CanSpinElement>
+              <div style={{ width: 80, height: 80, background: "#c4724e", borderRadius: 8, cursor: "grab" }}>
+                <span style={{ display: "block", textAlign: "center", lineHeight: "80px", color: "white" }}>&uarr;</span>
+              </div>
+            </CanSpinElement>
+          </div>
+          <div>
+            <strong>CanToggle</strong> (click)
+            <CanToggleElement>
+              <div style={{ width: 80, height: 80, background: "#5b8db8", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+                off
+              </div>
+            </CanToggleElement>
+            <style>{`.clicked { background: #d4b85c !important; }`}</style>
+          </div>
+          <div>
+            <strong>CanGrow</strong> (click, alt+click to shrink)
+            <CanGrowElement>
+              <div style={{ width: 80, height: 80, background: "#8a8279", borderRadius: 8, cursor: "pointer" }} />
+            </CanGrowElement>
+          </div>
+          <div>
+            <strong>CanHover</strong> (hover)
+            <CanHoverElement>
+              <div style={{ width: 80, height: 80, background: "#3d3833", borderRadius: 8 }} className="hover-verify" />
+            </CanHoverElement>
+            <style>{`.hover-verify[data-playhtml-hover] { outline: 3px solid #4a9a8a; }`}</style>
+          </div>
+        </div>
+      </div>
+
       <LoadingStateTest />
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
