@@ -87,6 +87,11 @@ export class LinkGlowManager {
         }
       }
     });
+
+    // Immediately re-read and render — onUpdate fires async and may be too late
+    // if the page is about to navigate
+    this.data = this.channel.getData();
+    this.renderGlows();
   }
 
   private scanLinks(): void {
