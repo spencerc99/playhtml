@@ -263,6 +263,18 @@ export function CanPlayElement<T extends object, V = any>({
     );
   }
 
+  // Require an explicit id for cross-browser sync. Without one, the core library
+  // falls back to hashing element.outerHTML, which produces different IDs across
+  // browsers and breaks real-time collaboration.
+  const childId = (renderedChildren?.props as { id?: string })?.id;
+  if (!id && !childId && !dataSource) {
+    throw new Error(
+      `[@playhtml/react] Child element must have an "id" prop for cross-browser sync to work. ` +
+      `Without a stable id, each browser will get independent state. ` +
+      `Add an id to your child element, e.g. <div id="my-element">`,
+    );
+  }
+
   return cloneThroughFragments(
     React.Children.only(renderedChildren),
     {

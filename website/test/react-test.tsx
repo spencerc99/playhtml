@@ -135,13 +135,13 @@ ReactDOM.createRoot(
           <div>
             <strong>CanMove</strong> (drag)
             <CanMoveElement>
-              <div style={{ width: 80, height: 80, background: "#4a9a8a", borderRadius: 8, cursor: "grab" }} />
+              <div id="verify-move" style={{ width: 80, height: 80, background: "#4a9a8a", borderRadius: 8, cursor: "grab" }} />
             </CanMoveElement>
           </div>
           <div>
             <strong>CanSpin</strong> (drag)
             <CanSpinElement>
-              <div style={{ width: 80, height: 80, background: "#c4724e", borderRadius: 8, cursor: "grab" }}>
+              <div id="verify-spin" style={{ width: 80, height: 80, background: "#c4724e", borderRadius: 8, cursor: "grab" }}>
                 <span style={{ display: "block", textAlign: "center", lineHeight: "80px", color: "white" }}>&uarr;</span>
               </div>
             </CanSpinElement>
@@ -149,7 +149,7 @@ ReactDOM.createRoot(
           <div>
             <strong>CanToggle</strong> (click)
             <CanToggleElement>
-              <div style={{ width: 80, height: 80, background: "#5b8db8", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+              <div id="verify-toggle" style={{ width: 80, height: 80, background: "#5b8db8", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
                 off
               </div>
             </CanToggleElement>
@@ -158,15 +158,15 @@ ReactDOM.createRoot(
           <div>
             <strong>CanGrow</strong> (click, alt+click to shrink)
             <CanGrowElement>
-              <div style={{ width: 80, height: 80, background: "#8a8279", borderRadius: 8, cursor: "pointer" }} />
+              <div id="verify-grow" style={{ width: 80, height: 80, background: "#8a8279", borderRadius: 8, cursor: "pointer" }} />
             </CanGrowElement>
           </div>
           <div>
             <strong>CanHover</strong> (hover)
             <CanHoverElement>
-              <div style={{ width: 80, height: 80, background: "#3d3833", borderRadius: 8 }} className="hover-verify" />
+              <div id="verify-hover" style={{ width: 80, height: 80, background: "#3d3833", borderRadius: 8 }} className="hover-verify" />
             </CanHoverElement>
-            <style>{`.hover-verify[data-playhtml-hover] { outline: 3px solid #4a9a8a; }`}</style>
+            <style>{`.hover-verify.hovering { outline: 3px solid #4a9a8a; }`}</style>
           </div>
         </div>
       </div>
@@ -203,6 +203,7 @@ ReactDOM.createRoot(
       </style>
       <CanMoveElement>
         <div
+          id="move-blue"
           style={{
             width: "100px",
             height: "100px",
@@ -213,6 +214,7 @@ ReactDOM.createRoot(
       </CanMoveElement>
       <CanSpinElement>
         <div
+          id="spin-yellow"
           style={{
             width: "100px",
             height: "100px",
