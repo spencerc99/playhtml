@@ -1,7 +1,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -160,37 +160,22 @@ export function CanPlayElement<T extends object, V = any>({
     | ElementInitializer["updateElementAwareness"]
     | undefined;
 
-  const updateElement: ElementInitializer["updateElementAwareness"] = (
-    handlerData,
-  ) => {
-    const {
-      data: newData,
-      awareness: newAwareness,
-      awarenessByStableId: newAwarenessByStableId,
-      myAwareness,
-    } = handlerData;
-    setData(newData);
-    setAwareness(newAwareness);
-    setAwarenessByStableId(newAwarenessByStableId);
-    setMyAwareness(myAwareness);
-    // Also apply the capability's DOM updates (e.g. CSS transform for CanMove)
+  const syncReactState = (handlerData: ElementAwarenessEventHandlerData) => {
+    setData(handlerData.data);
+    setAwareness(handlerData.awareness);
+    setAwarenessByStableId(handlerData.awarenessByStableId);
+    setMyAwareness(handlerData.myAwareness);
+  };
+
+  const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
+    syncReactState(handlerData as ElementAwarenessEventHandlerData);
     capabilityUpdateElement?.(handlerData);
   };
 
   const updateElementAwareness: ElementInitializer["updateElementAwareness"] = (
     handlerData,
   ) => {
-    const {
-      data: newData,
-      awareness: newAwareness,
-      awarenessByStableId: newAwarenessByStableId,
-      myAwareness,
-    } = handlerData;
-    setData(newData);
-    setAwareness(newAwareness);
-    setAwarenessByStableId(newAwarenessByStableId);
-    setMyAwareness(myAwareness);
-    // Also apply the capability's DOM awareness updates
+    syncReactState(handlerData);
     capabilityUpdateElementAwareness?.(handlerData);
   };
 
