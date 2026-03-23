@@ -71,7 +71,6 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       if (url.origin !== location.origin) return;
       if (!isWikiArticleUrl(url.href)) return;
 
-      console.log("[Wiki] link click:", url.pathname, "hasFollowers:", followManager.hasFollowers());
       if (followManager.hasFollowers()) {
         // Delay navigation so followers see the navigatingTo awareness update
         e.preventDefault();
@@ -79,7 +78,6 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
           url: url.href,
           title: link.textContent?.trim().slice(0, 100) ?? url.pathname,
         });
-        console.log("[Wiki] broadcasting navigatingTo, delaying 200ms");
         setTimeout(() => {
           window.location.href = url.href;
         }, 200);

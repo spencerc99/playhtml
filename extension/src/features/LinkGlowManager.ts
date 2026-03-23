@@ -46,13 +46,11 @@ export class LinkGlowManager {
     );
 
     this.channel.onUpdate((data) => {
-      console.log("[LinkGlow] onUpdate:", Object.keys(data.links).length, "links");
       this.data = data;
       this.renderGlows();
     });
 
     this.data = this.channel.getData();
-    console.log("[LinkGlow] init: visibleLinks=", this.visibleLinks.size, "data links=", Object.keys(this.data.links).length);
 
     this.cleanups.push(() => {
       this.channel?.destroy();
@@ -64,7 +62,6 @@ export class LinkGlowManager {
 
   recordClick(destPath: string): void {
     if (!this.channel) return;
-    console.log("[LinkGlow] recordClick:", destPath);
     this.channel.setData((draft: PageLinkData) => {
       if (!draft.links[destPath]) {
         draft.links[destPath] = { count: 0, recentColors: [] };

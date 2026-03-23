@@ -1,3 +1,5 @@
+// ABOUTME: Main content script injected into every web page.
+// ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import browser from "webextension-polyfill";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
@@ -869,46 +871,120 @@ export default defineContentScript({
       }
 
       private hasNativePlayhtml(): boolean {
-        // Check multiple signals — window.playhtml may not be set yet if the
-        // page's script loads async, but the cursor styles element is injected
-        // synchronously during init.
+        // Check DOM signals — these work from the isolated world because the
+        // DOM is shared between the page's main world and the extension's
+        // isolated world. We can't check window.playhtml since each world
+        // has its own window object.
         return (
-          "playhtml" in window ||
           !!document.getElementById("playhtml-cursor-styles") ||
-          !!document.querySelector("script[src*='playhtml']")
+          !!document.querySelector("script[src*='/playhtml']") ||
+          document.documentElement.dataset.playhtml === "true"
         );
       }
 
-      private injectIdentityIntoNativePlayhtml() {
-        const tryInject = () => {
-          const ph = (window as any).playhtml;
-          if (ph?.cursorClient && this.playerIdentity) {
-            ph.cursorClient.configure({ playerIdentity: this.playerIdentity });
-            if (VERBOSE) {
-              console.log("[Content] Injected extension identity into native playhtml");
+      private waitForNativePlayhtml(timeoutMs: number): Promise<boolean> {
+        return new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            if (this.hasNativePlayhtml()) {
+              observer.disconnect();
+              resolve(true);
             }
-            return true;
-          }
-          return false;
-        };
-
-        // window.playhtml may not be set yet — poll briefly
-        if (tryInject()) return;
-        let attempts = 0;
-        const interval = setInterval(() => {
-          if (tryInject() || ++attempts > 20) {
+          });
+          observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["data-playhtml"],
+            childList: true,
+            subtree: true,
+          });
+          // Also poll for the style element (added as a child, not an attribute)
+          const interval = setInterval(() => {
+            if (this.hasNativePlayhtml()) {
+              clearInterval(interval);
+              observer.disconnect();
+              resolve(true);
+            }
+          }, 100);
+          setTimeout(() => {
             clearInterval(interval);
-          }
-        }, 250);
+            observer.disconnect();
+            resolve(false);
+          }, timeoutMs);
+        });
+      }
+
+      // Inject a <script> into the main world to overwrite the page's identity
+      // with the extension's. Works regardless of playhtml version since it
+      // writes directly to localStorage and triggers a mousemove to re-broadcast.
+      //
+      // Actions taken under the old anonymous identity are intentionally
+      // orphaned — anonymous interactions have no continuity expectation.
+      private injectIdentityIntoMainWorld() {
+        if (!this.playerIdentity) return;
+
+        // Content scripts run in Chrome's isolated world — we can't access
+        // window.playhtml directly. Inject a <script> that runs in the main
+        // world, polls for playhtml, and applies the extension's identity.
+        const identity = JSON.stringify(this.playerIdentity);
+        const script = document.createElement("script");
+        script.textContent = `
+          (function() {
+            var identity = ${identity};
+            var attempts = 0;
+            function tryInject() {
+              var ph = window.playhtml;
+              if (!ph || !ph.cursorClient) return false;
+
+              if (typeof ph.cursorClient.configure === "function") {
+                ph.cursorClient.configure({ playerIdentity: identity });
+              }
+
+              // Trigger awareness re-broadcast with the new identity
+              document.dispatchEvent(new MouseEvent("mousemove", {
+                clientX: 0, clientY: 0, bubbles: true
+              }));
+
+              // Persist so the identity sticks across page reloads
+              try {
+                localStorage.setItem(
+                  "playhtml_player_identity",
+                  JSON.stringify(identity)
+                );
+              } catch (e) {}
+
+              console.log("[we-were-online] Injected extension identity into native playhtml");
+              return true;
+            }
+            if (tryInject()) return;
+            var interval = setInterval(function() {
+              if (tryInject() || ++attempts > 20) {
+                clearInterval(interval);
+                if (attempts > 20) {
+                  console.warn("[we-were-online] Could not inject identity — playhtml not found after 5s");
+                }
+              }
+            }, 250);
+          })();
+        `;
+        document.documentElement.appendChild(script);
+        script.remove();
       }
 
       private async setupPresenceDetection() {
+        // Check immediately — catches pages where playhtml init ran before us
         if (this.hasNativePlayhtml()) {
-          // Page already has its own playhtml instance — don't init a second
-          // one or we get duplicate cursors and element init errors.
-          // Instead, inject the extension's identity into the existing instance
-          // so the user's chosen color/key takes precedence.
-          this.injectIdentityIntoNativePlayhtml();
+          console.log("[we-were-online] Native playhtml detected at startup");
+          this.injectIdentityIntoMainWorld();
+          this.listenForPresenceCount();
+          return;
+        }
+
+        // Race condition: on dev servers (Vite), page scripts may load after
+        // our content script. Wait briefly for the data-playhtml marker or
+        // cursor styles to appear before initializing our own instance.
+        const nativeAppeared = await this.waitForNativePlayhtml(1500);
+        if (nativeAppeared) {
+          console.log("[we-were-online] Native playhtml detected after waiting");
+          this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
         }

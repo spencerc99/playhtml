@@ -1,9 +1,17 @@
 // ABOUTME: Handles the "follow someone" interaction on shared pages.
 // ABOUTME: Follow state, scroll tethering, and cross-page navigation via presence API.
 
-import type { PresenceAPI } from "@playhtml/common";
+import type { PresenceAPI, PresenceView } from "@playhtml/common";
 import { isWikiArticleUrl } from "../custom-sites/wikipedia";
 import { OffscreenIndicator } from "./OffscreenIndicator";
+
+interface WikiPresenceFields {
+  navigatingTo?: { url: string; title: string } | null;
+  following?: string | null;
+  page?: { url: string; title: string; color: string } | null;
+}
+
+type WikiPresenceView = PresenceView & WikiPresenceFields;
 
 export interface FollowState {
   targetPublicKey: string;
@@ -129,10 +137,10 @@ export class FollowManager {
     this.updateNearestAndHint(positions);
   }
 
-  // Called by cursor options onProximityLeft
-  onProximityLeft(connectionId: string): void {
-    this.nearbyCursors.delete(connectionId);
-    if (this.nearestTarget?.publicKey === connectionId) {
+  // Called by cursor options onProximityLeft (receives stableId which equals publicKey)
+  onProximityLeft(publicKey: string): void {
+    this.nearbyCursors.delete(publicKey);
+    if (this.nearestTarget?.publicKey === publicKey) {
       this.updateNearestAndHint();
     }
   }
@@ -297,20 +305,18 @@ export class FollowManager {
       this.hintTrackingRaf = requestAnimationFrame(track);
       if (!this.hintElement || !this.nearestTarget) return;
 
-      // Find the playhtml cursor DOM element for the nearest target
-      const cursorEls = document.querySelectorAll(".playhtml-cursor-other");
-      for (const el of cursorEls) {
-        const htmlEl = el as HTMLElement;
-        // Match by checking the element's position is reasonable
-        const rect = htmlEl.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          const cx = Math.max(10, Math.min(window.innerWidth - 160, rect.left + 20));
-          const cy = Math.max(10, Math.min(window.innerHeight - 40, rect.top - 30));
-          this.hintElement!.style.left = `${cx}px`;
-          this.hintElement!.style.top = `${cy}px`;
-          break; // use first visible cursor (works for 1-on-1)
-        }
-      }
+      // Look up the target's cursor position via presence API
+      const presences = this.presence.getPresences();
+      const target = presences.get(this.nearestTarget.publicKey);
+      if (!target?.cursor) return;
+
+      // Convert document coords to viewport coords
+      const viewX = target.cursor.x - window.scrollX;
+      const viewY = target.cursor.y - window.scrollY;
+      const cx = Math.max(10, Math.min(window.innerWidth - 160, viewX + 20));
+      const cy = Math.max(10, Math.min(window.innerHeight - 40, viewY - 30));
+      this.hintElement!.style.left = `${cx}px`;
+      this.hintElement!.style.top = `${cy}px`;
     };
     this.hintTrackingRaf = requestAnimationFrame(track);
   }
@@ -472,7 +478,7 @@ export class FollowManager {
       const target = presences.get(this.followState.targetPublicKey);
 
       // Track the latest navigatingTo value
-      const nav = (target as any)?.navigatingTo;
+      const nav = (target as WikiPresenceView | undefined)?.navigatingTo;
       if (nav) {
         lastSeenNav = nav;
         if (!this.pendingNavUrl) {
@@ -486,14 +492,14 @@ export class FollowManager {
 
       // Mutual follow detection
       if (
-        (target as any)?.following === this.presence.getMyIdentity().publicKey &&
+        (target as WikiPresenceView | undefined)?.following === this.presence.getMyIdentity().publicKey &&
         this.followState &&
         !this.followState.mutualFollow
       ) {
         this.followState.mutualFollow = true;
         this.onMutualFollowStart();
       } else if (
-        (target as any)?.following !== this.presence.getMyIdentity().publicKey &&
+        (target as WikiPresenceView | undefined)?.following !== this.presence.getMyIdentity().publicKey &&
         this.followState?.mutualFollow
       ) {
         this.followState.mutualFollow = false;
@@ -650,7 +656,7 @@ export class FollowManager {
       const followers = new Set<string>();
 
       presences.forEach((p, id) => {
-        if ((p as any).following === myKey && !p.isMe) {
+        if ((p as WikiPresenceView).following === myKey && !p.isMe) {
           followers.add(id);
         }
       });
@@ -670,7 +676,7 @@ export class FollowManager {
 
       // Update off-screen indicators for current followers
       presences.forEach((p, id) => {
-        if ((p as any).following === myKey && !p.isMe && p.cursor) {
+        if ((p as WikiPresenceView).following === myKey && !p.isMe && p.cursor) {
           const color = p.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#8a8279";
           const clientY = p.cursor.y - window.scrollY;
           this.offscreenIndicator.update(id, p.cursor.x, clientY, color);
@@ -682,7 +688,7 @@ export class FollowManager {
     this.cleanups.push(() => clearInterval(interval));
   }
 
-  private updateFollowerBar(presences: Map<string, any>): void {
+  private updateFollowerBar(presences: Map<string, WikiPresenceView>): void {
     if (this.currentFollowers.size === 0) {
       this.followerBarElement?.remove();
       this.followerBarElement = null;

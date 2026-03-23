@@ -16,6 +16,8 @@ export interface SceneConfig {
   viewport?: { width: number; height: number };
   // Add a separate camera actor that only watches and records (default: false)
   camera?: boolean;
+  // Which actor to record when camera is not used (0-indexed, default: 0)
+  recordActor?: number;
   // Video output directory (default: tools/playwright/videos)
   videoDir?: string;
   // Run the choreography
