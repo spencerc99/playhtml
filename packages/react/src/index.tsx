@@ -147,29 +147,66 @@ export function CanPlayElement<T extends object, V = any>({
     initialAwareness,
   );
 
-  // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
-  const updateElement: ElementInitializer["updateElementAwareness"] = ({
-    data: newData,
-    awareness: newAwareness,
-    awarenessByStableId: newAwarenessByStableId,
-    myAwareness,
-  }) => {
+  // Capture the capability's original updateElement/updateElementAwareness so we can
+  // compose them with the React state updater below. These come from the built-in
+  // TagTypeToElement definitions (e.g. CanMove applies element.style.transform).
+  // They arrive as extra runtime props via {...TagTypeToElement[TagType.CanMove]} but
+  // are omitted from the CanPlayProps type since React components don't normally use them.
+  const capabilityUpdateElement = (elementProps as any).updateElement as
+    | ElementInitializer["updateElement"]
+    | undefined;
+  const capabilityUpdateElementAwareness = (elementProps as any)
+    .updateElementAwareness as
+    | ElementInitializer["updateElementAwareness"]
+    | undefined;
+
+  const updateElement: ElementInitializer["updateElementAwareness"] = (
+    handlerData,
+  ) => {
+    const {
+      data: newData,
+      awareness: newAwareness,
+      awarenessByStableId: newAwarenessByStableId,
+      myAwareness,
+    } = handlerData;
     setData(newData);
     setAwareness(newAwareness);
     setAwarenessByStableId(newAwarenessByStableId);
     setMyAwareness(myAwareness);
+    // Also apply the capability's DOM updates (e.g. CSS transform for CanMove)
+    capabilityUpdateElement?.(handlerData);
+  };
+
+  const updateElementAwareness: ElementInitializer["updateElementAwareness"] = (
+    handlerData,
+  ) => {
+    const {
+      data: newData,
+      awareness: newAwareness,
+      awarenessByStableId: newAwarenessByStableId,
+      myAwareness,
+    } = handlerData;
+    setData(newData);
+    setAwareness(newAwareness);
+    setAwarenessByStableId(newAwarenessByStableId);
+    setMyAwareness(myAwareness);
+    // Also apply the capability's DOM awareness updates
+    capabilityUpdateElementAwareness?.(handlerData);
   };
 
   useEffect(() => {
     if (ref.current) {
       for (const [key, value] of Object.entries(elementProps)) {
+        // Skip updateElement/updateElementAwareness — they are set below as
+        // composed versions that include both React state updates and DOM updates.
+        if (key === "updateElement" || key === "updateElementAwareness") continue;
         // @ts-ignore
         ref.current[key] = value;
       }
       // @ts-ignore
       ref.current.updateElement = updateElement;
       // @ts-ignore
-      ref.current.updateElementAwareness = updateElement;
+      ref.current.updateElementAwareness = updateElementAwareness;
 
       // Setup the element, which will handle data-source discovery if needed
       try {
