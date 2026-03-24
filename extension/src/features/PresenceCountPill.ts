@@ -2,6 +2,7 @@
 // ABOUTME: Includes a jump-to-someone button powered by a domain-wide lobby.
 
 import type { PresenceAPI } from "@playhtml/common";
+import type { WikiPresenceView } from "../custom-sites/wikipedia";
 
 // Concentric ellipses suggesting a portal
 const PORTAL_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -169,7 +170,7 @@ export class PresenceCountPill {
 
     presences.forEach((p) => {
       if (p.isMe) return;
-      const page = (p as any).page;
+      const page = (p as WikiPresenceView).page;
       if (page?.url && page.url !== location.href) {
         otherPages.push({ url: page.url, title: page.title });
       }

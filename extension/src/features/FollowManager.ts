@@ -1,17 +1,9 @@
 // ABOUTME: Handles the "follow someone" interaction on shared pages.
 // ABOUTME: Follow state, scroll tethering, and cross-page navigation via presence API.
 
-import type { PresenceAPI, PresenceView } from "@playhtml/common";
-import { isWikiArticleUrl } from "../custom-sites/wikipedia";
+import type { PresenceAPI } from "@playhtml/common";
+import { isWikiArticleUrl, type WikiPresenceView } from "../custom-sites/wikipedia";
 import { OffscreenIndicator } from "./OffscreenIndicator";
-
-interface WikiPresenceFields {
-  navigatingTo?: { url: string; title: string } | null;
-  following?: string | null;
-  page?: { url: string; title: string; color: string } | null;
-}
-
-type WikiPresenceView = PresenceView & WikiPresenceFields;
 
 export interface FollowState {
   targetPublicKey: string;

@@ -1,8 +1,17 @@
 // ABOUTME: Wikipedia-specific collaborative browsing features.
 // ABOUTME: Link glow visualization, cursor following, and navigation broadcast for article links.
 
+import type { PresenceView } from "@playhtml/common";
 import type { CustomSiteDeps } from "./index";
 import { FollowManager } from "../features/FollowManager";
+
+export interface WikiPresenceFields {
+  navigatingTo?: { url: string; title: string } | null;
+  following?: string | null;
+  page?: { url: string; title: string; color: string } | null;
+}
+
+export type WikiPresenceView = PresenceView & WikiPresenceFields;
 
 // Matches /wiki/ArticleName but not /wiki/Special: /wiki/Talk: etc.
 export function isWikiArticleUrl(url: string): boolean {
