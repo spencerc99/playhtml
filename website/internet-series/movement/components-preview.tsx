@@ -1930,6 +1930,8 @@ function PassingCursors({
 
 
 
+// Renders a link with the same glow effect the extension applies to Wikipedia links.
+// Uses the shared renderer from extension/src/features/link-glow-renderer.ts.
 function SmearLink({
   children,
   data,
@@ -1946,27 +1948,24 @@ function SmearLink({
 
   const style = computeGlowStyle(data.recentColors, data.count, data.pageMax);
 
-  // Detect whether the link wraps across multiple lines
+  // Detect line wrapping + apply glow after mount/update
   const [wraps, setWraps] = useState(false);
   useEffect(() => {
     const el = linkRef.current;
     if (!el) return;
-    setWraps(el.getClientRects().length > 1);
-  }, [children]);
 
-  // Apply glow via shared rendering functions
-  useEffect(() => {
-    const el = linkRef.current;
-    if (!el || !style) return;
+    const isWrapped = el.getClientRects().length > 1;
+    setWraps(isWrapped);
 
-    if (wraps) {
+    if (!style) return;
+
+    if (isWrapped) {
       applyInlineGlow(el, style);
     } else {
       applySingleLineGlow(el, cls);
     }
-  }, [style, wraps, cls]);
+  }, [style, cls, children]);
 
-  // Generate pseudo-element CSS for single-line links
   const cssRules = style && !wraps ? buildPseudoElementCSS(cls, style).join("\n") : "";
 
   return (
@@ -1976,13 +1975,9 @@ function SmearLink({
         ref={linkRef}
         href="#"
         onClick={(e) => e.preventDefault()}
-        style={{
-          color: "#0645ad",
-          textDecoration: "none",
-          position: "relative",
-        }}
+        style={{ color: "#0645ad", textDecoration: "none" }}
       >
-        <span style={{ position: "relative", zIndex: 1 }}>{children}</span>
+        {children}
         {showCursors && <PassingCursors data={data} linkRef={linkRef} />}
       </a>
     </>
