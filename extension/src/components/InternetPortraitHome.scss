@@ -71,6 +71,16 @@
     }
   }
 
+  &__bag-settings-link {
+    display: block;
+    margin: 8px auto 0;
+    color: $text-faint;
+
+    &:hover {
+      color: $accent-rust;
+    }
+  }
+
   &__footer {
     margin-top: 12px;
     padding-top: 12px;

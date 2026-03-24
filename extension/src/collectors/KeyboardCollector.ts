@@ -133,13 +133,13 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       }
     };
 
-    // Set up input handler
+    // Set up input handler — use InputEvent API for reliable text tracking
     this.inputHandler = (e: Event) => {
       if (!this.focusedInput || e.target !== this.focusedInput) {
         return;
       }
 
-      this.handleInput();
+      this.handleInput(e as InputEvent);
     };
 
     // Set up beforeunload handler to flush pending typing on page navigation
@@ -246,13 +246,16 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   }
 
   /**
-   * Get text content from any editable element
+   * Get text content from any editable element.
+   * Uses innerText for contenteditable (not textContent) because textContent
+   * returns raw text from all child nodes including hidden/internal ones,
+   * which causes phantom text changes when editors reformat their DOM.
    */
   private getElementText(element: HTMLElement): string {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
       return element.value || '';
     } else if (element.isContentEditable) {
-      return element.textContent || '';
+      return element.innerText || '';
     }
     return '';
   }
@@ -334,62 +337,105 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   }
 
   /**
-   * Handle input event
+   * Handle input event using the InputEvent API for reliable text tracking.
+   * Instead of diffing textContent (which is unreliable for contenteditable
+   * elements due to DOM reflows from editors like Gmail/Instagram), we use
+   * InputEvent.inputType and InputEvent.data to know exactly what happened.
    */
-  private handleInput(): void {
+  private handleInput(inputEvent: InputEvent): void {
     if (!this.focusedInput) {
       return;
     }
 
-    const textAfter = this.getElementText(this.focusedInput);
+    const inputType = inputEvent.inputType;
+    const data = inputEvent.data;
 
-    // Detect paste: large text change without matching keydown
-    const textChange = textAfter.length - this.textBefore.length;
-    if (textChange > 1 && (!this.lastKeydown || this.lastKeydown.length === 1)) {
-      // Likely paste (large change but only single char keydown or no keydown)
-      // Skip it - don't add to sequence
-      this.textBefore = textAfter;
-      this.lastKeydown = null;
+    // Ignore formatting, history, and other non-text input types
+    if (
+      !inputType ||
+      inputType.startsWith('format') ||
+      inputType.startsWith('history') ||
+      inputType === 'insertFromYank' ||
+      inputType === 'insertLink' ||
+      inputType === 'insertHorizontalRule'
+    ) {
       return;
     }
 
-    // Determine action type from last keydown or text change
-    if (this.lastKeydown === 'Backspace' || this.lastKeydown === 'Delete') {
-      // Deletion action - count how many characters were deleted
-      // This correctly handles bulk deletions (select-all + delete, etc.)
-      if (textAfter.length < this.textBefore.length) {
-        const deletedCount = this.textBefore.length - textAfter.length;
-        this.addBackspaceAction(deletedCount);
-      }
-    } else if (textAfter.length > this.textBefore.length) {
-      // Type action - text was added
-      // Handle special keys that produce characters
-      if (this.lastKeydown === 'Enter') {
-        // Enter produces newline character
-        this.addTypeAction('\n');
-      } else if (this.lastKeydown === 'Tab') {
-        // Tab produces tab character (though Tab usually moves focus)
-        this.addTypeAction('\t');
-      } else if (this.lastKeydown && this.lastKeydown.length === 1) {
-        // Regular printable character
-        const added = textAfter.slice(this.textBefore.length);
-        if (added.length > 0) {
-          this.addTypeAction(added);
-        }
-      } else {
-        // Fallback: if we can't determine from keydown, capture the actual text change
-        // This handles cases where keydown wasn't captured or special input methods
-        const added = textAfter.slice(this.textBefore.length);
-        if (added.length > 0) {
-          this.addTypeAction(added);
-        }
-      }
+    // Skip paste events
+    if (
+      inputType === 'insertFromPaste' ||
+      inputType === 'insertFromDrop' ||
+      inputType === 'insertFromPasteAsQuotation'
+    ) {
+      return;
     }
 
-    // Update text before for next action
-    this.textBefore = textAfter;
-    this.lastKeydown = null;
+    // Handle deletions
+    if (
+      inputType === 'deleteContentBackward' ||
+      inputType === 'deleteContentForward' ||
+      inputType === 'deleteByCut' ||
+      inputType === 'deleteByDrag' ||
+      inputType === 'deleteWordBackward' ||
+      inputType === 'deleteWordForward' ||
+      inputType === 'deleteSoftLineBackward' ||
+      inputType === 'deleteSoftLineForward' ||
+      inputType === 'deleteHardLineBackward' ||
+      inputType === 'deleteHardLineForward'
+    ) {
+      // For deletions, we need to figure out how many chars were removed.
+      // InputEvent doesn't directly tell us the count, so we diff the text.
+      const textAfter = this.getElementText(this.focusedInput);
+      const deletedCount = this.textBefore.length - textAfter.length;
+      if (deletedCount > 0) {
+        this.addBackspaceAction(deletedCount);
+      }
+      this.textBefore = textAfter;
+      this.lastKeydown = null;
+      this.resetDebounce();
+      return;
+    }
 
+    // Handle Enter / paragraph insertion
+    if (inputType === 'insertParagraph' || inputType === 'insertLineBreak') {
+      this.addTypeAction('\n');
+      this.textBefore = this.getElementText(this.focusedInput);
+      this.lastKeydown = null;
+      this.resetDebounce();
+      return;
+    }
+
+    // Handle regular text insertion (insertText, insertCompositionText)
+    if (
+      (inputType === 'insertText' || inputType === 'insertCompositionText') &&
+      data
+    ) {
+      this.addTypeAction(data);
+      this.textBefore = this.getElementText(this.focusedInput);
+      this.lastKeydown = null;
+      this.resetDebounce();
+      return;
+    }
+
+    // Fallback for any other insertions with data
+    if (data && inputType.startsWith('insert')) {
+      this.addTypeAction(data);
+      this.textBefore = this.getElementText(this.focusedInput);
+      this.lastKeydown = null;
+      this.resetDebounce();
+      return;
+    }
+
+    // For anything else we don't recognize, just sync textBefore
+    this.textBefore = this.getElementText(this.focusedInput);
+    this.lastKeydown = null;
+  }
+
+  /**
+   * Reset the debounce timer for flushing typing events.
+   */
+  private resetDebounce(): void {
     // Reset debounce timer
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);

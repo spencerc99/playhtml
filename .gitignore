@@ -45,4 +45,10 @@ internal-docs
 .dev.vars
 
 
-data/runs.db
+**/runs.db
+
+# playwright videos
+tools/playwright/videos
+
+# superpowers brainstorm artifacts
+.superpowers
