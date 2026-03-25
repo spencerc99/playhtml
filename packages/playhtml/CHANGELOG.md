@@ -1,5 +1,24 @@
 # Change Log
 
+## 2.9.0
+
+### Minor Changes
+
+- cd467ce: Add page-level shared data and presence API
+
+  - `playhtml.createPageData(name, default)` for named persistent data channels not tied to DOM elements
+  - `playhtml.presence` for unified per-user presence with named channels, `isMe` flag, and channel-scoped `onPresenceChange`
+  - Deprecate `playhtml.cursorClient` in favor of `playhtml.presence`
+
+- 6b0964f: Add `playhtml.createPresenceRoom(name)` — creates a domain-scoped presence-only room connection. Returns a `PresenceRoom` with a `PresenceAPI` instance and a `destroy()` cleanup function. Useful for cross-page coordination like lobbies, page directories, and ambient social awareness without cursor rendering overhead.
+
+### Patch Changes
+
+- bdfa16f: Fix phantom duplicate cursors when same user has multiple tabs open on the same URL. Cursors are now deduplicated by publicKey instead of Yjs clientId. Also fixes scroll lag for inactive cursors by switching absolute-mode cursors to position:absolute (browser-native scroll compositing) and replacing the 150ms scroll debounce with requestAnimationFrame throttle.
+- Updated dependencies [cd467ce]
+- Updated dependencies [6b0964f]
+  - @playhtml/common@0.6.0
+
 ## 2.8.0
 
 ### Minor Changes
