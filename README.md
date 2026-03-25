@@ -59,10 +59,13 @@ To use this library, you can import the library from a CDN (in this case we will
 
   <!-- Option 2 (customize options to specify the room everyone connects to (a unique ID) or use your own partykit provider) -->
   <script type="module">
-    import "https://unpkg.com/playhtml@latest";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
     playhtml.init({
-      room: "my-room",
-      host: `${myPartykitUser}.partykit.dev`,
+      // room: "my-room", // if you want to specify a custom room to connect to
+      // host: `${myPartykitUser}.partykit.dev`, // if you want to specify a custom partykit host host to connect to
+      // cursors: {
+      //   enabled: true, // if you want to eanble cursors
+      // },
     });
   </script>
 </body>
@@ -366,11 +369,11 @@ playhtml.presence.setMyPresence("status", null);
 // Read all users' presence (includes self)
 const presences = playhtml.presence.getPresences();
 for (const [id, p] of presences) {
-  p.isMe;            // boolean — true for the local user
-  p.playerIdentity;  // PlayerIdentity — name, colors, publicKey
-  p.cursor;          // Cursor | null — position (null if cursors disabled)
-  p.status;          // your custom channel data (if set)
-  p.focus;           // your custom channel data (if set)
+  p.isMe; // boolean — true for the local user
+  p.playerIdentity; // PlayerIdentity — name, colors, publicKey
+  p.cursor; // Cursor | null — position (null if cursors disabled)
+  p.status; // your custom channel data (if set)
+  p.focus; // your custom channel data (if set)
 }
 
 // Subscribe to changes on a specific channel
@@ -380,9 +383,12 @@ const unsub = playhtml.presence.onPresenceChange("status", (presences) => {
 });
 
 // Subscribe to cursor position updates (~60fps)
-const unsubCursors = playhtml.presence.onPresenceChange("cursor", (presences) => {
-  renderCursorPositions(presences);
-});
+const unsubCursors = playhtml.presence.onPresenceChange(
+  "cursor",
+  (presences) => {
+    renderCursorPositions(presences);
+  },
+);
 
 // Get own identity
 const me = playhtml.presence.getMyIdentity();

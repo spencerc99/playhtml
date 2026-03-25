@@ -1,3 +1,5 @@
+// ABOUTME: Main content script injected into every web page.
+// ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import browser from "webextension-polyfill";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
@@ -868,9 +870,93 @@ export default defineContentScript({
         }, 3000);
       }
 
+      private hasNativePlayhtml(): boolean {
+        // Check DOM signals — these work from the isolated world because the
+        // DOM is shared between the page's main world and the extension's
+        // isolated world. We can't check window.playhtml since each world
+        // has its own window object.
+        return (
+          !!document.getElementById("playhtml-cursor-styles") ||
+          !!document.querySelector("script[src*='/playhtml']") ||
+          document.documentElement.dataset.playhtml === "true"
+        );
+      }
+
+      private waitForNativePlayhtml(timeoutMs: number): Promise<boolean> {
+        return new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            if (this.hasNativePlayhtml()) {
+              observer.disconnect();
+              resolve(true);
+            }
+          });
+          observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["data-playhtml"],
+            childList: true,
+            subtree: true,
+          });
+          // Also poll for the style element (added as a child, not an attribute)
+          const interval = setInterval(() => {
+            if (this.hasNativePlayhtml()) {
+              clearInterval(interval);
+              observer.disconnect();
+              resolve(true);
+            }
+          }, 100);
+          setTimeout(() => {
+            clearInterval(interval);
+            observer.disconnect();
+            resolve(false);
+          }, timeoutMs);
+        });
+      }
+
+      // Send the extension's identity to the page's playhtml instance via a
+      // CustomEvent on the shared DOM. The content script can't access
+      // window.playhtml (isolated world), and inline <script> injection is
+      // blocked by CSP. CustomEvents cross the world boundary via the DOM.
+      //
+      // Actions taken under the old anonymous identity are intentionally
+      // orphaned — anonymous interactions have no continuity expectation.
+      private injectIdentityIntoMainWorld() {
+        if (!this.playerIdentity) return;
+
+        const dispatch = () => {
+          document.dispatchEvent(new CustomEvent("playhtml:configure-identity", {
+            detail: { playerIdentity: this.playerIdentity },
+          }));
+        };
+
+        // Dispatch immediately in case playhtml is already listening
+        dispatch();
+
+        // Also listen for playhtml signaling it's ready (handles the case
+        // where our event fires before playhtml's init sets up the listener)
+        document.addEventListener("playhtml:ready", () => {
+          dispatch();
+          console.log("[we-were-online] Re-dispatched identity after playhtml ready signal");
+        }, { once: true });
+
+        console.log("[we-were-online] Dispatched identity injection event");
+      }
+
       private async setupPresenceDetection() {
-        if ("playhtml" in window) {
-          // Page already initialized PlayHTML — tap into existing window.cursors if available
+        // Check immediately — catches pages where playhtml init ran before us
+        if (this.hasNativePlayhtml()) {
+          console.log("[we-were-online] Native playhtml detected at startup");
+          this.injectIdentityIntoMainWorld();
+          this.listenForPresenceCount();
+          return;
+        }
+
+        // Race condition: on dev servers (Vite), page scripts may load after
+        // our content script. Wait briefly for the data-playhtml marker or
+        // cursor styles to appear before initializing our own instance.
+        const nativeAppeared = await this.waitForNativePlayhtml(1500);
+        if (nativeAppeared) {
+          console.log("[we-were-online] Native playhtml detected after waiting");
+          this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
         }
@@ -881,9 +967,21 @@ export default defineContentScript({
           cursors: {
             enabled: true,
             playerIdentity: this.playerIdentity,
+            coordinateMode: "absolute",
           },
         });
         this.listenForPresenceCount();
+
+        // Initialize domain-specific features (link glow, follow, nav broadcast)
+        const { initCustomSite } = await import("../custom-sites");
+        const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+        await initCustomSite({
+          createPageData: playhtml.createPageData,
+          createPresenceRoom: playhtml.createPresenceRoom,
+          presence: playhtml.presence,
+          cursorClient: playhtml.cursorClient,
+          playerColor: color,
+        });
       }
 
       private listenForPresenceCount() {

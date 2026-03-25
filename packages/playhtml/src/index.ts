@@ -507,6 +507,10 @@ async function initPlayHTML({
   isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
+  // DOM marker visible to browser extension content scripts (which run in an
+  // isolated world and can't see window.playhtml). Set early so the extension
+  // can detect native playhtml before cursor styles are injected.
+  document.documentElement.dataset.playhtml = "true";
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   // TODO: We want to normalize here but we can't without losing data.
@@ -609,6 +613,35 @@ async function initPlayHTML({
     }
 
     cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+
+    // Listen for identity injection from the browser extension. The extension
+    // runs in Chrome's isolated world and can't call cursorClient.configure()
+    // directly, so it dispatches a CustomEvent on the shared DOM instead.
+    //
+    // The extension only provides publicKey and playerStyle (the canonical
+    // stable identity + chosen color). All other fields on the page's
+    // current identity are preserved — the page may have arbitrary fields
+    // the extension doesn't know about.
+    // TODO: The extension should also be able to set `name` — currently
+    // there's no UI for it in the extension, so we preserve the page's
+    // value. Once the extension has a name field, include it in the merge.
+    document.addEventListener("playhtml:configure-identity", ((e: CustomEvent) => {
+      const incoming = e.detail?.playerIdentity;
+      if (!incoming || !cursorClient) return;
+
+      const current = cursorClient.getMyPlayerIdentity();
+      const merged = {
+        ...current,
+        publicKey: incoming.publicKey,
+        playerStyle: incoming.playerStyle,
+      };
+
+      cursorClient.configure({ playerIdentity: merged });
+      console.log("[playhtml] Merged extension identity via CustomEvent");
+    }) as EventListener);
+
+    // Signal that we're ready to receive identity injection events
+    document.dispatchEvent(new CustomEvent("playhtml:ready"));
   }
 
   // Create presence API — always available, wraps whichever awareness provider exists
