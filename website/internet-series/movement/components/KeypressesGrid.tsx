@@ -247,10 +247,22 @@ function buildSessions(events: CollectionEvent[], randomize: boolean): SessionSt
         if (d.sequence.length) offset += d.sequence[d.sequence.length - 1].timestamp + 500;
       });
       if (seq.length > 0) {
-        raw.push({
-          sequence: seq,
-          seed: first.meta.pid.charCodeAt(0) + (first.ts % 10000),
-        });
+        // Filter out key-repeat spam (e.g. "sssssss" from contenteditable bugs)
+        const flatText = seq.reduce((acc, a) => acc + (a.action === "type" ? (a.text || "") : ""), "");
+        let isSpam = false;
+        if (flatText.length >= 5) {
+          const charCounts = new Map<string, number>();
+          for (const c of flatText) charCounts.set(c, (charCounts.get(c) ?? 0) + 1);
+          const maxRatio = Math.max(...charCounts.values()) / flatText.length;
+          isSpam = maxRatio > 0.7;
+        }
+
+        if (!isSpam) {
+          raw.push({
+            sequence: seq,
+            seed: first.meta.pid.charCodeAt(0) + (first.ts % 10000),
+          });
+        }
       }
     });
   });
