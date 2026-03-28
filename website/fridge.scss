@@ -2,8 +2,9 @@
 body {
   margin: 0;
   box-sizing: border-box;
-  // Prevent default touch behaviors to allow custom pinch-zoom
-  touch-action: pan-x pan-y;
+  // Disable native touch handling so custom pan/zoom works everywhere,
+  // including at page edges where native scroll would stop
+  touch-action: none;
 }
 html,
 body,

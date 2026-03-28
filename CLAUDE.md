@@ -123,6 +123,11 @@ Bun automatically handles workspace linking. When making changes across packages
 - Reset shortcuts use modifier keys (shift, ctrl, alt, meta)
 - Custom event listeners can be added in `onMount`
 
+## Documentation
+
+- `docs/`: Public developer-facing and user-facing documentation only.
+- `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).
+
 ## Project-Specific Notes
 
 - The project uses Bun as the package manager and task runner
@@ -132,3 +137,4 @@ Bun automatically handles workspace linking. When making changes across packages
 - The website uses a multi-page app (MPA) structure with glob-based HTML discovery
 - Workspace dependencies are automatically linked by Bun
 - Examples and demos are critical for showcasing capabilities
+- When making any changes to the core packages (playhtml, common, react), you should also make sure to add a changeset in .changeset/

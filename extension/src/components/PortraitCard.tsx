@@ -2,17 +2,40 @@
 // ABOUTME: Canvas-textured card with vertical strokes mapped to 24h activity rhythm
 
 import React, { useEffect, useRef } from "react";
-import type { ScreenTimeSession } from "../storage/LocalEventStore";
 
+// ── PortraitCard data contract ───────────────────────────────────────────────
+//
+// This component has exactly two visual states:
+//
+//   1. LOADING  — totalTimeMs === null
+//      Shows a centered "loading..." placeholder. Use this only while the
+//      background fetch is genuinely in flight. Once data arrives, always pass
+//      a number (even 0) so the card renders.
+//
+//   2. READY    — totalTimeMs is a number (including 0)
+//      Renders the full card: canvas texture, hero duration, distance, pages,
+//      and date range. Zero is valid — it means "we have data, but no
+//      completed focus/blur session pairs were recorded."
+//
+// There is no "error" or "empty" state inside PortraitCard. The parent is
+// responsible for showing "no data" when there are no stats at all (e.g. by
+// checking whether stats are null before mounting PortraitCard).
+//
+// Pitfall: passing totalTimeMs as null when the aggregate has zero sessions
+// causes perpetual loading. Always pass 0 when data exists but has no
+// completed focus/blur session pairs.
+//
 export interface PortraitCardProps {
   domain: string;
+  /** Total screen time in ms. null = still loading; 0 = no sessions recorded. */
   totalTimeMs: number | null;
-  /** Sessions with focusTs timestamps — used to derive time-of-day rhythm */
-  sessions: ScreenTimeSession[];
+  /** Pre-computed total ms per hour-of-day (index 0 = midnight, 23 = 11pm) */
+  hourBuckets: number[];
   /** Total cursor distance in pixels (sum of Euclidean distances between samples) */
   cursorDistancePx: number;
   dateRange: { oldest: string; newest: string } | null;
-  uniquePageCount: number;
+  /** Omit for page-level stats where the count is always 1 */
+  uniquePageCount?: number;
   eventCounts?: { cursor: number; keyboard: number; viewport: number };
 }
 
@@ -31,12 +54,26 @@ export function formatDuration(ms: number): string {
 export function formatDateRange(oldest: string, newest: string): string {
   const start = new Date(oldest);
   const end = new Date(newest);
-  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const startMonth = monthNames[start.getMonth()];
   const endMonth = monthNames[end.getMonth()];
   const startYear = start.getFullYear();
   const endYear = end.getFullYear();
-  if (startYear === endYear && start.getMonth() === end.getMonth()) return `${endMonth} ${endYear}`;
+  if (startYear === endYear && start.getMonth() === end.getMonth())
+    return `${endMonth} ${endYear}`;
   if (startYear === endYear) return `${startMonth}\u2013${endMonth} ${endYear}`;
   return `${startMonth} ${startYear}\u2013${endMonth} ${endYear}`;
 }
@@ -55,15 +92,9 @@ export function formatDistance(px: number): string {
 }
 
 /**
- * Build a 24-slot hour weight array (index 0 = midnight, 23 = 11pm).
- * Each slot holds total ms spent in that hour, normalized to [0, 1].
+ * Normalize raw hour buckets (total ms per hour) to [0, 1] weights.
  */
-function buildHourWeights(sessions: ScreenTimeSession[]): number[] {
-  const buckets = new Array(24).fill(0);
-  for (const s of sessions) {
-    const hour = new Date(s.focusTs).getHours();
-    buckets[hour] += s.durationMs;
-  }
+function normalizeHourBuckets(buckets: number[]): number[] {
   const max = Math.max(...buckets, 1);
   return buckets.map((v) => v / max);
 }
@@ -74,14 +105,14 @@ const ACCENT_TEAL = "#4a9a8a";
 
 // Trail palette as [r,g,b] for canvas rendering — matches RISO_COLORS in eventUtils
 const CANVAS_PALETTE: [number, number, number][] = [
-  [210, 51, 35],   // warm red — hsl(10, 72%, 48%)
-  [180, 148, 34],  // amber — hsl(55, 68%, 42%)
-  [92, 158, 46],   // moss green — hsl(100, 55%, 40%)
-  [39, 155, 130],  // teal — hsl(155, 60%, 38%)
-  [40, 110, 189],  // steel blue — hsl(210, 65%, 45%)
-  [80, 55, 189],   // violet — hsl(260, 55%, 48%)
-  [184, 48, 151],  // magenta — hsl(310, 58%, 45%)
-  [195, 115, 35],  // burnt orange — hsl(35, 70%, 45%)
+  [0, 120, 191], // Blue
+  [255, 102, 94], // Bright Red
+  [0, 169, 92], // Green
+  [255, 123, 75], // Orange
+  [146, 55, 141], // Purple
+  [255, 232, 0], // Yellow
+  [255, 72, 176], // Fluorescent Pink
+  [0, 131, 138], // Teal
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -92,7 +123,7 @@ const CANVAS_PALETTE: [number, number, number][] = [
 export function PortraitCard({
   domain,
   totalTimeMs,
-  sessions,
+  hourBuckets,
   cursorDistancePx,
   dateRange,
   uniquePageCount,
@@ -100,10 +131,13 @@ export function PortraitCard({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const isLoading = totalTimeMs === null;
-  const weights = buildHourWeights(sessions);
+  const weights = normalizeHourBuckets(hourBuckets);
   const heroText = formatDuration(totalTimeMs ?? 0);
-  const dateLabel = dateRange ? formatDateRange(dateRange.oldest, dateRange.newest) : null;
-  const distanceLabel = cursorDistancePx > 0 ? formatDistance(cursorDistancePx) : null;
+  const dateLabel = dateRange
+    ? formatDateRange(dateRange.oldest, dateRange.newest)
+    : null;
+  const distanceLabel =
+    cursorDistancePx > 0 ? formatDistance(cursorDistancePx) : null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -119,7 +153,10 @@ export function PortraitCard({
     ctx.fillRect(0, 0, W, H);
 
     let seed = 42;
-    const rand = () => { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; };
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      return (seed >>> 0) / 0xffffffff;
+    };
 
     // Scale stroke count with total time: ~15 strokes per minute, max 2000
     // No minimum floor — a nearly empty portrait should look nearly empty
@@ -133,8 +170,15 @@ export function PortraitCard({
     if (totalWeight === 0) return;
     const cdf: number[] = [];
     let acc = 0;
-    for (const w of weights) { acc += w / totalWeight; cdf.push(acc); }
-    const sampleHour = () => { const u = rand(); for (let h = 0; h < 24; h++) if (u < cdf[h]) return h; return 23; };
+    for (const w of weights) {
+      acc += w / totalWeight;
+      cdf.push(acc);
+    }
+    const sampleHour = () => {
+      const u = rand();
+      for (let h = 0; h < 24; h++) if (u < cdf[h]) return h;
+      return 23;
+    };
 
     // Count how many distinct active hours there are — fewer active hours = wider jitter
     // so strokes don't pile into a single column
@@ -162,17 +206,19 @@ export function PortraitCard({
 
   if (isLoading) {
     return (
-      <div style={{
-        position: "absolute",
-        inset: 0,
-        background: "#f5f0e8",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: "11px",
-        color: "rgba(61,56,51,0.4)",
-        fontFamily: "'Martian Mono', monospace",
-      }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#f5f0e8",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "11px",
+          color: "rgba(61,56,51,0.4)",
+          fontFamily: "'Martian Mono', monospace",
+        }}
+      >
         loading...
       </div>
     );
@@ -180,42 +226,164 @@ export function PortraitCard({
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />
-      <div style={{ position: "absolute", inset: 0, background: "rgba(250,247,242,0.72)" }} />
-      <div style={{
-        position: "relative",
-        padding: "14px 14px 12px",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        boxSizing: "border-box",
-        fontFamily: "'Atkinson Hyperlegible', sans-serif",
-        color: TEXT,
-      }}>
-        <div style={{ fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: TEXT_MUTED, marginBottom: "8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {domain}
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: "5px", flex: 1 }}>
-          <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: "32px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: TEXT }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          display: "block",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(250,247,242,0.72)",
+        }}
+      />
+      <div
+        style={{
+          position: "relative",
+          padding: "14px 14px 12px",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          boxSizing: "border-box",
+          fontFamily: "'Atkinson Hyperlegible', sans-serif",
+          color: TEXT,
+        }}
+      >
+        {domain && (
+          <div
+            style={{
+              fontSize: "9px",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: TEXT_MUTED,
+              marginBottom: "8px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {domain}
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: "5px",
+            flex: 1,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Lora', Georgia, serif",
+              fontSize: "32px",
+              fontWeight: 700,
+              lineHeight: 1,
+              letterSpacing: "-0.02em",
+              color: TEXT,
+            }}
+          >
             {heroText}
           </div>
-          <div style={{ fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: TEXT_MUTED }}>spent</div>
+          <div
+            style={{
+              fontSize: "9px",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: TEXT_MUTED,
+            }}
+          >
+            spent
+          </div>
         </div>
-        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "10px", display: "flex", gap: "14px", alignItems: "flex-end" }}>
+        <div
+          style={{
+            borderTop: `1px solid ${BORDER}`,
+            paddingTop: "10px",
+            display: "flex",
+            gap: "14px",
+            alignItems: "flex-end",
+          }}
+        >
           {distanceLabel && (
             <div>
-              <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "11px", fontWeight: 500, color: TEXT }}>{distanceLabel}</div>
-              <div style={{ fontSize: "8px", letterSpacing: "0.08em", textTransform: "uppercase", color: TEXT_MUTED, marginTop: "2px" }}>moved</div>
+              <div
+                style={{
+                  fontFamily: "'Martian Mono', monospace",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  color: TEXT,
+                }}
+              >
+                {distanceLabel}
+              </div>
+              <div
+                style={{
+                  fontSize: "8px",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: TEXT_MUTED,
+                  marginTop: "2px",
+                }}
+              >
+                moved
+              </div>
             </div>
           )}
-          <div>
-            <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "11px", fontWeight: 500, color: TEXT }}>{uniquePageCount}</div>
-            <div style={{ fontSize: "8px", letterSpacing: "0.08em", textTransform: "uppercase", color: TEXT_MUTED, marginTop: "2px" }}>pages</div>
-          </div>
+          {uniquePageCount != null && (
+            <div>
+              <div
+                style={{
+                  fontFamily: "'Martian Mono', monospace",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  color: TEXT,
+                }}
+              >
+                {uniquePageCount}
+              </div>
+              <div
+                style={{
+                  fontSize: "8px",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: TEXT_MUTED,
+                  marginTop: "2px",
+                }}
+              >
+                pages
+              </div>
+            </div>
+          )}
           {dateLabel && (
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
-              <div style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "11px", color: ACCENT_TEAL }}>we were online</div>
-              <div style={{ fontFamily: "'Martian Mono', monospace", fontSize: "8px", color: TEXT_FAINT, marginTop: "2px" }}>{dateLabel}</div>
+              <div
+                style={{
+                  fontFamily: "'Source Serif 4', Georgia, serif",
+                  fontStyle: "italic",
+                  fontWeight: 400,
+                  fontSize: "11px",
+                  color: ACCENT_TEAL,
+                }}
+              >
+                we were online
+              </div>
+              <div
+                style={{
+                  fontFamily: "'Martian Mono', monospace",
+                  fontSize: "8px",
+                  color: TEXT_FAINT,
+                  marginTop: "2px",
+                }}
+              >
+                {dateLabel}
+              </div>
             </div>
           )}
         </div>

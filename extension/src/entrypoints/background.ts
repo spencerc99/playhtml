@@ -6,6 +6,8 @@ import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import type { CollectionEvent } from '../shared/types'
 import { VERBOSE } from '../config'
+import { gzipString, gunzipToString } from '../utils/dataTransfer'
+import { normalizeUrl } from '../utils/urlNormalization'
 
 const store = new LocalEventStore()
 
@@ -218,66 +220,68 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_DOMAIN_STATS') {
       const domain = message.domain as string
+      const rawUrl = message.url as string | undefined
+      const normalizedUrl = rawUrl ? normalizeUrl(rawUrl) : undefined
       ;(async () => {
         try {
-          const domainStats = await store.getDomainStats(domain)
-          if (domainStats.totalEvents === 0) {
+          // Screen time and hour buckets are pre-computed in domain_stats (O(1)).
+          // Cursor distance requires scanning cursor events (capped at 2000).
+          // Page-level aggregates provide per-page time for the stats page's
+          // expanded domain view (also pre-computed, key range scan).
+          const [agg, cursorEvents, pageAggs] = await Promise.all([
+            store.getSessionStats(domain, normalizedUrl).catch(() => null),
+            store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
+            store.getPageStats(domain).catch(() => [] as never[]),
+          ])
+
+          // Only return null stats when there is truly no data at all.
+          // PortraitCard interprets totalTimeMs === null as "loading" —
+          // returning null here when we just have zero time would cause
+          // the card to appear stuck forever.
+          if (!agg && cursorEvents.length === 0) {
             reply({ success: true, stats: null })
             return
           }
 
-          const events = await store.queryByDomain(domain)
-
-          const uniqueUrls = new Set(events.map((e) => e.meta.url).filter(Boolean))
-
-          const counts = { cursor: 0, keyboard: 0, viewport: 0 }
-          events.forEach((e) => {
-            if (e.type === 'cursor') counts.cursor++
-            else if (e.type === 'keyboard') counts.keyboard++
-            else if (e.type === 'viewport') counts.viewport++
-          })
-
-          const navEvents = events
-            .filter((e) => e.type === 'navigation')
-            .sort((a, b) => a.ts - b.ts)
-          let pendingFocusTs: number | null = null
-          let pendingFocusUrl = ''
-          let totalTimeMs = 0
-          const sessions: { url: string; focusTs: number; blurTs: number; durationMs: number }[] = []
-          for (const evt of navEvents) {
-            const d = evt.data as any
-            if (d.event === 'focus') {
-              pendingFocusTs = evt.ts
-              pendingFocusUrl = evt.meta?.url ?? ''
-            } else if ((d.event === 'blur' || d.event === 'beforeunload') && pendingFocusTs !== null) {
-              const durationMs = evt.ts - pendingFocusTs
-              if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
-                totalTimeMs += durationMs
-                sessions.push({ url: pendingFocusUrl, focusTs: pendingFocusTs, blurTs: evt.ts, durationMs })
-              }
-              pendingFocusTs = null
-            }
-          }
+          const hourBuckets = agg?.hourBuckets ?? new Array(24).fill(0)
 
           // Compute cursor distance: sum of Euclidean distances between consecutive move samples
           // Normalized positions (0-1) are scaled by assumed 1920×1080 viewport
-          const cursorEvents = events
-            .filter((e) => e.type === 'cursor' && (e.data as any).event === 'move')
+          const moveEvents = cursorEvents
+            .filter((e) => (e.data as any).event === 'move')
             .sort((a, b) => a.ts - b.ts)
           let cursorDistancePx = 0
-          for (let i = 1; i < cursorEvents.length; i++) {
-            const prev = cursorEvents[i - 1].data as any
-            const curr = cursorEvents[i].data as any
+          for (let i = 1; i < moveEvents.length; i++) {
+            const prev = moveEvents[i - 1].data as any
+            const curr = moveEvents[i].data as any
             const dx = (curr.x - prev.x) * 1920
             const dy = (curr.y - prev.y) * 1080
             cursorDistancePx += Math.sqrt(dx * dx + dy * dy)
           }
 
+          // Build per-page breakdown from page-level aggregates for the stats
+          // page's expanded domain view. Each page aggregate yields one entry
+          // per session so computeTopPages() can sum and count correctly.
+          const sessions: Array<{ url: string; focusTs: number; blurTs: number; durationMs: number }> = []
+          for (const p of pageAggs) {
+            const url = p.key.slice(domain.length + 2) // strip "domain::" prefix → normalizedUrl
+            // Emit one synthetic session per recorded session so visit counts are accurate
+            const perSessionMs = p.sessionCount > 0 ? p.totalTimeMs / p.sessionCount : p.totalTimeMs
+            for (let i = 0; i < Math.max(1, p.sessionCount); i++) {
+              sessions.push({
+                url,
+                focusTs: p.firstVisit,
+                blurTs: p.lastVisit,
+                durationMs: perSessionMs,
+              })
+            }
+          }
+
           const dateRange =
-            domainStats.firstVisit && domainStats.lastVisit
+            agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(domainStats.firstVisit).toLocaleDateString(),
-                  newest: new Date(domainStats.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
+                  newest: new Date(agg.lastVisit).toLocaleDateString(),
                 }
               : null
 
@@ -285,12 +289,14 @@ export default defineBackground(() => {
             success: true,
             stats: {
               domain,
-              totalTimeMs: totalTimeMs > 0 ? totalTimeMs : null,
-              sessions,
+              totalTimeMs: agg?.totalTimeMs ?? 0,
+              hourBuckets,
               cursorDistancePx,
-              eventCounts: counts,
+              eventCounts: agg?.eventsByType ?? {},
               dateRange,
-              uniquePageCount: uniqueUrls.size,
+              sessions,
+              // Only include uniquePageCount for domain-level stats (not page-level)
+              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
             },
           })
         } catch (e) {
@@ -298,6 +304,33 @@ export default defineBackground(() => {
           reply({ success: false })
         }
       })()
+      return true
+    }
+
+    if (message.type === 'GET_GLOBAL_STATS') {
+      store.getGlobalStats()
+        .then((agg) => {
+          if (!agg) {
+            reply({ success: true, stats: null })
+            return
+          }
+          reply({
+            success: true,
+            stats: {
+              totalTimeMs: agg.totalTimeMs,
+              hourBuckets: agg.hourBuckets,
+              sessionCount: agg.sessionCount,
+              eventsByType: agg.eventsByType,
+              firstVisit: agg.firstVisit,
+              lastVisit: agg.lastVisit,
+              uniqueUrlCount: agg.uniqueUrls.length,
+            },
+          })
+        })
+        .catch((e) => {
+          console.error('[Background] GET_GLOBAL_STATS error:', e)
+          reply({ success: false })
+        })
       return true
     }
 
@@ -327,6 +360,17 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_DAY_COUNTS error:', e)
           reply({ success: false, counts: {} })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCREEN_TIME') {
+      const options = (message.options || {}) as Pick<QueryOptions, 'startTs' | 'endTs'>
+      store.getScreenTime(options)
+        .then((result) => reply({ success: true, ...result }))
+        .catch((e) => {
+          console.error('[Background] GET_SCREEN_TIME error:', e)
+          reply({ success: false, totalMs: 0, sessions: [], totalScrollDistancePx: 0 })
         })
       return true
     }
@@ -366,6 +410,49 @@ export default defineBackground(() => {
           console.error('[Background] QUERY_EVENTS_BY_URL error:', e)
           reply({ success: false, events: [] })
         })
+      return true
+    }
+
+    if (message.type === 'GET_ALL_DOMAINS') {
+      store.getAllDomains()
+        .then((domains) => reply({ success: true, domains }))
+        .catch((e) => {
+          console.error('[Background] GET_ALL_DOMAINS error:', e)
+          reply({ success: false, domains: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'EXPORT_EVENTS') {
+      ;(async () => {
+        try {
+          const events = await store.getAllEvents()
+          const identity = await getPlayerIdentity()
+          const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), events, identity })
+          const compressed = await gzipString(payload)
+          reply({ success: true, data: Array.from(compressed) })
+        } catch (e) {
+          console.error('[Background] EXPORT_EVENTS error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'IMPORT_EVENTS') {
+      ;(async () => {
+        try {
+          const json = await gunzipToString(new Uint8Array(message.data as number[]))
+          const parsed = JSON.parse(json)
+          if (parsed.version !== 1) throw new Error('Unsupported export version')
+          const events = parsed.events as CollectionEvent[]
+          await store.addEvents(events)
+          reply({ success: true, imported: events.length })
+        } catch (e) {
+          console.error('[Background] IMPORT_EVENTS error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
       return true
     }
   })

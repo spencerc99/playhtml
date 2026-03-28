@@ -70,7 +70,7 @@ export interface UseCursorTrailsResult {
 export function useCursorTrails(
   events: CollectionEvent[],
   viewportSize: { width: number; height: number },
-  settings: CursorTrailSettings
+  settings: CursorTrailSettings,
 ): UseCursorTrailsResult {
   // Filter to cursor events only
   const cursorEvents = useMemo(() => {
@@ -199,18 +199,18 @@ export function useCursorTrails(
         // Threshold is 5% of viewport — small enough to catch a stationary
         // cursor while scrolling, large enough to keep real cursor movement.
         // Clicks and holds always pass through.
-        if (
-          settings.documentSpace &&
-          eventType === "move" &&
-          lastNormX >= 0 &&
-          Math.abs(event.data.x - lastNormX) < 0.05 &&
-          Math.abs(event.data.y - lastNormY) < 0.05
-        ) {
-          lastTimestamp = event.ts;
-          lastNormX = event.data.x;
-          lastNormY = event.data.y;
-          return;
-        }
+        // if (
+        //   settings.documentSpace &&
+        //   eventType === "move" &&
+        //   lastNormX >= 0 &&
+        //   Math.abs(event.data.x - lastNormX) < 0.05 &&
+        //   Math.abs(event.data.y - lastNormY) < 0.05
+        // ) {
+        //   lastTimestamp = event.ts;
+        //   lastNormX = event.data.x;
+        //   lastNormY = event.data.y;
+        //   return;
+        // }
 
         // Convert normalized coordinates (0-1) to pixel coordinates.
         // In document space mode: reconstruct the absolute document position using
@@ -369,7 +369,7 @@ export function useCursorTrails(
     const totalTimeNeeded = trails.length * actualSpacing;
     const cycleDuration = Math.max(
       totalTimeNeeded,
-      dataDuration > 0 ? dataDuration : 60000
+      dataDuration > 0 ? dataDuration : 60000,
     );
 
     // Group trails by color for interleaved scheduling
@@ -408,8 +408,7 @@ export function useCursorTrails(
         // Stagger mode - choreograph trail timing
         const trailDuration = trail.endTime - trail.startTime;
         const scheduledPosition = orderedIndices.indexOf(originalIndex);
-        const startOffset =
-          (scheduledPosition * actualSpacing) % cycleDuration;
+        const startOffset = (scheduledPosition * actualSpacing) % cycleDuration;
         const timeOffset = min + startOffset - trail.startTime;
 
         const adjustedClicks = trail.clicks.map((click) => ({
@@ -446,11 +445,11 @@ export function useCursorTrails(
       points: Array<{ x: number; y: number }>,
       style: string,
       seed: number,
-      chaosIntensity: number = 1.0
+      chaosIntensity: number = 1.0,
     ): Array<{ x: number; y: number }> => {
       return applyStyleVariations(points, style, seed, chaosIntensity);
     },
-    []
+    [],
   );
 
   // Generate trail states with visual variations
@@ -478,7 +477,7 @@ export function useCursorTrails(
         trail.points,
         settings.trailStyle,
         seed,
-        settings.chaosIntensity || 1.0
+        settings.chaosIntensity || 1.0,
       );
 
       // Calculate click progress along the trail

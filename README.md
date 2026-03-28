@@ -13,6 +13,8 @@ The simplest example is creating a shared, movable piece of HTML "furniture":
 At a glance, playhtml supports:
 
 - reactive data scoped at a per-element level
+- page-level shared data channels (not tied to elements)
+- per-user presence with custom named channels
 - sync and data persistence behavior customization (locally persisted, real-time synced, or globally persisted)
 - custom events for imperative logic
 - a range of magical plug-and-play and full customization
@@ -57,10 +59,13 @@ To use this library, you can import the library from a CDN (in this case we will
 
   <!-- Option 2 (customize options to specify the room everyone connects to (a unique ID) or use your own partykit provider) -->
   <script type="module">
-    import "https://unpkg.com/playhtml@latest";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
     playhtml.init({
-      room: "my-room",
-      host: `${myPartykitUser}.partykit.dev`,
+      // room: "my-room", // if you want to specify a custom room to connect to
+      // host: `${myPartykitUser}.partykit.dev`, // if you want to specify a custom partykit host host to connect to
+      // cursors: {
+      //   enabled: true, // if you want to eanble cursors
+      // },
     });
   </script>
 </body>
@@ -270,7 +275,11 @@ These capabilities are common ones that have been designed and created by the co
 
 **EXPERIMENTAL: USE WITH CAUTION**
 
-Automatically syncs all styles and children of an element. This is a really powerful and expressive way to code as you normally do but have it be automatically collaborative. Still in testing and may have some bugs. NOTE that anyone can change the styles using their dev console and have it also sync across. Restricting values to certain ranges or values will soon be supported.
+Automatically syncs attributes, children, form element state (checkboxes, radios, selects, text inputs), and contenteditable content of an element. This is a powerful way to code as you normally do but have it be automatically collaborative. Hover and focus states are synced ephemerally via awareness--style with `[data-playhtml-hover]` and `[data-playhtml-focus]` attribute selectors instead of `:hover`/`:focus`. Still in testing and may have some bugs. NOTE that anyone can change synced values using their dev console and have it sync across. Restricting values to certain ranges or values will soon be supported.
+
+### `can-hover`
+
+Syncs hover state across all connected clients via awareness. When any client hovers the element, all clients see the `data-playhtml-hover` attribute set on it. No persistent data is stored--hover state is purely ephemeral. Style with `[data-playhtml-hover]` instead of `:hover` to reflect collaborative hover state.
 
 ### `can-move`
 
@@ -313,6 +322,81 @@ Shared elements allow you to share an element's state across pages and domains. 
 https://github.com/user-attachments/assets/5f20b7b4-0d53-43e6-add1-754afba52e12
 
 See the guide on referencing shared elements for more details [shared-elements.md](https://github.com/spencerc99/playhtml/blob/main/docs/shared-elements.md).
+
+## Page-Level Shared Data
+
+`playhtml.createPageData()` creates named persistent data channels that are not tied to any DOM element. This is useful for page-level counters, shared voting systems, link tracking, or any collaborative state that belongs to the page rather than a specific element.
+
+```javascript
+// Create a named data channel with a default value
+const counter = playhtml.createPageData("my-counter", { count: 0 });
+
+// Read current data
+counter.getData(); // { count: 0 }
+
+// Update with mutator (merge-friendly, recommended for nested data)
+counter.setData((draft) => {
+  draft.count += 1;
+});
+
+// Update with replacement
+counter.setData({ count: 0 });
+
+// Subscribe to changes (fires on local and remote updates)
+const unsub = counter.onUpdate((data) => {
+  document.getElementById("count").textContent = data.count;
+});
+
+// Clean up when done
+unsub(); // remove listener
+counter.destroy(); // remove all listeners for this handle
+```
+
+Multiple calls to `createPageData` with the same name return independent handles that share the same underlying data. Each handle has its own listeners, and `destroy()` only affects that handle's listeners.
+
+## Presence
+
+`playhtml.presence` provides a unified view of all connected users with support for custom named channels. Each user has system fields (identity, cursor position) plus any custom channels you define.
+
+```javascript
+// Set custom presence channels (replace semantics per channel)
+playhtml.presence.setMyPresence("status", { text: "online", emoji: "o]" });
+playhtml.presence.setMyPresence("focus", { elementId: "section-3" });
+
+// Clear a channel
+playhtml.presence.setMyPresence("status", null);
+
+// Read all users' presence (includes self)
+const presences = playhtml.presence.getPresences();
+for (const [id, p] of presences) {
+  p.isMe; // boolean — true for the local user
+  p.playerIdentity; // PlayerIdentity — name, colors, publicKey
+  p.cursor; // Cursor | null — position (null if cursors disabled)
+  p.status; // your custom channel data (if set)
+  p.focus; // your custom channel data (if set)
+}
+
+// Subscribe to changes on a specific channel
+const unsub = playhtml.presence.onPresenceChange("status", (presences) => {
+  // Only fires when any user's "status" channel changes
+  renderUserStatuses(presences);
+});
+
+// Subscribe to cursor position updates (~60fps)
+const unsubCursors = playhtml.presence.onPresenceChange(
+  "cursor",
+  (presences) => {
+    renderCursorPositions(presences);
+  },
+);
+
+// Get own identity
+const me = playhtml.presence.getMyIdentity();
+```
+
+Custom channels are flattened into the top level of `PresenceView`. Channel names that collide with system fields (`playerIdentity`, `cursor`, `isMe`) are silently dropped.
+
+> **Note:** Cursor position data in `getPresences()` uses raw storage coordinates. For pixel-accurate cursor rendering with coordinate conversion, use the cursor system directly.
 
 ## Cursors
 

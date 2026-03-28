@@ -1,7 +1,7 @@
 /* ABOUTME: Styles for the Wikipedia rabbit hole falling-titles visualization */
 /* ABOUTME: Dark warm-toned full-screen layout with Lora serif typography */
 
-@import url('https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap");
 
 * {
   box-sizing: border-box;
@@ -12,8 +12,8 @@ body {
   padding: 0;
   background: #1a1714;
   overflow: hidden;
-  font-family: 'Atkinson Hyperlegible', sans-serif;
-  color: #f0ebe3;
+  font-family: "Atkinson Hyperlegible", sans-serif;
+  color: #ffffff;
 }
 
 // ── Main container ─────────────────────────────────────────────────────────────
@@ -53,9 +53,9 @@ body {
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
-  font-family: 'Lora', 'Georgia', serif;
+  font-family: "Lora", "Georgia", serif;
   font-weight: 700;
-  color: #faf7f2;
+  color: #ffffff;
   white-space: nowrap;
   pointer-events: none;
   line-height: 1.15;
@@ -71,7 +71,7 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   font-size: 0.85rem;
   color: #5a5450;
   letter-spacing: 0.08em;
@@ -80,8 +80,13 @@ body {
 }
 
 @keyframes pulse-text {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 // ── Info bar ───────────────────────────────────────────────────────────────────
@@ -104,26 +109,26 @@ body {
 }
 
 .info-label {
-  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #b8b0a8;
 }
 
 .info-stat {
-  font-family: 'Martian Mono', monospace;
+  font-family: "Martian Mono", monospace;
   font-size: 0.68rem;
   color: #5a5450;
 }
 
 .info-loading {
-  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   color: #3e3a36;
   animation: pulse-text 1.2s ease-in-out infinite;
 }
 
 .info-error {
-  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   color: #c4724e;
   cursor: help;
 }
@@ -133,7 +138,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   font-size: 0.7rem;
   color: #5a5450;
   user-select: none;
@@ -147,7 +152,7 @@ body {
   font-size: 0.68rem;
   cursor: pointer;
   color: #5a5450;
-  font-family: 'Martian Mono', monospace;
+  font-family: "Martian Mono", monospace;
   line-height: 1.6;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 
@@ -161,6 +166,38 @@ body {
     border-color: #6b6460;
     color: #c8bfb4;
     background: #252220;
+  }
+}
+
+// ── Date filter select ─────────────────────────────────────────────────────
+.date-select {
+  background: none;
+  border: 1px solid #2e2a26;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.68rem;
+  cursor: pointer;
+  color: #5a5450;
+  font-family: "Martian Mono", monospace;
+  line-height: 1.6;
+  appearance: none;
+  -webkit-appearance: none;
+
+  &:hover {
+    background: #2a2520;
+    color: #b8b0a8;
+    border-color: #3e3a36;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #6b6460;
+    color: #c8bfb4;
+  }
+
+  option {
+    background: #1a1714;
+    color: #b8b0a8;
   }
 }
 

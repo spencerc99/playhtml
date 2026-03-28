@@ -49,6 +49,17 @@ export default class PartyServer implements Party.Server {
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
 
+  // In-memory caches for hot-path data that rarely changes.
+  // Invalidated on writes via the set* methods.
+  private cachedSubscribers: Subscriber[] | null = null;
+  private cachedSharedRefs: SharedRefEntry[] | null = null;
+  private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
+    null;
+
+  // Pending bridge flush timer — batches bridge fan-out across rapid updates
+  private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly BRIDGE_DEBOUNCE_MS = 500;
+
   // Reuse the exact same options for all Y.Doc access
   readonly providerOptions: YPartyKitOptions = {
     load: async () => {
@@ -81,6 +92,8 @@ export default class PartyServer implements Party.Server {
       return doc;
     },
     callback: {
+      debounceWait: 3000,
+      debounceMaxWait: 15000,
       handler: async (doc: Y.Doc) => {
         // Skip autosave if we are performing a reset operation
         if (this.isSkippingSave) {
@@ -91,11 +104,6 @@ export default class PartyServer implements Party.Server {
         }
 
         // This is called every few seconds if the document has changed
-
-        // convert the Yjs document to a Uint8Array
-        const content = Y.encodeStateAsUpdate(doc);
-        const base64Document = Buffer.from(content).toString("base64");
-        const documentSize = base64Document.length;
 
         // Get current reset epoch for logging and validation
         const serverResetEpoch = await this.getResetEpoch();
@@ -123,6 +131,33 @@ export default class PartyServer implements Party.Server {
           return;
         }
 
+        // Compact the doc before saving: rebuild from current JSON state to
+        // strip CRDT history and tombstones. This keeps the stored doc minimal
+        // so that cold-loading it on DO restart never exceeds the 128MB memory limit.
+        const rawSize = Y.encodeStateAsUpdate(doc).byteLength;
+        const currentPlayData = docToJson(doc);
+        let compactedBase64: string;
+
+        if (currentPlayData) {
+          const compactDoc = jsonToDoc(currentPlayData);
+          setDocResetEpoch(
+            compactDoc,
+            docResetEpoch ?? serverResetEpoch ?? Date.now()
+          );
+          compactedBase64 = encodeDocToBase64(compactDoc);
+          const compactedSize = Math.ceil(compactedBase64.length * 3 / 4);
+          if (compactedSize < rawSize) {
+            console.log(
+              `[PartyServer] Compacted: room=${this.room.id}, ${rawSize} -> ${compactedSize} bytes (${((1 - compactedSize / rawSize) * 100).toFixed(1)}% reduction)`
+            );
+          }
+        } else {
+          // Doc is empty — just encode as-is
+          compactedBase64 = encodeDocToBase64(doc);
+        }
+
+        const documentSize = compactedBase64.length;
+
         // Log structured information about the save
         console.log(
           `[PartyServer] Autosave: room=${
@@ -132,11 +167,11 @@ export default class PartyServer implements Party.Server {
           )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
         );
 
-        // Save the document to the database
+        // Save the compacted document to the database
         const { data: _data, error } = await supabase.from("documents").upsert(
           {
             name: this.room.id,
-            document: base64Document,
+            document: compactedBase64,
           },
           { onConflict: "name" }
         );
@@ -158,30 +193,51 @@ export default class PartyServer implements Party.Server {
   private adminHandler = new AdminHandler(this);
 
   async getSubscribers(): Promise<Subscriber[]> {
-    return (await this.room.storage.get(STORAGE_KEYS.subscribers)) || [];
+    if (this.cachedSubscribers !== null) return this.cachedSubscribers;
+    const subs =
+      ((await this.room.storage.get(STORAGE_KEYS.subscribers)) as
+        | Subscriber[]
+        | undefined) || [];
+    this.cachedSubscribers = subs;
+    return subs;
   }
 
   async setSubscribers(subscribers: Subscriber[]): Promise<void> {
+    this.cachedSubscribers = subscribers;
     await this.room.storage.put(STORAGE_KEYS.subscribers, subscribers);
   }
 
   async getSharedReferences(): Promise<SharedRefEntry[]> {
-    return (await this.room.storage.get(STORAGE_KEYS.sharedReferences)) || [];
+    if (this.cachedSharedRefs !== null) return this.cachedSharedRefs;
+    const refs =
+      ((await this.room.storage.get(STORAGE_KEYS.sharedReferences)) as
+        | SharedRefEntry[]
+        | undefined) || [];
+    this.cachedSharedRefs = refs;
+    return refs;
   }
 
   async setSharedReferences(references: SharedRefEntry[]): Promise<void> {
+    this.cachedSharedRefs = references;
     await this.room.storage.put(STORAGE_KEYS.sharedReferences, references);
   }
 
   async getSharedPermissions(): Promise<
     Record<string, SharedElementPermissions>
   > {
-    return (await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) || {};
+    if (this.cachedSharedPerms !== null) return this.cachedSharedPerms;
+    const perms =
+      ((await this.room.storage.get(STORAGE_KEYS.sharedPermissions)) as
+        | Record<string, SharedElementPermissions>
+        | undefined) || {};
+    this.cachedSharedPerms = perms;
+    return perms;
   }
 
   async setSharedPermissions(
     permissions: Record<string, SharedElementPermissions>
   ): Promise<void> {
+    this.cachedSharedPerms = permissions;
     await this.room.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
   }
 
@@ -1013,12 +1069,45 @@ export default class PartyServer implements Party.Server {
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       // Extract current state as JSON
-      const currentPlayData = docToJson(liveYDoc);
+      let currentPlayData = docToJson(liveYDoc);
       console.log(
-        `[Hard Reset] Extracted play data: ${
+        `[Hard Reset] Extracted play data from live doc: ${
           currentPlayData ? "has data" : "empty"
         }`
       );
+
+      // If the live doc is empty (e.g. after a Cloudflare memory limit reset),
+      // fall back to the database as the source of truth to avoid data loss.
+      if (!currentPlayData) {
+        console.log(
+          `[Hard Reset] Live doc is empty, falling back to database...`
+        );
+        const { data: dbRow, error: dbError } = await supabase
+          .from("documents")
+          .select("document")
+          .eq("name", roomId)
+          .maybeSingle();
+
+        if (dbError) {
+          throw new Error(
+            `Failed to load fallback from database: ${dbError.message}`
+          );
+        }
+
+        if (dbRow?.document) {
+          const fallbackDoc = new Y.Doc();
+          Y.applyUpdate(
+            fallbackDoc,
+            new Uint8Array(Buffer.from(dbRow.document, "base64"))
+          );
+          currentPlayData = docToJson(fallbackDoc);
+          console.log(
+            `[Hard Reset] Loaded from database: ${
+              currentPlayData ? "has data" : "still empty"
+            }`
+          );
+        }
+      }
 
       // Calculate before size
       const beforeSize = encodeDocToBase64(liveYDoc).length;
@@ -1034,9 +1123,11 @@ export default class PartyServer implements Party.Server {
       let freshBase64: string;
       let afterSize: number;
 
-      // Handle empty room case
+      // Handle truly empty room (empty live doc AND empty database)
       if (!currentPlayData) {
-        console.log(`[Hard Reset] Room is empty, creating empty fresh doc...`);
+        console.log(
+          `[Hard Reset] Room is empty in both live doc and database, creating empty fresh doc...`
+        );
         const emptyDoc = new Y.Doc();
         setDocResetEpoch(emptyDoc, resetEpoch);
         freshBase64 = encodeDocToBase64(emptyDoc);
@@ -1201,23 +1292,15 @@ export default class PartyServer implements Party.Server {
     }
   }
 
-  // Attach immediate observers to this room's doc to bridge changes without waiting for save callback
-  private async attachImmediateBridgeObservers(): Promise<void> {
-    if (this.observersAttached) return;
-    const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+  // Flush batched bridge updates to subscribers and source rooms
+  private async flushBridgeUpdates(yDoc: Y.Doc): Promise<void> {
+    const mainParty = this.room.context.parties.main;
+    const currentEpoch = await this.getResetEpoch();
 
-    // Handle source room updates for shared elements: on change, push to each subscribed consumer immediately
-    yDoc.on("update", async (_update: Uint8Array, origin: any) => {
-      // Ignore updates we just applied from a consumer pull to avoid echo
-      if (origin === ORIGIN_C2S) return;
-
-      const subscribers = await this.getSubscribers();
-      if (!subscribers.length) return;
-
+    // Push to subscribers (source -> consumer direction)
+    const subscribers = await this.getSubscribers();
+    if (subscribers.length) {
       const permissions = await this.getSharedPermissions();
-      const mainParty = this.room.context.parties.main;
-      // Export all subtrees of interest and push immediately
-      const currentEpoch = await this.getResetEpoch();
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.length) return;
@@ -1243,32 +1326,63 @@ export default class PartyServer implements Party.Server {
           });
         })
       );
-    });
+    }
 
-    // Handle consumer room updates for shared references: when our doc changes for tracked shared refs, push back to sources immediately
-    yDoc.on("update", async (_update: Uint8Array, origin: any) => {
-      // Ignore updates we just applied from a source push to avoid echo
-      if (origin === ORIGIN_S2C) return;
-      const mainParty = this.room.context.parties.main;
-      const refs = await this.getSharedReferences();
-      const currentEpoch = await this.getResetEpoch();
-      for (const { sourceRoomId, elementIds } of refs) {
-        if (!elementIds?.length) continue;
-        const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
-        if (!Object.keys(subtrees).length) continue;
-        const sourceRoom = mainParty.get(sourceRoomId);
-        const applyRequest: ApplySubtreesImmediateRequest = {
-          action: "apply-subtrees-immediate",
-          subtrees,
-          sender: this.room.id,
-          originKind: "consumer",
-          resetEpoch: currentEpoch ?? null,
-        };
-        await sourceRoom.fetch({
-          method: "POST",
-          body: JSON.stringify(applyRequest),
-        });
+    // Push back to sources (consumer -> source direction)
+    const refs = await this.getSharedReferences();
+    for (const { sourceRoomId, elementIds } of refs) {
+      if (!elementIds?.length) continue;
+      const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
+      if (!Object.keys(subtrees).length) continue;
+      const sourceRoom = mainParty.get(sourceRoomId);
+      const applyRequest: ApplySubtreesImmediateRequest = {
+        action: "apply-subtrees-immediate",
+        subtrees,
+        sender: this.room.id,
+        originKind: "consumer",
+        resetEpoch: currentEpoch ?? null,
+      };
+      await sourceRoom.fetch({
+        method: "POST",
+        body: JSON.stringify(applyRequest),
+      });
+    }
+  }
+
+  // Schedule a debounced bridge flush. Multiple rapid updates coalesce into one flush.
+  private scheduleBridgeFlush(yDoc: Y.Doc): void {
+    if (this.bridgeFlushTimer !== null) {
+      clearTimeout(this.bridgeFlushTimer);
+    }
+    this.bridgeFlushTimer = setTimeout(() => {
+      this.bridgeFlushTimer = null;
+      this.flushBridgeUpdates(yDoc).catch((err) => {
+        console.error("[PartyServer] Bridge flush failed:", err);
+      });
+    }, PartyServer.BRIDGE_DEBOUNCE_MS);
+  }
+
+  // Attach observers to this room's doc to bridge changes to shared element subscribers.
+  // Updates are debounced to avoid flooding subscribers with per-keystroke HTTP calls.
+  private async attachImmediateBridgeObservers(): Promise<void> {
+    if (this.observersAttached) return;
+    const yDoc = await unstable_getYDoc(this.room, this.providerOptions);
+
+    yDoc.on("update", (_update: Uint8Array, origin: any) => {
+      // Ignore echoed updates from bridge apply operations
+      if (origin === ORIGIN_C2S || origin === ORIGIN_S2C) return;
+
+      // Fast bail: if no subscribers or refs are cached, skip entirely
+      if (
+        this.cachedSubscribers !== null &&
+        this.cachedSubscribers.length === 0 &&
+        this.cachedSharedRefs !== null &&
+        this.cachedSharedRefs.length === 0
+      ) {
+        return;
       }
+
+      this.scheduleBridgeFlush(yDoc);
     });
 
     this.observersAttached = true;

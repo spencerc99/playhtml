@@ -22,9 +22,12 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build-packages && changeset publish",
-    "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do (cd \"$dir\" && bunx tsc); done && cd extension && bunx tsc"
+    "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do (cd \"$dir\" && bunx tsc); done && cd extension && bunx tsc",
+    "load-test": "bun load-test/src/runner.ts",
+    "load-test:full": "bun load-test/src/runner.ts --config full-suite"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.9",
     "@cloudflare/workers-types": "^4.20230518.0",
     "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^20.3.3",
@@ -32,7 +35,7 @@
     "@types/react": "^18.2.48",
     "@types/react-is": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "@changesets/cli": "^2.27.9",
+    "agentation": "^2.2.1",
     "glob": "^10.3.10",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",

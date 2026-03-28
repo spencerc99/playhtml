@@ -1,4 +1,6 @@
 import "./7.scss";
+import openhandSvg from "./openhand.svg?raw";
+import closedhandSvg from "./closedhand.svg?raw";
 import React, {
   useEffect,
   useMemo,
@@ -67,30 +69,14 @@ function mixColors(color1: string, color2: string): string {
   return parseColor(color1); // For now, just use first color
 }
 
-// SVG Hand component using actual SVG files
+// SVG Hand component
 const HandSVG: React.FC<{
   color: string;
   isLeft: boolean;
   position: { x: number; y: number };
   rotation?: number;
 }> = ({ color, isLeft, position, rotation = 0 }) => {
-  const [svgContent, setSvgContent] = useState<string>("");
-
-  useEffect(() => {
-    const loadSVG = async () => {
-      try {
-        const svgFile = isLeft ? "openhand.svg" : "closedhand.svg";
-        const response = await fetch(`./${svgFile}`);
-        const content = await response.text();
-        setSvgContent(content);
-      } catch (error) {
-        console.warn("Could not load hand SVG:", error);
-      }
-    };
-    loadSVG();
-  }, [isLeft]);
-
-  if (!svgContent) return null;
+  const svgContent = isLeft ? openhandSvg : closedhandSvg;
 
   return (
     <div

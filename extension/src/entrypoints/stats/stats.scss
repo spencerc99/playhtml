@@ -1,0 +1,348 @@
+// ABOUTME: Styles for the domain time stats page
+
+@use '../../styles/variables' as *;
+
+.stats-page {
+  min-height: 100vh;
+  background: $bg;
+  color: $text;
+  font-family: $font-body;
+
+  &__header {
+    border-bottom: 1px solid $border;
+    padding: 40px 0 28px;
+  }
+
+  &__header-inner {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  &__wordmark {
+    font-family: $font-wordmark;
+    font-style: italic;
+    font-weight: 200;
+    font-size: 13px;
+    color: $text-muted;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  &__nav-link {
+    font-family: $font-mono;
+    font-size: 10px;
+    font-style: normal;
+    color: $text-muted;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.12s;
+
+    &:hover {
+      color: $accent-teal;
+    }
+  }
+
+  &__title {
+    font-family: $font-heading;
+    font-size: 28px;
+    font-weight: 600;
+    color: $text;
+    margin: 0 0 6px;
+    line-height: 1.2;
+  }
+
+  &__subtitle {
+    font-size: 13px;
+    color: $text-muted;
+    margin: 0;
+  }
+
+  &__main {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 28px 32px 64px;
+  }
+
+  &__loading,
+  &__empty {
+    padding: 48px 0;
+    text-align: center;
+    font-size: 14px;
+    color: $text-muted;
+    font-style: italic;
+  }
+
+  &__empty-hint {
+    font-size: 12px;
+    color: $text-faint;
+    margin-top: 6px;
+  }
+
+  &__controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+
+  &__controls-label {
+    font-size: 11px;
+    color: $text-faint;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 2px;
+  }
+
+  &__sort-btn {
+    background: none;
+    border: 1px solid $border-strong;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: $font-body;
+    font-size: 11px;
+    color: $text-muted;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+
+    &:hover {
+      color: $text;
+      border-color: $accent-teal;
+    }
+
+    &--active {
+      background: $active-bg;
+      border-color: $active-border;
+      color: $accent-teal;
+      font-weight: 600;
+    }
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__note {
+    margin-top: 28px;
+    font-size: 11px;
+    color: $text-faint;
+    font-style: italic;
+    text-align: center;
+  }
+}
+
+.domain-row {
+  border-radius: 8px;
+  transition: background 0.1s;
+
+  &--expanded {
+    background: $surface;
+  }
+
+  &__main {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    transition: background 0.1s;
+
+    &--clickable {
+      cursor: pointer;
+
+      &:hover {
+        background: $surface-hover;
+      }
+    }
+  }
+
+  &--expanded &__main {
+    border-radius: 8px 8px 0 0;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+
+  &__rank {
+    font-family: $font-mono;
+    font-size: 11px;
+    color: $text-faint;
+    width: 18px;
+    text-align: right;
+    flex-shrink: 0;
+    padding-top: 2px;
+    line-height: 1;
+  }
+
+  &__favicon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    border-radius: 3px;
+    opacity: 0.85;
+  }
+
+  &__body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  &__name {
+    font-size: 13px;
+    font-weight: 500;
+    color: $text;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__right {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  &__time {
+    font-family: $font-mono;
+    font-size: 12px;
+    color: $accent-teal;
+    font-weight: 600;
+
+    &--loading {
+      color: $text-faint;
+      font-weight: 400;
+    }
+
+    &--none {
+      color: $text-faint;
+      font-weight: 400;
+    }
+  }
+
+  &__chevron {
+    font-size: 10px;
+    color: $text-faint;
+    line-height: 1;
+  }
+
+  &__bar-track {
+    height: 3px;
+    background: $border;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+
+  &__bar {
+    height: 100%;
+    background: $accent-teal;
+    border-radius: 2px;
+    opacity: 0.7;
+    transition: width 0.4s ease;
+  }
+
+  &__meta {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: $text-faint;
+  }
+
+  // ── Expanded pages sub-list ─────────────────────────────────────────────────
+  &__pages {
+    padding: 4px 12px 12px 44px; // indent to align under domain name (past rank + favicon)
+    border-top: 1px solid $border;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__pages-empty {
+    font-size: 11px;
+    color: $text-faint;
+    font-style: italic;
+    padding: 4px 0;
+  }
+}
+
+// Individual page row inside an expanded domain
+.page-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+
+  &__rank {
+    font-family: $font-mono;
+    font-size: 10px;
+    color: $text-faint;
+    width: 14px;
+    text-align: right;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  &__body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+
+  &__path {
+    font-size: 11px;
+    color: $text-muted;
+    font-family: $font-mono;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__time {
+    font-family: $font-mono;
+    font-size: 11px;
+    color: $accent-teal;
+    flex-shrink: 0;
+    font-weight: 600;
+    opacity: 0.8;
+  }
+
+  &__bar-track {
+    height: 2px;
+    background: $border;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 3px;
+  }
+
+  &__bar {
+    height: 100%;
+    background: $accent-teal;
+    border-radius: 2px;
+    opacity: 0.4;
+  }
+
+  &__visits {
+    font-size: 10px;
+    color: $text-faint;
+  }
+}

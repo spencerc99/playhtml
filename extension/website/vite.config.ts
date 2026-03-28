@@ -12,6 +12,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@movement": path.resolve(__dirname, "../../website/internet-series/movement"),
+      "playhtml": path.resolve(__dirname, "../../packages/playhtml/src/index.ts"),
+      "@playhtml/react": path.resolve(__dirname, "../../packages/react/src"),
+      "@playhtml/common": path.resolve(__dirname, "../../packages/common/src"),
     },
   },
   build: {

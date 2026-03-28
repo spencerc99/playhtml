@@ -2,6 +2,7 @@
 // ABOUTME: Renders viewports on-demand with fade transitions and dynamic space packing
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "./types";
+import { RISO_COLORS } from "./utils/eventUtils";
 
 // Configuration constants
 const FADE_IN_DURATION = 400; // ms
@@ -22,18 +23,6 @@ interface AnimatedScrollViewportsProps {
     randomizeColors?: boolean;
   };
 }
-
-// RISO-inspired color palette for randomization
-const RISO_COLORS = [
-  "rgb(0, 120, 191)", // Blue
-  "rgb(255, 102, 94)", // Bright Red
-  "rgb(0, 169, 92)", // Green
-  "rgb(255, 123, 75)", // Orange
-  "rgb(146, 55, 141)", // Purple
-  "rgb(255, 232, 0)", // Yellow
-  "rgb(255, 72, 176)", // Fluorescent Pink
-  "rgb(0, 131, 138)", // Teal
-];
 
 // Generate unique ID for viewports
 let viewportIdCounter = 0;

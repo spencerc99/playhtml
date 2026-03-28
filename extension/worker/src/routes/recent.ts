@@ -1,8 +1,11 @@
 // ABOUTME: Serves recent browsing events filtered by domain for the historical overlay.
 // ABOUTME: Public endpoint that queries Supabase using the domain index for fast lookups.
+// ABOUTME: Navigation events have titles stripped at ingest (stored in page_metadata_history);
+// ABOUTME: this handler re-joins them by page_ref before returning.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
+import { canonicalizeUrl, buildPageRef } from '../../../src/utils/pageMetadata';
 
 /**
  * Extract domain from URL, matching frontend logic
@@ -22,6 +25,36 @@ function extractDomain(url: string | null): string {
 const SUPABASE_PAGE_SIZE = 1000;
 
 /**
+ * Fetch the most-recently-observed title for each page_ref from page_metadata_history.
+ * Batches the .in() call to stay within PostgREST URL length limits.
+ */
+async function fetchTitlesByPageRef(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  pageRefs: string[]
+): Promise<Map<string, string>> {
+  const titleByRef = new Map<string, string>();
+  if (pageRefs.length === 0) return titleByRef;
+
+  const CHUNK_SIZE = 200;
+  for (let i = 0; i < pageRefs.length; i += CHUNK_SIZE) {
+    const chunk = pageRefs.slice(i, i + CHUNK_SIZE);
+    const { data: metaRows } = await supabase
+      .from('page_metadata_history')
+      .select('page_ref, title')
+      .in('page_ref', chunk)
+      .is('valid_to_ts', null); // current (most recent) entry per page_ref
+
+    for (const row of metaRows ?? []) {
+      if (row.page_ref && row.title) {
+        titleByRef.set(row.page_ref, row.title);
+      }
+    }
+  }
+
+  return titleByRef;
+}
+
+/**
  * GET /events/recent
  * Get recent events for live artwork rendering
  * Public endpoint (no auth required)
@@ -32,6 +65,9 @@ const SUPABASE_PAGE_SIZE = 1000;
  * - domain: Domain filter (optional) - filters events by URL domain
  * - from: ISO date string, inclusive lower bound on ts (optional)
  * - to: ISO date string, inclusive upper bound on ts (optional)
+ * - require_title: 'true' to omit events for which no title exists in page_metadata_history (optional)
+ *   Note: navigation event titles are stored separately (ingest strips them from the event row).
+ *   This filter is applied after the page_metadata_history join, not at the SQL level.
  */
 export async function handleRecent(
   request: Request,
@@ -42,6 +78,7 @@ export async function handleRecent(
     const type = url.searchParams.get('type') || 'cursor';
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 5000);
     const domainFilter = url.searchParams.get('domain') || null;
+    const requireTitle = url.searchParams.get('require_title') === 'true';
 
     const supabase = createSupabaseClient(env);
     const allRows: Record<string, unknown>[] = [];
@@ -50,18 +87,15 @@ export async function handleRecent(
       const from = offset;
       const to = offset + SUPABASE_PAGE_SIZE - 1;
 
-      // Build query with domain filter if provided
       let query = supabase
         .from('collection_events')
         .select('*')
         .eq('type', type);
 
-      // Add domain filter using indexed domain column
       if (domainFilter) {
         query = query.eq('domain', domainFilter);
       }
 
-      // Add date range filters
       const fromDate = url.searchParams.get('from');
       const toDate = url.searchParams.get('to');
       if (fromDate) query = query.gte('ts', fromDate);
@@ -84,10 +118,42 @@ export async function handleRecent(
       if (page.length < SUPABASE_PAGE_SIZE) break;
     }
 
-    // Transform back to CollectionEvent format (cap at limit)
+    // Cap at requested limit
     const rows = allRows.slice(0, limit);
 
-    // Look up cursor colors for all participants in this result set
+    // ── Join page titles from page_metadata_history ───────────────────────────
+    // Titles are stripped from navigation event rows at ingest time and stored
+    // in page_metadata_history keyed by page_ref. Re-attach them here.
+    //
+    // Two lookup strategies, applied per row:
+    //   1. data.page_ref  — present on events ingested after getPageSnapshot() was added
+    //   2. normalize(meta.url) → buildPageRef(...)  — fallback for older events
+    //
+    // We collect all candidate refs in one batch to minimise round-trips.
+
+    // Map from page_ref → the row id(s) that need it, so we can attach titles back.
+    // rowRefMap[rowId] = page_ref to use for that row.
+    const rowRefMap = new Map<string, string>();
+
+    for (const row of rows) {
+      if (row.type !== 'navigation') continue;
+
+      const d = row.data as Record<string, unknown> | null;
+      const storedRef = d?.page_ref as string | undefined;
+
+      if (storedRef) {
+        rowRefMap.set(row.id as string, storedRef);
+      } else if (row.url) {
+        // Older event: no page_ref in data — derive it from the stored URL
+        const fallbackRef = buildPageRef(canonicalizeUrl(row.url as string));
+        rowRefMap.set(row.id as string, fallbackRef);
+      }
+    }
+
+    const allPageRefs = [...new Set(rowRefMap.values())];
+    const titleByRef = await fetchTitlesByPageRef(supabase, allPageRefs);
+
+    // ── Look up cursor colors ─────────────────────────────────────────────────
     const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
     const participantColors = new Map<string, string>();
 
@@ -104,21 +170,35 @@ export async function handleRecent(
       }
     }
 
-    const events: CollectionEvent[] = rows.map((row: Record<string, unknown>) => ({
-      id: row.id as string,
-      type: row.type as CollectionEvent['type'],
-      ts: new Date(row.ts as string).getTime(),
-      data: row.data as CollectionEvent['data'],
-      meta: {
-        pid: row.participant_id,
-        sid: row.session_id,
-        url: row.url,
-        vw: row.viewport_width,
-        vh: row.viewport_height,
-        tz: row.timezone,
-        cursor_color: participantColors.get(row.participant_id as string) ?? null,
-      } as EventMeta,
-    }));
+    // ── Build response events ─────────────────────────────────────────────────
+    const allEvents: CollectionEvent[] = rows.map((row: Record<string, unknown>) => {
+      const data = (row.data ?? {}) as Record<string, unknown>;
+      const pageRef = rowRefMap.get(row.id as string);
+      const title = pageRef ? titleByRef.get(pageRef) : undefined;
+
+      return {
+        id: row.id as string,
+        type: row.type as CollectionEvent['type'],
+        ts: new Date(row.ts as string).getTime(),
+        // Merge title back into data so downstream consumers see it at data.title
+        data: title ? { ...data, title } : data,
+        meta: {
+          pid: row.participant_id,
+          sid: row.session_id,
+          url: row.url,
+          vw: row.viewport_width,
+          vh: row.viewport_height,
+          tz: row.timezone,
+          cursor_color: participantColors.get(row.participant_id as string) ?? null,
+        } as EventMeta,
+      };
+    });
+
+    // Apply require_title filter after the join — drops events where no metadata
+    // row exists (e.g. older events ingested before page_metadata_history existed).
+    const events = requireTitle
+      ? allEvents.filter((e) => !!((e.data as Record<string, unknown>).title))
+      : allEvents;
     
     return new Response(
       JSON.stringify(events),

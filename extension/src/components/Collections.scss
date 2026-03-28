@@ -37,7 +37,14 @@
     p {
       font-size: 12px;
       color: $text-muted;
+      margin: 0;
     }
+  }
+
+  &__header-desc {
+    font-size: 12px;
+    color: $text-muted;
+    margin: 0;
   }
 
   &__main {
@@ -144,6 +151,52 @@
     a {
       color: $gold-text;
       text-decoration: underline;
+    }
+  }
+
+  &__transfer {
+    margin-top: 12px;
+  }
+
+  &__transfer-buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  &__transfer-btn {
+    flex: 1;
+    padding: 8px;
+    background: none;
+    border: 1px solid $border-strong;
+    border-radius: 6px;
+    font-family: $font-body;
+    font-size: 11px;
+    color: $text-muted;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+
+    &:hover:not(:disabled) {
+      color: $text;
+      border-color: $accent-teal;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+
+  &__transfer-status {
+    margin: 6px 0 0;
+    font-size: 11px;
+    font-family: $font-body;
+
+    &--success {
+      color: $accent-teal;
+    }
+
+    &--error {
+      color: $error-text;
     }
   }
 

@@ -1,11 +1,12 @@
 // ABOUTME: Data collection settings screen for managing collector modes (off/local/shared)
 // ABOUTME: Also handles keyboard privacy level and filter substring settings
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import browser from "webextension-polyfill";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "../shared/types";
 import { CollectorIcon } from "./icons";
+import { triggerDownload } from "../utils/portraitExport";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -149,6 +150,10 @@ export function Collections({ onBack }: CollectionsProps) {
   >({});
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [devMode, setDevMode] = useState(false);
+  const [transferStatus, setTransferStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadCollectors();
@@ -341,6 +346,41 @@ export function Collections({ onBack }: CollectionsProps) {
     }
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    setTransferStatus(null);
+    try {
+      const response = await browser.runtime.sendMessage({ type: "EXPORT_EVENTS" });
+      if (!response?.success) throw new Error(response?.error ?? "Export failed");
+      const blob = new Blob([new Uint8Array(response.data)], { type: "application/gzip" });
+      const date = new Date().toISOString().slice(0, 10);
+      triggerDownload(blob, `we-were-online-export-${date}.json.gz`);
+      setTransferStatus({ type: "success", message: "Export downloaded." });
+    } catch (e: any) {
+      setTransferStatus({ type: "error", message: `Export failed: ${e.message}` });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    setTransferStatus(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const data = Array.from(new Uint8Array(buffer));
+      const response = await browser.runtime.sendMessage({ type: "IMPORT_EVENTS", data });
+      if (!response?.success) throw new Error(response?.error ?? "Import failed");
+      setTransferStatus({ type: "success", message: `Imported ${response.imported.toLocaleString()} events.` });
+      await loadStorageStats();
+    } catch (e: any) {
+      setTransferStatus({ type: "error", message: `Import failed: ${e.message}` });
+    } finally {
+      setIsImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
   const loadCollectors = async () => {
     try {
       // Request collector statuses from content script
@@ -478,7 +518,7 @@ export function Collections({ onBack }: CollectionsProps) {
           </button>
           <h1>Data Collection Settings</h1>
         </div>
-        <p>Control what's collected and whether it's shared</p>
+        <p className="collections__header-desc">Control what's collected and whether it's shared</p>
       </header>
 
       <main className="collections__main">
@@ -597,6 +637,40 @@ export function Collections({ onBack }: CollectionsProps) {
               can pause collection anytime. Questions?{" "}
               <a href="mailto:hi@spencer.place">hi@spencer.place</a>
             </>
+          )}
+        </div>
+
+        <div className="collections__transfer">
+          <div className="collections__transfer-buttons">
+            <button
+              className="collections__transfer-btn"
+              onClick={handleExport}
+              disabled={isExporting || isImporting}
+            >
+              {isExporting ? "Exporting…" : "Export data"}
+            </button>
+            <button
+              className="collections__transfer-btn"
+              onClick={() => importInputRef.current?.click()}
+              disabled={isExporting || isImporting}
+            >
+              {isImporting ? "Importing…" : "Import data"}
+            </button>
+          </div>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json.gz"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFile(file);
+            }}
+          />
+          {transferStatus && (
+            <p className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}>
+              {transferStatus.message}
+            </p>
           )}
         </div>
 

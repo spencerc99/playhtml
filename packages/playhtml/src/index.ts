@@ -26,6 +26,8 @@ import {
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
+import { createPresenceAPI } from "./presence";
+import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
@@ -33,6 +35,8 @@ import {
   isSharedReadOnly,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
+import type { PageDataChannel } from "@playhtml/common";
+import { createPageDataChannel, PAGE_TAG } from "./page-data";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
 const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
@@ -146,11 +150,15 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YPartyKitProvider;
 let cursorProvider: YPartyKitProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
+let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
-const yObserverByKey = new Map<string, (events: any[]) => void>();
+const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
+// Page data channel tracking, scoped here so init() can clear them
+const pageDataRefCounts = new Map<string, number>();
+const pageDataListeners = new Map<string, Set<(data: any) => void>>();
 // Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
 // Allows us to distinguish programmatic remote-applied changes from local user writes.
 // moved below (single declaration)
@@ -300,6 +308,11 @@ export type CursorRoom =
   | ((context: { domain: string; pathname: string; search: string }) => string);
 
 export type CursorCoordinateMode = "relative" | "absolute";
+
+export interface CursorZoneOptions {
+  onCustomCursorRender?: (connectionId: string, element: HTMLElement) => HTMLElement | null;
+  getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
+}
 
 export interface CursorOptions {
   enabled?: boolean;
@@ -494,6 +507,10 @@ async function initPlayHTML({
   isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
+  // DOM marker visible to browser extension content scripts (which run in an
+  // isolated world and can't see window.playhtml). Set early so the extension
+  // can detect native playhtml before cursor styles are injected.
+  document.documentElement.dataset.playhtml = "true";
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   // TODO: We want to normalize here but we can't without losing data.
@@ -596,7 +613,43 @@ async function initPlayHTML({
     }
 
     cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+
+    // Listen for identity injection from the browser extension. The extension
+    // runs in Chrome's isolated world and can't call cursorClient.configure()
+    // directly, so it dispatches a CustomEvent on the shared DOM instead.
+    //
+    // The extension only provides publicKey and playerStyle (the canonical
+    // stable identity + chosen color). All other fields on the page's
+    // current identity are preserved — the page may have arbitrary fields
+    // the extension doesn't know about.
+    // TODO: The extension should also be able to set `name` — currently
+    // there's no UI for it in the extension, so we preserve the page's
+    // value. Once the extension has a name field, include it in the merge.
+    document.addEventListener("playhtml:configure-identity", ((e: CustomEvent) => {
+      const incoming = e.detail?.playerIdentity;
+      if (!incoming || !cursorClient) return;
+
+      const current = cursorClient.getMyPlayerIdentity();
+      const merged = {
+        ...current,
+        publicKey: incoming.publicKey,
+        playerStyle: incoming.playerStyle,
+      };
+
+      cursorClient.configure({ playerIdentity: merged });
+      console.log("[playhtml] Merged extension identity via CustomEvent");
+    }) as EventListener);
+
+    // Signal that we're ready to receive identity injection events
+    document.dispatchEvent(new CustomEvent("playhtml:ready"));
   }
+
+  // Create presence API — always available, wraps whichever awareness provider exists
+  const presenceProvider = cursorClient?.getProvider() ?? yprovider;
+  presenceAPI = createPresenceAPI({
+    getAwareness: () => presenceProvider.awareness,
+    getPlayerIdentity: () => cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+  });
 
   if (extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
@@ -618,6 +671,10 @@ async function initPlayHTML({
   if (developmentMode) {
     setupDevUI(playhtml);
   }
+  // TODO: expose a way to activate the dev tools UI on any page at runtime
+  // (e.g. window.playhtml.showDevTools()) so it can be triggered from the
+  // browser console or from an admin panel without requiring developmentMode
+  // in the init config. This would call setupDevUI(playhtml) on demand.
 
   // Mark all discovered playhtml elements as loading before sync
   markAllElementsAsLoading();
@@ -984,6 +1041,49 @@ function setupElements(): void {
   firstSetup = false;
 }
 
+function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
+  if (!hasSynced) {
+    throw new Error("playhtml.createPageData is not available before init()");
+  }
+  return createPageDataChannel(name, defaultValue, {
+    ensureProxy: ensureElementProxy,
+    getProxy: (tag, id) => proxyByTagAndId.get(tag)?.get(id),
+    doc,
+    storePlay: store.play,
+    proxyByTagAndId,
+    yObserverByKey,
+    channelRefCounts: pageDataRefCounts,
+    channelListeners: pageDataListeners,
+  });
+}
+
+function createPresenceRoom(name: string): PresenceRoom {
+  if (!hasSynced) {
+    throw new Error("playhtml.createPresenceRoom is not available before init()");
+  }
+
+  const roomId = normalizeRoomId(window.location.host, name);
+  const roomDoc = new Y.Doc();
+  const provider = new YPartyKitProvider(__currentHost, roomId, roomDoc);
+
+  const presence = createPresenceAPI({
+    getAwareness: () => provider.awareness,
+    getPlayerIdentity: () =>
+      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+  });
+
+  let destroyed = false;
+  return {
+    presence,
+    destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
+      provider.destroy();
+      roomDoc.destroy();
+    },
+  };
+}
+
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   setupPlayElements: typeof setupElements;
@@ -998,6 +1098,9 @@ export interface PlayHTMLComponents {
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
+  presence: PresenceAPI;
+  createPageData: typeof createPageData;
+  createPresenceRoom: typeof createPresenceRoom;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -1028,6 +1131,12 @@ export const playhtml: PlayHTMLComponents = {
   get cursorClient() {
     return cursorClient;
   },
+  get presence() {
+    if (!presenceAPI) {
+      throw new Error("playhtml.presence is not available before init()");
+    }
+    return presenceAPI;
+  },
   // Filled after init
   get roomId() {
     return __currentRoomId;
@@ -1035,6 +1144,8 @@ export const playhtml: PlayHTMLComponents = {
   get host() {
     return __currentHost;
   },
+  createPageData,
+  createPresenceRoom,
   listSharedElements: devListSharedElements,
 };
 
@@ -1042,6 +1153,10 @@ export const playhtml: PlayHTMLComponents = {
  * Performs any necessary setup for a playhtml TagType. Safe to call repeatedly.
  */
 function maybeSetupTag(tag: TagType | string): void {
+  if (tag === PAGE_TAG) {
+    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
+  }
+
   if (elementHandlers.has(tag)) {
     return;
   }

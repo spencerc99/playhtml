@@ -1,7 +1,13 @@
 // ABOUTME: Rendering component for the Internet Movement visualization
 // ABOUTME: Accepts events + fetch callback as props; owns settings state and all animation hooks
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
@@ -28,12 +34,12 @@ const loadSettings = () => {
     pointSize: 4,
     animationSpeed: 1,
     trailStyle: "chaotic" as "straight" | "smooth" | "organic" | "chaotic",
-    maxConcurrentTrails: 5,
+    maxConcurrentTrails: 10,
     trailAnimationMode: "stagger" as "natural" | "stagger",
     trailLifetime: 1.0,
     overlapFactor: 0.5,
     randomizeColors: false,
-    minGapBetweenTrails: 0.5,
+    minGapBetweenTrails: 0.2,
     chaosIntensity: 1.0,
     clickMinRadius: 10,
     clickMaxRadius: 80,
@@ -144,7 +150,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [controlsVisible, setControlsVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-  const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">("cycle");
+  const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
+    "cycle",
+  );
 
   const handleTogglePlaybackMode = useCallback(() => {
     setDayPlaybackMode((m) => (m === "cycle" ? "loop" : "cycle"));
@@ -249,7 +257,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       availableDomains.length > 0 &&
       !availableDomains.includes(settings.domainFilter)
     ) {
-      setSettings((s: ReturnType<typeof loadSettings>) => ({ ...s, domainFilter: "" }));
+      setSettings((s: ReturnType<typeof loadSettings>) => ({
+        ...s,
+        domainFilter: "",
+      }));
     }
   }, [events.length]);
 
@@ -327,7 +338,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         });
       });
     });
-    if (flat.length === 0) return { scheduledClicks: [], clickCycleDuration: 0 };
+    if (flat.length === 0)
+      return { scheduledClicks: [], clickCycleDuration: 0 };
 
     flat.sort((a, b) => a.spawnAtMs - b.spawnAtMs);
 

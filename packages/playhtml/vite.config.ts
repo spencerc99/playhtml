@@ -15,6 +15,7 @@ export default defineConfig({
       entry: path.resolve(__dirname, "src/index.ts"),
       formats: ["es"],
       name: "playhtml",
+      cssFileName: "style",
       fileName: (format, entryName) => {
         if (entryName === "init") return `init.${format}.js`;
 

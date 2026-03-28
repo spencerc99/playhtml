@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>playhtml - Page Data & Presence Test</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 2rem;
+        max-width: 800px;
+        margin: 0 auto;
+        color: #3d3833;
+        background: #faf7f2;
+      }
+      h1 { margin-bottom: 0.5rem; }
+      h2 { margin-top: 2rem; margin-bottom: 0.5rem; font-size: 1.2rem; }
+      p.description { color: #8a8279; margin-bottom: 1rem; }
+
+      .panel {
+        border: 1px solid #e0dbd4;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: #f5f0e8;
+      }
+      .panel pre {
+        font-family: 'Martian Mono', monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      button {
+        padding: 0.4rem 0.8rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+      button:hover { background: #f0ebe3; }
+      button:active { background: #e0dbd4; }
+
+      .user-list {
+        list-style: none;
+        padding: 0;
+      }
+      .user-list li {
+        padding: 0.3rem 0;
+        border-bottom: 1px solid #e0dbd4;
+        font-size: 0.9rem;
+      }
+      .user-list li:last-child { border-bottom: none; }
+
+      .color-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+
+      #clickMap div {
+        display: inline-block;
+        padding: 0.3rem 0.6rem;
+        margin: 0.2rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        background: white;
+        border: 1px solid #e0dbd4;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Page Data & Presence Test</h1>
+    <p class="description">Open this page in multiple tabs/browsers to test collaborative state.</p>
+
+    <h2>Page Data: Shared Counter</h2>
+    <div class="panel">
+      <p>Count: <strong id="counterValue">0</strong></p>
+      <button id="incrementBtn">+1</button>
+      <button id="decrementBtn">-1</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+
+    <h2>Page Data: Click Map</h2>
+    <p class="description">Click buttons to track which items get clicked across all users.</p>
+    <div class="panel">
+      <button class="click-item" data-item="alpha">alpha</button>
+      <button class="click-item" data-item="beta">beta</button>
+      <button class="click-item" data-item="gamma">gamma</button>
+      <button class="click-item" data-item="delta">delta</button>
+      <div id="clickMap" style="margin-top: 0.5rem;"></div>
+    </div>
+
+    <h2>Presence: Who's Here</h2>
+    <div class="panel">
+      <p>My identity: <code id="myIdentity"></code></p>
+      <p style="margin-top: 0.5rem;">Other users:</p>
+      <ul class="user-list" id="userList">
+        <li style="color: #8a8279;">(no other users)</li>
+      </ul>
+    </div>
+
+    <h2>Presence: Custom Channels</h2>
+    <p class="description">Set custom presence fields that other users can see.</p>
+    <div class="panel">
+      <button id="setStatusOnline">Status: online</button>
+      <button id="setStatusBusy">Status: busy</button>
+      <button id="setStatusAway">Status: away</button>
+      <button id="clearStatus">Clear status</button>
+      <div style="margin-top: 0.5rem;">
+        <p>Other users' statuses:</p>
+        <ul class="user-list" id="statusList">
+          <li style="color: #8a8279;">(no statuses)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>Debug: Raw State</h2>
+    <div class="panel">
+      <pre id="debugState"></pre>
+    </div>
+
+    <script type="module" src="./page-data-presence.ts"></script>
+  </body>
+</html>

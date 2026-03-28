@@ -2,6 +2,7 @@ import type YPartyKitProvider from "y-partykit/provider";
 import {
   CursorPresence,
   CursorPresenceView,
+  CursorZonePosition,
   PlayerIdentity,
   Cursor,
   generatePersistentPlayerIdentity,
@@ -10,12 +11,13 @@ import {
   CursorEvents,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
-import type { CursorOptions } from "..";
+import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
+
 
 /** Cursor presence that has been validated: has cursor, playerIdentity with publicKey and primary color. */
 export type ValidCursorPresence = CursorPresence & {
@@ -306,18 +308,12 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   if (!cursorStyle.startsWith('url("')) {
     return;
   }
-  cursorStyle = cursorStyle.slice(5);
-
-  if (!cursorStyle.endsWith('"), auto') && !cursorStyle.endsWith('")')) {
+  // Extract the URL between url(" and the closing ")
+  const closeQuote = cursorStyle.indexOf('")', 5);
+  if (closeQuote === -1) {
     return;
   }
-  if (cursorStyle.endsWith('"), auto')) {
-    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 8);
-  } else {
-    cursorStyle = cursorStyle.slice(0, cursorStyle.length - 2);
-  }
-
-  return cursorStyle;
+  return cursorStyle.slice(5, closeQuote);
 }
 
 export class CursorClientAwareness {
@@ -342,6 +338,19 @@ export class CursorClientAwareness {
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
+  private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
+  private currentZone: CursorZonePosition | null = null;
+  private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
+  // Maps Yjs clientId -> stableId (publicKey). Multiple clientIds can map to
+  // the same stableId when a user has multiple tabs open. Used to:
+  // (a) skip rendering our own cursor from other tabs
+  // (b) collapse multiple tabs from the same remote user into one cursor
+  // (c) clean up cursor elements correctly when a clientId disconnects
+  private clientIdToStableId: Map<number, string> = new Map();
+  // Tracks pending fade-out removal timeouts by stableId so they can be
+  // cancelled if a new update arrives for the same stableId (e.g. when one
+  // tab disconnects but another tab of the same user is still active).
+  private pendingRemovals: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   constructor(
     private provider: YPartyKitProvider,
@@ -402,42 +411,63 @@ export class CursorClientAwareness {
     removed: number[],
   ): void {
     const states = this.provider.awareness.getStates();
-
-    // Handle added and updated cursors (only render when we have valid presence)
     const myClientId = this.provider.awareness.clientID;
+    const myPublicKey = this.playerIdentity.publicKey;
+
     [...added, ...updated].forEach((clientId) => {
-      const valid = getValidCursorPresence(
-        states.get(clientId) as Record<string, unknown> | undefined,
-        clientId,
-      );
-      if (clientId === myClientId) {
-        // Skip our own cursor (we render it separately)
-      } else if (valid) {
-        this.updateCursor(clientId.toString(), valid);
-      } else {
-        // Invalid or missing presence: remove any existing cursor so we don't leave a stale DOM element
-        this.removeCursor(clientId.toString());
+      const state = states.get(clientId) as Record<string, unknown> | undefined;
+      let stableId = state
+        ? getStableIdForAwareness(state, clientId)
+        : String(clientId);
+
+      // When cursor awareness is cleared (e.g. beforeunload sets it to null),
+      // getStableIdForAwareness falls back to String(clientId). Use the
+      // previously known stableId so we can find and remove the right cursor.
+      if (stableId === String(clientId)) {
+        stableId = this.clientIdToStableId.get(clientId) ?? stableId;
       }
 
-      // Track messages for chat CTA (use raw state so we see message even if identity invalid)
-      const cursorData = states.get(clientId)?.[CURSOR_AWARENESS_FIELD];
+      this.clientIdToStableId.set(clientId, stableId);
+
+      // Skip our own cursor: both this tab AND other tabs with the same publicKey
+      if (clientId === myClientId || stableId === myPublicKey) {
+        return;
+      }
+
+      const valid = getValidCursorPresence(state, clientId);
+      if (valid) {
+        this.updateCursor(stableId, valid);
+      } else {
+        if (!this.hasOtherClientForStableId(stableId, clientId)) {
+          this.removeCursor(stableId);
+        }
+      }
+
+      // Track messages for chat CTA (keyed by stableId)
+      const cursorData = state?.[CURSOR_AWARENESS_FIELD] as
+        | { message?: string | null }
+        | undefined;
       if (cursorData?.message) {
-        this.otherUsersWithMessages.add(clientId.toString());
+        this.otherUsersWithMessages.add(stableId);
       } else {
-        this.otherUsersWithMessages.delete(clientId.toString());
+        this.otherUsersWithMessages.delete(stableId);
       }
     });
 
-    // Handle removed cursors
     removed.forEach((clientId) => {
-      this.removeCursor(clientId.toString());
-      this.otherUsersWithMessages.delete(clientId.toString());
+      const stableId = this.clientIdToStableId.get(clientId);
+      this.clientIdToStableId.delete(clientId);
+
+      if (stableId) {
+        this.otherUsersWithMessages.delete(stableId);
+        if (!this.hasOtherClientForStableId(stableId, clientId)) {
+          this.removeCursor(stableId);
+        }
+      }
     });
 
-    // Rebuild spatial grid with updated cursor data
     this.rebuildSpatialGrid();
 
-    // Recompute all player colors from current awareness states
     this.allPlayerColors.clear();
     states.forEach((clientState, clientId) => {
       const valid = getValidCursorPresence(
@@ -452,9 +482,15 @@ export class CursorClientAwareness {
     this.updateGlobalColors();
     this.updateChatCTA();
     this.checkProximityOptimized();
-
-    // Notify cursor presence listeners of changes
     this.notifyCursorPresenceListeners();
+  }
+
+  // Returns true if any clientId other than the excluded one maps to the given stableId.
+  private hasOtherClientForStableId(stableId: string, excludeClientId: number): boolean {
+    for (const [cid, sid] of this.clientIdToStableId) {
+      if (sid === stableId && cid !== excludeClientId) return true;
+    }
+    return false;
   }
 
   private rebuildSpatialGrid(): void {
@@ -462,9 +498,16 @@ export class CursorClientAwareness {
 
     const states = this.provider.awareness.getStates();
     const myClientId = this.provider.awareness.clientID;
+    const myPublicKey = this.playerIdentity.publicKey;
 
     states.forEach((clientState, clientId) => {
       if (clientId === myClientId) return;
+
+      const stableId = getStableIdForAwareness(
+        clientState as Record<string, unknown>,
+        clientId,
+      );
+      if (stableId === myPublicKey) return;
 
       const valid = getValidCursorPresence(
         clientState as Record<string, unknown>,
@@ -478,7 +521,7 @@ export class CursorClientAwareness {
         this.coordinateMode,
       );
       this.spatialGrid.insert({
-        id: clientId.toString(),
+        id: stableId,
         x: clientCoords.x,
         y: clientCoords.y,
         data: valid,
@@ -604,6 +647,89 @@ export class CursorClientAwareness {
     this.isStylesAdded = true;
   }
 
+  // Build the onUpdate callback for a SpringAnimator. Position values are
+  // always in pixel space — zone-relative coordinates are resolved to pixels
+  // before being fed to the spring.
+  private createCursorPositionCallback(
+    stableId: string,
+  ): (position: { x: number; y: number }) => void {
+    return (position) => {
+      const el = this.cursors.get(stableId);
+      if (!el) return;
+
+      // In absolute mode, use position:absolute so the browser handles
+      // scroll compositing natively (no per-frame repositioning needed).
+      // In relative mode, use position:fixed since coords are viewport-relative.
+      el.style.position = this.coordinateMode === "absolute" ? "absolute" : "fixed";
+      el.style.left = `${position.x}px`;
+      el.style.top = `${position.y}px`;
+      el.style.zIndex = "999999";
+      el.style.pointerEvents = "none";
+    };
+  }
+
+  // Resolves storage coordinates to the coordinate space used for positioning.
+  // In absolute mode, storage coords are already document coords and cursors
+  // use position:absolute, so no conversion needed. In relative mode, we
+  // convert to viewport pixels for position:fixed.
+  private resolveTargetCoords(storageX: number, storageY: number): { x: number; y: number } {
+    if (this.coordinateMode === "absolute") {
+      return { x: storageX, y: storageY };
+    }
+    return storageToClientCoordinates(storageX, storageY, this.coordinateMode);
+  }
+
+  // Apply zone-specific cursor styling, or revert to global styling when leaving a zone.
+  private applyZoneStyling(
+    cursorElement: HTMLElement,
+    cursorData: ValidCursorPresence,
+    zoneId: string | null,
+  ): void {
+    // Reset any previously applied zone styles
+    cursorElement.style.cssText = cursorElement.style.cssText; // keep structural styles
+
+    if (zoneId) {
+      const zoneEntry = this.zones.get(zoneId);
+      if (zoneEntry?.options?.getCursorStyle) {
+        const zoneStyles = zoneEntry.options.getCursorStyle(cursorData);
+        Object.assign(cursorElement.style, zoneStyles);
+        return;
+      }
+    }
+
+    // No zone or no zone-specific style: apply global getCursorStyle if present
+    if (this.options.getCursorStyle) {
+      const globalStyles = this.options.getCursorStyle(cursorData);
+      Object.assign(cursorElement.style, globalStyles);
+    }
+  }
+
+  private hitTestZones(clientX: number, clientY: number): CursorZonePosition | null {
+    let bestZone: CursorZonePosition | null = null;
+    let smallestArea = Infinity;
+
+    for (const [zoneId, { element }] of this.zones) {
+      if (!document.contains(element)) continue;
+      const rect = element.getBoundingClientRect();
+      if (
+        clientX >= rect.left && clientX <= rect.right &&
+        clientY >= rect.top && clientY <= rect.bottom
+      ) {
+        const area = rect.width * rect.height;
+        if (area < smallestArea) {
+          smallestArea = area;
+          bestZone = {
+            zoneId,
+            relX: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+            relY: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+          };
+        }
+      }
+    }
+
+    return bestZone;
+  }
+
   private setupCursorTracking(): void {
     const updateCursor = (e: MouseEvent) => {
       let pointer = "mouse";
@@ -644,6 +770,7 @@ export class CursorClientAwareness {
         y: storageCoords.y,
         pointer,
       };
+      this.currentZone = this.hitTestZones(e.clientX, e.clientY);
       this.throttledUpdateCursorAwareness();
 
       // Update visibility of all other cursors when our cursor moves
@@ -664,6 +791,7 @@ export class CursorClientAwareness {
           y: storageCoords.y,
           pointer: "touch",
         };
+        this.currentZone = this.hitTestZones(touch.clientX, touch.clientY);
         this.throttledUpdateCursorAwareness();
 
         // Update visibility of all other cursors when our cursor moves
@@ -687,18 +815,17 @@ export class CursorClientAwareness {
       this.showAllCursors();
     });
 
-    // Reposition all remote cursors when scroll or zoom changes, since
-    // absolute-mode coordinates are document-relative but cursors render
-    // with position:fixed.
-    let viewportChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    // Reposition remote cursors on scroll/zoom/resize. In relative mode,
+    // cursors use position:fixed so viewport coords must be recalculated.
+    // In absolute mode, only zone cursors need re-resolution (their
+    // bounding rects change on scroll). Uses rAF-based throttle.
+    let viewportChangeRaf: number | null = null;
     const repositionOnViewportChange = () => {
-      if (viewportChangeTimer !== null) {
-        clearTimeout(viewportChangeTimer);
-      }
-      viewportChangeTimer = setTimeout(() => {
-        viewportChangeTimer = null;
+      if (viewportChangeRaf !== null) return;
+      viewportChangeRaf = requestAnimationFrame(() => {
+        viewportChangeRaf = null;
         this.repositionAllCursors();
-      }, 150);
+      });
     };
     window.addEventListener("scroll", repositionOnViewportChange, {
       passive: true,
@@ -721,16 +848,15 @@ export class CursorClientAwareness {
     });
   }
 
-  // Re-derive client positions for all remote cursors from their stored
-  // document coordinates. Called when scroll/zoom changes so that fixed-
-  // position cursor elements track the correct content location.
+  // Re-derive positions for all remote cursors. In relative mode, this is
+  // needed on every scroll/resize since cursors use position:fixed with
+  // viewport-relative coords. In absolute mode, non-zone cursors use
+  // position:absolute and the browser handles scroll — only zone cursors
+  // need re-resolution (getBoundingClientRect changes on scroll).
   private repositionAllCursors(): void {
     const states = this.provider.awareness.getStates();
     const localClientId = this.provider.awareness.clientID;
-    const cursorSize = 20;
-    const margin = 2;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const myPublicKey = this.playerIdentity.publicKey;
 
     for (const [numericId, state] of states) {
       const stableId = getStableIdForAwareness(
@@ -738,6 +864,7 @@ export class CursorClientAwareness {
         numericId,
       );
       if (numericId === localClientId) continue;
+      if (stableId === myPublicKey) continue;
 
       const valid = getValidCursorPresence(
         state as Record<string, unknown>,
@@ -748,24 +875,40 @@ export class CursorClientAwareness {
       const animator = this.cursorAnimators.get(stableId);
       if (!animator) continue;
 
+      // For cursors in a zone, re-resolve from the zone element's current
+      // bounding rect so the cursor tracks the element after scroll/resize.
+      if (valid.zone) {
+        const zoneEntry = this.zones.get(valid.zone.zoneId);
+        if (zoneEntry && document.contains(zoneEntry.element)) {
+          const rect = zoneEntry.element.getBoundingClientRect();
+          const cursorEl = this.cursors.get(stableId);
+          const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
+          const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
+          const zoneViewportX = rect.left + valid.zone.relX * rect.width - offsetX;
+          const zoneViewportY = rect.top + valid.zone.relY * rect.height - offsetY;
+          if (this.coordinateMode === "absolute") {
+            animator.snapTo({
+              x: zoneViewportX + window.scrollX,
+              y: zoneViewportY + window.scrollY,
+            });
+          } else {
+            animator.snapTo({ x: zoneViewportX, y: zoneViewportY });
+          }
+          continue;
+        }
+        // Zone not found locally: fall through
+      }
+
+      // In absolute mode, non-zone cursors use position:absolute with
+      // document coords — the browser handles scroll, nothing to do.
+      if (this.coordinateMode === "absolute") continue;
+
       const targetCoords = storageToClientCoordinates(
         valid.cursor.x,
         valid.cursor.y,
         this.coordinateMode,
       );
-
-      const clampedX = Math.max(
-        -cursorSize + margin,
-        Math.min(viewportWidth - margin, targetCoords.x),
-      );
-      const clampedY = Math.max(
-        -cursorSize + margin,
-        Math.min(viewportHeight - margin, targetCoords.y),
-      );
-
-      // Jump directly instead of animating — scroll/zoom changes should
-      // feel instant, not springy.
-      animator.snapTo({ x: clampedX, y: clampedY });
+      animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
     }
 
     this.updateAllCursorVisibility();
@@ -799,6 +942,7 @@ export class CursorClientAwareness {
       lastSeen: Date.now(),
       message: this.currentMessage,
       page: window.location.pathname,
+      zone: this.currentZone,
     };
 
     // Set cursor data in awareness using reserved field
@@ -809,9 +953,21 @@ export class CursorClientAwareness {
   }
 
   private updateCursor(
-    clientId: string,
+    stableId: string,
     cursorData: ValidCursorPresence,
   ): void {
+    // Cancel any pending fade-out removal -- this cursor is still active
+    const pendingTimeout = this.pendingRemovals.get(stableId);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+      this.pendingRemovals.delete(stableId);
+      const existingEl = this.cursors.get(stableId);
+      if (existingEl) {
+        existingEl.classList.remove("playhtml-cursor-fade-out");
+        existingEl.classList.add("playhtml-cursor-fade-in");
+      }
+    }
+
     const identity = cursorData.playerIdentity;
 
     // Check if this cursor should be rendered
@@ -819,11 +975,11 @@ export class CursorClientAwareness {
       this.options.shouldRenderCursor &&
       !this.options.shouldRenderCursor(cursorData)
     ) {
-      this.removeCursor(clientId);
+      this.removeCursor(stableId);
       return;
     }
 
-    let cursorElement = this.cursors.get(clientId);
+    let cursorElement = this.cursors.get(stableId);
     const cursor = cursorData.cursor;
 
     // Check if cursor element needs to be recreated due to pointer type change
@@ -838,11 +994,11 @@ export class CursorClientAwareness {
         identity,
         cursor.pointer,
         cursorData.message,
-        clientId,
+        stableId,
         cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
-      this.cursors.set(clientId, cursorElement);
+      this.cursors.set(stableId, cursorElement);
       document.body.appendChild(cursorElement);
     } else if (cursorElement) {
       // Update existing cursor with new message and name
@@ -850,54 +1006,89 @@ export class CursorClientAwareness {
       this.updateCursorName(cursorElement, identity);
     }
 
-    // Convert from storage coordinates to client coordinates for target position
-    const targetCoords = storageToClientCoordinates(
-      cursor.x,
-      cursor.y,
-      this.coordinateMode,
-    );
+    // Resolve target position: zone-relative or viewport coordinates
+    const zone = cursorData.zone;
+    const prevZoneId = this.cursorZoneState.get(stableId) ?? null;
+    const currZoneId = zone?.zoneId ?? null;
+    const zoneChanged = prevZoneId !== currZoneId;
+    this.cursorZoneState.set(stableId, currZoneId);
 
-    const cursorSize = 20;
-    const margin = 2;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    let targetCoords: { x: number; y: number };
+    let inZone = false;
 
-    // Clamp target position to viewport bounds
-    const clampedTargetX = Math.max(
-      -cursorSize + margin,
-      Math.min(viewportWidth - margin, targetCoords.x),
-    );
-    const clampedTargetY = Math.max(
-      -cursorSize + margin,
-      Math.min(viewportHeight - margin, targetCoords.y),
-    );
-
-    // Get or create spring animator for this cursor
-    let animator = this.cursorAnimators.get(clientId);
-
-    if (!animator) {
-      // Create new animator with current target as initial position (no jump on first render).
-      // Resolve element by clientId in the callback so that when the cursor element is
-      // recreated (e.g. pointer type change mouse→touch), the animator still updates the
-      // current element from this.cursors, not a stale reference.
-      animator = new SpringAnimator(
-        { x: clampedTargetX, y: clampedTargetY },
-        (position) => {
-          const el = this.cursors.get(clientId);
-          if (el) {
-            el.style.position = "fixed";
-            el.style.left = `${position.x}px`;
-            el.style.top = `${position.y}px`;
-            el.style.zIndex = "999999";
-            el.style.pointerEvents = "none";
-          }
-        },
-      );
-      this.cursorAnimators.set(clientId, animator);
+    if (zone) {
+      const zoneEntry = this.zones.get(zone.zoneId);
+      if (zoneEntry && document.contains(zoneEntry.element)) {
+        // Resolve zone-relative (0-1) to viewport pixels via live bounding rect
+        const rect = zoneEntry.element.getBoundingClientRect();
+        // Center the cursor element on the target point by offsetting
+        // by half its rendered dimensions.
+        const cursorEl = this.cursors.get(stableId);
+        const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
+        const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
+        const zoneViewportX = rect.left + zone.relX * rect.width - offsetX;
+        const zoneViewportY = rect.top + zone.relY * rect.height - offsetY;
+        if (this.coordinateMode === "absolute") {
+          // getBoundingClientRect returns viewport coords; convert to document
+          // coords since absolute-mode cursors use position:absolute.
+          targetCoords = {
+            x: zoneViewportX + window.scrollX,
+            y: zoneViewportY + window.scrollY,
+          };
+        } else {
+          targetCoords = { x: zoneViewportX, y: zoneViewportY };
+        }
+        inZone = true;
+      } else {
+        // Zone not registered locally: fall back
+        targetCoords = this.resolveTargetCoords(cursor.x, cursor.y);
+      }
+    } else {
+      targetCoords = this.resolveTargetCoords(cursor.x, cursor.y);
     }
 
-    // Update animator target to new position (triggers spring animation)
-    animator.setTarget({ x: clampedTargetX, y: clampedTargetY });
+    // Apply zone-specific styling (or revert to global styling on zone exit)
+    if (zoneChanged) {
+      this.applyZoneStyling(cursorElement, cursorData, inZone ? currZoneId : null);
+    }
+
+    // In relative (fixed) mode, clamp to viewport so cursors stay visible.
+    // In absolute mode, coords are document-space — no clamping needed.
+    let clampedTargetX = targetCoords.x;
+    let clampedTargetY = targetCoords.y;
+    if (this.coordinateMode === "relative") {
+      const cursorSize = 20;
+      const margin = 2;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      clampedTargetX = Math.max(
+        -cursorSize + margin,
+        Math.min(viewportWidth - margin, targetCoords.x),
+      );
+      clampedTargetY = Math.max(
+        -cursorSize + margin,
+        Math.min(viewportHeight - margin, targetCoords.y),
+      );
+    }
+
+    // Spring always operates in pixel space. Zone-relative coords are resolved
+    // to pixels above (via getBoundingClientRect) before reaching the spring.
+    let animator = this.cursorAnimators.get(stableId);
+
+    if (!animator) {
+      animator = new SpringAnimator(
+        { x: clampedTargetX, y: clampedTargetY },
+        this.createCursorPositionCallback(stableId),
+      );
+      this.cursorAnimators.set(stableId, animator);
+    }
+
+    if (zoneChanged) {
+      // Snap on zone transition (no spring across coordinate spaces)
+      animator.snapTo({ x: clampedTargetX, y: clampedTargetY });
+    } else {
+      animator.setTarget({ x: clampedTargetX, y: clampedTargetY });
+    }
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
@@ -1049,24 +1240,31 @@ export class CursorClientAwareness {
     `;
   }
 
-  private removeCursor(clientId: string): void {
-    const element = this.cursors.get(clientId);
+  private removeCursor(stableId: string): void {
+    const element = this.cursors.get(stableId);
     if (element) {
       element.classList.remove("playhtml-cursor-fade-in");
       element.classList.add("playhtml-cursor-fade-out");
 
-      setTimeout(() => {
+      // Cancel any existing pending removal for this stableId
+      const existing = this.pendingRemovals.get(stableId);
+      if (existing) clearTimeout(existing);
+
+      const timeout = setTimeout(() => {
         element.remove();
-        this.cursors.delete(clientId);
+        this.cursors.delete(stableId);
+        this.pendingRemovals.delete(stableId);
       }, 300);
+      this.pendingRemovals.set(stableId, timeout);
     }
 
-    // Clean up spring animator
-    const animator = this.cursorAnimators.get(clientId);
+    // Clean up spring animator and zone state
+    const animator = this.cursorAnimators.get(stableId);
     if (animator) {
       animator.destroy();
-      this.cursorAnimators.delete(clientId);
+      this.cursorAnimators.delete(stableId);
     }
+    this.cursorZoneState.delete(stableId);
   }
 
   private savePlayerIdentityToStorage(): void {
@@ -1332,13 +1530,13 @@ export class CursorClientAwareness {
       this.coordinateMode,
     );
 
-    this.cursors.forEach((cursorElement, clientId) => {
+    this.cursors.forEach((cursorElement, stableId) => {
       // Get cursor data from spatial grid
       const gridItems = this.spatialGrid.getAll();
-      const cursorData = gridItems.find((item) => item.id === clientId)?.data;
+      const cursorData = gridItems.find((item) => item.id === stableId)?.data;
 
       if (cursorData && cursorData.cursor) {
-        // Convert their cursor to client coordinates (same as updateCursor/checkProximityOptimized)
+        // Convert to viewport coordinates for distance calculation
         const theirClientCoords = storageToClientCoordinates(
           cursorData.cursor.x,
           cursorData.cursor.y,
@@ -1384,7 +1582,24 @@ export class CursorClientAwareness {
     if (options.playerIdentity !== undefined) {
       assertValidPlayerIdentity(options.playerIdentity);
       this.playerIdentity = options.playerIdentity;
+      this.savePlayerIdentityToStorage();
+      // Re-broadcast awareness with new identity and update local cursor style
+      document.documentElement.style.cursor = getCursorStyleForUser(
+        getPrimaryColor(this.playerIdentity),
+      );
+      this.updateCursorAwareness();
     }
+  }
+
+  registerZone(element: HTMLElement, options?: CursorZoneOptions): void {
+    if (!element.id) {
+      throw new Error("[playhtml] Zone element must have an id attribute.");
+    }
+    this.zones.set(element.id, { element, options });
+  }
+
+  unregisterZone(elementId: string): void {
+    this.zones.delete(elementId);
   }
 
   hideCursor(connectionId: string): void {
@@ -1410,8 +1625,15 @@ export class CursorClientAwareness {
     this.cursorAnimators.forEach((animator) => animator.destroy());
     this.cursorAnimators.clear();
 
-    // Clean up spatial grid
+    // Clean up spatial grid and zone state
     this.spatialGrid.clear();
+    this.zones.clear();
+    this.cursorZoneState.clear();
+
+    // Clean up dedup tracking
+    this.clientIdToStableId.clear();
+    this.pendingRemovals.forEach((timeout) => clearTimeout(timeout));
+    this.pendingRemovals.clear();
 
     // Clean up chat
     if (this.chat) {
@@ -1507,6 +1729,7 @@ export class CursorClientAwareness {
           pointer: valid.cursor.pointer,
         },
         playerIdentity: valid.playerIdentity,
+        zone: valid.zone,
       });
     });
 
@@ -1554,24 +1777,7 @@ export class CursorClientAwareness {
       return this.triggerSelfCursorAnimation(animationClass, durationMs);
     }
 
-    // Find the awareness clientId that corresponds to this stableId
-    const states = this.provider.awareness.getStates();
-    let targetClientId: string | null = null;
-
-    states.forEach((state, clientId) => {
-      if (targetClientId) return;
-      const sid = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (sid === stableId) {
-        targetClientId = String(clientId);
-      }
-    });
-
-    if (!targetClientId) return false;
-
-    const el = this.cursors.get(targetClientId);
+    const el = this.cursors.get(stableId);
     if (!el) return false;
 
     const targetEl: HTMLElement =
