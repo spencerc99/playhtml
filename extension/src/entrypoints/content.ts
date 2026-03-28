@@ -989,11 +989,14 @@ export default defineContentScript({
           return;
         }
 
-        // Initialize PlayHTML for presence-only — no element capabilities needed
+        // Initialize PlayHTML — cursors only enabled on supported sites (e.g. Wikipedia)
+        const { initCustomSite, shouldEnableCursors } = await import("../custom-sites");
+        const enableCursors = shouldEnableCursors();
+
         const { playhtml } = await import("playhtml");
         await playhtml.init({
           cursors: {
-            enabled: true,
+            enabled: enableCursors,
             playerIdentity: this.playerIdentity,
             coordinateMode: "absolute",
           },
@@ -1001,15 +1004,16 @@ export default defineContentScript({
         this.listenForPresenceCount();
 
         // Initialize domain-specific features (link glow, follow, nav broadcast)
-        const { initCustomSite } = await import("../custom-sites");
-        const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-        await initCustomSite({
-          createPageData: playhtml.createPageData,
-          createPresenceRoom: playhtml.createPresenceRoom,
-          presence: playhtml.presence,
-          cursorClient: playhtml.cursorClient,
-          playerColor: color,
-        });
+        if (enableCursors) {
+          const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+          await initCustomSite({
+            createPageData: playhtml.createPageData,
+            createPresenceRoom: playhtml.createPresenceRoom,
+            presence: playhtml.presence,
+            cursorClient: playhtml.cursorClient,
+            playerColor: color,
+          });
+        }
       }
 
       private listenForPresenceCount() {

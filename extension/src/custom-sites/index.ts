@@ -11,6 +11,11 @@ export interface CustomSiteDeps {
   playerColor: string;
 }
 
+// Returns true if the current domain should have collaborative cursors enabled.
+export function shouldEnableCursors(): boolean {
+  return location.hostname.endsWith("wikipedia.org");
+}
+
 export async function initCustomSite(deps: CustomSiteDeps): Promise<(() => void) | null> {
   const hostname = location.hostname;
 
