@@ -23,8 +23,19 @@ const InternetMovement = () => {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [domainFilter, setDomainFilter] = useState<string>("");
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
-    DEFAULT_ACTIVE_VISUALIZATIONS,
+    () => {
+      try {
+        const stored = localStorage.getItem("movement_active_viz");
+        if (stored) return JSON.parse(stored);
+      } catch { /* ignore */ }
+      return DEFAULT_ACTIVE_VISUALIZATIONS;
+    },
   );
+
+  // Persist visualization selection
+  useEffect(() => {
+    localStorage.setItem("movement_active_viz", JSON.stringify(activeVisualizations));
+  }, [activeVisualizations]);
 
   // Track which event types we've already fetched so we only fetch missing ones
   const fetchedTypesRef = useRef<Set<string>>(new Set());
