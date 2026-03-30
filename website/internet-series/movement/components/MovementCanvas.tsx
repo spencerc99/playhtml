@@ -51,19 +51,11 @@ const loadSettings = () => {
     clickRingDelayMs: 120,
     clickExpansionDuration: 12300,
     clickAnimationStopPoint: 0.45,
-    showCursorTrails: true,
-    showCursorClicks: false,
     eventFilter: {
       move: true,
       click: true,
       hold: true,
       cursor_change: true,
-    },
-    eventTypeFilter: {
-      cursor: true,
-      keyboard: false,
-      viewport: false,
-      navigation: false,
     },
     viewportEventFilter: {
       scroll: true,
@@ -109,10 +101,6 @@ const loadSettings = () => {
         ...defaults,
         ...parsed,
         eventFilter: { ...defaults.eventFilter, ...(parsed.eventFilter || {}) },
-        eventTypeFilter: {
-          ...defaults.eventTypeFilter,
-          ...(parsed.eventTypeFilter || {}),
-        },
         viewportEventFilter: {
           ...defaults.viewportEventFilter,
           ...(parsed.viewportEventFilter || {}),
@@ -135,6 +123,10 @@ interface MovementCanvasProps {
   dayCounts?: DayCounts;
   selectedDay?: string | null;
   onSelectDay?: (day: string | null) => void;
+  domainFilter?: string;
+  onSetDomainFilter?: (domain: string) => void;
+  activeVisualizations: string[];
+  onSetActiveVisualizations: (vizIds: string[]) => void;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -145,6 +137,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   dayCounts,
   selectedDay = null,
   onSelectDay,
+  domainFilter: domainFilterProp,
+  onSetDomainFilter,
+  activeVisualizations,
+  onSetActiveVisualizations,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -153,6 +149,27 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
     "cycle",
   );
+
+  // Sync domain filter from prop (parent controls refetching)
+  useEffect(() => {
+    if (domainFilterProp !== undefined && domainFilterProp !== settings.domainFilter) {
+      setSettings((s) => ({ ...s, domainFilter: domainFilterProp }));
+    }
+  }, [domainFilterProp]);
+
+  // Notify parent when internal domain filter changes so it can refetch
+  useEffect(() => {
+    onSetDomainFilter?.(settings.domainFilter);
+  }, [settings.domainFilter]);
+
+  // Derive which visualization categories are active
+  const vizSet = useMemo(() => new Set(activeVisualizations), [activeVisualizations]);
+  const showTrails = vizSet.has("trails");
+  const showClicks = vizSet.has("clicks");
+  const hasCursorViz = showTrails || showClicks;
+  const showTyping = vizSet.has("typing");
+  const showScrolling = vizSet.has("scrolling");
+  const showNavigation = vizSet.has("navigation");
 
   const handleTogglePlaybackMode = useCallback(() => {
     setDayPlaybackMode((m) => (m === "cycle" ? "loop" : "cycle"));
@@ -513,6 +530,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         availableDomains={availableDomains}
         fetchEvents={fetchEvents}
         timeRange={timeRange}
+        activeVisualizations={activeVisualizations}
+        onSetActiveVisualizations={onSetActiveVisualizations}
       />
 
       {settings.domainFilter && (
@@ -624,12 +643,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         </svg>
 
-        {settings.eventTypeFilter.cursor && settings.showCursorTrails && (
+        {showTrails && (
           <AnimatedTrails
             key={`trails-${settings.domainFilter}`}
             trailStates={trailStates}
             timeRange={timeRange}
-            showClickRipples={!settings.showCursorClicks}
+            showClickRipples={!showClicks}
             windowSize={settings.maxConcurrentTrails * 2}
             settings={{
               strokeWidth: settings.strokeWidth,
@@ -650,7 +669,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {settings.eventTypeFilter.cursor && settings.showCursorClicks && (
+        {showClicks && (
           <AnimatedClicks
             key={`clicks-${settings.domainFilter}`}
             scheduledClicks={scheduledClicks}
@@ -671,7 +690,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {settings.eventTypeFilter.keyboard && (
+        {showTyping && (
           <AnimatedTyping
             typingStates={typingStates}
             timeRange={timeRange}
@@ -679,7 +698,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {settings.eventTypeFilter.viewport &&
+        {showScrolling &&
           scrollAnimations &&
           scrollAnimations.length > 0 && (
             <AnimatedScrollViewports
@@ -689,7 +708,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           )}
 
-        {settings.eventTypeFilter.navigation &&
+        {showNavigation &&
           (settings.navigationViewMode ?? "timeline") === "radial" &&
           radialState &&
           radialState.nodes.size > 0 && (
@@ -712,7 +731,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           )}
 
-        {settings.eventTypeFilter.navigation &&
+        {showNavigation &&
           (settings.navigationViewMode ?? "timeline") === "timeline" &&
           timelineState &&
           timelineState.nodes.size > 0 && (
