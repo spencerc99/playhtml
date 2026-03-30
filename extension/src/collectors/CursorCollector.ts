@@ -130,6 +130,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     
     // Set up mouse up handler (for click/hold detection)
     this.mouseUpHandler = (e: MouseEvent) => {
+      // Skip if no mousedown was captured (e.g., mouse was already held when collector started)
+      if (this.mouseDownTime === 0) return;
       const duration = Date.now() - this.mouseDownTime;
       const normalized = normalizePosition(
         this.mouseDownX,
