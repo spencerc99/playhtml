@@ -3,8 +3,9 @@
 // ABOUTME: as they enter the viewport, typing at natural speed with backspace replay.
 // ABOUTME: Visual variety comes from typography (font, weight, shade) not color.
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { CollectionEvent, KeyboardEventData, TypingAction } from "../types";
+import { extractDomain } from "../utils/eventUtils";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CELL_SIZE = 32;
@@ -173,6 +174,9 @@ function calculateTypingDuration(sequence: TypingAction[]): number {
 }
 
 // ── Session model ─────────────────────────────────────────────────────────────
+const DATE_FILTER_KEY = "keypresses-date-filter";
+const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
+
 interface SessionState {
   style: SessionStyle;
   durationMs: number;
@@ -183,6 +187,8 @@ interface SessionState {
   gridStartIndex: number;
   /** Max cells ever needed (text can grow then shrink via backspace). */
   maxLength: number;
+  domain: string;
+  dateKey: string; // YYYY-MM-DD
 }
 
 /** Fisher-Yates shuffle using Math.random — different every call. */
@@ -196,7 +202,12 @@ function fisherYates<T>(arr: T[]): T[] {
 }
 
 // ── Build sessions from raw events ────────────────────────────────────────────
-function buildSessions(events: CollectionEvent[], randomize: boolean): SessionState[] {
+function buildSessions(
+  events: CollectionEvent[],
+  randomize: boolean,
+  dateFilter: string,
+  domainFilter: string,
+): SessionState[] {
   const keyboardEvents = events.filter((e) => {
     if (e.type !== "keyboard") return false;
     const d = e.data as unknown as KeyboardEventData;
@@ -217,6 +228,8 @@ function buildSessions(events: CollectionEvent[], randomize: boolean): SessionSt
   interface RawSession {
     sequence: TypingAction[];
     seed: number;
+    domain: string;
+    dateKey: string;
   }
   const raw: RawSession[] = [];
 
@@ -261,6 +274,8 @@ function buildSessions(events: CollectionEvent[], randomize: boolean): SessionSt
           raw.push({
             sequence: seq,
             seed: first.meta.pid.charCodeAt(0) + (first.ts % 10000),
+            domain: extractDomain(first.meta?.url ?? "") || "unknown",
+            dateKey: new Date(first.ts).toISOString().slice(0, 10),
           });
         }
       }
@@ -269,8 +284,18 @@ function buildSessions(events: CollectionEvent[], randomize: boolean): SessionSt
 
   if (!raw.length) return [];
 
+  // Apply date and domain filters
+  let filtered = raw;
+  if (dateFilter) {
+    filtered = filtered.filter((r) => r.dateKey === dateFilter);
+  }
+  if (domainFilter) {
+    filtered = filtered.filter((r) => r.domain === domainFilter);
+  }
+  if (!filtered.length) return [];
+
   // Optionally shuffle before capping — seeded so the order is stable per load
-  const ordered = randomize ? fisherYates(raw) : raw;
+  const ordered = randomize ? fisherYates(filtered) : filtered;
 
   // Assign sequential grid positions and typography styles
   let nextGrid = 0;
@@ -288,19 +313,37 @@ function buildSessions(events: CollectionEvent[], randomize: boolean): SessionSt
 
     const gridStart = nextGrid;
     nextGrid += maxLen + SESSION_GAP;
-    return { style, durationMs: duration, sequence: r.sequence, finalText, seed, gridStartIndex: gridStart, maxLength: maxLen };
+    return { style, durationMs: duration, sequence: r.sequence, finalText, seed, gridStartIndex: gridStart, maxLength: maxLen, domain: r.domain, dateKey: r.dateKey };
   });
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+/** Extract available dates and domains from raw events (before session building). */
+function extractFilterOptions(events: CollectionEvent[]): { dates: string[]; domains: string[] } {
+  const dateSet = new Set<string>();
+  const domainSet = new Set<string>();
+  for (const e of events) {
+    if (e.type !== "keyboard") continue;
+    dateSet.add(new Date(e.ts).toISOString().slice(0, 10));
+    const domain = extractDomain(e.meta?.url ?? "");
+    if (domain) domainSet.add(domain);
+  }
+  return {
+    dates: Array.from(dateSet).sort(),
+    domains: Array.from(domainSet).sort(),
+  };
+}
+
 interface Props {
   events: CollectionEvent[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  onFetchOlder?: () => void;
+  hasMore?: boolean;
 }
 
-export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefresh }) => {
+export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefresh, onFetchOlder, hasMore }) => {
   const [cols, setCols] = useState(() => Math.floor(window.innerWidth / CELL_SIZE));
   const [animationSpeed, setAnimationSpeed] = useState<number>(() => {
     const v = localStorage.getItem(SPEED_STORAGE_KEY);
@@ -308,6 +351,12 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
   });
   const [randomize, setRandomize] = useState<boolean>(() => {
     return localStorage.getItem(RANDOMIZE_STORAGE_KEY) === "true";
+  });
+  const [dateFilter, setDateFilter] = useState<string>(() => {
+    return localStorage.getItem(DATE_FILTER_KEY) ?? "";
+  });
+  const [domainFilter, setDomainFilter] = useState<string>(() => {
+    return localStorage.getItem(DOMAIN_FILTER_KEY) ?? "";
   });
   const [devMode] = useState(checkDevMode);
 
@@ -330,7 +379,11 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
 
   const animRef = useRef<number>();
 
-  const sessions = useMemo(() => buildSessions(events, randomize), [events, randomize]);
+  const filterOptions = useMemo(() => extractFilterOptions(events), [events]);
+  const sessions = useMemo(
+    () => buildSessions(events, randomize, dateFilter, domainFilter),
+    [events, randomize, dateFilter, domainFilter],
+  );
   const totalCells = sessions.length
     ? sessions[sessions.length - 1].gridStartIndex + sessions[sessions.length - 1].maxLength
     : 0;
@@ -510,17 +563,45 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
         {!loading && sessions.length > 0 && (
           <span className="info-count">{sessions.length.toLocaleString()} sequences</span>
         )}
-        {loading && <span className="info-loading">fetching…</span>}
+        {loading && <span className="info-loading">fetching...</span>}
         {error && (
           <span className="info-error" title={error}>error</span>
         )}
+
+        <select
+          className="filter-select"
+          value={dateFilter}
+          onChange={(e) => {
+            setDateFilter(e.target.value);
+            localStorage.setItem(DATE_FILTER_KEY, e.target.value);
+          }}
+        >
+          <option value="">all dates</option>
+          {filterOptions.dates.map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+
+        <select
+          className="filter-select"
+          value={domainFilter}
+          onChange={(e) => {
+            setDomainFilter(e.target.value);
+            localStorage.setItem(DOMAIN_FILTER_KEY, e.target.value);
+          }}
+        >
+          <option value="">all domains</option>
+          {filterOptions.domains.map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
 
         <button
           className={`toggle-btn${randomize ? " active" : ""}`}
           onClick={() => setRandomize((r) => !r)}
           title="randomize order"
         >
-          ⇄ shuffle
+          shuffle
         </button>
 
         {devMode && (
@@ -534,11 +615,19 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
               value={animationSpeed}
               onChange={(e) => setAnimationSpeed(parseFloat(e.target.value))}
             />
-            {animationSpeed.toFixed(1)}×
+            {animationSpeed.toFixed(1)}x
           </label>
         )}
 
-        <button className="refresh-btn" onClick={onRefresh} disabled={loading}>↺</button>
+        {hasMore && onFetchOlder && (
+          <button className="toggle-btn" onClick={onFetchOlder} disabled={loading}>
+            load older
+          </button>
+        )}
+
+        <button className="refresh-btn" onClick={onRefresh} disabled={loading}>
+          refresh
+        </button>
       </div>
     </div>
   );

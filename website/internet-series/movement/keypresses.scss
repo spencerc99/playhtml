@@ -113,6 +113,23 @@ body {
   50%       { opacity: 0.3; }
 }
 
+// ── Filter dropdowns ─────────────────────────────────────────────────────────
+.filter-select {
+  font-family: "Courier Prime", "Courier New", monospace;
+  font-size: 0.7rem;
+  color: #444;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: #888;
+  }
+}
+
 // ── Dev-mode speed control ────────────────────────────────────────────────────
 .speed-control {
   display: flex;
