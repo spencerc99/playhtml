@@ -9,6 +9,13 @@ import {
   recordToastShown,
 } from "../milestones/state";
 import type { MilestoneState } from "../milestones/state";
+import {
+  pickCopy,
+  pxToMiles,
+  findNextDailyMilestone,
+  findNextAllTimeMilestone,
+  findNextDomainMilestone,
+} from "../milestones/milestones";
 
 describe("buildEmptyState", () => {
   it("returns a valid empty state", () => {
@@ -75,5 +82,91 @@ describe("recordToastShown", () => {
     const result = recordToastShown(state, "2026-01-01");
     expect(result.lastToastTs).toBeGreaterThanOrEqual(before);
     expect(result.lastShownDate).toBe("2026-01-01");
+  });
+});
+
+describe("pxToMiles", () => {
+  it("converts pixels to miles correctly", () => {
+    // 1 mile = 5280 ft * 12 in * 96 dpi = 6,082,560 px
+    expect(pxToMiles(6082560)).toBeCloseTo(1, 2);
+    expect(pxToMiles(0)).toBe(0);
+  });
+});
+
+describe("pickCopy", () => {
+  it("picks a string from the pool", () => {
+    const state = buildEmptyState();
+    const pool = ["a", "b", "c"];
+    const result = pickCopy(pool, "cursorDistance", state);
+    expect(pool).toContain(result.copy);
+  });
+
+  it("does not repeat the last used index back-to-back", () => {
+    const state = buildEmptyState();
+    state.lastCopyIndex["cursorDistance"] = 0;
+    const pool = ["a", "b", "c"];
+    const result = pickCopy(pool, "cursorDistance", state);
+    expect(result.copy).not.toBe("a");
+  });
+});
+
+describe("findNextDailyMilestone", () => {
+  it("returns null when no threshold crossed", () => {
+    const state = buildEmptyState();
+    expect(findNextDailyMilestone("cursorDistance", 0.5, state)).toBeNull();
+  });
+
+  it("returns the lowest uncrossed threshold", () => {
+    const state = buildEmptyState();
+    const result = findNextDailyMilestone("cursorDistance", 3, state);
+    expect(result?.threshold).toBe(1);
+  });
+
+  it("skips thresholds already shown today", () => {
+    const state = buildEmptyState();
+    state.dailyShown.cursorDistance = [1];
+    const result = findNextDailyMilestone("cursorDistance", 3, state);
+    expect(result?.threshold).toBe(2);
+  });
+
+  it("returns null when all crossed thresholds already shown", () => {
+    const state = buildEmptyState();
+    state.dailyShown.cursorDistance = [1, 2];
+    expect(findNextDailyMilestone("cursorDistance", 3, state)).toBeNull();
+  });
+});
+
+describe("findNextAllTimeMilestone", () => {
+  it("returns the lowest uncrossed all-time threshold", () => {
+    const state = buildEmptyState();
+    const result = findNextAllTimeMilestone("sitesExplored", 30, state);
+    expect(result?.threshold).toBe(10);
+  });
+
+  it("skips already-shown all-time thresholds", () => {
+    const state = buildEmptyState();
+    state.allTimeShown.sitesExplored = [10];
+    const result = findNextAllTimeMilestone("sitesExplored", 30, state);
+    expect(result?.threshold).toBe(25);
+  });
+
+  it("returns null when value hasn't crossed any threshold", () => {
+    const state = buildEmptyState();
+    expect(findNextAllTimeMilestone("sitesExplored", 5, state)).toBeNull();
+  });
+});
+
+describe("findNextDomainMilestone", () => {
+  it("returns lowest uncrossed domain visit threshold", () => {
+    const state = buildEmptyState();
+    const result = findNextDomainMilestone("nytimes.com", 12, state);
+    expect(result?.threshold).toBe(10);
+  });
+
+  it("skips thresholds already shown for that domain", () => {
+    const state = buildEmptyState();
+    state.allTimeShown.domainVisits["nytimes.com"] = [10];
+    const result = findNextDomainMilestone("nytimes.com", 30, state);
+    expect(result?.threshold).toBe(25);
   });
 });
