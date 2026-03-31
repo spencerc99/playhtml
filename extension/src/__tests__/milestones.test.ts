@@ -15,6 +15,7 @@ import {
   findNextDailyMilestone,
   findNextAllTimeMilestone,
   findNextDomainMilestone,
+  checkAllMilestones,
 } from "../milestones/milestones";
 
 describe("buildEmptyState", () => {
@@ -168,5 +169,73 @@ describe("findNextDomainMilestone", () => {
     state.allTimeShown.domainVisits["nytimes.com"] = [10];
     const result = findNextDomainMilestone("nytimes.com", 30, state);
     expect(result?.threshold).toBe(25);
+  });
+});
+
+describe("checkAllMilestones", () => {
+  it("returns null when no milestones are ready", () => {
+    const state = buildEmptyState();
+    const result = checkAllMilestones(
+      state,
+      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      0,
+      [],
+    );
+    expect(result).toBeNull();
+  });
+
+  it("fires cursorDistance milestone when threshold crossed", () => {
+    const state = buildEmptyState();
+    // 1 mile = 6,082,560 px
+    const result = checkAllMilestones(
+      state,
+      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      6082560, // 1 mile
+      [],
+    );
+    expect(result).not.toBeNull();
+    expect(result!.milestone.type).toBe("cursorDistance");
+    expect(result!.milestone.threshold).toBe(1);
+    expect(result!.updatedState.dailyShown.cursorDistance).toContain(1);
+  });
+
+  it("fires screenTime milestone when cursor already shown", () => {
+    const state = buildEmptyState();
+    state.dailyShown.cursorDistance = [1]; // cursor already fired
+    const result = checkAllMilestones(
+      state,
+      { totalTimeMs: 31 * 60 * 1000, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) }, // 31 min
+      6082560, // 1 mile — but already shown
+      [],
+    );
+    expect(result).not.toBeNull();
+    expect(result!.milestone.type).toBe("screenTime");
+    expect(result!.milestone.threshold).toBe(30);
+  });
+
+  it("fires domainVisits milestone for top domain", () => {
+    const state = buildEmptyState();
+    // cursor and screen time not crossed
+    const result = checkAllMilestones(
+      state,
+      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      0,
+      [{ domain: "example.com", visitCount: 10 }],
+    );
+    expect(result).not.toBeNull();
+    expect(result!.milestone.type).toBe("domainVisits");
+    expect(result!.milestone.domain).toBe("example.com");
+    expect(result!.updatedState.allTimeShown.domainVisits["example.com"]).toContain(10);
+  });
+
+  it("updatedState has the fired threshold recorded", () => {
+    const state = buildEmptyState();
+    const result = checkAllMilestones(
+      state,
+      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      6082560,
+      [],
+    );
+    expect(result!.updatedState.dailyShown.cursorDistance).toEqual([1]);
   });
 });
