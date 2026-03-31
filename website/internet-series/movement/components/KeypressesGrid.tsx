@@ -177,6 +177,31 @@ function calculateTypingDuration(sequence: TypingAction[]): number {
 const DATE_FILTER_KEY = "keypresses-date-filter";
 const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
 
+// Date range presets — value is the key, label is displayed
+const DATE_RANGES: { value: string; label: string; daysBack: number }[] = [
+  { value: "1d", label: "today", daysBack: 0 },
+  { value: "3d", label: "last 3 days", daysBack: 3 },
+  { value: "7d", label: "last week", daysBack: 7 },
+  { value: "14d", label: "last 2 weeks", daysBack: 14 },
+  { value: "30d", label: "last month", daysBack: 30 },
+  { value: "90d", label: "last 3 months", daysBack: 90 },
+];
+
+function dateRangeToTs(rangeKey: string): number {
+  if (!rangeKey) return 0;
+  const range = DATE_RANGES.find((r) => r.value === rangeKey);
+  if (!range) return 0;
+  const now = new Date();
+  if (range.daysBack === 0) {
+    // "today" — start of today
+    now.setHours(0, 0, 0, 0);
+    return now.getTime();
+  }
+  now.setDate(now.getDate() - range.daysBack);
+  now.setHours(0, 0, 0, 0);
+  return now.getTime();
+}
+
 interface SessionState {
   style: SessionStyle;
   durationMs: number;
@@ -205,7 +230,7 @@ function fisherYates<T>(arr: T[]): T[] {
 function buildSessions(
   events: CollectionEvent[],
   randomize: boolean,
-  dateFilter: string,
+  dateRangeKey: string,
   domainFilter: string,
 ): SessionState[] {
   const keyboardEvents = events.filter((e) => {
@@ -284,10 +309,11 @@ function buildSessions(
 
   if (!raw.length) return [];
 
-  // Apply date and domain filters
+  // Apply date range and domain filters
   let filtered = raw;
-  if (dateFilter) {
-    filtered = filtered.filter((r) => r.dateKey === dateFilter);
+  const dateCutoff = dateRangeToTs(dateRangeKey);
+  if (dateCutoff > 0) {
+    filtered = filtered.filter((r) => new Date(r.dateKey + "T00:00:00").getTime() >= dateCutoff);
   }
   if (domainFilter) {
     filtered = filtered.filter((r) => r.domain === domainFilter);
@@ -576,9 +602,9 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
             localStorage.setItem(DATE_FILTER_KEY, e.target.value);
           }}
         >
-          <option value="">all dates</option>
-          {filterOptions.dates.map((d) => (
-            <option key={d} value={d}>{d}</option>
+          <option value="">all time</option>
+          {DATE_RANGES.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
           ))}
         </select>
 
