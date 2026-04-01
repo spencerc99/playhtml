@@ -897,10 +897,6 @@ export function ConversationView({
         <div ref={scrollAnchorRef} className="scroll-anchor" />
       </div>
 
-      <button className="conversations-restart" onClick={handleRestart}>
-        restart
-      </button>
-
       {!scrollLocked && (
         <button
           className="conversations-follow"
