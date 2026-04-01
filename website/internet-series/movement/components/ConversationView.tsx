@@ -625,17 +625,16 @@ export function ConversationView({
     };
   }, []);
 
-  // Auto-scroll: keep the scroll anchor visible when locked
+  // Auto-scroll: keep the latest content at ~70% of viewport height
   useEffect(() => {
     if (!scrollLocked || !scrollAnchorRef.current) return;
     programmaticScrollRef.current = true;
     const anchorTop = scrollAnchorRef.current.getBoundingClientRect().top;
-    const viewportHeight = window.innerHeight;
-    // Only scroll if anchor is below the viewport
-    if (anchorTop > viewportHeight) {
-      window.scrollBy({ top: anchorTop - viewportHeight + 40, behavior: "instant" });
+    const target = window.innerHeight * 0.7;
+    // Scroll so the anchor (top of spacer, right below typing indicator) sits at 70% height
+    if (anchorTop > target + 10) {
+      window.scrollBy({ top: anchorTop - target, behavior: "instant" });
     }
-    // Brief delay before re-enabling user scroll detection
     requestAnimationFrame(() => {
       programmaticScrollRef.current = false;
     });
