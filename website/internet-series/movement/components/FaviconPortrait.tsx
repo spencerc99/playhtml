@@ -1,7 +1,7 @@
 // ABOUTME: Renders a grid of favicons for all pages visited in a time range.
 // ABOUTME: Forms a visual portrait of browsing activity through site icons.
 
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useCallback, useState, useEffect } from "react";
 import type { CollectionEvent } from "../types";
 import { extractDomain } from "../utils/eventUtils";
 
@@ -44,6 +44,11 @@ export const FaviconPortrait: React.FC<FaviconPortraitProps> = ({
   const [failedDomains, setFailedDomains] = useState<Set<string>>(
     () => new Set(),
   );
+
+  // Reset failed-load tracking when events change (e.g. date filter)
+  useEffect(() => {
+    setFailedDomains(new Set());
+  }, [events]);
 
   const domainVisits = useMemo(() => {
     const counts = new Map<
@@ -139,21 +144,25 @@ export const FaviconPortrait: React.FC<FaviconPortraitProps> = ({
           alignContent: "center",
         }}
       >
-        {domainVisits.map(({ domain, faviconUrl }) => {
+        {domainVisits.map(({ domain, count, faviconUrl }) => {
           const src =
             faviconUrl ||
             `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
           const failed = failedDomains.has(domain);
+          // Scale opacity: single-visit domains are slightly faded, frequent ones fully opaque
+          const maxCount = domainVisits[0]?.count ?? 1;
+          const opacity = 0.5 + 0.5 * Math.min(1, count / maxCount);
 
           return failed ? (
             <div
               key={domain}
-              title={domain}
+              title={`${domain} (${count})`}
               style={{
                 width: ICON_SIZE,
                 height: ICON_SIZE,
                 borderRadius: 4,
                 backgroundColor: placeholderColor(domain),
+                opacity,
               }}
             />
           ) : (
@@ -161,11 +170,11 @@ export const FaviconPortrait: React.FC<FaviconPortraitProps> = ({
               key={domain}
               src={src}
               alt=""
-              title={domain}
+              title={`${domain} (${count})`}
               loading="lazy"
               width={ICON_SIZE}
               height={ICON_SIZE}
-              style={{ borderRadius: 4, display: "block" }}
+              style={{ borderRadius: 4, display: "block", opacity }}
               onError={() => handleImgError(domain)}
             />
           );
