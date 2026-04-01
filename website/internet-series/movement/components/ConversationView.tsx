@@ -555,6 +555,7 @@ export function ConversationView({
   const [animationKey, setAnimationKey] = useState(0);
   const [waitingForMore, setWaitingForMore] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const timeoutsRef = useRef<number[]>([]);
   const lastDPressRef = useRef<number>(0);
   const animationIndexRef = useRef(0);
@@ -624,25 +625,21 @@ export function ConversationView({
     };
   }, []);
 
-  // Auto-scroll when locked — smooth on new messages, instant during typing
-  const prevVisibleCountRef = useRef(0);
+  // Auto-scroll: keep the scroll anchor visible when locked
   useEffect(() => {
-    if (scrollLocked && streamRef.current) {
-      const lastChild = streamRef.current.lastElementChild;
-      if (lastChild) {
-        const isNewMessage = visibleCount > prevVisibleCountRef.current;
-        prevVisibleCountRef.current = visibleCount;
-        programmaticScrollRef.current = true;
-        lastChild.scrollIntoView({
-          behavior: isNewMessage ? "smooth" : "instant",
-          block: "end",
-        });
-        setTimeout(() => {
-          programmaticScrollRef.current = false;
-        }, isNewMessage ? 400 : 50);
-      }
+    if (!scrollLocked || !scrollAnchorRef.current) return;
+    programmaticScrollRef.current = true;
+    const anchorTop = scrollAnchorRef.current.getBoundingClientRect().top;
+    const viewportHeight = window.innerHeight;
+    // Only scroll if anchor is below the viewport
+    if (anchorTop > viewportHeight) {
+      window.scrollBy({ top: anchorTop - viewportHeight + 40, behavior: "instant" });
     }
-  }, [visibleCount, showTyping, scrollLocked]);
+    // Brief delay before re-enabling user scroll detection
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }, [visibleCount, showTyping, typingText, scrollLocked]);
 
   // Resume animation when new messages arrive (from pagination)
   useEffect(() => {
@@ -879,6 +876,7 @@ export function ConversationView({
             <div className="typing-dot" />
           </div>
         )}
+        <div ref={scrollAnchorRef} className="scroll-anchor" />
       </div>
 
       <button className="conversations-restart" onClick={handleRestart}>
@@ -889,12 +887,14 @@ export function ConversationView({
         <button
           className="conversations-follow"
           onClick={() => {
-            programmaticScrollRef.current = true;
             setScrollLocked(true);
-            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-            setTimeout(() => {
-              programmaticScrollRef.current = false;
-            }, 500);
+            if (scrollAnchorRef.current) {
+              programmaticScrollRef.current = true;
+              scrollAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+              setTimeout(() => {
+                programmaticScrollRef.current = false;
+              }, 500);
+            }
           }}
         >
           follow
