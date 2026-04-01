@@ -14,8 +14,8 @@ import { getInstrument, CLICK_BELL } from "./instruments";
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
 
-/** Minimum velocity to trigger any sound */
-const SILENCE_VELOCITY_THRESHOLD = 0.5;
+/** Minimum velocity to trigger any sound (pixels per frame at ~60fps) */
+const SILENCE_VELOCITY_THRESHOLD = 0.05;
 
 /** Per-trail voice state */
 interface Voice {
@@ -260,7 +260,7 @@ export class SoundEngine {
 
     const osc = ctx.createOscillator();
     osc.type = instrument.oscillatorType;
-    osc.frequency.value = 0; // Will be set on first note
+    osc.frequency.value = 220; // A3 default, will be set on first note
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";

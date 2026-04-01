@@ -71,8 +71,8 @@ export function computeVelocity(
  * Clamps between a minimum and maximum.
  */
 export function velocityToGain(velocity: number): number {
-  const MIN_VELOCITY = 0.5; // Below this, silence (cursor is basically still)
-  const MAX_VELOCITY = 30;  // Above this, max volume
+  const MIN_VELOCITY = 0.05; // Below this, silence (cursor is basically still)
+  const MAX_VELOCITY = 5;    // Above this, max volume (calibrated for animation playback at ~60fps)
   if (velocity < MIN_VELOCITY) return 0;
   const normalized = Math.min(1, (velocity - MIN_VELOCITY) / (MAX_VELOCITY - MIN_VELOCITY));
   // Ease-in curve so quiet movements are more common than loud ones
