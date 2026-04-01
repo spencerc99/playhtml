@@ -590,30 +590,38 @@ export function ConversationView({
 
   // Scroll-lock: auto-scroll only when locked on
   const [scrollLocked, setScrollLocked] = useState(true);
-  const lastScrollYRef = useRef(0);
   const programmaticScrollRef = useRef(false);
+  const userScrolledRef = useRef(false);
 
-  // Detect user scrolling up to unlock, reaching bottom to re-lock
+  // Detect intentional user scroll via wheel/touch — not triggered by programmatic scrolls
   useEffect(() => {
+    function handleWheel(e: WheelEvent) {
+      if (e.deltaY < 0) {
+        // Scrolling up — unlock
+        setScrollLocked(false);
+        userScrolledRef.current = true;
+      }
+    }
+    function handleTouchMove() {
+      userScrolledRef.current = true;
+    }
     function handleScroll() {
-      // Ignore scrolls we triggered programmatically
-      if (programmaticScrollRef.current) return;
-
-      const currentY = window.scrollY;
+      if (!userScrolledRef.current) return;
+      userScrolledRef.current = false;
       const nearBottom =
-        window.innerHeight + currentY >= document.body.scrollHeight - 150;
-
+        window.innerHeight + window.scrollY >= document.body.scrollHeight - 150;
       if (nearBottom) {
         setScrollLocked(true);
-      } else if (currentY < lastScrollYRef.current - 10) {
-        // User scrolled up by more than 10px
-        setScrollLocked(false);
       }
-
-      lastScrollYRef.current = currentY;
     }
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("scroll", handleScroll);
+    };
   }, []);
 
   // Auto-scroll when locked
