@@ -16,6 +16,7 @@ import { AnimatedTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
 import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
+import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
 import { useCursorTrails } from "../hooks/useCursorTrails";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
@@ -170,6 +171,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const showTyping = vizSet.has("typing");
   const showScrolling = vizSet.has("scrolling");
   const showNavigation = vizSet.has("navigation");
+  const showFavicons = vizSet.has("favicons");
 
   const handleTogglePlaybackMode = useCallback(() => {
     setDayPlaybackMode((m) => (m === "cycle" ? "loop" : "cycle"));
@@ -741,6 +743,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               settings={navigationSettings}
             />
           )}
+
+        {showFavicons && (
+          <FaviconPortrait
+            events={events}
+            domainFilter={settings.domainFilter}
+          />
+        )}
       </div>
 
       {dayCounts && onSelectDay && (

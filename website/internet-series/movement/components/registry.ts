@@ -45,6 +45,13 @@ export const VISUALIZATIONS: VisualizationDef[] = [
     requiredEvents: ["navigation"],
     defaultEnabled: false,
   },
+  {
+    id: "favicons",
+    label: "Favicon Portrait",
+    description: "Grid of site icons from pages visited over time",
+    requiredEvents: ["navigation"],
+    defaultEnabled: false,
+  },
 ];
 
 export function deriveRequiredEventTypes(activeVizIds: string[]): Set<string> {
