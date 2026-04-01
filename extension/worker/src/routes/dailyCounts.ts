@@ -20,29 +20,52 @@ export async function handleDailyCounts(
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || null;
-    // Default to last 90 days to avoid full table scan timeout
-    const defaultFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const from = url.searchParams.get('from') || defaultFrom;
+    const from = url.searchParams.get('from') || null;
     const to = url.searchParams.get('to') || null;
 
     const supabase = createSupabaseClient(env);
 
-    const { data, error } = await supabase.rpc('daily_event_counts', {
-      event_type: type,
-      from_date: from,
-      to_date: to,
-    });
+    // Query the pre-computed daily_counts table (populated by trigger on insert)
+    let query = supabase
+      .from('daily_counts')
+      .select('day, count');
+
+    if (type) {
+      query = query.eq('type', type);
+    }
+    if (from) {
+      query = query.gte('day', from);
+    }
+    if (to) {
+      query = query.lte('day', to);
+    }
+
+    const { data: rows, error } = await query.order('day', { ascending: true });
 
     if (error) {
-      console.error('daily_event_counts RPC error:', error);
+      console.error('daily_counts query error:', error);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch daily counts', details: error.message }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
+    // If no type filter, aggregate all types per day
+    let result: { day: string; count: number }[];
+    if (!type) {
+      const byDay = new Map<string, number>();
+      for (const row of rows ?? []) {
+        byDay.set(row.day, (byDay.get(row.day) ?? 0) + row.count);
+      }
+      result = [...byDay.entries()]
+        .map(([day, count]) => ({ day, count }))
+        .sort((a, b) => a.day.localeCompare(b.day));
+    } else {
+      result = (rows ?? []).map((r) => ({ day: r.day, count: r.count }));
+    }
+
     return new Response(
-      JSON.stringify(data ?? []),
+      JSON.stringify(result),
       {
         status: 200,
         headers: {
