@@ -624,17 +624,22 @@ export function ConversationView({
     };
   }, []);
 
-  // Auto-scroll when locked
+  // Auto-scroll when locked — smooth on new messages, instant during typing
+  const prevVisibleCountRef = useRef(0);
   useEffect(() => {
     if (scrollLocked && streamRef.current) {
       const lastChild = streamRef.current.lastElementChild;
       if (lastChild) {
+        const isNewMessage = visibleCount > prevVisibleCountRef.current;
+        prevVisibleCountRef.current = visibleCount;
         programmaticScrollRef.current = true;
-        lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
-        // Reset flag after scroll animation completes
+        lastChild.scrollIntoView({
+          behavior: isNewMessage ? "smooth" : "instant",
+          block: "end",
+        });
         setTimeout(() => {
           programmaticScrollRef.current = false;
-        }, 500);
+        }, isNewMessage ? 400 : 50);
       }
     }
   }, [visibleCount, showTyping, scrollLocked]);

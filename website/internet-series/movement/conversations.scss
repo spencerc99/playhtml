@@ -23,7 +23,7 @@ $fill-warm: rgba(61, 56, 51, 0.07);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 16px 120px;
+  padding: 48px 16px 20vh;
 }
 
 // Sidebar layout
@@ -62,6 +62,7 @@ $fill-warm: rgba(61, 56, 51, 0.07);
   width: 100%;
   max-width: 400px;
   margin: 0 auto;
+  padding-bottom: 30vh;
 }
 
 // Date dividers between days
