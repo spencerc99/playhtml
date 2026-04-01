@@ -24,34 +24,39 @@ function extractDomain(url: string | null): string {
 /** Supabase/PostgREST returns at most 1000 rows per request; we paginate to satisfy larger limits. */
 const SUPABASE_PAGE_SIZE = 1000;
 
+type PageMeta = { title?: string; favicon_url?: string };
+
 /**
- * Fetch the most-recently-observed title for each page_ref from page_metadata_history.
+ * Fetch the most-recently-observed title and favicon for each page_ref from page_metadata_history.
  * Batches the .in() call to stay within PostgREST URL length limits.
  */
-async function fetchTitlesByPageRef(
+async function fetchMetaByPageRef(
   supabase: ReturnType<typeof createSupabaseClient>,
   pageRefs: string[]
-): Promise<Map<string, string>> {
-  const titleByRef = new Map<string, string>();
-  if (pageRefs.length === 0) return titleByRef;
+): Promise<Map<string, PageMeta>> {
+  const metaByRef = new Map<string, PageMeta>();
+  if (pageRefs.length === 0) return metaByRef;
 
   const CHUNK_SIZE = 200;
   for (let i = 0; i < pageRefs.length; i += CHUNK_SIZE) {
     const chunk = pageRefs.slice(i, i + CHUNK_SIZE);
     const { data: metaRows } = await supabase
       .from('page_metadata_history')
-      .select('page_ref, title')
+      .select('page_ref, title, favicon_url')
       .in('page_ref', chunk)
       .is('valid_to_ts', null); // current (most recent) entry per page_ref
 
     for (const row of metaRows ?? []) {
-      if (row.page_ref && row.title) {
-        titleByRef.set(row.page_ref, row.title);
+      if (row.page_ref && (row.title || row.favicon_url)) {
+        metaByRef.set(row.page_ref, {
+          ...(row.title ? { title: row.title } : {}),
+          ...(row.favicon_url ? { favicon_url: row.favicon_url } : {}),
+        });
       }
     }
   }
 
-  return titleByRef;
+  return metaByRef;
 }
 
 /**
@@ -151,7 +156,7 @@ export async function handleRecent(
     }
 
     const allPageRefs = [...new Set(rowRefMap.values())];
-    const titleByRef = await fetchTitlesByPageRef(supabase, allPageRefs);
+    const metaByRef = await fetchMetaByPageRef(supabase, allPageRefs);
 
     // ── Look up cursor colors ─────────────────────────────────────────────────
     const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
@@ -174,14 +179,18 @@ export async function handleRecent(
     const allEvents: CollectionEvent[] = rows.map((row: Record<string, unknown>) => {
       const data = (row.data ?? {}) as Record<string, unknown>;
       const pageRef = rowRefMap.get(row.id as string);
-      const title = pageRef ? titleByRef.get(pageRef) : undefined;
+      const pageMeta = pageRef ? metaByRef.get(pageRef) : undefined;
+      const title = pageMeta?.title;
+      const faviconUrl = pageMeta?.favicon_url;
 
       return {
         id: row.id as string,
         type: row.type as CollectionEvent['type'],
         ts: new Date(row.ts as string).getTime(),
-        // Merge title back into data so downstream consumers see it at data.title
-        data: title ? { ...data, title } : data,
+        // Merge title and favicon back into data from page_metadata_history
+        data: title || faviconUrl
+          ? { ...data, ...(title ? { title } : {}), ...(faviconUrl ? { favicon_url: faviconUrl } : {}) }
+          : data,
         meta: {
           pid: row.participant_id,
           sid: row.session_id,
