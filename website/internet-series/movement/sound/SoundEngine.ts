@@ -201,15 +201,27 @@ export class SoundEngine {
     const osc = this.ctx.createOscillator();
     osc.type = instrument.oscillatorType;
 
-    // Click pitch based on y position (higher on screen = higher pitch)
+    // Click pitch from D minor pentatonic, selected by y position
+    const BELL_SCALE = [
+      293.66, // D4
+      349.23, // F4
+      392.0,  // G4
+      440.0,  // A4
+      523.25, // C5
+      587.33, // D5
+    ];
     const pitchRatio = 1 - (click.y / (window.innerHeight || 800));
-    const baseFreq = 400 + pitchRatio * 800; // 400-1200 Hz range
+    const scaleIndex = Math.min(
+      BELL_SCALE.length - 1,
+      Math.floor(pitchRatio * BELL_SCALE.length),
+    );
+    const baseFreq = BELL_SCALE[scaleIndex];
     osc.frequency.value = baseFreq;
 
-    // Second harmonic for bell-like quality
+    // Octave + fifth partial for bell-like quality (stays consonant)
     const osc2 = this.ctx.createOscillator();
     osc2.type = "sine";
-    osc2.frequency.value = baseFreq * 2.76; // Inharmonic partial for bell timbre
+    osc2.frequency.value = baseFreq * 3; // 3rd harmonic (octave + fifth)
 
     const gain = this.ctx.createGain();
     const holdScale = click.holdDuration

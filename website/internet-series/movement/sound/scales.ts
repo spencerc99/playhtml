@@ -75,8 +75,8 @@ export function velocityToGain(velocity: number): number {
   const MAX_VELOCITY = 5;    // Above this, max volume (calibrated for animation playback at ~60fps)
   if (velocity < MIN_VELOCITY) return 0;
   const normalized = Math.min(1, (velocity - MIN_VELOCITY) / (MAX_VELOCITY - MIN_VELOCITY));
-  // Ease-in curve so quiet movements are more common than loud ones
-  return normalized * normalized * 0.3; // Max gain 0.3 to keep it ambient
+  // Square root curve so even slow movement is audible
+  return Math.sqrt(normalized) * 0.8;
 }
 
 /**

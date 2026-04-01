@@ -110,5 +110,5 @@ export const CLICK_BELL: InstrumentConfig = {
   release: 3.0,
   filterFrequency: 4000,
   filterQ: 0.5,
-  gain: 0.2,
+  gain: 0.08,
 };
