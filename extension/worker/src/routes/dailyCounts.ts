@@ -20,7 +20,9 @@ export async function handleDailyCounts(
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || null;
-    const from = url.searchParams.get('from') || null;
+    // Default to last 90 days to avoid full table scan timeout
+    const defaultFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const from = url.searchParams.get('from') || defaultFrom;
     const to = url.searchParams.get('to') || null;
 
     const supabase = createSupabaseClient(env);
