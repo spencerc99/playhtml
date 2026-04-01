@@ -11,6 +11,7 @@ import React, {
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
+import { SoundEngine } from "../sound/SoundEngine";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
@@ -150,6 +151,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
     "cycle",
   );
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const soundEngineRef = useRef<SoundEngine | null>(null);
 
   // Sync domain filter from prop (parent controls refetching)
   useEffect(() => {
@@ -162,6 +165,32 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   useEffect(() => {
     onSetDomainFilter?.(settings.domainFilter);
   }, [settings.domainFilter]);
+
+  // Manage SoundEngine lifecycle
+  useEffect(() => {
+    if (soundEnabled) {
+      if (!soundEngineRef.current) {
+        const engine = new SoundEngine();
+        engine.init().then(() => {
+          engine.setCanvasWidth(viewportSize.width);
+          soundEngineRef.current = engine;
+        });
+      }
+    } else {
+      if (soundEngineRef.current) {
+        soundEngineRef.current.dispose();
+        soundEngineRef.current = null;
+      }
+    }
+    return () => {
+      soundEngineRef.current?.dispose();
+      soundEngineRef.current = null;
+    };
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    soundEngineRef.current?.setCanvasWidth(viewportSize.width);
+  }, [viewportSize.width]);
 
   // Derive which visualization categories are active
   const vizSet = useMemo(() => new Set(activeVisualizations), [activeVisualizations]);
@@ -593,6 +622,27 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         </div>
       )}
 
+      <button
+        onClick={() => setSoundEnabled((prev) => !prev)}
+        style={{
+          position: "absolute",
+          bottom: 20,
+          left: 20,
+          zIndex: 200,
+          padding: "8px 14px",
+          background: soundEnabled ? "#3d3833" : "#faf9f6",
+          color: soundEnabled ? "#faf9f6" : "#3d3833",
+          border: "1px solid #3d3833",
+          fontFamily: "'Martian Mono', monospace",
+          fontSize: "11px",
+          letterSpacing: "0.5px",
+          cursor: "pointer",
+          textTransform: "uppercase",
+        }}
+      >
+        {soundEnabled ? "sound on" : "sound off"}
+      </button>
+
       <div className="canvas-container" ref={containerRef}>
         {/* RISO paper texture overlay */}
         <svg
@@ -652,6 +702,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             timeRange={timeRange}
             showClickRipples={!showClicks}
             windowSize={settings.maxConcurrentTrails * 2}
+            soundEngine={soundEnabled ? soundEngineRef.current : null}
             settings={{
               strokeWidth: settings.strokeWidth,
               pointSize: settings.pointSize,
