@@ -552,6 +552,7 @@ export function ConversationView({
   const [visibleCount, setVisibleCount] = useState(0);
   const [showTyping, setShowTyping] = useState(false);
   const [typingText, setTypingText] = useState("");
+  const [previewCount, setPreviewCount] = useState(0); // extra typing indicators below current
   const [animationKey, setAnimationKey] = useState(0);
   const [waitingForMore, setWaitingForMore] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
@@ -630,8 +631,8 @@ export function ConversationView({
     if (!scrollLocked || !scrollAnchorRef.current) return;
     programmaticScrollRef.current = true;
     const anchorTop = scrollAnchorRef.current.getBoundingClientRect().top;
-    const target = window.innerHeight * 0.7;
-    // Scroll so the anchor (top of spacer, right below typing indicator) sits at 70% height
+    const target = window.innerHeight * 0.8;
+    // Scroll so the anchor sits at 80% height (20% padding below)
     if (anchorTop > target + 10) {
       window.scrollBy({ top: anchorTop - target, behavior: "instant" });
     }
@@ -670,6 +671,7 @@ export function ConversationView({
             setVisibleCount(0);
             setShowTyping(false);
             setTypingText("");
+            setPreviewCount(0);
             if (streamRef.current) {
               streamRef.current.scrollTo({ top: 0 });
             }
@@ -683,13 +685,17 @@ export function ConversationView({
       const s = speedRef.current;
       const typingDuration = Math.min(1500, Math.max(500, msg.text.length * 30)) / s;
 
-      // Phase 1: Show typing indicator
+      // Phase 1: Show typing indicator + preview indicators for upcoming messages
+      const upcoming = Math.min(2, messages.length - currentIndex - 1);
       setShowTyping(true);
+      setPreviewCount(upcoming);
 
       addTimeout(() => {
-        // Phase 2: Hide typing indicator, start typing text
+        // Phase 2: Hide main typing indicator, start typing text
+        // Keep preview indicators visible during typing
         setShowTyping(false);
         setVisibleCount(currentIndex + 1);
+        setPreviewCount(Math.min(2, messages.length - currentIndex - 1));
 
         const chars = msg.text.split("");
         let charIndex = 0;
@@ -702,6 +708,7 @@ export function ConversationView({
           } else {
             // Phase 3: Done typing, pause then next message
             setTypingText("");
+            setPreviewCount(0);
             const pause = (200 + Math.random() * 200) / speedRef.current;
             currentIndex++;
             animationIndexRef.current = currentIndex;
@@ -729,6 +736,7 @@ export function ConversationView({
     setVisibleCount(0);
     setShowTyping(false);
     setTypingText("");
+    setPreviewCount(0);
     setWaitingForMore(false);
     if (streamRef.current) {
       streamRef.current.scrollTo({ top: 0 });
@@ -875,6 +883,17 @@ export function ConversationView({
             <div className="typing-dot" />
           </div>
         )}
+        {previewCount > 0 && Array.from({ length: previewCount }).map((_, i) => (
+          <div
+            key={`preview-${i}`}
+            className="typing-indicator preview"
+            style={{ animationDelay: `${(i + 1) * 0.3}s` }}
+          >
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+          </div>
+        ))}
         <div ref={scrollAnchorRef} className="scroll-anchor" />
       </div>
 
