@@ -738,9 +738,8 @@ export function ConversationView({
     setTypingText("");
     setPreviewCount(0);
     setWaitingForMore(false);
-    if (streamRef.current) {
-      streamRef.current.scrollTo({ top: 0 });
-    }
+    setScrollLocked(true);
+    window.scrollTo({ top: 0 });
     setAnimationKey((k) => k + 1);
   }, [clearTimeouts]);
 
