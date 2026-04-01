@@ -11,6 +11,8 @@ import React, {
 import { TrailState, ClickEffect } from "../types";
 import { getCursorComponent } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
+import type { SoundEngine } from "../sound/SoundEngine";
+import type { TrailSoundFrame } from "../sound/types";
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
@@ -306,6 +308,7 @@ interface AnimatedTrailsProps {
   // appear glued to the page rather than to the fixed viewport. The overlay
   // container must be position: fixed when using this mode.
   documentSpace?: boolean;
+  soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -332,6 +335,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     frozen = false,
     windowSize = 50,
     documentSpace = false,
+    soundEngine = null,
     settings,
   }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
@@ -395,7 +399,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const windowSizeRef = useRef(windowSize);
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
+    const soundEngineRef = useRef(soundEngine);
 
+    useEffect(() => {
+      soundEngineRef.current = soundEngine;
+    }, [soundEngine]);
     useEffect(() => {
       trailStatesRef.current = trailStates;
     }, [trailStates]);
@@ -486,6 +494,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         if (loopedElapsed < prevElapsedRef.current) {
           spawnedClicksRef.current.clear();
           setActiveClickEffects([]);
+          soundEngineRef.current?.reset();
         }
         prevElapsedRef.current = loopedElapsed;
 
@@ -504,6 +513,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Track which trails are visible this frame for ripple pruning
         const newVisible = new Set<number>();
 
+        // Collect trail frame results for sound engine
+        const soundFrames: TrailSoundFrame[] = [];
+
         // Update all trails imperatively
         for (let idx = 0; idx < currentTrailStates.length; idx++) {
           const handle = trailHandles.current[idx];
@@ -518,6 +530,26 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
 
           if (fade > 0) newVisible.add(idx);
+
+          // Collect frame data for sound engine
+          if (result && fade > 0 && soundEngineRef.current?.isEnabled()) {
+            const ts = currentTrailStates[idx];
+            const currentPointIndex = Math.min(
+              Math.floor((ts.trail.points.length - 1) * result.trailProgress),
+              ts.trail.points.length - 1,
+            );
+            soundFrames.push({
+              trailIndex: idx,
+              x: result.cursorPosition.x,
+              y: result.cursorPosition.y,
+              prevX: result.cursorPosition.x,
+              prevY: result.cursorPosition.y,
+              cursorType: ts.trail.points[currentPointIndex]?.cursor,
+              progress: result.trailProgress,
+              color: ts.trail.color,
+              isNewlyActive: false,
+            });
+          }
 
           // Spawn clicks
           if (result && showClickRipplesRef.current) {
@@ -534,6 +566,14 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 !spawnedSet.has(clickIdx)
               ) {
                 spawnedSet.add(clickIdx);
+
+                // Trigger click sound
+                soundEngineRef.current?.triggerClick({
+                  x: result.cursorPosition.x,
+                  y: result.cursorPosition.y,
+                  holdDuration: click.duration,
+                });
+
                 pendingClicks.current.push({
                   id: `${idx}-${clickIdx}-${Date.now()}`,
                   x: result.cursorPosition.x,
@@ -548,6 +588,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }
             });
           }
+        }
+
+        // Feed sound engine with collected trail frames
+        if (soundFrames.length > 0) {
+          soundEngineRef.current?.tick(loopedElapsed, soundFrames);
         }
 
         visibleSetRef.current = newVisible;
@@ -630,6 +675,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.frozen === nextProps.frozen &&
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
+      prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickMinDuration ===
