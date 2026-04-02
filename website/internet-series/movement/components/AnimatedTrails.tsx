@@ -134,6 +134,8 @@ function computeTrailFrame(
 
 // Imperatively-updated trail. Renders SVG structure once on mount, then the
 // parent rAF loop updates DOM attributes directly via the ref handle.
+// Path and cursor are rendered as siblings (not nested) so they can live in
+// separate SVG layers — paths below, cursors on top.
 interface ImperativeTrailHandle {
   update(
     elapsedTimeMs: number,
@@ -143,7 +145,7 @@ interface ImperativeTrailHandle {
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
 }
 
-interface TrailProps {
+interface TrailPathProps {
   trailState: TrailState;
   trailIndex: number;
   generatePath: (
@@ -152,24 +154,18 @@ interface TrailProps {
   ) => string;
 }
 
-const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
+// Renders only the trail path (no cursor). The parent rAF loop drives updates
+// via the imperative handle.
+const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
   ({ trailState, trailIndex, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
-    const cursorGroupRef = useRef<SVGGElement>(null);
-
-    const [cursorType, setCursorType] = useState<string | undefined>(
-      trailState.trail.points[0]?.cursor,
-    );
-    const CursorComponent = getCursorComponent(cursorType);
-    const cursorSize = 32;
 
     React.useImperativeHandle(ref, () => ({
       update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
         const group = groupRef.current;
         if (!group) return null;
 
-        // evictionFade <= 0 means fully hidden
         if (evictionFade <= 0) {
           group.setAttribute("opacity", "0");
           return null;
@@ -188,7 +184,7 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
 
         group.setAttribute("opacity", String(evictionFade));
 
-        const { pathData, isFinished, cursorPosition, trailProgress } = frame;
+        const { pathData, trailProgress, cursorPosition } = frame;
 
         const pathEl = pathRef.current;
         if (pathEl) {
@@ -200,23 +196,6 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
           } else {
             pathEl.style.display = "none";
           }
-        }
-
-        const cursorGroup = cursorGroupRef.current;
-        if (cursorGroup) {
-          if (!isFinished && trailProgress > 0) {
-            cursorGroup.style.display = "";
-            cursorGroup.setAttribute(
-              "transform",
-              `translate(${cursorPosition.x}, ${cursorPosition.y})`,
-            );
-          } else {
-            cursorGroup.style.display = "none";
-          }
-        }
-
-        if (frame.cursorType !== cursorType) {
-          setCursorType(frame.cursorType);
         }
 
         return { trailProgress, cursorPosition };
@@ -235,15 +214,70 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
           strokeLinejoin="round"
           style={{ mixBlendMode: "multiply", display: "none" }}
         />
+      </g>
+    );
+  },
+);
 
-        <g ref={cursorGroupRef} style={{ display: "none" }}>
-          <g
-            transform={`translate(${-12 * (cursorSize / 24)}, ${
-              -4 * (cursorSize / 24)
-            })`}
-          >
-            <CursorComponent color={color} size={cursorSize} />
-          </g>
+interface TrailCursorProps {
+  trailState: TrailState;
+  trailIndex: number;
+}
+
+// Renders only the cursor icon. Positioned imperatively by the parent rAF loop
+// via the ref handle.
+interface ImperativeTrailCursorHandle {
+  update(
+    cursorPosition: { x: number; y: number },
+    cursorType: string | undefined,
+    isFinished: boolean,
+    trailProgress: number,
+    evictionFade: number,
+  ): void;
+}
+
+const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
+  ({ trailState }, ref) => {
+    const cursorGroupRef = useRef<SVGGElement>(null);
+
+    const [cursorType, setCursorType] = useState<string | undefined>(
+      trailState.trail.points[0]?.cursor,
+    );
+    const CursorComponent = getCursorComponent(cursorType);
+    const cursorSize = 32;
+
+    React.useImperativeHandle(ref, () => ({
+      update(cursorPosition, newCursorType, isFinished, trailProgress, evictionFade) {
+        const cursorGroup = cursorGroupRef.current;
+        if (!cursorGroup) return;
+
+        if (evictionFade <= 0 || isFinished || trailProgress <= 0) {
+          cursorGroup.style.display = "none";
+          return;
+        }
+
+        cursorGroup.style.display = "";
+        cursorGroup.setAttribute(
+          "transform",
+          `translate(${cursorPosition.x}, ${cursorPosition.y})`,
+        );
+
+        if (newCursorType !== cursorType) {
+          setCursorType(newCursorType);
+        }
+      },
+    }));
+
+    const color = trailState.trail.color;
+
+    return (
+      <g ref={cursorGroupRef} style={{ display: "none" }}>
+        <g
+          transform={`translate(${-12 * (cursorSize / 24)}, ${
+            -4 * (cursorSize / 24)
+          })`}
+        >
+          <CursorComponent color={color} size={cursorSize} />
         </g>
       </g>
     );
@@ -289,9 +323,10 @@ function computeEvictionFades(
           ? finished[displacerIndex].finishedAtMs
           : elapsedTimeMs;
       const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
+      // Fade from COMPLETED_OPACITY (not full opacity) to avoid a brightness jump
       fades[f.originalIndex] = Math.max(
         0,
-        1 - timeSinceEvicted / EVICTION_FADE_MS,
+        COMPLETED_OPACITY * (1 - timeSinceEvicted / EVICTION_FADE_MS),
       );
     } else {
       // Dim finished trails so active ones are visually prominent
@@ -376,8 +411,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         .sort((a, b) => a.finishedAtMs - b.finishedAtMs);
     }, [trailStates]);
 
-    // Store one ref handle per trail index.
+    // Store one ref handle per trail index for paths and cursors separately.
     const trailHandles = useRef<(ImperativeTrailHandle | null)[]>(
+      new Array(trailStates.length).fill(null),
+    );
+    const cursorHandles = useRef<(ImperativeTrailCursorHandle | null)[]>(
       new Array(trailStates.length).fill(null),
     );
 
@@ -530,7 +568,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Collect trail frame results for sound engine
         const soundFrames: TrailSoundFrame[] = [];
 
-        // Update all trails imperatively
+        // Update all trail paths and cursors imperatively
         for (let idx = 0; idx < currentTrailStates.length; idx++) {
           const handle = trailHandles.current[idx];
           if (!handle) continue;
@@ -545,11 +583,35 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
           if (fade > 0) newVisible.add(idx);
 
+          // Update cursor icon in the separate cursor layer
+          const ts = currentTrailStates[idx];
+          const cursorHandle = cursorHandles.current[idx];
+          if (cursorHandle) {
+            if (result && fade > 0) {
+              const cpIdx = Math.min(
+                Math.floor(
+                  (ts.trail.points.length - 1) * result.trailProgress,
+                ),
+                ts.trail.points.length - 1,
+              );
+              cursorHandle.update(
+                result.cursorPosition,
+                ts.trail.points[cpIdx]?.cursor,
+                result.trailProgress >= 1,
+                result.trailProgress,
+                fade,
+              );
+            } else {
+              cursorHandle.update({ x: 0, y: 0 }, undefined, true, 0, 0);
+            }
+          }
+
           // Collect frame data for sound engine
           if (result && fade > 0 && soundEngineRef.current?.isEnabled()) {
-            const ts = currentTrailStates[idx];
-            const currentPointIndex = Math.min(
-              Math.floor((ts.trail.points.length - 1) * result.trailProgress),
+            const cpIdx = Math.min(
+              Math.floor(
+                (ts.trail.points.length - 1) * result.trailProgress,
+              ),
               ts.trail.points.length - 1,
             );
             soundFrames.push({
@@ -558,7 +620,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               y: result.cursorPosition.y,
               prevX: result.cursorPosition.x,
               prevY: result.cursorPosition.y,
-              cursorType: ts.trail.points[currentPointIndex]?.cursor,
+              cursorType: ts.trail.points[cpIdx]?.cursor,
               progress: result.trailProgress,
               color: ts.trail.color,
               isNewlyActive: false,
@@ -665,8 +727,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             />
           ))}
         {trailStates.map((ts, idx) => (
-          <Trail
-            key={`trail-${idx}`}
+          <TrailPath
+            key={`trail-path-${idx}`}
             ref={(handle) => {
               while (trailHandles.current.length <= idx) {
                 trailHandles.current.push(null);
@@ -676,6 +738,19 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             trailState={ts}
             trailIndex={idx}
             generatePath={generatePath}
+          />
+        ))}
+        {trailStates.map((ts, idx) => (
+          <TrailCursor
+            key={`trail-cursor-${idx}`}
+            ref={(handle) => {
+              while (cursorHandles.current.length <= idx) {
+                cursorHandles.current.push(null);
+              }
+              cursorHandles.current[idx] = handle;
+            }}
+            trailState={ts}
+            trailIndex={idx}
           />
         ))}
       </svg>
