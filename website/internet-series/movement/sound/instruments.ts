@@ -20,7 +20,7 @@ const DEFAULT_INSTRUMENT: InstrumentConfig = {
  * Cursor types come from the CSS cursor property captured in trail data:
  * "default", "pointer", "text", "grab", "grabbing", "crosshair", etc.
  */
-const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
+export const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
   // Standard arrow cursor — warm sine tone
   default: {
     oscillatorType: "sine",
