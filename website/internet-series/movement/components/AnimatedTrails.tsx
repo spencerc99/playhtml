@@ -11,15 +11,51 @@ import React, {
 import { TrailState, ClickEffect } from "../types";
 import { getCursorComponent } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
-import type { SoundEngine } from "../sound/SoundEngine";
-import type { TrailSoundFrame } from "../sound/types";
+
+// Cursor-type-to-monochrome-style mapping for black & white rendering mode
+interface MonochromeStyle {
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  opacity: number;
+}
+
+function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
+  switch (cursorType) {
+    case "pointer":
+      return { fill: "#fff", stroke: "#000", strokeWidth: 1, opacity: 0.7 };
+    case "text":
+      return { fill: "none", stroke: "#000", strokeWidth: 1.5, opacity: 0.5 };
+    case "grab":
+    case "grabbing":
+    case "move":
+      return { fill: "#000", stroke: "none", strokeWidth: 0, opacity: 0.9 };
+    case "wait":
+    case "progress":
+      return { fill: "#888", stroke: "none", strokeWidth: 0, opacity: 0.4 };
+    case "crosshair":
+      return { fill: "none", stroke: "#000", strokeWidth: 1, opacity: 0.6 };
+    default:
+      return { fill: "#000", stroke: "none", strokeWidth: 0, opacity: 0.8 };
+  }
+}
+
+// Compute speed between two trail points and derive a stroke width.
+// Fast movement produces thin strokes; slow movement produces thick strokes.
+function speedStrokeWidth(
+  point: { x: number; y: number; ts: number },
+  prevPoint: { x: number; y: number; ts: number },
+): number {
+  const dx = point.x - prevPoint.x;
+  const dy = point.y - prevPoint.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const dt = point.ts - prevPoint.ts;
+  const speed = dt > 0 ? dist / dt : 0;
+  return Math.max(1, 5 - speed * 10);
+}
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
-
-// Finished trails dim to this opacity over COMPLETION_FADE_MS
-const COMPLETED_OPACITY = 0.5;
-const COMPLETION_FADE_MS = 3000;
 
 // How many points to show behind the cursor while drawing
 const TAIL_LENGTH = 1000;
@@ -134,18 +170,17 @@ function computeTrailFrame(
 
 // Imperatively-updated trail. Renders SVG structure once on mount, then the
 // parent rAF loop updates DOM attributes directly via the ref handle.
-// Path and cursor are rendered as siblings (not nested) so they can live in
-// separate SVG layers — paths below, cursors on top.
 interface ImperativeTrailHandle {
   update(
     elapsedTimeMs: number,
     trailOpacity: number,
     strokeWidth: number,
     evictionFade: number,
+    monochromeMode: boolean,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
 }
 
-interface TrailPathProps {
+interface TrailProps {
   trailState: TrailState;
   trailIndex: number;
   generatePath: (
@@ -154,18 +189,26 @@ interface TrailPathProps {
   ) => string;
 }
 
-// Renders only the trail path (no cursor). The parent rAF loop drives updates
-// via the imperative handle.
-const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
+const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
   ({ trailState, trailIndex, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
+    const cursorGroupRef = useRef<SVGGElement>(null);
+    const cursorColorRef = useRef<SVGGElement>(null);
+    const cursorMonoRef = useRef<SVGGElement>(null);
+
+    const [cursorType, setCursorType] = useState<string | undefined>(
+      trailState.trail.points[0]?.cursor,
+    );
+    const CursorComponent = getCursorComponent(cursorType);
+    const cursorSize = 32;
 
     React.useImperativeHandle(ref, () => ({
-      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
+      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, monochromeMode) {
         const group = groupRef.current;
         if (!group) return null;
 
+        // evictionFade <= 0 means fully hidden
         if (evictionFade <= 0) {
           group.setAttribute("opacity", "0");
           return null;
@@ -184,18 +227,71 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
 
         group.setAttribute("opacity", String(evictionFade));
 
-        const { pathData, trailProgress, cursorPosition } = frame;
+        const { pathData, isFinished, cursorPosition, trailProgress } = frame;
 
         const pathEl = pathRef.current;
         if (pathEl) {
           if (pathData) {
             pathEl.setAttribute("d", pathData);
-            pathEl.setAttribute("opacity", String(trailOpacity));
-            pathEl.setAttribute("stroke-width", String(strokeWidth));
+
+            if (monochromeMode) {
+              const monoStyle = getMonochromeStyle(frame.cursorType);
+              // Speed-based stroke width: sample from current point in original trail
+              const currentPointIndex = Math.min(
+                Math.floor((trailState.trail.points.length - 1) * trailProgress),
+                trailState.trail.points.length - 1,
+              );
+              const prevPointIndex = Math.max(0, currentPointIndex - 1);
+              const sw = currentPointIndex > 0
+                ? speedStrokeWidth(
+                    trailState.trail.points[currentPointIndex],
+                    trailState.trail.points[prevPointIndex],
+                  )
+                : 3;
+              const effectiveWidth = Math.max(1, sw * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
+
+              pathEl.setAttribute("stroke", monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke);
+              pathEl.setAttribute("opacity", String(monoStyle.opacity * trailOpacity));
+              pathEl.setAttribute("stroke-width", String(effectiveWidth));
+              if (monoStyle.stroke !== "none" && monoStyle.fill !== "none") {
+                // Pointer-like: outline stroke
+                pathEl.setAttribute("stroke", monoStyle.stroke);
+              }
+              pathEl.setAttribute("filter", "url(#ink-texture)");
+            } else {
+              pathEl.setAttribute("stroke", color);
+              pathEl.setAttribute("opacity", String(trailOpacity));
+              pathEl.setAttribute("stroke-width", String(strokeWidth));
+              pathEl.removeAttribute("filter");
+            }
             pathEl.style.display = "";
           } else {
             pathEl.style.display = "none";
           }
+        }
+
+        const cursorGroup = cursorGroupRef.current;
+        if (cursorGroup) {
+          if (!isFinished && trailProgress > 0) {
+            cursorGroup.style.display = "";
+            cursorGroup.setAttribute(
+              "transform",
+              `translate(${cursorPosition.x}, ${cursorPosition.y})`,
+            );
+            // Toggle between color and monochrome cursor
+            if (cursorColorRef.current) {
+              cursorColorRef.current.style.display = monochromeMode ? "none" : "";
+            }
+            if (cursorMonoRef.current) {
+              cursorMonoRef.current.style.display = monochromeMode ? "" : "none";
+            }
+          } else {
+            cursorGroup.style.display = "none";
+          }
+        }
+
+        if (frame.cursorType !== cursorType) {
+          setCursorType(frame.cursorType);
         }
 
         return { trailProgress, cursorPosition };
@@ -203,6 +299,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
     }));
 
     const color = trailState.trail.color;
+    const monoColor = "#000";
 
     return (
       <g ref={groupRef} opacity="0">
@@ -214,70 +311,21 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
           strokeLinejoin="round"
           style={{ mixBlendMode: "multiply", display: "none" }}
         />
-      </g>
-    );
-  },
-);
 
-interface TrailCursorProps {
-  trailState: TrailState;
-  trailIndex: number;
-}
-
-// Renders only the cursor icon. Positioned imperatively by the parent rAF loop
-// via the ref handle.
-interface ImperativeTrailCursorHandle {
-  update(
-    cursorPosition: { x: number; y: number },
-    cursorType: string | undefined,
-    isFinished: boolean,
-    trailProgress: number,
-    evictionFade: number,
-  ): void;
-}
-
-const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
-  ({ trailState }, ref) => {
-    const cursorGroupRef = useRef<SVGGElement>(null);
-
-    const [cursorType, setCursorType] = useState<string | undefined>(
-      trailState.trail.points[0]?.cursor,
-    );
-    const CursorComponent = getCursorComponent(cursorType);
-    const cursorSize = 32;
-
-    React.useImperativeHandle(ref, () => ({
-      update(cursorPosition, newCursorType, isFinished, trailProgress, evictionFade) {
-        const cursorGroup = cursorGroupRef.current;
-        if (!cursorGroup) return;
-
-        if (evictionFade <= 0 || isFinished || trailProgress <= 0) {
-          cursorGroup.style.display = "none";
-          return;
-        }
-
-        cursorGroup.style.display = "";
-        cursorGroup.setAttribute(
-          "transform",
-          `translate(${cursorPosition.x}, ${cursorPosition.y})`,
-        );
-
-        if (newCursorType !== cursorType) {
-          setCursorType(newCursorType);
-        }
-      },
-    }));
-
-    const color = trailState.trail.color;
-
-    return (
-      <g ref={cursorGroupRef} style={{ display: "none" }}>
-        <g
-          transform={`translate(${-12 * (cursorSize / 24)}, ${
-            -4 * (cursorSize / 24)
-          })`}
-        >
-          <CursorComponent color={color} size={cursorSize} />
+        <g ref={cursorGroupRef} style={{ display: "none" }}>
+          <g
+            transform={`translate(${-12 * (cursorSize / 24)}, ${
+              -4 * (cursorSize / 24)
+            })`}
+          >
+            {/* Render both color and monochrome cursors; parent controls visibility */}
+            <g ref={cursorColorRef} className="cursor-color">
+              <CursorComponent color={color} size={cursorSize} />
+            </g>
+            <g ref={cursorMonoRef} className="cursor-mono" style={{ display: "none" }}>
+              <CursorComponent color={monoColor} size={cursorSize} />
+            </g>
+          </g>
         </g>
       </g>
     );
@@ -323,16 +371,12 @@ function computeEvictionFades(
           ? finished[displacerIndex].finishedAtMs
           : elapsedTimeMs;
       const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
-      // Fade from COMPLETED_OPACITY (not full opacity) to avoid a brightness jump
       fades[f.originalIndex] = Math.max(
         0,
-        COMPLETED_OPACITY * (1 - timeSinceEvicted / EVICTION_FADE_MS),
+        1 - timeSinceEvicted / EVICTION_FADE_MS,
       );
     } else {
-      // Dim finished trails so active ones are visually prominent
-      const timeSinceFinished = elapsedTimeMs - f.finishedAtMs;
-      const fadeFraction = Math.min(1, timeSinceFinished / COMPLETION_FADE_MS);
-      fades[f.originalIndex] = 1 - fadeFraction * (1 - COMPLETED_OPACITY);
+      fades[f.originalIndex] = 1;
     }
   }
 
@@ -350,7 +394,6 @@ interface AnimatedTrailsProps {
   // appear glued to the page rather than to the fixed viewport. The overlay
   // container must be position: fixed when using this mode.
   documentSpace?: boolean;
-  soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -366,6 +409,7 @@ interface AnimatedTrailsProps {
     clickNumRings: number;
     clickRingDelayMs: number;
     clickAnimationStopPoint: number;
+    monochromeMode?: boolean;
   };
 }
 
@@ -377,7 +421,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     frozen = false,
     windowSize = 50,
     documentSpace = false,
-    soundEngine = null,
     settings,
   }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
@@ -394,12 +437,14 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const animationSpeedRef = useRef(settings.animationSpeed);
     const strokeWidthRef = useRef(settings.strokeWidth);
     const trailOpacityRef = useRef(settings.trailOpacity);
+    const monochromeModeRef = useRef(settings.monochromeMode ?? false);
 
     useEffect(() => {
       animationSpeedRef.current = settings.animationSpeed;
       strokeWidthRef.current = settings.strokeWidth;
       trailOpacityRef.current = settings.trailOpacity;
-    }, [settings.animationSpeed, settings.strokeWidth, settings.trailOpacity]);
+      monochromeModeRef.current = settings.monochromeMode ?? false;
+    }, [settings.animationSpeed, settings.strokeWidth, settings.trailOpacity, settings.monochromeMode]);
 
     // Pre-sort finished trails once per trailStates change
     const sortedFinishOrder = useMemo(() => {
@@ -411,11 +456,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         .sort((a, b) => a.finishedAtMs - b.finishedAtMs);
     }, [trailStates]);
 
-    // Store one ref handle per trail index for paths and cursors separately.
+    // Store one ref handle per trail index.
     const trailHandles = useRef<(ImperativeTrailHandle | null)[]>(
-      new Array(trailStates.length).fill(null),
-    );
-    const cursorHandles = useRef<(ImperativeTrailCursorHandle | null)[]>(
       new Array(trailStates.length).fill(null),
     );
 
@@ -444,11 +486,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const windowSizeRef = useRef(windowSize);
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
-    const soundEngineRef = useRef(soundEngine);
 
-    useEffect(() => {
-      soundEngineRef.current = soundEngine;
-    }, [soundEngine]);
     useEffect(() => {
       trailStatesRef.current = trailStates;
     }, [trailStates]);
@@ -491,10 +529,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           if (documentSpaceRef.current && svgRef.current) {
             const vw = window.innerWidth;
             const vh = window.innerHeight;
-            svgRef.current.setAttribute(
-              "viewBox",
-              `${window.scrollX} ${window.scrollY} ${vw} ${vh}`,
-            );
+            svgRef.current.setAttribute("viewBox", `${window.scrollX} ${window.scrollY} ${vw} ${vh}`);
           }
           const elapsed = timeRange.duration;
           for (let i = 0; i < trailStatesRef.current.length; i++) {
@@ -504,6 +539,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               trailOpacityRef.current,
               strokeWidthRef.current,
               1,
+              monochromeModeRef.current,
             );
           }
         });
@@ -517,7 +553,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevElapsedRef.current = 0;
       spawnedClicksRef.current.clear();
       setActiveClickEffects([]);
-      soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
 
@@ -532,10 +567,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           const scrollY = window.scrollY;
           const vw = window.innerWidth;
           const vh = window.innerHeight;
-          svgRef.current.setAttribute(
-            "viewBox",
-            `${scrollX} ${scrollY} ${vw} ${vh}`,
-          );
+          svgRef.current.setAttribute("viewBox", `${scrollX} ${scrollY} ${vw} ${vh}`);
         }
 
         const realElapsed = timestamp - startTime;
@@ -546,7 +578,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         if (loopedElapsed < prevElapsedRef.current) {
           spawnedClicksRef.current.clear();
           setActiveClickEffects([]);
-          soundEngineRef.current?.reset();
         }
         prevElapsedRef.current = loopedElapsed;
 
@@ -565,10 +596,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Track which trails are visible this frame for ripple pruning
         const newVisible = new Set<number>();
 
-        // Collect trail frame results for sound engine
-        const soundFrames: TrailSoundFrame[] = [];
-
-        // Update all trail paths and cursors imperatively
+        // Update all trails imperatively
         for (let idx = 0; idx < currentTrailStates.length; idx++) {
           const handle = trailHandles.current[idx];
           if (!handle) continue;
@@ -579,53 +607,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             trailOpacity,
             strokeWidth,
             fade,
+            monochromeModeRef.current,
           );
 
           if (fade > 0) newVisible.add(idx);
-
-          // Update cursor icon in the separate cursor layer
-          const ts = currentTrailStates[idx];
-          const cursorHandle = cursorHandles.current[idx];
-          if (cursorHandle) {
-            if (result && fade > 0) {
-              const cpIdx = Math.min(
-                Math.floor(
-                  (ts.trail.points.length - 1) * result.trailProgress,
-                ),
-                ts.trail.points.length - 1,
-              );
-              cursorHandle.update(
-                result.cursorPosition,
-                ts.trail.points[cpIdx]?.cursor,
-                result.trailProgress >= 1,
-                result.trailProgress,
-                fade,
-              );
-            } else {
-              cursorHandle.update({ x: 0, y: 0 }, undefined, true, 0, 0);
-            }
-          }
-
-          // Collect frame data for sound engine
-          if (result && fade > 0 && soundEngineRef.current?.isEnabled()) {
-            const cpIdx = Math.min(
-              Math.floor(
-                (ts.trail.points.length - 1) * result.trailProgress,
-              ),
-              ts.trail.points.length - 1,
-            );
-            soundFrames.push({
-              trailIndex: idx,
-              x: result.cursorPosition.x,
-              y: result.cursorPosition.y,
-              prevX: result.cursorPosition.x,
-              prevY: result.cursorPosition.y,
-              cursorType: ts.trail.points[cpIdx]?.cursor,
-              progress: result.trailProgress,
-              color: ts.trail.color,
-              isNewlyActive: false,
-            });
-          }
 
           // Spawn clicks
           if (result && showClickRipplesRef.current) {
@@ -642,19 +627,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 !spawnedSet.has(clickIdx)
               ) {
                 spawnedSet.add(clickIdx);
-
-                // Trigger click sound
-                soundEngineRef.current?.triggerClick({
-                  x: result.cursorPosition.x,
-                  y: result.cursorPosition.y,
-                  holdDuration: click.duration,
-                });
-
                 pendingClicks.current.push({
                   id: `${idx}-${clickIdx}-${Date.now()}`,
                   x: result.cursorPosition.x,
                   y: result.cursorPosition.y,
-                  color: ts.trail.color,
+                  color: monochromeModeRef.current ? "#000" : ts.trail.color,
                   radiusFactor: Math.random(),
                   durationFactor: Math.random(),
                   startTime: Date.now(),
@@ -664,11 +641,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }
             });
           }
-        }
-
-        // Feed sound engine with collected trail frames
-        if (soundFrames.length > 0) {
-          soundEngineRef.current?.tick(loopedElapsed, soundFrames);
         }
 
         visibleSetRef.current = newVisible;
@@ -707,6 +679,26 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           pointerEvents: "none",
         }}
       >
+        <defs>
+          <filter id="ink-texture">
+            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" />
+          </filter>
+        </defs>
+        {trailStates.map((ts, idx) => (
+          <Trail
+            key={`trail-${idx}`}
+            ref={(handle) => {
+              while (trailHandles.current.length <= idx) {
+                trailHandles.current.push(null);
+              }
+              trailHandles.current[idx] = handle;
+            }}
+            trailState={ts}
+            trailIndex={idx}
+            generatePath={generatePath}
+          />
+        ))}
         {showClickRipples &&
           activeClickEffects.map((effect) => (
             <RippleEffect
@@ -726,33 +718,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }}
             />
           ))}
-        {trailStates.map((ts, idx) => (
-          <TrailPath
-            key={`trail-path-${idx}`}
-            ref={(handle) => {
-              while (trailHandles.current.length <= idx) {
-                trailHandles.current.push(null);
-              }
-              trailHandles.current[idx] = handle;
-            }}
-            trailState={ts}
-            trailIndex={idx}
-            generatePath={generatePath}
-          />
-        ))}
-        {trailStates.map((ts, idx) => (
-          <TrailCursor
-            key={`trail-cursor-${idx}`}
-            ref={(handle) => {
-              while (cursorHandles.current.length <= idx) {
-                cursorHandles.current.push(null);
-              }
-              cursorHandles.current[idx] = handle;
-            }}
-            trailState={ts}
-            trailIndex={idx}
-          />
-        ))}
       </svg>
     );
   },
@@ -764,7 +729,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.frozen === nextProps.frozen &&
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
-      prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickMinDuration ===
@@ -780,7 +744,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.settings.clickRingDelayMs ===
         nextProps.settings.clickRingDelayMs &&
       prevProps.settings.clickAnimationStopPoint ===
-        nextProps.settings.clickAnimationStopPoint
+        nextProps.settings.clickAnimationStopPoint &&
+      prevProps.settings.monochromeMode === nextProps.settings.monochromeMode
     );
   },
 );
