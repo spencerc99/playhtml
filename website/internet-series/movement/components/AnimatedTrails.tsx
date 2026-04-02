@@ -469,6 +469,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevElapsedRef.current = 0;
       spawnedClicksRef.current.clear();
       setActiveClickEffects([]);
+      soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
 
