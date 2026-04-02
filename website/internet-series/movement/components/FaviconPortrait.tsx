@@ -1,11 +1,10 @@
-// ABOUTME: Renders a grid of favicons for all pages visited in a time range.
-// ABOUTME: Forms a visual portrait of browsing activity through site icons.
+// ABOUTME: Renders a dense grid of favicons for every page visit in a time range.
+// ABOUTME: Each navigation event produces one favicon, repeated visits show repeated icons.
 
 import React, { useMemo, useCallback, useState, useEffect } from "react";
 import type { CollectionEvent } from "../types";
 import { extractDomain } from "../utils/eventUtils";
 
-/** Deterministic hash of a string to a number in [0, 1) */
 function hashString(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -15,17 +14,16 @@ function hashString(str: string): number {
   return (Math.abs(hash) % 1000) / 1000;
 }
 
-/** Generate a muted placeholder color from a domain name */
 function placeholderColor(domain: string): string {
   const h = Math.round(hashString(domain) * 360);
   return `hsl(${h}, 30%, 72%)`;
 }
 
-interface DomainVisit {
+interface FaviconVisit {
+  id: string;
   domain: string;
-  count: number;
-  firstSeen: number;
   faviconUrl: string | null;
+  ts: number;
 }
 
 interface FaviconPortraitProps {
@@ -33,9 +31,10 @@ interface FaviconPortraitProps {
   domainFilter: string;
 }
 
-const ICON_SIZE = 28;
-const GAP = 2;
-const PADDING = 12;
+// Tiny icons packed tight like Chrome's compressed tabs
+const ICON_SIZE = 18;
+const GAP = 1;
+const PADDING = 4;
 
 export const FaviconPortrait: React.FC<FaviconPortraitProps> = ({
   events,
@@ -45,65 +44,55 @@ export const FaviconPortrait: React.FC<FaviconPortraitProps> = ({
     () => new Set(),
   );
 
-  // Reset failed-load tracking when events change (e.g. date filter)
   useEffect(() => {
     setFailedDomains(new Set());
   }, [events]);
 
-  const domainVisits = useMemo(() => {
-    const counts = new Map<
-      string,
-      { count: number; firstSeen: number; faviconUrl: string | null }
-    >();
+  // One entry per navigation event (not deduplicated)
+  const visits = useMemo(() => {
+    const result: FaviconVisit[] = [];
+    // Track best known favicon per domain
+    const domainFavicons = new Map<string, string>();
 
     for (const event of events) {
       if (event.type !== "navigation") continue;
-
       const url = event.meta?.url;
       if (!url) continue;
-
       const domain = extractDomain(url);
       if (!domain) continue;
       if (domainFilter && domain !== domainFilter) continue;
 
       const data = event.data as Record<string, unknown>;
-      const faviconUrl = (data?.favicon_url as string) || null;
+      const dataEvent = data?.event as string;
+      // Only count focus events (actual page visits, not blur/unload)
+      if (dataEvent !== "focus") continue;
 
-      const existing = counts.get(domain);
-      if (existing) {
-        existing.count++;
-        // Prefer a stored favicon over the fallback
-        if (faviconUrl && !existing.faviconUrl) {
-          existing.faviconUrl = faviconUrl;
-        }
-      } else {
-        counts.set(domain, { count: 1, firstSeen: event.ts, faviconUrl });
-      }
+      const faviconUrl = (data?.favicon_url as string) || null;
+      if (faviconUrl) domainFavicons.set(domain, faviconUrl);
+
+      result.push({
+        id: event.id,
+        domain,
+        faviconUrl: faviconUrl || domainFavicons.get(domain) || null,
+        ts: event.ts,
+      });
     }
 
-    return [...counts.entries()]
-      .sort((a, b) => b[1].count - a[1].count)
-      .map(
-        ([domain, stats]): DomainVisit => ({
-          domain,
-          ...stats,
-        }),
-      );
+    // Sort chronologically
+    result.sort((a, b) => a.ts - b.ts);
+    return result;
   }, [events, domainFilter]);
 
-  const handleImgError = useCallback(
-    (domain: string) => {
-      setFailedDomains((prev) => {
-        if (prev.has(domain)) return prev;
-        const next = new Set(prev);
-        next.add(domain);
-        return next;
-      });
-    },
-    [],
-  );
+  const handleImgError = useCallback((domain: string) => {
+    setFailedDomains((prev) => {
+      if (prev.has(domain)) return prev;
+      const next = new Set(prev);
+      next.add(domain);
+      return next;
+    });
+  }, []);
 
-  if (domainVisits.length === 0) {
+  if (visits.length === 0) {
     return (
       <div
         style={{
@@ -144,37 +133,38 @@ export const FaviconPortrait: React.FC<FaviconPortraitProps> = ({
           alignContent: "center",
         }}
       >
-        {domainVisits.map(({ domain, count, faviconUrl }) => {
+        {visits.map(({ id, domain, faviconUrl }) => {
           const src =
             faviconUrl ||
             `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
           const failed = failedDomains.has(domain);
-          // Scale opacity: single-visit domains are slightly faded, frequent ones fully opaque
-          const maxCount = domainVisits[0]?.count ?? 1;
-          const opacity = 0.5 + 0.5 * Math.min(1, count / maxCount);
 
           return failed ? (
             <div
-              key={domain}
-              title={`${domain} (${count})`}
+              key={id}
+              title={domain}
               style={{
                 width: ICON_SIZE,
                 height: ICON_SIZE,
-                borderRadius: 4,
+                borderRadius: 3,
                 backgroundColor: placeholderColor(domain),
-                opacity,
+                flexShrink: 0,
               }}
             />
           ) : (
             <img
-              key={domain}
+              key={id}
               src={src}
               alt=""
-              title={`${domain} (${count})`}
+              title={domain}
               loading="lazy"
               width={ICON_SIZE}
               height={ICON_SIZE}
-              style={{ borderRadius: 4, display: "block", opacity }}
+              style={{
+                borderRadius: 3,
+                display: "block",
+                flexShrink: 0,
+              }}
               onError={() => handleImgError(domain)}
             />
           );
