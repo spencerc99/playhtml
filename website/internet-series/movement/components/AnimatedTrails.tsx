@@ -18,7 +18,7 @@ import type { TrailSoundFrame } from "../sound/types";
 const EVICTION_FADE_MS = 3000;
 
 // Finished trails dim to this opacity over COMPLETION_FADE_MS
-const COMPLETED_OPACITY = 0.6;
+const COMPLETED_OPACITY = 0.5;
 const COMPLETION_FADE_MS = 3000;
 
 // How many points to show behind the cursor while drawing
@@ -453,7 +453,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           if (documentSpaceRef.current && svgRef.current) {
             const vw = window.innerWidth;
             const vh = window.innerHeight;
-            svgRef.current.setAttribute("viewBox", `${window.scrollX} ${window.scrollY} ${vw} ${vh}`);
+            svgRef.current.setAttribute(
+              "viewBox",
+              `${window.scrollX} ${window.scrollY} ${vw} ${vh}`,
+            );
           }
           const elapsed = timeRange.duration;
           for (let i = 0; i < trailStatesRef.current.length; i++) {
@@ -491,7 +494,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           const scrollY = window.scrollY;
           const vw = window.innerWidth;
           const vh = window.innerHeight;
-          svgRef.current.setAttribute("viewBox", `${scrollX} ${scrollY} ${vw} ${vh}`);
+          svgRef.current.setAttribute(
+            "viewBox",
+            `${scrollX} ${scrollY} ${vw} ${vh}`,
+          );
         }
 
         const realElapsed = timestamp - startTime;
@@ -639,20 +645,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           pointerEvents: "none",
         }}
       >
-        {trailStates.map((ts, idx) => (
-          <Trail
-            key={`trail-${idx}`}
-            ref={(handle) => {
-              while (trailHandles.current.length <= idx) {
-                trailHandles.current.push(null);
-              }
-              trailHandles.current[idx] = handle;
-            }}
-            trailState={ts}
-            trailIndex={idx}
-            generatePath={generatePath}
-          />
-        ))}
         {showClickRipples &&
           activeClickEffects.map((effect) => (
             <RippleEffect
@@ -672,6 +664,20 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }}
             />
           ))}
+        {trailStates.map((ts, idx) => (
+          <Trail
+            key={`trail-${idx}`}
+            ref={(handle) => {
+              while (trailHandles.current.length <= idx) {
+                trailHandles.current.push(null);
+              }
+              trailHandles.current[idx] = handle;
+            }}
+            trailState={ts}
+            trailIndex={idx}
+            generatePath={generatePath}
+          />
+        ))}
       </svg>
     );
   },
