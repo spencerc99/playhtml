@@ -1,5 +1,5 @@
 // ABOUTME: Renders an abstract pixelated preview of a web page inside an SVG foreignObject.
-// ABOUTME: Loads page in a hidden iframe, applies downscaling for a mosaic effect.
+// ABOUTME: Renders at desktop width then scales down for a low-res mosaic effect.
 import React, { memo } from "react";
 
 interface PagePreviewProps {
@@ -10,8 +10,10 @@ interface PagePreviewProps {
   height: number;
   scrollY: number;
   scrollRange: number;
-  pixelScale?: number;
 }
+
+// Render the page at desktop width so it shows desktop layout, not mobile
+const RENDER_WIDTH = 1280;
 
 export const PagePreview = memo(
   ({
@@ -22,11 +24,13 @@ export const PagePreview = memo(
     height,
     scrollY,
     scrollRange,
-    pixelScale = 10,
   }: PagePreviewProps) => {
+    // Scale factor to shrink the full-width render into the viewport rect
+    const scale = width / RENDER_WIDTH;
+    const renderHeight = height / scale;
     const pageMultiplier = 2 + scrollRange * 4;
-    const pageHeight = height * pageMultiplier;
-    const scrollOffset = scrollY * (pageHeight - height);
+    const pageHeight = renderHeight * pageMultiplier;
+    const scrollOffset = scrollY * (pageHeight - renderHeight);
 
     return (
       <foreignObject x={x} y={y} width={width} height={height}>
@@ -37,7 +41,7 @@ export const PagePreview = memo(
             height: `${height}px`,
             overflow: "hidden",
             pointerEvents: "none",
-            position: "relative",
+            imageRendering: "pixelated",
           }}
         >
           <iframe
@@ -47,15 +51,11 @@ export const PagePreview = memo(
             tabIndex={-1}
             style={{
               border: "none",
-              position: "absolute",
-              left: 0,
-              top: 0,
-              width: `${width}px`,
+              width: `${RENDER_WIDTH}px`,
               height: `${pageHeight}px`,
-              transform: `translateY(-${Math.round(scrollOffset)}px)`,
+              transform: `scale(${scale}) translateY(-${Math.round(scrollOffset)}px)`,
+              transformOrigin: "top left",
               pointerEvents: "none",
-              filter: `blur(${Math.max(1, Math.round(width / 80))}px)`,
-              opacity: 0.85,
             }}
           />
         </div>
