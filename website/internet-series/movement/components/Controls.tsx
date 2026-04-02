@@ -318,6 +318,35 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
         </CollapsibleSection>
 
+        {/* Cursor visualizers */}
+        <CollapsibleSection
+          title="Cursor Visualizers"
+          sectionKey="cursorVisualizers"
+        >
+          <div className="control-group">
+            <label
+              style={{
+                fontSize: "12px",
+                fontWeight: "normal",
+                textTransform: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={settings.monochromeMode ?? false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    monochromeMode: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Monochrome (black & white)
+            </label>
+          </div>
+        </CollapsibleSection>
+
         {/* Cursor Settings - merged from Appearance and Animation */}
         <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
           {/* Appearance settings */}
