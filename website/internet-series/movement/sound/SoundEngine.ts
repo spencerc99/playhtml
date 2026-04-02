@@ -17,16 +17,38 @@ const MIN_NOTE_INTERVAL_MS = 80;
 /** Minimum velocity to trigger any sound (pixels per frame at ~60fps) */
 const SILENCE_VELOCITY_THRESHOLD = 0.05;
 
+/** Distance threshold for trail crossing detection (pixels) */
+const CROSSING_DISTANCE_THRESHOLD = 15;
+
+/** Minimum time between crossing triggers for the same pair (ms) */
+const CROSSING_COOLDOWN_MS = 500;
+
+/** Configurable sound modes */
+export interface SoundConfig {
+  chordVoicing: boolean;
+  cursorInstruments: boolean;
+  crossingDissonance: boolean;
+}
+
+const DEFAULT_CONFIG: SoundConfig = {
+  chordVoicing: false,
+  cursorInstruments: false,
+  crossingDissonance: false,
+};
+
 /** Per-trail voice state */
 interface Voice {
   oscillator: OscillatorNode | null;
+  /** Fifth oscillator for chord voicing mode */
+  fifthOscillator: OscillatorNode | null;
   gainNode: GainNode;
+  /** Separate gain for the fifth so we can enable/disable it */
+  fifthGainNode: GainNode | null;
   filterNode: BiquadFilterNode;
   panNode: StereoPannerNode;
   currentFrequency: number;
   lastNoteTimeMs: number;
   lastCursorType: string | undefined;
-  /** Track whether voice is currently sounding */
   active: boolean;
 }
 
@@ -38,30 +60,25 @@ export class SoundEngine {
   private voices: Map<number, Voice> = new Map();
   private canvasWidth: number = 0;
   private enabled: boolean = false;
-  /** Tracks previous frame positions for direction calculation */
   private prevPositions: Map<number, { x: number; y: number }> = new Map();
+  private config: SoundConfig = { ...DEFAULT_CONFIG };
+  /** Tracks recent crossing events to prevent rapid re-triggering */
+  private crossingCooldowns: Map<string, number> = new Map();
 
-  /**
-   * Initialize the AudioContext. Must be called from a user gesture.
-   */
   async init(): Promise<void> {
     if (this.ctx) return;
 
     this.ctx = new AudioContext();
 
-    // Master gain (overall volume)
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = 0.5;
 
-    // Reverb send via convolver with synthetic impulse response
     this.convolver = this.ctx.createConvolver();
     this.convolver.buffer = this.createReverbImpulse(this.ctx, 3.0, 2.0);
 
     this.reverbGain = this.ctx.createGain();
     this.reverbGain.gain.value = 0.3;
 
-    // Routing: voices -> masterGain -> destination
-    //                  -> reverbGain -> convolver -> destination
     this.masterGain.connect(this.ctx.destination);
     this.masterGain.connect(this.reverbGain);
     this.reverbGain.connect(this.convolver);
@@ -70,10 +87,6 @@ export class SoundEngine {
     this.enabled = true;
   }
 
-  /**
-   * Create a synthetic reverb impulse response.
-   * Generates exponentially decaying white noise.
-   */
   private createReverbImpulse(
     ctx: AudioContext,
     duration: number,
@@ -94,36 +107,42 @@ export class SoundEngine {
     return impulse;
   }
 
-  /** Update canvas width for pan calculations */
   setCanvasWidth(width: number): void {
     this.canvasWidth = width;
   }
 
-  /**
-   * Called each animation frame with the current trail states.
-   * This is the main sonification loop.
-   *
-   * @param elapsedMs - Current looped elapsed time in the animation
-   * @param activeTrails - Trail frames that are currently visible/animating
-   */
+  /** Update sound configuration (chord voicing, cursor instruments, crossings) */
+  setConfig(config: Partial<SoundConfig>): void {
+    const prevChord = this.config.chordVoicing;
+    Object.assign(this.config, config);
+
+    // If chord voicing was toggled, update existing voices
+    if (prevChord !== this.config.chordVoicing) {
+      for (const [, voice] of this.voices) {
+        if (this.config.chordVoicing) {
+          this.enableFifth(voice);
+        } else {
+          this.disableFifth(voice);
+        }
+      }
+    }
+  }
+
   tick(elapsedMs: number, activeTrails: TrailSoundFrame[]): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
 
-    // Resume context if suspended (autoplay policy)
     if (this.ctx.state === "suspended") {
       this.ctx.resume();
     }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
 
-    // Release voices for trails that are no longer active
     for (const [idx, voice] of this.voices) {
       if (!activeIndices.has(idx) && voice.active) {
         this.releaseVoice(voice);
       }
     }
 
-    // Process each active trail
     for (const frame of activeTrails) {
       const prev = this.prevPositions.get(frame.trailIndex);
       const prevX = prev?.x ?? frame.x;
@@ -132,10 +151,8 @@ export class SoundEngine {
       const velocity = computeVelocity(prevX, prevY, frame.x, frame.y);
       const gain = velocityToGain(velocity);
 
-      // Store current position for next frame
       this.prevPositions.set(frame.trailIndex, { x: frame.x, y: frame.y });
 
-      // Below velocity threshold = silence for this trail
       if (velocity < SILENCE_VELOCITY_THRESHOLD) {
         const voice = this.voices.get(frame.trailIndex);
         if (voice?.active) {
@@ -147,23 +164,25 @@ export class SoundEngine {
       const direction = computeDirection(prevX, prevY, frame.x, frame.y);
       const frequency = directionToPitch(direction);
       const pan = positionToPan(frame.x, this.canvasWidth);
-      const instrument = getInstrument(frame.cursorType);
+
+      // When cursor instruments are off, use the default instrument for all
+      const instrument = this.config.cursorInstruments
+        ? getInstrument(frame.cursorType)
+        : getInstrument(undefined);
 
       let voice = this.voices.get(frame.trailIndex);
 
-      // Create voice if it doesn't exist
       if (!voice) {
         voice = this.createVoice(instrument);
         this.voices.set(frame.trailIndex, voice);
       }
 
-      // Update instrument if cursor type changed
-      if (frame.cursorType !== voice.lastCursorType) {
+      // Update instrument if cursor type changed and cursor instruments mode is on
+      if (this.config.cursorInstruments && frame.cursorType !== voice.lastCursorType) {
         this.updateVoiceInstrument(voice, instrument);
         voice.lastCursorType = frame.cursorType;
       }
 
-      // Update pitch (with rate limiting to avoid glitchy rapid changes)
       if (
         frequency !== voice.currentFrequency &&
         elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS
@@ -173,13 +192,11 @@ export class SoundEngine {
         voice.currentFrequency = frequency;
       }
 
-      // Update gain based on velocity
       voice.gainNode.gain.linearRampToValueAtTime(
         gain * instrument.gain,
         this.ctx.currentTime + 0.05,
       );
 
-      // Update pan based on x position
       voice.panNode.pan.linearRampToValueAtTime(
         pan,
         this.ctx.currentTime + 0.05,
@@ -187,11 +204,90 @@ export class SoundEngine {
 
       voice.active = true;
     }
+
+    // Detect trail crossings and trigger dissonance
+    if (this.config.crossingDissonance && activeTrails.length >= 2) {
+      this.detectCrossings(elapsedMs, activeTrails);
+    }
   }
 
-  /**
-   * Trigger a bell/percussion sound for a click event.
-   */
+  /** Detect when two active trails are near each other and trigger dissonant tones */
+  private detectCrossings(
+    elapsedMs: number,
+    activeTrails: TrailSoundFrame[],
+  ): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    for (let i = 0; i < activeTrails.length; i++) {
+      for (let j = i + 1; j < activeTrails.length; j++) {
+        const a = activeTrails[i];
+        const b = activeTrails[j];
+
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= CROSSING_DISTANCE_THRESHOLD) continue;
+
+        // Check cooldown
+        const pairKey = `${Math.min(a.trailIndex, b.trailIndex)}-${Math.max(a.trailIndex, b.trailIndex)}`;
+        const lastCrossing = this.crossingCooldowns.get(pairKey) ?? 0;
+        if (elapsedMs - lastCrossing < CROSSING_COOLDOWN_MS) continue;
+
+        this.crossingCooldowns.set(pairKey, elapsedMs);
+        this.triggerCrossingDissonance(a, b, distance);
+      }
+    }
+  }
+
+  /** Trigger a brief dissonant tone at the crossing point */
+  private triggerCrossingDissonance(
+    a: TrailSoundFrame,
+    b: TrailSoundFrame,
+    distance: number,
+  ): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    const now = this.ctx.currentTime;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+
+    // Dissonant intervals: minor second (16/15) and tritone (Math.sqrt(2))
+    // Pick based on which trails are crossing
+    const baseFreq = 220 + (midY / (window.innerHeight || 800)) * 440;
+    const dissonantRatio = (a.trailIndex + b.trailIndex) % 2 === 0
+      ? 16 / 15  // minor second — tense, close
+      : Math.SQRT2; // tritone — unstable, eerie
+
+    const osc1 = this.ctx.createOscillator();
+    osc1.type = "sine";
+    osc1.frequency.value = baseFreq;
+
+    const osc2 = this.ctx.createOscillator();
+    osc2.type = "sine";
+    osc2.frequency.value = baseFreq * dissonantRatio;
+
+    // Closer crossing = louder dissonance
+    const proximityGain = 1 - distance / CROSSING_DISTANCE_THRESHOLD;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.06 * proximityGain, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+
+    const pan = this.ctx.createStereoPanner();
+    pan.pan.value = positionToPan(midX, this.canvasWidth);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(pan);
+    pan.connect(this.masterGain);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 1.6);
+    osc2.stop(now + 1.6);
+  }
+
   triggerClick(click: ClickSoundEvent): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
 
@@ -201,7 +297,6 @@ export class SoundEngine {
     const osc = this.ctx.createOscillator();
     osc.type = instrument.oscillatorType;
 
-    // Click pitch from D minor pentatonic, selected by y position
     const BELL_SCALE = [
       293.66, // D4
       349.23, // F4
@@ -218,10 +313,9 @@ export class SoundEngine {
     const baseFreq = BELL_SCALE[scaleIndex];
     osc.frequency.value = baseFreq;
 
-    // Octave + fifth partial for bell-like quality (stays consonant)
     const osc2 = this.ctx.createOscillator();
     osc2.type = "sine";
-    osc2.frequency.value = baseFreq * 3; // 3rd harmonic (octave + fifth)
+    osc2.frequency.value = baseFreq * 3;
 
     const gain = this.ctx.createGain();
     const holdScale = click.holdDuration
@@ -265,14 +359,13 @@ export class SoundEngine {
     osc2.stop(stopTime);
   }
 
-  /** Create a new voice with oscillator, gain, filter, pan */
   private createVoice(instrument: InstrumentConfig): Voice {
     const ctx = this.ctx!;
     const now = ctx.currentTime;
 
     const osc = ctx.createOscillator();
     osc.type = instrument.oscillatorType;
-    osc.frequency.value = 220; // A3 default, will be set on first note
+    osc.frequency.value = 220;
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
@@ -291,9 +384,32 @@ export class SoundEngine {
 
     osc.start(now);
 
+    // Create fifth oscillator for chord voicing (always created, gain-gated)
+    const fifthOsc = ctx.createOscillator();
+    fifthOsc.type = instrument.oscillatorType;
+    fifthOsc.frequency.value = 220 * 1.5; // Perfect fifth
+
+    const fifthGain = ctx.createGain();
+    fifthGain.gain.setValueAtTime(
+      this.config.chordVoicing ? 0.6 : 0,
+      now,
+    );
+
+    fifthOsc.connect(filter); // Share the same filter chain
+    fifthOsc.start(now);
+
+    // Route fifth gain separately so we can control its level
+    // Actually, the fifth goes through the same filter -> gain -> pan chain
+    // but we control its presence via fifthGain before the filter
+    fifthOsc.disconnect();
+    fifthOsc.connect(fifthGain);
+    fifthGain.connect(filter);
+
     return {
       oscillator: osc,
+      fifthOscillator: fifthOsc,
       gainNode: gain,
+      fifthGainNode: fifthGain,
       filterNode: filter,
       panNode: pan,
       currentFrequency: 0,
@@ -303,16 +419,40 @@ export class SoundEngine {
     };
   }
 
-  /** Smoothly transition to a new frequency */
-  private setVoiceFrequency(voice: Voice, frequency: number): void {
-    if (!this.ctx || !voice.oscillator) return;
-    voice.oscillator.frequency.exponentialRampToValueAtTime(
-      frequency,
-      this.ctx.currentTime + 0.08,
+  /** Enable the fifth oscillator on an existing voice */
+  private enableFifth(voice: Voice): void {
+    if (!this.ctx || !voice.fifthGainNode) return;
+    voice.fifthGainNode.gain.linearRampToValueAtTime(
+      0.6,
+      this.ctx.currentTime + 0.3,
     );
   }
 
-  /** Update voice filter/envelope when cursor type changes */
+  /** Disable the fifth oscillator on an existing voice */
+  private disableFifth(voice: Voice): void {
+    if (!this.ctx || !voice.fifthGainNode) return;
+    voice.fifthGainNode.gain.linearRampToValueAtTime(
+      0,
+      this.ctx.currentTime + 0.3,
+    );
+  }
+
+  private setVoiceFrequency(voice: Voice, frequency: number): void {
+    if (!this.ctx) return;
+    if (voice.oscillator) {
+      voice.oscillator.frequency.exponentialRampToValueAtTime(
+        frequency,
+        this.ctx.currentTime + 0.08,
+      );
+    }
+    if (voice.fifthOscillator) {
+      voice.fifthOscillator.frequency.exponentialRampToValueAtTime(
+        frequency * 1.5, // Perfect fifth
+        this.ctx.currentTime + 0.08,
+      );
+    }
+  }
+
   private updateVoiceInstrument(
     voice: Voice,
     instrument: InstrumentConfig,
@@ -325,7 +465,6 @@ export class SoundEngine {
     );
     voice.filterNode.Q.linearRampToValueAtTime(instrument.filterQ, now + 0.1);
 
-    // If oscillator type changed, we need to swap oscillators
     if (voice.oscillator && voice.oscillator.type !== instrument.oscillatorType) {
       const oldOsc = voice.oscillator;
       const newOsc = this.ctx.createOscillator();
@@ -335,10 +474,22 @@ export class SoundEngine {
       newOsc.start(this.ctx.currentTime);
       oldOsc.stop(this.ctx.currentTime + 0.05);
       voice.oscillator = newOsc;
+
+      // Also update the fifth oscillator type to match
+      if (voice.fifthOscillator && voice.fifthGainNode) {
+        const oldFifth = voice.fifthOscillator;
+        const newFifth = this.ctx.createOscillator();
+        newFifth.type = instrument.oscillatorType;
+        newFifth.frequency.value = (voice.currentFrequency || 220) * 1.5;
+        newFifth.connect(voice.fifthGainNode);
+        voice.fifthGainNode.connect(voice.filterNode);
+        newFifth.start(this.ctx.currentTime);
+        oldFifth.stop(this.ctx.currentTime + 0.05);
+        voice.fifthOscillator = newFifth;
+      }
     }
   }
 
-  /** Fade a voice to silence quickly (cursor stopped moving) */
   private fadeVoice(voice: Voice, duration: number): void {
     if (!this.ctx) return;
     voice.gainNode.gain.linearRampToValueAtTime(
@@ -348,21 +499,22 @@ export class SoundEngine {
     voice.active = false;
   }
 
-  /** Release a voice (trail ended) and clean up */
   private releaseVoice(voice: Voice): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
     voice.active = false;
 
-    // Stop oscillator after release
     if (voice.oscillator) {
       voice.oscillator.stop(now + 0.6);
       voice.oscillator = null;
     }
+    if (voice.fifthOscillator) {
+      voice.fifthOscillator.stop(now + 0.6);
+      voice.fifthOscillator = null;
+    }
   }
 
-  /** Set master volume (0-1) */
   setVolume(volume: number): void {
     if (!this.masterGain || !this.ctx) return;
     this.masterGain.gain.linearRampToValueAtTime(
@@ -371,33 +523,32 @@ export class SoundEngine {
     );
   }
 
-  /** Clean up all audio resources */
   dispose(): void {
     this.enabled = false;
     for (const [, voice] of this.voices) {
       if (voice.oscillator) {
-        try {
-          voice.oscillator.stop();
-        } catch {
-          // already stopped
-        }
+        try { voice.oscillator.stop(); } catch { /* already stopped */ }
+      }
+      if (voice.fifthOscillator) {
+        try { voice.fifthOscillator.stop(); } catch { /* already stopped */ }
       }
     }
     this.voices.clear();
     this.prevPositions.clear();
+    this.crossingCooldowns.clear();
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
     }
   }
 
-  /** Reset state (e.g., on animation loop wrap) */
   reset(): void {
     for (const [, voice] of this.voices) {
       this.releaseVoice(voice);
     }
     this.voices.clear();
     this.prevPositions.clear();
+    this.crossingCooldowns.clear();
   }
 
   isEnabled(): boolean {

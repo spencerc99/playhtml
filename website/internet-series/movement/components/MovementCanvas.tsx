@@ -93,6 +93,9 @@ const loadSettings = () => {
     navigationRadialBlobEdgeNoise: 0.45,
     navigationRadialBlobValleyDepth: 0.05,
     navigationRadialSegmentByDay: true,
+    soundChordVoicing: false,
+    soundCursorInstruments: false,
+    soundCrossingDissonance: false,
   };
 
   try {
@@ -173,6 +176,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         const engine = new SoundEngine();
         engine.init().then(() => {
           engine.setCanvasWidth(viewportSize.width);
+          engine.setConfig({
+            chordVoicing: settings.soundChordVoicing,
+            cursorInstruments: settings.soundCursorInstruments,
+            crossingDissonance: settings.soundCrossingDissonance,
+          });
           soundEngineRef.current = engine;
         });
       }
@@ -191,6 +199,19 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   useEffect(() => {
     soundEngineRef.current?.setCanvasWidth(viewportSize.width);
   }, [viewportSize.width]);
+
+  // Sync sound config settings to the engine
+  useEffect(() => {
+    soundEngineRef.current?.setConfig({
+      chordVoicing: settings.soundChordVoicing,
+      cursorInstruments: settings.soundCursorInstruments,
+      crossingDissonance: settings.soundCrossingDissonance,
+    });
+  }, [
+    settings.soundChordVoicing,
+    settings.soundCursorInstruments,
+    settings.soundCrossingDissonance,
+  ]);
 
   // Derive which visualization categories are active
   const vizSet = useMemo(() => new Set(activeVisualizations), [activeVisualizations]);
