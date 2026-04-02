@@ -758,7 +758,7 @@ export const Controls: React.FC<ControlsProps> = memo(
                 type="checkbox"
                 checked={settings.showPagePreview ?? false}
                 onChange={(e) =>
-                  onSettingsChange((s) => ({
+                  setSettings((s: any) => ({
                     ...s,
                     showPagePreview: e.target.checked,
                   }))
