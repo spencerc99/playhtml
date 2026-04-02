@@ -69,6 +69,8 @@ export class SoundEngine {
   private canvasWidth: number = 0;
   private enabled: boolean = false;
   private prevPositions: Map<number, { x: number; y: number }> = new Map();
+  /** Accumulated path history per trail for crossing detection */
+  private trailPaths: Map<number, Array<{ x: number; y: number }>> = new Map();
   private config: SoundConfig = { ...DEFAULT_CONFIG };
   /** Tracks recent crossing events to prevent rapid re-triggering */
   private crossingCooldowns: Map<string, number> = new Map();
@@ -161,6 +163,23 @@ export class SoundEngine {
 
       this.prevPositions.set(frame.trailIndex, { x: frame.x, y: frame.y });
 
+      // Accumulate path history for crossing detection (sample every few pixels)
+      if (this.config.crossingDissonance) {
+        let path = this.trailPaths.get(frame.trailIndex);
+        if (!path) {
+          path = [];
+          this.trailPaths.set(frame.trailIndex, path);
+        }
+        const lastPathPt = path[path.length - 1];
+        if (
+          !lastPathPt ||
+          Math.abs(frame.x - lastPathPt.x) > 3 ||
+          Math.abs(frame.y - lastPathPt.y) > 3
+        ) {
+          path.push({ x: frame.x, y: frame.y });
+        }
+      }
+
       if (velocity < SILENCE_VELOCITY_THRESHOLD) {
         const voice = this.voices.get(frame.trailIndex);
         if (voice?.active) {
@@ -239,31 +258,44 @@ export class SoundEngine {
     }
   }
 
-  /** Detect when two active trails are near each other and trigger dissonant tones */
+  /** Detect when an active cursor crosses over another trail's path */
   private detectCrossings(
     elapsedMs: number,
     activeTrails: TrailSoundFrame[],
   ): void {
     if (!this.ctx || !this.masterGain) return;
 
-    for (let i = 0; i < activeTrails.length; i++) {
-      for (let j = i + 1; j < activeTrails.length; j++) {
-        const a = activeTrails[i];
-        const b = activeTrails[j];
+    // For each active trail, check if its cursor is near any point in another trail's path
+    for (const frame of activeTrails) {
+      for (const [otherIdx, otherPath] of this.trailPaths) {
+        if (otherIdx === frame.trailIndex) continue;
+        if (otherPath.length < 2) continue;
 
-        const dx = a.x - b.x;
-        const dy = a.y - b.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance >= CROSSING_DISTANCE_THRESHOLD) continue;
-
-        // Check cooldown
-        const pairKey = `${Math.min(a.trailIndex, b.trailIndex)}-${Math.max(a.trailIndex, b.trailIndex)}`;
+        // Check cooldown for this trail-path pair
+        const pairKey = `${frame.trailIndex}-path-${otherIdx}`;
         const lastCrossing = this.crossingCooldowns.get(pairKey) ?? 0;
         if (elapsedMs - lastCrossing < CROSSING_COOLDOWN_MS) continue;
 
+        // Check cursor position against sampled path points
+        // Sample every 10th point to keep it fast
+        let closestDist = Infinity;
+        for (let i = 0; i < otherPath.length; i += 10) {
+          const pt = otherPath[i];
+          const dx = frame.x - pt.x;
+          const dy = frame.y - pt.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < closestDist) closestDist = dist;
+          if (dist < CROSSING_DISTANCE_THRESHOLD) break;
+        }
+
+        if (closestDist >= CROSSING_DISTANCE_THRESHOLD) continue;
+
         this.crossingCooldowns.set(pairKey, elapsedMs);
-        this.triggerCrossingDissonance(a, b, distance);
+        this.triggerCrossingDissonance(
+          frame,
+          { trailIndex: otherIdx, x: frame.x, y: frame.y, prevX: frame.x, prevY: frame.y, cursorType: undefined, progress: 0, color: "", isNewlyActive: false },
+          closestDist,
+        );
       }
     }
   }
@@ -565,6 +597,7 @@ export class SoundEngine {
     this.voices.clear();
     this.prevPositions.clear();
     this.crossingCooldowns.clear();
+    this.trailPaths.clear();
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
@@ -578,6 +611,7 @@ export class SoundEngine {
     this.voices.clear();
     this.prevPositions.clear();
     this.crossingCooldowns.clear();
+    this.trailPaths.clear();
   }
 
   isEnabled(): boolean {

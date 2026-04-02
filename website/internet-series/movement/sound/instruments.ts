@@ -87,6 +87,17 @@ export const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
     filterQ: 4,
     gain: 0.06,
   },
+  // Move/all-scroll cursor — smooth, gliding sine with wide filter
+  move: {
+    oscillatorType: "sine",
+    attack: 0.08,
+    decay: 0.3,
+    sustain: 0.3,
+    release: 1.5,
+    filterFrequency: 2500,
+    filterQ: 0.7,
+    gain: 0.13,
+  },
 };
 
 /**
@@ -95,7 +106,9 @@ export const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
  */
 export function getInstrument(cursorType: string | undefined): InstrumentConfig {
   if (!cursorType) return DEFAULT_INSTRUMENT;
-  return CURSOR_INSTRUMENTS[cursorType] ?? DEFAULT_INSTRUMENT;
+  // Normalize aliases
+  const normalized = cursorType === "all-scroll" ? "move" : cursorType;
+  return CURSOR_INSTRUMENTS[normalized] ?? DEFAULT_INSTRUMENT;
 }
 
 /**

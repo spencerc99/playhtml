@@ -23,7 +23,7 @@ const DISSONANCE_INTERVALS = [
   { name: "Tritone", ratio: Math.SQRT2, description: "Unstable, eerie" },
 ];
 
-const CURSOR_TYPES = ["default", "pointer", "text", "grab", "grabbing", "crosshair"];
+const CURSOR_TYPES = ["default", "pointer", "text", "grab", "grabbing", "crosshair", "move"];
 
 const styles = {
   page: {
