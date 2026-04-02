@@ -624,23 +624,33 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
       <button
         onClick={() => setSoundEnabled((prev) => !prev)}
+        title={soundEnabled ? "Mute" : "Play sound"}
         style={{
           position: "absolute",
-          bottom: 20,
-          left: 20,
+          top: 14,
+          right: 20,
           zIndex: 200,
-          padding: "8px 14px",
-          background: soundEnabled ? "#3d3833" : "#faf9f6",
-          color: soundEnabled ? "#faf9f6" : "#3d3833",
-          border: "1px solid #3d3833",
-          fontFamily: "'Martian Mono', monospace",
-          fontSize: "11px",
-          letterSpacing: "0.5px",
+          padding: 6,
+          background: "none",
+          border: "none",
           cursor: "pointer",
-          textTransform: "uppercase",
+          opacity: soundEnabled ? 0.7 : 0.3,
         }}
       >
-        {soundEnabled ? "sound on" : "sound off"}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3d3833" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 5L6 9H2v6h4l5 4V5z" />
+          {soundEnabled ? (
+            <>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </>
+          ) : (
+            <>
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
+            </>
+          )}
+        </svg>
       </button>
 
       <div className="canvas-container" ref={containerRef}>
