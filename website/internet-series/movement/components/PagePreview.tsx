@@ -16,13 +16,11 @@ interface PagePreviewProps {
 /**
  * Renders an abstract, pixelated representation of a web page.
  *
- * The approach: render the page in an iframe at full size, then use nested
- * CSS transforms to downscale and re-upscale with `image-rendering: pixelated`.
- * This creates a mosaic effect that preserves color distribution and layout
- * density without being readable.
+ * The approach: render a tiny canvas (viewport / pixelScale) that contains
+ * the iframe scaled down. The container then scales it back up to fill the
+ * viewport rect with image-rendering: pixelated, creating a mosaic effect.
  *
- * Scroll position is simulated via `transform: translateY()` on the iframe,
- * which works cross-origin since it's a CSS transform on our element.
+ * Scroll position is simulated via translateY on the iframe.
  */
 export const PagePreview = memo(
   ({
@@ -33,40 +31,41 @@ export const PagePreview = memo(
     height,
     scrollY,
     scrollRange,
-    pixelScale = 16,
+    pixelScale = 12,
   }: PagePreviewProps) => {
-    // The iframe is rendered tall enough to cover the scroll range.
-    // pageMultiplier matches the logic in DynamicViewportRect.
+    // Page is taller than viewport to allow scrolling
     const pageMultiplier = 2 + scrollRange * 4;
-    const iframeHeight = height * pageMultiplier;
-    const scrollableHeight = iframeHeight - height;
-    const scrollOffset = scrollY * scrollableHeight;
+    const pageHeight = height * pageMultiplier;
+    const scrollOffset = scrollY * (pageHeight - height);
 
-    // The downscale factor: we shrink the iframe to 1/pixelScale of its size,
-    // then the container scales it back up. With image-rendering: pixelated,
-    // this creates the mosaic effect.
-    const downscale = 1 / pixelScale;
+    // Tiny dimensions for the downscaled rendering
+    const tinyW = Math.max(1, Math.round(width / pixelScale));
+    const tinyH = Math.max(1, Math.round(height / pixelScale));
 
     return (
       <foreignObject x={x} y={y} width={width} height={height}>
+        {/* Outer container: scales the tiny content back up to fill the viewport */}
         <div
+          xmlns="http://www.w3.org/1999/xhtml"
           style={{
-            width,
-            height,
+            width: width,
+            height: height,
             overflow: "hidden",
-            imageRendering: "pixelated",
-            // Prevent any interaction with the iframe
+            imageRendering: "pixelated" as any,
             pointerEvents: "none",
           }}
         >
+          {/* Tiny container: everything inside is rendered at 1/pixelScale */}
           <div
             style={{
-              width,
-              height,
-              transform: `scale(${downscale})`,
+              width: tinyW,
+              height: tinyH,
+              overflow: "hidden",
+              transform: `scale(${pixelScale})`,
               transformOrigin: "top left",
             }}
           >
+            {/* Iframe rendered at tiny size, shifted up to simulate scroll */}
             <iframe
               src={url}
               sandbox="allow-same-origin"
@@ -74,11 +73,11 @@ export const PagePreview = memo(
               tabIndex={-1}
               style={{
                 border: "none",
-                width: width * pixelScale,
-                height: iframeHeight * pixelScale,
-                transform: `translateY(-${scrollOffset * pixelScale}px) scale(${downscale})`,
-                transformOrigin: "top left",
+                width: tinyW,
+                height: Math.round(pageHeight / pixelScale),
+                transform: `translateY(-${Math.round(scrollOffset / pixelScale)}px)`,
                 pointerEvents: "none",
+                display: "block",
               }}
             />
           </div>
