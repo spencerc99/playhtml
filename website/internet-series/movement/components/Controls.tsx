@@ -753,6 +753,22 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="checkbox"
+                checked={settings.showPagePreview ?? false}
+                onChange={(e) =>
+                  onSettingsChange((s) => ({
+                    ...s,
+                    showPagePreview: e.target.checked,
+                  }))
+                }
+              />
+              Show page preview (uses iframes)
+            </label>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="min-viewports">Min Viewports</label>
             <input
               id="min-viewports"

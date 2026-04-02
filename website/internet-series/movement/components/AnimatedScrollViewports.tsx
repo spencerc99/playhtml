@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
 import { RISO_COLORS } from "../utils/eventUtils";
+import { PagePreview } from "./PagePreview";
 
 // Configuration constants
 const FADE_IN_DURATION = 400; // ms
@@ -21,6 +22,7 @@ interface AnimatedScrollViewportsProps {
     backgroundOpacity: number;
     maxConcurrentScrolls: number;
     randomizeColors?: boolean;
+    showPagePreview?: boolean;
   };
 }
 
@@ -1386,6 +1388,19 @@ const DynamicViewportRect = memo(
               </g>
             )}
           </g>
+
+          {/* Abstract pixelated page preview via iframe */}
+          {settings.showPagePreview && animation.pageUrl && (
+            <PagePreview
+              url={animation.pageUrl}
+              x={visualX}
+              y={visualY}
+              width={visualWidth}
+              height={visualHeight}
+              scrollY={scrollY}
+              scrollRange={scrollRange}
+            />
+          )}
 
           {/* Edge tint overlays - inner glow effect */}
           <rect

@@ -69,6 +69,7 @@ const loadSettings = () => {
     scrollSpeed: 1.0,
     backgroundOpacity: 0.7,
     maxConcurrentScrolls: 5,
+    showPagePreview: false,
     scrollOverlapFactor: 0.8,
     minViewports: 10,
     maxViewports: 50,
@@ -543,12 +544,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       backgroundOpacity: settings.backgroundOpacity,
       maxConcurrentScrolls: settings.maxConcurrentScrolls,
       randomizeColors: settings.randomizeColors,
+      showPagePreview: settings.showPagePreview,
     }),
     [
       settings.scrollSpeed,
       settings.backgroundOpacity,
       settings.maxConcurrentScrolls,
       settings.randomizeColors,
+      settings.showPagePreview,
     ],
   );
 
