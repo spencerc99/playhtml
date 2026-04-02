@@ -18,8 +18,8 @@ import type { TrailSoundFrame } from "../sound/types";
 const EVICTION_FADE_MS = 3000;
 
 // Finished trails dim to this opacity over COMPLETION_FADE_MS
-const COMPLETED_OPACITY = 0.25;
-const COMPLETION_FADE_MS = 1500;
+const COMPLETED_OPACITY = 0.6;
+const COMPLETION_FADE_MS = 3000;
 
 // How many points to show behind the cursor while drawing
 const TAIL_LENGTH = 1000;
