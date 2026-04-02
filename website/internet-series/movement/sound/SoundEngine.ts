@@ -17,6 +17,9 @@ const MIN_NOTE_INTERVAL_MS = 80;
 /** Minimum velocity to trigger any sound (pixels per frame at ~60fps) */
 const SILENCE_VELOCITY_THRESHOLD = 0.05;
 
+/** Interval between repeated plucks for percussive cursor types like text (ms) */
+const PLUCK_REPEAT_INTERVAL_MS = 120;
+
 /** Distance threshold for trail crossing detection (pixels) */
 const CROSSING_DISTANCE_THRESHOLD = 15;
 
@@ -36,6 +39,9 @@ const DEFAULT_CONFIG: SoundConfig = {
   crossingDissonance: false,
 };
 
+/** Cursor types that use repeating pluck instead of sustained tone */
+const PERCUSSIVE_CURSOR_TYPES = new Set(["text"]);
+
 /** Per-trail voice state */
 interface Voice {
   oscillator: OscillatorNode | null;
@@ -49,6 +55,8 @@ interface Voice {
   currentFrequency: number;
   lastNoteTimeMs: number;
   lastCursorType: string | undefined;
+  /** Last time a percussive pluck was triggered (ms) */
+  lastPluckMs: number;
   active: boolean;
 }
 
@@ -192,10 +200,30 @@ export class SoundEngine {
         voice.currentFrequency = frequency;
       }
 
-      voice.gainNode.gain.linearRampToValueAtTime(
-        gain * instrument.gain,
-        this.ctx.currentTime + 0.05,
-      );
+      // Percussive cursor types (e.g. text) use repeating plucks instead of
+      // a sustained tone — like typing rhythm
+      const isPercussive = this.config.cursorInstruments &&
+        PERCUSSIVE_CURSOR_TYPES.has(frame.cursorType ?? "");
+
+      if (isPercussive) {
+        if (elapsedMs - voice.lastPluckMs > PLUCK_REPEAT_INTERVAL_MS) {
+          voice.lastPluckMs = elapsedMs;
+          const now = this.ctx.currentTime;
+          const pluckGain = gain * instrument.gain;
+          // Sharp attack, quick decay — percussive envelope
+          voice.gainNode.gain.cancelScheduledValues(now);
+          voice.gainNode.gain.setValueAtTime(pluckGain, now);
+          voice.gainNode.gain.exponentialRampToValueAtTime(
+            0.001,
+            now + instrument.attack + instrument.decay + instrument.release,
+          );
+        }
+      } else {
+        voice.gainNode.gain.linearRampToValueAtTime(
+          gain * instrument.gain,
+          this.ctx.currentTime + 0.05,
+        );
+      }
 
       voice.panNode.pan.linearRampToValueAtTime(
         pan,
@@ -415,6 +443,7 @@ export class SoundEngine {
       currentFrequency: 0,
       lastNoteTimeMs: 0,
       lastCursorType: undefined,
+      lastPluckMs: 0,
       active: false,
     };
   }

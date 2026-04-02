@@ -43,16 +43,16 @@ export const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
     filterQ: 1.5,
     gain: 0.15,
   },
-  // Text cursor — soft, airy square wave (heavily filtered)
+  // Text cursor — percussive, staccato pluck (like typing)
   text: {
     oscillatorType: "square",
-    attack: 0.15,
-    decay: 0.5,
-    sustain: 0.1,
-    release: 2.5,
-    filterFrequency: 800,
-    filterQ: 2,
-    gain: 0.08,
+    attack: 0.005,
+    decay: 0.08,
+    sustain: 0.05,
+    release: 0.3,
+    filterFrequency: 1200,
+    filterQ: 3,
+    gain: 0.1,
   },
   // Grab cursor — deep, resonant triangle
   grab: {
