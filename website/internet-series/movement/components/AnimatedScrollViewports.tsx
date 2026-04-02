@@ -567,6 +567,7 @@ const DynamicViewportRect = memo(
       scrollSpeed: number;
       backgroundOpacity: number;
       randomizeColors?: boolean;
+      showPagePreview?: boolean;
     };
   }) => {
     const {
