@@ -17,6 +17,10 @@ import type { TrailSoundFrame } from "../sound/types";
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
 
+// Finished trails dim to this opacity over COMPLETION_FADE_MS
+const COMPLETED_OPACITY = 0.25;
+const COMPLETION_FADE_MS = 1500;
+
 // How many points to show behind the cursor while drawing
 const TAIL_LENGTH = 1000;
 
@@ -290,7 +294,10 @@ function computeEvictionFades(
         1 - timeSinceEvicted / EVICTION_FADE_MS,
       );
     } else {
-      fades[f.originalIndex] = 1;
+      // Dim finished trails so active ones are visually prominent
+      const timeSinceFinished = elapsedTimeMs - f.finishedAtMs;
+      const fadeFraction = Math.min(1, timeSinceFinished / COMPLETION_FADE_MS);
+      fades[f.originalIndex] = 1 - fadeFraction * (1 - COMPLETED_OPACITY);
     }
   }
 
