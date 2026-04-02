@@ -87,16 +87,16 @@ export const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
     filterQ: 4,
     gain: 0.06,
   },
-  // Move/all-scroll cursor — smooth, gliding sine with wide filter
+  // Move/all-scroll cursor — low resonant hum, like dragging weight
   move: {
-    oscillatorType: "sine",
-    attack: 0.08,
-    decay: 0.3,
-    sustain: 0.3,
-    release: 1.5,
-    filterFrequency: 2500,
-    filterQ: 0.7,
-    gain: 0.13,
+    oscillatorType: "sawtooth",
+    attack: 0.15,
+    decay: 0.4,
+    sustain: 0.4,
+    release: 1.0,
+    filterFrequency: 300,
+    filterQ: 8,
+    gain: 0.14,
   },
 };
 
