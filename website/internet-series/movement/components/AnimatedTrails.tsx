@@ -40,19 +40,7 @@ function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
   }
 }
 
-// Compute speed between two trail points and derive a stroke width.
-// Fast movement produces thin strokes; slow movement produces thick strokes.
-function speedStrokeWidth(
-  point: { x: number; y: number; ts: number },
-  prevPoint: { x: number; y: number; ts: number },
-): number {
-  const dx = point.x - prevPoint.x;
-  const dy = point.y - prevPoint.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const dt = point.ts - prevPoint.ts;
-  const speed = dt > 0 ? dist / dt : 0;
-  return Math.max(1, 5 - speed * 10);
-}
+
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
@@ -237,9 +225,8 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
 
             if (monochromeMode) {
               const monoStyle = getMonochromeStyle(frame.cursorType);
-              // Use fixed stroke width from prop (set at mount, never changes)
-              const cachedSw = fixedMonoStrokeWidth;
-              const effectiveWidth = Math.max(1, cachedSw * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
+              // Fixed width from prop — deterministic per trail, never changes
+              const effectiveWidth = fixedMonoStrokeWidth;
 
               pathEl.setAttribute("stroke", monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke);
               pathEl.setAttribute("opacity", String(monoStyle.opacity * trailOpacity));
@@ -451,26 +438,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const trailHandles = useRef<(ImperativeTrailHandle | null)[]>(
       new Array(trailStates.length).fill(null),
     );
-
-    // Cache monochrome stroke widths per trail — computed once from the full trail data
-    const monoStrokeWidths = useRef<Map<number, number>>(new Map());
-    // Recompute when trailStates change (new set of trails)
-    useMemo(() => {
-      const cache = new Map<number, number>();
-      for (let i = 0; i < trailStates.length; i++) {
-        const points = trailStates[i].trail.points;
-        if (points.length < 2) {
-          cache.set(i, 3); // default
-          continue;
-        }
-        let totalSw = 0;
-        for (let pi = 1; pi < points.length; pi++) {
-          totalSw += speedStrokeWidth(points[pi], points[pi - 1]);
-        }
-        cache.set(i, totalSw / (points.length - 1));
-      }
-      monoStrokeWidths.current = cache;
-    }, [trailStates]);
 
     // Click batching
     const pendingClicks = useRef<ClickEffect[]>([]);
@@ -707,7 +674,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             }}
             trailState={ts}
             trailIndex={idx}
-            fixedMonoStrokeWidth={monoStrokeWidths.current.get(idx) ?? 3}
+            fixedMonoStrokeWidth={1 + ((idx * 7 + 3) % 5)}
             generatePath={generatePath}
           />
         ))}
