@@ -177,6 +177,7 @@ interface ImperativeTrailHandle {
     strokeWidth: number,
     evictionFade: number,
     monochromeMode: boolean,
+    monoStrokeWidth: number,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
 }
 
@@ -204,7 +205,7 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
     const cursorSize = 32;
 
     React.useImperativeHandle(ref, () => ({
-      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, monochromeMode) {
+      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, monochromeMode, monoStrokeWidth) {
         const group = groupRef.current;
         if (!group) return null;
 
@@ -236,18 +237,9 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
 
             if (monochromeMode) {
               const monoStyle = getMonochromeStyle(frame.cursorType);
-              // Compute average speed across the entire trail once for a stable width.
-              // Each trail gets a consistent thickness; different trails vary.
-              const points = trailState.trail.points;
-              let totalSpeed = 0;
-              let speedSamples = 0;
-              for (let pi = 1; pi < points.length; pi++) {
-                const sw = speedStrokeWidth(points[pi], points[pi - 1]);
-                totalSpeed += sw;
-                speedSamples++;
-              }
-              const avgSpeed = speedSamples > 0 ? totalSpeed / speedSamples : 3;
-              const effectiveWidth = Math.max(1, avgSpeed * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
+              // Use pre-cached stroke width passed from parent (stable, no per-frame jitter)
+              const cachedSw = monoStrokeWidth;
+              const effectiveWidth = Math.max(1, cachedSw * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
 
               pathEl.setAttribute("stroke", monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke);
               pathEl.setAttribute("opacity", String(monoStyle.opacity * trailOpacity));
@@ -460,6 +452,26 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       new Array(trailStates.length).fill(null),
     );
 
+    // Cache monochrome stroke widths per trail — computed once from the full trail data
+    const monoStrokeWidths = useRef<Map<number, number>>(new Map());
+    // Recompute when trailStates change (new set of trails)
+    useMemo(() => {
+      const cache = new Map<number, number>();
+      for (let i = 0; i < trailStates.length; i++) {
+        const points = trailStates[i].trail.points;
+        if (points.length < 2) {
+          cache.set(i, 3); // default
+          continue;
+        }
+        let totalSw = 0;
+        for (let pi = 1; pi < points.length; pi++) {
+          totalSw += speedStrokeWidth(points[pi], points[pi - 1]);
+        }
+        cache.set(i, totalSw / (points.length - 1));
+      }
+      monoStrokeWidths.current = cache;
+    }, [trailStates]);
+
     // Click batching
     const pendingClicks = useRef<ClickEffect[]>([]);
     const flushClicksScheduled = useRef(false);
@@ -539,6 +551,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               strokeWidthRef.current,
               1,
               monochromeModeRef.current,
+              monoStrokeWidths.current.get(i) ?? 3,
             );
           }
         });
@@ -607,6 +620,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             strokeWidth,
             fade,
             monochromeModeRef.current,
+            monoStrokeWidths.current.get(idx) ?? 3,
           );
 
           if (fade > 0) newVisible.add(idx);
