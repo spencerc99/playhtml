@@ -367,9 +367,10 @@ interface Props {
   onRefresh: () => void;
   onFetchOlder?: () => void;
   hasMore?: boolean;
+  onDomainFilterChange?: (domain: string) => void;
 }
 
-export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefresh, onFetchOlder, hasMore }) => {
+export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefresh, onFetchOlder, hasMore, onDomainFilterChange }) => {
   const [cols, setCols] = useState(() => Math.floor(window.innerWidth / CELL_SIZE));
   const [animationSpeed, setAnimationSpeed] = useState<number>(() => {
     const v = localStorage.getItem(SPEED_STORAGE_KEY);
@@ -612,8 +613,10 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
           className="filter-select"
           value={domainFilter}
           onChange={(e) => {
-            setDomainFilter(e.target.value);
-            localStorage.setItem(DOMAIN_FILTER_KEY, e.target.value);
+            const val = e.target.value;
+            setDomainFilter(val);
+            localStorage.setItem(DOMAIN_FILTER_KEY, val);
+            if (onDomainFilterChange) onDomainFilterChange(val);
           }}
         >
           <option value="">all domains</option>

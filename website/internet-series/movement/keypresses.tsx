@@ -1,5 +1,5 @@
 // ABOUTME: Entry point for the Internet Keypresses visualization
-// ABOUTME: Fetches keyboard events with pagination and passes them to KeypressesGrid
+// ABOUTME: Fetches keyboard events with pagination and domain filtering, passes them to KeypressesGrid
 import "./keypresses.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
@@ -9,15 +9,19 @@ import { KeypressesGrid } from "./components/KeypressesGrid";
 const API_URL =
   "https://playhtml-game-api.spencerc99.workers.dev/events/recent";
 const PAGE_SIZE = 5000;
+const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
 
 const InternetKeypresses = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [domainFilter, setDomainFilter] = useState<string>(
+    () => localStorage.getItem(DOMAIN_FILTER_KEY) ?? "",
+  );
   const fetchingRef = useRef(false);
 
-  const fetchPage = useCallback(async (beforeTs?: number) => {
+  const fetchPage = useCallback(async (domain: string, beforeTs?: number) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
 
@@ -29,6 +33,9 @@ const InternetKeypresses = () => {
         limit: String(PAGE_SIZE),
         type: "keyboard",
       });
+      if (domain) {
+        params.set("domain", domain);
+      }
       if (beforeTs) {
         params.set("to", new Date(beforeTs - 1).toISOString());
       }
@@ -54,21 +61,28 @@ const InternetKeypresses = () => {
     }
   }, []);
 
+  // Fetch on mount and when domain filter changes
   useEffect(() => {
-    fetchPage();
-  }, [fetchPage]);
+    setHasMore(true);
+    setEvents([]);
+    fetchPage(domainFilter);
+  }, [domainFilter, fetchPage]);
 
   const handleRefresh = useCallback(() => {
     setHasMore(true);
     setEvents([]);
-    fetchPage();
-  }, [fetchPage]);
+    fetchPage(domainFilter);
+  }, [domainFilter, fetchPage]);
 
   const handleFetchOlder = useCallback(() => {
     if (!hasMore || fetchingRef.current || events.length === 0) return;
     const oldestTs = Math.min(...events.map((e) => e.ts));
-    fetchPage(oldestTs);
-  }, [events, hasMore, fetchPage]);
+    fetchPage(domainFilter, oldestTs);
+  }, [events, hasMore, domainFilter, fetchPage]);
+
+  const handleDomainFilterChange = useCallback((domain: string) => {
+    setDomainFilter(domain);
+  }, []);
 
   return (
     <KeypressesGrid
@@ -78,6 +92,7 @@ const InternetKeypresses = () => {
       onRefresh={handleRefresh}
       onFetchOlder={handleFetchOlder}
       hasMore={hasMore}
+      onDomainFilterChange={handleDomainFilterChange}
     />
   );
 };
