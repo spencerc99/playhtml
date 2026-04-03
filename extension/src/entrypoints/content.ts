@@ -986,6 +986,7 @@ export default defineContentScript({
             playerColor: color,
           });
         }
+      }
 
       private listenForPresenceCount() {
         if (!("cursors" in window)) return;
