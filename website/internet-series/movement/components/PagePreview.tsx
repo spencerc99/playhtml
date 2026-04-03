@@ -46,7 +46,7 @@ export const PagePreview = memo(
         >
           <iframe
             src={url}
-            sandbox="allow-same-origin"
+            sandbox="allow-same-origin allow-scripts"
             loading="lazy"
             tabIndex={-1}
             style={{
