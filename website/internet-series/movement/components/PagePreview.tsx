@@ -1,5 +1,5 @@
 // ABOUTME: Renders an abstract pixelated preview of a web page inside an SVG foreignObject.
-// ABOUTME: Renders at desktop width then scales down for a low-res mosaic effect.
+// ABOUTME: Compresses pages into a tiny pixel grid inspired by "nothing on my computer."
 import React, { memo } from "react";
 
 interface PagePreviewProps {
@@ -10,10 +10,9 @@ interface PagePreviewProps {
   height: number;
   scrollY: number;
   scrollRange: number;
+  // Number of pixels wide the compressed view should be (default 30)
+  resolution?: number;
 }
-
-// Render the page at desktop width so it shows desktop layout, not mobile
-const RENDER_WIDTH = 1280;
 
 export const PagePreview = memo(
   ({
@@ -24,13 +23,21 @@ export const PagePreview = memo(
     height,
     scrollY,
     scrollRange,
+    resolution = 30,
   }: PagePreviewProps) => {
-    // Scale factor to shrink the full-width render into the viewport rect
-    const scale = width / RENDER_WIDTH;
-    const renderHeight = height / scale;
+    // Compute the tiny render size that preserves the viewport aspect ratio
+    const aspect = width / height;
+    const tinyW = resolution;
+    const tinyH = Math.round(resolution / aspect);
+
+    // The iframe renders at this tiny size — the browser will rasterize the page
+    // into very few pixels. We then scale it up to fill the viewport rect.
+    const scaleUp = width / tinyW;
+
+    // For scroll: the page is taller than the viewport
     const pageMultiplier = 2 + scrollRange * 4;
-    const pageHeight = renderHeight * pageMultiplier;
-    const scrollOffset = scrollY * (pageHeight - renderHeight);
+    const tinyPageH = Math.round(tinyH * pageMultiplier);
+    const scrollOffset = Math.round(scrollY * (tinyPageH - tinyH));
 
     return (
       <foreignObject x={x} y={y} width={width} height={height}>
@@ -41,23 +48,35 @@ export const PagePreview = memo(
             height: `${height}px`,
             overflow: "hidden",
             pointerEvents: "none",
+            // This is the key: when the tiny iframe is scaled up,
+            // each "pixel" becomes a crisp block instead of being interpolated
             imageRendering: "pixelated",
           }}
         >
-          <iframe
-            src={url}
-            sandbox="allow-same-origin allow-scripts"
-            loading="lazy"
-            tabIndex={-1}
+          <div
             style={{
-              border: "none",
-              width: `${RENDER_WIDTH}px`,
-              height: `${pageHeight}px`,
-              transform: `scale(${scale}) translateY(-${Math.round(scrollOffset)}px)`,
+              width: `${tinyW}px`,
+              height: `${tinyH}px`,
+              overflow: "hidden",
+              transform: `scale(${scaleUp})`,
               transformOrigin: "top left",
-              pointerEvents: "none",
             }}
-          />
+          >
+            <iframe
+              src={url}
+              sandbox="allow-same-origin allow-scripts"
+              loading="lazy"
+              tabIndex={-1}
+              style={{
+                border: "none",
+                width: `${tinyW}px`,
+                height: `${tinyPageH}px`,
+                transform: `translateY(-${scrollOffset}px)`,
+                pointerEvents: "none",
+                display: "block",
+              }}
+            />
+          </div>
         </div>
       </foreignObject>
     );
