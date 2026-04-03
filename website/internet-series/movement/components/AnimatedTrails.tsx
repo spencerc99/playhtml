@@ -277,7 +277,8 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
     }));
 
     const color = trailState.trail.color;
-    const monoColor = "#000";
+    const monoStyle = getMonochromeStyle(cursorType);
+    const monoColor = monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke;
 
     return (
       <g ref={groupRef} opacity="0">
