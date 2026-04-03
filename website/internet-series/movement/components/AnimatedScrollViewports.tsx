@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
 import { RISO_COLORS } from "../utils/eventUtils";
+import { PagePreview } from "./PagePreview";
 
 // Configuration constants
 const FADE_IN_DURATION = 400; // ms
@@ -21,6 +22,7 @@ interface AnimatedScrollViewportsProps {
     backgroundOpacity: number;
     maxConcurrentScrolls: number;
     randomizeColors?: boolean;
+    showPagePreview?: boolean;
   };
 }
 
@@ -565,6 +567,7 @@ const DynamicViewportRect = memo(
       scrollSpeed: number;
       backgroundOpacity: number;
       randomizeColors?: boolean;
+      showPagePreview?: boolean;
     };
   }) => {
     const {
@@ -710,7 +713,7 @@ const DynamicViewportRect = memo(
     // Page height based on scroll range (bigger range = taller page)
     // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
     const pageMultiplier = 2 + scrollRange * 4;
-    const bgHeight = visualHeight * pageMultiplier;
+    const bgHeight = Math.max(0, Math.min(10000, visualHeight * pageMultiplier));
     const scrollableHeight = bgHeight - visualHeight;
     const bgOffsetY = scrollY * scrollableHeight;
 
@@ -757,7 +760,7 @@ const DynamicViewportRect = memo(
     }
 
     // Content pattern variation based on seed
-    const bandSpacing = 60 + localSeededRandom(15) * 80; // 60-140px spacing
+    const bandSpacing = Math.max(1, 60 + localSeededRandom(15) * 80); // 60-140px spacing
     const hasContentBlocks = localSeededRandom(16) > 0.4; // 60% chance of content blocks
     const blockPattern = Math.floor(localSeededRandom(17) * 4); // 4 different patterns
 
@@ -1386,6 +1389,19 @@ const DynamicViewportRect = memo(
               </g>
             )}
           </g>
+
+          {/* Abstract pixelated page preview via iframe */}
+          {settings.showPagePreview && animation.pageUrl && (
+            <PagePreview
+              url={animation.pageUrl}
+              x={visualX}
+              y={visualY}
+              width={visualWidth}
+              height={visualHeight}
+              scrollY={scrollY}
+              scrollRange={scrollRange}
+            />
+          )}
 
           {/* Edge tint overlays - inner glow effect */}
           <rect

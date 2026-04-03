@@ -38,7 +38,7 @@ function PlayHTMLPopup() {
     lastUpdated: 0,
   });
   const [currentView, setCurrentView] = useState<
-    "main" | "inventory" | "collections" | "profile"
+    "main" | "inventory" | "collections" | "profile" | "bag-settings"
   >("main");
   const [devFeaturesEnabled, setDevFeaturesEnabled] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
@@ -344,74 +344,67 @@ function PlayHTMLPopup() {
     return <Collections onBack={() => setCurrentView("main")} />;
   }
 
-  if (!bagEnabled) {
+  if (currentView === "bag-settings") {
     return (
-      <InternetPortraitHome
-        playerIdentity={playerIdentity}
-        onViewCollections={() => setCurrentView("collections")}
-        onViewHistory={toggleHistoricalOverlay}
-        onViewProfile={() => setCurrentView("profile")}
-      />
+      <div
+        style={{
+          padding: "16px",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <header style={{ marginBottom: "16px" }}>
+          <button
+            onClick={() => setCurrentView("main")}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              fontSize: "12px",
+              color: "#6b7280",
+              cursor: "pointer",
+              marginBottom: "8px",
+            }}
+          >
+            ← back
+          </button>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "16px",
+              color: "#1f2937",
+              fontFamily: "'Lora', Georgia, serif",
+            }}
+          >
+            Bag Settings
+          </h1>
+        </header>
+
+        <main style={{ flex: 1, overflow: "auto" }}>
+          <SiteStatus currentTab={currentTab} playhtmlStatus={playhtmlStatus} />
+          <QuickActions
+            onTestConnection={pingContentScript}
+            onPickElement={activateElementPicker}
+            onViewInventory={() => setCurrentView("inventory")}
+            onViewCollections={() => setCurrentView("collections")}
+            onViewHistory={toggleHistoricalOverlay}
+            inventory={inventory}
+            showBagFeatures={true}
+          />
+        </main>
+      </div>
     );
   }
 
   return (
-    <div
-      style={{
-        padding: "16px",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <header style={{ marginBottom: "16px" }}>
-        <h1
-          style={{
-            margin: "0 0 8px 0",
-            fontSize: "18px",
-            color: "#1f2937",
-            fontFamily: "'Lora', Georgia, serif",
-          }}
-        >
-          we were online{" "}
-        </h1>
-        <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>
-          Transform any webpage into an interactive playground
-        </p>
-      </header>
-
-      <main style={{ flex: 1, overflow: "auto" }}>
-        {playerIdentity && (
-          <PlayerIdentityCard playerIdentity={playerIdentity} />
-        )}
-        {bagEnabled && (
-          <SiteStatus currentTab={currentTab} playhtmlStatus={playhtmlStatus} />
-        )}
-
-        <QuickActions
-          onTestConnection={pingContentScript}
-          onPickElement={activateElementPicker}
-          onViewInventory={() => setCurrentView("inventory")}
-          onViewCollections={() => setCurrentView("collections")}
-          onViewHistory={toggleHistoricalOverlay}
-          inventory={inventory}
-          showBagFeatures={bagEnabled}
-        />
-      </main>
-
-      <footer
-        style={{
-          marginTop: "16px",
-          paddingTop: "16px",
-          borderTop: "1px solid #e5e7eb",
-          fontSize: "10px",
-          color: "#9ca3af",
-          textAlign: "center",
-        }}
-      >
-        we were online v{browser.runtime.getManifest().version}
-      </footer>
-    </div>
+    <InternetPortraitHome
+      playerIdentity={playerIdentity}
+      onViewCollections={() => setCurrentView("collections")}
+      onViewHistory={toggleHistoricalOverlay}
+      onViewProfile={() => setCurrentView("profile")}
+      onViewBagSettings={bagEnabled ? () => setCurrentView("bag-settings") : undefined}
+    />
   );
 }
 

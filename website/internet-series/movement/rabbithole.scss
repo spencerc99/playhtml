@@ -22,6 +22,89 @@ body {
   height: 100vh;
   position: relative;
   overflow: hidden;
+  background: #1a1714;
+}
+
+// ── Inverted color scheme ──────────────────────────────────────────────────────
+#rabbithole-root.inverted {
+  background: #faf7f2;
+
+  .title-entry {
+    color: #3d3833;
+  }
+
+  .vignette-top {
+    background: linear-gradient(to bottom, #faf7f2 0%, transparent 100%);
+  }
+
+  .vignette-bottom {
+    background: linear-gradient(to top, #faf7f2 0%, transparent 100%);
+  }
+
+  .info-bar {
+    background: rgba(250, 247, 242, 0.94);
+    border-top-color: #e0dbd4;
+  }
+
+  .info-label {
+    color: #3d3833;
+  }
+
+  .info-stat {
+    color: #8a8279;
+  }
+
+  .speed-control {
+    color: #8a8279;
+  }
+
+  .speed-btn {
+    border-color: #e0dbd4;
+    color: #8a8279;
+
+    &:hover {
+      background: #f0ebe3;
+      color: #3d3833;
+      border-color: #c8c0b6;
+    }
+
+    &.active {
+      border-color: #8a8279;
+      color: #3d3833;
+      background: #ece7df;
+    }
+  }
+
+  .date-select {
+    border-color: #e0dbd4;
+    color: #8a8279;
+
+    &:hover {
+      background: #f0ebe3;
+      color: #3d3833;
+    }
+
+    &:focus {
+      border-color: #8a8279;
+      color: #3d3833;
+    }
+
+    option {
+      background: #faf7f2;
+      color: #3d3833;
+    }
+  }
+
+  .refresh-btn {
+    border-color: #e0dbd4;
+    color: #8a8279;
+
+    &:hover:not(:disabled) {
+      background: #f0ebe3;
+      color: #3d3833;
+      border-color: #c8c0b6;
+    }
+  }
 }
 
 // ── Vignette overlays ──────────────────────────────────────────────────────────

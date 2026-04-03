@@ -10,10 +10,11 @@ export default defineConfig({
       "@playhtml/common": path.join(__dirname, "packages/common/src"),
       "@playhtml/react": path.join(__dirname, "packages/react/src"),
       playhtml: path.join(__dirname, "packages/playhtml/src/index.ts"),
+      "@extension": path.join(__dirname, "extension/src"),
     },
   },
   optimizeDeps: {
-    exclude: ["@playhtml/common", "@playhtml/react", "playhtml"],
+    exclude: ["@playhtml/common", "@playhtml/react", "playhtml", "@extension"],
   },
   build: {
     rollupOptions: {

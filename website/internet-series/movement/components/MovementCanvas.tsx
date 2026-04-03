@@ -11,11 +11,13 @@ import React, {
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
+import { SoundEngine } from "../sound/SoundEngine";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
 import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
+import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
 import { useCursorTrails } from "../hooks/useCursorTrails";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
@@ -51,19 +53,11 @@ const loadSettings = () => {
     clickRingDelayMs: 120,
     clickExpansionDuration: 12300,
     clickAnimationStopPoint: 0.45,
-    showCursorTrails: true,
-    showCursorClicks: false,
     eventFilter: {
       move: true,
       click: true,
       hold: true,
       cursor_change: true,
-    },
-    eventTypeFilter: {
-      cursor: true,
-      keyboard: false,
-      viewport: false,
-      navigation: false,
     },
     viewportEventFilter: {
       scroll: true,
@@ -75,6 +69,7 @@ const loadSettings = () => {
     scrollSpeed: 1.0,
     backgroundOpacity: 0.7,
     maxConcurrentScrolls: 5,
+    showPagePreview: false,
     scrollOverlapFactor: 0.8,
     minViewports: 10,
     maxViewports: 50,
@@ -99,6 +94,9 @@ const loadSettings = () => {
     navigationRadialBlobEdgeNoise: 0.45,
     navigationRadialBlobValleyDepth: 0.05,
     navigationRadialSegmentByDay: true,
+    soundChordVoicing: false,
+    soundCursorInstruments: false,
+    soundCrossingDissonance: false,
   };
 
   try {
@@ -109,10 +107,6 @@ const loadSettings = () => {
         ...defaults,
         ...parsed,
         eventFilter: { ...defaults.eventFilter, ...(parsed.eventFilter || {}) },
-        eventTypeFilter: {
-          ...defaults.eventTypeFilter,
-          ...(parsed.eventTypeFilter || {}),
-        },
         viewportEventFilter: {
           ...defaults.viewportEventFilter,
           ...(parsed.viewportEventFilter || {}),
@@ -135,6 +129,10 @@ interface MovementCanvasProps {
   dayCounts?: DayCounts;
   selectedDay?: string | null;
   onSelectDay?: (day: string | null) => void;
+  domainFilter?: string;
+  onSetDomainFilter?: (domain: string) => void;
+  activeVisualizations: string[];
+  onSetActiveVisualizations: (vizIds: string[]) => void;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -145,6 +143,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   dayCounts,
   selectedDay = null,
   onSelectDay,
+  domainFilter: domainFilterProp,
+  onSetDomainFilter,
+  activeVisualizations,
+  onSetActiveVisualizations,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -153,6 +155,74 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
     "cycle",
   );
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const soundEngineRef = useRef<SoundEngine | null>(null);
+
+  // Sync domain filter from prop (parent controls refetching)
+  useEffect(() => {
+    if (domainFilterProp !== undefined && domainFilterProp !== settings.domainFilter) {
+      setSettings((s) => ({ ...s, domainFilter: domainFilterProp }));
+    }
+  }, [domainFilterProp]);
+
+  // Notify parent when internal domain filter changes so it can refetch
+  useEffect(() => {
+    onSetDomainFilter?.(settings.domainFilter);
+  }, [settings.domainFilter]);
+
+  // Manage SoundEngine lifecycle
+  useEffect(() => {
+    if (soundEnabled) {
+      if (!soundEngineRef.current) {
+        const engine = new SoundEngine();
+        engine.init().then(() => {
+          engine.setCanvasWidth(viewportSize.width);
+          engine.setConfig({
+            chordVoicing: settings.soundChordVoicing,
+            cursorInstruments: settings.soundCursorInstruments,
+            crossingDissonance: settings.soundCrossingDissonance,
+          });
+          soundEngineRef.current = engine;
+        });
+      }
+    } else {
+      if (soundEngineRef.current) {
+        soundEngineRef.current.dispose();
+        soundEngineRef.current = null;
+      }
+    }
+    return () => {
+      soundEngineRef.current?.dispose();
+      soundEngineRef.current = null;
+    };
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    soundEngineRef.current?.setCanvasWidth(viewportSize.width);
+  }, [viewportSize.width]);
+
+  // Sync sound config settings to the engine
+  useEffect(() => {
+    soundEngineRef.current?.setConfig({
+      chordVoicing: settings.soundChordVoicing,
+      cursorInstruments: settings.soundCursorInstruments,
+      crossingDissonance: settings.soundCrossingDissonance,
+    });
+  }, [
+    settings.soundChordVoicing,
+    settings.soundCursorInstruments,
+    settings.soundCrossingDissonance,
+  ]);
+
+  // Derive which visualization categories are active
+  const vizSet = useMemo(() => new Set(activeVisualizations), [activeVisualizations]);
+  const showTrails = vizSet.has("trails");
+  const showClicks = vizSet.has("clicks");
+  const hasCursorViz = showTrails || showClicks;
+  const showTyping = vizSet.has("typing");
+  const showScrolling = vizSet.has("scrolling");
+  const showNavigation = vizSet.has("navigation");
+  const showFavicons = vizSet.has("favicons");
 
   const handleTogglePlaybackMode = useCallback(() => {
     setDayPlaybackMode((m) => (m === "cycle" ? "loop" : "cycle"));
@@ -474,12 +544,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       backgroundOpacity: settings.backgroundOpacity,
       maxConcurrentScrolls: settings.maxConcurrentScrolls,
       randomizeColors: settings.randomizeColors,
+      showPagePreview: settings.showPagePreview,
     }),
     [
       settings.scrollSpeed,
       settings.backgroundOpacity,
       settings.maxConcurrentScrolls,
       settings.randomizeColors,
+      settings.showPagePreview,
     ],
   );
 
@@ -513,6 +585,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         availableDomains={availableDomains}
         fetchEvents={fetchEvents}
         timeRange={timeRange}
+        activeVisualizations={activeVisualizations}
+        onSetActiveVisualizations={onSetActiveVisualizations}
       />
 
       {settings.domainFilter && (
@@ -572,6 +646,37 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         </div>
       )}
 
+      <button
+        onClick={() => setSoundEnabled((prev) => !prev)}
+        title={soundEnabled ? "Mute" : "Play sound"}
+        style={{
+          position: "absolute",
+          top: 14,
+          right: 20,
+          zIndex: 200,
+          padding: 6,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          opacity: soundEnabled ? 0.7 : 0.3,
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3d3833" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 5L6 9H2v6h4l5 4V5z" />
+          {soundEnabled ? (
+            <>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </>
+          ) : (
+            <>
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
+            </>
+          )}
+        </svg>
+      </button>
+
       <div className="canvas-container" ref={containerRef}>
         {/* RISO paper texture overlay */}
         <svg
@@ -624,13 +729,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         </svg>
 
-        {settings.eventTypeFilter.cursor && settings.showCursorTrails && (
+        {showTrails && (
           <AnimatedTrails
             key={`trails-${settings.domainFilter}`}
             trailStates={trailStates}
             timeRange={timeRange}
-            showClickRipples={!settings.showCursorClicks}
+            showClickRipples={!showClicks}
             windowSize={settings.maxConcurrentTrails * 2}
+            soundEngine={soundEnabled ? soundEngineRef.current : null}
             settings={{
               strokeWidth: settings.strokeWidth,
               pointSize: settings.pointSize,
@@ -650,7 +756,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {settings.eventTypeFilter.cursor && settings.showCursorClicks && (
+        {showClicks && (
           <AnimatedClicks
             key={`clicks-${settings.domainFilter}`}
             scheduledClicks={scheduledClicks}
@@ -671,7 +777,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {settings.eventTypeFilter.keyboard && (
+        {showTyping && (
           <AnimatedTyping
             typingStates={typingStates}
             timeRange={timeRange}
@@ -679,7 +785,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {settings.eventTypeFilter.viewport &&
+        {showScrolling &&
           scrollAnimations &&
           scrollAnimations.length > 0 && (
             <AnimatedScrollViewports
@@ -689,7 +795,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           )}
 
-        {settings.eventTypeFilter.navigation &&
+        {showNavigation &&
           (settings.navigationViewMode ?? "timeline") === "radial" &&
           radialState &&
           radialState.nodes.size > 0 && (
@@ -712,7 +818,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           )}
 
-        {settings.eventTypeFilter.navigation &&
+        {showNavigation &&
           (settings.navigationViewMode ?? "timeline") === "timeline" &&
           timelineState &&
           timelineState.nodes.size > 0 && (
@@ -722,6 +828,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               settings={navigationSettings}
             />
           )}
+
+        {showFavicons && (
+          <FaviconPortrait
+            events={events}
+            domainFilter={settings.domainFilter}
+          />
+        )}
       </div>
 
       {dayCounts && onSelectDay && (

@@ -3,6 +3,17 @@
 
 import { useMemo, useCallback } from "react";
 import { CollectionEvent, Trail, TrailState } from "../types";
+
+// Durations over 1 hour are likely the timestamp-as-duration bug (mouseDownTime was 0).
+// Replace with the minimum hold threshold so the event still renders as a hold.
+const MAX_REASONABLE_HOLD_MS = 3_600_000;
+const MIN_HOLD_THRESHOLD_MS = 250;
+
+function sanitizeHoldDuration(duration: number | undefined): number | undefined {
+  if (duration === undefined) return undefined;
+  if (duration > MAX_REASONABLE_HOLD_MS) return MIN_HOLD_THRESHOLD_MS;
+  return duration;
+}
 import { applyStyleVariations } from "../utils/styleUtils";
 import {
   RISO_COLORS,
@@ -278,7 +289,7 @@ export function useCursorTrails(
               y,
               ts: event.ts,
               button: event.data.button,
-              duration: event.data.duration,
+              duration: sanitizeHoldDuration(event.data.duration),
             });
           }
         } else {
@@ -297,7 +308,7 @@ export function useCursorTrails(
               y,
               ts: event.ts,
               button: event.data.button,
-              duration: event.data.duration,
+              duration: sanitizeHoldDuration(event.data.duration),
             });
           }
         }

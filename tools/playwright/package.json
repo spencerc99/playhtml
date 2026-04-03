@@ -1,0 +1,11 @@
+{
+  "name": "playhtml-playwright",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "scene": "bun src/runner.ts"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.52.0"
+  }
+}

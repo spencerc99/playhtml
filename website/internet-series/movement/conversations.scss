@@ -1,0 +1,572 @@
+// ABOUTME: Styles for the internet conversations visualization
+// ABOUTME: Organic chat bubbles with muted translucent fills and varied typography
+
+$bg: #faf7f2;
+$surface: #f5f0e8;
+$text: #3d3833;
+$text-muted: #8a8279;
+$text-faint: #c4b8a8;
+$border: #e8e0d4;
+
+// Bubble fill colors at ~12% opacity
+$fill-teal: rgba(74, 154, 138, 0.12);
+$fill-rust: rgba(196, 114, 78, 0.12);
+$fill-blue: rgba(91, 141, 184, 0.12);
+$fill-gold: rgba(212, 184, 92, 0.12);
+$fill-warm: rgba(61, 56, 51, 0.07);
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: $bg;
+  overflow-x: hidden;
+}
+
+.conversations-page {
+  min-height: 100vh;
+  background: $bg;
+  font-family: "Atkinson Hyperlegible", -apple-system, sans-serif;
+  color: $text;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 16px 20vh;
+}
+
+// Sidebar layout
+.config-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  width: 340px;
+  padding: 48px 20px 48px 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 10;
+  background: $bg;
+  border-right: 1px solid $border;
+}
+
+.conversations-title {
+  font-family: "Source Serif 4", serif;
+  font-weight: 300;
+  font-style: italic;
+  font-size: 22px;
+  color: $text-muted;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.conversations-subtitle {
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text-faint;
+  letter-spacing: 0.5px;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.conversations-stream {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.scroll-anchor {
+  height: 30vh;
+}
+
+// Date dividers between days
+.date-divider {
+  text-align: center;
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text-faint;
+  letter-spacing: 0.5px;
+  margin: 20px 0 14px;
+  position: relative;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: $border;
+  }
+
+  &::before {
+    left: 0;
+  }
+
+  &::after {
+    right: 0;
+  }
+}
+
+// Message rows
+.msg-row {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  animation: msg-enter 0.3s ease;
+
+  &.right {
+    justify-content: flex-end;
+  }
+}
+
+@keyframes msg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Favicon avatars
+.msg-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: $surface;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid $border;
+
+  &.hidden {
+    visibility: hidden;
+  }
+
+  img {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    filter: grayscale(30%) sepia(10%);
+  }
+}
+
+// Bubble container
+.msg-bubble {
+  max-width: 75%;
+  position: relative;
+}
+
+// Sender line
+.msg-sender {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+
+  .msg-row.right & {
+    justify-content: flex-end;
+  }
+}
+
+.msg-domain {
+  font-family: "Martian Mono", monospace;
+  font-size: 8px;
+  color: $text-muted;
+  letter-spacing: 0.3px;
+}
+
+.msg-time {
+  font-family: "Martian Mono", monospace;
+  font-size: 7px;
+  color: $text-faint;
+}
+
+// Bubble body with organic shapes
+.msg-text {
+  padding: 9px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// Shape variants (applied via data attribute or class)
+.shape-0 .msg-text { border-radius: 18px 18px 18px 4px; }
+.shape-1 .msg-text { border-radius: 16px 20px 4px 16px; }
+.shape-2 .msg-text { border-radius: 20px 14px 18px 4px; }
+.shape-3 .msg-text { border-radius: 14px 18px 4px 20px; }
+
+// Fill variants
+.fill-0 .msg-text { background: $fill-teal; }
+.fill-1 .msg-text { background: $fill-rust; }
+.fill-2 .msg-text { background: $fill-blue; }
+.fill-3 .msg-text { background: $fill-gold; }
+.fill-4 .msg-text { background: $fill-warm; }
+
+// Font variants
+.font-0 .msg-text { font-family: "Courier Prime", monospace; font-size: 12.5px; }
+.font-1 .msg-text { font-family: "Lora", serif; font-size: 13px; }
+.font-2 .msg-text { font-family: "Atkinson Hyperlegible", sans-serif; font-size: 13px; }
+
+// Typing indicator
+.typing-indicator {
+  display: inline-flex;
+  gap: 4px;
+  padding: 10px 16px;
+  background: rgba(61, 56, 51, 0.06);
+  border-radius: 18px 18px 18px 4px;
+  margin-left: 30px;
+  margin-bottom: 10px;
+  animation: msg-enter 0.3s ease;
+
+  &.preview {
+    opacity: 0.4;
+    transform: scale(0.85);
+    margin-left: 40px;
+  }
+}
+
+.typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: $text-faint;
+  animation: typing-pulse 1.6s ease-in-out infinite;
+
+  &:nth-child(2) { animation-delay: 0.25s; }
+  &:nth-child(3) { animation-delay: 0.5s; }
+}
+
+@keyframes typing-pulse {
+  0%, 80%, 100% { transform: scale(0.8); opacity: 0.3; }
+  40% { transform: scale(1.2); opacity: 0.8; }
+}
+
+// Restart button
+.conversations-restart {
+  display: block;
+  margin: 24px auto 0;
+  background: none;
+  border: 1px solid $border;
+  border-radius: 16px;
+  padding: 6px 16px;
+  font-size: 11px;
+  color: $text-muted;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.2s, color 0.2s;
+
+  &:hover {
+    border-color: #4a9a8a;
+    color: #4a9a8a;
+  }
+}
+
+// Config panel (toggled with double-tap 'd')
+.config-panel {
+  width: 100%;
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 16px;
+  animation: msg-enter 0.2s ease;
+}
+
+.config-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.config-title {
+  font-family: "Lora", serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: $text;
+}
+
+.config-hint {
+  font-family: "Martian Mono", monospace;
+  font-size: 8px;
+  color: $text-faint;
+  letter-spacing: 0.3px;
+}
+
+.config-section {
+  margin-bottom: 14px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.config-label {
+  display: block;
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text-muted;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+
+.config-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.config-select {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: $text;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 5px 8px;
+  width: 100%;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: #4a9a8a;
+  }
+}
+
+.config-input {
+  font-family: "Martian Mono", monospace;
+  font-size: 11px;
+  color: $text;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 5px 8px;
+  flex: 1;
+
+  &:focus {
+    outline: none;
+    border-color: #4a9a8a;
+  }
+}
+
+.config-clear {
+  background: none;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text-muted;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+
+  &:hover {
+    border-color: #c4724e;
+    color: #c4724e;
+  }
+}
+
+.config-btn {
+  background: none;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 11px;
+  color: $text-muted;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+
+  &:hover {
+    border-color: #4a9a8a;
+    color: #4a9a8a;
+  }
+}
+
+// Sort mode toggle
+.config-toggle-row {
+  display: flex;
+  gap: 0;
+}
+
+.config-toggle {
+  flex: 1;
+  background: none;
+  border: 1px solid $border;
+  padding: 5px 8px;
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text-muted;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:first-child { border-radius: 6px 0 0 6px; }
+  &:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+
+  &.active {
+    background: $text;
+    color: $bg;
+    border-color: $text;
+  }
+}
+
+// Range slider
+.config-range {
+  width: 100%;
+  accent-color: #4a9a8a;
+  cursor: pointer;
+}
+
+.config-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: "Martian Mono", monospace;
+  font-size: 7px;
+  color: $text-faint;
+  margin-top: 2px;
+}
+
+// Domain search
+.config-search {
+  width: 100%;
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  color: $text;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+
+  &:focus {
+    outline: none;
+    border-color: #4a9a8a;
+  }
+
+  &::placeholder {
+    color: $text-faint;
+  }
+}
+
+// Domain histogram
+.config-histogram {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.histogram-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  transition: opacity 0.2s;
+
+  &:hover {
+    background: rgba(61, 56, 51, 0.04);
+  }
+
+  &.excluded {
+    opacity: 0.35;
+
+    .histogram-bar-fill {
+      background: rgba(196, 114, 78, 0.2);
+    }
+  }
+}
+
+.config-excluded-count {
+  color: #c4724e;
+  font-weight: normal;
+}
+
+.histogram-favicon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: grayscale(20%) sepia(5%);
+}
+
+.histogram-domain {
+  font-family: "Martian Mono", monospace;
+  font-size: 8px;
+  color: $text-muted;
+  width: 100px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.histogram-bar-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(61, 56, 51, 0.04);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.histogram-bar-fill {
+  height: 100%;
+  background: rgba(74, 154, 138, 0.3);
+  border-radius: 4px;
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.histogram-count {
+  font-family: "Martian Mono", monospace;
+  font-size: 8px;
+  color: $text-faint;
+  width: 24px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+// Follow button (appears when scroll-unlocked)
+.conversations-follow {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: $text-muted;
+  cursor: pointer;
+  z-index: 10;
+  transition: border-color 0.2s, color 0.2s;
+  animation: msg-enter 0.2s ease;
+
+  &:hover {
+    border-color: #4a9a8a;
+    color: #4a9a8a;
+  }
+}
+
+// Loading and error states
+.conversations-loading,
+.conversations-error {
+  text-align: center;
+  padding: 48px 16px;
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.conversations-error {
+  color: #c4724e;
+}

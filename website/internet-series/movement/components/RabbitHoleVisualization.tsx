@@ -65,7 +65,14 @@ const STORAGE_KEY = "rabbithole-settings";
 const VALID_MODES: Mode[] = ["step", "scroll", "wall"];
 const VALID_SPEEDS: SpeedKey[] = ["slow", "normal", "fast"];
 
-function loadSettings(): { mode: Mode; speed: SpeedKey } {
+interface Settings {
+  mode: Mode;
+  speed: SpeedKey;
+  selectedDate: string | null;
+  inverted: boolean;
+}
+
+function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -73,19 +80,22 @@ function loadSettings(): { mode: Mode; speed: SpeedKey } {
       return {
         mode: VALID_MODES.includes(parsed.mode) ? parsed.mode : "step",
         speed: VALID_SPEEDS.includes(parsed.speed) ? parsed.speed : "normal",
+        selectedDate: typeof parsed.selectedDate === "string" ? parsed.selectedDate : null,
+        inverted: parsed.inverted === true,
       };
     }
   } catch { /* ignore */ }
-  return { mode: "step", speed: "normal" };
+  return { mode: "step", speed: "normal", selectedDate: null, inverted: false };
 }
 
-function saveSettings(mode: Mode, speed: SpeedKey) {
+function saveSettings(settings: Partial<Settings>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, speed }));
+    const current = loadSettings();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...settings }));
   } catch { /* ignore */ }
 }
 
-const RANDOMIZE_ORDER = true;
+const RANDOMIZE_ORDER = false;
 
 const VISIBLE_COUNT = 10;
 const FONT_SIZE_MAX = 64;
@@ -147,8 +157,16 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
   const savedSettings = useMemo(() => loadSettings(), []);
   const [speed, setSpeed] = useState<SpeedKey>(savedSettings.speed);
   const [mode, setMode] = useState<Mode>(savedSettings.mode);
+  const [inverted, setInverted] = useState(savedSettings.inverted);
   const [wallRevealed, setWallRevealed] = useState(0);
   const isDev = useMemo(() => isDevMode(), []);
+
+  // Restore saved date on mount
+  useEffect(() => {
+    if (savedSettings.selectedDate) {
+      onSelectDate(savedSettings.selectedDate);
+    }
+  }, []);
 
   // Step mode state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -161,6 +179,9 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
   // Scroll mode refs
   const scrollOffsetPxRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
+
+  const invertedRef = useRef(inverted);
+  useEffect(() => { invertedRef.current = inverted; }, [inverted]);
 
   // Wall mode refs
   const wallRevealedRef = useRef<number>(0);
@@ -183,7 +204,8 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
   useEffect(() => { speedRef.current = speed; wallSpeedRef.current = speed; wallTimerRef.current = 0; }, [speed]);
 
   // Persist settings to localStorage
-  useEffect(() => { saveSettings(mode, speed); }, [mode, speed]);
+  useEffect(() => { saveSettings({ mode, speed, inverted }); }, [mode, speed, inverted]);
+  useEffect(() => { saveSettings({ selectedDate }); }, [selectedDate]);
 
   useEffect(() => {
     if (!RANDOMIZE_ORDER) {
@@ -284,7 +306,7 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
         }
 
         ctx.globalAlpha = opacity;
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = invertedRef.current ? "#3d3833" : "#ffffff";
         ctx.fillText(title, W / 2, yAbs);
       }
 
@@ -320,11 +342,8 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
 
   // ── Wall mode rAF loop ────────────────────────────────────────────────────
 
-  // Find the largest font size where the joined text fits the canvas area.
   // Find the font size where the text fills the viewport as a tight rectangle.
-  // The text repeats to fill all available lines, so the last row is always full.
-  // We want the largest font where the number of lines that fit the height
-  // is enough to contain at least one full copy of the text.
+  // Prefers slight overflow over underfill so the last row is always full.
   const fitFontSize = useCallback((
     ctx: CanvasRenderingContext2D,
     text: string,
@@ -332,13 +351,13 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
     H: number,
     padding: number,
   ): number => {
-    let lo = WALL_FONT_MIN;
-    let hi = WALL_FONT_MAX;
-    while (hi - lo > 1) {
-      const mid = Math.floor((lo + hi) / 2);
-      const lineH = mid * WALL_LINE_HEIGHT;
-      ctx.font = `700 ${mid}px 'Lora', 'Georgia', serif`;
-      // Count how many lines one copy of the text needs
+    let bestSize = WALL_FONT_MIN;
+    let bestScore = Infinity;
+
+    for (let size = WALL_FONT_MIN; size <= WALL_FONT_MAX; size++) {
+      const lineH = size * WALL_LINE_HEIGHT;
+      ctx.font = `700 ${size}px 'Lora', 'Georgia', serif`;
+
       let curX = padding;
       let lines = 1;
       for (let i = 0; i < text.length; i++) {
@@ -349,12 +368,20 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
         }
         curX += cw;
       }
-      // How many lines fit the viewport?
+
       const maxLines = Math.floor((H - padding) / lineH);
-      // The text must fit at least once within the available lines
-      if (lines <= maxLines) lo = mid; else hi = mid;
+      if (maxLines < 1) continue;
+
+      const diff = maxLines - lines;
+      const score = diff >= 0 ? diff * 2 : Math.abs(diff);
+
+      if (score < bestScore || (score === bestScore && size > bestSize)) {
+        bestScore = score;
+        bestSize = size;
+      }
     }
-    return lo;
+
+    return bestSize;
   }, []);
 
   useEffect(() => {
@@ -373,8 +400,6 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Compute the optimal font size for the full set of titles.
-    // We do this once when the effect starts and reuse it.
     const allTitles = titlesRef.current;
     const fullText = allTitles.map(t => t.title).join(WALL_GAP);
     const padding = 12;
@@ -394,7 +419,6 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       const spd = wallSpeedRef.current;
       const interval = WALL_SPEED_PRESETS[spd];
 
-      // Timer drives both phases: reveal (add one title) and scroll (shift start by one title)
       wallTimerRef.current += dt * 1000;
 
       const prevRevealed = wallRevealedRef.current;
@@ -409,7 +433,6 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
           setWallRevealed(wallRevealedRef.current);
         }
       } else {
-        // Scroll at 1/3 the reveal speed
         const scrollInterval = interval * 3;
         while (wallTimerRef.current >= scrollInterval) {
           wallTimerRef.current -= scrollInterval;
@@ -424,11 +447,10 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       const fontSize = wallFontSizeRef.current;
       const lineH = fontSize * WALL_LINE_HEIGHT;
       ctx.font = `700 ${fontSize}px 'Lora', 'Georgia', serif`;
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = invertedRef.current ? "#3d3833" : "#ffffff";
       ctx.textBaseline = "top";
       ctx.textAlign = "left";
 
-      // Build the visible text from the current starting title, looping to fill viewport
       const startIdx = allRevealed ? wallStartIdxRef.current : 0;
       const revealedCount = allRevealed ? titles.length : wallRevealedRef.current;
 
@@ -437,8 +459,11 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       let i = 0;
       let done = false;
 
-      // Keep rendering titles (looping) until the viewport is full.
-      // During reveal, stop after revealedCount titles (no repeat).
+      if (revealedCount === 0) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
       while (!done) {
         if (!allRevealed && i >= revealedCount) break;
 
@@ -460,15 +485,13 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
         i++;
       }
 
-      // Stash layout info for click handler
-      (canvas as any).__wallState = { startIdx, revealedCount, fontSize, padding };
+      (canvas as any).__wallState = { startIdx, fontSize, padding };
 
       rafRef.current = requestAnimationFrame(tick);
     };
 
     rafRef.current = requestAnimationFrame(tick);
 
-    // Click handler: replay layout to find which title was clicked
     const handleCanvasClick = (e: MouseEvent) => {
       const titles = titlesRef.current;
       if (titles.length === 0) return;
@@ -476,13 +499,16 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
       const state = (canvas as any).__wallState;
       if (!state) return;
 
-      const { startIdx, revealedCount, fontSize, padding: pad } = state;
-      const lineH = fontSize * WALL_LINE_HEIGHT;
+      const { startIdx, fontSize: fs, padding: pad } = state;
+      const lineH = fs * WALL_LINE_HEIGHT;
       const W = canvas.width;
       const H = canvas.height;
       const allRevealed = wallRevealedRef.current >= titles.length;
+      const revealedCount = allRevealed ? titles.length : wallRevealedRef.current;
 
-      ctx.font = `700 ${fontSize}px 'Lora', 'Georgia', serif`;
+      if (revealedCount === 0) return;
+
+      ctx.font = `700 ${fs}px 'Lora', 'Georgia', serif`;
 
       const clickX = e.offsetX;
       const clickY = e.offsetY;
@@ -555,7 +581,7 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div id="rabbithole-root">
+    <div id="rabbithole-root" className={inverted ? "inverted" : ""}>
       <div style={{ width: "100%", height: "100%", position: "relative" }}>
         {mode !== "wall" && <div className="vignette vignette-top" />}
         {mode !== "wall" && <div className="vignette vignette-bottom" />}
@@ -581,7 +607,7 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
               top: `${yPx}px`,
               fontSize: `${fontSize}px`,
               opacity,
-              color: "#ffffff",
+              color: inverted ? "#3d3833" : "#ffffff",
               transition: "top 0.6s ease-out, opacity 0.6s ease-out, font-size 0.6s ease-out",
               zIndex: VISIBLE_COUNT - slot,
             };
@@ -691,6 +717,14 @@ export const RabbitHoleVisualization: React.FC<Props> = ({
             {dataStats.wikiEvents}w + {dataStats.nonWikiEvents}o
           </span>
         )}
+
+        <button
+          className={`speed-btn${inverted ? " active" : ""}`}
+          onClick={() => setInverted((v) => !v)}
+          title="Invert colors"
+        >
+          inv
+        </button>
 
         <button className="refresh-btn" onClick={onRefresh} disabled={loading}>↺</button>
       </div>

@@ -41,9 +41,8 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       setActiveClickEffects((prev) => [...prev, click]);
     }, []);
 
-    const handleClickComplete = useCallback((id: string) => {
-      setActiveClickEffects((prev) => prev.filter((e) => e.id !== id));
-    }, []);
+    // Ripples persist after animation completes — no removal on complete
+    const handleClickComplete = useCallback((_id: string) => {}, []);
 
     // Animation loop: same as AnimatedTrails (0..duration, scaled by speed, looping)
     useEffect(() => {

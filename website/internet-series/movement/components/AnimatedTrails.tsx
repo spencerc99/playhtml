@@ -11,9 +11,15 @@ import React, {
 import { TrailState, ClickEffect } from "../types";
 import { getCursorComponent } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
+import type { SoundEngine } from "../sound/SoundEngine";
+import type { TrailSoundFrame } from "../sound/types";
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
+
+// Finished trails dim to this opacity over COMPLETION_FADE_MS
+const COMPLETED_OPACITY = 0.5;
+const COMPLETION_FADE_MS = 3000;
 
 // How many points to show behind the cursor while drawing
 const TAIL_LENGTH = 1000;
@@ -128,6 +134,8 @@ function computeTrailFrame(
 
 // Imperatively-updated trail. Renders SVG structure once on mount, then the
 // parent rAF loop updates DOM attributes directly via the ref handle.
+// Path and cursor are rendered as siblings (not nested) so they can live in
+// separate SVG layers — paths below, cursors on top.
 interface ImperativeTrailHandle {
   update(
     elapsedTimeMs: number,
@@ -137,7 +145,7 @@ interface ImperativeTrailHandle {
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
 }
 
-interface TrailProps {
+interface TrailPathProps {
   trailState: TrailState;
   trailIndex: number;
   generatePath: (
@@ -146,24 +154,18 @@ interface TrailProps {
   ) => string;
 }
 
-const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
+// Renders only the trail path (no cursor). The parent rAF loop drives updates
+// via the imperative handle.
+const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
   ({ trailState, trailIndex, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
-    const cursorGroupRef = useRef<SVGGElement>(null);
-
-    const [cursorType, setCursorType] = useState<string | undefined>(
-      trailState.trail.points[0]?.cursor,
-    );
-    const CursorComponent = getCursorComponent(cursorType);
-    const cursorSize = 32;
 
     React.useImperativeHandle(ref, () => ({
       update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
         const group = groupRef.current;
         if (!group) return null;
 
-        // evictionFade <= 0 means fully hidden
         if (evictionFade <= 0) {
           group.setAttribute("opacity", "0");
           return null;
@@ -182,7 +184,7 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
 
         group.setAttribute("opacity", String(evictionFade));
 
-        const { pathData, isFinished, cursorPosition, trailProgress } = frame;
+        const { pathData, trailProgress, cursorPosition } = frame;
 
         const pathEl = pathRef.current;
         if (pathEl) {
@@ -194,23 +196,6 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
           } else {
             pathEl.style.display = "none";
           }
-        }
-
-        const cursorGroup = cursorGroupRef.current;
-        if (cursorGroup) {
-          if (!isFinished && trailProgress > 0) {
-            cursorGroup.style.display = "";
-            cursorGroup.setAttribute(
-              "transform",
-              `translate(${cursorPosition.x}, ${cursorPosition.y})`,
-            );
-          } else {
-            cursorGroup.style.display = "none";
-          }
-        }
-
-        if (frame.cursorType !== cursorType) {
-          setCursorType(frame.cursorType);
         }
 
         return { trailProgress, cursorPosition };
@@ -229,15 +214,70 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
           strokeLinejoin="round"
           style={{ mixBlendMode: "multiply", display: "none" }}
         />
+      </g>
+    );
+  },
+);
 
-        <g ref={cursorGroupRef} style={{ display: "none" }}>
-          <g
-            transform={`translate(${-12 * (cursorSize / 24)}, ${
-              -4 * (cursorSize / 24)
-            })`}
-          >
-            <CursorComponent color={color} size={cursorSize} />
-          </g>
+interface TrailCursorProps {
+  trailState: TrailState;
+  trailIndex: number;
+}
+
+// Renders only the cursor icon. Positioned imperatively by the parent rAF loop
+// via the ref handle.
+interface ImperativeTrailCursorHandle {
+  update(
+    cursorPosition: { x: number; y: number },
+    cursorType: string | undefined,
+    isFinished: boolean,
+    trailProgress: number,
+    evictionFade: number,
+  ): void;
+}
+
+const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
+  ({ trailState }, ref) => {
+    const cursorGroupRef = useRef<SVGGElement>(null);
+
+    const [cursorType, setCursorType] = useState<string | undefined>(
+      trailState.trail.points[0]?.cursor,
+    );
+    const CursorComponent = getCursorComponent(cursorType);
+    const cursorSize = 32;
+
+    React.useImperativeHandle(ref, () => ({
+      update(cursorPosition, newCursorType, isFinished, trailProgress, evictionFade) {
+        const cursorGroup = cursorGroupRef.current;
+        if (!cursorGroup) return;
+
+        if (evictionFade <= 0 || isFinished || trailProgress <= 0) {
+          cursorGroup.style.display = "none";
+          return;
+        }
+
+        cursorGroup.style.display = "";
+        cursorGroup.setAttribute(
+          "transform",
+          `translate(${cursorPosition.x}, ${cursorPosition.y})`,
+        );
+
+        if (newCursorType !== cursorType) {
+          setCursorType(newCursorType);
+        }
+      },
+    }));
+
+    const color = trailState.trail.color;
+
+    return (
+      <g ref={cursorGroupRef} style={{ display: "none" }}>
+        <g
+          transform={`translate(${-12 * (cursorSize / 24)}, ${
+            -4 * (cursorSize / 24)
+          })`}
+        >
+          <CursorComponent color={color} size={cursorSize} />
         </g>
       </g>
     );
@@ -283,12 +323,16 @@ function computeEvictionFades(
           ? finished[displacerIndex].finishedAtMs
           : elapsedTimeMs;
       const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
+      // Fade from COMPLETED_OPACITY (not full opacity) to avoid a brightness jump
       fades[f.originalIndex] = Math.max(
         0,
-        1 - timeSinceEvicted / EVICTION_FADE_MS,
+        COMPLETED_OPACITY * (1 - timeSinceEvicted / EVICTION_FADE_MS),
       );
     } else {
-      fades[f.originalIndex] = 1;
+      // Dim finished trails so active ones are visually prominent
+      const timeSinceFinished = elapsedTimeMs - f.finishedAtMs;
+      const fadeFraction = Math.min(1, timeSinceFinished / COMPLETION_FADE_MS);
+      fades[f.originalIndex] = 1 - fadeFraction * (1 - COMPLETED_OPACITY);
     }
   }
 
@@ -306,6 +350,7 @@ interface AnimatedTrailsProps {
   // appear glued to the page rather than to the fixed viewport. The overlay
   // container must be position: fixed when using this mode.
   documentSpace?: boolean;
+  soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
     pointSize: number;
@@ -332,6 +377,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     frozen = false,
     windowSize = 50,
     documentSpace = false,
+    soundEngine = null,
     settings,
   }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
@@ -365,8 +411,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         .sort((a, b) => a.finishedAtMs - b.finishedAtMs);
     }, [trailStates]);
 
-    // Store one ref handle per trail index.
+    // Store one ref handle per trail index for paths and cursors separately.
     const trailHandles = useRef<(ImperativeTrailHandle | null)[]>(
+      new Array(trailStates.length).fill(null),
+    );
+    const cursorHandles = useRef<(ImperativeTrailCursorHandle | null)[]>(
       new Array(trailStates.length).fill(null),
     );
 
@@ -395,7 +444,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const windowSizeRef = useRef(windowSize);
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
+    const soundEngineRef = useRef(soundEngine);
 
+    useEffect(() => {
+      soundEngineRef.current = soundEngine;
+    }, [soundEngine]);
     useEffect(() => {
       trailStatesRef.current = trailStates;
     }, [trailStates]);
@@ -438,7 +491,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           if (documentSpaceRef.current && svgRef.current) {
             const vw = window.innerWidth;
             const vh = window.innerHeight;
-            svgRef.current.setAttribute("viewBox", `${window.scrollX} ${window.scrollY} ${vw} ${vh}`);
+            svgRef.current.setAttribute(
+              "viewBox",
+              `${window.scrollX} ${window.scrollY} ${vw} ${vh}`,
+            );
           }
           const elapsed = timeRange.duration;
           for (let i = 0; i < trailStatesRef.current.length; i++) {
@@ -461,6 +517,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevElapsedRef.current = 0;
       spawnedClicksRef.current.clear();
       setActiveClickEffects([]);
+      soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
 
@@ -475,7 +532,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           const scrollY = window.scrollY;
           const vw = window.innerWidth;
           const vh = window.innerHeight;
-          svgRef.current.setAttribute("viewBox", `${scrollX} ${scrollY} ${vw} ${vh}`);
+          svgRef.current.setAttribute(
+            "viewBox",
+            `${scrollX} ${scrollY} ${vw} ${vh}`,
+          );
         }
 
         const realElapsed = timestamp - startTime;
@@ -486,6 +546,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         if (loopedElapsed < prevElapsedRef.current) {
           spawnedClicksRef.current.clear();
           setActiveClickEffects([]);
+          soundEngineRef.current?.reset();
         }
         prevElapsedRef.current = loopedElapsed;
 
@@ -504,7 +565,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Track which trails are visible this frame for ripple pruning
         const newVisible = new Set<number>();
 
-        // Update all trails imperatively
+        // Collect trail frame results for sound engine
+        const soundFrames: TrailSoundFrame[] = [];
+
+        // Update all trail paths and cursors imperatively
         for (let idx = 0; idx < currentTrailStates.length; idx++) {
           const handle = trailHandles.current[idx];
           if (!handle) continue;
@@ -518,6 +582,50 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
 
           if (fade > 0) newVisible.add(idx);
+
+          // Update cursor icon in the separate cursor layer
+          const ts = currentTrailStates[idx];
+          const cursorHandle = cursorHandles.current[idx];
+          if (cursorHandle) {
+            if (result && fade > 0) {
+              const cpIdx = Math.min(
+                Math.floor(
+                  (ts.trail.points.length - 1) * result.trailProgress,
+                ),
+                ts.trail.points.length - 1,
+              );
+              cursorHandle.update(
+                result.cursorPosition,
+                ts.trail.points[cpIdx]?.cursor,
+                result.trailProgress >= 1,
+                result.trailProgress,
+                fade,
+              );
+            } else {
+              cursorHandle.update({ x: 0, y: 0 }, undefined, true, 0, 0);
+            }
+          }
+
+          // Collect frame data for sound engine
+          if (result && fade > 0 && soundEngineRef.current?.isEnabled()) {
+            const cpIdx = Math.min(
+              Math.floor(
+                (ts.trail.points.length - 1) * result.trailProgress,
+              ),
+              ts.trail.points.length - 1,
+            );
+            soundFrames.push({
+              trailIndex: idx,
+              x: result.cursorPosition.x,
+              y: result.cursorPosition.y,
+              prevX: result.cursorPosition.x,
+              prevY: result.cursorPosition.y,
+              cursorType: ts.trail.points[cpIdx]?.cursor,
+              progress: result.trailProgress,
+              color: ts.trail.color,
+              isNewlyActive: false,
+            });
+          }
 
           // Spawn clicks
           if (result && showClickRipplesRef.current) {
@@ -534,6 +642,14 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 !spawnedSet.has(clickIdx)
               ) {
                 spawnedSet.add(clickIdx);
+
+                // Trigger click sound
+                soundEngineRef.current?.triggerClick({
+                  x: result.cursorPosition.x,
+                  y: result.cursorPosition.y,
+                  holdDuration: click.duration,
+                });
+
                 pendingClicks.current.push({
                   id: `${idx}-${clickIdx}-${Date.now()}`,
                   x: result.cursorPosition.x,
@@ -548,6 +664,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }
             });
           }
+        }
+
+        // Feed sound engine with collected trail frames
+        if (soundFrames.length > 0) {
+          soundEngineRef.current?.tick(loopedElapsed, soundFrames);
         }
 
         visibleSetRef.current = newVisible;
@@ -586,20 +707,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           pointerEvents: "none",
         }}
       >
-        {trailStates.map((ts, idx) => (
-          <Trail
-            key={`trail-${idx}`}
-            ref={(handle) => {
-              while (trailHandles.current.length <= idx) {
-                trailHandles.current.push(null);
-              }
-              trailHandles.current[idx] = handle;
-            }}
-            trailState={ts}
-            trailIndex={idx}
-            generatePath={generatePath}
-          />
-        ))}
         {showClickRipples &&
           activeClickEffects.map((effect) => (
             <RippleEffect
@@ -619,6 +726,33 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }}
             />
           ))}
+        {trailStates.map((ts, idx) => (
+          <TrailPath
+            key={`trail-path-${idx}`}
+            ref={(handle) => {
+              while (trailHandles.current.length <= idx) {
+                trailHandles.current.push(null);
+              }
+              trailHandles.current[idx] = handle;
+            }}
+            trailState={ts}
+            trailIndex={idx}
+            generatePath={generatePath}
+          />
+        ))}
+        {trailStates.map((ts, idx) => (
+          <TrailCursor
+            key={`trail-cursor-${idx}`}
+            ref={(handle) => {
+              while (cursorHandles.current.length <= idx) {
+                cursorHandles.current.push(null);
+              }
+              cursorHandles.current[idx] = handle;
+            }}
+            trailState={ts}
+            trailIndex={idx}
+          />
+        ))}
       </svg>
     );
   },
@@ -630,6 +764,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.frozen === nextProps.frozen &&
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
+      prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickMinDuration ===

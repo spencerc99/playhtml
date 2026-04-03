@@ -35,6 +35,10 @@ export const RippleEffect = memo(
       ? 1 + effect.holdDuration / 1000
       : 1;
 
+    if (holdMultiplier > 5) {
+      console.log(`[ClickRipple] large hold: ${effect.holdDuration}ms (${(effect.holdDuration! / 1000).toFixed(1)}s) -> ${holdMultiplier.toFixed(1)}x multiplier`);
+    }
+
     const baseMaxRadius =
       rippleSettings.clickMinRadius +
       effect.radiusFactor *

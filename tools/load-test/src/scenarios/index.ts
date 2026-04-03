@@ -24,10 +24,12 @@ import { cursorStorm } from "./cursor-storm.js";
 import { liveChat } from "./live-chat.js";
 import { fridge } from "./fridge.js";
 import { mirror } from "./mirror.js";
+import { lobbyPresence } from "./lobby-presence.js";
 
 export const scenarios: Record<string, Scenario> = {
   "cursor-storm": cursorStorm,
   "live-chat": liveChat,
   fridge,
   mirror,
+  "lobby-presence": lobbyPresence,
 };

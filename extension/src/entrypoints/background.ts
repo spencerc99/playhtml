@@ -8,6 +8,15 @@ import type { CollectionEvent } from '../shared/types'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl } from '../utils/urlNormalization'
+import {
+  loadState,
+  saveState,
+  todayString,
+  resetDailyIfNeeded,
+  isOnCooldown,
+  recordToastShown,
+} from '../milestones/state'
+import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
 
 const store = new LocalEventStore()
 
@@ -59,6 +68,14 @@ export default defineBackground(() => {
       initializePlayerIdentity().then(() => syncIdentityToServer())
     }
   })
+
+  // Set up 5-minute milestone check alarm
+  browser.alarms.create("checkMilestones", { periodInMinutes: 5 });
+
+  browser.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name !== "checkMilestones") return;
+    await runMilestoneCheck();
+  });
 
   // ECDSA P-256 raw public key = 65 bytes uncompressed = 130 hex chars + 'pk_' = 133 chars.
   // Old keys are 'pk_' + ~13 random chars from Math.random.
@@ -469,5 +486,73 @@ export default defineBackground(() => {
       playerIdentity.discoveredSites.push(domain)
       await browser.storage.local.set({ playerIdentity })
     }
+  }
+
+  async function runMilestoneCheck() {
+    let state = await loadState();
+    const today = todayString();
+    state = resetDailyIfNeeded(state, today);
+
+    if (isOnCooldown(state)) return;
+
+    // Query global stats
+    const globalAgg = await store.getGlobalStats();
+    if (!globalAgg) return;
+
+    const globalStats = {
+      totalTimeMs: globalAgg.totalTimeMs,
+      uniqueUrlCount: globalAgg.uniqueUrls.length,
+      hourBuckets: globalAgg.hourBuckets,
+    };
+
+    // Query cursor distance for today
+    const midnightTs = new Date();
+    midnightTs.setHours(0, 0, 0, 0);
+    const cursorEvents = await store.getAllEvents({ type: 'cursor', startTs: midnightTs.getTime(), limit: 5000 });
+    const moveEvents = cursorEvents
+      .filter((e) => (e.data as any).event === 'move')
+      .sort((a, b) => a.ts - b.ts);
+    let cursorDistancePx = 0;
+    for (let i = 1; i < moveEvents.length; i++) {
+      const prev = moveEvents[i - 1].data as any;
+      const curr = moveEvents[i].data as any;
+      const dx = (curr.x - prev.x) * 1920;
+      const dy = (curr.y - prev.y) * 1080;
+      cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Build top domains by visit count
+    const allDomainEntries = await store.getAllDomains();
+    const topDomains: Array<{ domain: string; visitCount: number; faviconUrl?: string }> = [];
+    for (const { domain } of allDomainEntries.slice(0, 20)) {
+      const agg = await store.getSessionStats(domain).catch(() => null);
+      if (!agg) continue;
+      const navEvents = await store.queryByDomain(domain, { type: 'navigation', limit: 1 });
+      const faviconUrl = navEvents[0]
+        ? (navEvents[0].data as any).favicon_url
+        : undefined;
+      topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl });
+    }
+
+    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains);
+    if (!result) {
+      await saveState(state);
+      return;
+    }
+
+    const { milestone, updatedState } = result;
+    const finalState = recordToastShown(updatedState, today);
+    await saveState(finalState);
+
+    // Send to active tab
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    if (!tab?.id) return;
+    browser.tabs.sendMessage(tab.id, {
+      type: 'SHOW_MILESTONE',
+      milestone,
+    }).catch(() => {
+      // Tab may not have content script (new tab, chrome:// page) — ignore
+    });
   }
 });
