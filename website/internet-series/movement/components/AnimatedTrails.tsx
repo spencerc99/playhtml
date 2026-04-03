@@ -236,19 +236,18 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
 
             if (monochromeMode) {
               const monoStyle = getMonochromeStyle(frame.cursorType);
-              // Speed-based stroke width: sample from current point in original trail
-              const currentPointIndex = Math.min(
-                Math.floor((trailState.trail.points.length - 1) * trailProgress),
-                trailState.trail.points.length - 1,
-              );
-              const prevPointIndex = Math.max(0, currentPointIndex - 1);
-              const sw = currentPointIndex > 0
-                ? speedStrokeWidth(
-                    trailState.trail.points[currentPointIndex],
-                    trailState.trail.points[prevPointIndex],
-                  )
-                : 3;
-              const effectiveWidth = Math.max(1, sw * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
+              // Compute average speed across the entire trail once for a stable width.
+              // Each trail gets a consistent thickness; different trails vary.
+              const points = trailState.trail.points;
+              let totalSpeed = 0;
+              let speedSamples = 0;
+              for (let pi = 1; pi < points.length; pi++) {
+                const sw = speedStrokeWidth(points[pi], points[pi - 1]);
+                totalSpeed += sw;
+                speedSamples++;
+              }
+              const avgSpeed = speedSamples > 0 ? totalSpeed / speedSamples : 3;
+              const effectiveWidth = Math.max(1, avgSpeed * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
 
               pathEl.setAttribute("stroke", monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke);
               pathEl.setAttribute("opacity", String(monoStyle.opacity * trailOpacity));
