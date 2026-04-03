@@ -406,7 +406,17 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
 
   const animRef = useRef<number>();
 
-  const filterOptions = useMemo(() => extractFilterOptions(events), [events]);
+  // Cache filter options — accumulate domains across fetches so filtering
+  // to a single domain doesn't lose the full domain list
+  const cachedDomainsRef = useRef<Set<string>>(new Set());
+  const filterOptions = useMemo(() => {
+    const fresh = extractFilterOptions(events);
+    for (const d of fresh.domains) cachedDomainsRef.current.add(d);
+    return {
+      dates: fresh.dates,
+      domains: Array.from(cachedDomainsRef.current).sort(),
+    };
+  }, [events]);
   const sessions = useMemo(
     () => buildSessions(events, randomize, dateFilter, domainFilter),
     [events, randomize, dateFilter, domainFilter],
