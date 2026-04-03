@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "playhtml-root",
@@ -35,7 +34,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/react": "workspace:*",
@@ -63,7 +62,7 @@
     },
     "extension/website": {
       "name": "wewere-online",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/react": "workspace:*",
@@ -90,7 +89,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -99,9 +98,9 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.7.0",
+      "version": "2.8.0",
       "dependencies": {
-        "@playhtml/common": "0.4.0",
+        "@playhtml/common": "0.5.0",
         "@syncedstore/core": "^0.6.0",
         "y-partykit": "^0.0.31",
         "yjs": "13.6.18",
@@ -118,11 +117,11 @@
     },
     "packages/react": {
       "name": "@playhtml/react",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "dependencies": {
-        "@playhtml/common": "^0.4.0",
+        "@playhtml/common": "^0.5.0",
         "classnames": "^2.3.2",
-        "playhtml": "^2.7.0",
+        "playhtml": "^2.8.0",
         "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
         "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
       },

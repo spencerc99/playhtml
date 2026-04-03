@@ -98,6 +98,7 @@ function processEvents(events: NavigationEvent[], wikipediaOnly: boolean): Proce
 
   const titles: WikiTitle[] = [];
   let prevTitle = "";
+  let prevUrl = "";
 
   for (const ev of focused) {
     const url = ev.data.canonical_url ?? ev.data.url ?? ev.meta.url;
@@ -105,10 +106,11 @@ function processEvents(events: NavigationEvent[], wikipediaOnly: boolean): Proce
     if (!title || title === "Main Page") continue;
     // Skip Wikipedia namespace pages (Special:, Talk:, User:, Category:, etc.)
     if (/^[A-Za-z_]+:/.test(title)) continue;
-    // Deduplicate consecutive identical titles
-    if (title === prevTitle) continue;
+    // Deduplicate consecutive identical titles or URLs
+    if (title === prevTitle || url === prevUrl) continue;
     titles.push({ title, ts: ev.ts, url });
     prevTitle = title;
+    prevUrl = url;
   }
 
   return { titles, stats };
