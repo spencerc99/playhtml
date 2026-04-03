@@ -177,13 +177,13 @@ interface ImperativeTrailHandle {
     strokeWidth: number,
     evictionFade: number,
     monochromeMode: boolean,
-    monoStrokeWidth: number,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
 }
 
 interface TrailProps {
   trailState: TrailState;
   trailIndex: number;
+  fixedMonoStrokeWidth: number;
   generatePath: (
     points: Array<{ x: number; y: number }>,
     style: string,
@@ -191,7 +191,7 @@ interface TrailProps {
 }
 
 const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
-  ({ trailState, trailIndex, generatePath }, ref) => {
+  ({ trailState, trailIndex, fixedMonoStrokeWidth, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
     const cursorGroupRef = useRef<SVGGElement>(null);
@@ -205,7 +205,7 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
     const cursorSize = 32;
 
     React.useImperativeHandle(ref, () => ({
-      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, monochromeMode, monoStrokeWidth) {
+      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, monochromeMode) {
         const group = groupRef.current;
         if (!group) return null;
 
@@ -237,8 +237,8 @@ const Trail = React.forwardRef<ImperativeTrailHandle, TrailProps>(
 
             if (monochromeMode) {
               const monoStyle = getMonochromeStyle(frame.cursorType);
-              // Use pre-cached stroke width passed from parent (stable, no per-frame jitter)
-              const cachedSw = monoStrokeWidth;
+              // Use fixed stroke width from prop (set at mount, never changes)
+              const cachedSw = fixedMonoStrokeWidth;
               const effectiveWidth = Math.max(1, cachedSw * (monoStyle.strokeWidth > 0 ? monoStyle.strokeWidth / 3 : 1));
 
               pathEl.setAttribute("stroke", monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke);
@@ -551,7 +551,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               strokeWidthRef.current,
               1,
               monochromeModeRef.current,
-              monoStrokeWidths.current.get(i) ?? 3,
             );
           }
         });
@@ -620,7 +619,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             strokeWidth,
             fade,
             monochromeModeRef.current,
-            monoStrokeWidths.current.get(idx) ?? 3,
           );
 
           if (fade > 0) newVisible.add(idx);
@@ -709,6 +707,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             }}
             trailState={ts}
             trailIndex={idx}
+            fixedMonoStrokeWidth={monoStrokeWidths.current.get(idx) ?? 3}
             generatePath={generatePath}
           />
         ))}
