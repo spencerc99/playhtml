@@ -34,6 +34,7 @@ const Candle = withSharedState(
     return (
       <img
         src={data.on ? "/candle-gif.gif" : "/candle-off.png"}
+        id="candle"
         selector-id=".candle"
         className="candle"
         onClick={() => {
@@ -103,6 +104,7 @@ const WithSharedStateCanPlayWithLoading = withSharedState(
         textShadow: "0 1px 3px rgba(0,0,0,0.3)",
         cursor: "pointer",
       }}
+      id="pulse-counter"
       onClick={() => setData({ count: data.count + 1 })}
     >
       can-play (pulse) - {data.count}
@@ -125,6 +127,52 @@ ReactDOM.createRoot(
     }}
   >
     <div>
+      {/* Verification section: one element per built-in capability */}
+      <div style={{ padding: "20px", border: "2px solid #333", margin: "20px 0" }}>
+        <h3>Built-in Capability Verification</h3>
+        <p style={{ marginBottom: "12px", color: "#666" }}>
+          Each element below should respond to its interaction. Drag = move/spin, click = toggle/grow.
+        </p>
+        <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div>
+            <strong>CanMove</strong> (drag)
+            <CanMoveElement>
+              <div id="verify-move" style={{ width: 80, height: 80, background: "#4a9a8a", borderRadius: 8, cursor: "grab" }} />
+            </CanMoveElement>
+          </div>
+          <div>
+            <strong>CanSpin</strong> (drag)
+            <CanSpinElement>
+              <div id="verify-spin" style={{ width: 80, height: 80, background: "#c4724e", borderRadius: 8, cursor: "grab" }}>
+                <span style={{ display: "block", textAlign: "center", lineHeight: "80px", color: "white" }}>&uarr;</span>
+              </div>
+            </CanSpinElement>
+          </div>
+          <div>
+            <strong>CanToggle</strong> (click)
+            <CanToggleElement>
+              <div id="verify-toggle" style={{ width: 80, height: 80, background: "#5b8db8", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+                off
+              </div>
+            </CanToggleElement>
+            <style>{`.clicked { background: #d4b85c !important; }`}</style>
+          </div>
+          <div>
+            <strong>CanGrow</strong> (click, alt+click to shrink)
+            <CanGrowElement>
+              <div id="verify-grow" style={{ width: 80, height: 80, background: "#8a8279", borderRadius: 8, cursor: "pointer" }} />
+            </CanGrowElement>
+          </div>
+          <div>
+            <strong>CanHover</strong> (hover)
+            <CanHoverElement>
+              <div id="verify-hover" style={{ width: 80, height: 80, background: "#3d3833", borderRadius: 8 }} className="hover-verify" />
+            </CanHoverElement>
+            <style>{`.hover-verify.hovering { outline: 3px solid #4a9a8a; }`}</style>
+          </div>
+        </div>
+      </div>
+
       <LoadingStateTest />
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
@@ -157,6 +205,7 @@ ReactDOM.createRoot(
       </style>
       <CanMoveElement>
         <div
+          id="move-blue"
           style={{
             width: "100px",
             height: "100px",
@@ -167,6 +216,7 @@ ReactDOM.createRoot(
       </CanMoveElement>
       <CanSpinElement>
         <div
+          id="spin-yellow"
           style={{
             width: "100px",
             height: "100px",

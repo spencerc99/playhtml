@@ -912,61 +912,33 @@ export default defineContentScript({
         });
       }
 
-      // Inject a <script> into the main world to overwrite the page's identity
-      // with the extension's. Works regardless of playhtml version since it
-      // writes directly to localStorage and triggers a mousemove to re-broadcast.
+      // Send the extension's identity to the page's playhtml instance via a
+      // CustomEvent on the shared DOM. The content script can't access
+      // window.playhtml (isolated world), and inline <script> injection is
+      // blocked by CSP. CustomEvents cross the world boundary via the DOM.
       //
       // Actions taken under the old anonymous identity are intentionally
       // orphaned — anonymous interactions have no continuity expectation.
       private injectIdentityIntoMainWorld() {
         if (!this.playerIdentity) return;
 
-        // Content scripts run in Chrome's isolated world — we can't access
-        // window.playhtml directly. Inject a <script> that runs in the main
-        // world, polls for playhtml, and applies the extension's identity.
-        const identity = JSON.stringify(this.playerIdentity);
-        const script = document.createElement("script");
-        script.textContent = `
-          (function() {
-            var identity = ${identity};
-            var attempts = 0;
-            function tryInject() {
-              var ph = window.playhtml;
-              if (!ph || !ph.cursorClient) return false;
+        const dispatch = () => {
+          document.dispatchEvent(new CustomEvent("playhtml:configure-identity", {
+            detail: { playerIdentity: this.playerIdentity },
+          }));
+        };
 
-              if (typeof ph.cursorClient.configure === "function") {
-                ph.cursorClient.configure({ playerIdentity: identity });
-              }
+        // Dispatch immediately in case playhtml is already listening
+        dispatch();
 
-              // Trigger awareness re-broadcast with the new identity
-              document.dispatchEvent(new MouseEvent("mousemove", {
-                clientX: 0, clientY: 0, bubbles: true
-              }));
+        // Also listen for playhtml signaling it's ready (handles the case
+        // where our event fires before playhtml's init sets up the listener)
+        document.addEventListener("playhtml:ready", () => {
+          dispatch();
+          console.log("[we-were-online] Re-dispatched identity after playhtml ready signal");
+        }, { once: true });
 
-              // Persist so the identity sticks across page reloads
-              try {
-                localStorage.setItem(
-                  "playhtml_player_identity",
-                  JSON.stringify(identity)
-                );
-              } catch (e) {}
-
-              console.log("[we-were-online] Injected extension identity into native playhtml");
-              return true;
-            }
-            if (tryInject()) return;
-            var interval = setInterval(function() {
-              if (tryInject() || ++attempts > 20) {
-                clearInterval(interval);
-                if (attempts > 20) {
-                  console.warn("[we-were-online] Could not inject identity — playhtml not found after 5s");
-                }
-              }
-            }, 250);
-          })();
-        `;
-        document.documentElement.appendChild(script);
-        script.remove();
+        console.log("[we-were-online] Dispatched identity injection event");
       }
 
       private async setupPresenceDetection() {
@@ -1004,16 +976,15 @@ export default defineContentScript({
         this.listenForPresenceCount();
 
         // Initialize domain-specific features (link glow, follow, nav broadcast)
-        if (enableCursors) {
-          const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-          await initCustomSite({
-            createPageData: playhtml.createPageData,
-            createPresenceRoom: playhtml.createPresenceRoom,
-            presence: playhtml.presence,
-            cursorClient: playhtml.cursorClient,
-            playerColor: color,
-          });
-        }
+        const { initCustomSite } = await import("../custom-sites");
+        const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+        await initCustomSite({
+          createPageData: playhtml.createPageData,
+          createPresenceRoom: playhtml.createPresenceRoom,
+          presence: playhtml.presence,
+          cursorClient: playhtml.cursorClient,
+          playerColor: color,
+        });
       }
 
       private listenForPresenceCount() {

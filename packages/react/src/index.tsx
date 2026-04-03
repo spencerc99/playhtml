@@ -1,7 +1,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -147,29 +147,51 @@ export function CanPlayElement<T extends object, V = any>({
     initialAwareness,
   );
 
-  // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
-  const updateElement: ElementInitializer["updateElementAwareness"] = ({
-    data: newData,
-    awareness: newAwareness,
-    awarenessByStableId: newAwarenessByStableId,
-    myAwareness,
-  }) => {
-    setData(newData);
-    setAwareness(newAwareness);
-    setAwarenessByStableId(newAwarenessByStableId);
-    setMyAwareness(myAwareness);
+  // Capture the capability's original updateElement/updateElementAwareness so we can
+  // compose them with the React state updater below. These come from the built-in
+  // TagTypeToElement definitions (e.g. CanMove applies element.style.transform).
+  // They arrive as extra runtime props via {...TagTypeToElement[TagType.CanMove]} but
+  // are omitted from the CanPlayProps type since React components don't normally use them.
+  const capabilityUpdateElement = (elementProps as any).updateElement as
+    | ElementInitializer["updateElement"]
+    | undefined;
+  const capabilityUpdateElementAwareness = (elementProps as any)
+    .updateElementAwareness as
+    | ElementInitializer["updateElementAwareness"]
+    | undefined;
+
+  const syncReactState = (handlerData: ElementAwarenessEventHandlerData) => {
+    setData(handlerData.data);
+    setAwareness(handlerData.awareness);
+    setAwarenessByStableId(handlerData.awarenessByStableId);
+    setMyAwareness(handlerData.myAwareness);
+  };
+
+  const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
+    syncReactState(handlerData as ElementAwarenessEventHandlerData);
+    capabilityUpdateElement?.(handlerData);
+  };
+
+  const updateElementAwareness: ElementInitializer["updateElementAwareness"] = (
+    handlerData,
+  ) => {
+    syncReactState(handlerData);
+    capabilityUpdateElementAwareness?.(handlerData);
   };
 
   useEffect(() => {
     if (ref.current) {
       for (const [key, value] of Object.entries(elementProps)) {
+        // Skip updateElement/updateElementAwareness — they are set below as
+        // composed versions that include both React state updates and DOM updates.
+        if (key === "updateElement" || key === "updateElementAwareness") continue;
         // @ts-ignore
         ref.current[key] = value;
       }
       // @ts-ignore
       ref.current.updateElement = updateElement;
       // @ts-ignore
-      ref.current.updateElementAwareness = updateElement;
+      ref.current.updateElementAwareness = updateElementAwareness;
 
       // Setup the element, which will handle data-source discovery if needed
       try {
@@ -238,6 +260,25 @@ export function CanPlayElement<T extends object, V = any>({
   if (isReactFragment(renderedChildren) && !id) {
     throw new Error(
       `If you pass a single React Fragment as the children, you must also specify 'id' in the props`,
+    );
+  }
+
+  // Warn when no explicit id is provided. Without one, the core library falls
+  // back to hashing element.outerHTML, which can produce different IDs across
+  // browsers and break real-time collaboration.
+  const childProps = renderedChildren?.props as { id?: string; className?: string } | undefined;
+  const childId = childProps?.id;
+  if (!id && !childId && !dataSource) {
+    const childType = typeof renderedChildren?.type === "string"
+      ? `<${renderedChildren.type}>`
+      : renderedChildren?.type?.name
+        ? `<${(renderedChildren.type as { name: string }).name}>`
+        : "<unknown>";
+    const classHint = childProps?.className ? ` (className="${childProps.className}")` : "";
+    console.warn(
+      `[@playhtml/react] <${primaryTag}> wrapping ${childType}${classHint} has no "id" prop. ` +
+      `Cross-browser sync requires a stable id. ` +
+      `Add an id to your child element, e.g. <div id="my-element">`,
     );
   }
 

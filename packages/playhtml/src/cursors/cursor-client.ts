@@ -1582,6 +1582,12 @@ export class CursorClientAwareness {
     if (options.playerIdentity !== undefined) {
       assertValidPlayerIdentity(options.playerIdentity);
       this.playerIdentity = options.playerIdentity;
+      this.savePlayerIdentityToStorage();
+      // Re-broadcast awareness with new identity and update local cursor style
+      document.documentElement.style.cursor = getCursorStyleForUser(
+        getPrimaryColor(this.playerIdentity),
+      );
+      this.updateCursorAwareness();
     }
   }
 
