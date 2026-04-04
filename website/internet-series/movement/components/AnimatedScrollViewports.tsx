@@ -23,6 +23,10 @@ interface AnimatedScrollViewportsProps {
     maxConcurrentScrolls: number;
     randomizeColors?: boolean;
     showPagePreview?: boolean;
+    allowOverlap?: boolean;
+    showScrollEvents?: boolean;
+    showResizeEvents?: boolean;
+    showZoomEvents?: boolean;
   };
 }
 
@@ -244,6 +248,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         const animation = getNextAnimation();
         if (!animation) return;
 
+        // Filter by enabled event types
+        const s = settingsRef.current;
+        const hasScroll = s.showScrollEvents !== false && animation.scrollEvents.length > 0;
+        const hasResize = s.showResizeEvents !== false && (animation.resizeEvents?.length ?? 0) > 0;
+        const hasZoom = s.showZoomEvents !== false && (animation.zoomEvents?.length ?? 0) > 0;
+        if (!hasScroll && !hasResize && !hasZoom) return;
+
         // Calculate size for this viewport
         const seed =
           hashString(animation.participantId + animation.sessionId) +
@@ -255,20 +266,27 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           seed,
         );
 
-        // Get occupied rects (exclude fading-out viewports from collision)
-        const occupiedRects = activeViewports
-          .filter((v) => v.phase !== "fade-out")
-          .map((v) => v.rect);
-
-        // Find available position
-        const position = findAvailablePosition(
-          size.width,
-          size.height,
-          occupiedRects,
-          canvasSize.width,
-          canvasSize.height,
-          seed,
-        );
+        // Find position — skip collision check when overlap is allowed
+        let position: { x: number; y: number } | null;
+        if (settingsRef.current.allowOverlap) {
+          // Random position, no collision check
+          position = {
+            x: seededRandom(seed, 0) * (canvasSize.width - size.width - VIEWPORT_MARGIN * 2) + VIEWPORT_MARGIN,
+            y: seededRandom(seed, 1) * (canvasSize.height - size.height - VIEWPORT_MARGIN * 2) + VIEWPORT_MARGIN,
+          };
+        } else {
+          const occupiedRects = activeViewports
+            .filter((v) => v.phase !== "fade-out")
+            .map((v) => v.rect);
+          position = findAvailablePosition(
+            size.width,
+            size.height,
+            occupiedRects,
+            canvasSize.width,
+            canvasSize.height,
+            seed,
+          );
+        }
 
         if (!position) {
           // No space available, put animation back
@@ -568,6 +586,10 @@ const DynamicViewportRect = memo(
       backgroundOpacity: number;
       randomizeColors?: boolean;
       showPagePreview?: boolean;
+      allowOverlap?: boolean;
+      showScrollEvents?: boolean;
+      showResizeEvents?: boolean;
+      showZoomEvents?: boolean;
     };
   }) => {
     const {

@@ -769,6 +769,58 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="checkbox"
+                checked={settings.allowOverlap ?? false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    allowOverlap: e.target.checked,
+                  }))
+                }
+              />
+              Allow overlapping windows
+            </label>
+          </div>
+
+          <div className="control-group" style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <label style={{ fontSize: "12px", fontWeight: "normal", textTransform: "none" }}>
+              <input
+                type="checkbox"
+                checked={settings.showScrollEvents !== false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({ ...s, showScrollEvents: e.target.checked }))
+                }
+                style={{ marginRight: "4px" }}
+              />
+              Scroll
+            </label>
+            <label style={{ fontSize: "12px", fontWeight: "normal", textTransform: "none" }}>
+              <input
+                type="checkbox"
+                checked={settings.showResizeEvents !== false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({ ...s, showResizeEvents: e.target.checked }))
+                }
+                style={{ marginRight: "4px" }}
+              />
+              Resize
+            </label>
+            <label style={{ fontSize: "12px", fontWeight: "normal", textTransform: "none" }}>
+              <input
+                type="checkbox"
+                checked={settings.showZoomEvents !== false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({ ...s, showZoomEvents: e.target.checked }))
+                }
+                style={{ marginRight: "4px" }}
+              />
+              Zoom
+            </label>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="min-viewports">Min Viewports</label>
             <input
               id="min-viewports"

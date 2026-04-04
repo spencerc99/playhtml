@@ -70,6 +70,10 @@ const loadSettings = () => {
     backgroundOpacity: 0.7,
     maxConcurrentScrolls: 5,
     showPagePreview: false,
+    allowOverlap: false,
+    showScrollEvents: true,
+    showResizeEvents: true,
+    showZoomEvents: true,
     scrollOverlapFactor: 0.8,
     minViewports: 10,
     maxViewports: 50,
@@ -545,6 +549,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       maxConcurrentScrolls: settings.maxConcurrentScrolls,
       randomizeColors: settings.randomizeColors,
       showPagePreview: settings.showPagePreview,
+      allowOverlap: settings.allowOverlap,
+      showScrollEvents: settings.showScrollEvents,
+      showResizeEvents: settings.showResizeEvents,
+      showZoomEvents: settings.showZoomEvents,
     }),
     [
       settings.scrollSpeed,
@@ -552,6 +560,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.maxConcurrentScrolls,
       settings.randomizeColors,
       settings.showPagePreview,
+      settings.allowOverlap,
+      settings.showScrollEvents,
+      settings.showResizeEvents,
+      settings.showZoomEvents,
     ],
   );
 
