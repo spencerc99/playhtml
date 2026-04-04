@@ -101,6 +101,7 @@ const loadSettings = () => {
     soundChordVoicing: false,
     soundCursorInstruments: false,
     soundCrossingDissonance: false,
+    monochromeMode: false,
   };
 
   try {
@@ -764,6 +765,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               clickNumRings: settings.clickNumRings,
               clickRingDelayMs: settings.clickRingDelayMs,
               clickAnimationStopPoint: settings.clickAnimationStopPoint,
+              monochromeMode: settings.monochromeMode,
             }}
           />
         )}
