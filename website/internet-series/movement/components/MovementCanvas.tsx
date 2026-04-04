@@ -74,9 +74,8 @@ const loadSettings = () => {
     showScrollEvents: true,
     showResizeEvents: true,
     showZoomEvents: true,
+    windowScale: 0.5,
     scrollOverlapFactor: 0.8,
-    minViewports: 10,
-    maxViewports: 50,
     keyboardOverlapFactor: 0.9,
     textboxOpacity: 0.2,
     keyboardMinFontSize: 12,
@@ -553,6 +552,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       showScrollEvents: settings.showScrollEvents,
       showResizeEvents: settings.showResizeEvents,
       showZoomEvents: settings.showZoomEvents,
+      windowScale: settings.windowScale,
     }),
     [
       settings.scrollSpeed,
@@ -564,6 +564,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.showScrollEvents,
       settings.showResizeEvents,
       settings.showZoomEvents,
+      settings.windowScale,
     ],
   );
 
