@@ -1,5 +1,17 @@
 # wewere-online
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [bdfa16f]
+- Updated dependencies [cd467ce]
+- Updated dependencies [6b0964f]
+- Updated dependencies [8d34468]
+  - playhtml@2.9.0
+  - @playhtml/common@0.6.0
+  - @playhtml/react@0.10.1
+
 ## 0.0.1
 
 ### Patch Changes
