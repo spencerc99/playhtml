@@ -125,3 +125,56 @@ Cloudflare Worker + Supabase PostgreSQL:
 3. **Privacy tiers**: Keyboard abstract/full modes, collection off/local/shared modes, PII redaction
 4. **Stats pre-computation**: Aggregates computed at insert time for O(1) domain-level queries
 5. **Session + identity separation**: Persistent ECDSA identity vs ephemeral browser-session IDs
+
+## Injecting UI into Host Pages
+
+All extension-owned UI injected into third-party pages (toasts, overlays, modals) **must use Shadow DOM** to prevent style bleed in both directions. Host-page CSS cannot penetrate the shadow boundary; our styles cannot accidentally affect the host page.
+
+### Pattern
+
+```ts
+const host = document.createElement('div');
+host.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:2147483647;';
+const shadow = host.attachShadow({ mode: 'closed' });
+
+const styleEl = document.createElement('style');
+styleEl.textContent = MY_COMPONENT_CSS; // CSS string, not a file import
+shadow.appendChild(styleEl);
+
+const content = document.createElement('div');
+// ... build DOM or mount React here ...
+shadow.appendChild(content);
+
+document.body.appendChild(host);
+```
+
+### Google Fonts
+
+`@import` and `<link>` in `document.head` do not cross the shadow boundary. Inject font links **inside the shadow root**:
+
+```ts
+const fontLink = document.createElement('link');
+fontLink.rel = 'stylesheet';
+fontLink.href = 'https://fonts.googleapis.com/...';
+shadow.appendChild(fontLink);
+```
+
+### React inside Shadow DOM
+
+Mount `createRoot()` onto a plain `<div>` appended inside the shadow root — React doesn't need to know about the shadow boundary:
+
+```ts
+const reactContainer = document.createElement('div');
+shadow.appendChild(reactContainer);
+createRoot(reactContainer).render(<MyComponent />);
+```
+
+React event delegation (synthetic events) works fine in closed shadow roots in React 18+.
+
+### CSS for injected components
+
+Keep each component's CSS as a `const` string in a companion file (e.g. `content/milestone-toast-styles.ts`). Do **not** rely on `content/style.css` or the manifest `css` array for injected UI — that stylesheet is reserved for styles that must affect the host page directly (e.g. element picker outlines).
+
+### What lives in `content/style.css`
+
+Only styles that must reach the host page's own elements — currently just `.playhtml-extension-element-picker`. Everything else uses Shadow DOM.

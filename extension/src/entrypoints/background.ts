@@ -550,8 +550,9 @@ export default defineBackground(() => {
     const finalState = recordToastShown(updatedState, today);
     await saveState(finalState);
 
-    // Send to active tab
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    // Send to active tab. Use lastFocusedWindow rather than currentWindow so
+    // this works even when DevTools is the focused window.
+    const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     const tab = tabs[0];
     if (!tab?.id) return;
     browser.tabs.sendMessage(tab.id, {

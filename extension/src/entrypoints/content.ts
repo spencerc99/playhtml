@@ -1,6 +1,11 @@
 // ABOUTME: Main content script injected into every web page.
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import browser from "webextension-polyfill";
+import {
+  MILESTONE_DURATION_MS,
+  MILESTONE_TOAST_CSS,
+  ensureToastFonts,
+} from "./content/milestone-toast-styles";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
@@ -13,13 +18,13 @@ import { FLAGS } from "../flags";
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_idle",
-  cssInjectionMode: "ui",
+  cssInjectionMode: "manifest",
   main() {
     // Don't run collectors or extension features on extension-internal pages
     // (portrait, popup, options, etc.) — they generate noise and can trigger
     // the 64MiB sendMessage limit when the portrait page requests all events.
     const proto = window.location.protocol;
-    if (proto === 'chrome-extension:' || proto === 'moz-extension:') {
+    if (proto === "chrome-extension:" || proto === "moz-extension:") {
       return;
     }
 
@@ -67,7 +72,7 @@ export default defineContentScript({
       private detectExistingPlayHTML() {
         // Look for existing PlayHTML elements
         const existingElements = document.querySelectorAll(
-          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]"
+          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
         );
 
         if (existingElements.length > 0) {
@@ -79,7 +84,7 @@ export default defineContentScript({
 
       public checkPlayHTMLStatus() {
         const existingElements = document.querySelectorAll(
-          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]"
+          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
         );
         return {
           elementCount: existingElements.length,
@@ -355,7 +360,7 @@ export default defineContentScript({
 
       private async renderReactModal(
         element: HTMLElement,
-        elementHasPlayHTML: boolean
+        elementHasPlayHTML: boolean,
       ) {
         // Dynamically import React and the modal component
         const [{ default: React }, { createRoot }, { CapabilityModal }] =
@@ -403,7 +408,7 @@ export default defineContentScript({
             onCollect: handleCollect,
             onApplyCapability: handleApplyCapability,
             onCancel: handleCancel,
-          })
+          }),
         );
       }
 
@@ -451,7 +456,6 @@ export default defineContentScript({
 
           // Save to storage
           await browser.storage.local.set({ gameInventory: updatedInventory });
-
         } catch (error) {
           console.error("Failed to add item to inventory:", error);
         }
@@ -473,7 +477,7 @@ export default defineContentScript({
           const existingSiteSignature = inventory.items.find(
             (item: any) =>
               item.type === "site_signature" &&
-              item.sourceUrl.includes(currentDomain)
+              item.sourceUrl.includes(currentDomain),
           );
 
           if (!existingSiteSignature) {
@@ -496,7 +500,6 @@ export default defineContentScript({
                 discoveredAt: Date.now(),
               },
             });
-
           }
         } catch (error) {
           console.error("Failed to check site discovery:", error);
@@ -657,7 +660,7 @@ export default defineContentScript({
       }
 
       private getComprehensiveStyles(
-        element: HTMLElement
+        element: HTMLElement,
       ): Record<string, string> {
         const computed = window.getComputedStyle(element);
         const importantStyles = [
@@ -845,28 +848,36 @@ export default defineContentScript({
       }
 
       private showNotification(message: string) {
-        const notification = document.createElement("div");
-        notification.style.cssText = `
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #10b981;
-          color: white;
-          padding: 12px 16px;
-          border-radius: 8px;
-          z-index: 1000001;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          font-size: 14px;
-          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        // Shadow DOM isolates these styles from host-page CSS.
+        const host = document.createElement("div");
+        host.style.cssText =
+          "position:fixed;top:20px;right:20px;z-index:1000001;";
+        const shadow = host.attachShadow({ mode: "closed" });
+        const style = document.createElement("style");
+        style.textContent = `
+          .notification {
+            background: #10b981;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            opacity: 1;
+            transition: opacity 0.3s ease;
+          }
+          .notification.hiding { opacity: 0; }
         `;
+        const notification = document.createElement("div");
+        notification.className = "notification";
         notification.textContent = message;
-
-        document.body.appendChild(notification);
+        shadow.appendChild(style);
+        shadow.appendChild(notification);
+        document.body.appendChild(host);
 
         setTimeout(() => {
-          notification.style.opacity = "0";
-          notification.style.transition = "opacity 0.3s ease";
-          setTimeout(() => notification.remove(), 300);
+          notification.classList.add("hiding");
+          setTimeout(() => host.remove(), 300);
         }, 3000);
       }
 
@@ -923,9 +934,11 @@ export default defineContentScript({
         if (!this.playerIdentity) return;
 
         const dispatch = () => {
-          document.dispatchEvent(new CustomEvent("playhtml:configure-identity", {
-            detail: { playerIdentity: this.playerIdentity },
-          }));
+          document.dispatchEvent(
+            new CustomEvent("playhtml:configure-identity", {
+              detail: { playerIdentity: this.playerIdentity },
+            }),
+          );
         };
 
         // Dispatch immediately in case playhtml is already listening
@@ -933,10 +946,16 @@ export default defineContentScript({
 
         // Also listen for playhtml signaling it's ready (handles the case
         // where our event fires before playhtml's init sets up the listener)
-        document.addEventListener("playhtml:ready", () => {
-          dispatch();
-          console.log("[we-were-online] Re-dispatched identity after playhtml ready signal");
-        }, { once: true });
+        document.addEventListener(
+          "playhtml:ready",
+          () => {
+            dispatch();
+            console.log(
+              "[we-were-online] Re-dispatched identity after playhtml ready signal",
+            );
+          },
+          { once: true },
+        );
 
         console.log("[we-were-online] Dispatched identity injection event");
       }
@@ -955,14 +974,18 @@ export default defineContentScript({
         // cursor styles to appear before initializing our own instance.
         const nativeAppeared = await this.waitForNativePlayhtml(1500);
         if (nativeAppeared) {
-          console.log("[we-were-online] Native playhtml detected after waiting");
+          console.log(
+            "[we-were-online] Native playhtml detected after waiting",
+          );
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
         }
 
         // Initialize PlayHTML — cursors only enabled on supported sites (e.g. Wikipedia)
-        const { initCustomSite, shouldEnableCursors } = await import("../custom-sites");
+        const { initCustomSite, shouldEnableCursors } = await import(
+          "../custom-sites"
+        );
         const enableCursors = shouldEnableCursors();
 
         const { playhtml } = await import("playhtml");
@@ -977,7 +1000,8 @@ export default defineContentScript({
 
         // Initialize domain-specific features (link glow, follow, nav broadcast)
         if (enableCursors) {
-          const color = this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+          const color =
+            this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
           await initCustomSite({
             createPageData: playhtml.createPageData,
             createPresenceRoom: playhtml.createPresenceRoom,
@@ -1009,13 +1033,14 @@ export default defineContentScript({
     let HistoricalOverlayComponent: any = null;
 
     const renderOverlay = () => {
-      if (!overlayRoot || !overlayReactModule || !HistoricalOverlayComponent) return;
+      if (!overlayRoot || !overlayReactModule || !HistoricalOverlayComponent)
+        return;
       overlayRoot.render(
         overlayReactModule.createElement(HistoricalOverlayComponent, {
           visible: true,
           currentUrl: window.location.href,
           onClose: () => toggleHistoricalOverlay(),
-        })
+        }),
       );
     };
 
@@ -1025,7 +1050,7 @@ export default defineContentScript({
 
         if (overlayVisible) {
           if (VERBOSE) {
-            console.log('[HistoricalOverlay] Activating overlay...');
+            console.log("[HistoricalOverlay] Activating overlay...");
           }
 
           // Pause collection while overlay is open — cursor/scroll events from
@@ -1034,24 +1059,38 @@ export default defineContentScript({
 
           const [ReactModule, { createRoot }, { HistoricalOverlay }] =
             await Promise.all([
-              import('react'),
-              import('react-dom/client'),
-              import('../components/HistoricalOverlay'),
+              import("react"),
+              import("react-dom/client"),
+              import("../components/HistoricalOverlay"),
             ]);
           const React = ReactModule.default ?? ReactModule;
 
           overlayReactModule = React;
           HistoricalOverlayComponent = HistoricalOverlay;
 
-          const container = document.createElement('div');
-          container.id = 'playhtml-historical-overlay-root';
+          // Shadow DOM isolates overlay styles from host-page CSS.
+          const container = document.createElement("div");
+          container.id = "playhtml-historical-overlay-root";
           document.body.appendChild(container);
 
-          overlayRoot = createRoot(container);
+          const overlayShadow = container.attachShadow({ mode: "closed" });
+
+          // Inject fonts into the shadow root — Google Fonts links cannot cross
+          // the shadow boundary from document.head.
+          const fontLink = document.createElement("link");
+          fontLink.rel = "stylesheet";
+          fontLink.href =
+            "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&family=Lora:ital,wght@1,600&display=swap";
+          overlayShadow.appendChild(fontLink);
+
+          const reactContainer = document.createElement("div");
+          overlayShadow.appendChild(reactContainer);
+
+          overlayRoot = createRoot(reactContainer);
           renderOverlay();
 
           if (VERBOSE) {
-            console.log('[HistoricalOverlay] Overlay activated');
+            console.log("[HistoricalOverlay] Overlay activated");
           }
         } else {
           if (overlayRoot) {
@@ -1059,7 +1098,9 @@ export default defineContentScript({
             overlayRoot = null;
           }
 
-          const container = document.getElementById('playhtml-historical-overlay-root');
+          const container = document.getElementById(
+            "playhtml-historical-overlay-root",
+          );
           if (container) {
             container.remove();
           }
@@ -1068,11 +1109,11 @@ export default defineContentScript({
           collectorManager?.resumeAll();
 
           if (VERBOSE) {
-            console.log('[HistoricalOverlay] Overlay deactivated');
+            console.log("[HistoricalOverlay] Overlay deactivated");
           }
         }
       } catch (error) {
-        console.error('[HistoricalOverlay] Failed to toggle overlay:', error);
+        console.error("[HistoricalOverlay] Failed to toggle overlay:", error);
         overlayVisible = false;
       }
     };
@@ -1082,13 +1123,19 @@ export default defineContentScript({
       if (overlayVisible) renderOverlay();
     };
 
-    window.addEventListener('popstate', handleNavigation);
+    window.addEventListener("popstate", handleNavigation);
 
     // Intercept pushState/replaceState for SPA frameworks
     const origPushState = history.pushState.bind(history);
     const origReplaceState = history.replaceState.bind(history);
-    history.pushState = (...args) => { origPushState(...args); handleNavigation(); };
-    history.replaceState = (...args) => { origReplaceState(...args); handleNavigation(); };
+    history.pushState = (...args) => {
+      origPushState(...args);
+      handleNavigation();
+    };
+    history.replaceState = (...args) => {
+      origReplaceState(...args);
+      handleNavigation();
+    };
 
     const initializeCollectors = async () => {
       try {
@@ -1096,45 +1143,57 @@ export default defineContentScript({
           console.log("[Collections] Initializing collector manager...");
         }
         collectorManager = new CollectorManager();
-        
+
         // Register collectors
         const cursorCollector = new CursorCollector();
         collectorManager.registerCollector(cursorCollector);
-        
+
         const navigationCollector = new NavigationCollector();
         collectorManager.registerCollector(navigationCollector);
-        
+
         const viewportCollector = new ViewportCollector();
         collectorManager.registerCollector(viewportCollector);
-        
+
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
-        
+
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
         if (VERBOSE) {
-          console.log("[Collections] Collector manager initialized successfully");
+          console.log(
+            "[Collections] Collector manager initialized successfully",
+          );
         }
 
         // One-time migration of page-origin IndexedDB events to extension-origin
         const migrationKey = `migration_v1_done_${window.location.hostname}`;
         try {
-          const migrationResult = await browser.storage.local.get([migrationKey]);
+          const migrationResult = await browser.storage.local.get([
+            migrationKey,
+          ]);
           if (!migrationResult[migrationKey]) {
-            const { LocalEventStore } = await import('../storage/LocalEventStore');
+            const { LocalEventStore } = await import(
+              "../storage/LocalEventStore"
+            );
             const pageStore = new LocalEventStore();
             const events = await pageStore.getAllEvents();
             if (events.length > 0) {
-              await browser.runtime.sendMessage({ type: 'STORE_EVENTS', events });
+              await browser.runtime.sendMessage({
+                type: "STORE_EVENTS",
+                events,
+              });
             }
             await browser.storage.local.set({ [migrationKey]: true });
           }
         } catch (e) {
           // Migration is best-effort; don't break collection if it fails
-          console.warn('[Content] Migration failed:', e);
+          console.warn("[Content] Migration failed:", e);
         }
       } catch (error) {
-        console.error("[Collections] Failed to initialize collector manager:", error);
+        console.error(
+          "[Collections] Failed to initialize collector manager:",
+          error,
+        );
       }
     };
 
@@ -1157,8 +1216,12 @@ export default defineContentScript({
     }
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
-    document.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'H' || e.key === 'h')) {
+    document.addEventListener("keydown", (e) => {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        (e.key === "H" || e.key === "h")
+      ) {
         e.preventDefault();
         toggleHistoricalOverlay();
       }
@@ -1178,8 +1241,10 @@ export default defineContentScript({
       let accentHtml = "";
 
       if (milestone.type === "cursorDistance") {
-        const cursorPath1 = "m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z";
-        const cursorPath2 = "m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z";
+        const cursorPath1 =
+          "m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z";
+        const cursorPath2 =
+          "m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z";
         const svgGhost = (cls: string) =>
           `<svg class="wwo-cursor-svg ${cls}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
             <path d="${cursorPath1}" fill="#4a9a8a"/>
@@ -1187,21 +1252,29 @@ export default defineContentScript({
           </svg>`;
         accentHtml = `
           <div class="wwo-cursor-trail">
-            ${svgGhost("wwo-c3")}${svgGhost("wwo-c2")}${svgGhost("wwo-c1")}${svgGhost("wwo-c0")}
+            ${svgGhost("wwo-c3")}${svgGhost("wwo-c2")}${svgGhost(
+          "wwo-c1",
+        )}${svgGhost("wwo-c0")}
           </div>
-          <div class="wwo-toast-stat">${milestone.displayValue.replace(" mi", "")}</div>
+          <div class="wwo-toast-stat">${milestone.displayValue.replace(
+            " mi",
+            "",
+          )}</div>
           <div class="wwo-toast-unit">miles</div>
         `;
       } else if (milestone.type === "screenTime") {
         const parts = milestone.displayValue.split(" ");
-        const statHtml = parts.length === 2
-          ? `${parts[0]}<br>${parts[1]}`
-          : milestone.displayValue;
+        const statHtml =
+          parts.length === 2
+            ? `${parts[0]}<br>${parts[1]}`
+            : milestone.displayValue;
         const bars = (milestone.sparkline ?? Array(7).fill(0.5))
           .map((v, i) => {
             const height = Math.max(Math.round(v * 100), 5);
             const isCurrent = i === 6;
-            return `<div class="wwo-spark-bar${isCurrent ? " wwo-current" : ""}" style="height:${height}%"></div>`;
+            return `<div class="wwo-spark-bar${
+              isCurrent ? " wwo-current" : ""
+            }" style="height:${height}%"></div>`;
           })
           .join("");
         accentHtml = `
@@ -1214,11 +1287,14 @@ export default defineContentScript({
           { top: 6, left: 22, size: 4, opacity: 0.65 },
           { top: 14, left: 8, size: 3, opacity: 0.45 },
           { top: 2, left: 33, size: 5, opacity: 0.85 },
-          { top: 18, left: 30, size: 3, opacity: 0.40 },
+          { top: 18, left: 30, size: 3, opacity: 0.4 },
           { top: 9, left: 16, size: 3, opacity: 0.55 },
-        ].map(d =>
-          `<div style="position:absolute;top:${d.top}px;left:${d.left}px;width:${d.size}px;height:${d.size}px;border-radius:50%;background:#4a9a8a;opacity:${d.opacity}"></div>`
-        ).join("");
+        ]
+          .map(
+            (d) =>
+              `<div style="position:absolute;top:${d.top}px;left:${d.left}px;width:${d.size}px;height:${d.size}px;border-radius:50%;background:#4a9a8a;opacity:${d.opacity}"></div>`,
+          )
+          .join("");
         accentHtml = `
           <div class="wwo-toast-stat">${milestone.displayValue}</div>
           <div class="wwo-toast-unit">domains</div>
@@ -1226,17 +1302,31 @@ export default defineContentScript({
         `;
       } else {
         const faviconHtml = milestone.faviconUrl
-          ? `<img class="wwo-favicon-img" src="${milestone.faviconUrl}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-            + `<span class="wwo-favicon-fallback" style="display:none">${(milestone.domain ?? "?")[0].toUpperCase()}</span>`
-          : `<span class="wwo-favicon-fallback">${(milestone.domain ?? "?")[0].toUpperCase()}</span>`;
+          ? `<img class="wwo-favicon-img" src="${milestone.faviconUrl}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+            `<span class="wwo-favicon-fallback" style="display:none">${(milestone.domain ??
+              "?")[0].toUpperCase()}</span>`
+          : `<span class="wwo-favicon-fallback">${(milestone.domain ??
+              "?")[0].toUpperCase()}</span>`;
         accentHtml = `
           <div class="wwo-favicon-wrap">${faviconHtml}</div>
           <div class="wwo-toast-stat" style="margin-top:5px">${milestone.displayValue}</div>
         `;
       }
 
-      const badgeClass = milestone.period === "today" ? "wwo-today" : "wwo-alltime";
+      const badgeClass =
+        milestone.period === "today" ? "wwo-today" : "wwo-alltime";
       const badgeLabel = milestone.period === "today" ? "today" : "all time";
+
+      // Shadow DOM host — position: fixed on the host, toast styles isolated inside.
+      ensureToastFonts();
+      const host = document.createElement("div");
+      host.style.cssText =
+        "position:fixed;bottom:20px;left:20px;z-index:2147483647;";
+      const shadow = host.attachShadow({ mode: "closed" });
+
+      const styleEl = document.createElement("style");
+      styleEl.textContent = MILESTONE_TOAST_CSS;
+      shadow.appendChild(styleEl);
 
       const toast = document.createElement("div");
       toast.className = "wwo-milestone-toast";
@@ -1251,11 +1341,12 @@ export default defineContentScript({
           </div>
         </div>
       `;
+      shadow.appendChild(toast);
 
       const dismiss = () => {
         toast.classList.remove("wwo-visible");
         toast.classList.add("wwo-hiding");
-        setTimeout(() => toast.remove(), 400);
+        setTimeout(() => host.remove(), 400);
       };
 
       const cta = toast.querySelector<HTMLButtonElement>(".wwo-toast-cta");
@@ -1263,24 +1354,26 @@ export default defineContentScript({
         if (milestone.ctaAction === "TOGGLE_HISTORICAL_OVERLAY") {
           toggleHistoricalOverlay();
         } else {
-          browser.runtime.sendMessage({ type: "OPEN_TAB", url: browser.runtime.getURL("popup.html") });
+          browser.runtime.sendMessage({
+            type: "OPEN_TAB",
+            url: browser.runtime.getURL("popup.html"),
+          });
         }
         dismiss();
       });
 
-      document.body.appendChild(toast);
+      document.body.appendChild(host);
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => toast.classList.add("wwo-visible"));
       });
 
-      setTimeout(dismiss, 8000);
+      setTimeout(dismiss, MILESTONE_DURATION_MS);
     };
 
     // Listen for messages from popup/devtools
     browser.runtime.onMessage.addListener(
       (message: any, sender: any, sendResponse: any) => {
-
         if (message.type === "PING") {
           sendResponse({ status: "pong", url: window.location.href });
           return true; // Keep message channel open for async response
@@ -1316,7 +1409,10 @@ export default defineContentScript({
         // Collector management messages
         if (message.type === "GET_COLLECTOR_STATUSES") {
           if (!collectorManager) {
-            sendResponse({ statuses: [], error: "Collector manager not initialized" });
+            sendResponse({
+              statuses: [],
+              error: "Collector manager not initialized",
+            });
             return true;
           }
           const statuses = collectorManager.getCollectorStatuses();
@@ -1326,55 +1422,88 @@ export default defineContentScript({
 
         if (message.type === "ENABLE_COLLECTOR") {
           if (!collectorManager) {
-            sendResponse({ success: false, error: "Collector manager not initialized" });
+            sendResponse({
+              success: false,
+              error: "Collector manager not initialized",
+            });
             return true;
           }
           if (!message.collectorType) {
             sendResponse({ success: false, error: "Missing collectorType" });
             return true;
           }
-          collectorManager.enableCollector(message.collectorType).then(() => {
-            sendResponse({ success: true });
-          }).catch((error) => {
-            console.error("Failed to enable collector:", error);
-            sendResponse({ success: false, error: error.message || String(error) });
-          });
+          collectorManager
+            .enableCollector(message.collectorType)
+            .then(() => {
+              sendResponse({ success: true });
+            })
+            .catch((error) => {
+              console.error("Failed to enable collector:", error);
+              sendResponse({
+                success: false,
+                error: error.message || String(error),
+              });
+            });
           return true;
         }
 
         if (message.type === "DISABLE_COLLECTOR") {
           if (!collectorManager) {
-            sendResponse({ success: false, error: "Collector manager not initialized" });
+            sendResponse({
+              success: false,
+              error: "Collector manager not initialized",
+            });
             return true;
           }
           if (!message.collectorType) {
             sendResponse({ success: false, error: "Missing collectorType" });
             return true;
           }
-          collectorManager.disableCollector(message.collectorType).then(() => {
-            sendResponse({ success: true });
-          }).catch((error) => {
-            console.error("Failed to disable collector:", error);
-            sendResponse({ success: false, error: error.message || String(error) });
-          });
+          collectorManager
+            .disableCollector(message.collectorType)
+            .then(() => {
+              sendResponse({ success: true });
+            })
+            .catch((error) => {
+              console.error("Failed to disable collector:", error);
+              sendResponse({
+                success: false,
+                error: error.message || String(error),
+              });
+            });
           return true;
         }
 
         if (message.type === "FLUSH_EVENTS") {
           if (!collectorManager) {
-            sendResponse({ success: false, error: "Collector manager not initialized" });
+            sendResponse({
+              success: false,
+              error: "Collector manager not initialized",
+            });
             return true;
           }
-          collectorManager.flushEvents().then(() => {
-            browser.runtime.sendMessage({ type: 'GET_PENDING_COUNT' }).then((res: any) => {
-              sendResponse({ success: true, pendingCount: res?.count ?? 0 });
-            }).catch(() => {
-              sendResponse({ success: true, pendingCount: 0 });
+          collectorManager
+            .flushEvents()
+            .then(() => {
+              browser.runtime
+                .sendMessage({ type: "GET_PENDING_COUNT" })
+                .then((res: any) => {
+                  sendResponse({
+                    success: true,
+                    pendingCount: res?.count ?? 0,
+                  });
+                })
+                .catch(() => {
+                  sendResponse({ success: true, pendingCount: 0 });
+                });
+            })
+            .catch((error) => {
+              console.error("Failed to flush events:", error);
+              sendResponse({
+                success: false,
+                error: error.message || String(error),
+              });
             });
-          }).catch((error) => {
-            console.error("Failed to flush events:", error);
-            sendResponse({ success: false, error: error.message || String(error) });
-          });
           return true;
         }
 
@@ -1384,28 +1513,35 @@ export default defineContentScript({
         }
 
         return; // Don't keep the channel open for other message types
-      }
+      },
     );
 
     function setupModeChangeListener() {
       try {
         browser.storage.onChanged.addListener((changes, area) => {
-          if (area !== 'local' || !collectorManager) return;
+          if (area !== "local" || !collectorManager) return;
           for (const key of Object.keys(changes)) {
-            if (key.startsWith('collection_mode_')) {
-              const type = key.replace('collection_mode_', '');
+            if (key.startsWith("collection_mode_")) {
+              const type = key.replace("collection_mode_", "");
               const next = changes[key]?.newValue;
-              const normalized = next === 'off' || next === 'local' || next === 'shared' ? next : 'local';
-              if (normalized === 'off') {
-                collectorManager.disableCollector(type as any).catch(console.error);
+              const normalized =
+                next === "off" || next === "local" || next === "shared"
+                  ? next
+                  : "local";
+              if (normalized === "off") {
+                collectorManager
+                  .disableCollector(type as any)
+                  .catch(console.error);
               } else {
-                collectorManager.enableCollector(type as any).catch(console.error);
+                collectorManager
+                  .enableCollector(type as any)
+                  .catch(console.error);
               }
             }
           }
         });
       } catch (e) {
-        console.warn('[Content] Failed to set up mode change listener', e);
+        console.warn("[Content] Failed to set up mode change listener", e);
       }
     }
   },
