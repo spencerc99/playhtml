@@ -42,7 +42,7 @@ function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
     case "grab":
     case "grabbing":
     case "move":
-      return { fill: "#000", stroke: "none", strokeWidth: 0, opacity: 0.9 };
+      return { fill: "#fff", stroke: "#000", strokeWidth: 1, opacity: 0.9 };
     case "wait":
     case "progress":
       return { fill: "#888", stroke: "none", strokeWidth: 0, opacity: 0.4 };
