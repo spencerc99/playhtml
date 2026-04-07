@@ -230,14 +230,5 @@ export const MILESTONE_TOAST_CSS = `
 }
 `;
 
-/** Injects the Google Fonts needed by the toast into the document head, idempotently. */
-export function ensureToastFonts(): void {
-  const FONT_ID = "wwo-toast-fonts";
-  if (document.getElementById(FONT_ID)) return;
-  const link = document.createElement("link");
-  link.id = FONT_ID;
-  link.rel = "stylesheet";
-  link.href =
-    "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400&family=Lora:ital,wght@1,600&family=Martian+Mono:wght@300;400&family=Source+Serif+4:ital,wght@1,300&display=swap";
-  document.head.appendChild(link);
-}
+export const MILESTONE_TOAST_FONT_URL =
+  "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400&family=Lora:ital,wght@1,600&family=Martian+Mono:wght@300;400&family=Source+Serif+4:ital,wght@1,300&display=swap";

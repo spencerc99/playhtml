@@ -4,7 +4,7 @@ import browser from "webextension-polyfill";
 import {
   MILESTONE_DURATION_MS,
   MILESTONE_TOAST_CSS,
-  ensureToastFonts,
+  MILESTONE_TOAST_FONT_URL,
 } from "./content/milestone-toast-styles";
 import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
 import { CollectorManager } from "../collectors/CollectorManager";
@@ -1275,10 +1275,10 @@ export default defineContentScript({
       const badgeLabel = milestone.period === "today" ? "today" : "all time";
 
       // Shadow DOM host — position: fixed on the host, toast styles isolated inside.
-      ensureToastFonts();
       const { host, shadow } = injectShadow({
         hostStyle: "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
         css: MILESTONE_TOAST_CSS,
+        fontUrl: MILESTONE_TOAST_FONT_URL,
       });
 
       const toast = document.createElement("div");
