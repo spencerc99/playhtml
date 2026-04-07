@@ -130,22 +130,34 @@ Cloudflare Worker + Supabase PostgreSQL:
 
 All extension-owned UI injected into third-party pages (toasts, overlays, modals) **must use Shadow DOM** to prevent style bleed in both directions. Host-page CSS cannot penetrate the shadow boundary; our styles cannot accidentally affect the host page.
 
-### Pattern
+### Helpers (`src/entrypoints/content/inject-ui.ts`)
+
+Two helpers cover all cases:
+
+**`injectShadow(options)`** — raw HTML injection. Creates the shadow host, injects CSS and fonts, appends to `document.body`. Returns `{ host, shadow }` — build your DOM inside `shadow`. Caller removes `host` when done.
 
 ```ts
-const host = document.createElement('div');
-host.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:2147483647;';
-const shadow = host.attachShadow({ mode: 'closed' });
+const { host, shadow } = injectShadow({
+  hostStyle: 'position:fixed;bottom:20px;left:20px;z-index:2147483647;',
+  css: MY_CSS_STRING,
+  fontUrl: 'https://fonts.googleapis.com/...',
+});
+const el = document.createElement('div');
+shadow.appendChild(el);
+// later: host.remove()
+```
 
-const styleEl = document.createElement('style');
-styleEl.textContent = MY_COMPONENT_CSS; // CSS string, not a file import
-shadow.appendChild(styleEl);
+**`injectShadowReact(component, props, options)`** — React injection. Delegates to `injectShadow`, then mounts a React component via `createRoot`. Returns `{ render, destroy }`.
 
-const content = document.createElement('div');
-// ... build DOM or mount React here ...
-shadow.appendChild(content);
-
-document.body.appendChild(host);
+```ts
+const ui = injectShadowReact(MyComponent, { foo: 'bar' }, {
+  hostId: 'my-component-root',
+  fontUrl: 'https://fonts.googleapis.com/...',
+});
+// re-render with new props:
+ui.render({ foo: 'baz' });
+// remove from page:
+ui.destroy();
 ```
 
 ### Google Fonts

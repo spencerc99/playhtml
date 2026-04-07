@@ -6,6 +6,7 @@ import {
   MILESTONE_TOAST_CSS,
   ensureToastFonts,
 } from "./content/milestone-toast-styles";
+import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
@@ -848,32 +849,27 @@ export default defineContentScript({
       }
 
       private showNotification(message: string) {
-        // Shadow DOM isolates these styles from host-page CSS.
-        const host = document.createElement("div");
-        host.style.cssText =
-          "position:fixed;top:20px;right:20px;z-index:1000001;";
-        const shadow = host.attachShadow({ mode: "closed" });
-        const style = document.createElement("style");
-        style.textContent = `
-          .notification {
-            background: #10b981;
-            color: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 14px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-            opacity: 1;
-            transition: opacity 0.3s ease;
-          }
-          .notification.hiding { opacity: 0; }
-        `;
+        const { host, shadow } = injectShadow({
+          hostStyle: "position:fixed;top:20px;right:20px;z-index:1000001;",
+          css: `
+            .notification {
+              background: #10b981;
+              color: white;
+              padding: 12px 16px;
+              border-radius: 8px;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              font-size: 14px;
+              box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+              opacity: 1;
+              transition: opacity 0.3s ease;
+            }
+            .notification.hiding { opacity: 0; }
+          `,
+        });
         const notification = document.createElement("div");
         notification.className = "notification";
         notification.textContent = message;
-        shadow.appendChild(style);
         shadow.appendChild(notification);
-        document.body.appendChild(host);
 
         setTimeout(() => {
           notification.classList.add("hiding");
@@ -1027,90 +1023,45 @@ export default defineContentScript({
     // Initialize extension when DOM is ready
     let extensionInstance: PlayHTMLExtension | null = null;
     let collectorManager: CollectorManager | null = null;
-    let overlayRoot: any = null;
+    let overlayUI: InjectedReactUI | null = null;
     let overlayVisible = false;
-    let overlayReactModule: { createElement: any } | null = null;
-    let HistoricalOverlayComponent: any = null;
-
-    const renderOverlay = () => {
-      if (!overlayRoot || !overlayReactModule || !HistoricalOverlayComponent)
-        return;
-      overlayRoot.render(
-        overlayReactModule.createElement(HistoricalOverlayComponent, {
-          visible: true,
-          currentUrl: window.location.href,
-          onClose: () => toggleHistoricalOverlay(),
-        }),
-      );
-    };
 
     const toggleHistoricalOverlay = async () => {
       try {
         overlayVisible = !overlayVisible;
 
         if (overlayVisible) {
-          if (VERBOSE) {
-            console.log("[HistoricalOverlay] Activating overlay...");
-          }
+          if (VERBOSE) console.log("[HistoricalOverlay] Activating overlay...");
 
           // Pause collection while overlay is open — cursor/scroll events from
           // interacting with the overlay UI shouldn't pollute the data.
           collectorManager?.pauseAll();
 
-          const [ReactModule, { createRoot }, { HistoricalOverlay }] =
-            await Promise.all([
-              import("react"),
-              import("react-dom/client"),
-              import("../components/HistoricalOverlay"),
-            ]);
-          const React = ReactModule.default ?? ReactModule;
+          const { HistoricalOverlay } = await import("../components/HistoricalOverlay");
 
-          overlayReactModule = React;
-          HistoricalOverlayComponent = HistoricalOverlay;
-
-          // Shadow DOM isolates overlay styles from host-page CSS.
-          const container = document.createElement("div");
-          container.id = "playhtml-historical-overlay-root";
-          document.body.appendChild(container);
-
-          const overlayShadow = container.attachShadow({ mode: "closed" });
-
-          // Inject fonts into the shadow root — Google Fonts links cannot cross
-          // the shadow boundary from document.head.
-          const fontLink = document.createElement("link");
-          fontLink.rel = "stylesheet";
-          fontLink.href =
-            "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&family=Lora:ital,wght@1,600&display=swap";
-          overlayShadow.appendChild(fontLink);
-
-          const reactContainer = document.createElement("div");
-          overlayShadow.appendChild(reactContainer);
-
-          overlayRoot = createRoot(reactContainer);
-          renderOverlay();
-
-          if (VERBOSE) {
-            console.log("[HistoricalOverlay] Overlay activated");
-          }
-        } else {
-          if (overlayRoot) {
-            overlayRoot.unmount();
-            overlayRoot = null;
-          }
-
-          const container = document.getElementById(
-            "playhtml-historical-overlay-root",
+          overlayUI = injectShadowReact(
+            HistoricalOverlay,
+            {
+              visible: true,
+              currentUrl: window.location.href,
+              onClose: () => toggleHistoricalOverlay(),
+            },
+            {
+              hostId: "playhtml-historical-overlay-root",
+              fontUrl:
+                "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&family=Lora:ital,wght@1,600&display=swap",
+            },
           );
-          if (container) {
-            container.remove();
-          }
+
+          if (VERBOSE) console.log("[HistoricalOverlay] Overlay activated");
+        } else {
+          overlayUI?.destroy();
+          overlayUI = null;
 
           // Resume collection now that the overlay is closed.
           collectorManager?.resumeAll();
 
-          if (VERBOSE) {
-            console.log("[HistoricalOverlay] Overlay deactivated");
-          }
+          if (VERBOSE) console.log("[HistoricalOverlay] Overlay deactivated");
         }
       } catch (error) {
         console.error("[HistoricalOverlay] Failed to toggle overlay:", error);
@@ -1120,7 +1071,13 @@ export default defineContentScript({
 
     // Re-render overlay with updated URL on SPA navigation
     const handleNavigation = () => {
-      if (overlayVisible) renderOverlay();
+      if (overlayVisible && overlayUI) {
+        overlayUI.render({
+          visible: true,
+          currentUrl: window.location.href,
+          onClose: () => toggleHistoricalOverlay(),
+        });
+      }
     };
 
     window.addEventListener("popstate", handleNavigation);
@@ -1319,14 +1276,10 @@ export default defineContentScript({
 
       // Shadow DOM host — position: fixed on the host, toast styles isolated inside.
       ensureToastFonts();
-      const host = document.createElement("div");
-      host.style.cssText =
-        "position:fixed;bottom:20px;left:20px;z-index:2147483647;";
-      const shadow = host.attachShadow({ mode: "closed" });
-
-      const styleEl = document.createElement("style");
-      styleEl.textContent = MILESTONE_TOAST_CSS;
-      shadow.appendChild(styleEl);
+      const { host, shadow } = injectShadow({
+        hostStyle: "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
+        css: MILESTONE_TOAST_CSS,
+      });
 
       const toast = document.createElement("div");
       toast.className = "wwo-milestone-toast";
