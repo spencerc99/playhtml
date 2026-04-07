@@ -429,7 +429,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         console.error("[HistoricalOverlay] Capture failed:", response.error);
         return;
       }
-      const svgEl = document.querySelector(
+      const svgEl = containerRef.current?.querySelector(
         ".trails-svg",
       ) as SVGSVGElement | null;
       if (!svgEl) {
