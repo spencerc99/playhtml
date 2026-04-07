@@ -320,6 +320,21 @@ export const Controls: React.FC<ControlsProps> = memo(
 
         {/* Cursor Settings - merged from Appearance and Animation */}
         <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
+          <div className="control-group">
+            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="checkbox"
+                checked={settings.monochromeMode ?? false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    monochromeMode: e.target.checked,
+                  }))
+                }
+              />
+              Monochrome (black & white)
+            </label>
+          </div>
           {/* Appearance settings */}
           <div className="control-group">
             <label htmlFor="trail-opacity">Trail Opacity</label>
