@@ -19,6 +19,10 @@ export interface TrailRenderer {
   readonly svgDefs?: string;
   // Called per-frame to apply style to the trail path
   updatePath(params: TrailStyleParams): void;
+  // Returns the color for the cursor icon
+  getCursorColor(trailColor: string, cursorType?: string): string;
+  // Returns the color for click/hold ripples
+  getClickColor(trailColor: string): string;
 }
 
 // Cursor-type-to-monochrome-style mapping for black & white rendering mode
@@ -60,6 +64,12 @@ export const colorRenderer: TrailRenderer = {
     pathEl.removeAttribute("filter");
     pathEl.style.display = "";
   },
+  getCursorColor(trailColor) {
+    return trailColor;
+  },
+  getClickColor(trailColor) {
+    return trailColor;
+  },
 };
 
 export const monochromeRenderer: TrailRenderer = {
@@ -77,6 +87,13 @@ export const monochromeRenderer: TrailRenderer = {
     pathEl.setAttribute("stroke-width", String(fixedMonoStrokeWidth));
     pathEl.setAttribute("filter", "url(#ink-texture)");
     pathEl.style.display = "";
+  },
+  getCursorColor(_trailColor, cursorType) {
+    const style = getMonochromeStyle(cursorType);
+    return style.fill !== "none" ? style.fill : style.stroke;
+  },
+  getClickColor() {
+    return "#000";
   },
 };
 

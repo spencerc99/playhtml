@@ -231,6 +231,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
 interface TrailCursorProps {
   trailState: TrailState;
   trailIndex: number;
+  renderer: TrailRenderer;
 }
 
 // Renders only the cursor icon. Positioned imperatively by the parent rAF loop
@@ -246,7 +247,7 @@ interface ImperativeTrailCursorHandle {
 }
 
 const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
-  ({ trailState }, ref) => {
+  ({ trailState, renderer }, ref) => {
     const cursorGroupRef = useRef<SVGGElement>(null);
 
     const [cursorType, setCursorType] = useState<string | undefined>(
@@ -277,7 +278,7 @@ const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorPro
       },
     }));
 
-    const color = trailState.trail.color;
+    const color = renderer.getCursorColor(trailState.trail.color, cursorType);
 
     return (
       <g ref={cursorGroupRef} style={{ display: "none" }}>
@@ -400,6 +401,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
     const generatePath = useRef(createPathGenerator()).current;
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
+    const rendererRef = useRef(renderer);
+    useEffect(() => { rendererRef.current = renderer; }, [renderer]);
 
     // Settings refs — updated without re-render
     const animationSpeedRef = useRef(settings.animationSpeed);
@@ -633,7 +636,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               prevY: result.cursorPosition.y,
               cursorType: ts.trail.points[cpIdx]?.cursor,
               progress: result.trailProgress,
-              color: ts.trail.color,
+              color: rendererRef.current.getClickColor(ts.trail.color),
               isNewlyActive: false,
             });
           }
@@ -665,7 +668,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                   id: `${idx}-${clickIdx}-${Date.now()}`,
                   x: result.cursorPosition.x,
                   y: result.cursorPosition.y,
-                  color: ts.trail.color,
+                  color: rendererRef.current.getClickColor(ts.trail.color),
                   radiusFactor: Math.random(),
                   durationFactor: Math.random(),
                   startTime: Date.now(),
@@ -769,6 +772,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             }}
             trailState={ts}
             trailIndex={idx}
+            renderer={renderer}
           />
         ))}
       </svg>
