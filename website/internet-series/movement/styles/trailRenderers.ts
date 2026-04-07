@@ -79,17 +79,18 @@ export const monochromeRenderer: TrailRenderer = {
     <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
     <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
   </filter>`,
-  updatePath({ pathEl, pathData, trailOpacity, fixedMonoStrokeWidth, cursorType }) {
+  updatePath({ pathEl, pathData, trailOpacity, fixedMonoStrokeWidth }) {
     pathEl.setAttribute("d", pathData);
-    const style = getMonochromeStyle(cursorType);
-    pathEl.setAttribute("stroke", style.fill !== "none" ? style.fill : style.stroke);
-    pathEl.setAttribute("opacity", String(style.opacity * trailOpacity));
+    pathEl.setAttribute("stroke", "#000");
+    pathEl.setAttribute("opacity", String(0.8 * trailOpacity));
     pathEl.setAttribute("stroke-width", String(fixedMonoStrokeWidth));
     pathEl.setAttribute("filter", "url(#ink-texture)");
     pathEl.style.display = "";
   },
-  getCursorColor() {
-    return "#000";
+  getCursorColor(_trailColor, cursorType) {
+    // Cursor icon matches the cursor type — pointer is white, default is black
+    const style = getMonochromeStyle(cursorType);
+    return style.fill !== "none" ? style.fill : style.stroke;
   },
   getClickColor() {
     return "#000";
