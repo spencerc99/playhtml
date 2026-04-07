@@ -3,6 +3,7 @@
 import React, { useState, memo } from "react";
 import { CollectionEvent, Trail } from "../types";
 import { VISUALIZATIONS } from "./registry";
+import { TRAIL_RENDERERS } from "../styles";
 
 interface ControlsProps {
   visible: boolean;
@@ -321,19 +322,21 @@ export const Controls: React.FC<ControlsProps> = memo(
         {/* Cursor Settings - merged from Appearance and Animation */}
         <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
           <div className="control-group">
-            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <input
-                type="checkbox"
-                checked={settings.monochromeMode ?? false}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    monochromeMode: e.target.checked,
-                  }))
-                }
-              />
-              Monochrome (black & white)
-            </label>
+            <label htmlFor="trail-visual-style">Visual Style</label>
+            <select
+              id="trail-visual-style"
+              value={settings.trailVisualStyle ?? "color"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  trailVisualStyle: e.target.value,
+                }))
+              }
+            >
+              {TRAIL_RENDERERS.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
           </div>
           {/* Appearance settings */}
           <div className="control-group">

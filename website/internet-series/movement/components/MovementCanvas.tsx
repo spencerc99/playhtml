@@ -97,7 +97,7 @@ const loadSettings = () => {
     navigationRadialBlobEdgeNoise: 0.45,
     navigationRadialBlobValleyDepth: 0.05,
     navigationRadialSegmentByDay: true,
-    monochromeMode: false,
+    trailVisualStyle: "color",
     soundChordVoicing: false,
     soundCursorInstruments: false,
     soundCrossingDissonance: false,
@@ -766,7 +766,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               clickNumRings: settings.clickNumRings,
               clickRingDelayMs: settings.clickRingDelayMs,
               clickAnimationStopPoint: settings.clickAnimationStopPoint,
-              monochromeMode: settings.monochromeMode,
+              trailVisualStyle: settings.trailVisualStyle,
             }}
           />
         )}
