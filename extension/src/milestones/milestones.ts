@@ -130,8 +130,7 @@ function buildSparkline(hourBuckets: number[]): number[] {
 export function checkAllMilestones(
   state: MilestoneState,
   globalStats: {
-    totalTimeMs: number;
-    uniqueUrlCount: number;
+    domainCount: number;
     hourBuckets: number[];
   },
   cursorDistancePx: number,
@@ -164,8 +163,8 @@ export function checkAllMilestones(
     };
   }
 
-  // 2. Screen time (daily)
-  const screenMinutes = globalStats.totalTimeMs / 60000;
+  // 2. Screen time (daily) — uses state.dailyScreenTimeMs, computed fresh each tick
+  const screenMinutes = state.dailyScreenTimeMs / 60000;
   const screenHit = findNextDailyMilestone("screenTime", screenMinutes, state);
   if (screenHit) {
     const { copy, newIndex } = pickCopy(MILESTONE_COPY.screenTime, "screenTime", state);
@@ -173,7 +172,7 @@ export function checkAllMilestones(
       milestone: {
         type: "screenTime",
         threshold: screenHit.threshold,
-        displayValue: formatScreenTime(globalStats.totalTimeMs),
+        displayValue: formatScreenTime(state.dailyScreenTimeMs),
         copy,
         ctaLabel: "see your day",
         ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
@@ -191,15 +190,15 @@ export function checkAllMilestones(
     };
   }
 
-  // 3. Sites explored (all-time)
-  const sitesHit = findNextAllTimeMilestone("sitesExplored", globalStats.uniqueUrlCount, state);
+  // 3. Sites explored (all-time) — unique domains, not pages
+  const sitesHit = findNextAllTimeMilestone("sitesExplored", globalStats.domainCount, state);
   if (sitesHit) {
     const { copy, newIndex } = pickCopy(MILESTONE_COPY.sitesExplored, "sitesExplored", state);
     return {
       milestone: {
         type: "sitesExplored",
         threshold: sitesHit.threshold,
-        displayValue: `${globalStats.uniqueUrlCount}`,
+        displayValue: `${globalStats.domainCount}`,
         copy,
         ctaLabel: "see your portrait",
         ctaAction: "OPEN_PORTRAIT",

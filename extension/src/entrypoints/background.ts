@@ -499,9 +499,11 @@ export default defineBackground(() => {
     const globalAgg = await store.getGlobalStats();
     if (!globalAgg) return;
 
+    // Build top domains by visit count (fetch before globalStats so we can use length for domainCount)
+    const allDomainEntries = await store.getAllDomains();
+
     const globalStats = {
-      totalTimeMs: globalAgg.totalTimeMs,
-      uniqueUrlCount: globalAgg.uniqueUrls.length,
+      domainCount: allDomainEntries.length,
       hourBuckets: globalAgg.hourBuckets,
     };
 
@@ -521,15 +523,31 @@ export default defineBackground(() => {
       cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
     }
 
+    // Compute today's screen time from focus/blur navigation events since midnight
+    const navEvents = await store.getAllEvents({ type: 'navigation', startTs: midnightTs.getTime(), limit: 10000 });
+    let dailyScreenTimeMs = 0;
+    let focusTs: number | null = null;
+    for (const e of navEvents.sort((a, b) => a.ts - b.ts)) {
+      const event = (e.data as any).event;
+      if (event === 'focus') {
+        focusTs = e.ts;
+      } else if (event === 'blur' && focusTs !== null) {
+        dailyScreenTimeMs += e.ts - focusTs;
+        focusTs = null;
+      }
+    }
+    // If still focused, count up to now
+    if (focusTs !== null) dailyScreenTimeMs += Date.now() - focusTs;
+    state = { ...state, dailyScreenTimeMs };
+
     // Build top domains by visit count
-    const allDomainEntries = await store.getAllDomains();
     const topDomains: Array<{ domain: string; visitCount: number; faviconUrl?: string }> = [];
     for (const { domain } of allDomainEntries.slice(0, 20)) {
       const agg = await store.getSessionStats(domain).catch(() => null);
       if (!agg) continue;
-      const navEvents = await store.queryByDomain(domain, { type: 'navigation', limit: 1 });
-      const faviconUrl = navEvents[0]
-        ? (navEvents[0].data as any).favicon_url
+      const domainNavEvents = await store.queryByDomain(domain, { type: 'navigation', limit: 1 });
+      const faviconUrl = domainNavEvents[0]
+        ? (domainNavEvents[0].data as any).favicon_url
         : undefined;
       topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl });
     }

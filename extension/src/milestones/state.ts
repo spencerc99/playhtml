@@ -12,6 +12,8 @@ export interface MilestoneState {
     /** Screen time thresholds in minutes already shown today, e.g. [30, 60] */
     screenTime: number[];
   };
+  /** Accumulated screen time in ms for today — reset at midnight */
+  dailyScreenTimeMs: number;
   allTimeShown: {
     /** Domain count thresholds shown ever */
     sitesExplored: number[];
@@ -31,6 +33,7 @@ export function buildEmptyState(): MilestoneState {
   return {
     lastShownDate: "",
     dailyShown: { cursorDistance: [], screenTime: [] },
+    dailyScreenTimeMs: 0,
     allTimeShown: { sitesExplored: [], domainVisits: {} },
     lastToastTs: 0,
     lastCopyIndex: {},
@@ -62,6 +65,7 @@ export function resetDailyIfNeeded(state: MilestoneState, today: string): Milest
     ...state,
     lastShownDate: today,
     dailyShown: { cursorDistance: [], screenTime: [] },
+    dailyScreenTimeMs: 0,
   };
 }
 
