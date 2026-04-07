@@ -541,6 +541,12 @@ export default defineBackground(() => {
     }
 
     const { milestone, updatedState } = result;
+
+    // Only show if user is actively at their computer (idle threshold: 60s).
+    // Check before saving state so we don't burn the threshold if user is away.
+    const idleState = await browser.idle.queryState(60);
+    if (idleState !== "active") return;
+
     const finalState = recordToastShown(updatedState, today);
     await saveState(finalState);
 
