@@ -21,8 +21,7 @@ describe("ViewportCollector", () => {
     window.scrollY = 0;
     document.documentElement.scrollLeft = 0;
     document.documentElement.scrollTop = 0;
-    Object.defineProperty(document.documentElement, 'scrollWidth', { value: 1024, writable: true, configurable: true });
-    Object.defineProperty(document.documentElement, 'scrollHeight', { value: 2000, writable: true, configurable: true });
+    // scrollWidth/scrollHeight are set in vitest.setup.ts — redefining here would throw
     Object.defineProperty(window, "innerWidth", {
       value: 1024,
       writable: true,
