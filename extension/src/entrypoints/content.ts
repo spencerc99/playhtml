@@ -1315,8 +1315,6 @@ export default defineContentScript({
         dismiss();
       });
 
-      document.body.appendChild(host);
-
       requestAnimationFrame(() => {
         requestAnimationFrame(() => toast.classList.add("wwo-visible"));
       });
