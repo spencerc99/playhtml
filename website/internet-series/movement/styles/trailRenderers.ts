@@ -88,9 +88,8 @@ export const monochromeRenderer: TrailRenderer = {
     pathEl.setAttribute("filter", "url(#ink-texture)");
     pathEl.style.display = "";
   },
-  getCursorColor(_trailColor, cursorType) {
-    const style = getMonochromeStyle(cursorType);
-    return style.fill !== "none" ? style.fill : style.stroke;
+  getCursorColor() {
+    return "#000";
   },
   getClickColor() {
     return "#000";
