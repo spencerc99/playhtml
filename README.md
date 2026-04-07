@@ -422,6 +422,26 @@ Cursors can be scoped to a page, domain, section, or custom room. You can filter
 
 See the full cursor documentation for configuration options and patterns [cursors.md](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
 
+## Building with AI / LLMs
+
+playhtml works well with AI coding assistants. We provide two resources:
+
+### Claude Code Plugin (recommended for Claude Code users)
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), install the playhtml plugin to get a skill that automatically activates when you ask Claude to build playhtml elements. It covers the APIs, data types, and common mistakes.
+
+```bash
+# Add the playhtml marketplace
+claude plugin marketplace add spencerc99/playhtml
+
+# Install the plugin
+claude plugin install playhtml@playhtml
+```
+
+### Prompting Guide (for any LLM)
+
+For other AI tools (ChatGPT, Copilot, Cursor, etc.), copy the prompt template from [`docs/llm-prompting-guide.md`](https://github.com/spencerc99/playhtml/blob/main/docs/llm-prompting-guide.md) into your conversation. It gives the LLM the context it needs to generate working playhtml code.
+
 ## Help & Community
 
 Join our [Discord community](https://discord.gg/SKbsSf4ptU) to get help and show off what you've built!
