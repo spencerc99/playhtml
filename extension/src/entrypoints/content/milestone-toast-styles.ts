@@ -1,6 +1,8 @@
 // ABOUTME: CSS string for the milestone toast shadow DOM.
 // ABOUTME: Injected into a closed shadow root so host-page styles cannot bleed in or out.
 
+export const MILESTONE_DURATION_MS = 15000;
+
 export const MILESTONE_TOAST_CSS = `
 .wwo-milestone-toast {
   background: #f5f0e8;
