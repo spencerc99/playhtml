@@ -13,34 +13,7 @@ import { getCursorComponent } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
-
-// Cursor-type-to-monochrome-style mapping for black & white rendering mode
-interface MonochromeStyle {
-  fill: string;
-  stroke: string;
-  strokeWidth: number;
-  opacity: number;
-}
-
-function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
-  switch (cursorType) {
-    case "pointer":
-      return { fill: "#fff", stroke: "#000", strokeWidth: 1, opacity: 0.7 };
-    case "text":
-      return { fill: "none", stroke: "#000", strokeWidth: 1.5, opacity: 0.5 };
-    case "grab":
-    case "grabbing":
-    case "move":
-      return { fill: "#000", stroke: "none", strokeWidth: 0, opacity: 0.9 };
-    case "wait":
-    case "progress":
-      return { fill: "#888", stroke: "none", strokeWidth: 0, opacity: 0.4 };
-    case "crosshair":
-      return { fill: "none", stroke: "#000", strokeWidth: 1, opacity: 0.6 };
-    default:
-      return { fill: "#000", stroke: "none", strokeWidth: 0, opacity: 0.8 };
-  }
-}
+import { getTrailRenderer, TRAIL_RENDERERS, type TrailRenderer } from "../styles/trailRenderers";
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
@@ -170,7 +143,6 @@ interface ImperativeTrailHandle {
     trailOpacity: number,
     strokeWidth: number,
     evictionFade: number,
-    monochromeMode?: boolean,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
 }
 
@@ -178,6 +150,7 @@ interface TrailPathProps {
   trailState: TrailState;
   trailIndex: number;
   fixedMonoStrokeWidth: number;
+  renderer: TrailRenderer;
   generatePath: (
     points: Array<{ x: number; y: number }>,
     style: string,
@@ -187,12 +160,12 @@ interface TrailPathProps {
 // Renders only the trail path (no cursor). The parent rAF loop drives updates
 // via the imperative handle.
 const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
-  ({ trailState, trailIndex, fixedMonoStrokeWidth, generatePath }, ref) => {
+  ({ trailState, trailIndex, fixedMonoStrokeWidth, renderer, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
 
     React.useImperativeHandle(ref, () => ({
-      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, monochromeMode) {
+      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
         const group = groupRef.current;
         if (!group) return null;
 
@@ -219,20 +192,16 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
         const pathEl = pathRef.current;
         if (pathEl) {
           if (pathData) {
-            pathEl.setAttribute("d", pathData);
-            if (monochromeMode) {
-              const monoStyle = getMonochromeStyle(frame.cursorType);
-              pathEl.setAttribute("stroke", monoStyle.fill !== "none" ? monoStyle.fill : monoStyle.stroke);
-              pathEl.setAttribute("opacity", String(monoStyle.opacity * trailOpacity));
-              pathEl.setAttribute("stroke-width", String(fixedMonoStrokeWidth));
-              pathEl.setAttribute("filter", "url(#ink-texture)");
-            } else {
-              pathEl.setAttribute("stroke", trailState.trail.color);
-              pathEl.setAttribute("opacity", String(trailOpacity));
-              pathEl.setAttribute("stroke-width", String(strokeWidth));
-              pathEl.removeAttribute("filter");
-            }
-            pathEl.style.display = "";
+            renderer.updatePath({
+              pathEl,
+              pathData,
+              trailOpacity,
+              strokeWidth,
+              cursorType: frame.cursorType,
+              trailProgress,
+              trailColor: trailState.trail.color,
+              fixedMonoStrokeWidth,
+            });
           } else {
             pathEl.style.display = "none";
           }
@@ -406,6 +375,7 @@ interface AnimatedTrailsProps {
     clickNumRings: number;
     clickRingDelayMs: number;
     clickAnimationStopPoint: number;
+    trailVisualStyle?: string;
   };
 }
 
@@ -429,19 +399,18 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const svgRef = useRef<SVGSVGElement>(null);
 
     const generatePath = useRef(createPathGenerator()).current;
+    const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
 
     // Settings refs — updated without re-render
     const animationSpeedRef = useRef(settings.animationSpeed);
     const strokeWidthRef = useRef(settings.strokeWidth);
     const trailOpacityRef = useRef(settings.trailOpacity);
-    const monochromeModeRef = useRef(settings.monochromeMode ?? false);
 
     useEffect(() => {
       animationSpeedRef.current = settings.animationSpeed;
       strokeWidthRef.current = settings.strokeWidth;
       trailOpacityRef.current = settings.trailOpacity;
-      monochromeModeRef.current = settings.monochromeMode ?? false;
-    }, [settings.animationSpeed, settings.strokeWidth, settings.trailOpacity, settings.monochromeMode]);
+    }, [settings.animationSpeed, settings.strokeWidth, settings.trailOpacity]);
 
     // Pre-sort finished trails once per trailStates change
     const sortedFinishOrder = useMemo(() => {
@@ -546,7 +515,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               trailOpacityRef.current,
               strokeWidthRef.current,
               1,
-              monochromeModeRef.current,
             );
           }
         });
@@ -622,7 +590,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             trailOpacity,
             strokeWidth,
             fade,
-            monochromeModeRef.current,
           );
 
           if (fade > 0) newVisible.add(idx);
@@ -752,10 +719,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         }}
       >
         <defs>
-          <filter id="ink-texture" x="-10%" y="-10%" width="120%" height="120%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
-          </filter>
+          {renderer.svgDefs && (
+            <g dangerouslySetInnerHTML={{ __html: renderer.svgDefs }} />
+          )}
         </defs>
         {showClickRipples &&
           activeClickEffects.map((effect) => (
@@ -788,6 +754,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             trailState={ts}
             trailIndex={idx}
             fixedMonoStrokeWidth={1 + ((idx * 7 + 3) % 5)}
+            renderer={renderer}
             generatePath={generatePath}
           />
         ))}
