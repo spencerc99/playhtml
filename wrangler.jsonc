@@ -5,7 +5,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "compatibility_date": "2024-01-27",
   "secrets": {
-    "required": ["SUPABASE_URL", "SUPABASE_KEY"]
+    "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
   },
   "durable_objects": {
     "bindings": [
@@ -20,5 +20,10 @@
       "tag": "v1",
       "new_sqlite_classes": ["PartyServer"]
     }
-  ]
+  ],
+  "env": {
+    "staging": {
+      "name": "playhtml-staging"
+    }
+  }
 }

@@ -676,11 +676,13 @@ async function initPlayHTML({
     if (hasSynced) {
       resolve(true);
     }
+    // Register custom-message handler once, outside the sync callback,
+    // to avoid duplicate registrations on reconnect.
+    yprovider.on("custom-message", onMessage);
+
     yprovider.on("sync", (connected: boolean) => {
       if (!connected) {
         console.error("Issue connecting to yjs...");
-      } else {
-        yprovider.on("custom-message", onMessage);
       }
       if (hasSynced) {
         return;

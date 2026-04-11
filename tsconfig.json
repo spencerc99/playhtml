@@ -19,7 +19,7 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "typeRoots": ["./node_modules/@types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "paths": {
       "playhtml": ["packages/playhtml/src"],
       "@playhtml/react": ["packages/react/src"],

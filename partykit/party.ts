@@ -60,129 +60,12 @@ export class PartyServer extends YServer {
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly BRIDGE_DEBOUNCE_MS = 500;
 
-  private static Persistence = {
-    load: async function (doc: Y.Doc): Promise<void> {
-      // This is called once per "room" when the first user connects
-
-      // Load the document from the database
-      const { data, error } = await supabase
-        .from("documents")
-        .select("document")
-        .eq("name", this.name)
-        .maybeSingle();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (data) {
-        // If the document exists on the database,
-        // apply it to the Yjs document
-        Y.applyUpdate(
-          doc,
-          new Uint8Array(Buffer.from(data.document, "base64"))
-        );
-      }
-    },
-    save: async function (doc: Y.Doc): Promise<void> {
-      {
-        // Skip autosave if we are performing a reset operation
-        if (this.isSkippingSave) {
-          console.log(
-            "[PartyServer] Skipping autosave due to active reset operation"
-          );
-          return;
-        }
-
-        // This is called every few seconds if the document has changed
-
-        // Get current reset epoch for logging and validation
-        const serverResetEpoch = await this.getResetEpoch();
-        const docResetEpoch = getDocResetEpoch(doc);
-
-        if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
-          const reason =
-            docResetEpoch === null
-              ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
-              : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
-          console.warn(
-            `[PartyServer] Autosave skipped for room ${this.name}: ${reason}`
-          );
-          return;
-        }
-
-        if (
-          docResetEpoch !== null &&
-          serverResetEpoch !== null &&
-          docResetEpoch > serverResetEpoch
-        ) {
-          console.warn(
-            `[PartyServer] Autosave skipped for room ${this.name}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
-          );
-          return;
-        }
-
-        // Compact the doc before saving: rebuild from current JSON state to
-        // strip CRDT history and tombstones. This keeps the stored doc minimal
-        // so that cold-loading it on DO restart never exceeds the 128MB memory limit.
-        const rawSize = Y.encodeStateAsUpdate(doc).byteLength;
-        const currentPlayData = docToJson(doc);
-        let compactedBase64: string;
-
-        if (currentPlayData) {
-          const compactDoc = jsonToDoc(currentPlayData);
-          setDocResetEpoch(
-            compactDoc,
-            docResetEpoch ?? serverResetEpoch ?? Date.now()
-          );
-          compactedBase64 = encodeDocToBase64(compactDoc);
-          const compactedSize = Math.ceil((compactedBase64.length * 3) / 4);
-          if (compactedSize < rawSize) {
-            console.log(
-              `[PartyServer] Compacted: room=${
-                this.name
-              }, ${rawSize} -> ${compactedSize} bytes (${(
-                (1 - compactedSize / rawSize) *
-                100
-              ).toFixed(1)}% reduction)`
-            );
-          }
-        } else {
-          // Doc is empty — just encode as-is
-          compactedBase64 = encodeDocToBase64(doc);
-        }
-
-        const documentSize = compactedBase64.length;
-
-        // Log structured information about the save
-        console.log(
-          `[PartyServer] Autosave: room=${
-            this.name
-          }, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(
-            2
-          )} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
-        );
-
-        // Save the compacted document to the database
-        const { data: _data, error } = await supabase.from("documents").upsert(
-          {
-            name: this.name,
-            document: compactedBase64,
-          },
-          { onConflict: "name" }
-        );
-
-        if (error) {
-          console.error(
-            `[PartyServer] Autosave failed for room ${this.name}:`,
-            error
-          );
-        } else {
-          console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
-        }
-      }
-    },
+  // Preserve the same debounce timing as the old y-partykit callback config
+  static callbackOptions = {
+    debounceWait: 3000,
+    debounceMaxWait: 15000,
   };
+
   private observersAttached = false;
   private adminHandler = new AdminHandler(this);
 
@@ -486,11 +369,11 @@ export class PartyServer extends YServer {
             consumerRoomId: this.name,
             elementIds,
           };
-          await sourceRoom.fetch({
+          await sourceRoom.fetch(new Request("http://internal/subscribe", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(subscribeRequest),
-          });
+          }));
         } catch {}
       })
     );
@@ -675,11 +558,11 @@ export class PartyServer extends YServer {
               originKind: "source",
               resetEpoch: currentEpoch ?? null,
             };
-            await consumerRoom.fetch({
+            await consumerRoom.fetch(new Request("http://internal/apply", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify(applyRequest),
-            });
+            }));
           } catch {}
         })
       );
@@ -797,14 +680,114 @@ export class PartyServer extends YServer {
   }
 
   override async onLoad(): Promise<void> {
-    await PartyServer.Persistence.load(this.document);
+    // Load the document from Supabase on first connection
+    const { data, error } = await supabase
+      .from("documents")
+      .select("document")
+      .eq("name", this.name)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (data) {
+      Y.applyUpdate(
+        this.document,
+        new Uint8Array(Buffer.from(data.document, "base64"))
+      );
+    }
   }
 
   override async onSave(): Promise<void> {
-    await PartyServer.Persistence.save(this.document);
+    const doc = this.document;
+
+    // Skip autosave if we are performing a reset operation
+    if (this.isSkippingSave) {
+      console.log(
+        "[PartyServer] Skipping autosave due to active reset operation"
+      );
+      return;
+    }
+
+    // Get current reset epoch for logging and validation
+    const serverResetEpoch = await this.getResetEpoch();
+    const docResetEpoch = getDocResetEpoch(doc);
+
+    if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
+      const reason =
+        docResetEpoch === null
+          ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
+          : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
+      console.warn(
+        `[PartyServer] Autosave skipped for room ${this.name}: ${reason}`
+      );
+      return;
+    }
+
+    if (
+      docResetEpoch !== null &&
+      serverResetEpoch !== null &&
+      docResetEpoch > serverResetEpoch
+    ) {
+      console.warn(
+        `[PartyServer] Autosave skipped for room ${this.name}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
+      );
+      return;
+    }
+
+    // Compact the doc before saving: rebuild from current JSON state to
+    // strip CRDT history and tombstones. This keeps the stored doc minimal
+    // so that cold-loading it on DO restart never exceeds the 128MB memory limit.
+    const rawSize = Y.encodeStateAsUpdate(doc).byteLength;
+    const currentPlayData = docToJson(doc);
+    let compactedBase64: string;
+
+    if (currentPlayData) {
+      const compactDoc = jsonToDoc(currentPlayData);
+      setDocResetEpoch(
+        compactDoc,
+        docResetEpoch ?? serverResetEpoch ?? Date.now()
+      );
+      compactedBase64 = encodeDocToBase64(compactDoc);
+      const compactedSize = Math.ceil((compactedBase64.length * 3) / 4);
+      if (compactedSize < rawSize) {
+        console.log(
+          `[PartyServer] Compacted: room=${this.name}, ${rawSize} -> ${compactedSize} bytes (${((1 - compactedSize / rawSize) * 100).toFixed(1)}% reduction)`
+        );
+      }
+    } else {
+      // Doc is empty — just encode as-is
+      compactedBase64 = encodeDocToBase64(doc);
+    }
+
+    const documentSize = compactedBase64.length;
+
+    // Log structured information about the save
+    console.log(
+      `[PartyServer] Autosave: room=${this.name}, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(2)} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
+    );
+
+    // Save the compacted document to the database
+    const { data: _data, error } = await supabase.from("documents").upsert(
+      {
+        name: this.name,
+        document: compactedBase64,
+      },
+      { onConflict: "name" }
+    );
+
+    if (error) {
+      console.error(
+        `[PartyServer] Autosave failed for room ${this.name}:`,
+        error
+      );
+    } else {
+      console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
+    }
   }
 
-  override async onRequest(request: Party.Request): Promise<Response> {
+  override async onRequest(request: Request): Promise<Response> {
     try {
       // Handle CORS preflight requests
       if (request.method === "OPTIONS") {
@@ -1018,11 +1001,11 @@ export class PartyServer extends YServer {
                   originKind: "source",
                   resetEpoch: currentEpoch ?? null,
                 };
-                await consumerRoom.fetch({
+                await consumerRoom.fetch(new Request("http://internal/apply", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify(applyRequest),
-                });
+                }));
               } catch {}
             })
           );
@@ -1324,10 +1307,11 @@ export class PartyServer extends YServer {
             originKind: "source",
             resetEpoch: currentEpoch ?? null,
           };
-          await consumerRoom.fetch({
+          await consumerRoom.fetch(new Request("http://internal/apply", {
             method: "POST",
+            headers: { "content-type": "application/json" },
             body: JSON.stringify(applyRequest),
-          });
+          }));
         })
       );
     }
@@ -1346,10 +1330,11 @@ export class PartyServer extends YServer {
         originKind: "consumer",
         resetEpoch: currentEpoch ?? null,
       };
-      await sourceRoom.fetch({
+      await sourceRoom.fetch(new Request("http://internal/apply", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(applyRequest),
-      });
+      }));
     }
   }
 
