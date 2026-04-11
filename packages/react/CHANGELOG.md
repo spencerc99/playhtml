@@ -1,5 +1,16 @@
 # Change Log
 
+## 0.10.1
+
+### Patch Changes
+
+- 8d34468: Fix React can-\* elements (CanMove, CanSpin, CanGrow, CanToggle) not applying visual updates. The built-in capability's updateElement (which applies CSS transforms, class toggles, etc.) was being overwritten by the React state updater instead of composed with it.
+- Updated dependencies [bdfa16f]
+- Updated dependencies [cd467ce]
+- Updated dependencies [6b0964f]
+  - playhtml@2.9.0
+  - @playhtml/common@0.6.0
+
 ## 0.10.0
 
 ### Minor Changes
