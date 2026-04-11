@@ -10,6 +10,7 @@ import "../../../../website/internet-series/movement/movement.scss";
 import type { CollectionEvent, DayCounts } from "../../../../website/internet-series/movement/types";
 import { MovementCanvas } from "../../../../website/internet-series/movement/components/MovementCanvas";
 import { useCursorTrails } from "../../../../website/internet-series/movement/hooks/useCursorTrails";
+import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../../../../website/internet-series/movement/components/registry";
 import { DomainPortraitExport } from "../../components/DomainPortraitExport";
 import { captureDomPortrait, domainPortraitFilename } from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
@@ -33,6 +34,7 @@ const PortraitPage = () => {
   const [hovering, setHovering] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
+  const [activeVisualizations, setActiveVisualizations] = useState<string[]>(DEFAULT_ACTIVE_VISUALIZATIONS);
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
   const loadEvents = useCallback(async (day?: string | null) => {
@@ -346,6 +348,8 @@ const PortraitPage = () => {
         dayCounts={dayCounts}
         selectedDay={selectedDay}
         onSelectDay={setSelectedDay}
+        activeVisualizations={activeVisualizations}
+        onSetActiveVisualizations={setActiveVisualizations}
       />
     </div>
   );
