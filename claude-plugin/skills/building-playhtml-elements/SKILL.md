@@ -64,6 +64,7 @@ const Counter = withSharedState(
 );
 
 // Component receives: data, setData, awareness, setMyAwareness, ref
+// Config can be dynamic: withSharedState((props) => ({ defaultData: ... }), component)
 // For events: usePlayContext() → { dispatchPlayEvent, registerPlayEventListener }
 // For cursors: usePlayContext() → { cursors, configureCursors }
 ```
@@ -80,7 +81,25 @@ setData((draft) => { draft.items.push(newItem); });
 
 ## Built-in Capabilities
 
-Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
+Use instead of `can-play` when they fit:
+
+- `can-move`: Draggable with x,y position
+- `can-toggle`: Click to toggle on/off state
+- `can-spin`: Rotatable element
+- `can-grow`: Click to scale up/down
+- `can-duplicate`: Click to clone element
+- `can-hover`: Collaborative hover via awareness. Sets `data-playhtml-hover` attribute when ANY user hovers. Style with both `:hover` and `[data-playhtml-hover]`. No persistent data.
+- `can-mirror`: Syncs full DOM state (attributes, children, form values) via MutationObserver. Also tracks hover/focus awareness. Good for rich content or form elements.
+
+React components: `CanMoveElement`, `CanToggleElement`, `CanSpinElement`, `CanGrowElement`, `CanDuplicateElement`, `CanHoverElement`.
+
+## Advanced APIs
+
+For state or presence not tied to a DOM element:
+
+- **`playhtml.createPageData(name, defaultValue)`**: Persistent shared data channel. Returns `{ getData, setData, onUpdate, destroy }`. Use for app-level state (shared settings, vote tallies, page metadata). Call after init.
+- **`playhtml.createPresenceRoom(name)`**: Domain-scoped presence room. Returns `{ presence, destroy }`. Presence API: `setMyPresence(channel, data)`, `getPresences()`, `onPresenceChange(channel, cb)`, `getMyIdentity()`. Use for cross-page awareness (who's on which page, lobbies).
+- **`playhtml.presence`**: Built-in page-level presence API (same shape). Available after init.
 
 ## Cursors (optional)
 
