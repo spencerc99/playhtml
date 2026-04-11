@@ -33,15 +33,13 @@ const loadSettings = () => {
   const defaults = {
     trailOpacity: 0.7,
     strokeWidth: 5,
-    pointSize: 4,
     animationSpeed: 1,
     trailStyle: "chaotic" as "straight" | "smooth" | "organic" | "chaotic",
-    maxConcurrentTrails: 10,
+    maxConcurrentTrails: 15,
     trailAnimationMode: "stagger" as "natural" | "stagger",
-    trailLifetime: 1.0,
-    overlapFactor: 0.5,
+    overlapFactor: 0.8,
     randomizeColors: false,
-    minGapBetweenTrails: 0.2,
+    minGapBetweenTrails: 0.3,
     chaosIntensity: 1.0,
     clickMinRadius: 10,
     clickMaxRadius: 80,
@@ -75,7 +73,6 @@ const loadSettings = () => {
     showResizeEvents: true,
     showZoomEvents: true,
     windowScale: 0.5,
-    scrollOverlapFactor: 0.8,
     keyboardOverlapFactor: 0.9,
     textboxOpacity: 0.2,
     keyboardMinFontSize: 12,
@@ -164,7 +161,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // Sync domain filter from prop (parent controls refetching)
   useEffect(() => {
-    if (domainFilterProp !== undefined && domainFilterProp !== settings.domainFilter) {
+    if (
+      domainFilterProp !== undefined &&
+      domainFilterProp !== settings.domainFilter
+    ) {
       setSettings((s) => ({ ...s, domainFilter: domainFilterProp }));
     }
   }, [domainFilterProp]);
@@ -219,7 +219,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   ]);
 
   // Derive which visualization categories are active
-  const vizSet = useMemo(() => new Set(activeVisualizations), [activeVisualizations]);
+  const vizSet = useMemo(
+    () => new Set(activeVisualizations),
+    [activeVisualizations],
+  );
   const showTrails = vizSet.has("trails");
   const showClicks = vizSet.has("clicks");
   const hasCursorViz = showTrails || showClicks;
@@ -675,7 +678,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           opacity: soundEnabled ? 0.7 : 0.3,
         }}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3d3833" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#3d3833"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M11 5L6 9H2v6h4l5 4V5z" />
           {soundEnabled ? (
             <>
@@ -753,7 +765,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             soundEngine={soundEnabled ? soundEngineRef.current : null}
             settings={{
               strokeWidth: settings.strokeWidth,
-              pointSize: settings.pointSize,
               trailOpacity: settings.trailOpacity,
               animationSpeed: settings.animationSpeed,
               clickMinRadius: settings.clickMinRadius,
@@ -800,15 +811,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showScrolling &&
-          scrollAnimations &&
-          scrollAnimations.length > 0 && (
-            <AnimatedScrollViewports
-              animations={scrollAnimations}
-              canvasSize={viewportSize}
-              settings={scrollSettings}
-            />
-          )}
+        {showScrolling && scrollAnimations && scrollAnimations.length > 0 && (
+          <AnimatedScrollViewports
+            animations={scrollAnimations}
+            canvasSize={viewportSize}
+            settings={scrollSettings}
+          />
+        )}
 
         {showNavigation &&
           (settings.navigationViewMode ?? "timeline") === "radial" &&
