@@ -378,25 +378,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="point-size">Point Size</label>
-            <input
-              id="point-size"
-              type="range"
-              min="0"
-              max="20"
-              step="0.5"
-              value={settings.pointSize}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  pointSize: parseFloat(e.target.value),
-                }))
-              }
-            />
-            <span>{settings.pointSize.toFixed(1)}px</span>
-          </div>
-
-          <div className="control-group">
             <label htmlFor="trail-style">Trail Style</label>
             <select
               id="trail-style"

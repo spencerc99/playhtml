@@ -363,7 +363,6 @@ interface AnimatedTrailsProps {
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
-    pointSize: number;
     trailOpacity: number;
     animationSpeed: number;
     clickMinRadius: number;
