@@ -1306,10 +1306,10 @@ export default defineContentScript({
       cta?.addEventListener("click", () => {
         if (milestone.ctaAction === "TOGGLE_HISTORICAL_OVERLAY") {
           toggleHistoricalOverlay();
-        } else {
+        } else if (milestone.ctaAction === "OPEN_PORTRAIT") {
           browser.runtime.sendMessage({
             type: "OPEN_TAB",
-            url: browser.runtime.getURL("popup.html"),
+            url: browser.runtime.getURL("portrait.html"),
           });
         }
         dismiss();
