@@ -147,6 +147,8 @@ function normalizeRoomId(host: string, roomString: string): string {
   return encodeURIComponent(normalized);
 }
 
+const ROOM_EVENT_TYPE = "__playhtml_event__";
+
 let yprovider: YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
@@ -1053,12 +1055,51 @@ function createPresenceRoom(name: string): PresenceRoom {
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
   });
 
+  const eventListeners = new Map<string, Set<(payload: unknown) => void>>();
+
+  function handleMessage(evt: MessageEvent) {
+    if (evt.data instanceof Blob) return;
+    let parsed: any;
+    try { parsed = JSON.parse(evt.data); } catch { return; }
+    if (parsed.type !== ROOM_EVENT_TYPE) return;
+    const callbacks = eventListeners.get(parsed.eventType);
+    if (!callbacks) return;
+    for (const cb of callbacks) cb(parsed.payload);
+  }
+
+  provider.ws?.addEventListener("message", handleMessage);
+  provider.on("status", ({ status }: { status: string }) => {
+    if (status === "connected") {
+      provider.ws?.addEventListener("message", handleMessage);
+    }
+  });
+
   let destroyed = false;
   return {
     presence,
+    dispatchEvent(type: string, payload?: unknown): void {
+      if (destroyed || !provider.ws) return;
+      provider.ws.send(JSON.stringify({
+        type: ROOM_EVENT_TYPE,
+        eventType: type,
+        payload: payload ?? null,
+      }));
+    },
+    onEvent(type: string, callback: (payload: unknown) => void): () => void {
+      if (!eventListeners.has(type)) eventListeners.set(type, new Set());
+      eventListeners.get(type)!.add(callback);
+      return () => {
+        const set = eventListeners.get(type);
+        if (set) {
+          set.delete(callback);
+          if (set.size === 0) eventListeners.delete(type);
+        }
+      };
+    },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
+      eventListeners.clear();
       provider.destroy();
       roomDoc.destroy();
     },
