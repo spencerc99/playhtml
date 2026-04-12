@@ -30,6 +30,8 @@ export const ExportPage = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Holds recording params waiting for animationKey remount to settle before capture starts
+  const pendingRecordingRef = useRef<Parameters<typeof startRecording>[1] | null>(null);
 
   // Persist form inputs across refreshes
   useEffect(() => { localStorage.setItem("wwo_export_startDate", startDate); }, [startDate]);
@@ -60,6 +62,25 @@ export const ExportPage = () => {
       }
     };
   }, []);
+
+  // After animationKey increments, React remounts AnimatedTrails. This effect fires
+  // once the new SVG is in the DOM, so we grab the fresh element and start recording.
+  useEffect(() => {
+    if (!pendingRecordingRef.current) return;
+    const params = pendingRecordingRef.current;
+    pendingRecordingRef.current = null;
+
+    // Small rAF delay to let the animation loop initialize before first capture
+    requestAnimationFrame(() => {
+      const svgEl = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
+      if (!svgEl) return;
+      elapsedIntervalRef.current = setInterval(
+        () => setElapsedSecs((s) => s + 1),
+        1000,
+      );
+      stopRecordingRef.current = startRecording(svgEl, params);
+    });
+  }, [animationKey]);
 
   // Filter events by URL prefix/substring if set
   const filteredEvents = useMemo(() => {
@@ -159,19 +180,12 @@ export const ExportPage = () => {
   }, [startDate, endDate]);
 
   const handleStartRecording = useCallback(() => {
-    const svgEl = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
-    if (!svgEl) {
+    if (!containerRef.current?.querySelector("svg")) {
       setError("No SVG found — make sure events are loaded first.");
       return;
     }
-    setAnimationKey((k) => k + 1);
-    setStatus("recording");
-    setElapsedSecs(0);
-    elapsedIntervalRef.current = setInterval(
-      () => setElapsedSecs((s) => s + 1),
-      1000,
-    );
-    stopRecordingRef.current = startRecording(svgEl, {
+    // Store params so the post-remount effect can start recording with the fresh SVG
+    pendingRecordingRef.current = {
       width,
       height,
       transparent,
@@ -183,7 +197,11 @@ export const ExportPage = () => {
         setRecordedBlob(blob);
         setStatus("done");
       },
-    });
+    };
+    setElapsedSecs(0);
+    setStatus("recording");
+    // Increment key last — triggers remount, which fires the useEffect below
+    setAnimationKey((k) => k + 1);
   }, [width, height, transparent, timeRange, animationSpeed, scrollTimeline]);
 
   const handleStopRecording = useCallback(() => {
