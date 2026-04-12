@@ -39,7 +39,7 @@ import type { PageDataChannel } from "@playhtml/common";
 import { createPageDataChannel, PAGE_TAG } from "./page-data";
 
 const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
-const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
+const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
 const DevPartykitHost = "localhost:1999";
 
 // Environment-specific host resolution
