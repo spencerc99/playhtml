@@ -565,6 +565,29 @@ async function initPlayHTML({
     onError?.();
   });
 
+  // Register message handler immediately after provider creation to catch early messages
+  // like room-reset, which the server sends immediately upon detecting a stale client epoch.
+  // The WebSocket is created synchronously in the provider constructor,
+  // so we can access it here before any sync events fire.
+  // We use a microtask to ensure the provider is fully initialized.
+  queueMicrotask(() => {
+    if (yprovider.ws) {
+      yprovider.ws.addEventListener("message", onMessage);
+    } else {
+      console.warn(
+        "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached",
+      );
+    }
+  });
+
+  // Re-attach message handler when the WebSocket reconnects (provider creates a new instance)
+  yprovider.on("status", ({ status }: { status: string }) => {
+    if (status === "connected") {
+      yprovider.ws?.addEventListener("message", onMessage);
+    }
+  });
+
+
   // Initialize cursor tracking immediately after provider creation
   if (cursors.enabled) {
     // Generate player identity if not provided
