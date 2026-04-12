@@ -19,18 +19,16 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "types": ["@cloudflare/workers-types", "node"],
     "paths": {
       "playhtml": ["packages/playhtml/src"],
       "@playhtml/react": ["packages/react/src"],
       "@playhtml/common": ["packages/common/src"]
     }
   },
-  "include": ["partykit", "worker-configuration.d.ts"],
+  "include": [],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",
-    "node_modules/@cloudflare/workers-types/index.ts",
     "**/dist"
   ]
 }

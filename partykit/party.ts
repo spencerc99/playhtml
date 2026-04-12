@@ -43,6 +43,16 @@ import {
   SharedElementPermissions,
 } from "./sharing";
 
+// Build a JSON POST request for room-to-room (DO-to-DO) RPC.
+// The URL is synthetic — the target server's onRequest reads the body, not the path.
+function internalRequest(path: string, body: unknown): Request {
+  return new Request(`http://internal${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export class PartyServer extends YServer {
   // Public flag to pause autosave during administrative resets
   // This prevents the server from overwriting the clean DB state with
@@ -369,11 +379,7 @@ export class PartyServer extends YServer {
             consumerRoomId: this.name,
             elementIds,
           };
-          await sourceRoom.fetch(new Request("http://internal/subscribe", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(subscribeRequest),
-          }));
+          await sourceRoom.fetch(internalRequest("/subscribe", subscribeRequest));
         } catch {}
       })
     );
@@ -558,11 +564,7 @@ export class PartyServer extends YServer {
               originKind: "source",
               resetEpoch: currentEpoch ?? null,
             };
-            await consumerRoom.fetch(new Request("http://internal/apply", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(applyRequest),
-            }));
+            await consumerRoom.fetch(internalRequest("/apply", applyRequest));
           } catch {}
         })
       );
@@ -1001,11 +1003,7 @@ export class PartyServer extends YServer {
                   originKind: "source",
                   resetEpoch: currentEpoch ?? null,
                 };
-                await consumerRoom.fetch(new Request("http://internal/apply", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify(applyRequest),
-                }));
+                await consumerRoom.fetch(internalRequest("/apply", applyRequest));
               } catch {}
             })
           );
@@ -1307,11 +1305,7 @@ export class PartyServer extends YServer {
             originKind: "source",
             resetEpoch: currentEpoch ?? null,
           };
-          await consumerRoom.fetch(new Request("http://internal/apply", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(applyRequest),
-          }));
+          await consumerRoom.fetch(internalRequest("/apply", applyRequest));
         })
       );
     }
@@ -1330,11 +1324,7 @@ export class PartyServer extends YServer {
         originKind: "consumer",
         resetEpoch: currentEpoch ?? null,
       };
-      await sourceRoom.fetch(new Request("http://internal/apply", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(applyRequest),
-      }));
+      await sourceRoom.fetch(internalRequest("/apply", applyRequest));
     }
   }
 

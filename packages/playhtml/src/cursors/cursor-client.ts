@@ -1695,7 +1695,7 @@ export class CursorClientAwareness {
   }
 
   // Get the provider (needed for awareness access)
-  getProvider(): YPartyKitProvider {
+  getProvider(): YProvider {
     return this.provider;
   }
 
