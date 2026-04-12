@@ -1531,6 +1531,9 @@ function deleteElementData(tag: string, elementId: string): void {
   }
 }
 
+/**
+ * @deprecated Use `playhtml.dispatchEvent(type, payload)` instead.
+ */
 function dispatchPlayEvent(message: EventMessage) {
   const { type } = message;
   if (!eventHandlers.has(type)) {
@@ -1542,13 +1545,8 @@ function dispatchPlayEvent(message: EventMessage) {
 }
 
 /**
- * Registers the given event listener.
- * Returns a unique ID corresponding to the listener.
+ * @deprecated Use `playhtml.onEvent(type, callback)` instead. Returns an unsubscribe function directly.
  */
-// TODO: allow duplicates or not..
-// duplicates are good for registering a lot of logic.. but why wouldn't you just put it all in one call?
-// duplicates bad when you want to handle deduping the same logic, so this would be useful to expose one helper function in the react context
-// to register a listener for a type and provide a callback and it returns you a function that triggers that event.
 function registerPlayEventListener(
   type: string,
   event: Omit<PlayEvent, "type">,
@@ -1575,7 +1573,7 @@ function registerPlayEventListener(
 }
 
 /**
- * Removes the event listener with the given type and id.
+ * @deprecated Use the unsubscribe function returned by `playhtml.onEvent()` instead.
  */
 function removePlayEventListener(type: string, id: string) {
   const handlers = eventHandlers.get(type);
