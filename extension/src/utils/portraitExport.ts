@@ -14,9 +14,9 @@ export async function svgToImageBitmap(
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
-  if (!clone.getAttribute("viewBox")) {
-    clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  }
+  // Always override viewBox to export dimensions — the live SVG viewBox reflects the
+  // rendered container size, not the export target, so it must not be inherited here.
+  clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
   const serialized = new XMLSerializer().serializeToString(clone);
   const blob = new Blob([serialized], { type: "image/svg+xml" });
