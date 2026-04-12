@@ -303,6 +303,7 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
 const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
+const pageEventListeners = new Map<string, Set<(payload: unknown) => void>>();
 export type CursorRoom =
   | "page"
   | "domain"
@@ -430,6 +431,15 @@ function onMessage(data: string) {
     }
     // Force reload to fetch fresh state
     window.location.reload();
+    return;
+  }
+
+  // Handle new-style room events
+  if (message.type === ROOM_EVENT_TYPE) {
+    const callbacks = pageEventListeners.get(message.eventType);
+    if (callbacks) {
+      for (const cb of callbacks) cb(message.payload);
+    }
     return;
   }
 
@@ -1119,6 +1129,8 @@ export interface PlayHTMLComponents {
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
+  dispatchEvent(type: string, payload?: unknown): void;
+  onEvent(type: string, callback: (payload: unknown) => void): () => void;
   cursorClient: CursorClientAwareness | null;
   presence: PresenceAPI;
   createPageData: typeof createPageData;
@@ -1150,6 +1162,8 @@ export const playhtml: PlayHTMLComponents = {
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
+  dispatchEvent: pageDispatchEvent,
+  onEvent: pageOnEvent,
   get cursorClient() {
     return cursorClient;
   },
@@ -1578,6 +1592,27 @@ function removePlayEventListener(type: string, id: string) {
   if (handlers.length === 0) {
     eventHandlers.delete(type);
   }
+}
+
+function pageDispatchEvent(type: string, payload?: unknown): void {
+  if (!yprovider?.ws) return;
+  yprovider.ws.send(JSON.stringify({
+    type: ROOM_EVENT_TYPE,
+    eventType: type,
+    payload: payload ?? null,
+  }));
+}
+
+function pageOnEvent(type: string, callback: (payload: unknown) => void): () => void {
+  if (!pageEventListeners.has(type)) pageEventListeners.set(type, new Set());
+  pageEventListeners.get(type)!.add(callback);
+  return () => {
+    const set = pageEventListeners.get(type);
+    if (set) {
+      set.delete(callback);
+      if (set.size === 0) pageEventListeners.delete(type);
+    }
+  };
 }
 
 export type {
