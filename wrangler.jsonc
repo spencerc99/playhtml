@@ -23,7 +23,24 @@
   ],
   "env": {
     "staging": {
-      "name": "playhtml-staging"
+      "name": "playhtml-staging",
+      "secrets": {
+        "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "Main",
+            "class_name": "PartyServer"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["PartyServer"]
+        }
+      ]
     }
   }
 }
