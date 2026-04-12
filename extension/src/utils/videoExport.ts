@@ -58,13 +58,14 @@ export function startRecording(
     if (capturing) return;
     capturing = true;
     try {
+      const bitmap = await svgToImageBitmap(svgEl, width, height);
+      // Clear/fill only immediately before drawing so the canvas never sits blank
       if (!transparent) {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
       } else {
         ctx.clearRect(0, 0, width, height);
       }
-      const bitmap = await svgToImageBitmap(svgEl, width, height);
       ctx.drawImage(bitmap, 0, 0);
       bitmap.close();
     } catch {
