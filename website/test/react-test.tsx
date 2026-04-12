@@ -27,6 +27,7 @@ import { SharedSlider } from "../../packages/react/examples/SharedSlider";
 import { LiveReactions } from "../../packages/react/examples/LiveReactions";
 // import { CursorOverlap } from "../../packages/react/examples/CursorOverlap";
 import { SharedSound } from "../../packages/react/examples/SharedSound";
+import { useCallback, useState } from "react";
 
 const Candle = withSharedState(
   { defaultData: { on: false } },
@@ -112,6 +113,70 @@ const WithSharedStateCanPlayWithLoading = withSharedState(
   ),
 );
 
+// Event API test: exercises both old (dispatchPlayEvent) and new (dispatchEvent/onEvent) APIs
+const EventApiTest = () => {
+  const {
+    dispatchPlayEvent,
+    registerPlayEventListener,
+    removePlayEventListener,
+    dispatchEvent,
+    onEvent,
+  } = usePlayContext();
+  const [oldApiLog, setOldApiLog] = useState<string[]>([]);
+  const [newApiLog, setNewApiLog] = useState<string[]>([]);
+
+  // Old API listener
+  React.useEffect(() => {
+    const id = registerPlayEventListener("test-old-api", {
+      onEvent: () => {
+        setOldApiLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] received via old API`]);
+      },
+    });
+    return () => removePlayEventListener("test-old-api", id);
+  }, [registerPlayEventListener, removePlayEventListener]);
+
+  // New API listener
+  React.useEffect(() => {
+    return onEvent("test-new-api", (payload: any) => {
+      setNewApiLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] received: ${JSON.stringify(payload)}`]);
+    });
+  }, [onEvent]);
+
+  const sendOld = useCallback(() => {
+    dispatchPlayEvent({ type: "test-old-api" });
+  }, [dispatchPlayEvent]);
+
+  const sendNew = useCallback(() => {
+    dispatchEvent("test-new-api", { msg: "hello", ts: Date.now() });
+  }, [dispatchEvent]);
+
+  return (
+    <div style={{ padding: "20px", border: "2px solid #4a9a8a", margin: "20px 0" }}>
+      <h3>Event API Test</h3>
+      <div style={{ display: "flex", gap: "24px" }}>
+        <div style={{ flex: 1 }}>
+          <h4>Old API (deprecated)</h4>
+          <button onClick={sendOld} style={{ padding: "8px 16px", cursor: "pointer" }}>
+            dispatchPlayEvent("test-old-api")
+          </button>
+          <pre style={{ fontSize: "12px", maxHeight: "120px", overflow: "auto", background: "#f5f0e8", padding: "8px", marginTop: "8px" }}>
+            {oldApiLog.length === 0 ? "(no events yet)" : oldApiLog.join("\n")}
+          </pre>
+        </div>
+        <div style={{ flex: 1 }}>
+          <h4>New API (dispatchEvent/onEvent)</h4>
+          <button onClick={sendNew} style={{ padding: "8px 16px", cursor: "pointer" }}>
+            dispatchEvent("test-new-api")
+          </button>
+          <pre style={{ fontSize: "12px", maxHeight: "120px", overflow: "auto", background: "#f5f0e8", padding: "8px", marginTop: "8px" }}>
+            {newApiLog.length === 0 ? "(no events yet)" : newApiLog.join("\n")}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
 ).render(
@@ -173,6 +238,7 @@ ReactDOM.createRoot(
         </div>
       </div>
 
+      <EventApiTest />
       <LoadingStateTest />
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
