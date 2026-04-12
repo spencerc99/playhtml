@@ -19,7 +19,7 @@ export const ExportPage = () => {
   const [urlFilter, setUrlFilter] = useState(() => localStorage.getItem("wwo_export_urlFilter") ?? "");
   const [width, setWidth] = useState(() => Number(localStorage.getItem("wwo_export_width") ?? 1920));
   const [height, setHeight] = useState(() => Number(localStorage.getItem("wwo_export_height") ?? 1080));
-  const [transparent, setTransparent] = useState(() => localStorage.getItem("wwo_export_transparent") === "1");
+  const [background, setBackground] = useState(() => localStorage.getItem("wwo_export_background") ?? "white");
   const [animationSpeed, setAnimationSpeed] = useState(() => Number(localStorage.getItem("wwo_export_animationSpeed") ?? 1));
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export const ExportPage = () => {
   useEffect(() => { localStorage.setItem("wwo_export_urlFilter", urlFilter); }, [urlFilter]);
   useEffect(() => { localStorage.setItem("wwo_export_width", String(width)); }, [width]);
   useEffect(() => { localStorage.setItem("wwo_export_height", String(height)); }, [height]);
-  useEffect(() => { localStorage.setItem("wwo_export_transparent", transparent ? "1" : "0"); }, [transparent]);
+  useEffect(() => { localStorage.setItem("wwo_export_background", background); }, [background]);
   useEffect(() => { localStorage.setItem("wwo_export_animationSpeed", String(animationSpeed)); }, [animationSpeed]);
 
   // Load dev_mode from storage to gate access
@@ -211,7 +211,7 @@ export const ExportPage = () => {
       height,
       sessionVW: sessionViewport.vw,
       sessionVH: sessionViewport.vh,
-      transparent,
+      background,
       animationStartTs: timeRange.min,
       cycleDurationMs: timeRange.duration,
       animationSpeed,
@@ -225,7 +225,7 @@ export const ExportPage = () => {
     setStatus("recording");
     // Increment key last — triggers remount, which fires the useEffect below
     setAnimationKey((k) => k + 1);
-  }, [width, height, transparent, timeRange, animationSpeed, scrollTimeline]);
+  }, [width, height, background, timeRange, animationSpeed, scrollTimeline]);
 
   const handleStopRecording = useCallback(() => {
     stopRecordingRef.current?.();
@@ -357,10 +357,11 @@ export const ExportPage = () => {
           <label style={labelStyle}>Background</label>
           <select
             style={inputStyle}
-            value={transparent ? "transparent" : "white"}
-            onChange={(e) => setTransparent(e.target.value === "transparent")}
+            value={background}
+            onChange={(e) => setBackground(e.target.value)}
           >
             <option value="white">white</option>
+            <option value="green">green screen</option>
             <option value="transparent">transparent</option>
           </select>
         </div>
@@ -513,7 +514,7 @@ export const ExportPage = () => {
               width,
               height,
               position: "relative",
-              background: transparent ? "transparent" : "#ffffff",
+              background: background === "transparent" ? "transparent" : background === "green" ? "#00ff00" : "#ffffff",
               transform: `scale(${previewScale})`,
               transformOrigin: "top left",
             }}

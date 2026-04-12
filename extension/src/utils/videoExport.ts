@@ -22,8 +22,8 @@ export interface RecordingOptions {
    */
   sessionVW: number;
   sessionVH: number;
-  /** If true, canvas background is transparent (VP9 alpha). If false, fills white. */
-  transparent: boolean;
+  /** Canvas background: "white", "green" (#00ff00 for chroma key), or "transparent" (VP9 alpha). */
+  background: string;
   /**
    * Animation start timestamp (ms, same epoch as CollectionEvent.ts).
    * Used to align the scroll timeline to the animation playback position.
@@ -86,7 +86,7 @@ export function startRecording(
     height,
     sessionVW,
     sessionVH,
-    transparent,
+    background,
     animationStartTs,
     cycleDurationMs,
     animationSpeed,
@@ -150,12 +150,12 @@ export function startRecording(
       const viewBoxOverride = `${scrollX} ${scrollY} ${sessionVW} ${sessionVH}`;
 
       const bitmap = await svgToImageBitmap(svgEl, width, height, viewBoxOverride);
-      // Clear/fill only immediately before drawing so the canvas never sits blank
-      if (!transparent) {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, width, height);
-      } else {
+      // Clear/fill immediately before drawing so the canvas never sits blank
+      if (background === "transparent") {
         ctx.clearRect(0, 0, width, height);
+      } else {
+        ctx.fillStyle = background === "green" ? "#00ff00" : "#ffffff";
+        ctx.fillRect(0, 0, width, height);
       }
       ctx.drawImage(bitmap, 0, 0);
       bitmap.close();
