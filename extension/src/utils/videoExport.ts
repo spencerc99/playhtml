@@ -12,8 +12,16 @@ export interface ScrollKeyframe {
 }
 
 export interface RecordingOptions {
+  /** Export canvas dimensions — the output video will be this size. */
   width: number;
   height: number;
+  /**
+   * Original session viewport dimensions. Cursor coordinates were normalized
+   * against this viewport, so the SVG viewBox must match it. The SVG is then
+   * scaled up to fill the export canvas via its width/height attributes.
+   */
+  sessionVW: number;
+  sessionVH: number;
   /** If true, canvas background is transparent (VP9 alpha). If false, fills white. */
   transparent: boolean;
   /**
@@ -27,7 +35,7 @@ export interface RecordingOptions {
   animationSpeed: number;
   /**
    * Sorted scroll keyframes extracted from cursor events.
-   * If empty, the viewBox stays at 0 0 width height (no scroll pan).
+   * If empty, the viewBox stays at 0 0 sessionVW sessionVH (no scroll pan).
    */
   scrollTimeline: ScrollKeyframe[];
   onStop: (blob: Blob) => void;
@@ -76,6 +84,8 @@ export function startRecording(
   const {
     width,
     height,
+    sessionVW,
+    sessionVH,
     transparent,
     animationStartTs,
     cycleDurationMs,
@@ -91,7 +101,8 @@ export function startRecording(
   canvas.style.cssText =
     "visibility:hidden;position:fixed;top:-9999px;left:-9999px;pointer-events:none;";
   document.body.appendChild(canvas);
-  const ctx = canvas.getContext("2d")!;
+  // alpha:true is required for transparent export; harmless when filling white
+  const ctx = canvas.getContext("2d", { alpha: true })!;
 
   // Pick best supported codec
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
@@ -133,11 +144,10 @@ export function startRecording(
       const currentTs = animationStartTs + loopedElapsed;
       const { scrollX, scrollY } = interpolateScroll(scrollTimeline, currentTs);
 
-      // Build viewBox: pan across document space according to scroll position
-      const viewBoxOverride =
-        scrollTimeline.length > 0
-          ? `${scrollX} ${scrollY} ${width} ${height}`
-          : undefined;
+      // ViewBox uses session viewport dimensions so cursor coordinates (which were
+      // normalized against the original vw/vh) fill the frame correctly. The SVG
+      // width/height attributes scale it up to the export canvas size.
+      const viewBoxOverride = `${scrollX} ${scrollY} ${sessionVW} ${sessionVH}`;
 
       const bitmap = await svgToImageBitmap(svgEl, width, height, viewBoxOverride);
       // Clear/fill only immediately before drawing so the canvas never sits blank

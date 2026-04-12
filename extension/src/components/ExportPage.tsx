@@ -143,10 +143,31 @@ export const ExportPage = () => {
         keyframes.push({ ts: event.ts, scrollX, scrollY });
       }
     }
-    // filteredEvents are already sorted by ts inside useCursorTrails, but sort here too
     keyframes.sort((a, b) => a.ts - b.ts);
     return keyframes;
   }, [filteredEvents]);
+
+  // Derive the session viewport size from event metadata — cursor coordinates were
+  // normalized against this viewport, so the viewBox must match it (not the export size).
+  // Use the most common vw/vh pair across events.
+  const sessionViewport = useMemo((): { vw: number; vh: number } => {
+    const counts = new Map<string, { vw: number; vh: number; n: number }>();
+    for (const event of filteredEvents) {
+      const vw = event.meta?.vw;
+      const vh = event.meta?.vh;
+      if (!vw || !vh) continue;
+      const key = `${vw}x${vh}`;
+      const entry = counts.get(key);
+      if (entry) entry.n++;
+      else counts.set(key, { vw, vh, n: 1 });
+    }
+    let best = { vw: width, vh: height };
+    let bestN = 0;
+    for (const entry of counts.values()) {
+      if (entry.n > bestN) { bestN = entry.n; best = entry; }
+    }
+    return best;
+  }, [filteredEvents, width, height]);
 
   const loadEvents = useCallback(async () => {
     if (!startDate) {
@@ -188,6 +209,8 @@ export const ExportPage = () => {
     pendingRecordingRef.current = {
       width,
       height,
+      sessionVW: sessionViewport.vw,
+      sessionVH: sessionViewport.vh,
       transparent,
       animationStartTs: timeRange.min,
       cycleDurationMs: timeRange.duration,
@@ -398,7 +421,7 @@ export const ExportPage = () => {
             marginBottom: 12,
           }}
         >
-          {filteredEvents.length} events · {trailStates.length} trails
+          {filteredEvents.length} events · {trailStates.length} trails · session viewport {sessionViewport.vw}×{sessionViewport.vh}
         </p>
       )}
 
