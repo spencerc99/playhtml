@@ -245,6 +245,8 @@ export interface PresenceAPI {
 
 export interface PresenceRoom {
   presence: PresenceAPI;
+  dispatchEvent(type: string, payload?: unknown): void;
+  onEvent(type: string, callback: (payload: unknown) => void): () => void;
   destroy: () => void;
 }
 
