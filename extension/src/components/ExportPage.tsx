@@ -1,7 +1,7 @@
 // ABOUTME: Admin export page — loads cursor events and records trail animation to WebM video
 // ABOUTME: Accessible only when localStorage.wwo_admin === '1'; not linked from extension UI
 
-import React, { useState, useCallback, useRef, useMemo } from "react";
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import browser from "webextension-polyfill";
 import type { CollectionEvent } from "../../../website/internet-series/movement/types";
 import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
@@ -12,13 +12,6 @@ type PageStatus = "idle" | "loading" | "preview" | "recording" | "done";
 
 export const ExportPage = () => {
   const isAdmin = localStorage.getItem("wwo_admin") === "1";
-  if (!isAdmin) {
-    return (
-      <div style={{ padding: 40, fontFamily: "monospace", color: "#3d3833" }}>
-        not authorized — set <code>localStorage.wwo_admin = '1'</code> to access
-      </div>
-    );
-  }
 
   const [status, setStatus] = useState<PageStatus>("idle");
   const [startDate, setStartDate] = useState("");
@@ -36,6 +29,20 @@ export const ExportPage = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clean up recording resources if component unmounts during recording
+  useEffect(() => {
+    return () => {
+      if (stopRecordingRef.current) {
+        stopRecordingRef.current();
+        stopRecordingRef.current = null;
+      }
+      if (elapsedIntervalRef.current) {
+        clearInterval(elapsedIntervalRef.current);
+        elapsedIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Derive available domains from loaded events
   const availableDomains = useMemo(() => {
@@ -197,6 +204,14 @@ export const ExportPage = () => {
     marginBottom: 4,
     display: "block",
   };
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: 40, fontFamily: "monospace", color: "#3d3833" }}>
+        not authorized — set <code>localStorage.wwo_admin = '1'</code> to access
+      </div>
+    );
+  }
 
   return (
     <div
