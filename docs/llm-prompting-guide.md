@@ -36,7 +36,7 @@ DATA TYPES (choose the right one):
 
 1. **Persistent data** (defaultData): State that syncs and persists (position, count, messages, etc.)
 2. **Awareness**: Temporary presence data (which users are online, their colors, cursor positions)
-3. **Events**: One-time triggers (confetti, notifications, animations) - use dispatchPlayEvent/registerPlayEventListener
+3. **Events**: One-time triggers (confetti, notifications, animations) - use dispatchEvent/onEvent
 
 KEY APIs:
 
@@ -53,7 +53,7 @@ React (withSharedState):
 
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
 - For awareness: { myDefaultAwareness: value } in config, use setMyAwareness
-- For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
+- For events: usePlayContext() -> { dispatchEvent, onEvent }
 - For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
 
 DATA UPDATES:

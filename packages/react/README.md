@@ -170,30 +170,22 @@ import { useContext, useEffect } from "react";
 const ConfettiEventType = "confetti";
 
 export function useConfetti() {
-  const {
-    registerPlayEventListener,
-    removePlayEventListener,
-    dispatchPlayEvent,
-  } = useContext(PlayContext);
+  const { dispatchEvent, onEvent } = useContext(PlayContext);
 
   useEffect(() => {
-    const id = registerPlayEventListener(ConfettiEventType, {
-      onEvent: () => {
-        // requires importing <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
-        // somewhere in your app
-        window.confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-        });
-      },
+    return onEvent(ConfettiEventType, () => {
+      // requires importing <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+      // somewhere in your app
+      window.confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
     });
-
-    return () => removePlayEventListener(ConfettiEventType, id);
-  }, []);
+  }, [onEvent]);
 
   return () => {
-    dispatchPlayEvent({ type: ConfettiEventType });
+    dispatchEvent(ConfettiEventType);
   };
 }
 

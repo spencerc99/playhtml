@@ -84,7 +84,7 @@ If you have dynamic elements that are hydrated after the initial load, you can c
 
 #### eventing
 
-You can set up imperative logic that doesn't depend on a data value changing (like triggering confetti when someone clicks in an area) by registering events with playhtml. You can either pass in a list of events when you call `playhtml.init` or you can call `playhtml.registerPlayEventListener` to register an event at any time.
+You can set up imperative logic that doesn't depend on a data value changing (like triggering confetti when someone clicks in an area) by listening for events. You can listen with `playhtml.onEvent` and dispatch with `playhtml.dispatchEvent`.
 
 https://github.com/spencerc99/playhtml/assets/14796580/bd8ecfaf-73ab-4aa2-9312-8917809f52a2
 
@@ -97,27 +97,22 @@ https://github.com/spencerc99/playhtml/assets/14796580/bd8ecfaf-73ab-4aa2-9312-8
 </div>
 <!-- Import confetti library -->
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
-<script>
-  confettiZone.addEventListener("click", onClickConfettiZone);
-  function onClickConfettiZone(e) {
-    playhtml.dispatchPlayEvent({ type: "confetti" });
-  }
-</script>
 <script type="module">
   import "https://unpkg.com/playhtml@latest";
-  playhtml.init({
-    events: {
-      confetti: {
-        type: "confetti",
-        onEvent: (data) => {
-          window.confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 },
-          });
-        },
-      },
-    },
+  playhtml.init({});
+
+  // Listen for confetti events from any connected client
+  playhtml.onEvent("confetti", () => {
+    window.confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.6 },
+    });
+  });
+
+  // Dispatch when someone clicks the zone
+  confettiZone.addEventListener("click", () => {
+    playhtml.dispatchEvent("confetti");
   });
 </script>
 ```

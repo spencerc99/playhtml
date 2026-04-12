@@ -141,13 +141,11 @@ defaultData: {
 
 ```javascript
 // Dispatch
-playhtml.dispatchPlayEvent({ type: "confetti" });
+playhtml.dispatchEvent("confetti");
 
-// Listen
-playhtml.registerPlayEventListener("confetti", {
-  onEvent: () => {
-    /* trigger animation */
-  },
+// Listen (returns unsubscribe function)
+const unsub = playhtml.onEvent("confetti", () => {
+  /* trigger animation */
 });
 ```
 
