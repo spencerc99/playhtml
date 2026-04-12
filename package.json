@@ -41,7 +41,8 @@
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-mpa": "^1.2.0"
+    "vite-plugin-mpa": "^1.2.0",
+    "wrangler": "^4.81.1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
