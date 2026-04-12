@@ -4,6 +4,8 @@
   "main": "partykit/party.ts",
   "compatibility_flags": ["nodejs_compat"],
   "compatibility_date": "2024-09-23",
+  "workers_dev": true,
+  "preview_urls": false,
   "secrets": {
     "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
   },
@@ -24,6 +26,8 @@
   "env": {
     "staging": {
       "name": "playhtml-staging",
+      "workers_dev": true,
+      "preview_urls": false,
       "secrets": {
         "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
       },
