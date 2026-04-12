@@ -91,7 +91,6 @@ export function DomainPortraitExport({
           showClickRipples={false}
           settings={{
             strokeWidth: 5,
-            pointSize: 4,
             trailOpacity: 0.7,
             animationSpeed: 1,
             clickMinRadius: 10,

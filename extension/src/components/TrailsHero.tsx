@@ -141,7 +141,6 @@ export function TrailsHero({ width, height }: Props) {
       windowSize={CURSOR_COUNT}
       settings={{
         strokeWidth: 5,
-        pointSize: 0,
         trailOpacity: 0.2,
         animationSpeed: 0.5,
         clickMinRadius: 6,

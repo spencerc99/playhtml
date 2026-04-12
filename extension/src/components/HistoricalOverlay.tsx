@@ -42,7 +42,6 @@ interface OverlaySettings {
   trailOpacity: number;
   animationSpeed: number;
   strokeWidth: number;
-  pointSize: number;
 
   // Animation settings
   trailStyle: "straight" | "smooth" | "organic" | "chaotic";
@@ -61,7 +60,6 @@ export const defaultSettings: OverlaySettings = {
   trailOpacity: 0.7,
   animationSpeed: 1.0,
   strokeWidth: 5,
-  pointSize: 4,
   trailStyle: "chaotic",
   maxConcurrentTrails: 15,
   randomizeColors: false,
@@ -826,7 +824,6 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               documentSpace={settings.documentSpace}
               settings={{
                 strokeWidth: settings.strokeWidth,
-                pointSize: settings.pointSize,
                 trailOpacity: settings.trailOpacity,
                 animationSpeed: settings.animationSpeed,
                 clickMinRadius: 10,

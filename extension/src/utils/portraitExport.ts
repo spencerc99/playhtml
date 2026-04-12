@@ -3,20 +3,25 @@
 
 /**
  * Render an SVG element to ImageBitmap at given dimensions.
+ * @param viewBoxOverride - If provided, sets the SVG viewBox to this value instead of
+ *   the default `0 0 width height`. Used for scroll-animated export where the viewBox
+ *   pans across document space (e.g. `${scrollX} ${scrollY} ${width} ${height}`).
  */
 export async function svgToImageBitmap(
   svgEl: SVGSVGElement,
   width: number,
   height: number,
+  viewBoxOverride?: string,
 ): Promise<ImageBitmap> {
   // Clone SVG and set explicit dimensions so it renders correctly as a standalone image
   // (percentage width/height are unresolvable outside the DOM)
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
-  // Always override viewBox to export dimensions — the live SVG viewBox reflects the
-  // rendered container size, not the export target, so it must not be inherited here.
-  clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  // Always override viewBox — the live SVG viewBox reflects the rendered container, not
+  // the export target. Use the caller-supplied viewBox for scroll-panning, or default
+  // to full canvas dimensions for static export.
+  clone.setAttribute("viewBox", viewBoxOverride ?? `0 0 ${width} ${height}`);
 
   const serialized = new XMLSerializer().serializeToString(clone);
   const blob = new Blob([serialized], { type: "image/svg+xml" });

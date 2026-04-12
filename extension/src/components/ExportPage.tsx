@@ -6,7 +6,7 @@ import browser from "webextension-polyfill";
 import type { CollectionEvent } from "../../../website/internet-series/movement/types";
 import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
 import { useCursorTrails } from "../../../website/internet-series/movement/hooks/useCursorTrails";
-import { startRecording, videoExportFilename, triggerDownload } from "../utils/videoExport";
+import { startRecording, videoExportFilename, triggerDownload, type ScrollKeyframe } from "../utils/videoExport";
 
 type PageStatus = "idle" | "loading" | "preview" | "recording" | "done";
 
@@ -25,6 +25,7 @@ export const ExportPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [animationKey, setAnimationKey] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
@@ -110,6 +111,22 @@ export const ExportPage = () => {
     return { min: timeBounds.min || 0, max: timeBounds.max || 0, duration };
   }, [timeBounds, cycleDuration]);
 
+  // Build scroll timeline from cursor events — each cursor event carries the raw pixel
+  // scrollX/scrollY at capture time, giving us a dense enough keyframe set for smooth panning.
+  const scrollTimeline = useMemo((): ScrollKeyframe[] => {
+    const keyframes: ScrollKeyframe[] = [];
+    for (const event of filteredEvents) {
+      const scrollX = (event.data as { scrollX?: number }).scrollX;
+      const scrollY = (event.data as { scrollY?: number }).scrollY;
+      if (scrollX !== undefined && scrollY !== undefined) {
+        keyframes.push({ ts: event.ts, scrollX, scrollY });
+      }
+    }
+    // filteredEvents are already sorted by ts inside useCursorTrails, but sort here too
+    keyframes.sort((a, b) => a.ts - b.ts);
+    return keyframes;
+  }, [filteredEvents]);
+
   const loadEvents = useCallback(async () => {
     if (!startDate) {
       setError("Please select a start date.");
@@ -124,7 +141,7 @@ export const ExportPage = () => {
         : new Date(startDate + "T23:59:59.999").getTime();
       const res: any = await browser.runtime.sendMessage({
         type: "GET_ALL_EVENTS",
-        options: { startTs, endTs },
+        options: { startTs, endTs, type: "cursor" },
       });
       const loaded = (res?.events ?? []) as CollectionEvent[];
       setEvents(loaded);
@@ -147,6 +164,7 @@ export const ExportPage = () => {
       setError("No SVG found — make sure events are loaded first.");
       return;
     }
+    setAnimationKey((k) => k + 1);
     setStatus("recording");
     setElapsedSecs(0);
     elapsedIntervalRef.current = setInterval(
@@ -157,12 +175,16 @@ export const ExportPage = () => {
       width,
       height,
       transparent,
+      animationStartTs: timeRange.min,
+      cycleDurationMs: timeRange.duration,
+      animationSpeed,
+      scrollTimeline,
       onStop: (blob) => {
         setRecordedBlob(blob);
         setStatus("done");
       },
     });
-  }, [width, height, transparent]);
+  }, [width, height, transparent, timeRange, animationSpeed, scrollTimeline]);
 
   const handleStopRecording = useCallback(() => {
     stopRecordingRef.current?.();
@@ -456,11 +478,13 @@ export const ExportPage = () => {
             }}
           >
             <AnimatedTrails
+              key={animationKey}
               trailStates={trailStates}
               timeRange={timeRange}
-              showClickRipples={false}
+              showClickRipples={true}
               windowSize={30}
               soundEngine={null}
+              documentSpace={true}
               settings={{
                 strokeWidth: cursorSettings.strokeWidth,
                 trailOpacity: cursorSettings.trailOpacity,
