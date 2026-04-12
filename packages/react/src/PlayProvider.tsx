@@ -11,6 +11,8 @@ export interface PlayContextInfo
     | "dispatchPlayEvent"
     | "registerPlayEventListener"
     | "removePlayEventListener"
+    | "dispatchEvent"
+    | "onEvent"
     | "deleteElementData"
   > {
   /** @deprecated Use `isLoading` instead. */
@@ -47,6 +49,16 @@ export const PlayContext = createContext<PlayContextInfo>({
     );
   },
   removePlayEventListener: () => {},
+  dispatchEvent: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
+  onEvent: () => {
+    throw new Error(
+      "[@playhtml/react]: PlayProvider element missing. please render it at the top-level or use the `standalone` prop"
+    );
+  },
   hasSynced: false,
   isLoading: true,
   isProviderMissing: true,
@@ -206,6 +218,8 @@ export function PlayProvider({
         dispatchPlayEvent: playhtml.dispatchPlayEvent,
         registerPlayEventListener: playhtml.registerPlayEventListener,
         removePlayEventListener: playhtml.removePlayEventListener,
+        dispatchEvent: playhtml.dispatchEvent,
+        onEvent: playhtml.onEvent,
         deleteElementData: playhtml.deleteElementData,
         hasSynced,
         isLoading: !hasSynced,

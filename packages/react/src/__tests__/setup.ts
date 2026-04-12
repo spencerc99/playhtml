@@ -29,6 +29,8 @@ const mockedPlayhtml = {
   dispatchPlayEvent: vi.fn(),
   registerPlayEventListener: vi.fn().mockReturnValue("mock-id"),
   removePlayEventListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+  onEvent: vi.fn().mockReturnValue(() => {}),
   presence: {
     setMyPresence: vi.fn((channel: string, data: unknown) => {
       mockPresences.set("me", { ...data, isMe: true, cursor: null });
@@ -67,6 +69,8 @@ const mockedPlayhtml = {
   }),
   createPresenceRoom: vi.fn((_name: string) => ({
     presence: mockedPlayhtml.presence,
+    dispatchEvent: vi.fn(),
+    onEvent: vi.fn().mockReturnValue(() => {}),
     destroy: vi.fn(),
   })),
 };
