@@ -14,13 +14,13 @@ export const ExportPage = () => {
   const [isDevMode, setIsDevMode] = useState<boolean | null>(null); // null = loading
 
   const [status, setStatus] = useState<PageStatus>("idle");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [domainFilter, setDomainFilter] = useState("");
-  const [width, setWidth] = useState(1920);
-  const [height, setHeight] = useState(1080);
-  const [transparent, setTransparent] = useState(false);
-  const [animationSpeed, setAnimationSpeed] = useState(1);
+  const [startDate, setStartDate] = useState(() => localStorage.getItem("wwo_export_startDate") ?? "");
+  const [endDate, setEndDate] = useState(() => localStorage.getItem("wwo_export_endDate") ?? "");
+  const [urlFilter, setUrlFilter] = useState(() => localStorage.getItem("wwo_export_urlFilter") ?? "");
+  const [width, setWidth] = useState(() => Number(localStorage.getItem("wwo_export_width") ?? 1920));
+  const [height, setHeight] = useState(() => Number(localStorage.getItem("wwo_export_height") ?? 1080));
+  const [transparent, setTransparent] = useState(() => localStorage.getItem("wwo_export_transparent") === "1");
+  const [animationSpeed, setAnimationSpeed] = useState(() => Number(localStorage.getItem("wwo_export_animationSpeed") ?? 1));
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsedSecs, setElapsedSecs] = useState(0);
@@ -29,6 +29,15 @@ export const ExportPage = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Persist form inputs across refreshes
+  useEffect(() => { localStorage.setItem("wwo_export_startDate", startDate); }, [startDate]);
+  useEffect(() => { localStorage.setItem("wwo_export_endDate", endDate); }, [endDate]);
+  useEffect(() => { localStorage.setItem("wwo_export_urlFilter", urlFilter); }, [urlFilter]);
+  useEffect(() => { localStorage.setItem("wwo_export_width", String(width)); }, [width]);
+  useEffect(() => { localStorage.setItem("wwo_export_height", String(height)); }, [height]);
+  useEffect(() => { localStorage.setItem("wwo_export_transparent", transparent ? "1" : "0"); }, [transparent]);
+  useEffect(() => { localStorage.setItem("wwo_export_animationSpeed", String(animationSpeed)); }, [animationSpeed]);
 
   // Load dev_mode from storage to gate access
   useEffect(() => {
@@ -51,45 +60,27 @@ export const ExportPage = () => {
     };
   }, []);
 
-  // Derive available domains from loaded events
-  const availableDomains = useMemo(() => {
-    const domains = new Set<string>();
-    for (const e of events) {
-      if (e.meta?.url) {
-        try {
-          domains.add(new URL(e.meta.url).hostname);
-        } catch {}
-      }
-    }
-    return Array.from(domains).sort();
-  }, [events]);
-
-  // Filter events by domain if set
+  // Filter events by URL prefix/substring if set
   const filteredEvents = useMemo(() => {
-    if (!domainFilter) return events;
-    return events.filter((e) => {
-      try {
-        return new URL(e.meta?.url ?? "").hostname === domainFilter;
-      } catch {
-        return false;
-      }
-    });
-  }, [events, domainFilter]);
+    if (!urlFilter.trim()) return events;
+    const filter = urlFilter.trim();
+    return events.filter((e) => e.meta?.url?.includes(filter));
+  }, [events, urlFilter]);
 
   const viewportSize = useMemo(() => ({ width, height }), [width, height]);
 
   const cursorSettings = useMemo(
     () => ({
       trailOpacity: 0.7,
-      randomizeColors: true,
+      randomizeColors: false,
       domainFilter: "",
       eventFilter: { move: true, click: true, hold: true, cursor_change: true },
       trailStyle: "chaotic" as const,
       chaosIntensity: 1.0,
       trailAnimationMode: "stagger" as const,
       maxConcurrentTrails: 15,
-      overlapFactor: 0.8,
-      minGapBetweenTrails: 0.3,
+      overlapFactor: 0.75,
+      minGapBetweenTrails: 0.2,
       documentSpace: true,
       animationSpeed,
       strokeWidth: 5,
@@ -266,24 +257,17 @@ export const ExportPage = () => {
           />
         </div>
 
-        {/* Domain filter */}
-        {availableDomains.length > 0 && (
-          <div>
-            <label style={labelStyle}>Domain filter</label>
-            <select
-              style={inputStyle}
-              value={domainFilter}
-              onChange={(e) => setDomainFilter(e.target.value)}
-            >
-              <option value="">all domains</option>
-              {availableDomains.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        {/* URL filter */}
+        <div>
+          <label style={labelStyle}>URL filter (paste full or partial URL)</label>
+          <input
+            type="text"
+            style={{ ...inputStyle, width: 320 }}
+            placeholder="e.g. https://en.wikipedia.org/wiki/Foo"
+            value={urlFilter}
+            onChange={(e) => setUrlFilter(e.target.value)}
+          />
+        </div>
 
         {/* Canvas size */}
         <div>
