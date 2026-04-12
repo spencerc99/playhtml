@@ -177,7 +177,7 @@ describe("checkAllMilestones", () => {
     const state = buildEmptyState();
     const result = checkAllMilestones(
       state,
-      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
       0,
       [],
     );
@@ -189,7 +189,7 @@ describe("checkAllMilestones", () => {
     // 1 mile = 6,082,560 px
     const result = checkAllMilestones(
       state,
-      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
       6082560, // 1 mile
       [],
     );
@@ -200,11 +200,11 @@ describe("checkAllMilestones", () => {
   });
 
   it("fires screenTime milestone when cursor already shown", () => {
-    const state = buildEmptyState();
+    const state = { ...buildEmptyState(), dailyScreenTimeMs: 31 * 60 * 1000 };
     state.dailyShown.cursorDistance = [1]; // cursor already fired
     const result = checkAllMilestones(
       state,
-      { totalTimeMs: 31 * 60 * 1000, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) }, // 31 min
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
       6082560, // 1 mile — but already shown
       [],
     );
@@ -218,7 +218,7 @@ describe("checkAllMilestones", () => {
     // cursor and screen time not crossed
     const result = checkAllMilestones(
       state,
-      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
       0,
       [{ domain: "example.com", visitCount: 10 }],
     );
@@ -232,7 +232,7 @@ describe("checkAllMilestones", () => {
     const state = buildEmptyState();
     const result = checkAllMilestones(
       state,
-      { totalTimeMs: 0, uniqueUrlCount: 0, hourBuckets: Array(24).fill(0) },
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
       6082560,
       [],
     );

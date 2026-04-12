@@ -1,0 +1,18 @@
+{
+  "name": "playhtml",
+  "owner": {
+    "name": "Spencer Chang",
+    "url": "https://github.com/spencerc99"
+  },
+  "metadata": {
+    "description": "Plugins for building with the playhtml library"
+  },
+  "plugins": [
+    {
+      "name": "playhtml",
+      "source": "./claude-plugin",
+      "description": "Skill for building collaborative, real-time HTML elements with playhtml. Covers APIs, data types, and common mistakes.",
+      "version": "1.0.0"
+    }
+  ]
+}

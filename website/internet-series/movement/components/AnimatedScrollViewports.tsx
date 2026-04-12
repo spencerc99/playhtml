@@ -27,6 +27,7 @@ interface AnimatedScrollViewportsProps {
     showScrollEvents?: boolean;
     showResizeEvents?: boolean;
     showZoomEvents?: boolean;
+    windowScale?: number;
   };
 }
 
@@ -139,48 +140,47 @@ const findAvailablePosition = (
 };
 
 // Calculate viewport dimensions based on animation data, preserving original aspect ratio
+// windowScale: 0 = tiny, 0.5 = medium (default), 1 = large
 const calculateViewportSize = (
   animation: ScrollAnimation,
   canvasWidth: number,
   canvasHeight: number,
   seed: number,
+  windowScale: number = 0.5,
 ): { width: number; height: number } => {
-  // Get original viewport dimensions and aspect ratio
   const avgWidth =
     (animation.startViewportWidth + animation.endViewportWidth) / 2;
   const avgHeight =
     (animation.startViewportHeight + animation.endViewportHeight) / 2;
   const aspectRatio = avgWidth / Math.max(1, avgHeight);
 
-  // Target scale with some randomization (15-35% of canvas)
-  const targetScale = 0.15 + seededRandom(seed, 10) * 0.2;
+  // Scale range maps windowScale 0..1 to 5-15% .. 30-50% of canvas
+  const minScale = 0.05 + windowScale * 0.25;
+  const maxScale = 0.15 + windowScale * 0.35;
+  const targetScale = minScale + seededRandom(seed, 10) * (maxScale - minScale);
 
-  // Calculate base dimensions preserving aspect ratio
   let width = canvasWidth * targetScale;
   let height = width / aspectRatio;
 
-  // If height exceeds bounds, scale down by height instead
-  const maxWidth = canvasWidth * 0.5;
-  const maxHeight = canvasHeight * 0.5;
+  const maxWidth = canvasWidth * 0.7;
+  const maxHeight = canvasHeight * 0.7;
 
   if (width > maxWidth) {
     width = maxWidth;
     height = width / aspectRatio;
   }
-
   if (height > maxHeight) {
     height = maxHeight;
     width = height * aspectRatio;
   }
 
-  // Ensure minimum size while preserving aspect ratio
-  if (width < MIN_VIEWPORT_SIZE) {
-    width = MIN_VIEWPORT_SIZE;
+  const minSize = Math.max(40, MIN_VIEWPORT_SIZE * (0.3 + windowScale * 0.7));
+  if (width < minSize) {
+    width = minSize;
     height = width / aspectRatio;
   }
-
-  if (height < MIN_VIEWPORT_SIZE) {
-    height = MIN_VIEWPORT_SIZE;
+  if (height < minSize) {
+    height = minSize;
     width = height * aspectRatio;
   }
 
@@ -264,6 +264,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           canvasSize.width,
           canvasSize.height,
           seed,
+          settingsRef.current.windowScale ?? 0.5,
         );
 
         // Find position — skip collision check when overlap is allowed
@@ -271,8 +272,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         if (settingsRef.current.allowOverlap) {
           // Random position, no collision check
           position = {
-            x: seededRandom(seed, 0) * (canvasSize.width - size.width - VIEWPORT_MARGIN * 2) + VIEWPORT_MARGIN,
-            y: seededRandom(seed, 1) * (canvasSize.height - size.height - VIEWPORT_MARGIN * 2) + VIEWPORT_MARGIN,
+            x: seededRandom(seed, 0) * Math.max(1, canvasSize.width - size.width),
+            y: seededRandom(seed, 1) * Math.max(1, canvasSize.height - size.height),
           };
         } else {
           const occupiedRects = activeViewports

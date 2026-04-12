@@ -13,6 +13,7 @@ import { getCursorComponent } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
+import { getTrailRenderer, TRAIL_RENDERERS, type TrailRenderer } from "../styles/trailRenderers";
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
@@ -148,6 +149,8 @@ interface ImperativeTrailHandle {
 interface TrailPathProps {
   trailState: TrailState;
   trailIndex: number;
+  fixedMonoStrokeWidth: number;
+  renderer: TrailRenderer;
   generatePath: (
     points: Array<{ x: number; y: number }>,
     style: string,
@@ -157,7 +160,7 @@ interface TrailPathProps {
 // Renders only the trail path (no cursor). The parent rAF loop drives updates
 // via the imperative handle.
 const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
-  ({ trailState, trailIndex, generatePath }, ref) => {
+  ({ trailState, trailIndex, fixedMonoStrokeWidth, renderer, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
 
@@ -189,10 +192,16 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
         const pathEl = pathRef.current;
         if (pathEl) {
           if (pathData) {
-            pathEl.setAttribute("d", pathData);
-            pathEl.setAttribute("opacity", String(trailOpacity));
-            pathEl.setAttribute("stroke-width", String(strokeWidth));
-            pathEl.style.display = "";
+            renderer.updatePath({
+              pathEl,
+              pathData,
+              trailOpacity,
+              strokeWidth,
+              cursorType: frame.cursorType,
+              trailProgress,
+              trailColor: trailState.trail.color,
+              fixedMonoStrokeWidth,
+            });
           } else {
             pathEl.style.display = "none";
           }
@@ -222,6 +231,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
 interface TrailCursorProps {
   trailState: TrailState;
   trailIndex: number;
+  renderer: TrailRenderer;
 }
 
 // Renders only the cursor icon. Positioned imperatively by the parent rAF loop
@@ -237,7 +247,7 @@ interface ImperativeTrailCursorHandle {
 }
 
 const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
-  ({ trailState }, ref) => {
+  ({ trailState, renderer }, ref) => {
     const cursorGroupRef = useRef<SVGGElement>(null);
 
     const [cursorType, setCursorType] = useState<string | undefined>(
@@ -268,7 +278,7 @@ const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorPro
       },
     }));
 
-    const color = trailState.trail.color;
+    const color = renderer.getCursorColor(trailState.trail.color, cursorType);
 
     return (
       <g ref={cursorGroupRef} style={{ display: "none" }}>
@@ -366,6 +376,7 @@ interface AnimatedTrailsProps {
     clickNumRings: number;
     clickRingDelayMs: number;
     clickAnimationStopPoint: number;
+    trailVisualStyle?: string;
   };
 }
 
@@ -389,6 +400,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const svgRef = useRef<SVGSVGElement>(null);
 
     const generatePath = useRef(createPathGenerator()).current;
+    const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
+    const rendererRef = useRef(renderer);
+    useEffect(() => { rendererRef.current = renderer; }, [renderer]);
 
     // Settings refs — updated without re-render
     const animationSpeedRef = useRef(settings.animationSpeed);
@@ -622,7 +636,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               prevY: result.cursorPosition.y,
               cursorType: ts.trail.points[cpIdx]?.cursor,
               progress: result.trailProgress,
-              color: ts.trail.color,
+              color: rendererRef.current.getClickColor(ts.trail.color),
               isNewlyActive: false,
             });
           }
@@ -654,7 +668,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                   id: `${idx}-${clickIdx}-${Date.now()}`,
                   x: result.cursorPosition.x,
                   y: result.cursorPosition.y,
-                  color: ts.trail.color,
+                  color: rendererRef.current.getClickColor(ts.trail.color),
                   radiusFactor: Math.random(),
                   durationFactor: Math.random(),
                   startTime: Date.now(),
@@ -707,6 +721,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           pointerEvents: "none",
         }}
       >
+        <defs>
+          {renderer.svgDefs && (
+            <g dangerouslySetInnerHTML={{ __html: renderer.svgDefs }} />
+          )}
+        </defs>
         {showClickRipples &&
           activeClickEffects.map((effect) => (
             <RippleEffect
@@ -737,6 +756,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             }}
             trailState={ts}
             trailIndex={idx}
+            fixedMonoStrokeWidth={1 + ((idx * 7 + 3) % 5)}
+            renderer={renderer}
             generatePath={generatePath}
           />
         ))}
@@ -751,6 +772,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             }}
             trailState={ts}
             trailIndex={idx}
+            renderer={renderer}
           />
         ))}
       </svg>

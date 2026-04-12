@@ -1,0 +1,13 @@
+{
+  "name": "playhtml",
+  "version": "1.0.0",
+  "description": "Skill for building collaborative, real-time HTML elements with playhtml",
+  "author": {
+    "name": "Spencer Chang",
+    "url": "https://github.com/spencerc99"
+  },
+  "homepage": "https://playhtml.fun",
+  "repository": "https://github.com/spencerc99/playhtml",
+  "license": "MIT",
+  "keywords": ["playhtml", "collaborative", "real-time", "interactive", "html"]
+}

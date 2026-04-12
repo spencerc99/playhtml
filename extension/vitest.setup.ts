@@ -10,8 +10,8 @@ Object.defineProperty(window, "scrollX", { value: 0, writable: true });
 Object.defineProperty(window, "scrollY", { value: 0, writable: true });
 
 // Mock document dimensions
-Object.defineProperty(document.documentElement, "scrollWidth", { value: 1024, writable: true });
-Object.defineProperty(document.documentElement, "scrollHeight", { value: 2000, writable: true });
+Object.defineProperty(document.documentElement, "scrollWidth", { value: 1024, writable: true, configurable: true });
+Object.defineProperty(document.documentElement, "scrollHeight", { value: 2000, writable: true, configurable: true });
 Object.defineProperty(document.documentElement, "scrollLeft", { value: 0, writable: true });
 Object.defineProperty(document.documentElement, "scrollTop", { value: 0, writable: true });
 

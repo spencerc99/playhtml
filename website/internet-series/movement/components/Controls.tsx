@@ -3,6 +3,7 @@
 import React, { useState, memo } from "react";
 import { CollectionEvent, Trail } from "../types";
 import { VISUALIZATIONS } from "./registry";
+import { TRAIL_RENDERERS } from "../styles";
 
 interface ControlsProps {
   visible: boolean;
@@ -320,6 +321,23 @@ export const Controls: React.FC<ControlsProps> = memo(
 
         {/* Cursor Settings - merged from Appearance and Animation */}
         <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
+          <div className="control-group">
+            <label htmlFor="trail-visual-style">Visual Style</label>
+            <select
+              id="trail-visual-style"
+              value={settings.trailVisualStyle ?? "color"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  trailVisualStyle: e.target.value,
+                }))
+              }
+            >
+              {TRAIL_RENDERERS.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
           {/* Appearance settings */}
           <div className="control-group">
             <label htmlFor="trail-opacity">Trail Opacity</label>
@@ -732,14 +750,12 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="max-concurrent-scrolls">
-              Max Concurrent Scrolls
-            </label>
+            <label htmlFor="max-windows">Max Windows</label>
             <input
-              id="max-concurrent-scrolls"
+              id="max-windows"
               type="range"
               min="1"
-              max="25"
+              max="50"
               step="1"
               value={settings.maxConcurrentScrolls}
               onChange={(e) =>
@@ -750,6 +766,25 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.maxConcurrentScrolls}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="window-scale">Window Size</label>
+            <input
+              id="window-scale"
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={settings.windowScale ?? 0.5}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  windowScale: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{["Tiny", "Small", "Medium", "Large", "Full"][Math.round((settings.windowScale ?? 0.5) * 4)]}</span>
           </div>
 
           <div className="control-group">
@@ -820,43 +855,6 @@ export const Controls: React.FC<ControlsProps> = memo(
             </label>
           </div>
 
-          <div className="control-group">
-            <label htmlFor="min-viewports">Min Viewports</label>
-            <input
-              id="min-viewports"
-              type="range"
-              min="5"
-              max="100"
-              step="5"
-              value={settings.minViewports}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  minViewports: parseInt(e.target.value),
-                }))
-              }
-            />
-            <span>{settings.minViewports}</span>
-          </div>
-
-          <div className="control-group">
-            <label htmlFor="max-viewports">Max Viewports</label>
-            <input
-              id="max-viewports"
-              type="range"
-              min="10"
-              max="200"
-              step="5"
-              value={settings.maxViewports}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  maxViewports: parseInt(e.target.value),
-                }))
-              }
-            />
-            <span>{settings.maxViewports}</span>
-          </div>
         </CollapsibleSection>
 
         <CollapsibleSection title="Navigation" sectionKey="navigation">
