@@ -695,6 +695,17 @@ export function Collections({ onBack }: CollectionsProps) {
               </span>
             </div>
           </label>
+          {devMode && (
+            <a
+              href={browser.runtime.getURL("export.html")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="collections__dev-mode-desc"
+              style={{ display: "block", marginTop: 6, color: "var(--accent-teal)" }}
+            >
+              trail export tool ↗
+            </a>
+          )}
         </div>
       </main>
     </div>

@@ -1,5 +1,5 @@
 // ABOUTME: Admin export page — loads cursor events and records trail animation to WebM video
-// ABOUTME: Accessible only when localStorage.wwo_admin === '1'; not linked from extension UI
+// ABOUTME: Gated behind the Developer Mode setting in the extension's Collections panel
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import browser from "webextension-polyfill";
@@ -11,7 +11,7 @@ import { startRecording, videoExportFilename, triggerDownload } from "../utils/v
 type PageStatus = "idle" | "loading" | "preview" | "recording" | "done";
 
 export const ExportPage = () => {
-  const isAdmin = localStorage.getItem("wwo_admin") === "1";
+  const [isDevMode, setIsDevMode] = useState<boolean | null>(null); // null = loading
 
   const [status, setStatus] = useState<PageStatus>("idle");
   const [startDate, setStartDate] = useState("");
@@ -29,6 +29,13 @@ export const ExportPage = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load dev_mode from storage to gate access
+  useEffect(() => {
+    browser.storage.local.get(["dev_mode"]).then((result) => {
+      setIsDevMode(Boolean(result["dev_mode"]));
+    });
+  }, []);
 
   // Clean up recording resources if component unmounts during recording
   useEffect(() => {
@@ -205,10 +212,14 @@ export const ExportPage = () => {
     display: "block",
   };
 
-  if (!isAdmin) {
+  if (isDevMode === null) {
+    return null; // still loading
+  }
+
+  if (!isDevMode) {
     return (
       <div style={{ padding: 40, fontFamily: "monospace", color: "#3d3833" }}>
-        not authorized — set <code>localStorage.wwo_admin = '1'</code> to access
+        not authorized — enable Developer Mode in the extension settings to access
       </div>
     );
   }
