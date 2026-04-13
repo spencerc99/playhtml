@@ -644,7 +644,12 @@ export class CursorClientAwareness {
         to { opacity: 0; transform: scale(0.8); }
       }
     `;
-    document.head.appendChild(style);
+    const resolvedContainer = resolveCursorContainer(this.options.container);
+    if (resolvedContainer && resolvedContainer !== document.body) {
+      resolvedContainer.appendChild(style);
+    } else {
+      document.head.appendChild(style);
+    }
     this.isStylesAdded = true;
   }
 

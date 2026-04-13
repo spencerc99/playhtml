@@ -50,6 +50,7 @@ describe("resolveCursorContainer", () => {
 describe("cursor client with container option", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    document.head.querySelectorAll("#playhtml-cursor-styles").forEach((n) => n.remove());
   });
 
   function makeFakeProvider() {
@@ -124,5 +125,37 @@ describe("cursor client with container option", () => {
     expect(document.body.children[0]).toBe(layer);
 
     client.destroy?.();
+  });
+
+  it("injects cursor styles into the container, not document.head", () => {
+    const layer = document.createElement("div");
+    layer.id = "cursor-layer";
+    document.body.appendChild(layer);
+
+    const provider = makeFakeProvider();
+    new CursorClientAwareness(provider, {
+      enabled: true,
+      container: layer,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    expect(layer.querySelector("#playhtml-cursor-styles")).not.toBeNull();
+    expect(document.head.querySelector("#playhtml-cursor-styles")).toBeNull();
+  });
+
+  it("falls back to document.head when container is document.body (default)", () => {
+    const provider = makeFakeProvider();
+    new CursorClientAwareness(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    expect(document.head.querySelector("#playhtml-cursor-styles")).not.toBeNull();
   });
 });
