@@ -36,4 +36,35 @@ describe("navigation controller", () => {
     await ctrl.trigger();
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("recovers after handler throws", async () => {
+    const handler = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValue(undefined);
+    const ctrl = createNavigationController(handler);
+
+    await expect(ctrl.trigger()).rejects.toThrow("boom");
+    await ctrl.trigger();
+
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it("completes in-flight run after destroy but skips queued retry", async () => {
+    let resolveFirst: () => void;
+    const handler = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((r) => (resolveFirst = r)))
+      .mockResolvedValue(undefined);
+    const ctrl = createNavigationController(handler);
+
+    const p1 = ctrl.trigger();
+    const p2 = ctrl.trigger();
+
+    ctrl.destroy();
+    resolveFirst!();
+    await Promise.all([p1, p2]);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
 });
