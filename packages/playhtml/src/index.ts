@@ -158,7 +158,6 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
-// @ts-expect-error consumed by navigation handler in follow-up task
 let currentCursorRoomId = "";
 let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
@@ -508,6 +507,10 @@ let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 let isDestroyed = false;
 
+let inputRoomOption: InitOptions["room"] = undefined;
+let cursorOptionsCache: CursorOptions | undefined = undefined;
+let cachedOnError: (() => void) | undefined = undefined;
+
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
  * assigns module-level `yprovider`, attaches onError, attaches
@@ -610,6 +613,102 @@ function buildCursors(args: {
   cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
 }
 
+async function runHandleNavigation(): Promise<void> {
+  if (isDestroyed) return;
+  if (!yprovider) return;
+
+  const newMainRoom = normalizeRoomId(window.location.host, inputRoomOption);
+  const mainRoomChanged = newMainRoom !== __currentRoomId;
+
+  let newCursorRoom: string = "";
+  let cursorRoomChanged = false;
+  if (cursorOptionsCache?.enabled) {
+    if (cursorOptionsCache.room) {
+      const resolved = resolveCursorRoom(cursorOptionsCache.room);
+      const normalized = normalizeRoomId(window.location.host, resolved);
+      newCursorRoom = normalized;
+      cursorRoomChanged = normalized !== currentCursorRoomId;
+    } else {
+      newCursorRoom = newMainRoom;
+      cursorRoomChanged = mainRoomChanged;
+    }
+  }
+  void newCursorRoom;
+
+  for (const [, map] of elementHandlers) {
+    for (const handler of map.values()) {
+      try {
+        (handler as any).destroy?.();
+      } catch {}
+    }
+    map.clear();
+  }
+  elementHandlers.clear();
+
+  if (mainRoomChanged) {
+    try {
+      yprovider.disconnect?.();
+    } catch {}
+    try {
+      yprovider.destroy?.();
+    } catch {}
+    hasSynced = false;
+    lastElementAwarenessFingerprint = null;
+    buildMainProvider({
+      room: newMainRoom,
+      partykitHost: __currentHost,
+      onError: cachedOnError,
+      onMessage,
+    });
+    __currentRoomId = newMainRoom;
+  }
+
+  if (cursorRoomChanged && cursorOptionsCache) {
+    try {
+      cursorClient?.destroy?.();
+    } catch {}
+    try {
+      cursorProvider?.disconnect?.();
+    } catch {}
+    try {
+      cursorProvider?.destroy?.();
+    } catch {}
+    cursorClient = null;
+    cursorProvider = null;
+    buildCursors({
+      cursors: cursorOptionsCache,
+      mainRoom: newMainRoom,
+      partykitHost: __currentHost,
+      onError: cachedOnError,
+    });
+  }
+
+  markAllElementsAsLoading();
+
+  if (mainRoomChanged) {
+    await new Promise<void>((resolve) => {
+      if (hasSynced) {
+        resolve();
+        return;
+      }
+      yprovider.on("sync", (connected: boolean) => {
+        if (!connected) console.error("Issue connecting to yjs...");
+        if (hasSynced) return;
+        hasSynced = true;
+        resolve();
+      });
+    });
+  }
+
+  setupElements();
+  markAllElementsAsReady();
+
+  cursorClient?.refreshContainer?.();
+  cursorClient?.refreshCursorStyles?.();
+
+  dispatchNavigated(__currentRoomId);
+}
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
@@ -626,6 +725,9 @@ async function initPlayHTML({
     return;
   }
   isDestroyed = false;
+  inputRoomOption = inputRoom;
+  cursorOptionsCache = cursors;
+  cachedOnError = onError;
   isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
@@ -1100,9 +1202,7 @@ function setupElements(): void {
   onChangeAwareness();
 
   navigationController = createNavigationController(async () => {
-    // Placeholder — Task 15 replaces this with the real handleNavigation body.
-    // For now, just dispatch navigated with current room so tests can rely on the wiring.
-    dispatchNavigated(__currentRoomId);
+    await runHandleNavigation();
   });
   detachNavListeners = attachNavigationListeners(navigationController);
 
@@ -1155,6 +1255,7 @@ function createPresenceRoom(name: string): PresenceRoom {
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   destroy: () => Promise<void>;
+  handleNavigation: () => Promise<void>;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
@@ -1186,6 +1287,10 @@ export interface PlayHTMLComponents {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  handleNavigation: async function handleNavigation(): Promise<void> {
+    if (!navigationController) return;
+    await navigationController.trigger();
+  },
   destroy: async function destroy(): Promise<void> {
     if (isDestroyed) return;
 
@@ -1262,6 +1367,9 @@ export const playhtml: PlayHTMLComponents = {
       __currentRoomId = "";
       __currentHost = "";
       presenceAPI = null;
+      inputRoomOption = undefined;
+      cursorOptionsCache = undefined;
+      cachedOnError = undefined;
     } finally {
       isDestroyed = true;
     }
