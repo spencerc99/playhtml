@@ -633,10 +633,10 @@ async function initPlayHTML({
   }
 
   // Create presence API — always available, wraps whichever awareness provider exists
-  const presenceProvider = cursorClient?.getProvider() ?? yprovider;
   presenceAPI = createPresenceAPI({
-    getAwareness: () => presenceProvider.awareness,
-    getPlayerIdentity: () => cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
+    getPlayerIdentity: () =>
+      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
   });
 
   if (extraCapabilities) {
