@@ -314,6 +314,11 @@ export interface CursorZoneOptions {
   getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
+export type CursorContainer =
+  | HTMLElement
+  | string
+  | (() => HTMLElement | null);
+
 export interface CursorOptions {
   enabled?: boolean;
   playerIdentity?: PlayerIdentity;
@@ -340,6 +345,12 @@ export interface CursorOptions {
   getCursorStyle?: (
     presence: CursorPresence,
   ) => Partial<CSSStyleDeclaration> | Record<string, string>;
+  /**
+   * Where to mount cursor DOM and the cursor style tag. Defaults to
+   * document.body / document.head. Pass a container you control (and mark
+   * with transition:persist or equivalent) to survive SPA body-swaps.
+   */
+  container?: CursorContainer;
 }
 
 interface DefaultRoomOptions {
