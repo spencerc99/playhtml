@@ -492,6 +492,54 @@ let isDevelopmentMode = false;
 let __currentRoomId = "";
 let __currentHost = "";
 
+/**
+ * Builds a fresh main Yjs provider for the given room. Side effects:
+ * assigns module-level `yprovider`, attaches onError, attaches
+ * raw-socket message handler via microtask. Also walks shared elements/
+ * references for the current DOM. Does NOT await sync.
+ */
+function buildMainProvider(args: {
+  room: string;
+  partykitHost: string;
+  onError: (() => void) | undefined;
+  onMessage: (data: string) => void;
+}): { sharedReferences: ReturnType<typeof findSharedReferencesOnPage> } {
+  const { room, partykitHost, onError, onMessage } = args;
+
+  const sharedElements = findSharedElementsOnPage();
+  const sharedReferences = findSharedReferencesOnPage();
+  initializeSharedPermissions();
+
+  sharedReferences.forEach((ref) => {
+    const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
+    discoveredSharedReferences.add(referenceKey);
+  });
+
+  const storageKey = `playhtml_resetEpoch_${room}`;
+  const storedResetEpoch = localStorage.getItem(storageKey);
+  const clientResetEpoch = storedResetEpoch
+    ? parseInt(storedResetEpoch, 10)
+    : null;
+
+  yprovider = new YProvider(partykitHost, room, doc, {
+    params: {
+      sharedElements: JSON.stringify(sharedElements),
+      sharedReferences: JSON.stringify(sharedReferences),
+      clientResetEpoch:
+        clientResetEpoch !== null ? String(clientResetEpoch) : null,
+    },
+  });
+  yprovider.on("error", () => {
+    onError?.();
+  });
+
+  // Register custom-message handler once, outside the sync callback,
+  // to avoid duplicate registrations on reconnect.
+  yprovider.on("custom-message", onMessage);
+
+  return { sharedReferences };
+}
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
@@ -532,36 +580,11 @@ async function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
   );
 
-  // Discover shared elements and references on the page
-  const sharedElements = findSharedElementsOnPage();
-  const sharedReferences = findSharedReferencesOnPage();
-  // Map elementId -> permission for quick client-side checks (filled after initial sync)
-  initializeSharedPermissions();
-
-  // Initialize tracking of discovered shared references
-  sharedReferences.forEach((ref) => {
-    const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
-    discoveredSharedReferences.add(referenceKey);
-  });
-
-  // Get stored reset epoch from localStorage to send to server
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  const storedResetEpoch = localStorage.getItem(storageKey);
-  const clientResetEpoch = storedResetEpoch
-    ? parseInt(storedResetEpoch, 10)
-    : null;
-
-  // Create provider with shared element parameters
-  yprovider = new YProvider(partykitHost, room, doc, {
-    params: {
-      sharedElements: JSON.stringify(sharedElements),
-      sharedReferences: JSON.stringify(sharedReferences),
-      clientResetEpoch:
-        clientResetEpoch !== null ? String(clientResetEpoch) : null,
-    },
-  });
-  yprovider.on("error", () => {
-    onError?.();
+  const { sharedReferences } = buildMainProvider({
+    room,
+    partykitHost,
+    onError,
+    onMessage,
   });
 
   // Initialize cursor tracking immediately after provider creation
