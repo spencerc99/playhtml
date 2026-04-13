@@ -986,6 +986,35 @@ export class CursorClientAwareness {
     }
   }
 
+  // Re-invoke getCursorStyle for all currently rendered cursors. Called after
+  // SPA navigation so consumers can re-evaluate per-page visibility decisions.
+  refreshCursorStyles(): void {
+    if (!this.options.getCursorStyle && this.zones.size === 0) return;
+    for (const [stableId, cursorElement] of this.cursors.entries()) {
+      const presence = this.findAwarenessByStableId(stableId);
+      if (!presence) continue;
+      const zoneId = this.cursorZoneState.get(stableId) ?? null;
+      this.applyZoneStyling(cursorElement, presence, zoneId);
+    }
+  }
+
+  private findAwarenessByStableId(stableId: string): ValidCursorPresence | null {
+    const states = this.provider.awareness.getStates();
+    for (const [clientId, state] of states) {
+      const sid = getStableIdForAwareness(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (sid !== stableId) continue;
+      const valid = getValidCursorPresence(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (valid) return valid;
+    }
+    return null;
+  }
+
   private updateCursor(
     stableId: string,
     cursorData: ValidCursorPresence,

@@ -207,4 +207,41 @@ describe("cursor client with container option", () => {
     expect(layerB.querySelector("#playhtml-cursor-styles")).not.toBeNull();
     expect(layerA.querySelector("#playhtml-cursor-styles")).toBeNull();
   });
+
+  it("re-invokes getCursorStyle when refreshCursorStyles is called", () => {
+    const provider = makeFakeProvider();
+    const calls: string[] = [];
+
+    const client = new CursorClientAwareness(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+      getCursorStyle: (p: any) => {
+        calls.push(p.playerIdentity?.publicKey ?? p.connectionId);
+        return { opacity: "1" };
+      },
+    });
+
+    // Inject a remote cursor
+    const remoteClientId = 77;
+    provider.awareness._states.set(remoteClientId, {
+      __playhtml_cursors__: {
+        connectionId: "remote-1",
+        cursor: { x: 0, y: 0, pointer: "default" },
+        page: "/",
+        playerIdentity: {
+          publicKey: "remote-1",
+          playerStyle: { colorPalette: ["#00ff00"] },
+        },
+        lastSeen: Date.now(),
+      },
+    });
+    provider.awareness.emit({ added: [remoteClientId], updated: [], removed: [] });
+
+    const before = calls.length;
+    client.refreshCursorStyles();
+    expect(calls.length).toBeGreaterThan(before);
+  });
 });
