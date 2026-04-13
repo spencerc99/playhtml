@@ -1,7 +1,10 @@
 // ABOUTME: Tests for the navigation subsystem (handleNavigation, queue collapse,
 // ABOUTME: detection layer attach/detach).
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createNavigationController } from "../navigation";
+import {
+  createNavigationController,
+  attachNavigationListeners,
+} from "../navigation";
 
 describe("navigation controller", () => {
   it("runs handler exactly once when called once", async () => {
@@ -66,5 +69,31 @@ describe("navigation controller", () => {
     await Promise.all([p1, p2]);
 
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("attachNavigationListeners", () => {
+  it("calls trigger on popstate", async () => {
+    const handler = vi.fn().mockResolvedValue(undefined);
+    const ctrl = createNavigationController(handler);
+    const detach = attachNavigationListeners(ctrl);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    detach();
+  });
+
+  it("detach removes the popstate listener", async () => {
+    const handler = vi.fn().mockResolvedValue(undefined);
+    const ctrl = createNavigationController(handler);
+    const detach = attachNavigationListeners(ctrl);
+    detach();
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await Promise.resolve();
+
+    expect(handler).not.toHaveBeenCalled();
   });
 });

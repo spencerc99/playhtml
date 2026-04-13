@@ -41,3 +41,29 @@ export function createNavigationController(
     },
   };
 }
+
+export function attachNavigationListeners(
+  ctrl: NavigationController,
+): () => void {
+  const onPopState = () => {
+    void ctrl.trigger();
+  };
+  const onNavigate = () => {
+    void ctrl.trigger();
+  };
+
+  window.addEventListener("popstate", onPopState);
+
+  // Navigation API (Chromium 102+). Feature-detect.
+  const nav = (window as any).navigation;
+  if (nav && typeof nav.addEventListener === "function") {
+    nav.addEventListener("navigate", onNavigate);
+  }
+
+  return () => {
+    window.removeEventListener("popstate", onPopState);
+    if (nav && typeof nav.removeEventListener === "function") {
+      nav.removeEventListener("navigate", onNavigate);
+    }
+  };
+}
