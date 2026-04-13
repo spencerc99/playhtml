@@ -1173,7 +1173,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
   });
   // Only watch childList — class changes on existing elements won't add new playhtml elements
-  elementObserver.observe(document.body, {
+  elementObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
   });
