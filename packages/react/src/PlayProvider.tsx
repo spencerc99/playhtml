@@ -3,6 +3,7 @@ import {
   createContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type RefObject,
 } from "react";
@@ -123,12 +124,28 @@ export const PlayContext = createContext<PlayContextInfo>({
 
 interface Props {
   initOptions?: PlayProviderInitOptions;
+  pathname?: string;
 }
 
 export function PlayProvider({
   children,
   initOptions,
+  pathname: pathnameProp,
 }: PropsWithChildren<Props>) {
+  const previousPathname = useRef<string | undefined>(pathnameProp);
+
+  useEffect(() => {
+    if (previousPathname.current === undefined) {
+      // First render with a pathname — capture, don't trigger.
+      previousPathname.current = pathnameProp;
+      return;
+    }
+    if (previousPathname.current !== pathnameProp) {
+      previousPathname.current = pathnameProp;
+      void playhtml.handleNavigation();
+    }
+  }, [pathnameProp]);
+
   const { pathname, search } = useLocation();
   useEffect(() => {
     // in future migrate this to a more "reactful" way by having all the elements rely state on this context

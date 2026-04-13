@@ -1,9 +1,10 @@
 // ABOUTME: Tests for PlayProvider's SPA-navigation integrations —
 // ABOUTME: ref-to-container conversion and pathname-driven navigation.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, waitFor } from "@testing-library/react";
-import { useRef, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { PlayProvider } from "../PlayProvider";
+import playhtml from "../playhtml-singleton";
 
 describe("PlayProvider cursor container ref", () => {
   beforeEach(() => {
@@ -13,7 +14,9 @@ describe("PlayProvider cursor container ref", () => {
     delete document.documentElement.dataset.playhtml;
   });
 
-  it("accepts a RefObject for cursors.container", async () => {
+  it("converts a RefObject to a getter for cursors.container", async () => {
+    const initSpy = vi.spyOn(playhtml, "init").mockResolvedValue(undefined as any);
+
     function Wrapper() {
       const ref = useRef<HTMLDivElement>(null);
       return (
@@ -30,9 +33,65 @@ describe("PlayProvider cursor container ref", () => {
 
     const { container } = render(<Wrapper />);
     await waitFor(() => {
-      expect(container.querySelector("#cursor-layer")).toBeTruthy();
+      expect(initSpy).toHaveBeenCalled();
     });
-    // No runtime error is the primary success criterion; the ref-to-getter
-    // conversion happens internally and doesn't crash when a ref is passed.
+
+    const callArgs = initSpy.mock.calls[0]?.[0] as any;
+    expect(typeof callArgs?.cursors?.container).toBe("function");
+    // Invoking the getter should return the rendered element.
+    const resolved = callArgs.cursors.container();
+    expect(resolved).toBe(container.querySelector("#cursor-layer"));
+
+    initSpy.mockRestore();
+  });
+});
+
+describe("PlayProvider pathname prop", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    delete (window as any).playhtml;
+    delete document.documentElement.dataset.playhtml;
+  });
+
+  it("calls handleNavigation when pathname changes", async () => {
+    const spy = vi.spyOn(playhtml, "handleNavigation").mockResolvedValue(undefined);
+
+    function Wrapper() {
+      const [path, setPath] = useState("/a");
+      return (
+        <>
+          <button onClick={() => setPath("/b")}>nav</button>
+          <PlayProvider
+            initOptions={{ host: "http://localhost:1999" } as any}
+            pathname={path}
+          />
+        </>
+      );
+    }
+
+    const { getByText } = render(<Wrapper />);
+    spy.mockClear(); // ignore any mount-time calls
+
+    getByText("nav").click();
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalled();
+    });
+
+    spy.mockRestore();
+  });
+
+  it("does not call handleNavigation on mount", async () => {
+    const spy = vi.spyOn(playhtml, "handleNavigation").mockResolvedValue(undefined);
+    spy.mockClear();
+
+    render(
+      <PlayProvider
+        initOptions={{ host: "http://localhost:1999" } as any}
+        pathname="/initial"
+      />,
+    );
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
