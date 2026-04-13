@@ -15,7 +15,16 @@ import {
   deepReplaceIntoProxy,
   clonePlain,
 } from "@playhtml/common";
-import { listSharedElements as devListSharedElements } from "./development";
+import {
+  listSharedElements as devListSharedElements,
+  teardownDevUI,
+  setupDevUI,
+} from "./development";
+import {
+  createNavigationController,
+  attachNavigationListeners,
+  dispatchNavigated,
+} from "./navigation";
 import type { PlayerIdentity, CursorPresence } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
@@ -28,7 +37,6 @@ import {
 import { CursorClientAwareness } from "./cursors/cursor-client";
 import { createPresenceAPI } from "./presence";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
-import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
@@ -492,6 +500,12 @@ let isDevelopmentMode = false;
 let __currentRoomId = "";
 let __currentHost = "";
 
+let navigationController: ReturnType<typeof createNavigationController> | null =
+  null;
+let detachNavListeners: (() => void) | null = null;
+let configureIdentityListener: EventListener | null = null;
+let isDestroyed = false;
+
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
  * assigns module-level `yprovider`, attaches onError, attaches
@@ -555,6 +569,7 @@ async function initPlayHTML({
     console.error("playhtml already set up! ignoring");
     return;
   }
+  isDestroyed = false;
   isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
@@ -636,7 +651,7 @@ async function initPlayHTML({
     // TODO: The extension should also be able to set `name` — currently
     // there's no UI for it in the extension, so we preserve the page's
     // value. Once the extension has a name field, include it in the merge.
-    document.addEventListener("playhtml:configure-identity", ((e: CustomEvent) => {
+    configureIdentityListener = ((e: CustomEvent) => {
       const incoming = e.detail?.playerIdentity;
       if (!incoming || !cursorClient) return;
 
@@ -649,7 +664,11 @@ async function initPlayHTML({
 
       cursorClient.configure({ playerIdentity: merged });
       console.log("[playhtml] Merged extension identity via CustomEvent");
-    }) as EventListener);
+    }) as EventListener;
+    document.addEventListener(
+      "playhtml:configure-identity",
+      configureIdentityListener,
+    );
 
     // Signal that we're ready to receive identity injection events
     document.dispatchEvent(new CustomEvent("playhtml:ready"));
@@ -1053,6 +1072,13 @@ function setupElements(): void {
   // Trigger initial awareness sync to populate existing states
   onChangeAwareness();
 
+  navigationController = createNavigationController(async () => {
+    // Placeholder — Task 15 replaces this with the real handleNavigation body.
+    // For now, just dispatch navigated with current room so tests can rely on the wiring.
+    dispatchNavigated(__currentRoomId);
+  });
+  detachNavListeners = attachNavigationListeners(navigationController);
+
   firstSetup = false;
 }
 
@@ -1101,6 +1127,7 @@ function createPresenceRoom(name: string): PresenceRoom {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
+  destroy: () => Promise<void>;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
@@ -1132,6 +1159,86 @@ export interface PlayHTMLComponents {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  destroy: async function destroy(): Promise<void> {
+    if (isDestroyed) return;
+
+    try {
+      if (navigationController) {
+        navigationController.destroy();
+        navigationController = null;
+      }
+      if (detachNavListeners) {
+        detachNavListeners();
+        detachNavListeners = null;
+      }
+
+      if (configureIdentityListener) {
+        document.removeEventListener(
+          "playhtml:configure-identity",
+          configureIdentityListener,
+        );
+        configureIdentityListener = null;
+      }
+
+      for (const [, map] of elementHandlers) {
+        for (const handler of map.values()) {
+          try {
+            (handler as any).destroy?.();
+          } catch {}
+        }
+        map.clear();
+      }
+      elementHandlers.clear();
+
+      if (cursorClient) {
+        try {
+          cursorClient.destroy?.();
+        } catch {}
+        cursorClient = null;
+      }
+
+      if (cursorProvider) {
+        try {
+          cursorProvider.disconnect?.();
+        } catch {}
+        try {
+          cursorProvider.destroy?.();
+        } catch {}
+        cursorProvider = null;
+      }
+      if (yprovider) {
+        try {
+          yprovider.disconnect?.();
+        } catch {}
+        try {
+          yprovider.destroy?.();
+        } catch {}
+      }
+
+      try {
+        teardownDevUI();
+      } catch {}
+
+      document.head
+        .querySelectorAll("link[href*='playhtml']")
+        .forEach((n) => n.remove());
+      document
+        .querySelectorAll("#playhtml-cursor-styles")
+        .forEach((n) => n.remove());
+
+      delete (window as any).playhtml;
+      delete document.documentElement.dataset.playhtml;
+
+      hasSynced = false;
+      lastElementAwarenessFingerprint = null;
+      firstSetup = true;
+      __currentRoomId = "";
+      __currentHost = "";
+      presenceAPI = null;
+    } finally {
+      isDestroyed = true;
+    }
+  },
   setupPlayElements: setupElements,
   setupPlayElement,
   removePlayElement,
