@@ -55,6 +55,7 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 The library revolves around "capabilities" -- interactive behaviors added to HTML elements via data attributes:
 
 1. **Element Capabilities** (defined in `packages/playhtml/src/elements.ts` and `packages/common/src/index.ts`):
+
    - `can-move`: Draggable elements with 2D translation
    - `can-spin`: Rotatable elements
    - `can-toggle`: Toggle on/off state with CSS classes
@@ -64,6 +65,7 @@ The library revolves around "capabilities" -- interactive behaviors added to HTM
    - `can-play`: Fully customizable capability framework
 
 2. **State Management**: Yjs for real-time collaborative state sync
+
    - Global shared state: `globalData` (Y.Map)
    - Element handlers: `elementHandlers` (Map of ElementHandler instances)
    - Awareness (user presence): `yprovider.awareness`
@@ -97,6 +99,7 @@ The library revolves around "capabilities" -- interactive behaviors added to HTM
 ## Monorepo Structure
 
 Bun workspaces (from root `package.json`):
+
 1. `packages/playhtml`
 2. `packages/react`
 3. `packages/common`
@@ -154,7 +157,7 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 
 ## Documentation
 
-- `docs/`: Public developer-facing and user-facing documentation only.
+- `docs/`: Public developer-facing and user-facing documentation only. DO NOT PUT PLANS IN HERE.
 - `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).
 
 ## Security & Configuration

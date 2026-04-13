@@ -239,6 +239,15 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
   return { clientX: e.clientX, clientY: e.clientY };
 }
 
+// Read the current zoom scale applied to the .content element, so drag
+// deltas (in screen-space pixels) can be converted to content-space pixels.
+function getContentScale(): number {
+  const content = document.querySelector(".content") as HTMLElement | null;
+  if (!content) return 1;
+  const matrix = new DOMMatrixReadOnly(getComputedStyle(content).transform);
+  return matrix.a || 1;
+}
+
 // Migration helper: check for "can-play" data that needs to be migrated to "can-move"
 function getCanPlayData(elementId?: string): MoveData | undefined {
   if (!elementId) return undefined;
@@ -286,9 +295,10 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
           (top < 0 && clientY < localData.startMouseY)
         )
           return;
+        const scale = getContentScale();
         setData({
-          x: data.x + clientX - localData.startMouseX,
-          y: data.y + clientY - localData.startMouseY,
+          x: data.x + (clientX - localData.startMouseX) / scale,
+          y: data.y + (clientY - localData.startMouseY) / scale,
         });
         setLocalData({ startMouseX: clientX, startMouseY: clientY });
       },
