@@ -17,6 +17,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   readonly description = 'Captures cursor movement, clicks, holds, and cursor style changes';
   
   private mouseMoveHandler?: (e: MouseEvent) => void;
+  private scrollHandler?: () => void;
   private animationFrameId?: number;
   private sampleTimer: number | null = null;
   protected sampleRate = 250; // ms between samples for archival
@@ -114,8 +115,17 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     };
     
     document.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
+
+    // Emit a cursor sample on scroll so archival data captures scroll position even
+    // when the cursor is stationary. Reuses the existing 250ms archival sample timer.
+    this.scrollHandler = () => {
+      if (!this.enabled) return;
+      this.scheduleArchivalSample();
+    };
+    document.addEventListener('scroll', this.scrollHandler, { passive: true });
+
     if (VERBOSE) {
-      console.log('[CursorCollector] Mouse move listener attached');
+      console.log('[CursorCollector] Mouse move and scroll listeners attached');
     }
     
     // Set up mouse down handler (for click/hold detection)
@@ -195,6 +205,11 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     if (this.mouseUpHandler) {
       document.removeEventListener('mouseup', this.mouseUpHandler);
       this.mouseUpHandler = undefined;
+    }
+
+    if (this.scrollHandler) {
+      document.removeEventListener('scroll', this.scrollHandler);
+      this.scrollHandler = undefined;
     }
 
     if (this.animationFrameId) {
