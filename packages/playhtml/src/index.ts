@@ -158,6 +158,8 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
+// @ts-expect-error consumed by navigation handler in follow-up task
+let currentCursorRoomId = "";
 let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -554,6 +556,60 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
+/**
+ * Builds the cursor client and optional separate cursor provider for the
+ * given main room. Side effects: assigns module-level `cursorProvider` and
+ * `cursorClient`, and `currentCursorRoomId`. Returns without awaiting sync.
+ *
+ * Safe to call multiple times — assumes prior cursorClient/cursorProvider
+ * were already torn down by the caller.
+ */
+function buildCursors(args: {
+  cursors: CursorOptions;
+  mainRoom: string;
+  partykitHost: string;
+  onError: (() => void) | undefined;
+}): void {
+  const { cursors, mainRoom, partykitHost, onError } = args;
+
+  if (!cursors.enabled) {
+    currentCursorRoomId = "";
+    return;
+  }
+
+  const cursorOptions: CursorOptions = { ...cursors };
+  if (!cursorOptions.playerIdentity) {
+    cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
+  }
+
+  let providerForCursors: YProvider = yprovider;
+
+  if (cursorOptions.room) {
+    const cursorRoomString = resolveCursorRoom(cursorOptions.room);
+    const cursorRoom = normalizeRoomId(window.location.host, cursorRoomString);
+
+    if (cursorRoom !== mainRoom) {
+      const cursorDoc = new Y.Doc();
+      cursorProvider = new YProvider(
+        partykitHost,
+        cursorRoom,
+        cursorDoc,
+      );
+      cursorProvider.on("error", () => {
+        onError?.();
+      });
+      providerForCursors = cursorProvider;
+      currentCursorRoomId = cursorRoom;
+    } else {
+      currentCursorRoomId = mainRoom;
+    }
+  } else {
+    currentCursorRoomId = mainRoom;
+  }
+
+  cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+}
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
@@ -603,43 +659,14 @@ async function initPlayHTML({
   });
 
   // Initialize cursor tracking immediately after provider creation
+  buildCursors({
+    cursors,
+    mainRoom: room,
+    partykitHost,
+    onError,
+  });
+
   if (cursors.enabled) {
-    // Generate player identity if not provided
-    const cursorOptions = {
-      ...cursors,
-    };
-    if (!cursorOptions.playerIdentity) {
-      cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
-    }
-
-    // Check if cursors need a separate room
-    let providerForCursors = yprovider;
-    if (cursorOptions.room) {
-      // Resolve cursor room to a normalized room string (without host)
-      const cursorRoomString = resolveCursorRoom(cursorOptions.room);
-      // Normalize using the same function as main room to ensure consistent comparison
-      const cursorRoom = normalizeRoomId(
-        window.location.host,
-        cursorRoomString,
-      );
-
-      // Only create separate provider if cursor room is different from element room
-      if (cursorRoom !== room) {
-        const cursorDoc = new Y.Doc();
-        cursorProvider = new YProvider(
-          partykitHost,
-          cursorRoom,
-          cursorDoc,
-        );
-        cursorProvider.on("error", () => {
-          onError?.();
-        });
-        providerForCursors = cursorProvider;
-      }
-    }
-
-    cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
-
     // Listen for identity injection from the browser extension. The extension
     // runs in Chrome's isolated world and can't call cursorClient.configure()
     // directly, so it dispatches a CustomEvent on the shared DOM instead.
