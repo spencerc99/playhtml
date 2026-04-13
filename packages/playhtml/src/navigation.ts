@@ -67,3 +67,9 @@ export function attachNavigationListeners(
     }
   };
 }
+
+export function dispatchNavigated(room: string): void {
+  document.dispatchEvent(
+    new CustomEvent("playhtml:navigated", { detail: { room } }),
+  );
+}

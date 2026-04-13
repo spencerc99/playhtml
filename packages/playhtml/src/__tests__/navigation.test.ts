@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createNavigationController,
   attachNavigationListeners,
+  dispatchNavigated,
 } from "../navigation";
 
 describe("navigation controller", () => {
@@ -95,5 +96,18 @@ describe("attachNavigationListeners", () => {
     await Promise.resolve();
 
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchNavigated", () => {
+  it("fires playhtml:navigated event with room detail", () => {
+    const listener = vi.fn();
+    document.addEventListener("playhtml:navigated", listener as EventListener);
+    dispatchNavigated("test-room");
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const evt = listener.mock.calls[0][0] as CustomEvent;
+    expect(evt.detail).toEqual({ room: "test-room" });
+    document.removeEventListener("playhtml:navigated", listener as EventListener);
   });
 });
