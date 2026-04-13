@@ -507,7 +507,12 @@ let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 let isDestroyed = false;
 
-let inputRoomOption: InitOptions["room"] = undefined;
+// If the user supplied an explicit `room` to init(), we store it and reuse it
+// across navigations (static rooms should not change on URL change). If they
+// didn't, we store the default-room options and re-derive on each nav so
+// pathname-based rooms switch correctly.
+let explicitRoomOption: string | undefined = undefined;
+let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
 
@@ -617,7 +622,9 @@ async function runHandleNavigation(): Promise<void> {
   if (isDestroyed) return;
   if (!yprovider) return;
 
-  const newMainRoom = normalizeRoomId(window.location.host, inputRoomOption);
+  const nextRoomInput =
+    explicitRoomOption ?? getDefaultRoom(cachedDefaultRoomOptions);
+  const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
   let newCursorRoom: string = "";
@@ -715,7 +722,7 @@ async function initPlayHTML({
   extraCapabilities,
   events,
   defaultRoomOptions = { includeSearch: false },
-  room: inputRoom = getDefaultRoom(defaultRoomOptions),
+  room: explicitRoom,
   onError,
   developmentMode = false,
   cursors = {},
@@ -725,7 +732,9 @@ async function initPlayHTML({
     return;
   }
   isDestroyed = false;
-  inputRoomOption = inputRoom;
+  explicitRoomOption = explicitRoom;
+  cachedDefaultRoomOptions = defaultRoomOptions;
+  const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
   cursorOptionsCache = cursors;
   cachedOnError = onError;
   isDevelopmentMode = developmentMode;
@@ -1367,7 +1376,8 @@ export const playhtml: PlayHTMLComponents = {
       __currentRoomId = "";
       __currentHost = "";
       presenceAPI = null;
-      inputRoomOption = undefined;
+      explicitRoomOption = undefined;
+      cachedDefaultRoomOptions = { includeSearch: false };
       cursorOptionsCache = undefined;
       cachedOnError = undefined;
     } finally {
