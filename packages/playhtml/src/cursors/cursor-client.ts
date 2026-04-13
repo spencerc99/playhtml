@@ -14,6 +14,7 @@ import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
+import { resolveCursorContainer } from "./container";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -952,6 +953,11 @@ export class CursorClientAwareness {
     );
   }
 
+  private getContainer(): HTMLElement {
+    const resolved = resolveCursorContainer(this.options.container);
+    return resolved ?? document.body;
+  }
+
   private updateCursor(
     stableId: string,
     cursorData: ValidCursorPresence,
@@ -999,7 +1005,7 @@ export class CursorClientAwareness {
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(stableId, cursorElement);
-      document.body.appendChild(cursorElement);
+      this.getContainer().appendChild(cursorElement);
     } else if (cursorElement) {
       // Update existing cursor with new message and name
       this.updateCursorMessage(cursorElement, identity, cursorData.message);

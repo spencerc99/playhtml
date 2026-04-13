@@ -1,7 +1,9 @@
 // ABOUTME: Tests for cursor container resolution — element, selector, getter.
 // ABOUTME: Null handling and getter-on-every-call semantics.
 import { describe, it, expect, beforeEach } from "vitest";
+import * as Y from "yjs";
 import { resolveCursorContainer } from "../container";
+import { CursorClientAwareness } from "../cursor-client";
 
 describe("resolveCursorContainer", () => {
   beforeEach(() => {
@@ -42,5 +44,85 @@ describe("resolveCursorContainer", () => {
 
   it("returns null from getter when element not present", () => {
     expect(resolveCursorContainer(() => null)).toBeNull();
+  });
+});
+
+describe("cursor client with container option", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function makeFakeProvider() {
+    const doc = new Y.Doc();
+    const listeners: Array<(args: any) => void> = [];
+    const remoteState: Record<string, unknown> = {};
+    const awareness: any = {
+      _states: new Map<number, Record<string, unknown>>(),
+      getStates() {
+        return this._states;
+      },
+      setLocalState() {},
+      setLocalStateField(field: string, value: unknown) {
+        const local = (this._states.get(this.clientID) as Record<string, unknown>) ?? {};
+        local[field] = value;
+        this._states.set(this.clientID, local);
+      },
+      getLocalState() {
+        return this._states.get(this.clientID) ?? null;
+      },
+      on(_event: string, cb: (args: any) => void) {
+        listeners.push(cb);
+      },
+      off() {},
+      emit(args: any) {
+        listeners.forEach((cb) => cb(args));
+      },
+      clientID: 1,
+      doc,
+      remoteState,
+    };
+    return {
+      doc,
+      awareness,
+      on() {},
+      off() {},
+    } as any;
+  }
+
+  it("appends cursor DOM into the container element", () => {
+    const layer = document.createElement("div");
+    layer.id = "cursor-layer";
+    document.body.appendChild(layer);
+
+    const provider = makeFakeProvider();
+    const client = new CursorClientAwareness(provider, {
+      enabled: true,
+      container: layer,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    // Inject a remote cursor into awareness and trigger change.
+    const remoteClientId = 42;
+    provider.awareness._states.set(remoteClientId, {
+      __playhtml_cursors__: {
+        connectionId: "remote-1",
+        cursor: { x: 10, y: 10, pointer: "default" },
+        page: "/",
+        playerIdentity: {
+          publicKey: "remote-1",
+          playerStyle: { colorPalette: ["#00ff00"] },
+        },
+        lastSeen: Date.now(),
+      },
+    });
+    provider.awareness.emit({ added: [remoteClientId], updated: [], removed: [] });
+
+    expect(layer.querySelectorAll(".playhtml-cursor-other").length).toBeGreaterThan(0);
+    expect(document.body.children[0]).toBe(layer);
+
+    client.destroy?.();
   });
 });
