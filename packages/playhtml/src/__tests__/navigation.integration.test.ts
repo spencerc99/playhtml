@@ -55,4 +55,30 @@ describe("playhtml.handleNavigation", () => {
     await expect(playhtml.handleNavigation()).resolves.toBeUndefined();
     expect(document.getElementById("test-el")).toBeTruthy();
   });
+
+  it("re-derives default room from current pathname on each navigation", async () => {
+    // Init without an explicit room — the default room is pathname-based.
+    // On navigation, the new pathname should produce a new room ID.
+    const origPath = window.location.pathname;
+    try {
+      history.replaceState(null, "", "/page-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const listener = vi.fn();
+      document.addEventListener("playhtml:navigated", listener as EventListener);
+
+      history.replaceState(null, "", "/page-b");
+      await playhtml.handleNavigation();
+
+      const rooms = listener.mock.calls.map(
+        (c) => (c[0] as CustomEvent).detail.room,
+      );
+      // The room ID URL-encodes the pathname, so check for the encoded form.
+      expect(rooms[rooms.length - 1]).toContain("page-b");
+      expect(rooms[rooms.length - 1]).not.toContain("page-a");
+      document.removeEventListener("playhtml:navigated", listener as EventListener);
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
 });
