@@ -1,7 +1,7 @@
 // ABOUTME: Tests for cursor container resolution — element, selector, getter.
 // ABOUTME: Null handling and getter-on-every-call semantics.
 import { describe, it, expect, beforeEach } from "vitest";
-import { resolveCursorContainer } from "../cursors/container";
+import { resolveCursorContainer } from "../container";
 
 describe("resolveCursorContainer", () => {
   beforeEach(() => {
