@@ -342,6 +342,7 @@ export class CursorClientAwareness {
   private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
   private currentZone: CursorZonePosition | null = null;
   private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
+  private lastKnownContainer: HTMLElement | null = null;
   // Maps Yjs clientId -> stableId (publicKey). Multiple clientIds can map to
   // the same stableId when a user has multiple tabs open. Used to:
   // (a) skip rendering our own cursor from other tabs
@@ -959,8 +960,30 @@ export class CursorClientAwareness {
   }
 
   private getContainer(): HTMLElement {
-    const resolved = resolveCursorContainer(this.options.container);
-    return resolved ?? document.body;
+    const resolved = resolveCursorContainer(this.options.container) ?? document.body;
+    this.lastKnownContainer = resolved;
+    return resolved;
+  }
+
+  refreshContainer(): void {
+    const next = resolveCursorContainer(this.options.container) ?? document.body;
+    if (next === this.lastKnownContainer) return;
+
+    const prev = this.lastKnownContainer;
+    this.lastKnownContainer = next;
+
+    // Migrate all cursor DOM
+    if (prev) {
+      const cursors = prev.querySelectorAll(".playhtml-cursor-other");
+      cursors.forEach((c) => next.appendChild(c));
+    }
+
+    // Migrate style tag (regardless of its current parent: head, previous container, anywhere)
+    const styleId = "playhtml-cursor-styles";
+    const existing = document.getElementById(styleId);
+    if (existing && existing.parentElement !== next) {
+      next.appendChild(existing);
+    }
   }
 
   private updateCursor(

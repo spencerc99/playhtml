@@ -158,4 +158,53 @@ describe("cursor client with container option", () => {
 
     expect(document.head.querySelector("#playhtml-cursor-styles")).not.toBeNull();
   });
+
+  it("migrates cursor DOM and styles when container changes", () => {
+    const layerA = document.createElement("div");
+    layerA.id = "layer-a";
+    document.body.appendChild(layerA);
+
+    const layerB = document.createElement("div");
+    layerB.id = "layer-b";
+    document.body.appendChild(layerB);
+
+    let active: HTMLElement = layerA;
+    const provider = makeFakeProvider();
+    const client = new CursorClientAwareness(provider, {
+      enabled: true,
+      container: () => active,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    // Inject a remote cursor so DOM is in A
+    const remoteClientId = 99;
+    provider.awareness._states.set(remoteClientId, {
+      __playhtml_cursors__: {
+        connectionId: "remote-1",
+        cursor: { x: 0, y: 0, pointer: "default" },
+        page: "/",
+        playerIdentity: {
+          publicKey: "remote-1",
+          playerStyle: { colorPalette: ["#00ff00"] },
+        },
+        lastSeen: Date.now(),
+      },
+    });
+    provider.awareness.emit({ added: [remoteClientId], updated: [], removed: [] });
+
+    expect(layerA.querySelectorAll(".playhtml-cursor-other").length).toBeGreaterThan(0);
+    expect(layerA.querySelector("#playhtml-cursor-styles")).not.toBeNull();
+
+    // Change container and refresh.
+    active = layerB;
+    client.refreshContainer();
+
+    expect(layerA.querySelectorAll(".playhtml-cursor-other").length).toBe(0);
+    expect(layerB.querySelectorAll(".playhtml-cursor-other").length).toBeGreaterThan(0);
+    expect(layerB.querySelector("#playhtml-cursor-styles")).not.toBeNull();
+    expect(layerA.querySelector("#playhtml-cursor-styles")).toBeNull();
+  });
 });
