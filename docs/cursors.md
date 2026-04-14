@@ -135,6 +135,39 @@ getCursorStyle: (presence) => {
 }
 ```
 
+### `container`
+
+Where to mount cursor DOM and the injected cursor style tag. Defaults to `document.body` / `document.head`. Pass a container you control — and mark it with a framework persist directive like `transition:persist` — to keep cursors alive across SPA body-swaps (Astro ViewTransitions, htmx boost, Turbo, native View Transitions API).
+
+**Type:** `HTMLElement | string | (() => HTMLElement | null)`
+
+```javascript
+cursors: {
+  enabled: true,
+  container: "#cursor-layer",  // selector
+}
+
+// or an element
+cursors: { container: document.getElementById("cursor-layer") }
+
+// or a getter for frameworks where the element mounts late
+cursors: { container: () => document.querySelector("#cursor-layer") }
+```
+
+In React, pass a `RefObject` directly:
+
+```tsx
+const cursorLayerRef = useRef<HTMLDivElement>(null);
+
+<PlayProvider initOptions={{
+  cursors: { enabled: true, container: cursorLayerRef },
+}}>
+  <div ref={cursorLayerRef} id="cursor-layer" />
+</PlayProvider>
+```
+
+See `docs/spa-integration.md` for full SPA usage.
+
 ### Other Options
 
 ```javascript

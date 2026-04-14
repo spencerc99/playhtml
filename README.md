@@ -422,6 +422,39 @@ Cursors can be scoped to a page, domain, section, or custom room. You can filter
 
 See the full cursor documentation for configuration options and patterns [cursors.md](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
 
+## SPA Navigation
+
+playhtml works on sites with client-side navigation — Astro ViewTransitions, React Router, Next.js, htmx boost, Turbo — not just full page reloads. It detects URL changes via the browser's Navigation API and `popstate`, then rebuilds rooms and rescans the DOM as needed.
+
+React integration — pass `pathname` from your router and a ref for cursor persistence:
+
+```tsx
+const cursorLayerRef = useRef<HTMLDivElement>(null);
+const { pathname } = useLocation(); // React Router / Next.js usePathname() / etc.
+
+<PlayProvider
+  initOptions={{ cursors: { enabled: true, container: cursorLayerRef } }}
+  pathname={pathname}
+>
+  <div ref={cursorLayerRef} id="cursor-layer" />
+  {/* app */}
+</PlayProvider>
+```
+
+Vanilla — the `container` selector survives body-swaps when marked `transition:persist` (Astro) or the framework equivalent:
+
+```html
+<div id="cursor-layer" transition:persist></div>
+<script type="module">
+  import { playhtml } from "@playhtml/playhtml";
+  playhtml.init({ cursors: { enabled: true, container: "#cursor-layer" } });
+</script>
+```
+
+Also new: `playhtml.handleNavigation()` (manual trigger for routers that bypass Navigation API and popstate), `playhtml.destroy()` (full teardown; `init()` may be called again afterward), and a `playhtml:navigated` CustomEvent on `document` with `detail.room`.
+
+See the full guide at [spa-integration.md](https://github.com/spencerc99/playhtml/blob/main/docs/spa-integration.md).
+
 ## Building with AI / LLMs
 
 playhtml works well with AI coding assistants. We provide two resources:
