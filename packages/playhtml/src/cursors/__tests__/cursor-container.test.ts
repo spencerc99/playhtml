@@ -244,4 +244,109 @@ describe("cursor client with container option", () => {
     client.refreshCursorStyles();
     expect(calls.length).toBeGreaterThan(before);
   });
+
+  it("removes stale keys when getCursorStyle returns fewer properties on re-apply", () => {
+    const provider = makeFakeProvider();
+    // Note: use style properties that aren't also managed by the cursor
+    // client's visibility logic (which sets display/opacity/transform).
+    // `filter` and `border` are safe to assert on.
+    let returnStyles: Record<string, string> = {
+      filter: "blur(3px)",
+      border: "2px solid red",
+    };
+
+    const client = new CursorClientAwareness(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+      getCursorStyle: () => returnStyles,
+    });
+
+    const remoteClientId = 88;
+    provider.awareness._states.set(remoteClientId, {
+      __playhtml_cursors__: {
+        connectionId: "remote-stale",
+        cursor: { x: 0, y: 0, pointer: "default" },
+        page: "/",
+        playerIdentity: {
+          publicKey: "remote-stale",
+          playerStyle: { colorPalette: ["#00ff00"] },
+        },
+        lastSeen: Date.now(),
+      },
+    });
+    provider.awareness.emit({
+      added: [remoteClientId],
+      updated: [],
+      removed: [],
+    });
+
+    const cursorEl = Array.from(
+      document.querySelectorAll(".playhtml-cursor-other"),
+    )[0] as HTMLElement;
+    expect(cursorEl).toBeTruthy();
+    expect(cursorEl.style.filter).toBe("blur(3px)");
+    expect(cursorEl.style.border).toBe("2px solid red");
+
+    // Now change the style function to return only filter — border should be
+    // removed from the element, not linger from the previous call.
+    returnStyles = { filter: "grayscale(1)" };
+    client.refreshCursorStyles();
+
+    expect(cursorEl.style.filter).toBe("grayscale(1)");
+    expect(cursorEl.style.border).toBe("");
+  });
+
+  it("re-runs getCursorStyle on every remote awareness update (no zoneChanged guard)", () => {
+    const provider = makeFakeProvider();
+    const pagesSeen: string[] = [];
+
+    const client = new CursorClientAwareness(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+      getCursorStyle: (p: any) => {
+        pagesSeen.push(p.page);
+        return {};
+      },
+    });
+
+    const remoteClientId = 99;
+    const basePresence = {
+      connectionId: "remote-nav",
+      cursor: { x: 0, y: 0, pointer: "default" },
+      playerIdentity: {
+        publicKey: "remote-nav",
+        playerStyle: { colorPalette: ["#00ff00"] },
+      },
+      lastSeen: Date.now(),
+    };
+
+    provider.awareness._states.set(remoteClientId, {
+      __playhtml_cursors__: { ...basePresence, page: "/a" },
+    });
+    provider.awareness.emit({
+      added: [remoteClientId],
+      updated: [],
+      removed: [],
+    });
+
+    // Simulate remote client navigating (page changes, zone does not).
+    provider.awareness._states.set(remoteClientId, {
+      __playhtml_cursors__: { ...basePresence, page: "/b" },
+    });
+    provider.awareness.emit({
+      added: [],
+      updated: [remoteClientId],
+      removed: [],
+    });
+
+    expect(pagesSeen).toContain("/a");
+    expect(pagesSeen).toContain("/b");
+    void client;
+  });
 });
