@@ -23,4 +23,4 @@ jobs:
         run: bun run build-packages
 
       - name: Publish preview
-        run: bunx pkg-pr-new publish --pnpm ./packages/playhtml ./packages/react ./packages/common
+        run: bunx pkg-pr-new publish ./packages/playhtml ./packages/react ./packages/common
