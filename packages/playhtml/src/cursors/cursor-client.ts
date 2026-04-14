@@ -331,6 +331,11 @@ function applyTrackedStyles(
 ): void {
   const newKeys = new Set<string>();
   for (const key of Object.keys(newStyles)) {
+    // Guard against a user returning a live CSSStyleDeclaration (or
+    // array-like), whose keys include numeric indices pointing to property
+    // names rather than values. Only accept plain string keys that look
+    // like CSS property names.
+    if (/^\d+$/.test(key)) continue;
     newKeys.add(key);
     const value = (newStyles as Record<string, string>)[key];
     element.style.setProperty(cssPropertyName(key), String(value));

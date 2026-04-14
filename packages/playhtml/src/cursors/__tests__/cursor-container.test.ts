@@ -299,6 +299,62 @@ describe("cursor client with container option", () => {
     expect(cursorEl.style.border).toBe("");
   });
 
+  it("clears zone-specific style keys when the cursor leaves the zone", () => {
+    // Register a zone with its own getCursorStyle that sets `border`.
+    const zoneEl = document.createElement("div");
+    zoneEl.id = "zone-a";
+    document.body.appendChild(zoneEl);
+
+    const provider = makeFakeProvider();
+    const client = new CursorClientAwareness(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+      // Global style returns nothing — so when the cursor exits the zone,
+      // the zone's `border` must be cleaned up.
+      getCursorStyle: () => ({}),
+    });
+    client.registerZone(zoneEl, {
+      getCursorStyle: () => ({ border: "3px solid lime" }),
+    });
+
+    const remoteId = 155;
+    const basePresence = {
+      connectionId: "remote-zone",
+      cursor: { x: 10, y: 10, pointer: "default" },
+      page: "/",
+      playerIdentity: {
+        publicKey: "remote-zone",
+        playerStyle: { colorPalette: ["#00ff00"] },
+      },
+      lastSeen: Date.now(),
+    };
+
+    // Enter zone.
+    provider.awareness._states.set(remoteId, {
+      __playhtml_cursors__: {
+        ...basePresence,
+        zone: { zoneId: "zone-a", relX: 0.5, relY: 0.5 },
+      },
+    });
+    provider.awareness.emit({ added: [remoteId], updated: [], removed: [] });
+
+    const cursorEl = Array.from(
+      document.querySelectorAll(".playhtml-cursor-other"),
+    )[0] as HTMLElement;
+    expect(cursorEl.style.border).toBe("3px solid lime");
+
+    // Exit zone — zone's border must be removed.
+    provider.awareness._states.set(remoteId, {
+      __playhtml_cursors__: { ...basePresence, zone: undefined },
+    });
+    provider.awareness.emit({ added: [], updated: [remoteId], removed: [] });
+
+    expect(cursorEl.style.border).toBe("");
+  });
+
   it("re-runs getCursorStyle on every remote awareness update (no zoneChanged guard)", () => {
     const provider = makeFakeProvider();
     const pagesSeen: string[] = [];

@@ -102,6 +102,8 @@ Customize cursor appearance based on presence data.
 
 **Type:** `(presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>`
 
+**Called on every cursor update** — every remote awareness tick runs this for that cursor. Keep it cheap: no DOM queries, no heavy math. Returned keys that aren't in the next call's result are automatically removed from the cursor element, so you don't need to explicitly "reset" values across calls. If your style depends on state outside `presence` (e.g., `window.location`), call `playhtml.cursorClient.refreshCursorStyles()` when that state changes — the SPA navigation path does this for you automatically when the URL changes.
+
 ```javascript
 cursors: {
   enabled: true,
