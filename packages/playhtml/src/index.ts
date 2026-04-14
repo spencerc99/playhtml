@@ -507,6 +507,13 @@ let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 let isDestroyed = false;
 
+// Awareness change listener — must be rebound whenever the awareness provider
+// (cursor provider or main yprovider) is rebuilt during navigation.
+let awarenessChangeHandler: (() => void) | null = null;
+let awarenessChangeTarget: {
+  awareness: { off: (event: string, cb: () => void) => void };
+} | null = null;
+
 // If the user supplied an explicit `room` to init(), we store it and reuse it
 // across navigations (static rooms should not change on URL change). If they
 // didn't, we store the default-room options and re-derive on each nav so
@@ -562,6 +569,28 @@ function buildMainProvider(args: {
   yprovider.on("custom-message", onMessage);
 
   return { sharedReferences };
+}
+
+/**
+ * Detach the current awareness "change" listener (if any) and attach a fresh
+ * one to whichever provider currently holds awareness (cursor provider if
+ * cursors enabled, otherwise main yprovider). Safe to call multiple times.
+ */
+function bindAwarenessListener(): void {
+  if (awarenessChangeTarget && awarenessChangeHandler) {
+    try {
+      awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
+    } catch {}
+  }
+  awarenessChangeTarget = null;
+  awarenessChangeHandler = null;
+
+  const provider = cursorClient?.getProvider() ?? yprovider;
+  if (!provider) return;
+  const handler = () => onChangeAwareness();
+  provider.awareness.on("change", handler);
+  awarenessChangeTarget = provider;
+  awarenessChangeHandler = handler;
 }
 
 /**
@@ -694,6 +723,14 @@ async function runHandleNavigation(): Promise<void> {
       partykitHost: __currentHost,
       onError: cachedOnError,
     });
+  }
+
+  // Rebind awareness listener to the current provider. This is required
+  // whenever we rebuilt yprovider or cursorClient above — the old awareness
+  // object was destroyed along with its provider, orphaning any listener
+  // we had attached at init time.
+  if (mainRoomChanged || cursorRoomChanged) {
+    bindAwarenessListener();
   }
 
   markAllElementsAsLoading();
@@ -1208,10 +1245,10 @@ function setupElements(): void {
     return;
   }
 
-  // Listen to awareness changes on the cursor provider (where element awareness is stored)
-  // Fall back to doc provider if cursors are disabled
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
-  awarenessProvider.awareness.on("change", () => onChangeAwareness());
+  // Listen to awareness changes on the cursor provider (where element awareness
+  // is stored). Re-bound on provider rebuild via bindAwarenessListener so
+  // nav-time provider swaps don't leave an orphaned listener.
+  bindAwarenessListener();
 
   // Trigger initial awareness sync to populate existing states
   onChangeAwareness();
@@ -1326,6 +1363,17 @@ export const playhtml: PlayHTMLComponents = {
         );
         configureIdentityListener = null;
       }
+
+      // Detach awareness change listener before destroying providers, so we
+      // cleanly `.off("change", ...)` rather than leaking the subscription on
+      // a soon-to-be-destroyed awareness object.
+      if (awarenessChangeTarget && awarenessChangeHandler) {
+        try {
+          awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
+        } catch {}
+      }
+      awarenessChangeTarget = null;
+      awarenessChangeHandler = null;
 
       for (const [, map] of elementHandlers) {
         for (const handler of map.values()) {
