@@ -642,15 +642,21 @@ async function runHandleNavigation(): Promise<void> {
   }
   void newCursorRoom;
 
+  // Drop handlers whose DOM element is no longer connected (e.g. innerHTML-swap
+  // or framework unmount without calling removePlayElement). Keep handlers for
+  // elements still in the DOM — they already have listeners wired, and
+  // re-creating a handler here would attach duplicates since ElementHandler
+  // has no listener cleanup. React-managed elements stay connected across
+  // route changes when the same node is reused; React's unmount path already
+  // calls removePlayElement for replaced nodes.
   for (const [, map] of elementHandlers) {
-    for (const handler of map.values()) {
-      try {
-        (handler as any).destroy?.();
-      } catch {}
+    for (const [id, handler] of [...map.entries()]) {
+      const el = (handler as { element?: HTMLElement }).element;
+      if (!el || !el.isConnected) {
+        map.delete(id);
+      }
     }
-    map.clear();
   }
-  elementHandlers.clear();
 
   if (mainRoomChanged) {
     try {
