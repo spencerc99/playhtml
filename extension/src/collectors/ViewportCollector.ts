@@ -115,14 +115,18 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
       this.resizeHandler = undefined;
     }
 
+    // Flush any pending scroll event that was waiting in the throttle timer
     if (this.scrollTimer !== null) {
       clearTimeout(this.scrollTimer);
       this.scrollTimer = null;
+      this.emitScrollEvent();
     }
 
+    // Flush any pending resize event that was waiting in the debounce timer
     if (this.resizeTimer) {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = null;
+      this.emitResizeEvent();
     }
   }
 

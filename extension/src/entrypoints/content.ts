@@ -1116,6 +1116,11 @@ export default defineContentScript({
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
+
+        // Flush pending debounced events before the page unloads
+        window.addEventListener("beforeunload", () => {
+          collectorManager?.stopAll();
+        }, { once: true });
         if (VERBOSE) {
           console.log(
             "[Collections] Collector manager initialized successfully",

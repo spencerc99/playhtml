@@ -224,6 +224,18 @@ export class CollectorManager {
   }
 
   /**
+   * Stop all enabled collectors, flushing any pending buffered events.
+   * Called on beforeunload to avoid losing in-flight debounce/throttle data.
+   */
+  stopAll(): void {
+    for (const collector of this.collectors.values()) {
+      if (collector.isEnabled()) {
+        collector.disable();
+      }
+    }
+  }
+
+  /**
    * Manually trigger a batch flush
    */
   async flushEvents(): Promise<void> {
