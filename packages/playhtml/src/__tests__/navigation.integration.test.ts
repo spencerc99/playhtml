@@ -56,29 +56,80 @@ describe("playhtml.handleNavigation", () => {
     expect(document.getElementById("test-el")).toBeTruthy();
   });
 
-  it("re-derives default room from current pathname on each navigation", async () => {
-    // Init without an explicit room — the default room is pathname-based.
-    // On navigation, the new pathname should produce a new room ID.
-    const origPath = window.location.pathname;
+  // Helper: init at `from`, navigate to `to`, return the two emitted room IDs.
+  async function roomsAcrossNav(
+    from: string,
+    to: string,
+    initOptions: any = {},
+  ): Promise<{ before: string; after: string }> {
+    const origPath = window.location.pathname + window.location.search;
     try {
-      history.replaceState(null, "", "/page-a");
-      await playhtml.init({ host: "http://localhost:1999" } as any);
+      history.replaceState(null, "", from);
+      await playhtml.init({ host: "http://localhost:1999", ...initOptions });
 
       const listener = vi.fn();
       document.addEventListener("playhtml:navigated", listener as EventListener);
 
-      history.replaceState(null, "", "/page-b");
+      // Capture current room via an initial nav trigger (no URL change yet)
       await playhtml.handleNavigation();
+      const before = (listener.mock.calls[0][0] as CustomEvent).detail.room;
 
-      const rooms = listener.mock.calls.map(
-        (c) => (c[0] as CustomEvent).detail.room,
+      history.replaceState(null, "", to);
+      await playhtml.handleNavigation();
+      const after = (
+        listener.mock.calls[listener.mock.calls.length - 1][0] as CustomEvent
+      ).detail.room;
+
+      document.removeEventListener(
+        "playhtml:navigated",
+        listener as EventListener,
       );
-      // The room ID URL-encodes the pathname, so check for the encoded form.
-      expect(rooms[rooms.length - 1]).toContain("page-b");
-      expect(rooms[rooms.length - 1]).not.toContain("page-a");
-      document.removeEventListener("playhtml:navigated", listener as EventListener);
+      return { before, after };
     } finally {
       history.replaceState(null, "", origPath);
     }
+  }
+
+  it("re-derives default room from pathname on navigation", async () => {
+    const { before, after } = await roomsAcrossNav("/page-a", "/page-b");
+    expect(before).toContain("page-a");
+    expect(after).toContain("page-b");
+    expect(before).not.toEqual(after);
+  });
+
+  it("ignores query params by default (includeSearch: false)", async () => {
+    const { before, after } = await roomsAcrossNav("/same?x=1", "/same?x=2");
+    expect(before).toEqual(after);
+  });
+
+  it("includes query params in room when defaultRoomOptions.includeSearch is true", async () => {
+    const { before, after } = await roomsAcrossNav("/same?x=1", "/same?x=2", {
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(before).not.toEqual(after);
+    expect(before).toContain("x%3D1");
+    expect(after).toContain("x%3D2");
+  });
+
+  it("ignores hash changes", async () => {
+    const { before, after } = await roomsAcrossNav("/h#one", "/h#two");
+    expect(before).toEqual(after);
+  });
+
+  it("keeps static explicit room stable across navigation", async () => {
+    const { before, after } = await roomsAcrossNav("/a", "/b", {
+      room: "my-app-room",
+    });
+    expect(before).toEqual(after);
+    expect(before).toContain("my-app-room");
+  });
+
+  it("strips filename extension from pathname when deriving default room", async () => {
+    const { before, after } = await roomsAcrossNav(
+      "/page.html",
+      "/page",
+    );
+    // `/page.html` and `/page` should resolve to the same room — extension stripped.
+    expect(before).toEqual(after);
   });
 });
