@@ -6,7 +6,7 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "module": "esnext",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -19,18 +19,16 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "typeRoots": ["./node_modules/@types"],
     "paths": {
       "playhtml": ["packages/playhtml/src"],
       "@playhtml/react": ["packages/react/src"],
       "@playhtml/common": ["packages/common/src"]
     }
   },
-  "include": ["partykit"],
+  "include": [],
   "exclude": [
     "node_modules/*",
     "**/__tests__/*",
-    "node_modules/@cloudflare/workers-types/index.ts",
     "**/dist"
   ]
 }

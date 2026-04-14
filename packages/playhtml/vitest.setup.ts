@@ -22,7 +22,7 @@ import { vi } from "vitest";
 
 vi.mock("y-indexeddb", () => ({ IndexeddbPersistence: class {} }));
 
-vi.mock("y-partykit/provider", () => {
+vi.mock("y-partyserver/provider", () => {
   return {
     default: class FakeProvider {
       ws?: {

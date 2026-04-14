@@ -11,10 +11,10 @@
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.mts",
-    "dev-server": "bunx partykit dev partykit/party.ts",
+    "dev-server": "bunx wrangler dev partykit/party.ts",
     "dev-extension": "cd extension && bun run dev",
-    "deploy-server": "bunx partykit deploy",
-    "deploy-server:staging": "bunx partykit deploy --preview staging",
+    "deploy-server": "bunx wrangler deploy",
+    "deploy-server:staging": "bunx wrangler deploy --env staging",
     "build-site": "vite build website --config vite.config.site.mts",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && bun run build); done",
     "build-extension": "cd extension && bun run build",
@@ -22,9 +22,10 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build-packages && changeset publish",
-    "lint": "bunx tsc && cd website && bunx tsc && cd .. && for dir in packages/*; do (cd \"$dir\" && bunx tsc); done && cd extension && bunx tsc",
+    "lint": "bunx tsc -p partykit && cd website && bunx tsc && cd .. && for dir in packages/*; do (cd \"$dir\" && bunx tsc); done && cd extension && bunx tsc",
     "load-test": "bun load-test/src/runner.ts",
-    "load-test:full": "bun load-test/src/runner.ts --config full-suite"
+    "load-test:full": "bun load-test/src/runner.ts --config full-suite",
+    "generate-types": "bunx wrangler types --include-runtime=false"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
@@ -40,18 +41,19 @@
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-mpa": "^1.2.0"
+    "vite-plugin-mpa": "^1.2.0",
+    "wrangler": "^4.81.1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "canvas-confetti": "^1.9.2",
     "html2canvas": "^1.4.1",
-    "partykit": "0.0.108",
+    "partyserver": "^0.1.0",
     "profane-words": "^1.5.11",
     "randomcolor": "^0.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "y-partykit": "0.0.31",
+    "y-partyserver": "^1.0.0",
     "yjs": "13.6.18"
   }
 }

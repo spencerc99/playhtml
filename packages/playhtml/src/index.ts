@@ -1,6 +1,6 @@
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
-import YPartyKitProvider from "y-partykit/provider";
+import YProvider from "y-partyserver/provider";
 import "./style.scss";
 import {
   ElementData,
@@ -38,8 +38,8 @@ import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
 import { createPageDataChannel, PAGE_TAG } from "./page-data";
 
-const DefaultPartykitHost = "playhtml.spencerc99.partykit.dev";
-const StagingPartykitHost = "staging.playhtml.spencerc99.partykit.dev";
+const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
+const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
 const DevPartykitHost = "localhost:1999";
 
 // Environment-specific host resolution
@@ -147,8 +147,8 @@ function normalizeRoomId(host: string, roomString: string): string {
   return encodeURIComponent(normalized);
 }
 
-let yprovider: YPartyKitProvider;
-let cursorProvider: YPartyKitProvider | null = null;
+let yprovider: YProvider;
+let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
@@ -198,11 +198,11 @@ function handleNewSharedReference(element: HTMLElement): void {
   discoveredSharedReferences.add(referenceKey);
 
   // Send updated shared references to the server if we're connected
-  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+  if (yprovider?.wsconnected) {
     try {
       const newReference = { domain, path, elementId };
       // Send individual reference update
-      yprovider.ws.send(
+      yprovider.sendMessage(
         JSON.stringify({
           type: "add-shared-reference",
           reference: newReference,
@@ -210,7 +210,7 @@ function handleNewSharedReference(element: HTMLElement): void {
       );
 
       // Request permissions for this specific element
-      yprovider.ws.send(
+      yprovider.sendMessage(
         JSON.stringify({
           type: "export-permissions",
           elementIds: [elementId],
@@ -244,7 +244,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   sharedPermissions.set(elementId, permissionMode);
 
   // Send to server if connected
-  if (yprovider?.ws && yprovider.ws.readyState === WebSocket.OPEN) {
+  if (yprovider?.wsconnected) {
     try {
       // Register this element as shared with the server
       const sharedElement = {
@@ -253,7 +253,7 @@ function handleNewSharedElement(element: HTMLElement): void {
         path: window.location.pathname,
       };
 
-      yprovider.ws.send(
+      yprovider.sendMessage(
         JSON.stringify({
           type: "register-shared-element",
           element: sharedElement,
@@ -402,21 +402,13 @@ function getTagTypes(): (TagType | string)[] {
 }
 
 function sendPlayEvent(eventMessage: EventMessage) {
-  if (!yprovider.ws) {
-    return;
-  }
-  yprovider.ws.send(JSON.stringify(eventMessage));
+  yprovider.sendMessage(JSON.stringify(eventMessage));
 }
 
-function onMessage(evt: MessageEvent) {
-  // ignore non-relevant events
-  if (evt.data instanceof Blob) {
-    return;
-  }
-
+function onMessage(data: string) {
   let message: any;
   try {
-    message = JSON.parse(evt.data);
+    message = JSON.parse(data);
   } catch (err) {
     return;
   }
@@ -549,7 +541,7 @@ async function initPlayHTML({
     : null;
 
   // Create provider with shared element parameters
-  yprovider = new YPartyKitProvider(partykitHost, room, doc, {
+  yprovider = new YProvider(partykitHost, room, doc, {
     params: {
       sharedElements: JSON.stringify(sharedElements),
       sharedReferences: JSON.stringify(sharedReferences),
@@ -559,21 +551,6 @@ async function initPlayHTML({
   });
   yprovider.on("error", () => {
     onError?.();
-  });
-
-  // Register message handler immediately after provider creation to catch early messages
-  // like room-reset, which the server sends immediately upon detecting a stale client epoch.
-  // The WebSocket is created synchronously in the YPartyKitProvider constructor,
-  // so we can access it here before any sync events fire.
-  // We use a microtask to ensure the provider is fully initialized.
-  queueMicrotask(() => {
-    if (yprovider.ws) {
-      yprovider.ws.addEventListener("message", onMessage);
-    } else {
-      console.warn(
-        "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached",
-      );
-    }
   });
 
   // Initialize cursor tracking immediately after provider creation
@@ -600,7 +577,7 @@ async function initPlayHTML({
       // Only create separate provider if cursor room is different from element room
       if (cursorRoom !== room) {
         const cursorDoc = new Y.Doc();
-        cursorProvider = new YPartyKitProvider(
+        cursorProvider = new YProvider(
           partykitHost,
           cursorRoom,
           cursorDoc,
@@ -684,6 +661,10 @@ async function initPlayHTML({
     if (hasSynced) {
       resolve(true);
     }
+    // Register custom-message handler once, outside the sync callback,
+    // to avoid duplicate registrations on reconnect.
+    yprovider.on("custom-message", onMessage);
+
     yprovider.on("sync", (connected: boolean) => {
       if (!connected) {
         console.error("Issue connecting to yjs...");
@@ -703,8 +684,8 @@ async function initPlayHTML({
       if (sharedReferences.length > 0) {
         try {
           const elementIds = sharedReferences.map((r) => r.elementId);
-          yprovider.ws?.send(
-            JSON.stringify({ type: "export-permissions", elementIds }),
+          yprovider.sendMessage(
+            JSON.stringify({ type: "export-permissions", elementIds })
           );
         } catch (error) {
           console.error("[PLAYHTML] Error during post-sync setup:", error);
@@ -1064,7 +1045,7 @@ function createPresenceRoom(name: string): PresenceRoom {
 
   const roomId = normalizeRoomId(window.location.host, name);
   const roomDoc = new Y.Doc();
-  const provider = new YPartyKitProvider(__currentHost, roomId, roomDoc);
+  const provider = new YProvider(__currentHost, roomId, roomDoc);
 
   const presence = createPresenceAPI({
     getAwareness: () => provider.awareness,

@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "playhtml",
+  "main": "partykit/party.ts",
+  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2024-09-23",
+  "workers_dev": true,
+  "preview_urls": false,
+  "secrets": {
+    "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Main",
+        "class_name": "PartyServer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PartyServer"]
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "playhtml-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      "secrets": {
+        "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "Main",
+            "class_name": "PartyServer"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["PartyServer"]
+        }
+      ]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type YPartyKitProvider from "y-partykit/provider";
+import type YProvider from "y-partyserver/provider";
 import {
   CursorPresence,
   CursorPresenceView,
@@ -353,8 +353,8 @@ export class CursorClientAwareness {
   private pendingRemovals: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   constructor(
-    private provider: YPartyKitProvider,
-    private options: CursorOptions = {},
+    private provider: YProvider,
+    private options: CursorOptions = {}
   ) {
     this.playerIdentity =
       options.playerIdentity || generatePersistentPlayerIdentity();
@@ -1695,7 +1695,7 @@ export class CursorClientAwareness {
   }
 
   // Get the provider (needed for awareness access)
-  getProvider(): YPartyKitProvider {
+  getProvider(): YProvider {
     return this.provider;
   }
 
