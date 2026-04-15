@@ -1,7 +1,7 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useRef, useState, RefObject } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, RefObject } from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
@@ -12,6 +12,10 @@ import {
   PresenceView,
 } from "@playhtml/common";
 import type { CursorZoneOptions } from "playhtml";
+
+function warnPreInit(call: string): void {
+  console.warn(`[@playhtml/react] ${call} called before init — ignored.`);
+}
 
 /**
  * Hook to access cursor presences from the playhtml context
@@ -47,7 +51,11 @@ export function useCursorZone(
 
 /**
  * Subscribe to a presence channel. Safe to call before playhtml has initialized:
- * returns an empty map and a no-op setter until sync completes, then wires up.
+ * returns an empty map, a setter that warns and no-ops, and `null` identity
+ * until sync completes — then wires up automatically.
+ *
+ * Type parameter `T` is an assertion about the shape of presence values; no
+ * runtime validation is performed.
  */
 export function usePresence<T extends Record<string, unknown> = Record<string, unknown>>(
   channel: string,
@@ -71,9 +79,7 @@ export function usePresence<T extends Record<string, unknown> = Record<string, u
   const setMyPresence = useCallback(
     (data: T) => {
       if (isLoading) {
-        console.warn(
-          `[@playhtml/react] usePresence("${channel}").setMyPresence called before init — ignored.`,
-        );
+        warnPreInit(`usePresence("${channel}").setMyPresence`);
         return;
       }
       playhtml.presence.setMyPresence(channel, data);
@@ -81,16 +87,22 @@ export function usePresence<T extends Record<string, unknown> = Record<string, u
     [isLoading, channel],
   );
 
-  const myIdentity = isLoading ? null : playhtml.presence.getMyIdentity();
+  const myIdentity = useMemo(
+    () => (isLoading ? null : playhtml.presence.getMyIdentity()),
+    [isLoading],
+  );
 
   return { presences, setMyPresence, myIdentity };
 }
 
 /**
  * Subscribe to a page-data channel. Safe to call before playhtml has initialized:
- * returns the default value and a no-op setter until sync completes, then wires up.
+ * returns the default value and a setter that warns and no-ops until sync
+ * completes — then wires up automatically.
  *
  * Shape mirrors `useState` — `[data, setData]`.
+ *
+ * `defaultValue` is only read on first mount and when `name` changes.
  */
 export function usePageData<T>(
   name: string,
@@ -118,15 +130,13 @@ export function usePageData<T>(
   const setData = useCallback(
     (next: T | ((draft: T) => void)) => {
       const channel = channelRef.current;
-      if (!channel) {
-        console.warn(
-          `[@playhtml/react] usePageData("${name}") setData called before init — ignored.`,
-        );
+      if (isLoading || !channel) {
+        warnPreInit(`usePageData("${name}").setData`);
         return;
       }
       channel.setData(next);
     },
-    [name],
+    [isLoading, name],
   );
 
   return [data, setData];
@@ -134,7 +144,8 @@ export function usePageData<T>(
 
 /**
  * Join a presence room. Safe to call before playhtml has initialized:
- * returns `null` until sync completes.
+ * returns `null` until sync completes. When `name` changes, briefly returns
+ * `null` during the transition between rooms.
  */
 export function usePresenceRoom(name: string): PresenceRoom | null {
   const { isLoading } = useContext(PlayContext);
