@@ -62,25 +62,14 @@ describe("PresenceRoom events", () => {
     });
   });
 
-  describe("before init (deferred)", () => {
-    it("onEvent returns valid unsubscribe before init", async () => {
+  describe("before init", () => {
+    it("createPresenceRoom throws before init", async () => {
       vi.resetModules();
       delete (globalThis as any).playhtml;
       const mod = await import("../index");
-      const room = mod.playhtml.createPresenceRoom("deferred-event");
-      const unsub = room.onEvent("test", () => {});
-      expect(unsub).toBeTypeOf("function");
-      unsub();
-      room.destroy();
-    });
-
-    it("dispatchEvent does not throw before init", async () => {
-      vi.resetModules();
-      delete (globalThis as any).playhtml;
-      const mod = await import("../index");
-      const room = mod.playhtml.createPresenceRoom("deferred-dispatch");
-      expect(() => room.dispatchEvent("test", { x: 1 })).not.toThrow();
-      room.destroy();
+      expect(() => mod.playhtml.createPresenceRoom("pre-init")).toThrow(
+        /not available before init/,
+      );
     });
   });
 });

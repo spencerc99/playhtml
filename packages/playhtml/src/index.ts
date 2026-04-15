@@ -572,7 +572,7 @@ async function initPlayHTML({
   // We use a microtask to ensure the provider is fully initialized.
   queueMicrotask(() => {
     if (yprovider.ws) {
-      yprovider.ws.addEventListener("message", onMessage);
+      yprovider.ws.addEventListener("message", (ev) => onMessage(ev.data));
     } else {
       console.warn(
         "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached",
@@ -583,7 +583,7 @@ async function initPlayHTML({
   // Re-attach message handler when the WebSocket reconnects (provider creates a new instance)
   yprovider.on("status", ({ status }: { status: string }) => {
     if (status === "connected") {
-      yprovider.ws?.addEventListener("message", onMessage);
+      yprovider.ws?.addEventListener("message", (ev) => onMessage(ev.data));
     }
   });
 
