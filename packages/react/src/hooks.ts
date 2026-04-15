@@ -1,10 +1,21 @@
 // ABOUTME: Custom React hooks for playhtml functionality
-// ABOUTME: Provides hooks for cursor presences, cursor zones, and other playhtml features
+// ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useContext, useEffect, RefObject } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, RefObject } from "react";
 import { PlayContext } from "./PlayProvider";
-import { CursorPresenceView } from "@playhtml/common";
+import playhtml from "./playhtml-singleton";
+import {
+  CursorPresenceView,
+  PageDataChannel,
+  PlayerIdentity,
+  PresenceRoom,
+  PresenceView,
+} from "@playhtml/common";
 import type { CursorZoneOptions } from "playhtml";
+
+function warnPreInit(call: string): void {
+  console.warn(`[@playhtml/react] ${call} called before init — ignored.`);
+}
 
 /**
  * Hook to access cursor presences from the playhtml context
@@ -36,4 +47,119 @@ export function useCursorZone(
       unregisterCursorZone(element.id);
     };
   }, [ref.current, ref.current?.id]);
+}
+
+/**
+ * Subscribe to a presence channel. Safe to call before playhtml has initialized:
+ * returns an empty map, a setter that warns and no-ops, and `null` identity
+ * until sync completes — then wires up automatically.
+ *
+ * Type parameter `T` is an assertion about the shape of presence values; no
+ * runtime validation is performed.
+ */
+export function usePresence<T extends Record<string, unknown> = Record<string, unknown>>(
+  channel: string,
+): {
+  presences: Map<string, PresenceView<T>>;
+  setMyPresence: (data: T) => void;
+  myIdentity: PlayerIdentity | null;
+} {
+  const { isLoading } = useContext(PlayContext);
+  const [presences, setPresences] = useState<Map<string, PresenceView<T>>>(() => new Map());
+
+  useEffect(() => {
+    if (isLoading) return;
+    setPresences(playhtml.presence.getPresences() as Map<string, PresenceView<T>>);
+    const unsub = playhtml.presence.onPresenceChange(channel, (next) => {
+      setPresences(new Map(next) as Map<string, PresenceView<T>>);
+    });
+    return unsub;
+  }, [isLoading, channel]);
+
+  const setMyPresence = useCallback(
+    (data: T) => {
+      if (isLoading) {
+        warnPreInit(`usePresence("${channel}").setMyPresence`);
+        return;
+      }
+      playhtml.presence.setMyPresence(channel, data);
+    },
+    [isLoading, channel],
+  );
+
+  const myIdentity = useMemo(
+    () => (isLoading ? null : playhtml.presence.getMyIdentity()),
+    [isLoading],
+  );
+
+  return { presences, setMyPresence, myIdentity };
+}
+
+/**
+ * Subscribe to a page-data channel. Safe to call before playhtml has initialized:
+ * returns the default value and a setter that warns and no-ops until sync
+ * completes — then wires up automatically.
+ *
+ * Shape mirrors `useState` — `[data, setData]`.
+ *
+ * `defaultValue` is only read on first mount and when `name` changes.
+ */
+export function usePageData<T>(
+  name: string,
+  defaultValue: T,
+): [T, (data: T | ((draft: T) => void)) => void] {
+  const { isLoading } = useContext(PlayContext);
+  const [data, setDataState] = useState<T>(defaultValue);
+  const channelRef = useRef<PageDataChannel<T> | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const channel = playhtml.createPageData<T>(name, defaultValue);
+    channelRef.current = channel;
+    setDataState(channel.getData());
+    const unsub = channel.onUpdate((next) => setDataState(next));
+    return () => {
+      unsub();
+      channel.destroy();
+      channelRef.current = null;
+    };
+    // defaultValue intentionally excluded — it only seeds the initial state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, name]);
+
+  const setData = useCallback(
+    (next: T | ((draft: T) => void)) => {
+      const channel = channelRef.current;
+      if (isLoading || !channel) {
+        warnPreInit(`usePageData("${name}").setData`);
+        return;
+      }
+      channel.setData(next);
+    },
+    [isLoading, name],
+  );
+
+  return [data, setData];
+}
+
+/**
+ * Join a presence room. Safe to call before playhtml has initialized:
+ * returns `null` until sync completes. When `name` changes, briefly returns
+ * `null` during the transition between rooms.
+ */
+export function usePresenceRoom(name: string): PresenceRoom | null {
+  const { isLoading } = useContext(PlayContext);
+  const [room, setRoom] = useState<PresenceRoom | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const r = playhtml.createPresenceRoom(name);
+    setRoom(r);
+    return () => {
+      r.destroy();
+      setRoom(null);
+    };
+  }, [isLoading, name]);
+
+  return room;
 }

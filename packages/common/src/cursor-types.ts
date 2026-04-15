@@ -104,12 +104,24 @@ function ensurePrimaryColorAndSave(identity: PlayerIdentity): void {
 }
 
 export const PLAYER_IDENTITY_STORAGE_KEY = "playhtml_player_identity";
+
+// Module-level cache so repeated calls return a reference-stable identity.
+// Identity is set-once per tab: JSON.parse allocates a new object on each
+// localStorage read, which would otherwise cause React effect deps and memo
+// comparisons keyed on identity to invalidate on every render.
+let cachedPlayerIdentity: PlayerIdentity | null = null;
+
 /**
  * Loads player identity from localStorage, or generates a new one with a random
  * primary color. Ensures primary color always exists (assigns random and saves if missing).
  * Identity is persisted so the same publicKey and color are reused across sessions.
+ *
+ * The returned reference is cached for the lifetime of the JS context —
+ * subsequent calls return the same object, not a fresh parse.
  */
 export function generatePersistentPlayerIdentity(): PlayerIdentity {
+  if (cachedPlayerIdentity) return cachedPlayerIdentity;
+
   const stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
   if (stored) {
     try {
@@ -119,6 +131,7 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
         if (!hasValidPrimaryColor(identity)) {
           ensurePrimaryColorAndSave(identity);
         }
+        cachedPlayerIdentity = identity;
         return identity;
       }
     } catch (e) {
@@ -135,5 +148,6 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
   } catch (e) {
     console.warn("Failed to save player identity to localStorage:", e);
   }
+  cachedPlayerIdentity = identity;
   return identity;
 }

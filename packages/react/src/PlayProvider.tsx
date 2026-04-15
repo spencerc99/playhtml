@@ -13,7 +13,9 @@ export interface PlayContextInfo
     | "removePlayEventListener"
     | "deleteElementData"
   > {
+  /** @deprecated Use `isLoading` instead. */
   hasSynced: boolean;
+  isLoading: boolean;
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
   getMyPlayerIdentity: () => PlayerIdentity | null;
@@ -46,6 +48,7 @@ export const PlayContext = createContext<PlayContextInfo>({
   },
   removePlayEventListener: () => {},
   hasSynced: false,
+  isLoading: true,
   isProviderMissing: true,
   configureCursors: () => {
     throw new Error(
@@ -205,6 +208,7 @@ export function PlayProvider({
         removePlayEventListener: playhtml.removePlayEventListener,
         deleteElementData: playhtml.deleteElementData,
         hasSynced,
+        isLoading: !hasSynced,
         isProviderMissing: false,
         configureCursors,
         getMyPlayerIdentity,
