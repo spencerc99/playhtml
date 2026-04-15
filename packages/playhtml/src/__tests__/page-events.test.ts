@@ -3,12 +3,7 @@
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { playhtml } from "../index";
-
-// Reach the latest FakeProvider instance (set up in vitest.setup.ts) so
-// tests can simulate inbound messages via emit("custom-message", payload).
-function latestProvider(): any {
-  return (globalThis as any).__getLatestFakeProvider();
-}
+import { latestFakeProvider } from "./test-utils";
 
 beforeAll(async () => {
   await playhtml.init({});
@@ -55,7 +50,7 @@ describe("playhtml page-scoped events", () => {
         received.push(payload);
       });
       try {
-        latestProvider().emit(
+        latestFakeProvider().emit(
           "custom-message",
           JSON.stringify({ type: "roundtrip", eventPayload: { hello: "world" } }),
         );
@@ -69,7 +64,7 @@ describe("playhtml page-scoped events", () => {
       const received: unknown[] = [];
       const unsub = playhtml.onEvent("stop-delivery", (p) => received.push(p));
       unsub();
-      latestProvider().emit(
+      latestFakeProvider().emit(
         "custom-message",
         JSON.stringify({ type: "stop-delivery", eventPayload: 1 }),
       );
@@ -82,7 +77,7 @@ describe("playhtml page-scoped events", () => {
         onEvent: ({ eventPayload }) => received.push(eventPayload),
       });
       try {
-        latestProvider().emit(
+        latestFakeProvider().emit(
           "custom-message",
           JSON.stringify({ type: "old-api", eventPayload: 42 }),
         );
@@ -100,7 +95,7 @@ describe("playhtml page-scoped events", () => {
         onEvent: ({ eventPayload }) => oldReceived.push(eventPayload),
       });
       try {
-        latestProvider().emit(
+        latestFakeProvider().emit(
           "custom-message",
           JSON.stringify({ type: "shared", eventPayload: "both" }),
         );

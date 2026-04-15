@@ -248,9 +248,10 @@ export interface PresenceRoom {
   /** True until the room's WebSocket has connected and synced for the first time. */
   readonly isLoading: boolean;
   /**
-   * Subscribe to loading-state changes. Fires when `isLoading` flips from
-   * true to false (initial sync) or vice versa (on subsequent disconnect).
-   * Returns an unsubscribe function.
+   * Subscribe to loading-state changes. Fires only on transitions — flipping
+   * from true to false (initial sync) or vice versa (on subsequent
+   * disconnect). Call sites that want the current value should read
+   * `room.isLoading` directly. Returns an unsubscribe function.
    */
   onLoadingChange(callback: (isLoading: boolean) => void): () => void;
   dispatchEvent(type: string, payload?: unknown): void;

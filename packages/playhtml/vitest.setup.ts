@@ -23,10 +23,10 @@ import { vi } from "vitest";
 vi.mock("y-indexeddb", () => ({ IndexeddbPersistence: class {} }));
 
 // Tracks all FakeProvider instances so tests can drive inbound messages via
-// `latestFakeProvider()` below.
-const _fakeProviderInstances: unknown[] = [];
-// @ts-ignore — attach to global so tests can reach it without importing setup
-(globalThis as any).__getLatestFakeProvider = () => _fakeProviderInstances[_fakeProviderInstances.length - 1];
+// emit("custom-message", ...). Use the helpers in ./test-utils to access.
+const fakeProviderInstances: unknown[] = [];
+// @ts-ignore — expose via a well-known symbol the test-utils module reads.
+(globalThis as any).__playhtmlFakeProviders = fakeProviderInstances;
 
 vi.mock("y-partyserver/provider", () => {
   return {
@@ -41,7 +41,7 @@ vi.mock("y-partyserver/provider", () => {
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
       constructor() {
-        _fakeProviderInstances.push(this);
+        fakeProviderInstances.push(this);
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),

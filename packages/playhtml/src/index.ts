@@ -1126,7 +1126,11 @@ export interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   syncedStore: (typeof store)["play"];
   elementHandlers: Map<string, Map<string, ElementHandler>>;
-  /** @deprecated Kept for type compatibility; no longer populated. Use onEvent. */
+  /**
+   * @deprecated Always empty in this and later versions — handlers for the
+   * deprecated `registerPlayEventListener` API are no longer externally
+   * observable. Kept for type compatibility. Use `onEvent` instead.
+   */
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;

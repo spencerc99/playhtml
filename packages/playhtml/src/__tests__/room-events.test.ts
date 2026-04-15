@@ -3,10 +3,7 @@
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { playhtml } from "../index";
-
-function latestProvider(): any {
-  return (globalThis as any).__getLatestFakeProvider();
-}
+import { captureNextProvider } from "./test-utils";
 
 describe("PresenceRoom events", () => {
   describe("after init", () => {
@@ -67,8 +64,9 @@ describe("PresenceRoom events", () => {
 
     describe("wire roundtrip", () => {
       it("onEvent receives payloads from incoming custom-message frames", () => {
-        const room = playhtml.createPresenceRoom("event-roundtrip");
-        const roomProvider = latestProvider();
+        const { provider: roomProvider, result: room } = captureNextProvider(
+          () => playhtml.createPresenceRoom("event-roundtrip"),
+        );
         try {
           const received: unknown[] = [];
           room.onEvent("ping", (payload) => received.push(payload));
@@ -83,8 +81,9 @@ describe("PresenceRoom events", () => {
       });
 
       it("unsubscribe stops delivery", () => {
-        const room = playhtml.createPresenceRoom("event-room-stop");
-        const roomProvider = latestProvider();
+        const { provider: roomProvider, result: room } = captureNextProvider(
+          () => playhtml.createPresenceRoom("event-room-stop"),
+        );
         try {
           const received: unknown[] = [];
           const unsub = room.onEvent("x", (p) => received.push(p));
@@ -100,8 +99,9 @@ describe("PresenceRoom events", () => {
       });
 
       it("dispatchEvent calls provider.sendMessage with EventMessage JSON", () => {
-        const room = playhtml.createPresenceRoom("event-room-dispatch");
-        const roomProvider = latestProvider();
+        const { provider: roomProvider, result: room } = captureNextProvider(
+          () => playhtml.createPresenceRoom("event-room-dispatch"),
+        );
         try {
           room.dispatchEvent("hello", { a: 1 });
           expect(roomProvider.sendMessage).toHaveBeenCalledWith(
