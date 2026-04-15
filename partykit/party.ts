@@ -631,7 +631,7 @@ export class PartyServer extends YServer {
         timestamp: serverResetEpoch,
         resetEpoch: serverResetEpoch,
       });
-      connection.send(resetMessage);
+      this.sendCustomMessage(connection, resetMessage);
       console.log(
         `[PartyServer] Sent room-reset message to connectionId=${connectionId}, returning early (no Y.js sync). Client will reload and reconnect.`
       );
