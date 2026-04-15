@@ -126,6 +126,11 @@ body {
 
 .wiki-excerpt a { color: #0645ad; text-decoration: none; }
 
+.milestone-preview-cell {
+  display: flex;
+  justify-content: flex-start;
+}
+
 @media (max-width: 700px) {
   .variants-grid {
     grid-template-columns: 1fr;

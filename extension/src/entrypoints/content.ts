@@ -7,6 +7,10 @@ import {
   MILESTONE_TOAST_FONT_URL,
 } from "./content/milestone-toast-styles";
 import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
+import {
+  MilestoneToast,
+  type MilestoneToastData,
+} from "../components/MilestoneToast";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
@@ -1189,142 +1193,40 @@ export default defineContentScript({
       }
     });
 
-    const showMilestoneToast = (milestone: {
-      type: "cursorDistance" | "screenTime" | "sitesExplored" | "domainVisits";
-      displayValue: string;
-      copy: string;
-      ctaLabel: string;
-      ctaAction: "TOGGLE_HISTORICAL_OVERLAY" | "OPEN_PORTRAIT";
-      period: "today" | "alltime";
-      domain?: string;
-      faviconUrl?: string;
-      sparkline?: number[];
-    }): void => {
-      let accentHtml = "";
+    const showMilestoneToast = (milestone: MilestoneToastData): void => {
+      let ui: InjectedReactUI | null = null;
 
-      if (milestone.type === "cursorDistance") {
-        const cursorPath1 =
-          "m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z";
-        const cursorPath2 =
-          "m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z";
-        const svgGhost = (cls: string) =>
-          `<svg class="wwo-cursor-svg ${cls}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-            <path d="${cursorPath1}" fill="#4a9a8a"/>
-            <path d="${cursorPath2}" fill="#4a9a8a"/>
-          </svg>`;
-        accentHtml = `
-          <div class="wwo-cursor-trail">
-            ${svgGhost("wwo-c3")}${svgGhost("wwo-c2")}${svgGhost(
-          "wwo-c1",
-        )}${svgGhost("wwo-c0")}
-          </div>
-          <div class="wwo-toast-stat">${milestone.displayValue.replace(
-            " mi",
-            "",
-          )}</div>
-          <div class="wwo-toast-unit">miles</div>
-        `;
-      } else if (milestone.type === "screenTime") {
-        const parts = milestone.displayValue.split(" ");
-        const statHtml =
-          parts.length === 2
-            ? `${parts[0]}<br>${parts[1]}`
-            : milestone.displayValue;
-        const bars = (milestone.sparkline ?? Array(7).fill(0.5))
-          .map((v, i) => {
-            const height = Math.max(Math.round(v * 100), 5);
-            const isCurrent = i === 6;
-            return `<div class="wwo-spark-bar${
-              isCurrent ? " wwo-current" : ""
-            }" style="height:${height}%"></div>`;
-          })
-          .join("");
-        accentHtml = `
-          <div class="wwo-toast-stat wwo-toast-stat-sm">${statHtml}</div>
-          <div class="wwo-sparkline">${bars}</div>
-        `;
-      } else if (milestone.type === "sitesExplored") {
-        const dots = [
-          { top: 1, left: 5, size: 3, opacity: 0.35 },
-          { top: 6, left: 22, size: 4, opacity: 0.65 },
-          { top: 14, left: 8, size: 3, opacity: 0.45 },
-          { top: 2, left: 33, size: 5, opacity: 0.85 },
-          { top: 18, left: 30, size: 3, opacity: 0.4 },
-          { top: 9, left: 16, size: 3, opacity: 0.55 },
-        ]
-          .map(
-            (d) =>
-              `<div style="position:absolute;top:${d.top}px;left:${d.left}px;width:${d.size}px;height:${d.size}px;border-radius:50%;background:#4a9a8a;opacity:${d.opacity}"></div>`,
-          )
-          .join("");
-        accentHtml = `
-          <div class="wwo-toast-stat">${milestone.displayValue}</div>
-          <div class="wwo-toast-unit">domains</div>
-          <div class="wwo-scatter">${dots}</div>
-        `;
-      } else {
-        const faviconHtml = milestone.faviconUrl
-          ? `<img class="wwo-favicon-img" src="${milestone.faviconUrl}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
-            `<span class="wwo-favicon-fallback" style="display:none">${(milestone.domain ??
-              "?")[0].toUpperCase()}</span>`
-          : `<span class="wwo-favicon-fallback">${(milestone.domain ??
-              "?")[0].toUpperCase()}</span>`;
-        accentHtml = `
-          <div class="wwo-favicon-wrap">${faviconHtml}</div>
-          <div class="wwo-toast-stat" style="margin-top:5px">${milestone.displayValue}</div>
-        `;
-      }
-
-      const badgeClass =
-        milestone.period === "today" ? "wwo-today" : "wwo-alltime";
-      const badgeLabel = milestone.period === "today" ? "today" : "all time";
-
-      // Shadow DOM host — position: fixed on the host, toast styles isolated inside.
-      const { host, shadow } = injectShadow({
-        hostStyle: "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
-        css: MILESTONE_TOAST_CSS,
-        fontUrl: MILESTONE_TOAST_FONT_URL,
-      });
-
-      const toast = document.createElement("div");
-      toast.className = "wwo-milestone-toast";
-      toast.innerHTML = `
-        <div class="wwo-toast-wordmark">wwo</div>
-        <div class="wwo-toast-body">
-          <div class="wwo-toast-accent">${accentHtml}</div>
-          <div class="wwo-toast-text">
-            <div class="wwo-toast-badge ${badgeClass}">${badgeLabel}</div>
-            <p class="wwo-toast-headline">${milestone.copy}</p>
-            <button class="wwo-toast-cta" data-action="${milestone.ctaAction}">${milestone.ctaLabel}</button>
-          </div>
-        </div>
-      `;
-      shadow.appendChild(toast);
-
-      const dismiss = () => {
-        toast.classList.remove("wwo-visible");
-        toast.classList.add("wwo-hiding");
-        setTimeout(() => host.remove(), 400);
-      };
-
-      const cta = toast.querySelector<HTMLButtonElement>(".wwo-toast-cta");
-      cta?.addEventListener("click", () => {
-        if (milestone.ctaAction === "TOGGLE_HISTORICAL_OVERLAY") {
+      const handleCta = (action: MilestoneToastData["ctaAction"]) => {
+        if (action === "TOGGLE_HISTORICAL_OVERLAY") {
           toggleHistoricalOverlay();
-        } else if (milestone.ctaAction === "OPEN_PORTRAIT") {
+        } else if (action === "OPEN_PORTRAIT") {
           browser.runtime.sendMessage({
             type: "OPEN_TAB",
             url: browser.runtime.getURL("portrait.html"),
           });
         }
-        dismiss();
-      });
+      };
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => toast.classList.add("wwo-visible"));
-      });
+      const handleDismiss = () => {
+        ui?.destroy();
+        ui = null;
+      };
 
-      setTimeout(dismiss, MILESTONE_DURATION_MS);
+      ui = injectShadowReact(
+        MilestoneToast,
+        {
+          milestone,
+          onCta: handleCta,
+          onDismiss: handleDismiss,
+          autoHideMs: MILESTONE_DURATION_MS,
+        },
+        {
+          hostStyle:
+            "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
+          css: MILESTONE_TOAST_CSS,
+          fontUrl: MILESTONE_TOAST_FONT_URL,
+        },
+      );
     };
 
     // Listen for messages from popup/devtools

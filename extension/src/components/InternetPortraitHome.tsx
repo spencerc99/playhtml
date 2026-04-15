@@ -306,7 +306,17 @@ export function InternetPortraitHome({
         </section>
       </main>
 
-      <footer className="portrait-home__footer">Beta</footer>
+      <footer className="portrait-home__footer">
+        <span>Beta</span>
+        <a
+          className="portrait-home__feedback"
+          href="mailto:hi@spencer.place?subject=we%20were%20online%20feedback"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          feedback → hi@spencer.place
+        </a>
+      </footer>
     </div>
   );
 }

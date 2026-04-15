@@ -4,6 +4,12 @@
 import "./components-preview.scss";
 import React, { lazy, useEffect, useId, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
+import {
+  MilestoneToast,
+  type MilestoneToastData,
+} from "@extension/components/MilestoneToast";
+import { MILESTONE_TOAST_CSS } from "@extension/entrypoints/content/milestone-toast-styles";
+import { MILESTONE_COPY } from "@extension/milestones/copy";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
   : null;
@@ -2334,9 +2340,205 @@ function LinkTracesSection() {
   );
 }
 
+// ── Milestones section ───────────────────────────────────────────────────────
+
+const MILESTONE_STYLE_ID = "wwo-milestone-preview-styles";
+function useMilestoneStyles() {
+  useEffect(() => {
+    if (document.getElementById(MILESTONE_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = MILESTONE_STYLE_ID;
+    style.textContent = MILESTONE_TOAST_CSS;
+    document.head.appendChild(style);
+  }, []);
+}
+
+function buildMilestoneSample(
+  type: MilestoneToastData["type"],
+  copyIndex: number,
+): MilestoneToastData {
+  const copy = MILESTONE_COPY[type][copyIndex % MILESTONE_COPY[type].length];
+  if (type === "cursorDistance") {
+    return {
+      type,
+      displayValue: `${(1 + copyIndex * 1.4).toFixed(1)} mi`,
+      copy,
+      ctaLabel: "see your trail",
+      ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+      period: "today",
+    };
+  }
+  if (type === "screenTime") {
+    const minutes = 30 + copyIndex * 45;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    const displayValue = h === 0 ? `${m}m` : m === 0 ? `${h}h` : `${h}h ${m}m`;
+    return {
+      type,
+      displayValue,
+      copy,
+      ctaLabel: "see your day",
+      ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+      period: "today",
+      sparkline: [0.15, 0.3, 0.5, 0.4, 0.7, 0.85, 1.0],
+    };
+  }
+  if (type === "sitesExplored") {
+    const counts = [10, 25, 50, 100, 250, 500];
+    return {
+      type,
+      displayValue: `${counts[copyIndex % counts.length]}`,
+      copy,
+      ctaLabel: "see your portrait",
+      ctaAction: "OPEN_PORTRAIT",
+      period: "alltime",
+    };
+  }
+  // domainVisits
+  const domains = [
+    "en.wikipedia.org",
+    "news.ycombinator.com",
+    "github.com",
+    "youtube.com",
+    "nytimes.com",
+    "are.na",
+    "twitter.com",
+  ];
+  const counts = [10, 25, 50, 100];
+  const domain = domains[copyIndex % domains.length];
+  return {
+    type,
+    displayValue: `${counts[copyIndex % counts.length]}×`,
+    copy,
+    ctaLabel: "see your history there",
+    ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+    period: "alltime",
+    domain,
+    faviconUrl: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+  };
+}
+
+const MILESTONE_TYPES: {
+  type: MilestoneToastData["type"];
+  label: string;
+  desc: string;
+  id: string;
+}[] = [
+  {
+    type: "cursorDistance",
+    label: "cursor distance",
+    id: "section-ms-cursor",
+    desc: "Fires daily when your cursor has traveled 1, 2, 5, 10, or 25 miles across the screen. The stat is converted from pixels using CSS reference (96 DPI).",
+  },
+  {
+    type: "screenTime",
+    label: "screen time",
+    id: "section-ms-time",
+    desc: "Fires daily as you cross 30m, 1h, 2h, 4h, or 8h of focused time. Sparkline shows the last 7 hours of activity, with the current hour highlighted.",
+  },
+  {
+    type: "sitesExplored",
+    label: "sites explored",
+    id: "section-ms-sites",
+    desc: "Fires all-time at 10, 25, 50, 100, 250, and 500 unique domains visited. These don't reset — they mark lifetime breadth on the extension.",
+  },
+  {
+    type: "domainVisits",
+    label: "domain visits",
+    id: "section-ms-domain",
+    desc: "Fires all-time per-domain at 10, 25, 50, and 100 visits. Favicon identifies the site you keep coming back to.",
+  },
+];
+
+function MilestoneRow({
+  sample,
+}: {
+  sample: MilestoneToastData;
+}) {
+  return (
+    <div className="milestone-preview-cell">
+      <MilestoneToast milestone={sample} static />
+    </div>
+  );
+}
+
+function MilestonesSection() {
+  useMilestoneStyles();
+  return (
+    <div style={{ padding: "0 40px 40px", maxWidth: "1200px" }}>
+      <div
+        style={{
+          fontFamily: "'Lora', Georgia, serif",
+          fontSize: "22px",
+          fontWeight: 600,
+          color: TEXT,
+          marginBottom: "8px",
+        }}
+      >
+        Milestone toasts
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          color: TEXT_MUTED,
+          fontFamily: "'Atkinson Hyperlegible', sans-serif",
+          marginBottom: "28px",
+        }}
+      >
+        The four milestone types, shown across their full copy pool. Use this to
+        pressure-test whether each headline reads clearly in context.
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "48px" }}>
+        {MILESTONE_TYPES.map(({ type, label, desc, id }) => (
+          <div key={type} id={id}>
+            <div
+              style={{
+                fontFamily: "'Lora', Georgia, serif",
+                fontSize: "17px",
+                fontWeight: 600,
+                color: TEXT,
+                marginBottom: "4px",
+              }}
+            >
+              {label}
+            </div>
+            <div
+              style={{
+                fontSize: "12px",
+                color: TEXT_MUTED,
+                fontFamily: "'Atkinson Hyperlegible', sans-serif",
+                marginBottom: "16px",
+                maxWidth: "640px",
+                lineHeight: 1.5,
+              }}
+            >
+              {desc}
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              {MILESTONE_COPY[type].map((_, i) => (
+                <MilestoneRow
+                  key={i}
+                  sample={buildMilestoneSample(type, i)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 
-type Section = "portrait-card" | "link-patina";
+type Section = "portrait-card" | "link-patina" | "milestones";
 
 const PORTRAIT_NAV = [
   { id: "section-density", label: "density" },
@@ -2355,6 +2557,13 @@ const LINK_PATINA_NAV = [
   { id: "section-lt-bold",          label: "bold" },
 ];
 
+const MILESTONES_NAV = [
+  { id: "section-ms-cursor", label: "cursor distance" },
+  { id: "section-ms-time",   label: "screen time" },
+  { id: "section-ms-sites",  label: "sites explored" },
+  { id: "section-ms-domain", label: "domain visits" },
+];
+
 function SidebarNav({
   activeSection,
   onSectionChange,
@@ -2364,7 +2573,11 @@ function SidebarNav({
 }) {
   const [activeId, setActiveId] = useState<string>("");
   const navItems =
-    activeSection === "portrait-card" ? PORTRAIT_NAV : LINK_PATINA_NAV;
+    activeSection === "portrait-card"
+      ? PORTRAIT_NAV
+      : activeSection === "milestones"
+        ? MILESTONES_NAV
+        : LINK_PATINA_NAV;
 
   useEffect(() => {
     setActiveId("");
@@ -2385,7 +2598,7 @@ function SidebarNav({
 
   return (
     <nav className="sidebar-nav">
-      {(["portrait-card", "link-patina"] as Section[]).map((s) => (
+      {(["portrait-card", "link-patina", "milestones"] as Section[]).map((s) => (
         <a
           key={s}
           href="#"
@@ -2394,7 +2607,7 @@ function SidebarNav({
           }`}
           style={{
             fontWeight: activeSection === s ? 700 : undefined,
-            marginBottom: s === "portrait-card" ? "6px" : undefined,
+            marginBottom: s !== "milestones" ? "6px" : undefined,
           }}
           onClick={(e) => {
             e.preventDefault();
@@ -2403,7 +2616,11 @@ function SidebarNav({
             window.scrollTo({ top: 0 });
           }}
         >
-          {s === "portrait-card" ? "portrait card" : "link patina"}
+          {s === "portrait-card"
+            ? "portrait card"
+            : s === "link-patina"
+              ? "link patina"
+              : "milestones"}
         </a>
       ))}
       {activeSection !== "portrait-card" && (
@@ -2449,7 +2666,9 @@ function PreviewPage() {
   const [colorful, setColorful] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>(() => {
     const hash = window.location.hash.slice(1);
-    return hash === "link-patina" ? "link-patina" : "portrait-card";
+    if (hash === "link-patina") return "link-patina";
+    if (hash === "milestones") return "milestones";
+    return "portrait-card";
   });
 
   return (
@@ -2472,12 +2691,16 @@ function PreviewPage() {
               <div className="page-title">
                 {activeSection === "portrait-card"
                   ? "portrait card — design directions"
-                  : "link patina — design directions"}
+                  : activeSection === "milestones"
+                    ? "milestones — copy & visuals"
+                    : "link patina — design directions"}
               </div>
               <div className="page-subtitle">
                 {activeSection === "portrait-card"
                   ? "six layout directions · same data across all variants"
-                  : "three visual treatments · links carry varied visit counts"}
+                  : activeSection === "milestones"
+                    ? "four milestone types · full copy pool for each"
+                    : "three visual treatments · links carry varied visit counts"}
               </div>
               {activeSection === "portrait-card" && (
                 <div className="mock-note">
@@ -2609,6 +2832,8 @@ function PreviewPage() {
         )}
 
         {activeSection === "link-patina" && <LinkTracesSection />}
+
+        {activeSection === "milestones" && <MilestonesSection />}
       </div>
     </div>
   );

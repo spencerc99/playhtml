@@ -95,7 +95,9 @@ describe("NavigationCollector", () => {
       expect(call.visibility_state).toBe("hidden");
       expect(call.page_ref).toBeTruthy();
       expect(call.title).toBeTruthy();
-      expect(call.favicon_url).toContain("example.com");
+      // Empty string when the page declares no <link rel="icon">; consumers
+      // fall back to Google's S2 favicon service at render time.
+      expect(call.favicon_url).toBe("");
     });
 
     it("emits focus event when tab becomes visible", () => {

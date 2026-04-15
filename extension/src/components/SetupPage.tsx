@@ -10,6 +10,7 @@ import { syncParticipantColor } from "../storage/sync";
 import { getParticipantId } from "../storage/participant";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
+import { MilestoneToastPreview } from "./MilestoneToastPreview";
 
 type Step = "welcome" | "configure" | "done";
 type SharingMode = "local" | "shared";
@@ -271,8 +272,34 @@ export default function SetupPage() {
             <h2 className="setup-step__heading">All set!</h2>
             <p className="setup-step__desc">
               You can close this tab and open the popup to explore your
-              portrait.
+              portrait. A few things to know as you wander:
             </p>
+
+            <div className="setup-step__tip">
+              <h3 className="setup-step__subheading">See your trail, anywhere</h3>
+              <p className="setup-step__desc">
+                Press{" "}
+                <kbd className="setup-step__kbd">
+                  {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}
+                </kbd>
+                <span className="setup-step__kbd-plus">+</span>
+                <kbd className="setup-step__kbd">Shift</kbd>
+                <span className="setup-step__kbd-plus">+</span>
+                <kbd className="setup-step__kbd">H</kbd> on any page to bring up
+                your historical overlay — the cursor trails, clicks, and scrolls
+                you left there before.
+              </p>
+            </div>
+
+            <div className="setup-step__tip">
+              <h3 className="setup-step__subheading">Milestones along the way</h3>
+              <p className="setup-step__desc">
+                As you move, we'll drop the occasional note — marking miles
+                walked, time spent, and places you keep returning to.
+              </p>
+              <MilestoneToastPreview />
+            </div>
+
             <div className="setup-step__actions">
               <button
                 onClick={() => window.close()}

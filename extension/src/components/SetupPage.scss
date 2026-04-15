@@ -181,4 +181,37 @@
   &__btn-secondary {
     @include btn-secondary;
   }
+
+  // ── Done-step tips ──────────────────────────────────────────────────────────
+
+  &__tip {
+    margin-bottom: 24px;
+  }
+
+  &__kbd {
+    display: inline-block;
+    font-family: 'Martian Mono', monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: $surface;
+    border: 1px solid $border-strong;
+    border-bottom-width: 2px;
+    color: $text;
+    line-height: 1.2;
+    vertical-align: baseline;
+  }
+
+  &__kbd-plus {
+    color: $text-muted;
+    margin: 0 2px;
+    font-size: 11px;
+  }
+
+  &__milestone-preview {
+    margin-top: 12px;
+    min-height: 96px;
+    display: flex;
+    align-items: flex-start;
+  }
 }

@@ -545,10 +545,19 @@ export default defineBackground(() => {
     for (const { domain } of allDomainEntries.slice(0, 20)) {
       const agg = await store.getSessionStats(domain).catch(() => null);
       if (!agg) continue;
-      const domainNavEvents = await store.queryByDomain(domain, { type: 'navigation', limit: 1 });
-      const faviconUrl = domainNavEvents[0]
-        ? (domainNavEvents[0].data as any).favicon_url
-        : undefined;
+      // Pull recent navigation events and pick the most recent one with a
+      // non-empty favicon_url. The first stored event is often a blur/beforeunload
+      // captured before <link rel="icon"> was parsed, which leaves favicon_url
+      // pointing at a /favicon.ico fallback that many sites don't actually serve.
+      const domainNavEvents = await store.queryByDomain(domain, { type: 'navigation', limit: 50 });
+      let faviconUrl: string | undefined;
+      for (let i = domainNavEvents.length - 1; i >= 0; i--) {
+        const candidate = (domainNavEvents[i].data as any).favicon_url;
+        if (typeof candidate === 'string' && candidate.length > 0) {
+          faviconUrl = candidate;
+          break;
+        }
+      }
       topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl });
     }
 

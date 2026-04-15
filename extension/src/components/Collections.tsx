@@ -58,6 +58,57 @@ const COLLECTOR_DESCRIPTIONS: Record<string, string> = {
   navigation: "Captures page navigation and session timing",
 };
 
+// ── Keyboard privacy preview ─────────────────────────────────────────────────
+// Shows a before/after so users can see what "abstract" vs "full" actually
+// records. The sample contains an email so the PII redaction in full mode
+// is visible, not just abstract's opaque solid blocks.
+
+const SAMPLE_TYPED_TEXT = "email hi@spencer.place with feedback!";
+const REDACTION_CHAR = "\u2588"; // U+2588 FULL BLOCK — matches KeyboardCollector
+
+const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+const PHONE_RE = /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g;
+const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
+
+function redactPII(text: string): string {
+  let out = text;
+  for (const re of [EMAIL_RE, PHONE_RE, SSN_RE]) {
+    out = out.replace(re, (m) => REDACTION_CHAR.repeat(m.length));
+  }
+  return out;
+}
+
+function redactNonWhitespace(text: string): string {
+  return text.replace(/\S/g, REDACTION_CHAR);
+}
+
+function KeyboardPrivacyPreview({
+  level,
+}: {
+  level: "abstract" | "full";
+}) {
+  const output =
+    level === "abstract"
+      ? redactNonWhitespace(SAMPLE_TYPED_TEXT)
+      : redactPII(SAMPLE_TYPED_TEXT);
+  return (
+    <div className="collector-card__privacy-preview">
+      <div className="collector-card__privacy-preview-row">
+        <span className="collector-card__privacy-preview-label">You type</span>
+        <span className="collector-card__privacy-preview-value">
+          {SAMPLE_TYPED_TEXT}
+        </span>
+      </div>
+      <div className="collector-card__privacy-preview-row">
+        <span className="collector-card__privacy-preview-label">We record</span>
+        <span className="collector-card__privacy-preview-value collector-card__privacy-preview-value--recorded">
+          {output}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function CollectorList({
   modes,
   onModeChange,
@@ -127,6 +178,7 @@ export function CollectorList({
                     <option value="full">Full</option>
                   </select>
                 </div>
+                <KeyboardPrivacyPreview level={keyboardPrivacyLevel} />
               </div>
             )}
           </div>

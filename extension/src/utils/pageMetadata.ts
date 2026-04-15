@@ -102,13 +102,11 @@ export function getFaviconUrl(): string {
     'link[rel~="icon"], link[rel="shortcut icon"]'
   ) as HTMLLinkElement | null;
 
-  if (faviconLink?.href) {
-    return faviconLink.href;
-  }
-
-  const protocol = window.location.protocol || 'https:';
-  const hostname = window.location.hostname || 'localhost';
-  return `${protocol}//${hostname}/favicon.ico`;
+  // Return the declared icon href, or empty string if the page hasn't declared
+  // one. Consumers fall back to Google's S2 favicon service — the naive
+  // `${hostname}/favicon.ico` path 404s on many major sites (GitHub, HN, are.na,
+  // etc.) and pollutes the event store with broken URLs.
+  return faviconLink?.href ?? "";
 }
 
 export function getCurrentPageMetadata(url = window.location.href): PageMetadataSnapshot {
