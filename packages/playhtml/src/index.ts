@@ -147,8 +147,6 @@ function normalizeRoomId(host: string, roomString: string): string {
   return encodeURIComponent(normalized);
 }
 
-const ROOM_EVENT_TYPE = "__playhtml_event__";
-
 let yprovider: YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
@@ -434,43 +432,44 @@ function onMessage(data: string) {
     return;
   }
 
-  // Handle new-style room events
-  if (message.type === ROOM_EVENT_TYPE) {
-    const callbacks = pageEventListeners.get(message.eventType);
-    if (callbacks) {
-      for (const cb of callbacks) cb(message.payload);
-    }
-    return;
-  }
-
-  // Handle regular PlayHTML events
+  // Handle PlayHTML events. Both the deprecated registerPlayEventListener
+  // registry (eventHandlers) and the new onEvent registry (pageEventListeners)
+  // share the same wire format; fire whichever matches the type.
   const { type, eventPayload } = message as EventMessage;
+
+  const newListeners = pageEventListeners.get(type);
+  if (newListeners) {
+    for (const cb of newListeners) cb(eventPayload);
+  }
+
   const maybeHandlers = eventHandlers.get(type);
-  if (!maybeHandlers) {
-    // Handle internal bridge replies
-    if ((message as any).permissions) {
-      try {
-        const perms = (message as any).permissions as Record<
-          string,
-          "read-only" | "read-write"
-        >;
-        Object.entries(perms).forEach(([elementId, mode]) => {
-          sharedPermissions.set(elementId, mode);
-          if (mode === "read-only") {
-            // Add not-allowed affordance to any matching referenced element
-            const el = document.querySelector(
-              `[data-source$="#${CSS.escape(elementId)}"]`,
-            ) as HTMLElement | null;
-            if (el) el.setAttribute("data-source-read-only", "");
-          }
-        });
-      } catch {}
+  if (maybeHandlers) {
+    for (const handler of maybeHandlers) {
+      handler.onEvent(eventPayload);
     }
     return;
   }
 
-  for (const handler of maybeHandlers) {
-    handler.onEvent(eventPayload);
+  if (newListeners) return;
+
+  // Handle internal bridge replies (only if no listeners matched above)
+  if ((message as any).permissions) {
+    try {
+      const perms = (message as any).permissions as Record<
+        string,
+        "read-only" | "read-write"
+      >;
+      Object.entries(perms).forEach(([elementId, mode]) => {
+        sharedPermissions.set(elementId, mode);
+        if (mode === "read-only") {
+          // Add not-allowed affordance to any matching referenced element
+          const el = document.querySelector(
+            `[data-source$="#${CSS.escape(elementId)}"]`,
+          ) as HTMLElement | null;
+          if (el) el.setAttribute("data-source-read-only", "");
+        }
+      });
+    } catch {}
   }
 }
 
@@ -564,29 +563,6 @@ async function initPlayHTML({
   yprovider.on("error", () => {
     onError?.();
   });
-
-  // Register message handler immediately after provider creation to catch early messages
-  // like room-reset, which the server sends immediately upon detecting a stale client epoch.
-  // The WebSocket is created synchronously in the provider constructor,
-  // so we can access it here before any sync events fire.
-  // We use a microtask to ensure the provider is fully initialized.
-  queueMicrotask(() => {
-    if (yprovider.ws) {
-      yprovider.ws.addEventListener("message", (ev) => onMessage(ev.data));
-    } else {
-      console.warn(
-        "[PLAYHTML] WebSocket not available in microtask, onMessage handler not attached",
-      );
-    }
-  });
-
-  // Re-attach message handler when the WebSocket reconnects (provider creates a new instance)
-  yprovider.on("status", ({ status }: { status: string }) => {
-    if (status === "connected") {
-      yprovider.ws?.addEventListener("message", (ev) => onMessage(ev.data));
-    }
-  });
-
 
   // Initialize cursor tracking immediately after provider creation
   if (cursors.enabled) {
@@ -1090,33 +1066,25 @@ function createPresenceRoom(name: string): PresenceRoom {
 
   const eventListeners = new Map<string, Set<(payload: unknown) => void>>();
 
-  function handleMessage(evt: MessageEvent) {
-    if (evt.data instanceof Blob) return;
-    let parsed: any;
-    try { parsed = JSON.parse(evt.data); } catch { return; }
-    if (parsed.type !== ROOM_EVENT_TYPE) return;
-    const callbacks = eventListeners.get(parsed.eventType);
-    if (!callbacks) return;
-    for (const cb of callbacks) cb(parsed.payload);
-  }
-
-  provider.ws?.addEventListener("message", handleMessage);
-  provider.on("status", ({ status }: { status: string }) => {
-    if (status === "connected") {
-      provider.ws?.addEventListener("message", handleMessage);
+  provider.on("custom-message", (data: string) => {
+    let parsed: EventMessage;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return;
     }
+    const callbacks = eventListeners.get(parsed.type);
+    if (!callbacks) return;
+    for (const cb of callbacks) cb(parsed.eventPayload);
   });
 
   let destroyed = false;
   return {
     presence,
     dispatchEvent(type: string, payload?: unknown): void {
-      if (destroyed || !provider.ws) return;
-      provider.ws.send(JSON.stringify({
-        type: ROOM_EVENT_TYPE,
-        eventType: type,
-        payload: payload ?? null,
-      }));
+      if (destroyed) return;
+      const message: EventMessage = { type, eventPayload: payload ?? null };
+      provider.sendMessage(JSON.stringify(message));
     },
     onEvent(type: string, callback: (payload: unknown) => void): () => void {
       if (!eventListeners.has(type)) eventListeners.set(type, new Set());
@@ -1616,12 +1584,9 @@ function removePlayEventListener(type: string, id: string) {
 }
 
 function pageDispatchEvent(type: string, payload?: unknown): void {
-  if (!yprovider?.ws) return;
-  yprovider.ws.send(JSON.stringify({
-    type: ROOM_EVENT_TYPE,
-    eventType: type,
-    payload: payload ?? null,
-  }));
+  if (!yprovider) return;
+  const message: EventMessage = { type, eventPayload: payload ?? null };
+  yprovider.sendMessage(JSON.stringify(message));
 }
 
 function pageOnEvent(type: string, callback: (payload: unknown) => void): () => void {

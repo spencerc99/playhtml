@@ -30,6 +30,7 @@ vi.mock("y-partyserver/provider", () => {
         addEventListener: (t: string, cb: any) => void;
       };
       awareness: any;
+      sendMessage = vi.fn();
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
       constructor() {
