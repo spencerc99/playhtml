@@ -292,15 +292,20 @@ let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
 >();
-let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
-  string,
-  Array<RegisteredPlayEvent>
->();
 // Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
 // Allows us to distinguish programmatic remote-applied changes from local user writes.
 const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
+
+// Single source of truth for page-scoped event subscriptions.
+// Both the new dispatchEvent/onEvent API and the deprecated registerPlayEventListener
+// API route through here; the deprecated API wraps it via an id → unsubscribe map below.
+const pageEventListeners = new Map<string, Set<(payload: unknown) => void>>();
+
+// Backs the deprecated registerPlayEventListener/removePlayEventListener pair.
+// Can be deleted together with those functions when the deprecation period ends.
 let eventCount = 0;
+const deprecatedEventRegistrations = new Map<string, () => void>();
 export type CursorRoom =
   | "page"
   | "domain"
@@ -401,10 +406,6 @@ function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
 }
 
-function sendPlayEvent(eventMessage: EventMessage) {
-  yprovider.sendMessage(JSON.stringify(eventMessage));
-}
-
 function onMessage(data: string) {
   let message: any;
   try {
@@ -431,34 +432,35 @@ function onMessage(data: string) {
     return;
   }
 
-  // Handle regular PlayHTML events
-  const { type, eventPayload } = message as EventMessage;
-  const maybeHandlers = eventHandlers.get(type);
-  if (!maybeHandlers) {
-    // Handle internal bridge replies
-    if ((message as any).permissions) {
-      try {
-        const perms = (message as any).permissions as Record<
-          string,
-          "read-only" | "read-write"
-        >;
-        Object.entries(perms).forEach(([elementId, mode]) => {
-          sharedPermissions.set(elementId, mode);
-          if (mode === "read-only") {
-            // Add not-allowed affordance to any matching referenced element
-            const el = document.querySelector(
-              `[data-source$="#${CSS.escape(elementId)}"]`,
-            ) as HTMLElement | null;
-            if (el) el.setAttribute("data-source-read-only", "");
-          }
-        });
-      } catch {}
-    }
+  // Handle permission-bridge replies. This message shape is distinct from
+  // EventMessage (no `type`, carries `permissions`), so route it explicitly.
+  if ((message as any).permissions) {
+    try {
+      const perms = (message as any).permissions as Record<
+        string,
+        "read-only" | "read-write"
+      >;
+      Object.entries(perms).forEach(([elementId, mode]) => {
+        sharedPermissions.set(elementId, mode);
+        if (mode === "read-only") {
+          // Add not-allowed affordance to any matching referenced element
+          const el = document.querySelector(
+            `[data-source$="#${CSS.escape(elementId)}"]`,
+          ) as HTMLElement | null;
+          if (el) el.setAttribute("data-source-read-only", "");
+        }
+      });
+    } catch {}
     return;
   }
 
-  for (const handler of maybeHandlers) {
-    handler.onEvent(eventPayload);
+  // Dispatch page-scoped events. Deprecated registerPlayEventListener
+  // adapters live in pageEventListeners too (via deprecatedEventRegistrations),
+  // so this is the single dispatch path.
+  const { type, eventPayload } = message as EventMessage;
+  const listeners = pageEventListeners.get(type);
+  if (listeners) {
+    for (const cb of listeners) cb(eventPayload);
   }
 }
 
@@ -1053,12 +1055,62 @@ function createPresenceRoom(name: string): PresenceRoom {
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
   });
 
+  const eventListeners = new Map<string, Set<(payload: unknown) => void>>();
+  const loadingListeners = new Set<(isLoading: boolean) => void>();
+  let isLoading = !provider.synced;
+
+  provider.on("custom-message", (data: string) => {
+    let parsed: EventMessage;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return;
+    }
+    const callbacks = eventListeners.get(parsed.type);
+    if (!callbacks) return;
+    for (const cb of callbacks) cb(parsed.eventPayload);
+  });
+
+  provider.on("sync", (synced: boolean) => {
+    const next = !synced;
+    if (next === isLoading) return;
+    isLoading = next;
+    for (const cb of loadingListeners) cb(isLoading);
+  });
+
   let destroyed = false;
   return {
     presence,
+    get isLoading() {
+      return isLoading;
+    },
+    onLoadingChange(callback: (isLoading: boolean) => void): () => void {
+      loadingListeners.add(callback);
+      return () => {
+        loadingListeners.delete(callback);
+      };
+    },
+    dispatchEvent(type: string, payload?: unknown): void {
+      if (destroyed) return;
+      const message: EventMessage = { type, eventPayload: payload ?? null };
+      provider.sendMessage(JSON.stringify(message));
+    },
+    onEvent(type: string, callback: (payload: unknown) => void): () => void {
+      if (!eventListeners.has(type)) eventListeners.set(type, new Set());
+      eventListeners.get(type)!.add(callback);
+      return () => {
+        const set = eventListeners.get(type);
+        if (set) {
+          set.delete(callback);
+          if (set.size === 0) eventListeners.delete(type);
+        }
+      };
+    },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
+      eventListeners.clear();
+      loadingListeners.clear();
       provider.destroy();
       roomDoc.destroy();
     },
@@ -1074,10 +1126,17 @@ export interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   syncedStore: (typeof store)["play"];
   elementHandlers: Map<string, Map<string, ElementHandler>>;
+  /**
+   * @deprecated Always empty in this and later versions — handlers for the
+   * deprecated `registerPlayEventListener` API are no longer externally
+   * observable. Kept for type compatibility. Use `onEvent` instead.
+   */
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
+  dispatchEvent(type: string, payload?: unknown): void;
+  onEvent(type: string, callback: (payload: unknown) => void): () => void;
   cursorClient: CursorClientAwareness | null;
   presence: PresenceAPI;
   createPageData: typeof createPageData;
@@ -1105,10 +1164,14 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElementForTag,
   syncedStore: store.play,
   elementHandlers,
-  eventHandlers,
+  // Always empty; dispatch flows through pageEventListeners. Kept for type
+  // compatibility; can be removed when the deprecated event API is removed.
+  eventHandlers: new Map<string, Array<RegisteredPlayEvent>>(),
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
+  dispatchEvent: pageDispatchEvent,
+  onEvent: pageOnEvent,
   get cursorClient() {
     return cursorClient;
   },
@@ -1476,67 +1539,62 @@ function deleteElementData(tag: string, elementId: string): void {
   }
 }
 
+/**
+ * @deprecated Use `playhtml.dispatchEvent(type, payload)` instead.
+ *
+ * If a listener is registered for the same event type via both
+ * `registerPlayEventListener` and `onEvent`, both will fire.
+ */
 function dispatchPlayEvent(message: EventMessage) {
-  const { type } = message;
-  if (!eventHandlers.has(type)) {
-    console.error(`[playhtml] event "${type}" not registered.`);
-    return;
-  }
-
-  sendPlayEvent(message);
+  pageDispatchEvent(message.type, message.eventPayload);
 }
 
 /**
- * Registers the given event listener.
- * Returns a unique ID corresponding to the listener.
+ * @deprecated Use `playhtml.onEvent(type, callback)` instead. Returns an
+ * unsubscribe function directly.
+ *
+ * If a listener is registered for the same event type via both
+ * `registerPlayEventListener` and `onEvent`, both will fire.
  */
-// TODO: allow duplicates or not..
-// duplicates are good for registering a lot of logic.. but why wouldn't you just put it all in one call?
-// duplicates bad when you want to handle deduping the same logic, so this would be useful to expose one helper function in the react context
-// to register a listener for a type and provide a callback and it returns you a function that triggers that event.
 function registerPlayEventListener(
   type: string,
   event: Omit<PlayEvent, "type">,
 ): string {
   const id = String(eventCount++);
-
-  eventHandlers.set(type, [
-    ...(eventHandlers.get(type) ?? []),
-    { type, ...event, id },
-  ]);
-
-  // NOTE: bring this back if desired to automatically listen to native DOM events of the same type
-  // document.addEventListener(type, (evt) => {
-  //   const payload: EventMessage = {
-  //     type,
-  //     // @ts-ignore
-  //     eventPayload: evt.detail,
-  //     // @ts-ignore
-  //     // element: evt.target,
-  //   };
-  //   sendPlayEvent(payload);
-  // });
+  const unsub = pageOnEvent(type, (payload) => {
+    event.onEvent({ eventPayload: payload });
+  });
+  deprecatedEventRegistrations.set(id, unsub);
   return id;
 }
 
 /**
- * Removes the event listener with the given type and id.
+ * @deprecated Use the unsubscribe function returned by `playhtml.onEvent()` instead.
  */
-function removePlayEventListener(type: string, id: string) {
-  const handlers = eventHandlers.get(type);
-  if (!handlers) {
-    return;
+function removePlayEventListener(_type: string, id: string) {
+  const unsub = deprecatedEventRegistrations.get(id);
+  if (unsub) {
+    unsub();
+    deprecatedEventRegistrations.delete(id);
   }
+}
 
-  const index = handlers.findIndex((handler) => handler.id === id);
-  if (index === -1) {
-    return;
-  }
+function pageDispatchEvent(type: string, payload?: unknown): void {
+  if (!yprovider) return;
+  const message: EventMessage = { type, eventPayload: payload ?? null };
+  yprovider.sendMessage(JSON.stringify(message));
+}
 
-  handlers.splice(index, 1);
-  if (handlers.length === 0) {
-    eventHandlers.delete(type);
-  }
+function pageOnEvent(type: string, callback: (payload: unknown) => void): () => void {
+  if (!pageEventListeners.has(type)) pageEventListeners.set(type, new Set());
+  pageEventListeners.get(type)!.add(callback);
+  return () => {
+    const set = pageEventListeners.get(type);
+    if (set) {
+      set.delete(callback);
+      if (set.size === 0) pageEventListeners.delete(type);
+    }
+  };
 }
 
 export type {

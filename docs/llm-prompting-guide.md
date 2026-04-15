@@ -36,7 +36,7 @@ DATA TYPES (choose the right one):
 
 1. **Persistent data** (defaultData): State that syncs and persists (position, count, messages, etc.)
 2. **Awareness**: Temporary presence data (which users are online, their colors, cursor positions)
-3. **Events**: One-time triggers (confetti, notifications, animations) - use dispatchPlayEvent/registerPlayEventListener
+3. **Events**: One-time triggers (confetti, notifications, animations) - use dispatchEvent/onEvent
 
 KEY APIs:
 
@@ -52,9 +52,11 @@ Vanilla HTML (can-play):
 React (withSharedState):
 
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
+- Config can be dynamic: withSharedState((props) => ({ defaultData: ... }), component)
 - For awareness: { myDefaultAwareness: value } in config, use setMyAwareness
-- For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
+- For events: usePlayContext() -> { dispatchEvent, onEvent }
 - For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
+- Built-in React components: CanMoveElement, CanToggleElement, CanSpinElement, CanGrowElement, CanDuplicateElement, CanHoverElement
 
 DATA UPDATES:
 
@@ -73,8 +75,8 @@ BUILT-IN CAPABILITIES (if they fit the use case):
 - can-spin: Rotatable element
 - can-grow: Click to scale up/down
 - can-duplicate: Click to clone element
-- can-hover: Hover to toggle on/off state
-- can-mirror: Syncs all element changes automatically
+- can-hover: Shows collaborative hover state via awareness. Sets `data-playhtml-hover` attribute when ANY user hovers, so you can style `:hover` AND `[data-playhtml-hover]` together. No persistent data — awareness only.
+- can-mirror: Syncs full DOM state (attributes, children, form values like checked/value/selectedIndex) via MutationObserver. Also tracks hover and focus awareness. Good for syncing rich content or form elements without writing custom handlers.
 - Use these instead of can-play when possible
 
 CURSOR CONFIGURATION (optional):
@@ -88,6 +90,21 @@ Enable collaborative cursors to show where other users are:
 - Get user count: window.cursors.allColors.length
 - Listen for changes: window.cursors.on('allColors', callback)
 - See docs/cursors.md for proximity detection, filtering, styling
+
+ADVANCED APIs (for when built-in capabilities and can-play aren't enough):
+
+1. **playhtml.createPageData(name, defaultValue)**: Persistent shared data NOT tied to a DOM element.
+   Returns `{ getData, setData, onUpdate, destroy }`. Use for app-level state like shared settings,
+   vote tallies, or page metadata that multiple components read/write. Call after `playhtml.init()`.
+
+2. **playhtml.createPresenceRoom(name)**: Domain-scoped presence channel independent of cursors.
+   Returns `{ presence, destroy }` where presence has `setMyPresence(channel, data)`,
+   `getPresences()`, `onPresenceChange(channel, callback)`, `getMyIdentity()`.
+   Use for cross-page awareness like "who's on which page", lobbies, or ambient social features.
+   Call after `playhtml.init()`.
+
+3. **playhtml.presence**: The built-in page-level presence API (same shape as createPresenceRoom's
+   presence). Available after init. Use for presence on the current page without creating a separate room.
 
 DATA PERFORMANCE TIPS:
 

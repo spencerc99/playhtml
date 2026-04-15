@@ -133,12 +133,12 @@ describe("usePageData", () => {
 });
 
 describe("usePresenceRoom", () => {
-  it("returns null pre-sync, then a room post-sync", async () => {
-    const seen: Array<boolean> = [];
+  it("returns null room and isLoading=true pre-sync, then populates post-sync", async () => {
+    const seen: Array<{ hasRoom: boolean; isLoading: boolean }> = [];
 
     function TestComponent() {
-      const room = usePresenceRoom("voice");
-      seen.push(room !== null);
+      const { room, isLoading } = usePresenceRoom("voice");
+      seen.push({ hasRoom: room !== null, isLoading });
       return <div />;
     }
 
@@ -148,7 +148,11 @@ describe("usePresenceRoom", () => {
       </PlayProvider>,
     );
 
-    expect(seen[0]).toBe(false);
-    await waitFor(() => expect(seen.at(-1)).toBe(true));
+    expect(seen[0]).toEqual({ hasRoom: false, isLoading: true });
+    await waitFor(() => {
+      const last = seen.at(-1)!;
+      expect(last.hasRoom).toBe(true);
+      expect(last.isLoading).toBe(false);
+    });
   });
 });
