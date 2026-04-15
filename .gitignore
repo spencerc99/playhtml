@@ -52,3 +52,5 @@ tools/playwright/videos
 
 # superpowers brainstorm artifacts
 .superpowers
+.worktrees/
+.playwright-mcp/

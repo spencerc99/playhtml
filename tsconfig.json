@@ -22,7 +22,8 @@
     "paths": {
       "playhtml": ["packages/playhtml/src"],
       "@playhtml/react": ["packages/react/src"],
-      "@playhtml/common": ["packages/common/src"]
+      "@playhtml/common": ["packages/common/src"],
+      "@extension/*": ["extension/src/*"]
     }
   },
   "include": [],

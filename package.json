@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.mts",
-    "dev-server": "bunx wrangler dev partykit/party.ts",
+    "dev-server": "bunx wrangler dev partykit/party.ts --port 1999",
     "dev-extension": "cd extension && bun run dev",
     "deploy-server": "bunx wrangler deploy",
     "deploy-server:staging": "bunx wrangler deploy --env staging",
