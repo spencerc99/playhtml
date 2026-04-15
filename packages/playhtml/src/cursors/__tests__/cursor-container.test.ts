@@ -249,10 +249,11 @@ describe("cursor client with container option", () => {
     const provider = makeFakeProvider();
     // Note: use style properties that aren't also managed by the cursor
     // client's visibility logic (which sets display/opacity/transform).
-    // `filter` and `border` are safe to assert on.
+    // `filter` and non-shorthand properties like `backgroundColor` are
+    // safe; shorthands like `border` can linger in jsdom after removeProperty.
     let returnStyles: Record<string, string> = {
       filter: "blur(3px)",
-      border: "2px solid red",
+      backgroundColor: "rgb(255, 0, 0)",
     };
 
     const client = new CursorClientAwareness(provider, {
@@ -288,19 +289,21 @@ describe("cursor client with container option", () => {
     )[0] as HTMLElement;
     expect(cursorEl).toBeTruthy();
     expect(cursorEl.style.filter).toBe("blur(3px)");
-    expect(cursorEl.style.border).toBe("2px solid red");
+    expect(cursorEl.style.backgroundColor).toBe("rgb(255, 0, 0)");
 
-    // Now change the style function to return only filter — border should be
-    // removed from the element, not linger from the previous call.
+    // Now change the style function to return only filter — backgroundColor
+    // should be removed from the element, not linger from the previous call.
     returnStyles = { filter: "grayscale(1)" };
     client.refreshCursorStyles();
 
     expect(cursorEl.style.filter).toBe("grayscale(1)");
-    expect(cursorEl.style.border).toBe("");
+    expect(cursorEl.style.backgroundColor).toBe("");
   });
 
   it("clears zone-specific style keys when the cursor leaves the zone", () => {
-    // Register a zone with its own getCursorStyle that sets `border`.
+    // Register a zone with its own getCursorStyle that sets a style property.
+    // Use a longhand property (outline, not a shorthand like border) because
+    // jsdom's handling of shorthand removeProperty is inconsistent.
     const zoneEl = document.createElement("div");
     zoneEl.id = "zone-a";
     document.body.appendChild(zoneEl);
@@ -313,11 +316,11 @@ describe("cursor client with container option", () => {
         playerStyle: { colorPalette: ["#ff0000"] },
       } as any,
       // Global style returns nothing — so when the cursor exits the zone,
-      // the zone's `border` must be cleaned up.
+      // the zone's style key must be cleaned up.
       getCursorStyle: () => ({}),
     });
     client.registerZone(zoneEl, {
-      getCursorStyle: () => ({ border: "3px solid lime" }),
+      getCursorStyle: () => ({ outlineColor: "rgb(0, 255, 0)" }),
     });
 
     const remoteId = 155;
@@ -344,15 +347,15 @@ describe("cursor client with container option", () => {
     const cursorEl = Array.from(
       document.querySelectorAll(".playhtml-cursor-other"),
     )[0] as HTMLElement;
-    expect(cursorEl.style.border).toBe("3px solid lime");
+    expect(cursorEl.style.outlineColor).toBe("rgb(0, 255, 0)");
 
-    // Exit zone — zone's border must be removed.
+    // Exit zone — zone's outlineColor must be removed.
     provider.awareness._states.set(remoteId, {
       __playhtml_cursors__: { ...basePresence, zone: undefined },
     });
     provider.awareness.emit({ added: [], updated: [remoteId], removed: [] });
 
-    expect(cursorEl.style.border).toBe("");
+    expect(cursorEl.style.outlineColor).toBe("");
   });
 
   it("re-runs getCursorStyle on every remote awareness update (no zoneChanged guard)", () => {
