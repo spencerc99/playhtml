@@ -88,6 +88,7 @@ Enable collaborative cursors to show where other users are:
 - Get user count: window.cursors.allColors.length
 - Listen for changes: window.cursors.on('allColors', callback)
 - See docs/cursors.md for proximity detection, filtering, styling
+- For SPA apps (React Router, Next.js, Astro ViewTransitions): pass `pathname` prop to `<PlayProvider pathname={pathname}>` so rooms and handlers stay in sync on navigation. Pass a `container` ref to `cursors` (or selector in vanilla) so cursor DOM survives body-swaps. See docs/spa-integration.md.
 
 DATA PERFORMANCE TIPS:
 

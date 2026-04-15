@@ -102,6 +102,8 @@ Customize cursor appearance based on presence data.
 
 **Type:** `(presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>`
 
+**Called on every cursor update** — every remote awareness tick runs this for that cursor. Keep it cheap: no DOM queries, no heavy math. Returned keys that aren't in the next call's result are automatically removed from the cursor element, so you don't need to explicitly "reset" values across calls. If your style depends on state outside `presence` (e.g., `window.location`), call `playhtml.cursorClient.refreshCursorStyles()` when that state changes — the SPA navigation path does this for you automatically when the URL changes.
+
 ```javascript
 cursors: {
   enabled: true,
@@ -134,6 +136,39 @@ getCursorStyle: (presence) => {
   return {};
 }
 ```
+
+### `container`
+
+Where to mount cursor DOM and the injected cursor style tag. Defaults to `document.body` / `document.head`. Pass a container you control — and mark it with a framework persist directive like `transition:persist` — to keep cursors alive across SPA body-swaps (Astro ViewTransitions, htmx boost, Turbo, native View Transitions API).
+
+**Type:** `HTMLElement | string | (() => HTMLElement | null)`
+
+```javascript
+cursors: {
+  enabled: true,
+  container: "#cursor-layer",  // selector
+}
+
+// or an element
+cursors: { container: document.getElementById("cursor-layer") }
+
+// or a getter for frameworks where the element mounts late
+cursors: { container: () => document.querySelector("#cursor-layer") }
+```
+
+In React, pass a `RefObject` directly:
+
+```tsx
+const cursorLayerRef = useRef<HTMLDivElement>(null);
+
+<PlayProvider initOptions={{
+  cursors: { enabled: true, container: cursorLayerRef },
+}}>
+  <div ref={cursorLayerRef} id="cursor-layer" />
+</PlayProvider>
+```
+
+See `docs/spa-integration.md` for full SPA usage.
 
 ### Other Options
 

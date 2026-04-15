@@ -15,7 +15,16 @@ import {
   deepReplaceIntoProxy,
   clonePlain,
 } from "@playhtml/common";
-import { listSharedElements as devListSharedElements } from "./development";
+import {
+  listSharedElements as devListSharedElements,
+  teardownDevUI,
+  setupDevUI,
+} from "./development";
+import {
+  createNavigationController,
+  attachNavigationListeners,
+  dispatchNavigated,
+} from "./navigation";
 import type { PlayerIdentity, CursorPresence } from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
@@ -28,7 +37,6 @@ import {
 import { CursorClientAwareness } from "./cursors/cursor-client";
 import { createPresenceAPI } from "./presence";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
-import { setupDevUI } from "./development";
 import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
@@ -150,6 +158,7 @@ function normalizeRoomId(host: string, roomString: string): string {
 let yprovider: YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
+let currentCursorRoomId = "";
 let presenceAPI: PresenceAPI | null = null;
 // @ts-ignore, will be removed
 let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
@@ -314,6 +323,11 @@ export interface CursorZoneOptions {
   getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
+export type CursorContainer =
+  | HTMLElement
+  | string
+  | (() => HTMLElement | null);
+
 export interface CursorOptions {
   enabled?: boolean;
   playerIdentity?: PlayerIdentity;
@@ -340,6 +354,12 @@ export interface CursorOptions {
   getCursorStyle?: (
     presence: CursorPresence,
   ) => Partial<CSSStyleDeclaration> | Record<string, string>;
+  /**
+   * Where to mount cursor DOM and the cursor style tag. Defaults to
+   * document.body / document.head. Pass a container you control (and mark
+   * with transition:persist or equivalent) to survive SPA body-swaps.
+   */
+  container?: CursorContainer;
 }
 
 interface DefaultRoomOptions {
@@ -481,13 +501,271 @@ let isDevelopmentMode = false;
 let __currentRoomId = "";
 let __currentHost = "";
 
+let navigationController: ReturnType<typeof createNavigationController> | null =
+  null;
+let detachNavListeners: (() => void) | null = null;
+let configureIdentityListener: EventListener | null = null;
+let isDestroyed = false;
+
+// Awareness change listener — must be rebound whenever the awareness provider
+// (cursor provider or main yprovider) is rebuilt during navigation.
+let awarenessChangeHandler: (() => void) | null = null;
+let awarenessChangeTarget: {
+  awareness: { off: (event: string, cb: () => void) => void };
+} | null = null;
+
+// If the user supplied an explicit `room` to init(), we store it and reuse it
+// across navigations (static rooms should not change on URL change). If they
+// didn't, we store the default-room options and re-derive on each nav so
+// pathname-based rooms switch correctly.
+let explicitRoomOption: string | undefined = undefined;
+let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
+let cursorOptionsCache: CursorOptions | undefined = undefined;
+let cachedOnError: (() => void) | undefined = undefined;
+
+/**
+ * Builds a fresh main Yjs provider for the given room. Side effects:
+ * assigns module-level `yprovider`, attaches onError, attaches
+ * raw-socket message handler via microtask. Also walks shared elements/
+ * references for the current DOM. Does NOT await sync.
+ */
+function buildMainProvider(args: {
+  room: string;
+  partykitHost: string;
+  onError: (() => void) | undefined;
+  onMessage: (data: string) => void;
+}): { sharedReferences: ReturnType<typeof findSharedReferencesOnPage> } {
+  const { room, partykitHost, onError, onMessage } = args;
+
+  const sharedElements = findSharedElementsOnPage();
+  const sharedReferences = findSharedReferencesOnPage();
+  initializeSharedPermissions();
+
+  sharedReferences.forEach((ref) => {
+    const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
+    discoveredSharedReferences.add(referenceKey);
+  });
+
+  const storageKey = `playhtml_resetEpoch_${room}`;
+  const storedResetEpoch = localStorage.getItem(storageKey);
+  const clientResetEpoch = storedResetEpoch
+    ? parseInt(storedResetEpoch, 10)
+    : null;
+
+  yprovider = new YProvider(partykitHost, room, doc, {
+    params: {
+      sharedElements: JSON.stringify(sharedElements),
+      sharedReferences: JSON.stringify(sharedReferences),
+      clientResetEpoch:
+        clientResetEpoch !== null ? String(clientResetEpoch) : null,
+    },
+  });
+  yprovider.on("error", () => {
+    onError?.();
+  });
+
+  // Register custom-message handler once, outside the sync callback,
+  // to avoid duplicate registrations on reconnect.
+  yprovider.on("custom-message", onMessage);
+
+  return { sharedReferences };
+}
+
+/**
+ * Detach the current awareness "change" listener (if any) and attach a fresh
+ * one to whichever provider currently holds awareness (cursor provider if
+ * cursors enabled, otherwise main yprovider). Safe to call multiple times.
+ */
+function bindAwarenessListener(): void {
+  if (awarenessChangeTarget && awarenessChangeHandler) {
+    try {
+      awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
+    } catch {}
+  }
+  awarenessChangeTarget = null;
+  awarenessChangeHandler = null;
+
+  const provider = cursorClient?.getProvider() ?? yprovider;
+  if (!provider) return;
+  const handler = () => onChangeAwareness();
+  provider.awareness.on("change", handler);
+  awarenessChangeTarget = provider;
+  awarenessChangeHandler = handler;
+}
+
+/**
+ * Builds the cursor client and optional separate cursor provider for the
+ * given main room. Side effects: assigns module-level `cursorProvider` and
+ * `cursorClient`, and `currentCursorRoomId`. Returns without awaiting sync.
+ *
+ * Safe to call multiple times — assumes prior cursorClient/cursorProvider
+ * were already torn down by the caller.
+ */
+function buildCursors(args: {
+  cursors: CursorOptions;
+  mainRoom: string;
+  partykitHost: string;
+  onError: (() => void) | undefined;
+}): void {
+  const { cursors, mainRoom, partykitHost, onError } = args;
+
+  if (!cursors.enabled) {
+    currentCursorRoomId = "";
+    return;
+  }
+
+  const cursorOptions: CursorOptions = { ...cursors };
+  if (!cursorOptions.playerIdentity) {
+    cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
+  }
+
+  let providerForCursors: YProvider = yprovider;
+
+  if (cursorOptions.room) {
+    const cursorRoomString = resolveCursorRoom(cursorOptions.room);
+    const cursorRoom = normalizeRoomId(window.location.host, cursorRoomString);
+
+    if (cursorRoom !== mainRoom) {
+      const cursorDoc = new Y.Doc();
+      cursorProvider = new YProvider(
+        partykitHost,
+        cursorRoom,
+        cursorDoc,
+      );
+      cursorProvider.on("error", () => {
+        onError?.();
+      });
+      providerForCursors = cursorProvider;
+      currentCursorRoomId = cursorRoom;
+    } else {
+      currentCursorRoomId = mainRoom;
+    }
+  } else {
+    currentCursorRoomId = mainRoom;
+  }
+
+  cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+}
+
+async function runHandleNavigation(): Promise<void> {
+  if (isDestroyed) return;
+  if (!yprovider) return;
+
+  const nextRoomInput =
+    explicitRoomOption ?? getDefaultRoom(cachedDefaultRoomOptions);
+  const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
+  const mainRoomChanged = newMainRoom !== __currentRoomId;
+
+  let newCursorRoom: string = "";
+  let cursorRoomChanged = false;
+  if (cursorOptionsCache?.enabled) {
+    if (cursorOptionsCache.room) {
+      const resolved = resolveCursorRoom(cursorOptionsCache.room);
+      const normalized = normalizeRoomId(window.location.host, resolved);
+      newCursorRoom = normalized;
+      cursorRoomChanged = normalized !== currentCursorRoomId;
+    } else {
+      newCursorRoom = newMainRoom;
+      cursorRoomChanged = mainRoomChanged;
+    }
+  }
+  void newCursorRoom;
+
+  // Drop handlers whose DOM element is no longer connected (e.g. innerHTML-swap
+  // or framework unmount without calling removePlayElement). Keep handlers for
+  // elements still in the DOM — they already have listeners wired, and
+  // re-creating a handler here would attach duplicates since ElementHandler
+  // has no listener cleanup. React-managed elements stay connected across
+  // route changes when the same node is reused; React's unmount path already
+  // calls removePlayElement for replaced nodes.
+  for (const [, map] of elementHandlers) {
+    for (const [id, handler] of [...map.entries()]) {
+      const el = (handler as { element?: HTMLElement }).element;
+      if (!el || !el.isConnected) {
+        map.delete(id);
+      }
+    }
+  }
+
+  if (mainRoomChanged) {
+    try {
+      yprovider.disconnect?.();
+    } catch {}
+    try {
+      yprovider.destroy?.();
+    } catch {}
+    hasSynced = false;
+    lastElementAwarenessFingerprint = null;
+    buildMainProvider({
+      room: newMainRoom,
+      partykitHost: __currentHost,
+      onError: cachedOnError,
+      onMessage,
+    });
+    __currentRoomId = newMainRoom;
+  }
+
+  if (cursorRoomChanged && cursorOptionsCache) {
+    try {
+      cursorClient?.destroy?.();
+    } catch {}
+    try {
+      cursorProvider?.disconnect?.();
+    } catch {}
+    try {
+      cursorProvider?.destroy?.();
+    } catch {}
+    cursorClient = null;
+    cursorProvider = null;
+    buildCursors({
+      cursors: cursorOptionsCache,
+      mainRoom: newMainRoom,
+      partykitHost: __currentHost,
+      onError: cachedOnError,
+    });
+  }
+
+  // Rebind awareness listener to the current provider. This is required
+  // whenever we rebuilt yprovider or cursorClient above — the old awareness
+  // object was destroyed along with its provider, orphaning any listener
+  // we had attached at init time.
+  if (mainRoomChanged || cursorRoomChanged) {
+    bindAwarenessListener();
+  }
+
+  markAllElementsAsLoading();
+
+  if (mainRoomChanged) {
+    await new Promise<void>((resolve) => {
+      if (hasSynced) {
+        resolve();
+        return;
+      }
+      yprovider.on("sync", (connected: boolean) => {
+        if (!connected) console.error("Issue connecting to yjs...");
+        if (hasSynced) return;
+        hasSynced = true;
+        resolve();
+      });
+    });
+  }
+
+  setupElements();
+  markAllElementsAsReady();
+
+  cursorClient?.refreshContainer?.();
+  cursorClient?.refreshCursorStyles?.();
+
+  dispatchNavigated(__currentRoomId);
+}
+
 async function initPlayHTML({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
   extraCapabilities,
   events,
   defaultRoomOptions = { includeSearch: false },
-  room: inputRoom = getDefaultRoom(defaultRoomOptions),
+  room: explicitRoom,
   onError,
   developmentMode = false,
   cursors = {},
@@ -496,6 +774,12 @@ async function initPlayHTML({
     console.error("playhtml already set up! ignoring");
     return;
   }
+  isDestroyed = false;
+  explicitRoomOption = explicitRoom;
+  cachedDefaultRoomOptions = defaultRoomOptions;
+  const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
+  cursorOptionsCache = cursors;
+  cachedOnError = onError;
   isDevelopmentMode = developmentMode;
   // @ts-ignore
   window.playhtml = playhtml;
@@ -521,76 +805,22 @@ async function initPlayHTML({
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
   );
 
-  // Discover shared elements and references on the page
-  const sharedElements = findSharedElementsOnPage();
-  const sharedReferences = findSharedReferencesOnPage();
-  // Map elementId -> permission for quick client-side checks (filled after initial sync)
-  initializeSharedPermissions();
-
-  // Initialize tracking of discovered shared references
-  sharedReferences.forEach((ref) => {
-    const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
-    discoveredSharedReferences.add(referenceKey);
-  });
-
-  // Get stored reset epoch from localStorage to send to server
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  const storedResetEpoch = localStorage.getItem(storageKey);
-  const clientResetEpoch = storedResetEpoch
-    ? parseInt(storedResetEpoch, 10)
-    : null;
-
-  // Create provider with shared element parameters
-  yprovider = new YProvider(partykitHost, room, doc, {
-    params: {
-      sharedElements: JSON.stringify(sharedElements),
-      sharedReferences: JSON.stringify(sharedReferences),
-      clientResetEpoch:
-        clientResetEpoch !== null ? String(clientResetEpoch) : null,
-    },
-  });
-  yprovider.on("error", () => {
-    onError?.();
+  const { sharedReferences } = buildMainProvider({
+    room,
+    partykitHost,
+    onError,
+    onMessage,
   });
 
   // Initialize cursor tracking immediately after provider creation
+  buildCursors({
+    cursors,
+    mainRoom: room,
+    partykitHost,
+    onError,
+  });
+
   if (cursors.enabled) {
-    // Generate player identity if not provided
-    const cursorOptions = {
-      ...cursors,
-    };
-    if (!cursorOptions.playerIdentity) {
-      cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
-    }
-
-    // Check if cursors need a separate room
-    let providerForCursors = yprovider;
-    if (cursorOptions.room) {
-      // Resolve cursor room to a normalized room string (without host)
-      const cursorRoomString = resolveCursorRoom(cursorOptions.room);
-      // Normalize using the same function as main room to ensure consistent comparison
-      const cursorRoom = normalizeRoomId(
-        window.location.host,
-        cursorRoomString,
-      );
-
-      // Only create separate provider if cursor room is different from element room
-      if (cursorRoom !== room) {
-        const cursorDoc = new Y.Doc();
-        cursorProvider = new YProvider(
-          partykitHost,
-          cursorRoom,
-          cursorDoc,
-        );
-        cursorProvider.on("error", () => {
-          onError?.();
-        });
-        providerForCursors = cursorProvider;
-      }
-    }
-
-    cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
-
     // Listen for identity injection from the browser extension. The extension
     // runs in Chrome's isolated world and can't call cursorClient.configure()
     // directly, so it dispatches a CustomEvent on the shared DOM instead.
@@ -602,7 +832,7 @@ async function initPlayHTML({
     // TODO: The extension should also be able to set `name` — currently
     // there's no UI for it in the extension, so we preserve the page's
     // value. Once the extension has a name field, include it in the merge.
-    document.addEventListener("playhtml:configure-identity", ((e: CustomEvent) => {
+    configureIdentityListener = ((e: CustomEvent) => {
       const incoming = e.detail?.playerIdentity;
       if (!incoming || !cursorClient) return;
 
@@ -615,17 +845,21 @@ async function initPlayHTML({
 
       cursorClient.configure({ playerIdentity: merged });
       console.log("[playhtml] Merged extension identity via CustomEvent");
-    }) as EventListener);
+    }) as EventListener;
+    document.addEventListener(
+      "playhtml:configure-identity",
+      configureIdentityListener,
+    );
 
     // Signal that we're ready to receive identity injection events
     document.dispatchEvent(new CustomEvent("playhtml:ready"));
   }
 
   // Create presence API — always available, wraps whichever awareness provider exists
-  const presenceProvider = cursorClient?.getProvider() ?? yprovider;
   presenceAPI = createPresenceAPI({
-    getAwareness: () => presenceProvider.awareness,
-    getPlayerIdentity: () => cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
+    getPlayerIdentity: () =>
+      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
   });
 
   if (extraCapabilities) {
@@ -1011,13 +1245,18 @@ function setupElements(): void {
     return;
   }
 
-  // Listen to awareness changes on the cursor provider (where element awareness is stored)
-  // Fall back to doc provider if cursors are disabled
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
-  awarenessProvider.awareness.on("change", () => onChangeAwareness());
+  // Listen to awareness changes on the cursor provider (where element awareness
+  // is stored). Re-bound on provider rebuild via bindAwarenessListener so
+  // nav-time provider swaps don't leave an orphaned listener.
+  bindAwarenessListener();
 
   // Trigger initial awareness sync to populate existing states
   onChangeAwareness();
+
+  navigationController = createNavigationController(async () => {
+    await runHandleNavigation();
+  });
+  detachNavListeners = attachNavigationListeners(navigationController);
 
   firstSetup = false;
 }
@@ -1067,6 +1306,8 @@ function createPresenceRoom(name: string): PresenceRoom {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
+  destroy: () => Promise<void>;
+  handleNavigation: () => Promise<void>;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
   removePlayElement: typeof removePlayElement;
@@ -1098,6 +1339,105 @@ export interface PlayHTMLComponents {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  handleNavigation: async function handleNavigation(): Promise<void> {
+    if (!navigationController) return;
+    await navigationController.trigger();
+  },
+  destroy: async function destroy(): Promise<void> {
+    if (isDestroyed) return;
+
+    try {
+      if (navigationController) {
+        navigationController.destroy();
+        navigationController = null;
+      }
+      if (detachNavListeners) {
+        detachNavListeners();
+        detachNavListeners = null;
+      }
+
+      if (configureIdentityListener) {
+        document.removeEventListener(
+          "playhtml:configure-identity",
+          configureIdentityListener,
+        );
+        configureIdentityListener = null;
+      }
+
+      // Detach awareness change listener before destroying providers, so we
+      // cleanly `.off("change", ...)` rather than leaking the subscription on
+      // a soon-to-be-destroyed awareness object.
+      if (awarenessChangeTarget && awarenessChangeHandler) {
+        try {
+          awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
+        } catch {}
+      }
+      awarenessChangeTarget = null;
+      awarenessChangeHandler = null;
+
+      for (const [, map] of elementHandlers) {
+        for (const handler of map.values()) {
+          try {
+            (handler as any).destroy?.();
+          } catch {}
+        }
+        map.clear();
+      }
+      elementHandlers.clear();
+
+      if (cursorClient) {
+        try {
+          cursorClient.destroy?.();
+        } catch {}
+        cursorClient = null;
+      }
+
+      if (cursorProvider) {
+        try {
+          cursorProvider.disconnect?.();
+        } catch {}
+        try {
+          cursorProvider.destroy?.();
+        } catch {}
+        cursorProvider = null;
+      }
+      if (yprovider) {
+        try {
+          yprovider.disconnect?.();
+        } catch {}
+        try {
+          yprovider.destroy?.();
+        } catch {}
+      }
+
+      try {
+        teardownDevUI();
+      } catch {}
+
+      document.head
+        .querySelectorAll("link[href*='playhtml']")
+        .forEach((n) => n.remove());
+      document
+        .querySelectorAll("#playhtml-cursor-styles")
+        .forEach((n) => n.remove());
+
+      delete (window as any).playhtml;
+      delete document.documentElement.dataset.playhtml;
+
+      hasSynced = false;
+      lastElementAwarenessFingerprint = null;
+      firstSetup = true;
+      __currentRoomId = "";
+      __currentHost = "";
+      presenceAPI = null;
+      explicitRoomOption = undefined;
+      cachedDefaultRoomOptions = { includeSearch: false };
+      cursorOptionsCache = undefined;
+      cachedOnError = undefined;
+    } finally {
+      isDestroyed = true;
+    }
+  },
   setupPlayElements: setupElements,
   setupPlayElement,
   removePlayElement,

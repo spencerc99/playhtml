@@ -14,6 +14,7 @@ import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
+import { resolveCursorContainer } from "./container";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -304,6 +305,52 @@ function getCursorStyleForUser(color: string): string {
   return `url("data:image/svg+xml,${userCursorSvgEncoded}"), auto`;
 }
 
+/**
+ * Convert a camelCase CSS property (e.g. "backgroundColor") to kebab-case
+ * (e.g. "background-color") for use with CSSStyleDeclaration.setProperty /
+ * removeProperty, which only accept kebab-case. Custom properties
+ * (starting with "--") pass through unchanged.
+ */
+function cssPropertyName(key: string): string {
+  if (key.startsWith("--")) return key;
+  return key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+}
+
+/**
+ * Apply a set of styles while tracking which keys were written, so a later
+ * call can remove stale keys that aren't in the new set. Without this, a
+ * style function that returns `{opacity: '0.5', filter: 'blur(3px)'}` on
+ * one call and `{}` on the next would leave opacity/filter applied forever.
+ *
+ * Mutates `trackedKeys` in place.
+ */
+function applyTrackedStyles(
+  element: HTMLElement,
+  trackedKeys: Set<string>,
+  newStyles: Partial<CSSStyleDeclaration> | Record<string, string>,
+): void {
+  const newKeys = new Set<string>();
+  for (const key of Object.keys(newStyles)) {
+    // Guard against a user returning a live CSSStyleDeclaration (or
+    // array-like), whose keys include numeric indices pointing to property
+    // names rather than values. Only accept plain string keys that look
+    // like CSS property names.
+    if (/^\d+$/.test(key)) continue;
+    newKeys.add(key);
+    const value = (newStyles as Record<string, string>)[key];
+    element.style.setProperty(cssPropertyName(key), String(value));
+  }
+  for (const key of trackedKeys) {
+    if (!newKeys.has(key)) {
+      element.style.removeProperty(cssPropertyName(key));
+    }
+  }
+  trackedKeys.clear();
+  for (const key of newKeys) {
+    trackedKeys.add(key);
+  }
+}
+
 function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   if (!cursorStyle.startsWith('url("')) {
     return;
@@ -341,6 +388,11 @@ export class CursorClientAwareness {
   private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
   private currentZone: CursorZonePosition | null = null;
   private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
+  // Keys most recently written by getCursorStyle for each cursor. Tracked so
+  // re-applying can remove stale keys when a style function returns fewer
+  // properties than the previous call.
+  private cursorStyleKeys: Map<string, Set<string>> = new Map();
+  private lastKnownContainer: HTMLElement | null = null;
   // Maps Yjs clientId -> stableId (publicKey). Multiple clientIds can map to
   // the same stableId when a user has multiple tabs open. Used to:
   // (a) skip rendering our own cursor from other tabs
@@ -643,7 +695,12 @@ export class CursorClientAwareness {
         to { opacity: 0; transform: scale(0.8); }
       }
     `;
-    document.head.appendChild(style);
+    const resolvedContainer = resolveCursorContainer(this.options.container);
+    if (resolvedContainer && resolvedContainer !== document.body) {
+      resolvedContainer.appendChild(style);
+    } else {
+      document.head.appendChild(style);
+    }
     this.isStylesAdded = true;
   }
 
@@ -679,28 +736,44 @@ export class CursorClientAwareness {
     return storageToClientCoordinates(storageX, storageY, this.coordinateMode);
   }
 
-  // Apply zone-specific cursor styling, or revert to global styling when leaving a zone.
+  // Apply zone-specific cursor styling, or revert to global styling when
+  // leaving a zone. Uses applyTrackedStyles so keys written by a previous
+  // call that aren't in the new style object are removed, rather than
+  // lingering on the element.
   private applyZoneStyling(
     cursorElement: HTMLElement,
     cursorData: ValidCursorPresence,
     zoneId: string | null,
+    stableId: string,
   ): void {
-    // Reset any previously applied zone styles
-    cursorElement.style.cssText = cursorElement.style.cssText; // keep structural styles
+    let trackedKeys = this.cursorStyleKeys.get(stableId);
+    if (!trackedKeys) {
+      trackedKeys = new Set();
+      this.cursorStyleKeys.set(stableId, trackedKeys);
+    }
 
     if (zoneId) {
       const zoneEntry = this.zones.get(zoneId);
       if (zoneEntry?.options?.getCursorStyle) {
-        const zoneStyles = zoneEntry.options.getCursorStyle(cursorData);
-        Object.assign(cursorElement.style, zoneStyles);
+        applyTrackedStyles(
+          cursorElement,
+          trackedKeys,
+          zoneEntry.options.getCursorStyle(cursorData),
+        );
         return;
       }
     }
 
-    // No zone or no zone-specific style: apply global getCursorStyle if present
     if (this.options.getCursorStyle) {
-      const globalStyles = this.options.getCursorStyle(cursorData);
-      Object.assign(cursorElement.style, globalStyles);
+      applyTrackedStyles(
+        cursorElement,
+        trackedKeys,
+        this.options.getCursorStyle(cursorData),
+      );
+    } else {
+      // No style function applies: clear any previously tracked keys so the
+      // cursor reverts to its baseline appearance.
+      applyTrackedStyles(cursorElement, trackedKeys, {});
     }
   }
 
@@ -952,6 +1025,62 @@ export class CursorClientAwareness {
     );
   }
 
+  private getContainer(): HTMLElement {
+    const resolved = resolveCursorContainer(this.options.container) ?? document.body;
+    this.lastKnownContainer = resolved;
+    return resolved;
+  }
+
+  refreshContainer(): void {
+    const next = resolveCursorContainer(this.options.container) ?? document.body;
+    if (next === this.lastKnownContainer) return;
+
+    const prev = this.lastKnownContainer;
+    this.lastKnownContainer = next;
+
+    // Migrate all cursor DOM
+    if (prev) {
+      const cursors = prev.querySelectorAll(".playhtml-cursor-other");
+      cursors.forEach((c) => next.appendChild(c));
+    }
+
+    // Migrate style tag (regardless of its current parent: head, previous container, anywhere)
+    const styleId = "playhtml-cursor-styles";
+    const existing = document.getElementById(styleId);
+    if (existing && existing.parentElement !== next) {
+      next.appendChild(existing);
+    }
+  }
+
+  // Re-invoke getCursorStyle for all currently rendered cursors. Called after
+  // SPA navigation so consumers can re-evaluate per-page visibility decisions.
+  refreshCursorStyles(): void {
+    if (!this.options.getCursorStyle && this.zones.size === 0) return;
+    for (const [stableId, cursorElement] of this.cursors.entries()) {
+      const presence = this.findAwarenessByStableId(stableId);
+      if (!presence) continue;
+      const zoneId = this.cursorZoneState.get(stableId) ?? null;
+      this.applyZoneStyling(cursorElement, presence, zoneId, stableId);
+    }
+  }
+
+  private findAwarenessByStableId(stableId: string): ValidCursorPresence | null {
+    const states = this.provider.awareness.getStates();
+    for (const [clientId, state] of states) {
+      const sid = getStableIdForAwareness(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (sid !== stableId) continue;
+      const valid = getValidCursorPresence(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (valid) return valid;
+    }
+    return null;
+  }
+
   private updateCursor(
     stableId: string,
     cursorData: ValidCursorPresence,
@@ -999,7 +1128,7 @@ export class CursorClientAwareness {
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(stableId, cursorElement);
-      document.body.appendChild(cursorElement);
+      this.getContainer().appendChild(cursorElement);
     } else if (cursorElement) {
       // Update existing cursor with new message and name
       this.updateCursorMessage(cursorElement, identity, cursorData.message);
@@ -1047,10 +1176,16 @@ export class CursorClientAwareness {
       targetCoords = this.resolveTargetCoords(cursor.x, cursor.y);
     }
 
-    // Apply zone-specific styling (or revert to global styling on zone exit)
-    if (zoneChanged) {
-      this.applyZoneStyling(cursorElement, cursorData, inZone ? currZoneId : null);
-    }
+    // Re-apply styling on every update so any getCursorStyle dependency on
+    // presence (page, message, identity, custom fields, zone) reflects the
+    // latest awareness state. applyTrackedStyles removes stale keys so this
+    // is safe to call on every tick.
+    this.applyZoneStyling(
+      cursorElement,
+      cursorData,
+      inZone ? currZoneId : null,
+      stableId,
+    );
 
     // In relative (fixed) mode, clamp to viewport so cursors stay visible.
     // In absolute mode, coords are document-space — no clamping needed.
@@ -1265,6 +1400,7 @@ export class CursorClientAwareness {
       this.cursorAnimators.delete(stableId);
     }
     this.cursorZoneState.delete(stableId);
+    this.cursorStyleKeys.delete(stableId);
   }
 
   private savePlayerIdentityToStorage(): void {
@@ -1629,6 +1765,7 @@ export class CursorClientAwareness {
     this.spatialGrid.clear();
     this.zones.clear();
     this.cursorZoneState.clear();
+    this.cursorStyleKeys.clear();
 
     // Clean up dedup tracking
     this.clientIdToStableId.clear();
