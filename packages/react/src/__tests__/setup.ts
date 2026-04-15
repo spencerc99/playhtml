@@ -11,6 +11,9 @@ afterEach(() => {
 });
 
 // Create a mock playhtml instance
+const presenceListeners = new Map<string, Set<(presences: Map<string, unknown>) => void>>();
+const mockPresences = new Map<string, unknown>();
+
 const mockedPlayhtml = {
   isInitialized: false,
   init: vi.fn().mockImplementation(() => {
@@ -26,6 +29,46 @@ const mockedPlayhtml = {
   dispatchPlayEvent: vi.fn(),
   registerPlayEventListener: vi.fn().mockReturnValue("mock-id"),
   removePlayEventListener: vi.fn(),
+  presence: {
+    setMyPresence: vi.fn((channel: string, data: unknown) => {
+      mockPresences.set("me", { ...data, isMe: true, cursor: null });
+      const listeners = presenceListeners.get(channel);
+      if (listeners) for (const cb of listeners) cb(new Map(mockPresences));
+    }),
+    getPresences: vi.fn(() => new Map(mockPresences)),
+    onPresenceChange: vi.fn(
+      (channel: string, callback: (presences: Map<string, unknown>) => void) => {
+        let set = presenceListeners.get(channel);
+        if (!set) {
+          set = new Set();
+          presenceListeners.set(channel, set);
+        }
+        set.add(callback);
+        return () => set!.delete(callback);
+      },
+    ),
+    getMyIdentity: vi.fn(() => ({ stableId: "me", name: "Me", color: "#fff" })),
+  },
+  createPageData: vi.fn((_name: string, defaultValue: unknown) => {
+    let data = defaultValue;
+    const listeners = new Set<(d: unknown) => void>();
+    return {
+      getData: () => data,
+      setData: (next: unknown | ((draft: unknown) => void)) => {
+        data = typeof next === "function" ? (next as any)(data) ?? data : next;
+        for (const cb of listeners) cb(data);
+      },
+      onUpdate: (cb: (d: unknown) => void) => {
+        listeners.add(cb);
+        return () => listeners.delete(cb);
+      },
+      destroy: vi.fn(),
+    };
+  }),
+  createPresenceRoom: vi.fn((_name: string) => ({
+    presence: mockedPlayhtml.presence,
+    destroy: vi.fn(),
+  })),
 };
 
 // Make mock available to tests
