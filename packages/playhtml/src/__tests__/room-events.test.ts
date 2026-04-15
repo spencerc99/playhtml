@@ -4,6 +4,10 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { playhtml } from "../index";
 
+function latestProvider(): any {
+  return (globalThis as any).__getLatestFakeProvider();
+}
+
 describe("PresenceRoom events", () => {
   describe("after init", () => {
     beforeAll(async () => {
@@ -59,6 +63,54 @@ describe("PresenceRoom events", () => {
       } finally {
         room.destroy();
       }
+    });
+
+    describe("wire roundtrip", () => {
+      it("onEvent receives payloads from incoming custom-message frames", () => {
+        const room = playhtml.createPresenceRoom("event-roundtrip");
+        const roomProvider = latestProvider();
+        try {
+          const received: unknown[] = [];
+          room.onEvent("ping", (payload) => received.push(payload));
+          roomProvider.emit(
+            "custom-message",
+            JSON.stringify({ type: "ping", eventPayload: { count: 3 } }),
+          );
+          expect(received).toEqual([{ count: 3 }]);
+        } finally {
+          room.destroy();
+        }
+      });
+
+      it("unsubscribe stops delivery", () => {
+        const room = playhtml.createPresenceRoom("event-room-stop");
+        const roomProvider = latestProvider();
+        try {
+          const received: unknown[] = [];
+          const unsub = room.onEvent("x", (p) => received.push(p));
+          unsub();
+          roomProvider.emit(
+            "custom-message",
+            JSON.stringify({ type: "x", eventPayload: "nope" }),
+          );
+          expect(received).toEqual([]);
+        } finally {
+          room.destroy();
+        }
+      });
+
+      it("dispatchEvent calls provider.sendMessage with EventMessage JSON", () => {
+        const room = playhtml.createPresenceRoom("event-room-dispatch");
+        const roomProvider = latestProvider();
+        try {
+          room.dispatchEvent("hello", { a: 1 });
+          expect(roomProvider.sendMessage).toHaveBeenCalledWith(
+            JSON.stringify({ type: "hello", eventPayload: { a: 1 } }),
+          );
+        } finally {
+          room.destroy();
+        }
+      });
     });
   });
 

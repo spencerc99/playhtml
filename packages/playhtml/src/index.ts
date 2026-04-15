@@ -292,16 +292,20 @@ let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
 >();
-let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
-  string,
-  Array<RegisteredPlayEvent>
->();
 // Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
 // Allows us to distinguish programmatic remote-applied changes from local user writes.
 const remoteApplyingKeys: Set<string> = new Set();
 const selectorIdsToAvailableIdx = new Map<string, number>();
-let eventCount = 0;
+
+// Single source of truth for page-scoped event subscriptions.
+// Both the new dispatchEvent/onEvent API and the deprecated registerPlayEventListener
+// API route through here; the deprecated API wraps it via an id → unsubscribe map below.
 const pageEventListeners = new Map<string, Set<(payload: unknown) => void>>();
+
+// Backs the deprecated registerPlayEventListener/removePlayEventListener pair.
+// Can be deleted together with those functions when the deprecation period ends.
+let eventCount = 0;
+const deprecatedEventRegistrations = new Map<string, () => void>();
 export type CursorRoom =
   | "page"
   | "domain"
@@ -402,10 +406,6 @@ function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
 }
 
-function sendPlayEvent(eventMessage: EventMessage) {
-  yprovider.sendMessage(JSON.stringify(eventMessage));
-}
-
 function onMessage(data: string) {
   let message: any;
   try {
@@ -432,27 +432,8 @@ function onMessage(data: string) {
     return;
   }
 
-  // Handle PlayHTML events. Both the deprecated registerPlayEventListener
-  // registry (eventHandlers) and the new onEvent registry (pageEventListeners)
-  // share the same wire format; fire whichever matches the type.
-  const { type, eventPayload } = message as EventMessage;
-
-  const newListeners = pageEventListeners.get(type);
-  if (newListeners) {
-    for (const cb of newListeners) cb(eventPayload);
-  }
-
-  const maybeHandlers = eventHandlers.get(type);
-  if (maybeHandlers) {
-    for (const handler of maybeHandlers) {
-      handler.onEvent(eventPayload);
-    }
-    return;
-  }
-
-  if (newListeners) return;
-
-  // Handle internal bridge replies (only if no listeners matched above)
+  // Handle permission-bridge replies. This message shape is distinct from
+  // EventMessage (no `type`, carries `permissions`), so route it explicitly.
   if ((message as any).permissions) {
     try {
       const perms = (message as any).permissions as Record<
@@ -470,6 +451,16 @@ function onMessage(data: string) {
         }
       });
     } catch {}
+    return;
+  }
+
+  // Dispatch page-scoped events. Deprecated registerPlayEventListener
+  // adapters live in pageEventListeners too (via deprecatedEventRegistrations),
+  // so this is the single dispatch path.
+  const { type, eventPayload } = message as EventMessage;
+  const listeners = pageEventListeners.get(type);
+  if (listeners) {
+    for (const cb of listeners) cb(eventPayload);
   }
 }
 
@@ -1065,6 +1056,8 @@ function createPresenceRoom(name: string): PresenceRoom {
   });
 
   const eventListeners = new Map<string, Set<(payload: unknown) => void>>();
+  const loadingListeners = new Set<(isLoading: boolean) => void>();
+  let isLoading = !provider.synced;
 
   provider.on("custom-message", (data: string) => {
     let parsed: EventMessage;
@@ -1078,9 +1071,25 @@ function createPresenceRoom(name: string): PresenceRoom {
     for (const cb of callbacks) cb(parsed.eventPayload);
   });
 
+  provider.on("sync", (synced: boolean) => {
+    const next = !synced;
+    if (next === isLoading) return;
+    isLoading = next;
+    for (const cb of loadingListeners) cb(isLoading);
+  });
+
   let destroyed = false;
   return {
     presence,
+    get isLoading() {
+      return isLoading;
+    },
+    onLoadingChange(callback: (isLoading: boolean) => void): () => void {
+      loadingListeners.add(callback);
+      return () => {
+        loadingListeners.delete(callback);
+      };
+    },
     dispatchEvent(type: string, payload?: unknown): void {
       if (destroyed) return;
       const message: EventMessage = { type, eventPayload: payload ?? null };
@@ -1101,6 +1110,7 @@ function createPresenceRoom(name: string): PresenceRoom {
       if (destroyed) return;
       destroyed = true;
       eventListeners.clear();
+      loadingListeners.clear();
       provider.destroy();
       roomDoc.destroy();
     },
@@ -1116,6 +1126,7 @@ export interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   syncedStore: (typeof store)["play"];
   elementHandlers: Map<string, Map<string, ElementHandler>>;
+  /** @deprecated Kept for type compatibility; no longer populated. Use onEvent. */
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
@@ -1149,7 +1160,9 @@ export const playhtml: PlayHTMLComponents = {
   setupPlayElementForTag,
   syncedStore: store.play,
   elementHandlers,
-  eventHandlers,
+  // Always empty; dispatch flows through pageEventListeners. Kept for type
+  // compatibility; can be removed when the deprecated event API is removed.
+  eventHandlers: new Map<string, Array<RegisteredPlayEvent>>(),
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
@@ -1524,62 +1537,41 @@ function deleteElementData(tag: string, elementId: string): void {
 
 /**
  * @deprecated Use `playhtml.dispatchEvent(type, payload)` instead.
+ *
+ * If a listener is registered for the same event type via both
+ * `registerPlayEventListener` and `onEvent`, both will fire.
  */
 function dispatchPlayEvent(message: EventMessage) {
-  const { type } = message;
-  if (!eventHandlers.has(type)) {
-    console.error(`[playhtml] event "${type}" not registered.`);
-    return;
-  }
-
-  sendPlayEvent(message);
+  pageDispatchEvent(message.type, message.eventPayload);
 }
 
 /**
- * @deprecated Use `playhtml.onEvent(type, callback)` instead. Returns an unsubscribe function directly.
+ * @deprecated Use `playhtml.onEvent(type, callback)` instead. Returns an
+ * unsubscribe function directly.
+ *
+ * If a listener is registered for the same event type via both
+ * `registerPlayEventListener` and `onEvent`, both will fire.
  */
 function registerPlayEventListener(
   type: string,
   event: Omit<PlayEvent, "type">,
 ): string {
   const id = String(eventCount++);
-
-  eventHandlers.set(type, [
-    ...(eventHandlers.get(type) ?? []),
-    { type, ...event, id },
-  ]);
-
-  // NOTE: bring this back if desired to automatically listen to native DOM events of the same type
-  // document.addEventListener(type, (evt) => {
-  //   const payload: EventMessage = {
-  //     type,
-  //     // @ts-ignore
-  //     eventPayload: evt.detail,
-  //     // @ts-ignore
-  //     // element: evt.target,
-  //   };
-  //   sendPlayEvent(payload);
-  // });
+  const unsub = pageOnEvent(type, (payload) => {
+    event.onEvent({ eventPayload: payload });
+  });
+  deprecatedEventRegistrations.set(id, unsub);
   return id;
 }
 
 /**
  * @deprecated Use the unsubscribe function returned by `playhtml.onEvent()` instead.
  */
-function removePlayEventListener(type: string, id: string) {
-  const handlers = eventHandlers.get(type);
-  if (!handlers) {
-    return;
-  }
-
-  const index = handlers.findIndex((handler) => handler.id === id);
-  if (index === -1) {
-    return;
-  }
-
-  handlers.splice(index, 1);
-  if (handlers.length === 0) {
-    eventHandlers.delete(type);
+function removePlayEventListener(_type: string, id: string) {
+  const unsub = deprecatedEventRegistrations.get(id);
+  if (unsub) {
+    unsub();
+    deprecatedEventRegistrations.delete(id);
   }
 }
 

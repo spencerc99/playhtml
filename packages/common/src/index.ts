@@ -245,6 +245,14 @@ export interface PresenceAPI {
 
 export interface PresenceRoom {
   presence: PresenceAPI;
+  /** True until the room's WebSocket has connected and synced for the first time. */
+  readonly isLoading: boolean;
+  /**
+   * Subscribe to loading-state changes. Fires when `isLoading` flips from
+   * true to false (initial sync) or vice versa (on subsequent disconnect).
+   * Returns an unsubscribe function.
+   */
+  onLoadingChange(callback: (isLoading: boolean) => void): () => void;
   dispatchEvent(type: string, payload?: unknown): void;
   onEvent(type: string, callback: (payload: unknown) => void): () => void;
   destroy: () => void;

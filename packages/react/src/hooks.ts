@@ -143,23 +143,37 @@ export function usePageData<T>(
 }
 
 /**
- * Join a presence room. Safe to call before playhtml has initialized:
- * returns `null` until sync completes. When `name` changes, briefly returns
- * `null` during the transition between rooms.
+ * Join a presence room. Safe to call before playhtml has initialized.
+ *
+ * Returns `{ room, isLoading }`:
+ * - `room` is `null` until playhtml has initialized and the room has been
+ *   created. When `name` changes, briefly returns `null` during the
+ *   transition between rooms.
+ * - `isLoading` is `true` until both playhtml has synced AND the room's
+ *   own WebSocket has connected and synced. Gate `room.dispatchEvent`
+ *   calls on `isLoading === false`.
  */
-export function usePresenceRoom(name: string): PresenceRoom | null {
-  const { isLoading } = useContext(PlayContext);
+export function usePresenceRoom(name: string): {
+  room: PresenceRoom | null;
+  isLoading: boolean;
+} {
+  const { isLoading: playhtmlLoading } = useContext(PlayContext);
   const [room, setRoom] = useState<PresenceRoom | null>(null);
+  const [roomLoading, setRoomLoading] = useState(true);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (playhtmlLoading) return;
     const r = playhtml.createPresenceRoom(name);
     setRoom(r);
+    setRoomLoading(r.isLoading);
+    const unsubLoading = r.onLoadingChange(setRoomLoading);
     return () => {
+      unsubLoading();
       r.destroy();
       setRoom(null);
+      setRoomLoading(true);
     };
-  }, [isLoading, name]);
+  }, [playhtmlLoading, name]);
 
-  return room;
+  return { room, isLoading: playhtmlLoading || roomLoading };
 }

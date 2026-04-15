@@ -69,6 +69,8 @@ const mockedPlayhtml = {
   }),
   createPresenceRoom: vi.fn((_name: string) => ({
     presence: mockedPlayhtml.presence,
+    isLoading: false,
+    onLoadingChange: vi.fn().mockReturnValue(() => {}),
     dispatchEvent: vi.fn(),
     onEvent: vi.fn().mockReturnValue(() => {}),
     destroy: vi.fn(),

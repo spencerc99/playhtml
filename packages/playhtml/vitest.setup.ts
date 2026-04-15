@@ -22,6 +22,12 @@ import { vi } from "vitest";
 
 vi.mock("y-indexeddb", () => ({ IndexeddbPersistence: class {} }));
 
+// Tracks all FakeProvider instances so tests can drive inbound messages via
+// `latestFakeProvider()` below.
+const _fakeProviderInstances: unknown[] = [];
+// @ts-ignore — attach to global so tests can reach it without importing setup
+(globalThis as any).__getLatestFakeProvider = () => _fakeProviderInstances[_fakeProviderInstances.length - 1];
+
 vi.mock("y-partyserver/provider", () => {
   return {
     default: class FakeProvider {
@@ -31,9 +37,11 @@ vi.mock("y-partyserver/provider", () => {
       };
       awareness: any;
       sendMessage = vi.fn();
+      synced = false;
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
       constructor() {
+        _fakeProviderInstances.push(this);
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
@@ -56,12 +64,16 @@ vi.mock("y-partyserver/provider", () => {
           getStates: () => states,
           on: (t: string, cb: any) => this.on(t, cb),
         };
-        queueMicrotask(() => this.emit("sync", true));
+        queueMicrotask(() => {
+          this.synced = true;
+          this.emit("sync", true);
+        });
       }
       on(t: string, cb: any) {
         this.listeners[t] ??= [];
         this.listeners[t].push(cb);
       }
+      // Exposed publicly so tests can simulate inbound messages via emit("custom-message", payload).
       emit(t: string, ...args: any[]) {
         (this.listeners[t] || []).forEach((cb) => cb(...args));
       }
