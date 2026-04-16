@@ -67,7 +67,8 @@ const SAMPLE_TYPED_TEXT = "email hi@spencer.place with feedback!";
 const REDACTION_CHAR = "\u2588"; // U+2588 FULL BLOCK — matches KeyboardCollector
 
 const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-const PHONE_RE = /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g;
+const PHONE_RE =
+  /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g;
 const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
 
 function redactPII(text: string): string {
@@ -82,11 +83,7 @@ function redactNonWhitespace(text: string): string {
   return text.replace(/\S/g, REDACTION_CHAR);
 }
 
-function KeyboardPrivacyPreview({
-  level,
-}: {
-  level: "abstract" | "full";
-}) {
+function KeyboardPrivacyPreview({ level }: { level: "abstract" | "full" }) {
   const output =
     level === "abstract"
       ? redactNonWhitespace(SAMPLE_TYPED_TEXT)
@@ -119,13 +116,18 @@ export function CollectorList({
   return (
     <div className="collections__collector-list">
       {types.map((type) => {
-        const isActive = modes[type] && modes[type] !== "off";
+        const mode = modes[type] ?? "off";
+        const isActive = mode !== "off";
+        const modifier =
+          mode === "shared"
+            ? " collector-card--shared"
+            : mode === "local"
+              ? " collector-card--local"
+              : "";
         return (
           <div
             key={type}
-            className={`collector-card${
-              isActive ? " collector-card--active" : ""
-            }`}
+            className={`collector-card${modifier}`}
           >
             <div className="collector-card__row">
               <div className="collector-card__title-row">
@@ -202,7 +204,10 @@ export function Collections({ onBack }: CollectionsProps) {
   >({});
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [devMode, setDevMode] = useState(false);
-  const [transferStatus, setTransferStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [transferStatus, setTransferStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -402,14 +407,22 @@ export function Collections({ onBack }: CollectionsProps) {
     setIsExporting(true);
     setTransferStatus(null);
     try {
-      const response = await browser.runtime.sendMessage({ type: "EXPORT_EVENTS" });
-      if (!response?.success) throw new Error(response?.error ?? "Export failed");
-      const blob = new Blob([new Uint8Array(response.data)], { type: "application/gzip" });
+      const response = await browser.runtime.sendMessage({
+        type: "EXPORT_EVENTS",
+      });
+      if (!response?.success)
+        throw new Error(response?.error ?? "Export failed");
+      const blob = new Blob([new Uint8Array(response.data)], {
+        type: "application/gzip",
+      });
       const date = new Date().toISOString().slice(0, 10);
       triggerDownload(blob, `we-were-online-export-${date}.json.gz`);
       setTransferStatus({ type: "success", message: "Export downloaded." });
     } catch (e: any) {
-      setTransferStatus({ type: "error", message: `Export failed: ${e.message}` });
+      setTransferStatus({
+        type: "error",
+        message: `Export failed: ${e.message}`,
+      });
     } finally {
       setIsExporting(false);
     }
@@ -421,12 +434,22 @@ export function Collections({ onBack }: CollectionsProps) {
     try {
       const buffer = await file.arrayBuffer();
       const data = Array.from(new Uint8Array(buffer));
-      const response = await browser.runtime.sendMessage({ type: "IMPORT_EVENTS", data });
-      if (!response?.success) throw new Error(response?.error ?? "Import failed");
-      setTransferStatus({ type: "success", message: `Imported ${response.imported.toLocaleString()} events.` });
+      const response = await browser.runtime.sendMessage({
+        type: "IMPORT_EVENTS",
+        data,
+      });
+      if (!response?.success)
+        throw new Error(response?.error ?? "Import failed");
+      setTransferStatus({
+        type: "success",
+        message: `Imported ${response.imported.toLocaleString()} events.`,
+      });
       await loadStorageStats();
     } catch (e: any) {
-      setTransferStatus({ type: "error", message: `Import failed: ${e.message}` });
+      setTransferStatus({
+        type: "error",
+        message: `Import failed: ${e.message}`,
+      });
     } finally {
       setIsImporting(false);
       if (importInputRef.current) importInputRef.current.value = "";
@@ -570,7 +593,9 @@ export function Collections({ onBack }: CollectionsProps) {
           </button>
           <h1>Data Collection Settings</h1>
         </div>
-        <p className="collections__header-desc">Control what's collected and whether it's shared</p>
+        <p className="collections__header-desc">
+          Control what's collected and whether it's shared
+        </p>
       </header>
 
       <main className="collections__main">
@@ -610,20 +635,38 @@ export function Collections({ onBack }: CollectionsProps) {
         )}
 
         <div className="collections__context">
-          <strong>Participating in</strong>{" "}
-          <a
-            href="https://spencer.place/internet-series"
-            target="_blank"
-            rel="noreferrer"
-            className="collections__context-link"
-          >
-            Internet Movement
-          </a>
-          <br />
-          <span>
-            Your cursor trails and browsing rhythms are woven into a living
-            visualization.
-          </span>
+          {Object.values(modes).some((m) => m === "shared") ? (
+            <>
+              <strong>Participating in</strong>{" "}
+              <a
+                href="https://spencer.place/creation/internet-movement"
+                target="_blank"
+                rel="noreferrer"
+                className="collections__context-link"
+              >
+                Internet Movement
+              </a>
+              <br />
+              <span>
+                Thank you for contributing to a living, collective portrait of
+                the internet.
+              </span>
+            </>
+          ) : (
+            <>
+              <strong>Not participating in</strong>{" "}
+              <a
+                href="https://spencer.place/creation/internet-movement"
+                target="_blank"
+                rel="noreferrer"
+                className="collections__context-link"
+              >
+                Internet Movement
+              </a>
+              <br />
+              <span>Your browsing data is only staying local.</span>
+            </>
+          )}
         </div>
 
         <CollectorList
@@ -685,8 +728,8 @@ export function Collections({ onBack }: CollectionsProps) {
             </>
           ) : (
             <>
-              All data is anonymous — no personal information is collected. You
-              can pause collection anytime. Questions?{" "}
+              All data is anonymous & no personal info is collected. Pause
+              collection anytime. Questions?{" "}
               <a href="mailto:hi@spencer.place">hi@spencer.place</a>
             </>
           )}
@@ -720,7 +763,9 @@ export function Collections({ onBack }: CollectionsProps) {
             }}
           />
           {transferStatus && (
-            <p className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}>
+            <p
+              className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}
+            >
               {transferStatus.message}
             </p>
           )}

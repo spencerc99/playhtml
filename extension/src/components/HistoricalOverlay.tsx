@@ -27,6 +27,7 @@ import { AnimatedScrollViewports } from "../../../website/internet-series/moveme
 import { useCursorTrails } from "../../../website/internet-series/movement/hooks/useCursorTrails";
 import { useKeyboardTyping } from "../../../website/internet-series/movement/hooks/useKeyboardTyping";
 import { useViewportScroll } from "../../../website/internet-series/movement/hooks/useViewportScroll";
+import { SoundEngine } from "../../../website/internet-series/movement/sound/SoundEngine";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections
@@ -93,6 +94,10 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   );
   const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
   const prevDomainRef = useRef<string>(extractDomain(currentUrl));
+  // Default sound on — the AudioContext starts suspended until the user's
+  // first gesture, then auto-resumes via the engine's internal tick.
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEngineRef = useRef<SoundEngine | null>(null);
 
   // Load dev mode setting from storage once on mount
   useEffect(() => {
@@ -283,6 +288,30 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     window.addEventListener("resize", updateSize);
     return () => window.removeEventListener("resize", updateSize);
   }, []);
+
+  // Manage SoundEngine lifecycle — mirrors MovementCanvas pattern
+  useEffect(() => {
+    if (soundEnabled) {
+      if (!soundEngineRef.current) {
+        const engine = new SoundEngine();
+        engine.init().then(() => {
+          engine.setCanvasWidth(viewportSize.width);
+          soundEngineRef.current = engine;
+        });
+      }
+    } else if (soundEngineRef.current) {
+      soundEngineRef.current.dispose();
+      soundEngineRef.current = null;
+    }
+    return () => {
+      soundEngineRef.current?.dispose();
+      soundEngineRef.current = null;
+    };
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    soundEngineRef.current?.setCanvasWidth(viewportSize.width);
+  }, [viewportSize.width]);
 
   // Process cursor events
   const cursorSettings = useMemo(
@@ -639,6 +668,50 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             </button>
 
             <button
+              style={{
+                ...actionBtnBase,
+                marginLeft: 8,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                opacity: soundEnabled ? 1 : 0.55,
+              }}
+              onClick={() => setSoundEnabled((v) => !v)}
+              title={soundEnabled ? "Mute trail sounds" : "Play trail sounds"}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#3d3833";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+              }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                {soundEnabled ? (
+                  <>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                  </>
+                ) : (
+                  <>
+                    <line x1="23" y1="9" x2="17" y2="15" />
+                    <line x1="17" y1="9" x2="23" y2="15" />
+                  </>
+                )}
+              </svg>
+              sound
+            </button>
+
+            <button
               style={{ ...actionBtnBase, marginLeft: "auto" }}
               onClick={onClose}
               title="Close overlay"
@@ -824,6 +897,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               showClickRipples={!settings.showCursorClicks}
               windowSize={settings.maxConcurrentTrails * 3}
               documentSpace={settings.documentSpace}
+              soundEngine={soundEnabled ? soundEngineRef.current : null}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 pointSize: settings.pointSize,

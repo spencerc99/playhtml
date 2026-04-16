@@ -53,6 +53,14 @@ export default defineBackground(() => {
     accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
   }).catch(() => {});
 
+  // Storage durability is provided by the `unlimitedStorage` permission
+  // declared in wxt.config.ts — Chromium's quota manager exempts extensions
+  // with this permission from both quota caps and automatic eviction.
+  //
+  // navigator.storage.persist() is deliberately NOT called here: it returns
+  // false in extensions regardless of actual protection status (known
+  // Chromium issue #357622670), so it's a misleading signal to rely on.
+
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {

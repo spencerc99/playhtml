@@ -134,6 +134,9 @@ interface MovementCanvasProps {
   onSetDomainFilter?: (domain: string) => void;
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  /** Initial sound-on state. The AudioContext will still start suspended
+   * until the user's first gesture (browser autoplay policy). */
+  defaultSoundEnabled?: boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -148,6 +151,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetDomainFilter,
   activeVisualizations,
   onSetActiveVisualizations,
+  defaultSoundEnabled = false,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -156,7 +160,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
     "cycle",
   );
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(defaultSoundEnabled);
   const soundEngineRef = useRef<SoundEngine | null>(null);
 
   // Sync domain filter from prop (parent controls refetching)

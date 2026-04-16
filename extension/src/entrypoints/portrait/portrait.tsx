@@ -35,6 +35,7 @@ const PortraitPage = () => {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(DEFAULT_ACTIVE_VISUALIZATIONS);
+  const [cardMinimized, setCardMinimized] = useState(false);
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
   const loadEvents = useCallback(async (day?: string | null) => {
@@ -272,17 +273,13 @@ const PortraitPage = () => {
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
-      {/* Header bar */}
+      {/* Header bar — wordmark only; the time link now lives on the portrait card */}
       <div
         style={{
           position: "absolute",
           top: 0,
           left: 0,
-          right: 0,
           zIndex: 200,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
           padding: "14px 20px",
           pointerEvents: "none",
         }}
@@ -298,25 +295,9 @@ const PortraitPage = () => {
         >
           we were online
         </span>
-        <a
-          href={browser.runtime.getURL("stats.html")}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontFamily: "'Martian Mono', monospace",
-            fontSize: "10px",
-            color: "var(--text-muted)",
-            textDecoration: "none",
-            pointerEvents: "auto",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-teal)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-        >
-          time
-        </a>
       </div>
 
-      {/* Portrait card — bottom-right, always visible */}
+      {/* Portrait card — bottom-right, with footer link and minimize toggle */}
       {portraitStats && (
         <div
           style={{
@@ -324,19 +305,88 @@ const PortraitPage = () => {
             bottom: 20,
             right: 20,
             width: 260,
-            height: 160,
             zIndex: 200,
-            pointerEvents: "none",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            alignItems: "stretch",
           }}
         >
-          <PortraitCard
-            domain={portraitStats.domain}
-            totalTimeMs={portraitStats.totalTimeMs}
-            hourBuckets={portraitStats.hourBuckets ?? new Array(24).fill(0)}
-            cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
-            dateRange={portraitStats.dateRange}
-            uniquePageCount={portraitStats.uniquePageCount}
-          />
+          {!cardMinimized && (
+            <div
+              style={{
+                position: "relative",
+                width: 260,
+                height: 160,
+                pointerEvents: "none",
+              }}
+            >
+              <PortraitCard
+                domain={portraitStats.domain}
+                totalTimeMs={portraitStats.totalTimeMs}
+                hourBuckets={portraitStats.hourBuckets ?? new Array(24).fill(0)}
+                cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
+                dateRange={portraitStats.dateRange}
+                uniquePageCount={portraitStats.uniquePageCount}
+              />
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "0 4px",
+              pointerEvents: "auto",
+            }}
+          >
+            <a
+              href={browser.runtime.getURL("stats.html")}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontFamily: "'Martian Mono', monospace",
+                fontSize: "10px",
+                color: "var(--text-muted)",
+                textDecoration: "none",
+                letterSpacing: "0.04em",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.color = "var(--accent-teal)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--text-muted)")
+              }
+            >
+              see your time →
+            </a>
+            <button
+              type="button"
+              onClick={() => setCardMinimized((v) => !v)}
+              title={cardMinimized ? "Show portrait card" : "Hide portrait card"}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "2px 4px",
+                cursor: "pointer",
+                fontFamily: "'Martian Mono', monospace",
+                fontSize: "10px",
+                color: "var(--text-muted)",
+                lineHeight: 1,
+                letterSpacing: "0.04em",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.color = "var(--accent-teal)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--text-muted)")
+              }
+            >
+              {cardMinimized ? "show portrait" : "hide"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -350,6 +400,7 @@ const PortraitPage = () => {
         onSelectDay={setSelectedDay}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
+        defaultSoundEnabled
       />
     </div>
   );

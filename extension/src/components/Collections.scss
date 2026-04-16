@@ -202,20 +202,20 @@
 
   &__clear-btn {
     margin-top: 12px;
-    width: 100%;
-    padding: 8px;
+    padding: 5px 10px;
     background: none;
-    border: 1px solid $border-strong;
-    border-radius: 6px;
+    border: 1px solid rgba(196, 74, 54, 0.35);
+    border-radius: 5px;
     font-family: $font-body;
-    font-size: 11px;
-    color: $text-muted;
+    font-size: 10px;
+    color: #b34a38;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
 
     &:hover {
-      color: $error-text;
-      border-color: rgba(196, 114, 78, 0.4);
+      background: rgba(196, 74, 54, 0.08);
+      color: #8f3629;
+      border-color: rgba(196, 74, 54, 0.55);
     }
   }
 
@@ -264,10 +264,44 @@
   border: 1px solid $border;
   border-radius: 6px;
   background: $bg;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
 
-  &--active {
+  // Local: rust accent bar — data stays close, private, at rest.
+  // Mirrors shared's left-bar treatment so "active" has a shared visual
+  // grammar; color carries the meaning (rust = inward, teal = outward).
+  &--local {
+    background: rgba(196, 114, 78, 0.06);
+    border-color: rgba(196, 114, 78, 0.22);
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: 0;
+      width: 2px;
+      border-radius: 0 2px 2px 0;
+      background: $accent-rust;
+    }
+  }
+
+  // Shared: teal accent with a thin left edge — data flowing out to the
+  // collective portrait. The left bar is the clearest at-a-glance signal.
+  &--shared {
     background: $active-bg;
     border-color: $active-border;
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: 0;
+      width: 2px;
+      border-radius: 0 2px 2px 0;
+      background: $accent-teal;
+    }
   }
 
   // Top row: icon + name + count on left, mode radios on right

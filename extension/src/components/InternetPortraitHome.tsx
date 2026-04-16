@@ -166,6 +166,7 @@ export function InternetPortraitHome({
     })();
   }, []);
 
+
   useEffect(() => {
     if (!FLAGS.COPRESENCE) return;
     (async () => {
