@@ -4,6 +4,7 @@ import browser from 'webextension-polyfill'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents, syncParticipantColor } from '../storage/sync'
+import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '../shared/types'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
@@ -190,9 +191,17 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'CAPTURE_PAGE_PORTRAIT') {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore: captureVisibleTab overloads vary between polyfill types
-      browser.tabs.captureVisibleTab({ format: 'png' }).then((dataUrl: string) => {
+      // Use the sender's window id explicitly. Without it, captureVisibleTab
+      // falls back to the current focused window, which Arc's window model
+      // (Spaces, Little Arc, split view) handles poorly and often returns
+      // "No active web contents" on.
+      const windowId = sender?.tab?.windowId
+      const capture = windowId != null
+        ? browser.tabs.captureVisibleTab(windowId, { format: 'png' })
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore: captureVisibleTab overloads vary between polyfill types
+        : browser.tabs.captureVisibleTab({ format: 'png' })
+      capture.then((dataUrl: string) => {
         reply({ dataUrl })
       }).catch((err: Error) => {
         reply({ error: err.message })
@@ -475,6 +484,30 @@ export default defineBackground(() => {
           reply({ success: true, imported: events.length })
         } catch (e) {
           console.error('[Background] IMPORT_EVENTS error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'RESTORE_FROM_SERVER') {
+      ;(async () => {
+        try {
+          const identity = await getPlayerIdentity()
+          const pid = identity?.publicKey
+          if (!pid) {
+            reply({ success: false, error: 'No player identity found' })
+            return
+          }
+          const { events, countsByType } = await fetchEventsByPid(pid)
+          await store.addEvents(events)
+          reply({
+            success: true,
+            imported: events.length,
+            countsByType,
+          })
+        } catch (e) {
+          console.error('[Background] RESTORE_FROM_SERVER error:', e)
           reply({ success: false, error: String(e) })
         }
       })()

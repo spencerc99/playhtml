@@ -285,11 +285,23 @@ export default function App() {
 
             <p>
               <em>we were online</em> is an online multiplayer world—part game,
-              artwork, and tool—that turns the existing Internet into a shared
-              world by enabling us to see and affect each other and the pages we
-              visit. Isolated browsing becomes the site of serendipitous
-              encounters, websites become archives of our collective traces, and
-              the Internet becomes more like a hometown we share and co-create.
+              artwork, and tool—that turns the existing Internet into a living,
+              shared world, actively shaped by its inhabitants.
+            </p>
+
+            <p>
+              In this world, everything on the Internet becomes material for
+              connection. Assets, buttons, and other components can be created,
+              grown, moved, taken, and gifted. Pages have memory and show the
+              wear of use. Cursors become digital appendages that allow us to
+              bump into others who are there at the same time as us.
+            </p>
+
+            <p>
+              By allowing us to see each other and affect the pages we visit,
+              isolated browsing becomes the site of serendipitous encounters,
+              websites become archives of our collective traces, and the
+              Internet becomes more like a hometown we share and co-create.
             </p>
 
             <p>

@@ -3,7 +3,11 @@ import profaneWords from "profane-words";
 import { MoveData, TagType } from "@playhtml/common";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { PlayContext, withSharedState } from "../packages/react/src";
+import {
+  PlayContext,
+  withSharedState,
+  useCursorPresences,
+} from "../packages/react/src";
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { useLocation } from "./useLocation";
@@ -464,6 +468,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
+    const onlineCount = useCursorPresences().size;
 
     // Convert screen coordinates to fridge-relative content coordinates,
     // accounting for the zoom/pan transform on .content
@@ -791,12 +796,47 @@ const WordControls = withSharedState<FridgeWordType[]>(
               style={{
                 display: "flex",
                 gap: "10px",
-                fontSize: "13px",
+                fontSize: "14px",
                 color: "#666",
                 flexShrink: 0,
+                alignItems: "center",
               }}
             >
-              <span title="words">¶{Words.length + data.length}</span>
+              <span
+                title="words"
+                style={{ display: "flex", alignItems: "center", gap: "4px" }}
+              >
+                <span
+                  style={{
+                    display: "inline-block",
+                    border: "1px solid #666",
+                    borderRadius: "2px",
+                    padding: "0 4px",
+                    fontSize: "10px",
+                    lineHeight: "1.3",
+                    background: "white",
+                    color: "#333",
+                  }}
+                >
+                  word
+                </span>
+                {Words.length + data.length}
+              </span>
+              <span
+                title="people online"
+                style={{ display: "flex", alignItems: "center", gap: "3px" }}
+              >
+                <span
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#4a7c59",
+                    display: "inline-block",
+                  }}
+                />
+                {onlineCount} online
+              </span>
               <span
                 title="contributors"
                 style={{ display: "flex", alignItems: "center", gap: "1px" }}
@@ -905,9 +945,21 @@ const WordControls = withSharedState<FridgeWordType[]>(
                   gap: "6px",
                   flex: 1,
                   minWidth: isMobile ? "auto" : "100%",
+                  alignItems: "center",
                 }}
               >
+                <label
+                  htmlFor="fridge-wall-input"
+                  style={{
+                    fontSize: "13px",
+                    color: "#333",
+                    flexShrink: 0,
+                  }}
+                >
+                  Room:
+                </label>
                 <input
+                  id="fridge-wall-input"
                   placeholder="Wall name..."
                   value={wallInputValue}
                   onKeyDown={(e) => {

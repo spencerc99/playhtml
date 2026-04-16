@@ -237,6 +237,7 @@ export function Collections({ onBack }: CollectionsProps) {
   } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -450,6 +451,45 @@ export function Collections({ onBack }: CollectionsProps) {
       });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleRestoreFromServer = async () => {
+    if (
+      !confirm(
+        "Restore your shared events from the server? This will re-add any events from the server that aren't already in your local store (duplicates are ignored).",
+      )
+    )
+      return;
+    setIsRestoring(true);
+    setTransferStatus(null);
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: "RESTORE_FROM_SERVER",
+      });
+      if (!response?.success) {
+        throw new Error(response?.error ?? "Restore failed");
+      }
+      const counts = response.countsByType as
+        | Record<string, number>
+        | undefined;
+      const countDetail = counts
+        ? Object.entries(counts)
+            .filter(([, n]) => n > 0)
+            .map(([t, n]) => `${n} ${t}`)
+            .join(", ")
+        : "";
+      setTransferStatus({
+        type: "success",
+        message: `Restored ${response.imported.toLocaleString()} events${
+          countDetail ? ` (${countDetail})` : ""
+        }.`,
+      });
+      await loadStorageStats();
+    } catch (e: any) {
+      setTransferStatus({ type: "error", message: `Restore failed: ${e.message}` });
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -777,6 +817,16 @@ export function Collections({ onBack }: CollectionsProps) {
             >
               {isImporting ? "Importing…" : "Import data"}
             </button>
+            {devMode && (
+              <button
+                className="collections__transfer-btn"
+                onClick={handleRestoreFromServer}
+                disabled={isExporting || isImporting || isRestoring}
+                title="Fetch your shared events from the server and merge into local store"
+              >
+                {isRestoring ? "Restoring…" : "Restore from server"}
+              </button>
+            )}
           </div>
           <input
             ref={importInputRef}

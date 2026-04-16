@@ -68,6 +68,7 @@ async function fetchMetaByPageRef(
  * - type: Event type filter (default: 'cursor')
  * - limit: Maximum number of events (default: 1000, max: 5000). Pagination is used to return up to 5000.
  * - domain: Domain filter (optional) - filters events by URL domain
+ * - pid: Participant ID filter (optional) - restore-from-server flow uses this
  * - from: ISO date string, inclusive lower bound on ts (optional)
  * - to: ISO date string, inclusive upper bound on ts (optional)
  * - require_title: 'true' to omit events for which no title exists in page_metadata_history (optional)
@@ -83,6 +84,7 @@ export async function handleRecent(
     const type = url.searchParams.get('type') || 'cursor';
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 5000);
     const domainFilter = url.searchParams.get('domain') || null;
+    const pidFilter = url.searchParams.get('pid') || null;
     const requireTitle = url.searchParams.get('require_title') === 'true';
 
     const supabase = createSupabaseClient(env);
@@ -99,6 +101,9 @@ export async function handleRecent(
 
       if (domainFilter) {
         query = query.eq('domain', domainFilter);
+      }
+      if (pidFilter) {
+        query = query.eq('participant_id', pidFilter);
       }
 
       const fromDate = url.searchParams.get('from');

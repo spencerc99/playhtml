@@ -114,11 +114,13 @@ body,
 }
 
 .board {
-  position: absolute;
+  position: fixed;
   top: 0;
   width: 100dvw;
   text-align: center;
   background: rgba(255, 255, 255, 0.556);
+  z-index: 10000;
+  pointer-events: none;
 
   .boardTitle {
     margin: 0 auto;
