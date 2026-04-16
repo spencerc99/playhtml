@@ -1,5 +1,19 @@
 # Change Log
 
+## 0.11.0
+
+### Minor Changes
+
+- a0936aa: Add `usePresence`, `usePageData`, and `usePresenceRoom` hooks that are safe to call before playhtml has finished initializing. They return empty/default values and no-op setters until sync completes, then wire up automatically — no `hasSynced` guards needed at call sites.
+
+  Also adds `isLoading` to `PlayContext` as the preferred way to check init state. `hasSynced` is still present (inverse semantics) but deprecated.
+
+### Patch Changes
+
+- Updated dependencies [a0936aa]
+  - @playhtml/common@0.6.1
+  - playhtml@2.9.1
+
 ## 0.10.1
 
 ### Patch Changes
