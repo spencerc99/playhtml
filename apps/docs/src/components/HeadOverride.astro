@@ -1,0 +1,46 @@
+---
+const { head } = Astro.locals.starlightRoute;
+---
+{head.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=Play:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&family=Carter+One&family=Yellowtail&display=swap"
+/>
+
+<script>
+  import { playhtml } from 'playhtml';
+  // Progressive enhancement: wraps every Shiki-highlighted <pre> in .ph-copy
+  // chrome with a copy button so all fenced code blocks match the splash
+  // snippets. Runs on DOMContentLoaded; import order here is intentional so
+  // it initialises before playhtml.init awaits window.load.
+  import '../scripts/enhance-code-blocks';
+
+  // Defer playhtml.init() until after the document is idle so every React
+  // island (`client:load`) has a chance to hydrate and stamp its `can-*`
+  // attributes into the DOM. If we init eagerly at module-execution time,
+  // the WebSocket handshake goes out with `sharedElements=[]` and the server
+  // misses the initial snapshot for React-driven elements. Vanilla elements
+  // (the wordmark `can-toggle` letters) are already in the DOM at this point,
+  // so they still get picked up correctly.
+  function boot() {
+    void playhtml.init({
+      cursors: {
+        enabled: true,
+        // Domain-wide cursor room so the header presence HUD counts ALL readers
+        // across the docs site, and cursors follow you between /docs/* pages
+        // without losing awareness. The per-page shared-data room still keys on
+        // the pathname via the main room — only cursor awareness is widened.
+        room: "domain",
+      },
+    });
+  }
+  if (document.readyState === 'complete') {
+    // Next microtask — lets React's client:load hydrators flush first.
+    queueMicrotask(boot);
+  } else {
+    window.addEventListener('load', () => queueMicrotask(boot), { once: true });
+  }
+</script>

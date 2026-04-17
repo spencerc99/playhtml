@@ -1,0 +1,87 @@
+---
+title: "playhtml docs"
+template: splash
+hero:
+  tagline: "Interactive, collaborative HTML with a single attribute. Ship live, shared elements to any page without a backend."
+  actions:
+    - text: "Get started"
+      link: /docs/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: "GitHub"
+      link: https://github.com/spencerc99/playhtml
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import { InteractiveToggleDemo } from '../../components/react/InteractiveToggleDemo';
+
+<div class="ph-splash-quickstart">
+  <div class="ph-splash-quickstart__label">FIG. 01 &nbsp;·&nbsp; 30-second install</div>
+
+```bash
+npm install playhtml
+```
+
+```html
+<script type="module">
+  import { playhtml } from "playhtml";
+  playhtml.init();
+</script>
+<button can-toggle id="lamp">lamp</button>
+```
+
+</div>
+
+<div class="ph-splash-section">
+  <div class="ph-splash-section__label">FIG. 02 &nbsp;·&nbsp; try it now</div>
+  <div class="ph-splash-live">
+    <InteractiveToggleDemo client:only="react" id="ph-splash-toggle" />
+    <p class="ph-splash-live__caption">
+      This toggle is shared with everyone reading the homepage. Click it and watch the dot above.
+    </p>
+  </div>
+</div>
+
+<div class="ph-splash-section">
+  <div class="ph-splash-section__label">FIG. 03 &nbsp;·&nbsp; catalog</div>
+  <CardGrid>
+    <Card title="Getting started" icon="rocket">
+      Install playhtml and ship your first live element.
+      [Read &rarr;](/docs/getting-started/)
+    </Card>
+    <Card title="Core concepts" icon="open-book">
+      Element data, page data, presence, events — when to use each.
+      [Read &rarr;](/docs/concepts/)
+    </Card>
+    <Card title="Using React" icon="seti:react">
+      A five-minute orientation; every concept page has a React tab.
+      [Read &rarr;](/docs/using-react/)
+    </Card>
+    <Card title="Capabilities" icon="puzzle">
+      Every built-in `can-*` attribute with live demos.
+      [Read &rarr;](/docs/capabilities/)
+    </Card>
+    <Card title="Data essentials" icon="pencil">
+      Shape, update, and clean up the data attached to an element.
+      [Read &rarr;](/docs/data/data-essentials/)
+    </Card>
+    <Card title="Presence & cursors" icon="heart">
+      Ephemeral per-user state, including multiplayer cursors.
+      [Read &rarr;](/docs/data/presence/)
+    </Card>
+    <Card title="Shared elements" icon="seti:plan">
+      Cross-page and cross-domain state for interconnected sites.
+      [Read &rarr;](/docs/advanced/shared-elements/)
+    </Card>
+    <Card title="Building with AI" icon="seti:graphql">
+      Claude Code plugin + a copy-paste prompt template for any LLM.
+      [Read &rarr;](/docs/integrations/building-with-ai/)
+    </Card>
+    <Card title="API reference" icon="setting">
+      `playhtml.init()` options + the full React API surface.
+      [Read &rarr;](/docs/reference/init-options/)
+    </Card>
+  </CardGrid>
+</div>

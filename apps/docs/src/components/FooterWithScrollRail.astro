@@ -1,0 +1,8 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+import { DocsScrollRail } from './react/DocsScrollRail';
+---
+<div class="ph-docs-scroll-rail" aria-hidden="true">
+  <DocsScrollRail client:only="react" />
+</div>
+<Default />

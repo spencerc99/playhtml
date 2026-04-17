@@ -1,0 +1,242 @@
+---
+title: "can-mirror playground"
+description: "Every can-mirror edge case in one place: hover, focus, inputs, details, contenteditable, and more."
+sidebar:
+  order: 3
+---
+
+`can-mirror` is the "everything syncs" capability. Put it on any element and playhtml observes the DOM — input values, checked state, pseudo-class data attributes, attribute changes, child adds/removes — then replays those mutations on every other reader.
+
+This page hosts **every edge case we've found useful**, one section each. Open it in two browser windows side by side and poke at each demo — everything should mirror.
+
+Nothing on this page requires custom JavaScript. It's all plain HTML with `can-mirror` on a root element. The docs site's shared `playhtml.init()` picks each one up automatically.
+
+## :hover
+
+The synced `data-playhtml-hover` attribute lets CSS target the hover state from across the network. Hover over the box in one tab — it turns green in every other tab.
+
+<div className="ph-mirror-sample">
+  <div can-mirror id="pg-mirror-hover" className="pg-hover-box">
+    Hover me
+  </div>
+</div>
+
+```html
+<style>
+  #pg-mirror-hover[data-playhtml-hover] {
+    background: #4caf50;
+    color: white;
+  }
+</style>
+
+<div can-mirror id="pg-mirror-hover">Hover me</div>
+```
+
+## :focus
+
+Click the input — the blue outline shows for every client until you blur.
+
+<div className="ph-mirror-sample">
+  <input
+    can-mirror
+    id="pg-mirror-focus"
+    type="text"
+    placeholder="Click to focus"
+    className="pg-focus-input"
+  />
+</div>
+
+## Text input
+
+Type — the value replicates.
+
+<div className="ph-mirror-sample">
+  <input can-mirror id="pg-mirror-text" type="text" placeholder="Type here..." />
+</div>
+
+## Textarea
+
+<div className="ph-mirror-sample">
+  <textarea
+    can-mirror
+    id="pg-mirror-textarea"
+    rows={3}
+    cols={40}
+    placeholder="Type here..."
+  ></textarea>
+</div>
+
+## Checkbox
+
+<div className="ph-mirror-sample">
+  <div can-mirror id="pg-mirror-checkbox">
+    <label>
+      <input type="checkbox" /> I agree to the terms
+    </label>
+  </div>
+</div>
+
+## Radio buttons
+
+<div className="ph-mirror-sample">
+  <div can-mirror id="pg-mirror-radio">
+    <label>
+      <input type="radio" name="pg-color" value="red" /> Red
+    </label>
+    <br />
+    <label>
+      <input type="radio" name="pg-color" value="green" /> Green
+    </label>
+    <br />
+    <label>
+      <input type="radio" name="pg-color" value="blue" defaultChecked /> Blue
+    </label>
+  </div>
+</div>
+
+## Select (dropdown)
+
+<div className="ph-mirror-sample">
+  <select can-mirror id="pg-mirror-select">
+    <option value="apple">Apple</option>
+    <option value="banana">Banana</option>
+    <option value="cherry">Cherry</option>
+    <option value="dragonfruit">Dragonfruit</option>
+  </select>
+</div>
+
+## Range slider
+
+<div className="ph-mirror-sample">
+  <input
+    can-mirror
+    id="pg-mirror-range"
+    type="range"
+    min="0"
+    max="100"
+    defaultValue={50}
+    style={{ width: "100%" }}
+  />
+</div>
+
+## Color picker
+
+<div className="ph-mirror-sample">
+  <input
+    can-mirror
+    id="pg-mirror-color"
+    type="color"
+    defaultValue="#ff5722"
+  />
+</div>
+
+## Details / summary
+
+Expand and collapse — the native `open` attribute mirrors automatically.
+
+<div className="ph-mirror-sample">
+  <details can-mirror id="pg-mirror-details">
+    <summary>Click to expand</summary>
+    <p>
+      Hidden until the details element is opened. The <code>open</code>{" "}
+      attribute is a regular DOM attribute, so the MutationObserver catches it
+      automatically.
+    </p>
+  </details>
+</div>
+
+## contenteditable
+
+Type, paste, delete — every mutation lands on every client. Try pressing `Enter` inside the list to add items; delete them by selecting and pressing `Backspace`.
+
+<div className="ph-mirror-sample">
+  <div
+    can-mirror
+    id="pg-mirror-editable"
+    contentEditable="true"
+    suppressContentEditableWarning
+    className="pg-editable"
+  >
+    Edit this text collaboratively!
+  </div>
+</div>
+
+<div className="ph-mirror-sample">
+  <ul
+    can-mirror
+    id="pg-mirror-editable-list"
+    contentEditable="true"
+    suppressContentEditableWarning
+    className="pg-editable pg-editable--list"
+  >
+    <li>First item — type to edit, Enter for new line</li>
+    <li>Second item</li>
+  </ul>
+</div>
+
+## Mixed form inputs
+
+A single `can-mirror` wrapping a form with heterogeneous inputs — all of them sync together.
+
+<div className="ph-mirror-sample">
+  <div can-mirror id="pg-mirror-mixedform" className="pg-mixed-form">
+    <div>
+      <label>
+        Name: <input type="text" placeholder="Your name" />
+      </label>
+    </div>
+    <div>
+      <label>
+        <input type="checkbox" /> Subscribe to newsletter
+      </label>
+    </div>
+    <div>
+      <select>
+        <option>Option A</option>
+        <option>Option B</option>
+        <option>Option C</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+## Play from devtools
+
+`can-mirror` listens to a `MutationObserver` on the element. It doesn't care whether a mutation comes from a click, a React re-render, or your browser devtools. You can verify that last one right now.
+
+Open your browser devtools (F12) and paste this into the console:
+
+```js
+const el = document.querySelector("#pg-mirror-hover");
+el.classList.add("is-flag");
+el.setAttribute("data-you-changed-this", "yes");
+```
+
+Then open this page in another tab and inspect the element — the class and the custom attribute will be there too.
+
+Same trick for programmatic child changes:
+
+```js
+const el = document.querySelector("#pg-mirror-editable-list");
+const li = document.createElement("li");
+li.textContent = "added via console";
+el.appendChild(li);
+```
+
+Anything a MutationObserver would fire for — attribute additions and removals, childList inserts, characterData changes — can-mirror sends across. That's the whole capability.
+
+## What doesn't mirror (yet)
+
+- **Scroll position** on nested containers — `scrollTop`/`scrollLeft` aren't DOM mutations, so the observer doesn't catch them.
+- **Media playback** — `<video>`/`<audio>` `currentTime` isn't attribute-driven.
+- **Canvas / WebGL** — pixel changes don't emit mutations.
+- **File inputs** — `<input type="file">`'s selected file isn't serializable across the wire.
+
+For these, use element data with `can-play` and explicitly sync the bit you care about.
+
+## When to reach for can-mirror vs can-play
+
+- **can-mirror**: the DOM shape is the source of truth. Forms, collaborative scratchpads, shared to-do checkboxes, native UI elements.
+- **can-play**: you want a **custom data shape** with your own render function. Chat messages, multi-dimensional state, counts, lists where the visual is computed.
+
+Rule of thumb: if your element would work correctly with just `contenteditable` and form inputs, `can-mirror` is the least-code path. The moment you reach for `JSON.stringify`, switch to `can-play`.

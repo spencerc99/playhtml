@@ -1,0 +1,1427 @@
+/* =======================================================================
+   playhtml docs — "Arcade Workshop × Lego System × Herman Miller catalog"
+
+   Design principles (so changes don't drift):
+   - Warm Eames off-white paper is the dominant surface. Sage is the
+     homepage continuity wash — used on secondary chrome only.
+   - Precise graph-paper grid, not sketchy. Hairlines, not pencil.
+   - Disciplined palette: ultramarine primary, mustard + brick as rare
+     punctuation. Never all three on the same element.
+   - Structure carries the playfulness. No sticker tilts. No rainbow
+     sparkles. No handwriting fonts.
+   - Bricolage Grotesque carries headings, Play carries body, Plex Mono
+     carries code, Carter One appears only on the literal wordmark,
+     Yellowtail appears only on live-demo badges.
+   - Dark mode is stubbed out via `[data-theme='dark']` token overrides
+     so adding a real dark treatment later is a palette pass, not a
+     rewrite.
+   ======================================================================= */
+
+/* ---------------------------------------------------------------------
+   1. Design tokens
+   --------------------------------------------------------------------- */
+
+:root {
+  /* Paper + ink */
+  --ph-paper: #f4efe5;
+  --ph-paper-warm: #ebe4d5;
+  --ph-paper-deep: #e0d8c6;
+  --ph-ink: #1c1c1c;
+  --ph-ink-2: #3b3b3b;
+  --ph-ink-3: #6a6a66;
+  --ph-hairline: rgba(28, 28, 28, 0.18);
+  --ph-hairline-soft: rgba(28, 28, 28, 0.09);
+
+  /* Playhtml homepage continuity */
+  --ph-sage: #c3d1b7;
+  --ph-sage-wash: rgba(195, 209, 183, 0.45);
+  --ph-sage-deep: #7a9574;
+
+  /* Disciplined accents */
+  --ph-ultramarine: #274b9e;
+  --ph-ultramarine-deep: #1c3875;
+  --ph-ultramarine-wash: rgba(39, 75, 158, 0.08);
+  --ph-mustard: #e8a63a;
+  --ph-mustard-wash: rgba(232, 166, 58, 0.16);
+  --ph-brick: #c0373c;
+  --ph-brick-wash: rgba(192, 55, 60, 0.12);
+
+  /* Grid + grain */
+  --ph-grid-line: rgba(39, 75, 158, 0.08);
+  --ph-grid-line-strong: rgba(39, 75, 158, 0.14);
+  --ph-grid-size: 28px;
+
+  /* Type scale (docs-grade; Starlight tokens are overridden below) */
+  --ph-font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --ph-font-body: "Play", ui-sans-serif, system-ui, sans-serif;
+  --ph-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ph-font-wordmark: "Carter One", var(--ph-font-display);
+  --ph-font-neon: "Yellowtail", var(--ph-font-display);
+
+  /* Motion */
+  --ph-motion-fast: 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ph-motion: 200ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ph-motion-slow: 320ms cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  /* Elevation — Lego-brick 2px offset. No blur. */
+  --ph-shadow-brick: 2px 2px 0 0 var(--ph-ink);
+  --ph-shadow-brick-pressed: 0 0 0 0 var(--ph-ink);
+}
+
+/* Dark-mode token stub — graphite board instead of paper. Refined later. */
+:root[data-theme="dark"] {
+  --ph-paper: #1b1e1a;
+  --ph-paper-warm: #22251f;
+  --ph-paper-deep: #2a2d26;
+  --ph-ink: #eae4d3;
+  --ph-ink-2: #c8c2b0;
+  --ph-ink-3: #8e897a;
+  --ph-hairline: rgba(234, 228, 211, 0.18);
+  --ph-hairline-soft: rgba(234, 228, 211, 0.09);
+  --ph-sage: #5c7c54;
+  --ph-sage-wash: rgba(92, 124, 84, 0.22);
+  --ph-ultramarine: #8aa6ff;
+  --ph-ultramarine-deep: #b6c7ff;
+  --ph-ultramarine-wash: rgba(138, 166, 255, 0.14);
+  --ph-grid-line: rgba(138, 166, 255, 0.08);
+  --ph-grid-line-strong: rgba(138, 166, 255, 0.14);
+  --ph-shadow-brick: 2px 2px 0 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ---------------------------------------------------------------------
+   2. Starlight variable overrides (typography + palette + layout)
+   --------------------------------------------------------------------- */
+
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  --sl-font: var(--ph-font-body);
+  --sl-font-mono: var(--ph-font-mono);
+
+  --sl-color-white: var(--ph-ink);
+  --sl-color-gray-1: var(--ph-ink);
+  --sl-color-gray-2: var(--ph-ink-2);
+  --sl-color-gray-3: var(--ph-ink-3);
+  --sl-color-gray-4: color-mix(in srgb, var(--ph-ink) 35%, var(--ph-paper));
+  --sl-color-gray-5: color-mix(in srgb, var(--ph-ink) 15%, var(--ph-paper));
+  --sl-color-gray-6: var(--ph-paper-deep);
+  --sl-color-gray-7: var(--ph-paper-warm);
+  --sl-color-black: var(--ph-paper);
+
+  --sl-color-accent-low: var(--ph-ultramarine-wash);
+  --sl-color-accent: var(--ph-ultramarine);
+  --sl-color-accent-high: var(--ph-ultramarine-deep);
+
+  --sl-color-bg: var(--ph-paper);
+  --sl-color-bg-nav: var(--ph-paper);
+  --sl-color-bg-sidebar: transparent;
+  --sl-color-bg-inline-code: var(--ph-ultramarine-wash);
+  --sl-color-bg-accent: var(--ph-ultramarine);
+
+  --sl-color-text: var(--ph-ink);
+  --sl-color-text-accent: var(--ph-ultramarine-deep);
+  --sl-color-text-invert: var(--ph-paper);
+
+  --sl-color-hairline: var(--ph-hairline);
+  --sl-color-hairline-light: var(--ph-hairline-soft);
+  --sl-color-hairline-shade: var(--ph-hairline);
+
+  --sl-line-height: 1.65;
+  --sl-line-height-headings: 1.1;
+}
+
+/* ---------------------------------------------------------------------
+   3. Page surface — paper, graph grid, subtle grain
+   --------------------------------------------------------------------- */
+
+html,
+body {
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+}
+
+/* Grid lives on a pseudo-element so it doesn't affect focus/scroll. */
+body {
+  position: relative;
+  min-height: 100vh;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--ph-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ph-grid-line) 1px, transparent 1px);
+  background-size: var(--ph-grid-size) var(--ph-grid-size);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.6));
+  z-index: 0;
+}
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------------
+   4. Typography
+   --------------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--ph-font-display);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ph-ink);
+}
+
+.sl-markdown-content h1 {
+  font-size: clamp(2.1rem, 1.4rem + 2.4vw, 3.1rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.sl-markdown-content h2 {
+  font-size: clamp(1.55rem, 1.15rem + 1.4vw, 2.05rem);
+  margin-top: 2.6rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--ph-hairline-soft);
+}
+.sl-markdown-content h3 {
+  font-size: 1.25rem;
+  margin-top: 2rem;
+}
+
+.sl-markdown-content p,
+.sl-markdown-content li {
+  font-family: var(--ph-font-body);
+  font-size: 1rem;
+  line-height: 1.7;
+  letter-spacing: 0.005em;
+}
+.sl-markdown-content p {
+  max-width: 68ch;
+}
+
+.sl-markdown-content a:not(.sl-link-card, .sl-link-button) {
+  color: var(--ph-ultramarine-deep);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: color var(--ph-motion-fast);
+}
+.sl-markdown-content a:not(.sl-link-card, .sl-link-button):hover {
+  color: var(--ph-ink);
+  background: var(--ph-mustard-wash);
+}
+
+.sl-markdown-content :is(strong, b) {
+  font-weight: 700;
+  color: var(--ph-ink);
+}
+
+.sl-markdown-content hr {
+  border: 0;
+  border-top: 1px dashed var(--ph-hairline);
+  margin: 2rem 0;
+}
+
+.sl-markdown-content blockquote {
+  border-left: 3px solid var(--ph-ultramarine);
+  background: var(--ph-ultramarine-wash);
+  padding: 0.9rem 1.1rem;
+  font-family: var(--ph-font-body);
+  font-style: italic;
+  color: var(--ph-ink-2);
+}
+
+kbd,
+.sl-markdown-content kbd {
+  font-family: var(--ph-font-mono);
+  font-size: 0.8em;
+  background: var(--ph-paper-warm);
+  border: 1px solid var(--ph-hairline);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.05em 0.45em;
+  color: var(--ph-ink);
+}
+
+.sl-markdown-content :not(pre) > code {
+  font-family: var(--ph-font-mono);
+  font-size: 0.9em;
+  background: var(--ph-ultramarine-wash);
+  color: var(--ph-ultramarine-deep);
+  padding: 0.08em 0.35em;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+/* ---------------------------------------------------------------------
+   5. Header (wordmark + presence)
+   --------------------------------------------------------------------- */
+
+header.header {
+  background: color-mix(in srgb, var(--ph-paper) 92%, transparent);
+  backdrop-filter: saturate(1.1) blur(6px);
+  -webkit-backdrop-filter: saturate(1.1) blur(6px);
+  border-bottom: 1px solid var(--ph-hairline);
+}
+
+/* Presence lives inline in the header's right-group (injected via the
+ * SocialIcons override). The wrapper keeps its React island from collapsing
+ * to 0 width before hydration. */
+.ph-presence-slot {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Wordmark — "play" as link, "h-t-m-l" each as a can-toggle letter */
+.ph-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  font-family: var(--ph-font-wordmark);
+  font-size: 1.55rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ph-ink);
+  user-select: none;
+}
+.ph-wordmark__home {
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--ph-motion-fast);
+}
+.ph-wordmark__home:hover .ph-wordmark__stem {
+  color: var(--ph-ultramarine-deep);
+}
+.ph-wordmark__letter {
+  display: inline-block;
+  cursor: pointer;
+  color: var(--ph-ink);
+  transition:
+    color var(--ph-motion-fast),
+    text-shadow var(--ph-motion),
+    transform var(--ph-motion-fast);
+}
+.ph-wordmark__letter:hover {
+  transform: translateY(-1px);
+}
+/* playhtml adds the `clicked` class when a can-toggle element is toggled on */
+.ph-wordmark__letter.clicked {
+  color: var(--ph-mustard);
+  text-shadow:
+    0 0 0.6rem rgba(232, 166, 58, 0.55),
+    0 0 1.6rem rgba(232, 166, 58, 0.25);
+}
+
+/* ---------------------------------------------------------------------
+   6. Sidebar — ring-binder feel
+   --------------------------------------------------------------------- */
+
+nav.sidebar,
+.sidebar-pane {
+  background: transparent;
+  border-right: 1px solid var(--ph-hairline);
+}
+
+.sidebar-content ul {
+  padding-inline-start: 0;
+}
+
+/* Section labels — small caps Plex Mono */
+.sidebar-content summary,
+.sidebar-content .group-label,
+.sidebar-content .large {
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+
+.sidebar-content a {
+  font-family: var(--ph-font-body);
+  font-size: 0.92rem;
+  color: var(--ph-ink-2);
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  padding-block: 0.35rem;
+  transition:
+    color var(--ph-motion-fast),
+    border-color var(--ph-motion-fast),
+    background var(--ph-motion-fast);
+}
+.sidebar-content a:hover {
+  color: var(--ph-ink);
+  background: var(--ph-ultramarine-wash);
+}
+.sidebar-content a[aria-current="page"] {
+  color: var(--ph-ultramarine-deep);
+  border-left-color: var(--ph-ultramarine);
+  background: var(--ph-ultramarine-wash);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------
+   7. Hero (splash)
+   --------------------------------------------------------------------- */
+
+/* Force the splash hero into a single predictable column. Starlight's Hero
+ * uses Astro-scoped styles for `.hero`, `.stack`, and `.copy`; because we
+ * override the component, those scoped rules don't bind to our markup and
+ * the flex defaults (row) leak through. We re-declare them here.
+ *
+ * Extra care: the default 7fr/4fr grid at wide screens reserves a column for
+ * an image we never render; keeping one column keeps the hero readable. */
+.ph-docs-hero {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  padding-block: clamp(1.2rem, 3vw, 2rem) !important;
+  gap: 1.1rem !important;
+}
+.ph-docs-hero .stack {
+  display: flex;
+  flex-direction: column;
+  max-width: 60ch;
+  gap: 1rem;
+}
+.ph-docs-hero .copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 0.6rem;
+}
+.ph-docs-hero h1 {
+  font-family: var(--ph-font-display);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 1.8rem + 2.2vw, 3.4rem);
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: var(--ph-ink);
+  margin: 0;
+}
+.ph-docs-hero .tagline {
+  font-family: var(--ph-font-body);
+  font-size: clamp(1rem, 0.95rem + 0.4vw, 1.15rem);
+  color: var(--ph-ink-2);
+  max-width: 52ch;
+  line-height: 1.5;
+  margin: 0;
+}
+.ph-docs-hero .actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 0.25rem;
+}
+
+/* ---------------------------------------------------------------------
+   8. Buttons (Starlight LinkButton / action)
+   --------------------------------------------------------------------- */
+
+.sl-link-button,
+.action {
+  font-family: var(--ph-font-body);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+  border: 2px solid var(--ph-ink);
+  white-space: nowrap;
+  line-height: 1.2;
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast),
+    color var(--ph-motion-fast);
+  box-shadow: var(--ph-shadow-brick);
+}
+.sl-link-button:hover,
+.action:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--ph-ink);
+}
+.sl-link-button:active,
+.action:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+.sl-link-button.primary,
+.action.primary {
+  background: var(--ph-ultramarine);
+  color: var(--ph-paper);
+  border-color: var(--ph-ink);
+}
+.sl-link-button.secondary,
+.sl-link-button.minimal,
+.action.secondary,
+.action.minimal {
+  background: transparent;
+  color: var(--ph-ink);
+  border-color: var(--ph-ink);
+}
+
+/* ---------------------------------------------------------------------
+   8b. Splash-only density scaffolding
+   --------------------------------------------------------------------- */
+
+/* The splash page uses its own MDX blocks (quickstart + live demo + catalog)
+ * so we can control density without re-implementing the hero. */
+.ph-splash-quickstart,
+.ph-splash-section {
+  max-width: 68rem;
+  margin-block: clamp(1.1rem, 2vw, 1.6rem);
+}
+.ph-splash-quickstart {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.8rem;
+}
+@media (min-width: 60rem) {
+  .ph-splash-quickstart {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .ph-splash-quickstart .ph-splash-quickstart__label {
+    grid-column: 1 / -1;
+  }
+}
+.ph-splash-quickstart__label,
+.ph-splash-section__label {
+  font-family: var(--ph-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--ph-hairline-soft);
+  margin-bottom: 0.75rem;
+}
+.ph-splash-quickstart .ph-copy {
+  margin: 0;
+}
+
+/* The homepage live demo sits in its own framed paper block, signaling
+ * "this is real and shared" without needing explanatory prose. */
+.ph-splash-live {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 1.1rem 1.3rem;
+  background: var(--ph-sage-wash);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 4px;
+  box-shadow: var(--ph-shadow-brick);
+  flex-wrap: wrap;
+}
+.ph-splash-live__caption {
+  font-family: var(--ph-font-body);
+  font-size: 0.95rem;
+  color: var(--ph-ink-2);
+  max-width: 44ch;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Splash catalog: 2-col on desktop, no stagger, no wasted gutter. The default
+ * CardGrid staggers for marketing vibe — we want a tight specimen sheet. */
+.ph-splash-section .card-grid,
+.ph-splash-section [class*="CardGrid"] {
+  grid-template-columns: 1fr !important;
+  gap: 0.75rem !important;
+}
+@media (min-width: 48rem) {
+  .ph-splash-section .card-grid,
+  .ph-splash-section [class*="CardGrid"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+@media (min-width: 72rem) {
+  .ph-splash-section .card-grid,
+  .ph-splash-section [class*="CardGrid"] {
+    grid-template-columns: 1fr 1fr 1fr !important;
+  }
+}
+/* Nuke any stagger transform applied by Starlight so the cards land on a
+ * clean grid. */
+.ph-splash-section .card-grid > *,
+.ph-splash-section [class*="CardGrid"] > * {
+  transform: none !important;
+  margin-inline-start: 0 !important;
+}
+
+/* ---------------------------------------------------------------------
+   9. Card grid (Starlight <Card> / <CardGrid>)
+   --------------------------------------------------------------------- */
+
+.sl-link-card,
+starlight-card,
+.card {
+  background: var(--ph-paper-warm);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 4px;
+  padding: 1.15rem 1.2rem 1rem;
+  box-shadow: var(--ph-shadow-brick);
+  position: relative;
+  transition: box-shadow var(--ph-motion), background var(--ph-motion);
+}
+/* No translate on hover — combined with Starlight's <CardGrid stagger> offset,
+ * the transform caused a visible jitter. Deepen the shadow + warm the
+ * background instead; gives feedback without layout shift. */
+.sl-link-card:hover,
+.card:hover {
+  box-shadow: 4px 4px 0 0 var(--ph-ink);
+  background: color-mix(in srgb, var(--ph-sage-wash) 40%, var(--ph-paper-warm));
+}
+/* Museum-label "FIG." corner */
+.sl-link-card::before,
+.card::before {
+  content: "FIG.";
+  position: absolute;
+  top: 0.55rem;
+  right: 0.75rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  color: var(--ph-ink-3);
+}
+.sl-link-card .title,
+.sl-link-card .sl-link-card-title,
+.card .card-title,
+.card strong {
+  font-family: var(--ph-font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--ph-ink);
+}
+.sl-link-card .description,
+.sl-link-card p,
+.card .description,
+.card p {
+  font-family: var(--ph-font-body);
+  color: var(--ph-ink-2);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------------------
+   10. Code blocks (Expressive Code in Starlight)
+   --------------------------------------------------------------------- */
+
+.expressive-code,
+.expressive-code .frame {
+  --ec-brdCol: var(--ph-ink);
+  --ec-brdRad: 4px;
+  --ec-frm-edBg: var(--ph-paper);
+  --ec-frm-trmBg: var(--ph-paper);
+  font-family: var(--ph-font-mono);
+}
+.expressive-code .frame {
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  box-shadow: var(--ph-shadow-brick);
+  overflow: hidden;
+}
+.expressive-code .frame .header {
+  background: var(--ph-paper-warm);
+  border-bottom: 1px solid var(--ph-ink);
+  font-family: var(--ph-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.65rem;
+  color: var(--ph-ink-2);
+}
+/* Ultramarine color bar under the frame header */
+.expressive-code .frame::after {
+  content: "";
+  display: block;
+  height: 2px;
+  background: var(--ph-ultramarine);
+  margin-top: -1px;
+}
+
+/* ---------------------------------------------------------------------
+   11. Asides (:::note, :::tip, :::caution, :::danger)
+   --------------------------------------------------------------------- */
+
+.starlight-aside {
+  border: 1px solid var(--ph-hairline);
+  border-left-width: 4px;
+  border-radius: 4px;
+  padding: 0.9rem 1.1rem;
+  background: var(--ph-paper-warm);
+}
+.starlight-aside--note {
+  border-left-color: var(--ph-sage-deep);
+  background: var(--ph-sage-wash);
+}
+.starlight-aside--tip {
+  border-left-color: var(--ph-ultramarine);
+  background: var(--ph-ultramarine-wash);
+}
+.starlight-aside--caution {
+  border-left-color: var(--ph-mustard);
+  background: var(--ph-mustard-wash);
+}
+.starlight-aside--danger {
+  border-left-color: var(--ph-brick);
+  background: var(--ph-brick-wash);
+}
+.starlight-aside__title {
+  font-family: var(--ph-font-display);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+/* ---------------------------------------------------------------------
+   12. Presence bar (in the header)
+   --------------------------------------------------------------------- */
+
+.ph-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--ph-hairline);
+  border-radius: 999px;
+  background: var(--ph-paper-warm);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink-2);
+  line-height: 1;
+  margin-right: 4px;
+}
+.ph-presence__count {
+  font-family: var(--ph-font-display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--ph-ink);
+}
+.ph-presence__dots {
+  display: inline-flex;
+  gap: 3px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.ph-presence__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+/* The first dot is always "you" — the same hue as your cursor. A small
+   inner ring distinguishes self from other readers without shouting. */
+.ph-presence__dot.is-self {
+  box-shadow: inset 0 0 0 2px var(--ph-paper, #f7f3ea);
+  outline: 1px solid rgba(0, 0, 0, 0.18);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------
+   13. Scroll rail (right gutter)
+   --------------------------------------------------------------------- */
+
+.ph-docs-scroll-rail {
+  position: fixed;
+  top: 0;
+  right: 6px;
+  height: 100vh;
+  width: 10px;
+  pointer-events: none;
+  z-index: 5;
+}
+.ph-rail {
+  position: relative;
+  width: 10px;
+  height: 100%;
+  border-right: 1px solid var(--ph-hairline);
+}
+.ph-rail__dot {
+  position: absolute;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  transform: translateY(-50%);
+  transition: top var(--ph-motion);
+}
+
+/* ---------------------------------------------------------------------
+   14. Copy-trace snippet
+   --------------------------------------------------------------------- */
+
+.ph-copy {
+  position: relative;
+  margin-block: 1.1rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  background: var(--ph-paper);
+  box-shadow: var(--ph-shadow-brick);
+  transition: box-shadow var(--ph-motion);
+}
+.ph-copy[data-pulse="1"] {
+  animation: ph-copy-pulse 450ms ease-out;
+}
+@keyframes ph-copy-pulse {
+  0%   { box-shadow: var(--ph-shadow-brick), 0 0 0 0 var(--ph-mustard); }
+  50%  { box-shadow: var(--ph-shadow-brick), 0 0 0 6px var(--ph-mustard-wash); }
+  100% { box-shadow: var(--ph-shadow-brick), 0 0 0 0 transparent; }
+}
+.ph-copy__frame {
+  background: var(--ph-paper);
+  padding: 0.75rem 1rem 0.55rem;
+  border-bottom: 1px solid var(--ph-hairline);
+}
+.ph-copy__frame pre {
+  margin: 0;
+  font-family: var(--ph-font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--ph-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Astro's Shiki renderer stamps `pre.astro-code` with inline styles (the
+ * picked theme's tokens + background). Strip the background AND the default
+ * Starlight `.sl-markdown-content pre` chrome (border + rounded corners +
+ * padding) so the inner <pre> reads as naked text inside our own .ph-copy
+ * frame — otherwise there's a visible double border. Token colors on the
+ * <span> children are preserved so syntax highlighting still reads. */
+.ph-copy__frame pre.astro-code,
+.ph-copy__frame pre.astro-code[style] {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.ph-copy__frame pre code {
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+}
+/* Shiki dual-theme support. With `themes: { light, dark }` in
+ * astro.config.mjs, Shiki emits TWO sets of inline variables on every token:
+ *   style="color:#24292e;--shiki-dark:#e1e4e8;..."
+ * The `color: #…` hex is the light theme and renders as-is by default. To
+ * activate dark mode, CSS has to explicitly read the `--shiki-dark` /
+ * `--shiki-dark-bg` variables. Without this block, switching to dark mode
+ * keeps every token at its light-theme hex (dark tokens on dark backdrop ==
+ * invisible code). Starlight toggles `data-theme="dark"` on <html>. */
+:root[data-theme="dark"] .astro-code,
+:root[data-theme="dark"] .astro-code span {
+  color: var(--shiki-dark) !important;
+  /* Background is overridden to transparent inside .ph-copy__frame above,
+   * but for bare (un-enhanced) blocks we want Shiki's dark background so
+   * the code stays legible when JS hasn't run yet. */
+  background-color: var(--shiki-dark-bg, transparent) !important;
+}
+/* Inside the .ph-copy wrapper the background is handled by our frame, so
+ * don't stamp Shiki's dark bg onto the <pre> — it would double the chrome. */
+:root[data-theme="dark"] .ph-copy__frame pre.astro-code,
+:root[data-theme="dark"] .ph-copy__frame pre.astro-code span {
+  background-color: transparent !important;
+}
+/* Bare markdown fences that aren't inside a .ph-copy wrapper yet (e.g. before
+ * the enhancer runs, or in no-JS contexts) still need to look reasonable. */
+main pre.astro-code:not([data-ph-copy-enhanced]),
+article pre.astro-code:not([data-ph-copy-enhanced]) {
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  background: var(--ph-paper) !important;
+  box-shadow: var(--ph-shadow-brick);
+  font-family: var(--ph-font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  margin-block: 1.1rem;
+  overflow-x: auto;
+}
+.ph-copy__tally {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid var(--ph-ink);
+  border-radius: 3px;
+  background: var(--ph-paper-warm);
+  pointer-events: none;
+}
+/* Hide the tally entirely until the snippet has been copied at least once —
+ * an empty box on every code block is visually noisy. */
+.ph-copy[data-wear="0"] .ph-copy__tally {
+  display: none;
+}
+/* Individual tally tick — thin vertical ink stroke */
+.ph-copy__tick {
+  display: inline-block;
+  width: 1.5px;
+  height: 10px;
+  background: var(--ph-ink);
+}
+/* Every 5th tick becomes a diagonal crossbar for a 5-bar group */
+.ph-copy__tick:nth-child(5n) {
+  transform: rotate(-65deg);
+  margin-left: -9px;
+}
+.ph-copy__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--ph-paper-warm);
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+}
+.ph-copy__btn {
+  font-family: var(--ph-font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  background: var(--ph-ink);
+  color: var(--ph-paper);
+  border: 1px solid var(--ph-ink);
+  border-radius: 3px;
+  padding: 0.28rem 0.7rem;
+  cursor: pointer;
+  transition: transform var(--ph-motion-fast), background var(--ph-motion-fast);
+}
+.ph-copy__btn:hover {
+  background: var(--ph-ultramarine-deep);
+}
+.ph-copy__btn:active {
+  transform: translateY(1px);
+}
+
+/* ---------------------------------------------------------------------
+   15. Interactive toggle demo (can-toggle)
+   --------------------------------------------------------------------- */
+
+.ph-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  border: 2px solid var(--ph-ink);
+  box-shadow: var(--ph-shadow-brick);
+  background: var(--ph-paper-warm);
+  color: var(--ph-ink);
+  cursor: pointer;
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast),
+    color var(--ph-motion-fast);
+}
+.ph-toggle:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--ph-ink);
+}
+.ph-toggle:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+.ph-toggle.is-on {
+  background: var(--ph-ultramarine);
+  color: var(--ph-paper);
+}
+.ph-toggle__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ph-ink-3);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  transition: background var(--ph-motion-fast), box-shadow var(--ph-motion-fast);
+}
+.ph-toggle.is-on .ph-toggle__dot {
+  background: var(--ph-mustard);
+  box-shadow: 0 0 0 3px rgba(232, 166, 58, 0.25);
+}
+
+/* ---------------------------------------------------------------------
+   16. "Live" neon badge — the single Yellowtail moment
+   --------------------------------------------------------------------- */
+
+.ph-live-badge {
+  display: inline-block;
+  font-family: var(--ph-font-neon);
+  font-size: 1.2em;
+  color: var(--ph-brick);
+  text-shadow:
+    0 0 6px rgba(192, 55, 60, 0.35),
+    0 0 16px rgba(192, 55, 60, 0.18);
+  transform: rotate(-4deg);
+  padding-inline: 0.25em;
+}
+
+/* ---------------------------------------------------------------------
+   17. Tables
+   --------------------------------------------------------------------- */
+
+.sl-markdown-content table {
+  border-collapse: collapse;
+  font-family: var(--ph-font-body);
+  font-size: 0.92rem;
+}
+.sl-markdown-content th,
+.sl-markdown-content td {
+  border: 1px solid var(--ph-hairline);
+  padding: 0.5rem 0.7rem;
+}
+.sl-markdown-content th {
+  background: var(--ph-paper-warm);
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ph-ink-3);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------
+   17b. Capabilities page — demo slots, media placeholders, tabs chrome
+   ---------------------------------------------------------------------
+   The capabilities page is a catalog where each can-* section has:
+   - a "demo slot" (live interactive example; a React island mounts into it)
+   - sometimes a media placeholder (photo of a plant, bike wheel, etc.)
+   Both need a consistent frame so the page reads like a catalog, not a
+   grab-bag. The demo slot is sage-washed (playful, on-brand, signals
+   interactivity). The media placeholder is neutral paper and obviously a
+   placeholder so the author knows to replace it. */
+
+.ph-demo-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  margin: 1.2rem 0 0.4rem;
+  padding: 1.25rem;
+  background: var(--ph-sage-wash);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-demo-slot::before {
+  content: attr(data-label);
+  position: absolute;
+  top: -0.65rem;
+  left: 0.9rem;
+  padding: 0 0.4rem;
+  background: var(--ph-paper);
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ph-ink-2);
+}
+.ph-demo-slot__placeholder {
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  color: var(--ph-ink-3);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* Media placeholder: renders where a real photo will eventually sit. The
+   author grep's for "TODO-IMAGE" to find every instance. Keep this VERY
+   obviously a placeholder — we don't want it to read as finished. */
+.ph-media-placeholder {
+  --ph-placeholder-aspect: 4 / 3;
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--ph-placeholder-aspect);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--ph-paper-warm) 0px,
+    var(--ph-paper-warm) 10px,
+    var(--ph-paper-deep) 10px,
+    var(--ph-paper-deep) 11px
+  );
+  border: 1.5px dashed var(--ph-ink);
+  border-radius: 4px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+.ph-media-placeholder::after {
+  content: "image: " attr(data-subject);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--ph-ink-2);
+  background: rgba(244, 239, 229, 0.88);
+  padding: 0.4rem 0.75rem;
+  text-align: center;
+}
+.ph-media-placeholder--square {
+  --ph-placeholder-aspect: 1;
+  max-width: 220px;
+}
+.ph-media-placeholder--wide {
+  --ph-placeholder-aspect: 16 / 9;
+}
+.ph-media-placeholder--portrait {
+  --ph-placeholder-aspect: 3 / 4;
+  max-width: 280px;
+}
+
+/* Composed-examples footer cards: links out to the live experiments room
+   at playhtml.fun/experiments/* and the fridge. Distinct chrome from the
+   demo slots so readers don't confuse "click here for an inline demo"
+   with "click here to leave for the full playground". */
+.ph-composed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.ph-composed-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.05rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  box-shadow: var(--ph-shadow-brick);
+  text-decoration: none;
+  color: var(--ph-ink);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.ph-composed-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 var(--ph-ink);
+}
+.ph-composed-card__kicker {
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+.ph-composed-card__title {
+  font-family: var(--ph-font-heading);
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+.ph-composed-card__body {
+  font-family: var(--ph-font-body);
+  font-size: 0.9rem;
+  color: var(--ph-ink-2);
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------
+   17c. Data-layer live demos
+   ---------------------------------------------------------------------
+   Three small inline demos that drop into the concept pages under /data/*:
+   - .ph-rain-demo         (events)          — fire hydrant + rain
+   - .ph-online-indicator  (presence)        — colored dot per reader
+   - .ph-live-reactions    (presence)        — rolling-window emoji bursts
+
+   All three live inside a .ph-demo-slot on the hosting page, so they're
+   already in a sage-washed frame. These classes only style the contents. */
+
+.ph-rain-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+.ph-rain-demo__hydrant {
+  width: 120px;
+  height: 150px;
+  padding: 0;
+  border: 0;
+  background: url("/fire-hydrant.png") no-repeat center;
+  background-size: contain;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.ph-rain-demo__hydrant:hover {
+  transform: scale(1.05);
+}
+.ph-rain-demo__hydrant:active {
+  transform: scale(0.98);
+}
+.ph-rain-demo__caption {
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  color: var(--ph-ink-3);
+  text-align: center;
+  margin: 0;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.ph-online-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+}
+.ph-online-indicator__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  max-width: 340px;
+}
+.ph-online-indicator__dot {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ph-ink);
+  box-shadow: var(--ph-shadow-brick);
+  transition: box-shadow 150ms ease;
+}
+.ph-online-indicator__dot.is-me {
+  box-shadow: 0 0 0 3px var(--ph-paper), 0 0 0 5px var(--ph-ink),
+    0 0 22px 6px rgba(245, 169, 15, 0.7);
+}
+.ph-online-indicator__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+.ph-online-indicator__count {
+  font-family: var(--ph-font-mono);
+  font-size: 0.82rem;
+  color: var(--ph-ink-2);
+  letter-spacing: 0.04em;
+}
+.ph-online-indicator__swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+.ph-online-indicator__swatch input[type="color"] {
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ph-live-reactions {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 320px;
+}
+.ph-live-reactions__picker {
+  display: flex;
+  gap: 0.35rem;
+}
+.ph-live-reactions__swatch {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.ph-live-reactions__swatch:hover {
+  background: var(--ph-paper-warm);
+}
+.ph-live-reactions__swatch.is-active {
+  background: var(--ph-sage-wash);
+  transform: translateY(-1px);
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-live-reactions__fire {
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ph-ink);
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+.ph-live-reactions__fire:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 var(--ph-ink);
+}
+.ph-live-reactions__fire:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+.ph-live-reactions__stage {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  overflow: hidden;
+}
+.ph-live-reactions__burst {
+  position: absolute;
+  bottom: 0;
+  font-size: 1.65rem;
+  pointer-events: none;
+  transition: none;
+  will-change: transform, opacity;
+}
+
+/* ---------------------------------------------------------------------
+   17d. can-mirror playground (/docs/advanced/mirror-playground/)
+   ---------------------------------------------------------------------
+   Each section on the playground page wraps a single demo in a
+   .ph-mirror-sample card so the live elements don't blend into the
+   surrounding prose. Subclasses (.pg-*) style the specific inputs that
+   behave uniquely (hover, focus, editable, etc.). */
+
+.ph-mirror-sample {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.9rem 0 1.2rem;
+  padding: 1rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-mirror-sample input[type="text"],
+.ph-mirror-sample textarea,
+.ph-mirror-sample select {
+  font-family: var(--ph-font-mono);
+  padding: 0.35rem 0.55rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+}
+.ph-mirror-sample label {
+  font-family: var(--ph-font-body);
+  color: var(--ph-ink);
+}
+
+.pg-hover-box {
+  width: 220px;
+  padding: 1.4rem 1rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper-warm);
+  text-align: center;
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 180ms ease, transform 180ms ease, color 180ms ease;
+}
+#pg-mirror-hover[data-playhtml-hover] {
+  background: var(--ph-sage-deep);
+  color: var(--ph-paper);
+  transform: translate(-2px, -2px);
+  box-shadow: var(--ph-shadow-brick);
+}
+
+.pg-focus-input {
+  width: 260px;
+  transition: outline 120ms ease, background 120ms ease;
+}
+#pg-mirror-focus[data-playhtml-focus] {
+  outline: 3px solid var(--ph-sage-deep);
+  background: var(--ph-sage-wash);
+}
+
+.pg-editable {
+  flex: 1 1 100%;
+  min-height: 3rem;
+  padding: 0.55rem 0.7rem;
+  border: 2px dashed var(--ph-ink-3);
+  border-radius: 4px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+  line-height: 1.5;
+  outline: none;
+}
+.pg-editable:focus {
+  border-color: var(--ph-sage-deep);
+}
+.pg-editable--list {
+  padding-left: 1.5rem;
+}
+.pg-editable--list li {
+  margin: 0.2rem 0;
+}
+
+.pg-mixed-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------------
+   18. Reduced-motion + small-screen tuning
+   --------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .ph-docs-scroll-rail {
+    display: none;
+  }
+  .ph-presence__label {
+    display: none;
+  }
+  .ph-wordmark {
+    font-size: 1.3rem;
+  }
+}
