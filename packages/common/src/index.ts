@@ -122,6 +122,13 @@ function roundToFirstDecimal(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
+  const raw = element.getAttribute(CanMoveBounds)?.trim();
+  if (!raw) return null;
+  const forId = raw.startsWith("#") ? raw.slice(1) : raw;
+  return document.getElementById(forId) ?? document.querySelector(raw);
+}
+
 /**
  * Custom Capabilities data types
  */
@@ -138,6 +145,8 @@ export type GrowData = {
   isHovering: boolean;
 };
 export const CanDuplicateTo = "can-duplicate-to";
+/** Optional id or selector (`#id` or `selector`) of a container; `can-move` clamps translate to stay inside it. */
+export const CanMoveBounds = "can-move-bounds";
 
 // Supported Tags
 export enum TagType {
@@ -328,6 +337,27 @@ export const TagTypeToElement: DefaultTagInitializers = {
       { data, localData, setData, setLocalData, element },
     ) => {
       const { clientX, clientY } = getClientCoordinates(e);
+      const newX = data.x + clientX - localData.startMouseX;
+      const newY = data.y + clientY - localData.startMouseY;
+
+      const boundsRoot = getMoveBoundsRoot(element);
+      if (boundsRoot) {
+        const maxX = Math.max(
+          0,
+          boundsRoot.clientWidth - element.offsetWidth,
+        );
+        const maxY = Math.max(
+          0,
+          boundsRoot.clientHeight - element.offsetHeight,
+        );
+        setData({
+          x: roundToFirstDecimal(Math.min(maxX, Math.max(0, newX))),
+          y: roundToFirstDecimal(Math.min(maxY, Math.max(0, newY))),
+        });
+        setLocalData({ startMouseX: clientX, startMouseY: clientY });
+        return;
+      }
+
       const { top, left, bottom, right } = element.getBoundingClientRect();
       const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
       const viewportHeight =
@@ -339,8 +369,6 @@ export const TagTypeToElement: DefaultTagInitializers = {
         (top < 0 && clientY < localData.startMouseY)
       )
         return;
-      const newX = data.x + clientX - localData.startMouseX;
-      const newY = data.y + clientY - localData.startMouseY;
       setData({
         x: roundToFirstDecimal(newX),
         y: roundToFirstDecimal(newY),

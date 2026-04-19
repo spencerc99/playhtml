@@ -14,6 +14,7 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - **extension/worker/**: Cloudflare Worker backend for event ingestion (Supabase persistence)
 - **partykit/**: Real-time sync server using PartyKit and Yjs for collaborative state
 - **website/**: Demo site showcasing playhtml capabilities and the home page for the library. Test pages go here.
+- **apps/docs/**: Astro + Starlight documentation site (served under `/docs/` in the combined production build).
 
 ## Development Commands
 

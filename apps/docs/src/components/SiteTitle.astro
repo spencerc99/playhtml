@@ -1,0 +1,15 @@
+---
+// Wordmark that doubles as a live playhtml demo: the "play" stem is the home
+// link, while each letter in "html" is a vanilla `can-toggle` element. State is
+// page-local (each docs URL is its own room) which is fine for a navigational
+// flourish — the point is to prove the library works everywhere in the docs.
+const { siteTitleHref } = Astro.locals.starlightRoute;
+---
+<div class="ph-wordmark" translate="no">
+  <a href={siteTitleHref} class="ph-wordmark__home" aria-label="playhtml docs home"
+    ><span class="ph-wordmark__stem">play</span></a
+  ><span id="ph-wordmark-h" can-toggle class="ph-wordmark__letter">h</span
+  ><span id="ph-wordmark-t" can-toggle class="ph-wordmark__letter">t</span
+  ><span id="ph-wordmark-m" can-toggle class="ph-wordmark__letter">m</span
+  ><span id="ph-wordmark-l" can-toggle class="ph-wordmark__letter">l</span>
+</div>

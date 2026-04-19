@@ -33,11 +33,16 @@ export type CursorPresence = {
   zone?: CursorZonePosition | null;
 };
 
-// Slim cursor presence type for rendering (excludes internal fields)
+// Slim cursor presence type for rendering (excludes internal fields).
+// `page` is the reader's pathname at the time their awareness was broadcast
+// — exposed so UI can tell "who is on the same page" from "who is reading the
+// docs, but on a different page". Consumers should treat it as advisory:
+// single-page apps can set it to anything they want to group presences by.
 export type CursorPresenceView = {
   cursor: Cursor | null;
   playerIdentity?: PlayerIdentity;
   zone?: CursorZonePosition | null;
+  page?: string;
 };
 
 // Event payloads for cursor-related global API updates

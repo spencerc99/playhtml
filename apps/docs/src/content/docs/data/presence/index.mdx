@@ -1,0 +1,109 @@
+---
+title: "Presence"
+description: "Ephemeral per-user state: who's here, what they're doing, where their cursor is."
+sidebar:
+  order: 3
+---
+
+import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
+
+Presence is playhtml's "who's here right now" layer. Every connected user has an identity, an optional cursor position, and any number of custom named channels you define. None of it persists — when the user disconnects, their presence clears.
+
+Reach for presence when the lifetime you want is "while this person is on the page". Reach for [persistent data](/docs/data/data-essentials/) when you want state to survive a reload, and [events](/docs/data/events/) for one-shot signals.
+
+## The unified API
+
+`playhtml.presence` gives you one view of everyone connected, with both system fields (identity, cursor) and any custom channels you add.
+
+```js
+// Set (or clear) a custom channel
+playhtml.presence.setMyPresence("status", { text: "focused", emoji: "🎯" });
+playhtml.presence.setMyPresence("status", null);
+
+// Read everyone (includes the local user, flagged with isMe)
+const presences = playhtml.presence.getPresences();
+for (const [id, p] of presences) {
+  p.isMe;            // boolean
+  p.playerIdentity;  // name, colors, publicKey
+  p.cursor;          // { x, y, pointer } | null
+  p.status;          // your custom channel (if set)
+}
+
+// Subscribe to a specific channel — fires only when that channel changes
+const unsub = playhtml.presence.onPresenceChange("status", renderStatusRow);
+
+// Your own identity
+const me = playhtml.presence.getMyIdentity();
+```
+
+### Cursor presence subscribes the same way
+
+Cursor movements update at ~60fps and are exposed as a special channel:
+
+```js
+const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {
+  renderCursorPositions(presences);
+});
+```
+
+For pixel-accurate cursor rendering (including coordinate conversion across scrolled/zoomed pages), use the cursor system directly — see the [Cursors](/docs/data/presence/cursors/) page.
+
+## Custom channels
+
+Channel names flatten into the top-level `PresenceView`. Pick names that don't collide with the system fields (`playerIdentity`, `cursor`, `isMe`) — collisions are silently dropped.
+
+**Common shapes:**
+
+- `status` — `{ text, emoji }` or a tag string for "focused / typing / afk"
+- `focus` — `{ elementId }` to highlight which part of the page someone is looking at
+- `selection` — `{ start, end }` for collaborative text editing
+- `cursor-chat` — a short message shown beside the user's cursor
+
+**Setting vs clearing:**
+
+```js
+// Set: replace semantics per channel
+playhtml.presence.setMyPresence("status", { text: "typing" });
+
+// Clear: null
+playhtml.presence.setMyPresence("status", null);
+```
+
+There's no partial/merge update for a channel — when you call `setMyPresence`, you overwrite that channel's value for your user.
+
+## React usage
+
+Inside a `PlayProvider`, use `usePlayContext` to subscribe.
+
+```tsx
+import { usePlayContext } from "@playhtml/react";
+
+function StatusBar() {
+  const { cursors } = usePlayContext();
+  return <div>{cursors.allColors.length} people here</div>;
+}
+```
+
+The `cursors` object from `usePlayContext` wraps presence updates with a React-reactive object, so components re-render on identity and color changes without any manual subscription.
+
+## Try it live
+
+<div className="ph-demo-slot" data-label="PRESENCE — online indicator">
+  <OnlineIndicatorDemo client:only="react" />
+</div>
+
+Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab — the dot disappears. This is presence: no persistence, no replay.
+
+> Looking for a "live reactions" bursting button? That's an [event](/docs/data/events/), not presence. The docs for events have a live demo.
+
+## When to use which primitive
+
+| Want | Use |
+|---|---|
+| "Who is connected right now?" | `playhtml.presence.getPresences()` |
+| "Who's typing in this input?" | Custom channel (`typing`) |
+| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) |
+| "How many people reacted to this post?" | [Persistent data](/docs/data/data-essentials/), not presence |
+| "Fire a confetti burst for everyone here now" | [Events](/docs/data/events/), not presence |
+
+Presence shines for _ambient awareness_ — the quiet hum of other people existing on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.

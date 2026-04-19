@@ -1,0 +1,128 @@
+---
+title: "Events"
+description: "Broadcast one-off signals with dispatchPlayEvent — no persisted data."
+sidebar:
+  order: 4
+---
+
+import { RainSprinklerDemo } from "@/components/react/data-demos/RainSprinklerDemo";
+import { LiveReactionsDemo } from "@/components/react/data-demos/LiveReactionsDemo";
+
+Events are for **transient signals that don't need to persist**: confetti bursts, sound chimes, a "nudge" from one reader to another, a "rain on everyone's page" button. Any connected reader can dispatch one, and every other connected reader gets the callback fired.
+
+Unlike element data and page data, events **don't replay for late-joiners**. If you dispatch a confetti burst and someone opens the page ten seconds later, they won't see it. Events are for the room right now, not the room across time.
+
+## When to use events
+
+Reach for events when the answer to "should this still be here if I reload?" is **no**.
+
+- **Yes, events**: confetti, sound effects, screen shake, toast notifications, "I'm waving at you" animations, "please look at X" pings
+- **No, use element data**: the count of confetti bursts ever fired, the list of people who've waved, the message thread itself
+- **No, use presence**: "Alice is typing", "3 people looking at this chart", cursor positions
+
+A good rule: if you'd feel bad showing the signal to someone who just arrived, it's an event.
+
+## The API
+
+### Vanilla HTML
+
+Register listeners in `playhtml.init()`, then dispatch from anywhere:
+
+```js
+import { playhtml } from "playhtml";
+
+playhtml.init({
+  events: {
+    confetti: {
+      type: "confetti",
+      onEvent: () => window.confetti?.({ particleCount: 100 }),
+    },
+  },
+});
+
+document.querySelector("#celebrate").addEventListener("click", () => {
+  playhtml.dispatchPlayEvent({ type: "confetti" });
+});
+```
+
+`events` in the init options is an object keyed by a local name (the key) — `type` is the wire identifier every client must agree on.
+
+### React
+
+Events live on the `PlayContext`. Register a listener inside an effect; dispatch whenever:
+
+```tsx
+import { useContext, useEffect } from "react";
+import { PlayContext } from "@playhtml/react";
+
+function ConfettiButton() {
+  const { registerPlayEventListener, removePlayEventListener, dispatchPlayEvent } =
+    useContext(PlayContext);
+
+  useEffect(() => {
+    const id = registerPlayEventListener("confetti", {
+      onEvent: () => window.confetti?.({ particleCount: 100 }),
+    });
+    return () => removePlayEventListener("confetti", id);
+  }, []);
+
+  return (
+    <button onClick={() => dispatchPlayEvent({ type: "confetti" })}>
+      Celebrate
+    </button>
+  );
+}
+```
+
+Always return the cleanup in the effect — if the component unmounts and you don't remove the listener, you'll accumulate duplicates on every remount.
+
+## Passing data with an event
+
+`dispatchPlayEvent` accepts an optional `data` payload. Every listener receives it:
+
+```js
+playhtml.init({
+  events: {
+    nudge: {
+      type: "nudge",
+      onEvent: ({ color }) => {
+        document.body.animate(
+          [{ backgroundColor: color }, { backgroundColor: "" }],
+          { duration: 600 }
+        );
+      },
+    },
+  },
+});
+
+playhtml.dispatchPlayEvent({ type: "nudge", data: { color: "#f7dc9c" } });
+```
+
+Keep the payload small and JSON-serializable. Events aren't a replacement for shared data; they're a fire-and-forget channel.
+
+## Try it live
+
+Click the hydrant. It dispatches a `"rain"` event — clouds drift across the top of the page for anyone reading this page right now. Try it in two tabs.
+
+<div className="ph-demo-slot" data-label="EVENTS — rain">
+  <RainSprinklerDemo client:only="react" />
+</div>
+
+Same primitive, different shape: each click below sends a short-lived emoji burst. No state, no persistence — exactly the "live reactions" pattern from video calls.
+
+<div className="ph-demo-slot" data-label="EVENTS — live reactions">
+  <LiveReactionsDemo client:only="react" />
+</div>
+
+## Gotchas
+
+- **Not for state.** If you find yourself dispatching the same event every time a reader connects so they "catch up," that's shared data, not an event. Move it to element or page data.
+- **No ordering guarantees.** If two readers dispatch at the same moment, clients can observe them in either order. Design the listener so order doesn't matter.
+- **Keep listeners idempotent where possible.** In dev mode, React 18's strict-mode double-invoke can register + remove listeners twice. Idempotent handlers (they can run twice without harm) are easier to reason about.
+- **Side effects only.** The `onEvent` callback should do something visible — animate, play a sound, nudge the DOM. If you want to update shared state in response, use element/page data and let its observer fire a side effect on change.
+
+## Related
+
+- [Data essentials](/docs/data/data-essentials/) — the three data types, and when events are the wrong tool
+- [Presence](/docs/data/presence/) — for "who's here" instead of "someone just did this"
+- [`playhtml.init()` options](/docs/reference/init-options/#events) — the full `events` config reference

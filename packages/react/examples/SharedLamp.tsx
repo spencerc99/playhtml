@@ -4,23 +4,31 @@ export function SharedLamp({
   src = "https://shop.noguchi.org/cdn/shop/products/1A_on_2048x.jpg?v=1567364979",
   shared,
   dataSource,
+  standalone,
   id,
+  className = "lamp",
 }: {
   src?: string;
   shared?: boolean;
   dataSource?: string;
+  standalone?: boolean;
   id?: string;
+  className?: string;
 }) {
   return (
-    <CanToggleElement shared={shared} dataSource={dataSource}>
+    <CanToggleElement
+      shared={shared}
+      dataSource={dataSource}
+      standalone={standalone}
+    >
       {({ data }) => {
         const on = typeof data === "object" ? data.on : data;
         return (
           <img
             id={id}
             src={src}
-            selector-id=".lamp"
-            className="lamp"
+            selector-id={`.${className}`}
+            className={className}
             style={{
               filter: on
                 ? `brightness(1.2) saturate(1.6)

@@ -681,6 +681,32 @@ export class PartyServer extends YServer {
     await this.attachImmediateBridgeObservers();
   }
 
+  // Benign disconnect errors thrown by the Cloudflare runtime when a client's
+  // underlying TCP connection is dropped before the WebSocket close handshake
+  // completes (mobile network hiccups, tab closes, SIGINT during dev). The
+  // protocol is self-healing — the client reconnects and Yjs catches up — so
+  // these don't need to reach our production telemetry. Real errors still log.
+  private static readonly BENIGN_CONNECTION_ERROR_PATTERNS = [
+    "Network connection lost",
+    "WebSocket is not connected",
+    "WebSocket is closed",
+  ];
+
+  override onError(connection: Party.Connection, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const isBenign = PartyServer.BENIGN_CONNECTION_ERROR_PATTERNS.some((p) =>
+      message.includes(p)
+    );
+    if (isBenign) {
+      // Swallow — not useful signal for Cloudflare log monitoring.
+      return;
+    }
+    console.error(
+      `[PartyServer] onError connection=${connection.id} room=${this.name}:`,
+      error
+    );
+  }
+
   override async onLoad(): Promise<void> {
     // Load the document from Supabase on first connection
     const { data, error } = await supabase

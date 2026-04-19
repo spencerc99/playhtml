@@ -1,0 +1,412 @@
+---
+title: "Capabilities"
+description: "Every built-in can-* attribute in playhtml, with a live demo and the vanilla + React forms side by side."
+sidebar:
+  order: 3
+---
+
+import { Tabs, TabItem, Card } from '@astrojs/starlight/components';
+import { MoveHatCatDemo } from '@/components/react/capability-demos/MoveHatCatDemo';
+import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
+import { GrowBalloonDemo } from '@/components/react/capability-demos/GrowBalloonDemo';
+import { SpinWheelDemo } from '@/components/react/capability-demos/SpinWheelDemo';
+import { HoverCursorColorsDemo } from '@/components/react/capability-demos/HoverCursorColorsDemo';
+import { DuplicateRabbitDemo } from '@/components/react/capability-demos/DuplicateRabbitDemo';
+import { DocsSpinner } from '@/components/react/capability-demos/DocsSpinner';
+import { DocsGuestbook } from '@/components/react/capability-demos/DocsGuestbook';
+import { SmileyRow } from '@/components/react/capability-demos/SmileyRow';
+
+Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
+
+Every section below has the same shape:
+
+- A short description of what the capability does and the kind of state it owns.
+- A live demo you can interact with — open the page in a second tab and watch both update.
+- The **vanilla HTML** form, and the **React** form. Pick the framework you're shipping in; the reader's choice syncs across every snippet on the page.
+
+This page also runs a few `can-play` demos directly in its margins — a [doodle strip](#play-doodle) below, a [guestbook](#play-guestbook) further down, a [prize wheel](#play-spinner) at the bottom, and a shared [tally on every code block](#play-copy) you copy from. They're discussed properly in the [`can-play`](#can-play) section.
+
+<div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · doodle strip</span>
+    <p class="ph-canplay-inline__caption">
+      Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
+    </p>
+  </div>
+  <SmileyRow client:only="react" />
+</div>
+
+## can-move
+
+**What it does.** Drag anywhere. Position persists and syncs. Optional `.dragBounds` parent clamps the drag area.
+
+**Use it for:** drag-and-drop affordances — fridge magnets, game pieces, arrangeable stickers, a puzzle.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-move">
+  <MoveHatCatDemo client:only="react" />
+</div>
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<div class="dragBounds" style="position: relative; height: 320px;">
+  <img can-move id="hat" src="/docs/yankees-hat.png" alt="" />
+  <img can-move id="cat" src="/docs/long-cat.png" alt="" />
+</div>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { CanPlayElement } from "@playhtml/react";
+import { TagType } from "@playhtml/common";
+
+<div className="dragBounds" style={{ position: "relative", height: 320 }}>
+  <CanPlayElement tagInfo={[TagType.CanMove]} id="hat" defaultData={{ x: 0, y: 0 }}>
+    {() => <img src="/docs/yankees-hat.png" alt="" />}
+  </CanPlayElement>
+  <CanPlayElement tagInfo={[TagType.CanMove]} id="cat" defaultData={{ x: 0, y: 0 }}>
+    {() => <img src="/docs/long-cat.png" alt="" />}
+  </CanPlayElement>
+</div>
+```
+  </TabItem>
+</Tabs>
+
+## can-toggle
+
+**What it does.** Click to flip an on/off boolean. Persists and syncs.
+
+**Use it for:** shared switches, lamps, "is-this-thing-open" signs, per-element read/unread state. The [playhtml homepage](https://playhtml.fun) uses this on the wordmark letters and the hanging lamp — click either to flip it for everyone.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-toggle">
+  <InteractiveToggleDemo client:only="react" />
+</div>
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<button id="my-switch" class="switch" can-toggle>off</button>
+
+<style>
+  .switch.clicked { background: #6cd97e; }
+  .switch.clicked::after { content: "on"; }
+</style>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { CanPlayElement } from "@playhtml/react";
+import { TagType } from "@playhtml/common";
+
+<CanPlayElement
+  tagInfo={[TagType.CanToggle]}
+  id="my-switch"
+  defaultData={{ on: false }}
+>
+  {({ data, setData }) => (
+    <button
+      id="my-switch"
+      type="button"
+      className={data.on ? "is-on" : "is-off"}
+      aria-pressed={data.on}
+      onClick={() => setData({ on: !data.on })}
+    >
+      {data.on ? "on" : "off"}
+    </button>
+  )}
+</CanPlayElement>
+```
+  </TabItem>
+</Tabs>
+
+## can-grow
+
+**What it does.** Click to scale up. Alt-click (or equivalent modifier) to scale down. Persists and syncs.
+
+**Use it for:** zoomable images, inflating a balloon or sticker, growing a banner over time.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-grow">
+  <GrowBalloonDemo client:only="react" />
+</div>
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<img can-grow id="balloon" src="/docs/water-balloon.png" alt="" />
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { CanPlayElement } from "@playhtml/react";
+import { TagType } from "@playhtml/common";
+
+<CanPlayElement tagInfo={[TagType.CanGrow]} id="balloon" defaultData={{ scale: 1 }}>
+  {() => <img src="/docs/water-balloon.png" alt="" />}
+</CanPlayElement>
+```
+  </TabItem>
+</Tabs>
+
+## can-spin
+
+**What it does.** Drag to rotate. Persists and syncs.
+
+**Use it for:** wheels, dials, gauges, spinnable stickers or album covers, "what's your answer" wheels.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-spin">
+  <SpinWheelDemo client:only="react" />
+</div>
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<img can-spin id="wheel" src="/docs/bike-wheel.webp" alt="" />
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { CanPlayElement } from "@playhtml/react";
+import { TagType } from "@playhtml/common";
+
+<CanPlayElement tagInfo={[TagType.CanSpin]} id="wheel" defaultData={{ rotation: 0 }}>
+  {() => <img src="/docs/bike-wheel.webp" alt="" />}
+</CanPlayElement>
+```
+  </TabItem>
+</Tabs>
+
+## can-hover
+
+**What it does.** Tracks which cursors are currently hovering an element. Presence-based, _not_ persistent — when a user leaves, their hover clears.
+
+**Use it for:** "who's looking at this right now" affordances, social read-receipts, zero-latency shared hover effects.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-hover">
+  <HoverCursorColorsDemo client:only="react" />
+</div>
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<div can-hover id="hover-pad">hover me</div>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { CanPlayElement } from "@playhtml/react";
+import { TagType } from "@playhtml/common";
+
+<CanPlayElement
+  tagInfo={[TagType.CanHover]}
+  id="hover-pad"
+  defaultData={{}}
+  myDefaultAwareness={"#3b82f6"}
+>
+  {({ awareness }) => (
+    <div
+      style={{
+        background: `linear-gradient(45deg, ${awareness.join(", ")})`,
+      }}
+    >
+      hover me
+    </div>
+  )}
+</CanPlayElement>
+```
+  </TabItem>
+</Tabs>
+
+## can-duplicate
+
+**What it does.** Click a trigger to clone an existing element into a new one. Every clone is independent shared state.
+
+**Use it for:** user-generated galleries, seed-from-template UIs, stamps, "leave your mark" patterns.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-duplicate">
+  <DuplicateRabbitDemo client:only="react" />
+</div>
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<img id="bunny-template" src="/docs/pixel-bunny.png" alt="" />
+<button can-duplicate="#bunny-template" id="clone-btn">clone a bunny</button>
+
+<script>
+  // The "reset" button sweeps every spawned rabbit from shared state.
+  document.getElementById("reset-btn").addEventListener("click", () => {
+    document.querySelectorAll("[data-duplicate-source='#bunny-template']").forEach((el) => {
+      playhtml.deleteElementData("can-duplicate", el.id);
+      el.remove();
+    });
+  });
+</script>
+<button id="reset-btn">reset</button>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+// React wiring for can-duplicate typically pairs with setupPlayElement
+// so freshly-mounted clones register themselves. See "Dynamic elements".
+```
+  </TabItem>
+</Tabs>
+
+## can-mirror
+
+**What it does.** A meta-capability: `can-mirror` auto-syncs **every attribute, child-node change, and form-state change** on the element. You don't write `defaultData`, `setData`, or an `updateElement` callback — the library observes the DOM for you.
+
+**Use it for:** when the state you want to share _is_ the DOM: a shared textarea, a form, a growing list of children.
+
+### Vignette A — an emoji-only textarea
+
+A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: emoji textarea">
+  {/* TODO-DEMO: Big textarea with an onInput handler that strips non-emoji characters; can-mirror syncs the sanitized value. */}
+  <p class="ph-demo-slot__placeholder">
+    A wide emoji-only textarea. Type anything; only emojis stick. Everyone composes the message together.
+  </p>
+</div>
+
+```html
+<textarea can-mirror id="emoji-pad" rows="4" placeholder="emojis only..."></textarea>
+
+<script>
+  const emojiOnly = /\p{Extended_Pictographic}/gu;
+  document.getElementById("emoji-pad").addEventListener("input", (e) => {
+    const match = e.target.value.match(emojiOnly);
+    e.target.value = match ? match.join("") : "";
+  });
+</script>
+```
+
+### Vignette B — a list you can add children to
+
+Click "+" to append a new `<li>`. The child addition itself mirrors — new readers see the whole list, not just the latest.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
+  {/* TODO-DEMO: <ul can-mirror> with an "add item" button that appends <li> nodes with timestamps. Reset clears the list. */}
+  <p class="ph-demo-slot__placeholder">
+    A shared guestbook list. Append your signature; the full list mirrors to everyone else.
+  </p>
+</div>
+
+```html
+<ul can-mirror id="guestbook">
+  <li>first</li>
+</ul>
+<button onclick="
+  document.getElementById('guestbook').appendChild(
+    Object.assign(document.createElement('li'), { textContent: new Date().toLocaleTimeString() })
+  );
+">add entry</button>
+```
+
+:::note[Experimental]
+`can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.
+:::
+
+<a className="ph-composed-card" href="/docs/advanced/mirror-playground/">
+  <span className="ph-composed-card__kicker">Playground</span>
+  <span className="ph-composed-card__title">See every can-mirror edge case →</span>
+  <span className="ph-composed-card__body">
+    Hover, focus, every form input, contenteditable, programmatic attribute
+    changes — one page with a live demo for each. Open in two tabs to watch it
+    sync.
+  </span>
+</a>
+
+<div id="play-guestbook" class="ph-canplay-inline" data-label="can-play · guestbook">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · guestbook</span>
+    <p class="ph-canplay-inline__caption">
+      Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
+    </p>
+  </div>
+  <DocsGuestbook client:only="react" />
+</div>
+
+## can-play
+
+**What it does.** The "build your own capability" escape hatch. You define `defaultData`, `onClick` / `onDrag` / `onMount` handlers, and an `updateElement` callback — playhtml syncs the data and fires your handlers.
+
+**Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
+
+This page is itself a `can-play` showcase. Four examples live in the margins:
+
+- [**Doodle strip**](#play-doodle) — freehand canvas input encoded as a tiny PNG data URL. The shared array caps at 20 via `splice` inside the setData mutator.
+- [**Guestbook**](#play-guestbook) — a growing list of short text entries. Same "cap the array" pattern, different payload.
+- [**Prize wheel**](#play-spinner) — one shared piece of data (the spin seed + target) animates identically on every tab. Every visitor sees the wheel land on the same label.
+- <a href="#play-copy" id="play-copy">**Tally on every code block**</a> — every `<pre>` on this page is a vanilla `can-play` element. Click <code>copy</code> on any snippet and watch a tally tick appear next to the button — readers all over the site share that counter, so popular snippets accumulate marks like a well-loved library book.
+
+That's four wildly different shapes — short array, blob payload, animation seed, single integer — built on the same primitive. The minimum viable shape is much smaller, though:
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<button can-play id="cheer" data-count="0">❤️ <span>0</span></button>
+
+<script>
+  const el = document.getElementById("cheer");
+  el.defaultData = { count: 0 };
+  el.onClick = (_e, { data, setData }) => setData({ count: data.count + 1 });
+  el.updateElement = ({ element, data }) => {
+    element.querySelector("span").textContent = data.count;
+  };
+</script>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { withSharedState } from "@playhtml/react";
+
+export const CheerButton = withSharedState(
+  { defaultData: { count: 0 }, id: "cheer" },
+  ({ data, setData }) => (
+    <button onClick={() => setData({ count: data.count + 1 })}>
+      ❤️ {data.count}
+    </button>
+  ),
+);
+```
+  </TabItem>
+</Tabs>
+
+Deeper material on custom capabilities lives in [Data essentials](/docs/data/data-essentials/) and [Dynamic elements](/docs/advanced/dynamic-elements/).
+
+---
+
+## Composed examples
+
+These capabilities are the building blocks. The best way to see them in concert is to visit the live experiments room, where readers leave permanent marks in a shared space.
+
+<div class="ph-composed-grid">
+  <a class="ph-composed-card" href="https://playhtml.fun/experiments/4/" target="_blank" rel="noopener">
+    <span class="ph-composed-card__kicker">EXPERIMENT · 04</span>
+    <span class="ph-composed-card__title">Every color</span>
+    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + per-user awareness + an ever-growing shared palette.</span>
+  </a>
+  <a class="ph-composed-card" href="https://playhtml.fun/fridge" target="_blank" rel="noopener">
+    <span class="ph-composed-card__kicker">COMMUNITY · FRIDGE</span>
+    <span class="ph-composed-card__title">Fridge poetry</span>
+    <span class="ph-composed-card__body">can-move + can-play + selector-id. Arrange magnets with strangers. Saves forever.</span>
+  </a>
+  <a class="ph-composed-card" href="https://playhtml.fun/experiments/5/" target="_blank" rel="noopener">
+    <span class="ph-composed-card__kicker">EXPERIMENT · 05</span>
+    <span class="ph-composed-card__title">Minute faces (together)</span>
+    <span class="ph-composed-card__body">1,440 minutes in a day, one color per minute. Paint the clock with everyone who shows up that minute.</span>
+  </a>
+</div>
+
+These are the same three experiments the homepage slot machine surfaces — the fastest way to feel playhtml at room-scale.
+
+<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · prize wheel</span>
+    <p class="ph-canplay-inline__caption">
+      Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
+    </p>
+  </div>
+  <DocsSpinner client:only="react" />
+</div>
