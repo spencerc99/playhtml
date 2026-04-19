@@ -68,6 +68,11 @@ export default defineConfig({
           label: "GitHub",
           href: "https://github.com/spencerc99/playhtml",
         },
+        {
+          icon: "discord",
+          label: "Discord",
+          href: "https://discord.com/invite/SKbsSf4ptU",
+        },
       ],
       customCss: ["./src/styles/docs-extras.css"],
       components: {

@@ -17,6 +17,7 @@
     "@playhtml/react": "workspace:*",
     "astro": "^6.0.1",
     "playhtml": "workspace:*",
+    "profane-words": "^1.5.11",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "sharp": "^0.34.2"

@@ -1730,6 +1730,10 @@ export class CursorClientAwareness {
         },
         playerIdentity: valid.playerIdentity,
         zone: valid.zone,
+        // Expose the reader's pathname so consumers can group presences by
+        // page — e.g. a docs sidebar can show "who is reading which page"
+        // without maintaining a parallel room-per-page structure.
+        page: valid.page,
       });
     });
 

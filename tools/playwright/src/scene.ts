@@ -10,7 +10,8 @@ export interface SceneConfig {
   extension?: boolean;
   // Path to unpacked extension directory (default: extension/dist/chrome-mv3)
   extensionPath?: string;
-  // Starting URL for all actors
+  // Starting URL for all actors. Use {port} as a placeholder to substitute
+  // the value passed via --port at runtime.
   url: string;
   // Viewport size (default: 1280x720)
   viewport?: { width: number; height: number };
@@ -20,6 +21,9 @@ export interface SceneConfig {
   recordActor?: number;
   // Video output directory (default: tools/playwright/videos)
   videoDir?: string;
+  // Populated by the runner from --port. Scenes that build URLs dynamically
+  // should prefer ctx.port over hardcoded ports.
+  port?: string;
   // Run the choreography
   run: (ctx: SceneContext) => Promise<void>;
 }
@@ -31,6 +35,8 @@ export interface SceneContext {
   contexts: BrowserContext[];
   // Camera page (if camera: true), for positioning the viewport
   camera?: Page;
+  // The --port value passed to the runner, or undefined if not set.
+  port?: string;
   // Timing helpers
   sync: SyncHelpers;
 }

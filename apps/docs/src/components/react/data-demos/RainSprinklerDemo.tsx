@@ -1,5 +1,5 @@
-import React, { useContext, useEffect } from "react";
-import { PlayContext } from "@playhtml/react";
+import React, { useEffect } from "react";
+import { playhtml } from "playhtml";
 
 // Thin docs wrapper around the homepage's fire-hydrant/rain effect.
 // The marketing site's version lives in packages/react/examples/RainSprinkler
@@ -11,6 +11,14 @@ import { PlayContext } from "@playhtml/react";
 // class that lives in website/components/FeaturesGrid.scss (with a hover
 // scale) which we don't ship. Copying the 20 lines of wiring is clearer
 // than trying to re-use the marketing-site styling.
+//
+// Why `playhtml` singleton instead of `useContext(PlayContext)`? The docs
+// site calls `playhtml.init()` globally from HeadOverride.astro and never
+// wraps its React islands in <PlayProvider>. Reading the context here would
+// hit the default value whose methods throw, crashing the island — hence
+// the "hydrant flashes on screen, then disappears" symptom that kept
+// regressing. The singleton is the same instance HeadOverride initialized,
+// so we just use it directly.
 
 const RAIN_EVENT = "rain";
 
@@ -85,17 +93,14 @@ function createRainEffect(): void {
 }
 
 export function RainSprinklerDemo(): React.ReactElement {
-  const ctx = useContext(PlayContext);
-
   useEffect(() => {
-    if (!ctx) return;
-    const id = ctx.registerPlayEventListener(RAIN_EVENT, {
+    const id = playhtml.registerPlayEventListener(RAIN_EVENT, {
       onEvent: () => createRainEffect(),
     });
-    return () => ctx.removePlayEventListener(RAIN_EVENT, id);
-  }, [ctx]);
+    return () => playhtml.removePlayEventListener(RAIN_EVENT, id);
+  }, []);
 
-  const trigger = () => ctx?.dispatchPlayEvent({ type: RAIN_EVENT });
+  const trigger = () => playhtml.dispatchPlayEvent({ type: RAIN_EVENT });
 
   return (
     <div className="ph-rain-demo">

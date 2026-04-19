@@ -1,8 +1,11 @@
 ---
 import Default from '@astrojs/starlight/components/Footer.astro';
 import { DocsScrollRail } from './react/DocsScrollRail';
+import { DocsSidebarPresence } from './react/DocsSidebarPresence';
 ---
 <div class="ph-docs-scroll-rail" aria-hidden="true">
   <DocsScrollRail client:only="react" />
 </div>
+<!-- Headless island that decorates the sidebar with cross-page reader pips. Renders no visible DOM of its own. -->
+<DocsSidebarPresence client:only="react" />
 <Default />

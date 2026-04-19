@@ -2,7 +2,7 @@
 title: "playhtml docs"
 template: splash
 hero:
-  tagline: "Interactive, collaborative HTML with a single attribute. Ship live, shared elements to any page without a backend."
+  tagline: "Infrastructure for lived-in, alive internet spaces. Turn any element into a live, shared one with a single attribute — no backend required."
   actions:
     - text: "Get started"
       link: /docs/getting-started/
@@ -14,38 +14,56 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
-import { InteractiveToggleDemo } from '../../components/react/InteractiveToggleDemo';
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import { LampToggleDemo } from '../../components/react/LampToggleDemo';
+
+<figure class="ph-splash-lamp ph-splash-lamp--furniture" aria-label="live demo">
+  <LampToggleDemo client:only="react" id="ph-splash-lamp" />
+  <figcaption class="ph-splash-lamp__tag">
+    <span class="ph-splash-lamp__pip" aria-hidden="true"></span>
+    toggles for everyone live!
+  </figcaption>
+</figure>
+
+<div class="ph-splash-pitch">
+  <ul class="ph-splash-pitch__list">
+    <li><strong>Make the web feel alive.</strong> Communal, lived-in spaces instead of solitary feeds — shared state, presence, and cursors, out of the box.</li>
+    <li><strong>Library-agnostic, fast, expressive.</strong> Works with plain HTML, React, or any framework. One attribute turns an element live.</li>
+    <li><strong>No backend to run.</strong> Real-time sync and persistence are handled for you — just deploy your static site.</li>
+    <li><strong>Extend it to anything.</strong> Ship your own capabilities with <code>can-play</code> when the built-ins aren't enough.</li>
+  </ul>
+</div>
 
 <div class="ph-splash-quickstart">
   <div class="ph-splash-quickstart__label">FIG. 01 &nbsp;·&nbsp; 30-second install</div>
 
-```bash
-npm install playhtml
-```
-
+  <Tabs syncKey="framework">
+    <TabItem label="Vanilla HTML">
 ```html
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml";
   playhtml.init();
 </script>
-<button can-toggle id="lamp">lamp</button>
+<img can-toggle id="lamp" src="/noguchi-hanging-lamp.png" />
 ```
+    </TabItem>
+    <TabItem label="React">
+```tsx
+// npm install @playhtml/react @playhtml/common
+import { PlayProvider, CanToggleElement } from "@playhtml/react";
 
+<PlayProvider>
+  <CanToggleElement>
+    <img id="lamp" src="/noguchi-hanging-lamp.png" />
+  </CanToggleElement>
+</PlayProvider>
+```
+    </TabItem>
+  </Tabs>
 </div>
 
 <div class="ph-splash-section">
-  <div class="ph-splash-section__label">FIG. 02 &nbsp;·&nbsp; try it now</div>
-  <div class="ph-splash-live">
-    <InteractiveToggleDemo client:only="react" id="ph-splash-toggle" />
-    <p class="ph-splash-live__caption">
-      This toggle is shared with everyone reading the homepage. Click it and watch the dot above.
-    </p>
-  </div>
-</div>
-
-<div class="ph-splash-section">
-  <div class="ph-splash-section__label">FIG. 03 &nbsp;·&nbsp; catalog</div>
+  <div class="ph-splash-section__label">FIG. 02 &nbsp;·&nbsp; start here</div>
   <CardGrid>
     <Card title="Getting started" icon="rocket">
       Install playhtml and ship your first live element.
@@ -55,33 +73,9 @@ npm install playhtml
       Element data, page data, presence, events — when to use each.
       [Read &rarr;](/docs/concepts/)
     </Card>
-    <Card title="Using React" icon="seti:react">
-      A five-minute orientation; every concept page has a React tab.
-      [Read &rarr;](/docs/using-react/)
-    </Card>
     <Card title="Capabilities" icon="puzzle">
       Every built-in `can-*` attribute with live demos.
       [Read &rarr;](/docs/capabilities/)
-    </Card>
-    <Card title="Data essentials" icon="pencil">
-      Shape, update, and clean up the data attached to an element.
-      [Read &rarr;](/docs/data/data-essentials/)
-    </Card>
-    <Card title="Presence & cursors" icon="heart">
-      Ephemeral per-user state, including multiplayer cursors.
-      [Read &rarr;](/docs/data/presence/)
-    </Card>
-    <Card title="Shared elements" icon="seti:plan">
-      Cross-page and cross-domain state for interconnected sites.
-      [Read &rarr;](/docs/advanced/shared-elements/)
-    </Card>
-    <Card title="Building with AI" icon="seti:graphql">
-      Claude Code plugin + a copy-paste prompt template for any LLM.
-      [Read &rarr;](/docs/integrations/building-with-ai/)
-    </Card>
-    <Card title="API reference" icon="setting">
-      `playhtml.init()` options + the full React API surface.
-      [Read &rarr;](/docs/reference/init-options/)
     </Card>
   </CardGrid>
 </div>

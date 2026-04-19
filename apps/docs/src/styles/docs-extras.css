@@ -54,7 +54,8 @@
   /* Type scale (docs-grade; Starlight tokens are overridden below) */
   --ph-font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --ph-font-body: "Play", ui-sans-serif, system-ui, sans-serif;
-  --ph-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ph-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
   --ph-font-wordmark: "Carter One", var(--ph-font-display);
   --ph-font-neon: "Yellowtail", var(--ph-font-display);
 
@@ -151,11 +152,18 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image:
-    linear-gradient(to right, var(--ph-grid-line) 1px, transparent 1px),
+  background-image: linear-gradient(
+      to right,
+      var(--ph-grid-line) 1px,
+      transparent 1px
+    ),
     linear-gradient(to bottom, var(--ph-grid-line) 1px, transparent 1px);
   background-size: var(--ph-grid-size) var(--ph-grid-size);
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.6));
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.9),
+    rgba(0, 0, 0, 0.6)
+  );
   z-index: 0;
 }
 body > * {
@@ -304,9 +312,7 @@ header.header {
   display: inline-block;
   cursor: pointer;
   color: var(--ph-ink);
-  transition:
-    color var(--ph-motion-fast),
-    text-shadow var(--ph-motion),
+  transition: color var(--ph-motion-fast), text-shadow var(--ph-motion),
     transform var(--ph-motion-fast);
 }
 .ph-wordmark__letter:hover {
@@ -315,8 +321,7 @@ header.header {
 /* playhtml adds the `clicked` class when a can-toggle element is toggled on */
 .ph-wordmark__letter.clicked {
   color: var(--ph-mustard);
-  text-shadow:
-    0 0 0.6rem rgba(232, 166, 58, 0.55),
+  text-shadow: 0 0 0.6rem rgba(232, 166, 58, 0.55),
     0 0 1.6rem rgba(232, 166, 58, 0.25);
 }
 
@@ -324,10 +329,32 @@ header.header {
    6. Sidebar — ring-binder feel
    --------------------------------------------------------------------- */
 
-nav.sidebar,
-.sidebar-pane {
-  background: transparent;
-  border-right: 1px solid var(--ph-hairline);
+/* The sidebar plays two completely different roles across breakpoints, so it
+ * needs two completely different treatments:
+ *
+ *  - Desktop (≥ 50rem): it's a flush column in the page grid, so it should
+ *    dissolve into the paper with just a hairline rule on the right.
+ *  - Mobile (< 50rem): Starlight turns it into a fixed-position overlay
+ *    drawer that slides in over the article. If it stays `transparent`
+ *    there, the article bleeds through and the links become unreadable.
+ *
+ * Previously this override was unscoped, which broke the mobile case.
+ * Keep the scoping — any future "make the sidebar transparent" tweak MUST
+ * stay inside the desktop media query. */
+@media (min-width: 50rem) {
+  nav.sidebar,
+  .sidebar-pane {
+    background: transparent;
+    border-right: 1px solid var(--ph-hairline);
+  }
+}
+
+@media (max-width: 49.999rem) {
+  .sidebar-pane {
+    background: var(--ph-paper);
+    box-shadow: 2px 0 24px rgba(20, 20, 20, 0.08);
+    border-right: 1px solid var(--ph-hairline);
+  }
 }
 
 .sidebar-content ul {
@@ -353,9 +380,7 @@ nav.sidebar,
   border-left: 2px solid transparent;
   border-radius: 0;
   padding-block: 0.35rem;
-  transition:
-    color var(--ph-motion-fast),
-    border-color var(--ph-motion-fast),
+  transition: color var(--ph-motion-fast), border-color var(--ph-motion-fast),
     background var(--ph-motion-fast);
 }
 .sidebar-content a:hover {
@@ -437,11 +462,8 @@ nav.sidebar,
   border: 2px solid var(--ph-ink);
   white-space: nowrap;
   line-height: 1.2;
-  transition:
-    transform var(--ph-motion-fast),
-    box-shadow var(--ph-motion-fast),
-    background var(--ph-motion-fast),
-    color var(--ph-motion-fast);
+  transition: transform var(--ph-motion-fast), box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast), color var(--ph-motion-fast);
   box-shadow: var(--ph-shadow-brick);
 }
 .sl-link-button:hover,
@@ -475,24 +497,46 @@ nav.sidebar,
 
 /* The splash page uses its own MDX blocks (quickstart + live demo + catalog)
  * so we can control density without re-implementing the hero. */
+.ph-splash-pitch,
 .ph-splash-quickstart,
 .ph-splash-section {
   max-width: 68rem;
   margin-block: clamp(1.1rem, 2vw, 1.6rem);
 }
-.ph-splash-quickstart {
+.ph-splash-pitch__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.8rem;
+  gap: 0.55rem 1.2rem;
 }
-@media (min-width: 60rem) {
-  .ph-splash-quickstart {
+@media (min-width: 48rem) {
+  .ph-splash-pitch__list {
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
   }
-  .ph-splash-quickstart .ph-splash-quickstart__label {
-    grid-column: 1 / -1;
-  }
+}
+.ph-splash-pitch__list > li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--ph-ink-2, inherit);
+}
+.ph-splash-pitch__list > li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.85em;
+}
+.ph-splash-pitch__list > li strong {
+  color: var(--ph-ink);
+}
+.ph-splash-quickstart {
+  display: block;
 }
 .ph-splash-quickstart__label,
 .ph-splash-section__label {
@@ -509,26 +553,82 @@ nav.sidebar,
   margin: 0;
 }
 
-/* The homepage live demo sits in its own framed paper block, signaling
- * "this is real and shared" without needing explanatory prose. */
-.ph-splash-live {
-  display: flex;
+/* Furniture variant: the lamp floats at the top-right of the splash content
+ * like a hanging fixture, with the museum-label annotation beside it. Pinned
+ * to the splash hero area via the parent `.sl-markdown-content`. On narrow
+ * screens it collapses back into the flow so it doesn't collide with copy. */
+.ph-splash-lamp {
+  display: inline-flex;
   align-items: center;
-  gap: 1.2rem;
-  padding: 1.1rem 1.3rem;
-  background: var(--ph-sage-wash);
-  border: 1px solid var(--ph-hairline);
-  border-radius: 4px;
-  box-shadow: var(--ph-shadow-brick);
-  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
 }
-.ph-splash-live__caption {
-  font-family: var(--ph-font-body);
-  font-size: 0.95rem;
-  color: var(--ph-ink-2);
-  max-width: 44ch;
+.main-frame .sl-markdown-content,
+[data-has-hero] .sl-markdown-content {
+  position: relative;
+}
+.ph-splash-lamp--furniture {
   margin: 0;
-  line-height: 1.5;
+  padding: 0;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+.ph-splash-lamp--furniture .ph-lamp__img {
+  max-width: 84px;
+  height: auto;
+}
+@media (min-width: 60rem) {
+  .ph-splash-lamp--furniture {
+    position: absolute;
+    top: -16rem;
+    right: 0;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.75rem;
+    z-index: 2;
+    pointer-events: auto;
+  }
+  .ph-splash-lamp--furniture .ph-lamp__img {
+    max-width: 120px;
+  }
+  .ph-splash-lamp--furniture .ph-splash-lamp__tag {
+    margin-top: 2.5rem;
+  }
+}
+/* Keep the splash content area unclipped so the hanging lamp can extend up
+ * into the hero region. */
+.main-frame .sl-markdown-content,
+[data-has-hero] .sl-markdown-content {
+  overflow: visible;
+}
+.ph-splash-lamp__tag {
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--ph-hairline);
+  background: var(--ph-paper, #fff);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+.ph-splash-lamp__pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6cd97e;
+  box-shadow: 0 0 0 3px rgba(108, 217, 126, 0.18);
+  animation: ph-splash-lamp-pip 1.6s ease-in-out infinite;
+}
+@keyframes ph-splash-lamp-pip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
 /* Splash catalog: 2-col on desktop, no stagger, no wasted gutter. The default
@@ -686,6 +786,7 @@ starlight-card,
    --------------------------------------------------------------------- */
 
 .ph-presence {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -712,18 +813,114 @@ starlight-card,
   margin: 0;
   list-style: none;
 }
+/* Header HUD dot — a tiny, living marker for one reader.
+ *
+ * Uses the same `--ph-dot-color` / `--ph-dot-delay` contract as the scroll
+ * rail, so the visual vocabulary is consistent across the two places the
+ * presence surfaces. The bloom here is gentler than the rail's: the
+ * header lives above a busy strip of navigation and a louder halo would
+ * compete for attention. 2px + 6px layered glow is enough to feel alive
+ * without drawing the eye away from the page content. */
 .ph-presence__dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: var(--ph-dot-color, currentColor);
+  border: 1px solid
+    color-mix(in srgb, var(--ph-dot-color, currentColor) 70%, var(--ph-ink));
+  box-shadow:
+    0 0 3px 0
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 55%, transparent),
+    0 0 7px 1px
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 22%, transparent);
+  animation: ph-hud-dot-breathe 3s ease-in-out infinite;
+  animation-delay: var(--ph-dot-delay, 0s);
 }
-/* The first dot is always "you" — the same hue as your cursor. A small
-   inner ring distinguishes self from other readers without shouting. */
+@keyframes ph-hud-dot-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 3px 0
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 50%, transparent),
+      0 0 6px 1px
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 18%, transparent);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow:
+      0 0 5px 0
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 65%, transparent),
+      0 0 10px 2px
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 26%, transparent);
+  }
+}
+/* The first dot is always "you" — the same hue as your cursor. It's also
+ * a button (the color picker), so we deliberately SKIP the breathing
+ * animation here: a static, inset-ringed dot reads as "your identity,
+ * your control", distinct from the ambient pulsing peers. The inner ring
+ * would be overwritten anyway by the breath keyframe's box-shadow list. */
 .ph-presence__dot.is-self {
-  box-shadow: inset 0 0 0 2px var(--ph-paper, #f7f3ea);
+  animation: none;
+  box-shadow:
+    inset 0 0 0 2px var(--ph-paper, #f7f3ea),
+    0 0 3px 0
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 55%, transparent),
+    0 0 7px 1px
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 22%, transparent);
   outline: 1px solid rgba(0, 0, 0, 0.18);
   outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-presence__dot {
+    animation: none;
+  }
+}
+/* Self-dot is also a button that opens the color picker. Keep it the same
+ * 7x7 target as the other dots visually — the hit area is expanded via
+ * padding on a pseudo-element so touch and sloppy mouse clicks still land.
+ * A subtle hover lift hints that it's interactive without shouting. */
+.ph-presence__dot--btn {
+  position: relative;
+  padding: 0;
+  background-clip: padding-box;
+  cursor: pointer;
+  transition: transform var(--ph-motion-fast);
+}
+.ph-presence__dot--btn::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 999px;
+}
+.ph-presence__dot--btn:hover {
+  transform: scale(1.15);
+}
+.ph-presence__dot--btn:focus-visible {
+  outline: 2px solid var(--ph-ultramarine);
+  outline-offset: 3px;
+}
+
+/* Hidden native color input. The self-dot button forwards its click to
+ * this input via .click(), which surfaces the OS color picker anchored
+ * to the input's screen position. We keep the input in the DOM (rather
+ * than display:none) because some browsers refuse to open a picker for
+ * an input that isn't in the rendered tree. Sized 1x1 and offset just
+ * enough to vanish behind the dot — the OS picker will render at the
+ * input's location, which lands right under the HUD where the user
+ * expects it. */
+.ph-presence__color-input {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
 }
 
 /* ---------------------------------------------------------------------
@@ -733,27 +930,222 @@ starlight-card,
 .ph-docs-scroll-rail {
   position: fixed;
   top: 0;
-  right: 6px;
+  /* Extra right inset so the dot's glow bloom reads on BOTH sides of the
+   * rail — otherwise the halo gets half-clipped against the viewport edge.
+   * The pane itself has overflow: visible (parent default) so the glow
+   * escapes the 14px rail container. */
+  right: 14px;
   height: 100vh;
-  width: 10px;
+  width: 14px;
   pointer-events: none;
   z-index: 5;
+  /* Allow the dot glow halos to bloom outside the rail bounds. */
+  overflow: visible;
 }
 .ph-rail {
   position: relative;
-  width: 10px;
+  width: 14px;
   height: 100%;
   border-right: 1px solid var(--ph-hairline);
+  overflow: visible;
 }
+/* Glowing, breathing rail dot.
+ *
+ * Each dot is driven by two inline CSS variables:
+ *   --ph-dot-color  the reader's cursor color; used for both fill and
+ *                   the soft color halo via color-mix.
+ *   --ph-dot-delay  an animation-delay offset so dots breathe out of
+ *                   phase with each other — avoids a mechanical
+ *                   "everything pulses together" feel.
+ *
+ * The breathing animation modulates box-shadow radius + scale. We keep
+ * the translateY(-50%) in every keyframe so the dot stays vertically
+ * centered on its scroll position while pulsing. `transition: top`
+ * still works because transform is driven by keyframes, not transitions.
+ */
 .ph-rail__dot {
   position: absolute;
-  right: 2px;
-  width: 7px;
-  height: 7px;
+  right: 3px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: var(--ph-dot-color, currentColor);
+  border: 1px solid
+    color-mix(in srgb, var(--ph-dot-color, currentColor) 70%, var(--ph-ink));
   transform: translateY(-50%);
   transition: top var(--ph-motion);
+  animation: ph-rail-dot-breathe 2.6s ease-in-out infinite;
+  animation-delay: var(--ph-dot-delay, 0s);
+  /* filter:blur on a tiny shape smears the fill edge too much, so the
+   * "soft" feel comes from layered box-shadows instead. Three layers:
+   *   1. Thin dark hairline for contrast on very light cursor colors.
+   *   2. Medium bloom in the dot's hue.
+   *   3. Wide, low-opacity halo for the "alive" aura. */
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 0 6px 1px
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 55%, transparent),
+    0 0 14px 3px
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 22%, transparent);
+}
+@keyframes ph-rail-dot-breathe {
+  0%,
+  100% {
+    transform: translateY(-50%) scale(1);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.25),
+      0 0 6px 1px
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 50%, transparent),
+      0 0 14px 3px
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 18%, transparent);
+  }
+  50% {
+    transform: translateY(-50%) scale(1.12);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.18),
+      0 0 10px 2px
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 65%, transparent),
+      0 0 20px 5px
+        color-mix(in srgb, var(--ph-dot-color, currentColor) 28%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-rail__dot {
+    animation: none;
+  }
+}
+
+/* Self dot on the rail.
+ *
+ * Hollow ring + no breathing animation. The breathing dots draw the
+ * eye to *other people* (which is the whole point of presence); your
+ * own position is signaled with a calm, recognizable shape that says
+ * "this is you, here". Same conceptual treatment as the self-dot in
+ * the header HUD.
+ *
+ * Slightly larger (10px vs 9px) so the ring reads as a ring and not
+ * just a thinly-bordered dot. The inset shadow + paper-colored center
+ * keeps it visible over both ticks and other dots.
+ */
+.ph-rail__dot--self {
+  width: 10px;
+  height: 10px;
+  background: var(--ph-paper);
+  border: 2px solid var(--ph-dot-color, currentColor);
+  animation: none;
+  z-index: 2;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.18),
+    0 0 6px 1px
+      color-mix(in srgb, var(--ph-dot-color, currentColor) 30%, transparent);
+}
+
+/* Section-heading ticks on the rail.
+ *
+ * The rail is now a real mini-map: structural ticks for the document's
+ * sections plus dots for the people. Two visual weights so the
+ * hierarchy reads at a glance:
+ *   h2  louder, longer, slightly thicker. These are the page's main
+ *       sections and they should be skimmable from across the rail.
+ *   h3  quieter, shorter, thinner. Subsections; present but receding.
+ *
+ * Positioned at right: 0 with explicit widths so they extend leftward
+ * INTO the rail spine. Dots paint on top of any tick that shares a y
+ * (z-index isn't needed because dots come later in the DOM order).
+ *
+ * Pointer-events: none everywhere — the rail stays passive scenery.
+ */
+.ph-rail__tick {
+  position: absolute;
+  right: 0;
+  height: 1px;
+  background: var(--ph-ink);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.ph-rail__tick--h2 {
+  width: 12px;
+  height: 1.5px;
+  opacity: 0.4;
+}
+.ph-rail__tick--h3 {
+  width: 7px;
+  opacity: 0.22;
+}
+
+/* Cross-page reader pips floating in the RIGHT margin of sidebar links.
+ *
+ * Earlier iteration placed pips before the link label, which shifted text
+ * horizontally as readers came and went — exactly the kind of disruptive
+ * jitter we were trying to avoid. New approach: pull the stack out of
+ * normal flow with absolute positioning so it floats against the link's
+ * right edge. The label never moves; pips are pure ambient overlay.
+ *
+ * The link itself only becomes a positioning context when it actually
+ * contains a pip stack (via :has()). We don't want to stamp
+ * `position: relative` on every sidebar link unconditionally, because
+ * that's the kind of cross-cutting style mutation that quietly breaks
+ * downstream Starlight layout assumptions.
+ *
+ * The .ph-sidebar-pip-more badge uses the mono font for a tiny-but-
+ * precise "+N" affordance that reads as a continuation of the dots,
+ * not as a separate UI. */
+.sidebar-pane a:has(> .ph-sidebar-pip-stack),
+nav.sidebar a:has(> .ph-sidebar-pip-stack) {
+  position: relative;
+}
+.ph-sidebar-pip-stack {
+  position: absolute;
+  /* Hug the link's right padding edge. 0.4rem keeps the stack inside the
+   * link's box so it doesn't bump into the sidebar's right border, but
+   * still feels detached from the label text. */
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 0;
+  flex-shrink: 0;
+  /* Soft fade so pips ease in/out as readers arrive and leave instead of
+   * popping. Animation is short to keep the sidebar feeling responsive. */
+  animation: ph-sidebar-pip-in 220ms ease-out;
+  pointer-events: none;
+}
+@keyframes ph-sidebar-pip-in {
+  from {
+    opacity: 0;
+    transform: translate(4px, -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+.ph-sidebar-pip {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+:root[data-theme='dark'] .ph-sidebar-pip {
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.ph-sidebar-pip-more {
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  line-height: 1;
+  color: var(--ph-ink-3);
+  letter-spacing: 0;
+  padding-left: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-sidebar-pip-stack {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -770,12 +1162,30 @@ starlight-card,
   transition: box-shadow var(--ph-motion);
 }
 .ph-copy[data-pulse="1"] {
-  animation: ph-copy-pulse 450ms ease-out;
+  animation: ph-copy-pulse 500ms ease-out;
 }
+/* Shared copy pulse. The copier's cursor color is forwarded through the
+ * --ph-copy-pulse-color custom property (set in JS when the docs-code-copy
+ * event fires), so readers across the world all see the same tinted ring
+ * for the same copy. Fallback is mustard so the local-only no-JS path
+ * (bare .ph-copy without the variable) still pulses something sensible. */
 @keyframes ph-copy-pulse {
-  0%   { box-shadow: var(--ph-shadow-brick), 0 0 0 0 var(--ph-mustard); }
-  50%  { box-shadow: var(--ph-shadow-brick), 0 0 0 6px var(--ph-mustard-wash); }
-  100% { box-shadow: var(--ph-shadow-brick), 0 0 0 0 transparent; }
+  0% {
+    box-shadow: var(--ph-shadow-brick),
+      0 0 0 0 var(--ph-copy-pulse-color, var(--ph-mustard));
+  }
+  45% {
+    box-shadow: var(--ph-shadow-brick),
+      0 0 0 7px
+        color-mix(
+          in srgb,
+          var(--ph-copy-pulse-color, var(--ph-mustard)) 32%,
+          transparent
+        );
+  }
+  100% {
+    box-shadow: var(--ph-shadow-brick), 0 0 0 0 transparent;
+  }
 }
 .ph-copy__frame {
   background: var(--ph-paper);
@@ -848,35 +1258,209 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   margin-block: 1.1rem;
   overflow-x: auto;
 }
+/* Tally lives inside the bottom meta bar (alongside the copy button), not
+ * absolutely-positioned over the code. The corner placement covered the
+ * actual snippet on short single-line examples; the meta bar already has
+ * a matching paper-warm background and plenty of horizontal room.
+ *
+ * No background/border/padding of its own — the meta bar provides the
+ * surface. Keep `pointer-events: none` so hover/click on the tally
+ * doesn't intercept anything (the copy button is the only interactive
+ * element in the bar). */
 .ph-copy__tally {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.6rem;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 0.22rem 0.45rem;
-  border: 1px solid var(--ph-ink);
-  border-radius: 3px;
-  background: var(--ph-paper-warm);
   pointer-events: none;
+  /* Cap the tally's width inside the meta bar so a long rolling row
+   * never pushes the copy button or causes the bar to wrap on narrow
+   * viewports. The window's own max-width is 165px; this matches plus
+   * a hair for the count badge. */
+  max-width: 100%;
+  min-width: 0;
 }
 /* Hide the tally entirely until the snippet has been copied at least once —
- * an empty box on every code block is visually noisy. */
+ * an empty inline-flex on every meta bar would just be visual noise. */
 .ph-copy[data-wear="0"] .ph-copy__tally {
   display: none;
 }
-/* Individual tally tick — thin vertical ink stroke */
+/* Tally container split into two structural children:
+ *   .ph-copy__count         numeric ledger on the left (hidden until 26+)
+ *   .ph-copy__tally-window  the rolling row of ticks on the right
+ *
+ * Old structure put ticks as direct children of .ph-copy__tally and
+ * relied on nth-child(5n) for the crossbar. That broke as soon as we
+ * needed to roll the row (removing the leftmost tick re-evaluates
+ * nth-child for everyone, causing every tick to potentially flip
+ * crossbar/vertical role — visible shimmer on every copy). New approach:
+ * the crossbar is a CLASS assigned at tick creation time based on the
+ * copy's index, so each tick's role is permanent.
+ */
+.ph-copy__tally-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  /* Maximum width fits ~25 ticks (the visual cap). Past that, new ticks
+   * arrive on the right and old ones overflow off the LEFT — clipped by
+   * overflow:hidden, then softly faded by the mask gradient. */
+  max-width: 165px;
+  overflow: hidden;
+  /* justify-content: flex-end pushes content to the right edge of the
+   * window. At low counts the row is auto-sized (shorter than max-width)
+   * so this is a no-op; at high counts existing ticks get displaced
+   * leftward as new ones arrive. */
+  justify-content: flex-end;
+  /* Soft fade-out on the left so overflowing ticks dissolve rather than
+   * hard-clip. The mask covers ~12px of fade — wide enough to read as
+   * "fading away", narrow enough not to eat into the visible bundles. */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black 100%
+  );
+}
+/* Individual tally tick — thin vertical ink stroke.
+ *
+ * Rotation AND translation are driven by CSS custom properties so the
+ * per-tick draw-in animation can preserve both transforms. Without the
+ * variable approach, the keyframe would clobber the static `transform`
+ * for the duration of the animation and the crossbar would flick upright
+ * (or off-position) before settling — visible glitch.
+ *
+ * Order of transforms matters: translateX is applied LAST (in screen
+ * space), then rotate, then any scale from the animation. This means
+ * the translation is a clean horizontal shift on the rendered cross,
+ * not a shift along the rotated axis. */
 .ph-copy__tick {
   display: inline-block;
   width: 1.5px;
   height: 10px;
   background: var(--ph-ink);
+  flex-shrink: 0;
+  transform: translateX(var(--ph-tick-translate, 0px))
+    rotate(var(--ph-tick-rotate, 0deg));
 }
-/* Every 5th tick becomes a diagonal crossbar for a 5-bar group */
-.ph-copy__tick:nth-child(5n) {
-  transform: rotate(-65deg);
-  margin-left: -9px;
+/* Every 5th copy gets the crossbar role assigned at creation time.
+ * NEVER use nth-child here — see the structural comment above for why.
+ *
+ * IMPORTANT: the cross uses `transform: translateX` (visual only) instead
+ * of `margin-left` (which would shift the layout). With margin, every
+ * 5th tick made the bundle line width compress by ~4.5px, then the next
+ * vertical tick decompressed it by 4.5px — a jittery visible "snap back"
+ * cycle that made the right-anchored row look like it was shifting at
+ * inconsistent moments. With translate, every tick adds the same 4.5px
+ * to the line width, so the bundle grows smoothly and the cross is
+ * purely an overlay on top of the bundle's last 4 verticals.
+ *
+ * Geometry: a vertical tick takes 4.5px of flow (1.5 width + 3 gap).
+ * The cross's flow position is 18px in from the bundle's start (4
+ * verticals + 4 gaps), so its center sits at ~18.75px. The bundle's
+ * visual center is at ~7.5px (midpoint of ticks 1-4). The translate
+ * value (~-11.25px) bridges those: center moves from 18.75 to 7.5.
+ *
+ * Height bumped to 14px so the rotated slash actually reaches across
+ * the full 4-tick bundle. At 10px the rotated extent (~9px) was a
+ * touch shorter than the bundle's 15px span and the slash looked like
+ * it landed on the right half only.
+ *
+ * transform-origin overridden to 50% 50% (vs the verticals' 50% 100%)
+ * so the rotation pivots around the cross's center — that's what makes
+ * the translate calculation come out right. With origin at the bottom,
+ * rotating sweeps the top of the slash away from the bundle, and the
+ * cross would land off to one side. */
+.ph-copy__tick.ph-copy__tick--cross {
+  --ph-tick-rotate: -65deg;
+  --ph-tick-translate: -11.25px;
+  height: 14px;
+  transform-origin: 50% 50%;
+}
+/* Per-tick "draw in + flash" applied only to ticks added in response to
+ * a live copy event (not initial render). The class self-removes after
+ * the animation, so re-renders don't replay it.
+ *
+ * Two layered animations:
+ *   1. ph-copy-tick-draw  — vertical scaleY + slight overshoot (a quick
+ *      pop, like a pen mark landing).
+ *   2. ph-copy-tick-glow  — mustard drop-shadow that fades to nothing,
+ *      tying the tick visually to the copy-pulse color elsewhere.
+ *
+ * `--ph-tick-delay` is set inline per tick so a batch of ticks added in
+ * the same tick of wear-data updates cascades instead of all popping at
+ * once. `both` fill mode keeps the tick invisible during the delay
+ * window so it doesn't appear, then disappear, then re-animate. */
+.ph-copy__tick--new {
+  animation:
+    ph-copy-tick-draw 500ms cubic-bezier(0.2, 0.7, 0.3, 1)
+      var(--ph-tick-delay, 0ms) both,
+    ph-copy-tick-glow 800ms ease-out var(--ph-tick-delay, 0ms);
+  transform-origin: 50% 100%;
+}
+@keyframes ph-copy-tick-draw {
+  0% {
+    transform: translateX(var(--ph-tick-translate, 0px))
+      rotate(var(--ph-tick-rotate, 0deg)) scaleY(0);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(var(--ph-tick-translate, 0px))
+      rotate(var(--ph-tick-rotate, 0deg)) scaleY(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(var(--ph-tick-translate, 0px))
+      rotate(var(--ph-tick-rotate, 0deg)) scaleY(1);
+    opacity: 1;
+  }
+}
+@keyframes ph-copy-tick-glow {
+  0% {
+    filter: drop-shadow(
+      0 0 6px color-mix(in srgb, var(--ph-mustard) 70%, transparent)
+    );
+  }
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
+/* Numeric ledger to the LEFT of the rolling tick window.
+ *
+ * Appears once the count reaches the threshold (>=26) and updates
+ * silently on every increment after that. No bump animation: the
+ * rolling row IS the per-event signal at high counts, and a duplicate
+ * badge flourish would feel busy. The badge is a calm absolute-count
+ * label sitting alongside the live row.
+ *
+ * `[hidden]` is honored explicitly because the badge node is created
+ * eagerly (so we don't have to lazily insert it on each render) but
+ * shouldn't take up layout space until the count crosses the threshold.
+ */
+.ph-copy__count {
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--ph-ink);
+  margin-right: 5px;
+  /* Optical alignment with the tick caps — the mono digits sit a touch
+   * lower than vertical strokes of the same height, so we lift them. */
+  position: relative;
+  top: -1px;
+  flex-shrink: 0;
+}
+.ph-copy__count[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-copy__tick--new {
+    animation: none;
+  }
 }
 .ph-copy__meta {
   display: flex;
@@ -900,12 +1484,100 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   padding: 0.28rem 0.7rem;
   cursor: pointer;
   transition: transform var(--ph-motion-fast), background var(--ph-motion-fast);
+  /* Always anchored to the meta bar's right edge. Doesn't matter whether
+   * the tally is visible (wear=0 hides it via display:none) — the button
+   * stays put. The flex container's justify-content is irrelevant once
+   * this is set, but we leave flex-end in place as a defensive default
+   * for browsers without auto-margin support. */
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .ph-copy__btn:hover {
   background: var(--ph-ultramarine-deep);
 }
 .ph-copy__btn:active {
   transform: translateY(1px);
+}
+
+/* Live copy-effect particles — individual characters plucked from the
+ * snippet that scatter across the viewport when anyone copies.
+ *
+ * Particles are spawned as position:fixed direct children of <body> so they
+ * can fly outside the block's overflow/clipping without any ancestor
+ * needing overflow:visible. Each particle carries its trajectory via CSS
+ * variables set inline by the dispatcher:
+ *   --sx  start rotation
+ *   --tx, --ty  end translation (relative to starting point)
+ *   --rot end rotation
+ *   --dur animation duration
+ *   --delay animation start offset
+ *   --scl terminal scale
+ *
+ * Reduced-motion readers: we respect prefers-reduced-motion by shortening
+ * the animation dramatically so the burst still confirms "someone copied"
+ * without a full theatrical arc across their viewport.
+ */
+.ph-copy-particle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 900;
+  will-change: transform, opacity;
+  animation: ph-copy-particle-fly var(--dur, 1800ms)
+    cubic-bezier(0.22, 0.61, 0.36, 1) var(--delay, 0ms) forwards;
+  transform-origin: center;
+}
+.ph-copy-particle--char {
+  /* A character plucked from the snippet. Inherits the page's ink color
+   * and the code font so the char reads as "this is a piece of the
+   * snippet falling out", not a colored UI accent. The copier's cursor
+   * color is expressed elsewhere (the box pulse on the code block).
+   *
+   * The two-layer text-shadow is purely a legibility scaffold: a tight
+   * paper-colored halo so the char stays readable as it crosses
+   * arbitrary article content (paragraphs, code, images). No tint, no
+   * glow — just ensuring contrast on whatever happens to be underneath. */
+  font-family: var(--ph-font-mono);
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1;
+  color: var(--ph-ink);
+  white-space: pre;
+  text-shadow:
+    0 0 2px var(--ph-paper),
+    0 0 4px var(--ph-paper);
+}
+
+@keyframes ph-copy-particle-fly {
+  0% {
+    transform: translate3d(-50%, -50%, 0) rotate(var(--sx, 0deg))
+      scale(0.85);
+    opacity: 0;
+  }
+  8% {
+    transform: translate3d(-50%, -50%, 0) rotate(var(--sx, 0deg)) scale(1.05);
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(
+        calc(-50% + var(--tx, 0px)),
+        calc(-50% + var(--ty, -120px)),
+        0
+      )
+      rotate(var(--rot, 60deg)) scale(var(--scl, 1));
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-copy-particle {
+    animation-duration: 260ms !important;
+  }
+  .ph-copy[data-pulse="1"] {
+    animation-duration: 280ms;
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -927,11 +1599,8 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   background: var(--ph-paper-warm);
   color: var(--ph-ink);
   cursor: pointer;
-  transition:
-    transform var(--ph-motion-fast),
-    box-shadow var(--ph-motion-fast),
-    background var(--ph-motion-fast),
-    color var(--ph-motion-fast);
+  transition: transform var(--ph-motion-fast), box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast), color var(--ph-motion-fast);
 }
 .ph-toggle:hover {
   transform: translate(-1px, -1px);
@@ -967,9 +1636,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   font-family: var(--ph-font-neon);
   font-size: 1.2em;
   color: var(--ph-brick);
-  text-shadow:
-    0 0 6px rgba(192, 55, 60, 0.35),
-    0 0 16px rgba(192, 55, 60, 0.18);
+  text-shadow: 0 0 6px rgba(192, 55, 60, 0.35), 0 0 16px rgba(192, 55, 60, 0.18);
   transform: rotate(-4deg);
   padding-inline: 0.25em;
 }
@@ -999,7 +1666,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17b. Capabilities page — demo slots, media placeholders, tabs chrome
+   17b. Capabilities page — demo slots, tabs chrome
    ---------------------------------------------------------------------
    The capabilities page is a catalog where each can-* section has:
    - a "demo slot" (live interactive example; a React island mounts into it)
@@ -1307,6 +1974,379 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   will-change: transform, opacity;
 }
 
+/* LiveReactions from packages/react/examples — light docs polish when className set */
+.ph-live-reactions-root button {
+  font-family: var(--ph-font-mono);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-live-reactions-root button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 var(--ph-ink);
+}
+
+/* ---------------------------------------------------------------------
+   17e. Capabilities page — inline demos (can-move … can-duplicate)
+   --------------------------------------------------------------------- */
+
+.ph-move-arena {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  /* Taller than the long-cat sprite so can-move-bounds has comfortable vertical slack */
+  height: 236px;
+  margin: 0 auto;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ph-paper) 88%, var(--ph-sage-wash));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+.ph-move-piece {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  line-height: 1;
+  user-select: none;
+  cursor: grab;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+.ph-move-piece--img {
+  width: 72px;
+  height: 72px;
+  padding: 0;
+}
+/* long-cat.png is 180×326 — portrait hit box so clamp matches what you see */
+.ph-move-piece--cat {
+  --ph-long-cat-w: 180;
+  --ph-long-cat-h: 326;
+  width: calc(152px * var(--ph-long-cat-w) / var(--ph-long-cat-h));
+  height: 152px;
+  max-width: 100%;
+}
+.ph-move-piece__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+.ph-move-piece:active {
+  cursor: grabbing;
+}
+
+/* Splash-page lamp: same Noguchi hanging lamp the marketing homepage uses
+   (see `website/home.scss .lamp`). The "lit" class brightens + drops a
+   warm glow so the toggled state reads instantly without needing a label. */
+.ph-lamp {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  outline: none;
+}
+.ph-lamp:focus-visible {
+  outline: 2px solid var(--ph-accent, rgba(59, 130, 246, 0.7));
+  outline-offset: 4px;
+}
+.ph-lamp__img {
+  width: 96px;
+  height: auto;
+  display: block;
+  background-color: transparent;
+  transition: filter 240ms ease, transform 240ms ease;
+}
+.ph-lamp--dark .ph-lamp__img {
+  filter: brightness(0.85) saturate(0.6);
+}
+.ph-lamp--lit .ph-lamp__img {
+  filter: brightness(1.2) saturate(1.6)
+    drop-shadow(0 0 36px rgba(247, 220, 156, 0.85));
+  transform: translateY(1px);
+}
+
+.ph-grow-balloon-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 auto;
+  max-width: 240px;
+}
+.ph-grow-balloon__hint {
+  font-family: var(--ph-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  margin: 0;
+  text-align: center;
+}
+.ph-grow-balloon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  transition: transform 200ms ease;
+}
+.ph-grow-balloon__img {
+  width: 120px;
+  height: auto;
+  max-height: 160px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  border: none;
+}
+
+.ph-spin-wheel {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: none;
+  box-shadow: none;
+  cursor: grab;
+  overflow: hidden;
+  background: transparent;
+}
+.ph-spin-wheel:active {
+  cursor: grabbing;
+}
+.ph-spin-wheel__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  border-radius: 50%;
+  border: none;
+}
+
+.ph-hover-cursor-pad {
+  min-height: 120px;
+  margin: 0 auto;
+  max-width: 360px;
+  padding: 1rem 1.1rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 8px;
+  box-shadow: var(--ph-shadow-brick);
+  transition: background 0.15s ease;
+}
+.ph-hover-cursor-pad__label {
+  margin: 0;
+  font-family: var(--ph-font-body);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ph-ink);
+  text-shadow: 0 1px 0 rgba(244, 239, 229, 0.9);
+}
+
+/* Capabilities slot: let the burrow use full width and shrink so the meadow can wrap/scroll. */
+.ph-demo-slot:has(.ph-dup-rabbit) {
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.ph-dup-rabbit {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ph-dup-meadow__caption {
+  margin: 0;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  text-align: center;
+  line-height: 1.45;
+}
+
+/* Grassy strip: one row, negative overlap to crowd; overflow hidden clips the warren (no grow / scroll). */
+.ph-demo-slot .ph-dup-meadow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0;
+  width: 100%;
+  height: 7.75rem;
+  padding: 1rem 0.5rem 0.35rem;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1.5px solid rgba(45, 62, 40, 0.55);
+  background: repeating-linear-gradient(
+      105deg,
+      transparent 0 6px,
+      rgba(255, 255, 255, 0.06) 6px 7px
+    ),
+    linear-gradient(
+      to top,
+      #4a6842 0 14%,
+      #5f834f 14% 32%,
+      #82a865 32% 52%,
+      #b8d888 52% 78%,
+      #d8ec9c 78% 100%
+    );
+  box-shadow: inset 0 -8px 16px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+
+.ph-demo-slot .ph-dup-meadow > * + * {
+  margin-left: -26px;
+}
+
+.ph-demo-slot .ph-bunny-cell {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 48px;
+  min-height: 72px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.18));
+}
+
+/* One transform stack: hop + wiggle reads clearly (nested animations fought each other). */
+.ph-demo-slot .ph-bunny-sprite {
+  display: inline-block;
+  transform-origin: 50% 100%;
+  animation: ph-bunny-life 2.75s ease-in-out infinite;
+}
+
+.ph-demo-slot .ph-dup-meadow > *:nth-child(2n) .ph-bunny-sprite {
+  animation-delay: 0.25s;
+  animation-duration: 3.1s;
+}
+
+.ph-demo-slot .ph-dup-meadow > *:nth-child(3n) .ph-bunny-sprite {
+  animation-delay: 0.55s;
+}
+
+.ph-demo-slot .ph-dup-meadow > *:nth-child(5n) .ph-bunny-sprite {
+  animation-duration: 2.35s;
+}
+
+.ph-demo-slot .ph-dup-rabbit__img {
+  width: 46px;
+  height: 46px;
+  max-width: none;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border: none;
+  transform-origin: center bottom;
+  animation: ph-bunny-face 3.8s infinite;
+}
+
+.ph-demo-slot .ph-dup-meadow > *:nth-child(2n) .ph-dup-rabbit__img {
+  animation-delay: 0.35s;
+  animation-duration: 4.2s;
+}
+
+.ph-demo-slot .ph-dup-meadow > *:nth-child(3n) .ph-dup-rabbit__img {
+  animation-delay: 0.7s;
+}
+
+.ph-demo-slot .ph-dup-meadow > *:nth-child(5n) .ph-dup-rabbit__img {
+  animation-duration: 3.2s;
+}
+
+@keyframes ph-bunny-face {
+  0%, 49.9% {
+    transform: scaleX(1);
+  }
+  50%,
+  100% {
+    transform: scaleX(-1);
+  }
+}
+
+@keyframes ph-bunny-life {
+  0%,
+  72%,
+  100% {
+    transform: translateY(0) rotate(0deg) scaleY(1);
+  }
+  /* hop */
+  78% {
+    transform: translateY(-18px) rotate(-6deg) scaleY(1.08);
+  }
+  84% {
+    transform: translateY(0) rotate(4deg) scaleY(1);
+  }
+  /* quick ear wiggle */
+  88% {
+    transform: translateY(0) rotate(-12deg) scaleY(1);
+  }
+  91% {
+    transform: translateY(0) rotate(10deg) scaleY(1);
+  }
+  94% {
+    transform: translateY(0) rotate(0deg) scaleY(1);
+  }
+}
+
+.ph-dup-rabbit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.ph-dup-rabbit__clone,
+.ph-dup-rabbit__reset {
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-dup-rabbit__reset {
+  background: var(--ph-paper-warm);
+}
+
 /* ---------------------------------------------------------------------
    17d. can-mirror playground (/docs/advanced/mirror-playground/)
    ---------------------------------------------------------------------
@@ -1424,4 +2464,589 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   .ph-wordmark {
     font-size: 1.3rem;
   }
+}
+
+/* ------------------------------------------------------------------
+   SmileyRow — can-play triptych, slot 3 (64x64 doodles)
+   ------------------------------------------------------------------ */
+
+.ph-smiley-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.ph-smiley-row__caption {
+  margin: 0;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  text-align: center;
+  line-height: 1.45;
+}
+
+.ph-smiley-row__pad {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.ph-smiley-row__canvas {
+  /* Physical backing is 64x64; CSS scale keeps the pen responsive
+     while the PNG stays genuinely pixel-art. */
+  width: 192px;
+  height: 192px;
+  background: #ffffff;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  box-shadow: var(--ph-shadow-brick);
+  cursor: crosshair;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  /* touch-action:none lets pointerdown/move fire on mobile without
+     the browser hijacking the gesture for pan/zoom. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ph-smiley-row__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+  min-width: 7rem;
+}
+
+.ph-smiley-row__btn {
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+  transition: transform var(--ph-motion-fast), box-shadow var(--ph-motion-fast);
+}
+.ph-smiley-row__btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--ph-ink);
+}
+.ph-smiley-row__btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+.ph-smiley-row__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.ph-smiley-row__btn--primary {
+  background: var(--ph-sage-wash);
+}
+
+/* Horizontal strip — mirrors the framed-paper feel of .ph-dup-meadow
+   but trades the pastoral gradient for a warm neutral so the black-
+   and-white doodles read clearly against it. */
+.ph-smiley-row__strip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.55rem 0.7rem;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 8px;
+  background: var(--ph-sage-wash);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+}
+
+.ph-smiley-row__thumb {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--ph-hairline);
+  border-radius: 4px;
+  background: #ffffff;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+}
+
+.ph-smiley-row__empty {
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  margin-inline: auto;
+}
+
+/* ------------------------------------------------------------------
+   DocsGuestbook — can-play triptych, slot 2 (shared log)
+   ------------------------------------------------------------------ */
+
+.ph-docs-guestbook {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: 100%;
+  max-width: 360px;
+  font-family: var(--ph-font-body);
+  color: var(--ph-ink);
+}
+
+.ph-docs-guestbook__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ph-docs-guestbook__prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.ph-docs-guestbook__legend {
+  font-family: var(--ph-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  padding: 0 0 0.25rem;
+}
+
+.ph-docs-guestbook__prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.6rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.ph-docs-guestbook__prompt:hover {
+  background: var(--ph-paper-warm);
+}
+
+.ph-docs-guestbook__prompt.is-active {
+  background: var(--ph-sage-wash);
+  transform: translateY(-1px);
+  box-shadow: var(--ph-shadow-brick);
+}
+
+.ph-docs-guestbook__prompt input {
+  /* Keep the native radio for a11y, hide it visually. */
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}
+
+.ph-docs-guestbook__prompt:focus-within {
+  outline: 2px solid var(--ph-sage-deep);
+  outline-offset: 2px;
+}
+
+.ph-docs-guestbook__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ph-docs-guestbook__label {
+  font-family: var(--ph-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+
+.ph-docs-guestbook__textarea {
+  width: 100%;
+  min-height: 3.4rem;
+  padding: 0.55rem 0.7rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ph-docs-guestbook__textarea:focus {
+  border-color: var(--ph-sage-deep);
+  box-shadow: var(--ph-shadow-brick);
+}
+
+.ph-docs-guestbook__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ph-docs-guestbook__count {
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ph-docs-guestbook__count.is-tight {
+  color: var(--ph-ink-2);
+}
+
+.ph-docs-guestbook__submit {
+  padding: 0.42rem 0.95rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  font-family: var(--ph-font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ph-ink);
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+  transition: transform 100ms ease, box-shadow 100ms ease, opacity 120ms ease;
+}
+
+.ph-docs-guestbook__submit:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 var(--ph-ink);
+}
+
+.ph-docs-guestbook__submit:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+
+.ph-docs-guestbook__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* List + fade-out overflow gradient */
+.ph-docs-guestbook__list-wrap {
+  position: relative;
+}
+
+.ph-docs-guestbook__list-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--ph-paper) 92%, transparent)
+  );
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.ph-docs-guestbook__list {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0.2rem;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px dashed var(--ph-ink-3);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ph-paper) 94%, var(--ph-sage-wash));
+}
+
+.ph-docs-guestbook__empty {
+  padding: 0.8rem 0.6rem;
+  text-align: center;
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  color: var(--ph-ink-3);
+}
+
+.ph-docs-guestbook__entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "kicker time"
+    "text   text";
+  column-gap: 0.5rem;
+  row-gap: 0.15rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 5px;
+  background: var(--ph-paper);
+  border: 1px solid color-mix(in srgb, var(--ph-ink) 12%, transparent);
+}
+
+.ph-docs-guestbook__kicker {
+  grid-area: kicker;
+  font-family: var(--ph-font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ph-ink-2);
+}
+
+.ph-docs-guestbook__kicker--building {
+  color: var(--ph-sage-deep);
+}
+
+.ph-docs-guestbook__kicker--learned {
+  color: var(--ph-ink-2);
+}
+
+.ph-docs-guestbook__text {
+  grid-area: text;
+  margin: 0;
+  font-family: var(--ph-font-body);
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--ph-ink);
+  word-break: break-word;
+}
+
+.ph-docs-guestbook__time {
+  grid-area: time;
+  font-family: var(--ph-font-mono);
+  font-size: 0.66rem;
+  color: var(--ph-ink-3);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------
+   DocsSpinner — can-play triptych, slot 1 (wheel)
+   ------------------------------------------------------------------
+   Six-slice synced prize wheel. Lives inside a sage-washed
+   .ph-demo-slot on the capabilities page, so slice fills lean warm
+   (mustard + cream) to pop against the green cast. Slice strokes and
+   labels are ink to keep the visual language consistent with the
+   other capability demos (.ph-grow-balloon, .ph-spin-wheel). */
+
+.ph-docs-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 auto;
+  max-width: 240px;
+  width: 100%;
+}
+.ph-docs-spinner__stage {
+  position: relative;
+  width: 232px;
+  height: 232px;
+}
+.ph-docs-spinner__pointer {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 14px solid var(--ph-ink);
+  filter: drop-shadow(0 1px 0 var(--ph-paper));
+  z-index: 2;
+  pointer-events: none;
+}
+.ph-docs-spinner__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ph-docs-spinner__slice {
+  stroke: var(--ph-ink);
+  stroke-width: 1.25;
+}
+.ph-docs-spinner__slice--even {
+  fill: #e8a63a; /* --ph-mustard, hardcoded for SVG attribute reliability */
+}
+.ph-docs-spinner__slice--odd {
+  fill: #ebe4d5; /* --ph-paper-warm */
+}
+.ph-docs-spinner__label {
+  font-family: var(--ph-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  fill: var(--ph-ink);
+  paint-order: stroke;
+  stroke: rgba(244, 239, 229, 0.55);
+  stroke-width: 2;
+}
+.ph-docs-spinner__ring {
+  fill: none;
+  stroke: var(--ph-ink);
+  stroke-width: 1.75;
+}
+.ph-docs-spinner__hub {
+  fill: var(--ph-paper);
+  stroke: var(--ph-ink);
+  stroke-width: 1.5;
+}
+.ph-docs-spinner__controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.ph-docs-spinner__button {
+  padding: 0.5rem 1.1rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  font-family: var(--ph-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ph-ink);
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+.ph-docs-spinner__button:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 var(--ph-ink);
+}
+.ph-docs-spinner__button:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+.ph-docs-spinner__button:disabled {
+  opacity: 0.65;
+  cursor: progress;
+  box-shadow: var(--ph-shadow-brick-pressed);
+  transform: none;
+}
+.ph-docs-spinner__result {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 1.4em;
+  text-align: center;
+  line-height: 1.35;
+}
+.ph-docs-spinner__result-label {
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+.ph-docs-spinner__pending {
+  font-family: var(--ph-font-body);
+  font-size: 0.88rem;
+  color: var(--ph-ink-2);
+}
+.ph-docs-spinner__hint {
+  font-family: var(--ph-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+.ph-docs-spinner__link {
+  font-family: var(--ph-font-body);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ph-ink);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+.ph-docs-spinner__link:hover,
+.ph-docs-spinner__link:focus-visible {
+  color: var(--ph-ultramarine);
+  text-decoration-color: var(--ph-ultramarine);
+}
+
+/* ------------------------------------------------------------------
+   Inline can-play vignettes — scattered through the capabilities page
+   so the page itself becomes a `can-play` showcase. Each block is a
+   margin-style aside, not a heavy framed demo box: a ruled head with a
+   tiny "CAN-PLAY · …" kicker, the demo, and a target id so the can-play
+   section's nav links can jump to it.
+   ------------------------------------------------------------------ */
+
+.ph-canplay-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 1.6rem 0;
+  padding: 0.85rem 1rem 1rem;
+  border: 1px solid var(--ph-hairline);
+  border-left: 3px solid var(--ph-ink, #1a1a1a);
+  border-radius: 4px;
+  background: var(--ph-paper, #fff);
+  scroll-margin-top: 5rem;
+}
+
+.ph-canplay-inline--final {
+  margin-top: 2rem;
+}
+
+.ph-canplay-inline__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ph-canplay-inline__kicker {
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+
+.ph-canplay-inline__caption {
+  margin: 0;
+  font-family: var(--ph-font-body);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ph-ink-2);
+  max-width: 56ch;
 }

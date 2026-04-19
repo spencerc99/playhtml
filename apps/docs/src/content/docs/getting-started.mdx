@@ -5,19 +5,23 @@ sidebar:
   order: 1
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
 
 playhtml turns any HTML element into a live, collaborative one with a single attribute. This guide gets you from empty page to a working shared toggle.
 
+Pick your setup:
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+
 ## Install
 
-Add the package with your package manager:
+Add the package with your package manager, or load it from a CDN without a build step:
 
 ```bash
 npm install playhtml
 ```
-
-Or load it from a CDN without a build step:
 
 ```html
 <script type="module" src="https://unpkg.com/playhtml"></script>
@@ -27,44 +31,79 @@ Or load it from a CDN without a build step:
 
 Call `playhtml.init()` once on page load. Cursors are opt-in.
 
-```js
-import { playhtml } from "playhtml";
-
-playhtml.init({ cursors: { enabled: true } });
+```html
+<script type="module">
+  import { playhtml } from "playhtml";
+  playhtml.init({ cursors: { enabled: true } });
+</script>
 ```
 
-Then mark any element with a capability attribute — for example, `can-toggle`:
+If you loaded playhtml from the CDN `<script>` tag above, the library is available as a global — no import needed:
+
+```html
+<script>
+  playhtml.init({ cursors: { enabled: true } });
+</script>
+```
+
+## Add a capability
+
+Mark any element with a capability attribute — for example, `can-toggle`:
 
 ```html
 <button id="my-lamp" can-toggle>lamp</button>
 ```
 
-## React setup
+Give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
 
-In a React app, wrap your tree in `PlayProvider` and use one of the capability components:
+  </TabItem>
+  <TabItem label="React">
+
+## Install
+
+```bash
+npm install @playhtml/react @playhtml/common
+```
+
+## Initialize
+
+Wrap your tree in `PlayProvider` once, then drop in a capability component. Cursors are opt-in.
 
 ```tsx
-import { PlayProvider, CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { PlayProvider, CanToggleElement } from "@playhtml/react";
 
 export function App() {
   return (
     <PlayProvider initOptions={{ cursors: { enabled: true } }}>
-      <CanPlayElement
-        tagInfo={[TagType.CanToggle]}
-        id="my-lamp"
-        defaultData={{ on: false }}
-      >
-        {({ data, setData }) => (
-          <button onClick={() => setData({ on: !data.on })}>
-            {data.on ? "on" : "off"}
-          </button>
-        )}
-      </CanPlayElement>
+      <CanToggleElement>
+        <button id="my-lamp">lamp</button>
+      </CanToggleElement>
     </PlayProvider>
   );
 }
 ```
+
+Need more control? Use `CanPlayElement` with a render prop to read and write the shared data directly:
+
+```tsx
+import { CanPlayElement } from "@playhtml/react";
+import { TagType } from "@playhtml/common";
+
+<CanPlayElement
+  tagInfo={[TagType.CanToggle]}
+  id="my-lamp"
+  defaultData={{ on: false }}
+>
+  {({ data, setData }) => (
+    <button onClick={() => setData({ on: !data.on })}>
+      {data.on ? "on" : "off"}
+    </button>
+  )}
+</CanPlayElement>
+```
+
+  </TabItem>
+</Tabs>
 
 ## Try it live
 
