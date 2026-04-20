@@ -571,6 +571,21 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
+/** Disconnect and destroy the cursor client + cursor provider. */
+function teardownCursors(): void {
+  try { cursorClient?.destroy?.(); } catch {}
+  cursorClient = null;
+  try { cursorProvider?.disconnect?.(); } catch {}
+  try { cursorProvider?.destroy?.(); } catch {}
+  cursorProvider = null;
+}
+
+/** Disconnect and destroy the main Yjs provider. */
+function teardownMainProvider(): void {
+  try { yprovider?.disconnect?.(); } catch {}
+  try { yprovider?.destroy?.(); } catch {}
+}
+
 /**
  * Detach the current awareness "change" listener (if any) and attach a fresh
  * one to whichever provider currently holds awareness (cursor provider if
@@ -688,12 +703,7 @@ async function runHandleNavigation(): Promise<void> {
   }
 
   if (mainRoomChanged) {
-    try {
-      yprovider.disconnect?.();
-    } catch {}
-    try {
-      yprovider.destroy?.();
-    } catch {}
+    teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
     buildMainProvider({
@@ -706,17 +716,7 @@ async function runHandleNavigation(): Promise<void> {
   }
 
   if (cursorRoomChanged && cursorOptionsCache) {
-    try {
-      cursorClient?.destroy?.();
-    } catch {}
-    try {
-      cursorProvider?.disconnect?.();
-    } catch {}
-    try {
-      cursorProvider?.destroy?.();
-    } catch {}
-    cursorClient = null;
-    cursorProvider = null;
+    teardownCursors();
     buildCursors({
       cursors: cursorOptionsCache,
       mainRoom: newMainRoom,
@@ -1385,30 +1385,8 @@ export const playhtml: PlayHTMLComponents = {
       }
       elementHandlers.clear();
 
-      if (cursorClient) {
-        try {
-          cursorClient.destroy?.();
-        } catch {}
-        cursorClient = null;
-      }
-
-      if (cursorProvider) {
-        try {
-          cursorProvider.disconnect?.();
-        } catch {}
-        try {
-          cursorProvider.destroy?.();
-        } catch {}
-        cursorProvider = null;
-      }
-      if (yprovider) {
-        try {
-          yprovider.disconnect?.();
-        } catch {}
-        try {
-          yprovider.destroy?.();
-        } catch {}
-      }
+      teardownCursors();
+      teardownMainProvider();
 
       try {
         teardownDevUI();
