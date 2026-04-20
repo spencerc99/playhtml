@@ -1,11 +1,11 @@
 // ABOUTME: End-to-end tests for playhtml.handleNavigation — room switch
 // ABOUTME: detection, playhtml:navigated dispatch, and fire-when-cursors-disabled.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { playhtml } from "../index";
+import { playhtml, resetPlayHTML } from "../index";
 
 describe("playhtml.handleNavigation", () => {
   beforeEach(async () => {
-    try { await playhtml.destroy(); } catch {}
+    try { await resetPlayHTML(); } catch {}
     document.body.innerHTML = "";
     delete (window as any).playhtml;
     delete document.documentElement.dataset.playhtml;
@@ -180,12 +180,12 @@ describe("playhtml.handleNavigation", () => {
       host: "http://localhost:1999",
       room: "/room-a",
     } as any);
-    await playhtml.destroy();
+    await resetPlayHTML();
 
     await playhtml.init({
       host: "http://localhost:1999",
       room: "/room-a",
     } as any);
-    await expect(playhtml.destroy()).resolves.toBeUndefined();
+    await expect(resetPlayHTML()).resolves.toBeUndefined();
   });
 });

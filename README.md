@@ -451,7 +451,7 @@ Vanilla — the `container` selector survives body-swaps when marked `transition
 </script>
 ```
 
-Also new: `playhtml.handleNavigation()` (manual trigger for routers that bypass Navigation API and popstate), `playhtml.destroy()` (full teardown; `init()` may be called again afterward), and a `playhtml:navigated` CustomEvent on `document` with `detail.room`.
+Also new: `playhtml.handleNavigation()` (manual trigger for routers that bypass Navigation API and popstate) and a `playhtml:navigated` CustomEvent on `document` with `detail.room`.
 
 See the full guide at [spa-integration.md](https://github.com/spencerc99/playhtml/blob/main/docs/spa-integration.md).
 

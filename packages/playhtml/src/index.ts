@@ -1306,7 +1306,6 @@ function createPresenceRoom(name: string): PresenceRoom {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
-  destroy: () => Promise<void>;
   handleNavigation: () => Promise<void>;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
@@ -1336,85 +1335,92 @@ export interface PlayHTMLComponents {
   }>;
 }
 
+/**
+ * Full teardown of all playhtml state. Not part of the public API —
+ * the singleton design means no single caller can safely own teardown
+ * without reference counting. Exported as a named function for test
+ * isolation (beforeEach resets) only.
+ */
+export async function resetPlayHTML(): Promise<void> {
+  if (isDestroyed) return;
+
+  try {
+    if (navigationController) {
+      navigationController.destroy();
+      navigationController = null;
+    }
+    if (detachNavListeners) {
+      detachNavListeners();
+      detachNavListeners = null;
+    }
+
+    if (configureIdentityListener) {
+      document.removeEventListener(
+        "playhtml:configure-identity",
+        configureIdentityListener,
+      );
+      configureIdentityListener = null;
+    }
+
+    // Detach awareness change listener before destroying providers, so we
+    // cleanly `.off("change", ...)` rather than leaking the subscription on
+    // a soon-to-be-destroyed awareness object.
+    if (awarenessChangeTarget && awarenessChangeHandler) {
+      try {
+        awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
+      } catch {}
+    }
+    awarenessChangeTarget = null;
+    awarenessChangeHandler = null;
+
+    for (const [, map] of elementHandlers) {
+      for (const handler of map.values()) {
+        try {
+          (handler as any).destroy?.();
+        } catch {}
+      }
+      map.clear();
+    }
+    elementHandlers.clear();
+
+    teardownCursors();
+    teardownMainProvider();
+
+    try {
+      teardownDevUI();
+    } catch {}
+
+    document.head
+      .querySelectorAll("link[href*='playhtml']")
+      .forEach((n) => n.remove());
+    document
+      .querySelectorAll("#playhtml-cursor-styles")
+      .forEach((n) => n.remove());
+
+    delete (window as any).playhtml;
+    delete document.documentElement.dataset.playhtml;
+
+    hasSynced = false;
+    lastElementAwarenessFingerprint = null;
+    firstSetup = true;
+    __currentRoomId = "";
+    __currentHost = "";
+    presenceAPI = null;
+    explicitRoomOption = undefined;
+    cachedDefaultRoomOptions = { includeSearch: false };
+    cursorOptionsCache = undefined;
+    cachedOnError = undefined;
+  } finally {
+    isDestroyed = true;
+  }
+}
+
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
   handleNavigation: async function handleNavigation(): Promise<void> {
     if (!navigationController) return;
     await navigationController.trigger();
-  },
-  destroy: async function destroy(): Promise<void> {
-    if (isDestroyed) return;
-
-    try {
-      if (navigationController) {
-        navigationController.destroy();
-        navigationController = null;
-      }
-      if (detachNavListeners) {
-        detachNavListeners();
-        detachNavListeners = null;
-      }
-
-      if (configureIdentityListener) {
-        document.removeEventListener(
-          "playhtml:configure-identity",
-          configureIdentityListener,
-        );
-        configureIdentityListener = null;
-      }
-
-      // Detach awareness change listener before destroying providers, so we
-      // cleanly `.off("change", ...)` rather than leaking the subscription on
-      // a soon-to-be-destroyed awareness object.
-      if (awarenessChangeTarget && awarenessChangeHandler) {
-        try {
-          awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
-        } catch {}
-      }
-      awarenessChangeTarget = null;
-      awarenessChangeHandler = null;
-
-      for (const [, map] of elementHandlers) {
-        for (const handler of map.values()) {
-          try {
-            (handler as any).destroy?.();
-          } catch {}
-        }
-        map.clear();
-      }
-      elementHandlers.clear();
-
-      teardownCursors();
-      teardownMainProvider();
-
-      try {
-        teardownDevUI();
-      } catch {}
-
-      document.head
-        .querySelectorAll("link[href*='playhtml']")
-        .forEach((n) => n.remove());
-      document
-        .querySelectorAll("#playhtml-cursor-styles")
-        .forEach((n) => n.remove());
-
-      delete (window as any).playhtml;
-      delete document.documentElement.dataset.playhtml;
-
-      hasSynced = false;
-      lastElementAwarenessFingerprint = null;
-      firstSetup = true;
-      __currentRoomId = "";
-      __currentHost = "";
-      presenceAPI = null;
-      explicitRoomOption = undefined;
-      cachedDefaultRoomOptions = { includeSearch: false };
-      cursorOptionsCache = undefined;
-      cachedOnError = undefined;
-    } finally {
-      isDestroyed = true;
-    }
   },
   setupPlayElements: setupElements,
   setupPlayElement,

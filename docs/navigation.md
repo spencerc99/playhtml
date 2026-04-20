@@ -110,14 +110,6 @@ The default auto-detection handles this because Astro fires `popstate`. You only
 
 - `playhtml:navigated` — fires on `document` after each successful navigation handling, with `event.detail.room` set to the current room ID.
 
-## Destroy
-
-```ts
-await playhtml.destroy();
-```
-
-Removes all playhtml DOM, listeners, and connections. `init()` may be called again afterward with fresh options.
-
 ## Known limitations
 
 **Cross-room state bleed on room-switching navigation.** The underlying Yjs doc is a module-level singleton that's reused across navigations. When the room changes (e.g., `room: "pathname"` with pathname-based navigation), the new room's state is merged into the existing doc rather than starting fresh. For most use cases this is unobservable — but if the same element `id` exists in both rooms with different data, CRDT merge semantics apply (later-write-wins per key).
@@ -127,5 +119,3 @@ In practice this does not affect:
 - `room: "domain"` (single room across all URLs).
 - Pages with distinct element IDs per route.
 - Default-derived rooms where each URL's DOM has its own element IDs.
-
-If you need strict room isolation across navigation, use `playhtml.destroy()` + `playhtml.init()` on each route change instead of the automatic navigation path.
