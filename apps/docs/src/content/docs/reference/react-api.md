@@ -14,11 +14,14 @@ Initializes the playhtml client for a React subtree. There must be exactly one `
 ```tsx
 interface PlayProviderProps {
   initOptions?: InitOptions;
+  pathname?: string;
   children: React.ReactNode;
 }
 ```
 
 Everything in `initOptions` maps one-to-one onto the vanilla `playhtml.init()` argument — see the [init options reference](/docs/reference/init-options/).
+
+`pathname` is optional and only needed for client-side-navigation frameworks (React Router, Next.js, etc.) where the browser Navigation API isn't available. Pass it from your router and playhtml will rebuild rooms + rescan the DOM on pathname changes. See [navigation](/docs/advanced/navigation/) for details.
 
 ```tsx
 import { PlayProvider } from "@playhtml/react";

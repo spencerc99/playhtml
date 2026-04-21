@@ -129,6 +129,11 @@ Opt into multiplayer cursors, presence identity, chat, and proximity detection. 
 interface CursorOptions {
   enabled: boolean;
   room?: "page" | "domain" | "section" | ((ctx) => string);
+  container?:
+    | HTMLElement
+    | string
+    | (() => HTMLElement | null)
+    | React.RefObject<HTMLElement>;
   shouldRenderCursor?: (presence) => boolean;
   getCursorStyle?: (presence) => Partial<CSSStyleDeclaration>;
   playerIdentity?: PlayerIdentity;
@@ -140,6 +145,8 @@ interface CursorOptions {
   onCustomCursorRender?: (connectionId, element) => Element | null;
 }
 ```
+
+`container` is only needed when your framework swaps `document.body` on navigation (Astro ViewTransitions, htmx boost, Turbo). Mark the container with the framework's persist directive (e.g. `transition:persist`) and cursors survive navigation. See [navigation](/docs/advanced/navigation/) for examples.
 
 Minimal opt-in:
 

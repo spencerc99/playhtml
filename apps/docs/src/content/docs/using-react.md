@@ -105,5 +105,6 @@ Every concept page shows both the vanilla and React forms. Pick whichever matche
 - [Presence](/docs/data/presence/) — ephemeral per-user state, including cursors
 - [Events](/docs/data/events/) — one-off broadcasts
 - [Capabilities](/docs/capabilities/) — every built-in `can-*` attribute
+- [Navigation & SPAs](/docs/advanced/navigation/) — client-side routing with React Router, Next.js, and more
 
 For the full React component/hook signatures and types, see [React API](/docs/reference/react-api/).
