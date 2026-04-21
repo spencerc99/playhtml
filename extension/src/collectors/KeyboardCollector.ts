@@ -6,30 +6,31 @@ import type { KeyboardEventData, TypingAction } from './types';
 import { normalizePosition, getElementSelector } from './types';
 import browser from 'webextension-polyfill';
 import { VERBOSE } from '../config';
+import {
+  LEGIBILITY_KEY,
+  REDACTION_CHAR,
+  parseLegibility,
+  redactWithLegibility,
+} from '../utils/keyboardRedaction';
 
-const PRIVACY_LEVEL_KEY = 'collection_keyboard_privacy_level';
+const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = 'collection_keyboard_filter_substrings';
-const REDACTION_CHAR = '█'; // U+2588, full block
 const DEBOUNCE_DELAY = 5000; // 5 seconds - longer to handle gaps between typing sessions
 
-// PII detection patterns
-const PII_PATTERNS = {
-  email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi,
-  phone: /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g,
-  ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
-};
-
 /**
- * KeyboardCollector captures typing behavior with dual privacy levels:
- * - Abstract: Typing frequency, text length, location (no actual text)
- * - Full: Actual text content + location + typing sequence (PII redacted)
+ * KeyboardCollector captures typing behavior with a legibility percent (0–100):
+ *   0   → cadence only (all non-whitespace redacted)
+ *   100 → full text (PII always redacted)
+ * Intermediate values redact a proportional share of random characters.
  */
 export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   readonly type = 'keyboard' as const;
   readonly description = 'Captures typing in any editable element (inputs, textareas, contenteditable)';
 
-  // Privacy level (cached in memory)
-  private privacyLevel: 'abstract' | 'full' = 'abstract';
+  // Legibility percent, 0–100 (cached in memory)
+  private legibilityPct: number = 0;
+  // Seed for deterministic per-session redaction patterns
+  private redactionSeed: number = Math.floor(Math.random() * 0xffffffff);
 
   // Filter substrings (cached in memory)
   private filterSubstrings: string[] = [];
@@ -74,10 +75,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     browser.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === 'local') {
         if (changes[PRIVACY_LEVEL_KEY]) {
-          const newLevel = changes[PRIVACY_LEVEL_KEY].newValue;
-          if (newLevel === 'abstract' || newLevel === 'full') {
-            this.privacyLevel = newLevel;
-          }
+          this.legibilityPct = parseLegibility(changes[PRIVACY_LEVEL_KEY].newValue);
         }
         if (changes[FILTER_SUBSTRINGS_KEY]) {
           const newList = changes[FILTER_SUBSTRINGS_KEY].newValue;
@@ -208,21 +206,20 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   }
 
   /**
-   * Initialize privacy level from storage (read once, cache in memory)
+   * Initialize legibility percent from storage (read once, cache in memory).
+   * Migrates legacy "abstract" | "full" values to the numeric range.
    */
   private async initPrivacyLevel(): Promise<void> {
     try {
       const result = await browser.storage.local.get([PRIVACY_LEVEL_KEY]);
-      const level = result[PRIVACY_LEVEL_KEY];
-      if (level === 'abstract' || level === 'full') {
-        this.privacyLevel = level;
-      } else {
-        // Default to abstract
-        this.privacyLevel = 'abstract';
-        await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: 'abstract' });
+      const raw = result[PRIVACY_LEVEL_KEY];
+      this.legibilityPct = parseLegibility(raw);
+      // Persist migrated/default value so legacy strings don't keep re-parsing.
+      if (typeof raw !== 'number') {
+        await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: this.legibilityPct });
       }
     } catch (error) {
-      this.privacyLevel = 'abstract'; // Default on error
+      this.legibilityPct = 0;
     }
   }
 
@@ -541,28 +538,18 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
         if (action.text) {
           redacted.text = REDACTION_CHAR.repeat(action.text.length);
         }
-        // deletedCount is just a number, no redaction needed
-        return redacted;
-      });
-    } else if (this.privacyLevel === 'full') {
-      // Redact PII in sequence actions
-      sequence = this.sequence.map(action => {
-        const redacted: TypingAction = { ...action };
-        if (action.text) {
-          redacted.text = this.redactPII(action.text);
-        }
-        // deletedCount is just a number, no redaction needed
         return redacted;
       });
     } else {
-      // Abstract level: redact all non-whitespace characters but preserve whitespace
-      // This preserves cadence (timestamps) while hiding actual content
-      sequence = this.sequence.map(action => {
+      sequence = this.sequence.map((action, idx) => {
         const redacted: TypingAction = { ...action };
         if (action.text) {
-          redacted.text = this.redactNonWhitespace(action.text);
+          redacted.text = redactWithLegibility(
+            action.text,
+            this.legibilityPct,
+            this.redactionSeed + idx,
+          );
         }
-        // deletedCount is just a number, no redaction needed
         return redacted;
       });
     }
@@ -625,34 +612,6 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
       case 'double': return 4;
       default: return 0; // none, hidden, or other
     }
-  }
-
-  /**
-   * Redact PII patterns in text
-   */
-  private redactPII(text: string): string {
-    let redacted = text;
-
-    // Apply each PII pattern
-    for (const pattern of Object.values(PII_PATTERNS)) {
-      redacted = redacted.replace(pattern, (match) => {
-        return REDACTION_CHAR.repeat(match.length);
-      });
-    }
-
-    return redacted;
-  }
-
-  /**
-   * Redact all non-whitespace characters while preserving whitespace
-   * Used for abstract privacy level to preserve cadence while hiding content
-   */
-  private redactNonWhitespace(text: string): string {
-    // Replace each character: keep whitespace, redact everything else
-    return text.replace(/./g, (char) => {
-      // Check if character is whitespace (space, tab, newline, etc.)
-      return /\s/.test(char) ? char : REDACTION_CHAR;
-    });
   }
 
   /**

@@ -1,19 +1,25 @@
 // ABOUTME: Data collection settings screen for managing collector modes (off/local/shared)
 // ABOUTME: Also handles keyboard privacy level and filter substring settings
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import browser from "webextension-polyfill";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "../shared/types";
 import { CollectorIcon } from "./icons";
 import { triggerDownload } from "../utils/portraitExport";
+import {
+  LEGIBILITY_KEY,
+  DEFAULT_LEGIBILITY,
+  parseLegibility,
+  redactWithLegibility,
+} from "../utils/keyboardRedaction";
 import "./Collections.scss";
 
 interface CollectionsProps {
   onBack: () => void;
 }
 
-const PRIVACY_LEVEL_KEY = "collection_keyboard_privacy_level";
+const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
 const DEV_MODE_KEY = "dev_mode";
 
@@ -47,8 +53,8 @@ function formatAge(ts: number): string {
 export interface CollectorListProps {
   modes: Record<string, "off" | "local" | "shared">;
   onModeChange: (type: string, mode: "off" | "local" | "shared") => void;
-  keyboardPrivacyLevel: "abstract" | "full";
-  onKeyboardPrivacyChange: (level: "abstract" | "full") => void;
+  keyboardLegibilityPct: number;
+  onKeyboardLegibilityChange: (pct: number) => void;
 }
 
 const COLLECTOR_DESCRIPTIONS: Record<string, string> = {
@@ -58,36 +64,35 @@ const COLLECTOR_DESCRIPTIONS: Record<string, string> = {
   navigation: "Captures page navigation and session timing",
 };
 
-// ── Keyboard privacy preview ─────────────────────────────────────────────────
-// Shows a before/after so users can see what "abstract" vs "full" actually
-// records. The sample contains an email so the PII redaction in full mode
-// is visible, not just abstract's opaque solid blocks.
+// ── Keyboard legibility preview ──────────────────────────────────────────────
+// Shows a before/after so users can see how legibility % maps to recorded text.
+// The sample contains an email so the always-on PII redaction stays visible.
 
 const SAMPLE_TYPED_TEXT = "email hi@spencer.place with feedback!";
-const REDACTION_CHAR = "\u2588"; // U+2588 FULL BLOCK — matches KeyboardCollector
 
-const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-const PHONE_RE =
-  /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g;
-const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
+const LEGIBILITY_STOPS = [
+  { value: 0, label: "Cadence only" },
+  { value: 50, label: "Partial" },
+  { value: 100, label: "Full text" },
+] as const;
 
-function redactPII(text: string): string {
-  let out = text;
-  for (const re of [EMAIL_RE, PHONE_RE, SSN_RE]) {
-    out = out.replace(re, (m) => REDACTION_CHAR.repeat(m.length));
-  }
-  return out;
+function legibilityLabel(pct: number): string {
+  if (pct <= 0) return "Cadence only";
+  if (pct >= 100) return "Full text";
+  if (pct === 50) return "Partial";
+  return `${pct}% legible`;
 }
 
-function redactNonWhitespace(text: string): string {
-  return text.replace(/\S/g, REDACTION_CHAR);
+function legibilityDescription(pct: number): string {
+  if (pct <= 0) return "Typing frequency and location only (no text)";
+  if (pct >= 100) return "Typed text recorded (emails, phones, SSNs redacted)";
+  return `About ${pct}% of characters kept; the rest redacted (PII always redacted)`;
 }
 
-function KeyboardPrivacyPreview({ level }: { level: "abstract" | "full" }) {
-  const output =
-    level === "abstract"
-      ? redactNonWhitespace(SAMPLE_TYPED_TEXT)
-      : redactPII(SAMPLE_TYPED_TEXT);
+function KeyboardLegibilityPreview({ pct }: { pct: number }) {
+  // Seed stays stable across renders for a given preview so the pattern
+  // doesn't flicker while the user drags the slider.
+  const output = useMemo(() => redactWithLegibility(SAMPLE_TYPED_TEXT, pct, 1), [pct]);
   return (
     <div className="collector-card__privacy-preview">
       <div className="collector-card__privacy-preview-row">
@@ -109,8 +114,8 @@ function KeyboardPrivacyPreview({ level }: { level: "abstract" | "full" }) {
 export function CollectorList({
   modes,
   onModeChange,
-  keyboardPrivacyLevel,
-  onKeyboardPrivacyChange,
+  keyboardLegibilityPct,
+  onKeyboardLegibilityChange,
 }: CollectorListProps) {
   const types = getValidEventTypes();
   return (
@@ -159,28 +164,50 @@ export function CollectorList({
                 <div className="collector-card__privacy-header">
                   <div>
                     <label className="collector-card__privacy-label">
-                      Privacy Level
+                      Keyboard legibility — {legibilityLabel(keyboardLegibilityPct)}
                     </label>
                     <p className="collector-card__privacy-desc">
-                      {keyboardPrivacyLevel === "abstract"
-                        ? "Abstract: Typing frequency and location only (no text)"
-                        : "Full: Text content with PII redaction"}
+                      {legibilityDescription(keyboardLegibilityPct)}
                     </p>
                   </div>
-                  <select
-                    value={keyboardPrivacyLevel}
-                    onChange={(e) =>
-                      onKeyboardPrivacyChange(
-                        e.target.value as "abstract" | "full",
-                      )
-                    }
-                    className="collector-card__privacy-select"
-                  >
-                    <option value="abstract">Abstract</option>
-                    <option value="full">Full</option>
-                  </select>
                 </div>
-                <KeyboardPrivacyPreview level={keyboardPrivacyLevel} />
+                <div className="collector-card__legibility-slider">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={keyboardLegibilityPct}
+                    onChange={(e) =>
+                      onKeyboardLegibilityChange(Number(e.target.value))
+                    }
+                    list="legibility-stops"
+                    aria-label="Keyboard legibility"
+                  />
+                  <datalist id="legibility-stops">
+                    {LEGIBILITY_STOPS.map((s) => (
+                      <option key={s.value} value={s.value} label={s.label} />
+                    ))}
+                  </datalist>
+                  <div className="collector-card__legibility-stops">
+                    {LEGIBILITY_STOPS.map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        className={
+                          "collector-card__legibility-stop" +
+                          (keyboardLegibilityPct === s.value
+                            ? " collector-card__legibility-stop--active"
+                            : "")
+                        }
+                        onClick={() => onKeyboardLegibilityChange(s.value)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <KeyboardLegibilityPreview pct={keyboardLegibilityPct} />
               </div>
             )}
           </div>
@@ -194,9 +221,9 @@ export function Collections({ onBack }: CollectionsProps) {
   const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [keyboardPrivacyLevel, setKeyboardPrivacyLevel] = useState<
-    "abstract" | "full"
-  >("abstract");
+  const [keyboardLegibilityPct, setKeyboardLegibilityPct] = useState<number>(
+    DEFAULT_LEGIBILITY,
+  );
   const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
   const [newFilterSubstring, setNewFilterSubstring] = useState("");
   const [modes, setModes] = useState<
@@ -326,29 +353,27 @@ export function Collections({ onBack }: CollectionsProps) {
   const loadPrivacyLevel = async () => {
     try {
       const result = await browser.storage.local.get([PRIVACY_LEVEL_KEY]);
-      const level = result[PRIVACY_LEVEL_KEY];
-      if (level === "abstract" || level === "full") {
-        setKeyboardPrivacyLevel(level);
-      } else {
-        // Default to abstract if not set
-        setKeyboardPrivacyLevel("abstract");
-        await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: "abstract" });
+      const raw = result[PRIVACY_LEVEL_KEY];
+      const pct = parseLegibility(raw);
+      setKeyboardLegibilityPct(pct);
+      if (typeof raw !== "number") {
+        await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: pct });
       }
     } catch (error) {
-      console.error("Failed to load privacy level:", error);
-      setKeyboardPrivacyLevel("abstract");
+      console.error("Failed to load keyboard legibility:", error);
+      setKeyboardLegibilityPct(DEFAULT_LEGIBILITY);
     }
   };
 
-  const updatePrivacyLevel = async (level: "abstract" | "full") => {
+  const updatePrivacyLevel = async (pct: number) => {
     try {
-      await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: level });
-      setKeyboardPrivacyLevel(level);
-      // Reload collectors to ensure the change is reflected
+      const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+      await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: clamped });
+      setKeyboardLegibilityPct(clamped);
       await loadCollectors();
     } catch (error) {
-      console.error("Failed to update privacy level:", error);
-      alert("Failed to update privacy level. Please try again.");
+      console.error("Failed to update keyboard legibility:", error);
+      alert("Failed to update keyboard legibility. Please try again.");
     }
   };
 
@@ -672,13 +697,13 @@ export function Collections({ onBack }: CollectionsProps) {
         <CollectorList
           modes={modes}
           onModeChange={updateMode}
-          keyboardPrivacyLevel={keyboardPrivacyLevel}
-          onKeyboardPrivacyChange={updatePrivacyLevel}
+          keyboardLegibilityPct={keyboardLegibilityPct}
+          onKeyboardLegibilityChange={updatePrivacyLevel}
         />
 
-        {/* Filter substrings — only when keyboard is active and full fidelity */}
+        {/* Filter substrings — only when keyboard is active and any text is legible */}
         {(modes["keyboard"] ?? "local") !== "off" &&
-          keyboardPrivacyLevel === "full" && (
+          keyboardLegibilityPct > 0 && (
             <div className="collector-card__filter-section">
               <label className="collector-card__filter-label">
                 Filter Sensitive Text
@@ -719,11 +744,12 @@ export function Collections({ onBack }: CollectionsProps) {
           )}
 
         <div className="collections__privacy-notice">
-          {keyboardPrivacyLevel === "full" &&
+          {keyboardLegibilityPct > 0 &&
           (modes["keyboard"] ?? "local") !== "off" ? (
             <>
-              Keyboard full-fidelity mode records typed text. Use filters above
-              to redact sensitive content. All other data is anonymous.{" "}
+              Keyboard legibility is above 0, so some typed text is recorded.
+              Use filters above to redact sensitive content. All other data is
+              anonymous.{" "}
               <a href="mailto:hi@spencer.place">hi@spencer.place</a>
             </>
           ) : (

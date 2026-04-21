@@ -43,6 +43,17 @@
     margin-bottom: 16px;
   }
 
+  &__heading-link {
+    color: $accent-teal;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+
+    &:hover {
+      text-decoration-thickness: 2px;
+    }
+  }
+
   &__subheading {
     @include heading;
     font-size: 15px;
@@ -76,40 +87,99 @@
     max-width: 280px;
   }
 
-  // ── Sharing tabs ────────────────────────────────────────────────────────────
+  // ── Preset tabs ─────────────────────────────────────────────────────────────
 
-  &__tabs {
-    display: inline-flex;
-    background: $surface;
-    border: 1px solid $border-strong;
-    border-radius: 24px;
-    padding: 3px;
-    gap: 2px;
-    margin-bottom: 20px;
+  &__preset-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
   }
 
-  &__tab {
+  &__preset-tab {
     @include btn-base;
-    padding: 7px 16px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px 14px;
     font-size: 13px;
     font-weight: 500;
-    border-radius: 20px;
-    background: transparent;
+    text-align: left;
+    border-radius: 10px;
+    background: $surface;
+    border: 1px solid $border;
     color: $text-muted;
-    border: none;
-
-    &--active {
-      background: $accent-teal;
-      color: white;
-
-      &:hover { filter: brightness(0.97); }
-    }
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
 
     &:not(&--active):hover {
       background: $surface-hover;
       color: $text;
+      border-color: $border-strong;
       filter: none;
     }
+
+    &--active {
+      background: $accent-teal;
+      color: white;
+      border-color: $accent-teal;
+
+      .setup-step__preset-subhead { color: rgba(255, 255, 255, 0.85); }
+      .setup-step__preset-chip {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+      }
+    }
+  }
+
+  &__preset-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+
+  &__preset-subhead {
+    font-size: 11px;
+    color: $text-muted;
+    font-weight: 400;
+  }
+
+  &__preset-chip {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: $accent-teal;
+    color: white;
+  }
+
+  &__preset-description {
+    font-size: 13px;
+    line-height: 1.55;
+    color: $text;
+    margin: 8px 0 12px;
+  }
+
+  &__preset-customized {
+    color: $text-muted;
+    font-style: italic;
+  }
+
+  &__trust {
+    font-size: 12px;
+    line-height: 1.5;
+    color: $text-muted;
+    padding: 10px 12px;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+    margin-bottom: 16px;
   }
 
   // ── Collector list (reuses Collections card styles) ─────────────────────────
