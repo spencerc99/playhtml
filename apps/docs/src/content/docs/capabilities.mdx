@@ -50,8 +50,8 @@ This page also runs a few `can-play` demos directly in its margins — a [doodle
   <TabItem label="Vanilla HTML">
 ```html
 <div class="dragBounds" style="position: relative; height: 320px;">
-  <img can-move id="hat" src="/docs/yankees-hat.png" alt="" />
-  <img can-move id="cat" src="/docs/long-cat.png" alt="" />
+  <img can-move id="hat" src="/yankees-hat.png" alt="" />
+  <img can-move id="cat" src="/long-cat.png" alt="" />
 </div>
 ```
   </TabItem>
@@ -62,10 +62,10 @@ import { TagType } from "@playhtml/common";
 
 <div className="dragBounds" style={{ position: "relative", height: 320 }}>
   <CanPlayElement tagInfo={[TagType.CanMove]} id="hat" defaultData={{ x: 0, y: 0 }}>
-    {() => <img src="/docs/yankees-hat.png" alt="" />}
+    {() => <img src="/yankees-hat.png" alt="" />}
   </CanPlayElement>
   <CanPlayElement tagInfo={[TagType.CanMove]} id="cat" defaultData={{ x: 0, y: 0 }}>
-    {() => <img src="/docs/long-cat.png" alt="" />}
+    {() => <img src="/long-cat.png" alt="" />}
   </CanPlayElement>
 </div>
 ```
@@ -95,27 +95,26 @@ import { TagType } from "@playhtml/common";
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { CanToggleElement } from "@playhtml/react";
 
-<CanPlayElement
-  tagInfo={[TagType.CanToggle]}
-  id="my-switch"
-  defaultData={{ on: false }}
->
-  {({ data, setData }) => (
-    <button
-      id="my-switch"
-      type="button"
-      className={data.on ? "is-on" : "is-off"}
-      aria-pressed={data.on}
-      onClick={() => setData({ on: !data.on })}
-    >
-      {data.on ? "on" : "off"}
-    </button>
-  )}
-</CanPlayElement>
+<CanToggleElement>
+  {({ data }) => {
+    const on = typeof data === "object" ? data.on : !!data;
+    return (
+      <button
+        id="my-switch"
+        type="button"
+        className={on ? "is-on" : "is-off"}
+        aria-pressed={on}
+      >
+        {on ? "on" : "off"}
+      </button>
+    );
+  }}
+</CanToggleElement>
 ```
+
+`CanToggleElement` already wires up the click handler — don't add your own `onClick`, or you'll toggle twice per click. Render declaratively from `data`.
   </TabItem>
 </Tabs>
 
@@ -132,7 +131,7 @@ import { TagType } from "@playhtml/common";
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<img can-grow id="balloon" src="/docs/water-balloon.png" alt="" />
+<img can-grow id="balloon" src="/water-balloon.png" alt="" />
 ```
   </TabItem>
   <TabItem label="React">
@@ -141,7 +140,7 @@ import { CanPlayElement } from "@playhtml/react";
 import { TagType } from "@playhtml/common";
 
 <CanPlayElement tagInfo={[TagType.CanGrow]} id="balloon" defaultData={{ scale: 1 }}>
-  {() => <img src="/docs/water-balloon.png" alt="" />}
+  {() => <img src="/water-balloon.png" alt="" />}
 </CanPlayElement>
 ```
   </TabItem>
@@ -160,7 +159,7 @@ import { TagType } from "@playhtml/common";
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<img can-spin id="wheel" src="/docs/bike-wheel.webp" alt="" />
+<img can-spin id="wheel" src="/bike-wheel.webp" alt="" />
 ```
   </TabItem>
   <TabItem label="React">
@@ -169,7 +168,7 @@ import { CanPlayElement } from "@playhtml/react";
 import { TagType } from "@playhtml/common";
 
 <CanPlayElement tagInfo={[TagType.CanSpin]} id="wheel" defaultData={{ rotation: 0 }}>
-  {() => <img src="/docs/bike-wheel.webp" alt="" />}
+  {() => <img src="/bike-wheel.webp" alt="" />}
 </CanPlayElement>
 ```
   </TabItem>
@@ -229,7 +228,7 @@ import { TagType } from "@playhtml/common";
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<img id="bunny-template" src="/docs/pixel-bunny.png" alt="" />
+<img id="bunny-template" src="/pixel-bunny.png" alt="" />
 <button can-duplicate="#bunny-template" id="clone-btn">clone a bunny</button>
 
 <script>

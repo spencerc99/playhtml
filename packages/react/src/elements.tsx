@@ -9,6 +9,7 @@ export function CanMoveElement({
   children,
   dataSource,
   shared,
+  standalone,
 }: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
@@ -17,6 +18,7 @@ export function CanMoveElement({
       {...TagTypeToElement[TagType.CanMove]}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
+      {...(standalone ? { standalone } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
@@ -61,6 +63,7 @@ export function CanSpinElement({
   children,
   dataSource,
   shared,
+  standalone,
 }: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
@@ -69,6 +72,7 @@ export function CanSpinElement({
       {...TagTypeToElement[TagType.CanSpin]}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
+      {...(standalone ? { standalone } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,
@@ -84,6 +88,7 @@ export function CanGrowElement({
   children,
   dataSource,
   shared,
+  standalone,
 }: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
@@ -92,6 +97,7 @@ export function CanGrowElement({
       {...TagTypeToElement[TagType.CanGrow]}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
+      {...(standalone ? { standalone } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,

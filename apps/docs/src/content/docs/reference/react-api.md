@@ -133,7 +133,7 @@ interface PlayContextValue {
   getMyPlayerIdentity: () => PlayerIdentity;
   registerPlayEventListener: (type: string, handler: PlayEvent) => string;
   removePlayEventListener: (type: string, id: string) => void;
-  dispatchPlayEvent: (msg: { type: string; payload?: unknown }) => void;
+  dispatchPlayEvent: (msg: { type: string; eventPayload?: unknown }) => void;
 }
 ```
 
