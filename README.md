@@ -115,9 +115,7 @@ claude plugin marketplace add spencerc99/playhtml
 claude plugin install playhtml@playhtml
 ```
 
-**Any other LLM (ChatGPT, Copilot, Cursor, ...)** — copy the prompt template from [docs/llm-prompting-guide.md](docs/llm-prompting-guide.md) into your conversation.
-
-Details: [building with AI](https://playhtml.fun/docs/integrations/building-with-ai/).
+**Any other LLM (ChatGPT, Copilot, Cursor, ...)** — copy the prompt template from the [building with AI](https://playhtml.fun/docs/integrations/building-with-ai/) guide into your conversation.
 
 ## Examples
 

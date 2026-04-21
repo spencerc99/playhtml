@@ -173,7 +173,7 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 
 ## Documentation
 
-- `docs/`: Public developer-facing and user-facing documentation only. DO NOT PUT PLANS IN HERE.
+- `apps/docs/`: Public developer-facing and user-facing documentation. All user-visible docs live here as Astro + Starlight pages. DO NOT PUT PLANS IN HERE.
 - `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).
 
 ## Security & Configuration

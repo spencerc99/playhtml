@@ -16,7 +16,7 @@ import { withSharedState } from "@playhtml/react";
 // ~40 KB of payload in the Yjs doc — negligible next to the
 // awareness churn on this page.
 //
-// Yjs quirk (see docs/llm-prompting-guide.md): mutator form
+// Yjs quirk (see docs/data/data-essentials.md): mutator form
 // (setData((draft) => { ... })) does NOT support shift/pop. We use
 // splice(0, n) to trim the head when we exceed the cap.
 
@@ -173,7 +173,7 @@ const SmileyRowInner = withSharedState<DoodleData>(
       setData((draft) => {
         draft.doodles.push(entry);
         // FIFO cap. Must use splice in mutator form — shift/pop are
-        // not supported on Yjs mutator proxies (see docs/llm-prompting-guide.md).
+        // not supported on Yjs mutator proxies (see docs/data/data-essentials.md).
         if (draft.doodles.length > MAX_DOODLES) {
           draft.doodles.splice(0, draft.doodles.length - MAX_DOODLES);
         }
