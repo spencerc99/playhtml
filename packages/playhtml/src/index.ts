@@ -505,7 +505,6 @@ let navigationController: ReturnType<typeof createNavigationController> | null =
   null;
 let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
-let isDestroyed = false;
 
 // Awareness change listener — must be rebound whenever the awareness provider
 // (cursor provider or main yprovider) is rebuilt during navigation.
@@ -663,8 +662,8 @@ function buildCursors(args: {
 }
 
 async function runHandleNavigation(): Promise<void> {
-  if (isDestroyed) return;
-  if (!yprovider) return;
+  // firstSetup is true before init and after resetPlayHTML — skip nav in both.
+  if (firstSetup) return;
 
   const nextRoomInput =
     explicitRoomOption ?? getDefaultRoom(cachedDefaultRoomOptions);
@@ -770,7 +769,6 @@ async function initPlayHTML({
     console.error("playhtml already set up! ignoring");
     return;
   }
-  isDestroyed = false;
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
   const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
@@ -1334,7 +1332,7 @@ export interface PlayHTMLComponents {
  * isolation (beforeEach resets) only.
  */
 export async function resetPlayHTML(): Promise<void> {
-  if (isDestroyed) return;
+  if (firstSetup) return;
 
   try {
     if (navigationController) {
@@ -1403,7 +1401,8 @@ export async function resetPlayHTML(): Promise<void> {
     cursorOptionsCache = undefined;
     cachedOnError = undefined;
   } finally {
-    isDestroyed = true;
+    // firstSetup = true (set above) is the canonical "not initialized"
+    // flag — runHandleNavigation checks it to skip nav after reset.
   }
 }
 
