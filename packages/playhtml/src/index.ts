@@ -671,20 +671,16 @@ async function runHandleNavigation(): Promise<void> {
   const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
-  let newCursorRoom: string = "";
   let cursorRoomChanged = false;
   if (cursorOptionsCache?.enabled) {
     if (cursorOptionsCache.room) {
       const resolved = resolveCursorRoom(cursorOptionsCache.room);
       const normalized = normalizeRoomId(window.location.host, resolved);
-      newCursorRoom = normalized;
       cursorRoomChanged = normalized !== currentCursorRoomId;
     } else {
-      newCursorRoom = newMainRoom;
       cursorRoomChanged = mainRoomChanged;
     }
   }
-  void newCursorRoom;
 
   // Drop handlers whose DOM element is no longer connected (e.g. innerHTML-swap
   // or framework unmount without calling removePlayElement). Keep handlers for
@@ -895,10 +891,6 @@ async function initPlayHTML({
     if (hasSynced) {
       resolve(true);
     }
-    // Register custom-message handler once, outside the sync callback,
-    // to avoid duplicate registrations on reconnect.
-    yprovider.on("custom-message", onMessage);
-
     yprovider.on("sync", (connected: boolean) => {
       if (!connected) {
         console.error("Issue connecting to yjs...");

@@ -168,7 +168,7 @@ const cursorLayerRef = useRef<HTMLDivElement>(null);
 </PlayProvider>
 ```
 
-See `docs/spa-integration.md` for full SPA usage.
+See `docs/navigation.md` for full navigation usage.
 
 ### Other Options
 

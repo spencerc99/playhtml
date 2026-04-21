@@ -275,7 +275,7 @@ function CursorSettings() {
 
 For full cursor configuration options, see the [cursor documentation](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
 
-## SPA navigation
+## Navigation
 
 `PlayProvider` accepts a `pathname` prop that triggers `playhtml.handleNavigation()` whenever it changes. Pass the value from your router — `useLocation().pathname` in React Router, `usePathname()` in Next.js App Router, etc. — so playhtml rebuilds rooms and re-scans the DOM on route changes.
 
@@ -304,7 +304,7 @@ function App() {
 
 The `cursors.container` ref ensures cursor DOM mounts inside an element you control, so marking it `transition:persist` (Astro) or the framework equivalent keeps cursors alive across body-swaps.
 
-See the full [SPA integration guide](https://github.com/spencerc99/playhtml/blob/main/docs/spa-integration.md) for htmx, Astro, and other framework specifics.
+See the full [navigation guide](https://github.com/spencerc99/playhtml/blob/main/docs/navigation.md) for htmx, Astro, and other framework specifics.
 
 For full configuration, see the interface below.
 

@@ -12,4 +12,4 @@ New public API:
 - `<PlayProvider>` accepts a `pathname` prop that calls `playhtml.handleNavigation()` when it changes, and a `RefObject` for `cursors.container`.
 - `playhtml:navigated` CustomEvent fires on `document` after each navigation, with `detail.room`.
 
-See `docs/spa-integration.md` for framework-specific usage.
+See `docs/navigation.md` for framework-specific usage.

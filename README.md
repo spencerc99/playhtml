@@ -422,7 +422,7 @@ Cursors can be scoped to a page, domain, section, or custom room. You can filter
 
 See the full cursor documentation for configuration options and patterns [cursors.md](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
 
-## SPA Navigation
+## Navigation
 
 playhtml works on sites with client-side navigation — Astro ViewTransitions, React Router, Next.js, htmx boost, Turbo — not just full page reloads. It detects URL changes via the browser's Navigation API and `popstate`, then rebuilds rooms and rescans the DOM as needed.
 
@@ -453,7 +453,7 @@ Vanilla — the `container` selector survives body-swaps when marked `transition
 
 Also new: `playhtml.handleNavigation()` (manual trigger for routers that bypass Navigation API and popstate) and a `playhtml:navigated` CustomEvent on `document` with `detail.room`.
 
-See the full guide at [spa-integration.md](https://github.com/spencerc99/playhtml/blob/main/docs/spa-integration.md).
+See the full guide at [navigation.md](https://github.com/spencerc99/playhtml/blob/main/docs/navigation.md).
 
 ## Building with AI / LLMs
 
