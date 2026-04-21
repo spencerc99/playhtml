@@ -62,7 +62,7 @@ function createRainEffect(): void {
       top: ${10 + (i % 3) * 20}px;
       width: ${cloudWidth}px;
       height: 80px;
-      background: url('/rain-cloud.webp') no-repeat center;
+      background: url('/docs/rain-cloud.webp') no-repeat center;
       background-size: contain;
       z-index: 9999;
       pointer-events: none;

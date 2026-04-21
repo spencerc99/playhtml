@@ -1826,7 +1826,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   height: 150px;
   padding: 0;
   border: 0;
-  background: url("/fire-hydrant.png") no-repeat center;
+  background: url("/docs/fire-hydrant.png") no-repeat center;
   background-size: contain;
   cursor: pointer;
   transition: transform 0.2s ease;

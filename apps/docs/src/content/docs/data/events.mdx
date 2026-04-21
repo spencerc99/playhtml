@@ -78,7 +78,7 @@ Always return the cleanup in the effect — if the component unmounts and you do
 
 ## Passing data with an event
 
-`dispatchPlayEvent` accepts an optional `data` payload. Every listener receives it:
+`dispatchPlayEvent` accepts an optional `eventPayload`. Every listener receives it as the first argument:
 
 ```js
 playhtml.init({
@@ -95,7 +95,10 @@ playhtml.init({
   },
 });
 
-playhtml.dispatchPlayEvent({ type: "nudge", data: { color: "#f7dc9c" } });
+playhtml.dispatchPlayEvent({
+  type: "nudge",
+  eventPayload: { color: "#f7dc9c" },
+});
 ```
 
 Keep the payload small and JSON-serializable. Events aren't a replacement for shared data; they're a fire-and-forget channel.

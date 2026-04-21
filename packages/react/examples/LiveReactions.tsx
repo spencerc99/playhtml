@@ -100,7 +100,7 @@ export function LiveReactions({
   const fire = () => {
     eventHub.dispatchPlayEvent({
       type: eventType,
-      data: { emoji: selected },
+      eventPayload: { emoji: selected },
     });
   };
 
