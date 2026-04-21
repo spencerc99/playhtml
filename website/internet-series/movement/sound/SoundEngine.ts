@@ -95,6 +95,20 @@ export class SoundEngine {
     this.convolver.connect(this.ctx.destination);
 
     this.enabled = true;
+
+    // init() is triggered by a user gesture (sound-toggle click), so resuming
+    // here satisfies the browser autoplay policy. Without this, the context
+    // stays suspended until tick() happens to fire from AnimatedTrails' rAF
+    // loop, which can delay audible sound by seconds.
+    if (this.ctx.state === "suspended") {
+      await this.ctx.resume();
+    }
+  }
+
+  async resume(): Promise<void> {
+    if (this.ctx && this.ctx.state === "suspended") {
+      await this.ctx.resume();
+    }
   }
 
   private createReverbImpulse(
@@ -605,8 +619,23 @@ export class SoundEngine {
   }
 
   reset(): void {
+    // Fast-cut fade (30ms) — releaseVoice uses a 500ms ramp that audibly
+    // overlaps with newly-created voices on data changes like day swaps.
+    const now = this.ctx?.currentTime ?? 0;
     for (const [, voice] of this.voices) {
-      this.releaseVoice(voice);
+      if (this.ctx) {
+        voice.gainNode.gain.cancelScheduledValues(now);
+        voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.03);
+      }
+      if (voice.oscillator) {
+        try { voice.oscillator.stop(now + 0.04); } catch { /* already stopped */ }
+        voice.oscillator = null;
+      }
+      if (voice.fifthOscillator) {
+        try { voice.fifthOscillator.stop(now + 0.04); } catch { /* already stopped */ }
+        voice.fifthOscillator = null;
+      }
+      voice.active = false;
     }
     this.voices.clear();
     this.prevPositions.clear();

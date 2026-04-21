@@ -239,6 +239,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     setDayPlaybackMode((m) => (m === "cycle" ? "loop" : "cycle"));
   }, []);
 
+  const handleToggleSound = useCallback(() => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      if (next) {
+        // Resume an existing engine's AudioContext from within the gesture so
+        // sound starts immediately. First-time init() handles its own resume.
+        soundEngineRef.current?.resume();
+      }
+      return next;
+    });
+  }, []);
+
   const handleCapture = useCallback(async () => {
     if (!containerRef.current) return;
     const html2canvas = (await import("html2canvas")).default;
@@ -668,7 +680,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       )}
 
       <button
-        onClick={() => setSoundEnabled((prev) => !prev)}
+        onClick={handleToggleSound}
         title={soundEnabled ? "Mute" : "Play sound"}
         style={{
           position: "absolute",

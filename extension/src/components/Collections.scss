@@ -412,6 +412,51 @@
     cursor: pointer;
   }
 
+  &__legibility-slider {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: $accent-teal;
+      cursor: pointer;
+    }
+  }
+
+  &__legibility-stops {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  &__legibility-stop {
+    @include btn-base;
+    flex: 1;
+    padding: 4px 6px;
+    font-size: 10px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    font-family: 'Martian Mono', monospace;
+    background: transparent;
+    color: $text-muted;
+    border: 1px solid $border;
+    border-radius: 4px;
+
+    &--active {
+      background: $accent-teal;
+      color: white;
+      border-color: $accent-teal;
+    }
+
+    &:not(&--active):hover {
+      background: $surface-hover;
+      color: $text;
+      filter: none;
+    }
+  }
+
   &__privacy-preview {
     margin-top: 10px;
     padding: 8px 10px;

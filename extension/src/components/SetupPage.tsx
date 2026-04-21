@@ -1,5 +1,5 @@
 // ABOUTME: Full-page setup wizard for first-time extension configuration
-// ABOUTME: Handles data sharing consent and cursor color customization
+// ABOUTME: Handles data-sharing preset choice and cursor color customization
 import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { getValidEventTypes } from "../shared/types";
@@ -8,39 +8,83 @@ import { CollectorList } from "./Collections";
 import { TrailsHero } from "./TrailsHero";
 import { syncParticipantColor } from "../storage/sync";
 import { getParticipantId } from "../storage/participant";
+import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
 
 type Step = "welcome" | "configure" | "done";
-type SharingMode = "local" | "shared";
+type Preset = "abstain" | "participate" | "allIn";
 type CollectorMode = "off" | "local" | "shared";
-type KeyboardFidelity = "abstract" | "full";
+
+interface PresetConfig {
+  label: string;
+  subhead: string;
+  description: string;
+  modes: Record<string, CollectorMode>;
+  legibilityPct: number;
+  recommended?: boolean;
+}
 
 function randomPrimaryColor(): string {
   const hue = Math.floor(Math.random() * 360);
   return hslToHex(hue, 70, 60);
 }
 
-function defaultModesFor(mode: SharingMode): Record<string, CollectorMode> {
+function presetConfigs(): Record<Preset, PresetConfig> {
   const types = getValidEventTypes();
-  const result: Record<string, CollectorMode> = {};
-  for (const t of types) result[t] = mode;
-  return result;
+  const allLocal = (): Record<string, CollectorMode> => {
+    const r: Record<string, CollectorMode> = {};
+    for (const t of types) r[t] = "local";
+    return r;
+  };
+  const allShared = (): Record<string, CollectorMode> => {
+    const r: Record<string, CollectorMode> = {};
+    for (const t of types) r[t] = "shared";
+    return r;
+  };
+  return {
+    abstain: {
+      label: "Abstain",
+      subhead: "Share nothing",
+      description:
+        "Nothing leaves this browser. Your portrait stays entirely local — a private record of your own wandering, including your full typing. You can change your mind anytime.",
+      modes: allLocal(),
+      legibilityPct: 100,
+    },
+    participate: {
+      label: "Participate",
+      subhead: "Share how I move",
+      description:
+        "Your full browsing movement joins the collective portrait — cursor trails, scroll rhythm, pages visited, and typing cadence. Typed text is partially redacted by default; you can make it more or less legible below.",
+      modes: allShared(),
+      legibilityPct: 50,
+      recommended: true,
+    },
+    allIn: {
+      label: "All-In",
+      subhead: "Share everything",
+      description:
+        "Everything Participate shares, plus your typed text is fully legible (emails, phone numbers, and SSNs are still automatically redacted). You can tune legibility below.",
+      modes: allShared(),
+      legibilityPct: 100,
+    },
+  };
 }
 
 export default function SetupPage() {
   const [step, setStep] = useState<Step>("welcome");
   const [email, setEmail] = useState("");
   const [color, setColor] = useState<string>("");
-  const [sharingMode, setSharingMode] = useState<SharingMode>("local");
+  const presets = presetConfigs();
+  const [preset, setPreset] = useState<Preset>("participate");
   const [collectorModes, setCollectorModes] = useState<
     Record<string, CollectorMode>
-  >(defaultModesFor("local"));
-  const [keyboardFidelity, setKeyboardFidelity] =
-    useState<KeyboardFidelity>("full");
-  const [keyboardFidelityOverridden, setKeyboardFidelityOverridden] =
-    useState(false);
+  >(presets.participate.modes);
+  const [legibilityPct, setLegibilityPct] = useState<number>(
+    presets.participate.legibilityPct,
+  );
+  const [customized, setCustomized] = useState(false);
   const [busy, setBusy] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -76,31 +120,31 @@ export default function SetupPage() {
     })();
   }, []);
 
-  const handleSharingTabChange = (mode: SharingMode) => {
-    setSharingMode(mode);
-    setCollectorModes(defaultModesFor(mode));
-    if (!keyboardFidelityOverridden) {
-      setKeyboardFidelity(mode === "local" ? "full" : "abstract");
-    }
+  const handlePresetChange = (next: Preset) => {
+    setPreset(next);
+    setCollectorModes(presets[next].modes);
+    setLegibilityPct(presets[next].legibilityPct);
+    setCustomized(false);
   };
 
   const handleCollectorModeChange = (type: string, mode: CollectorMode) => {
     setCollectorModes((prev) => ({ ...prev, [type]: mode }));
+    setCustomized(true);
   };
 
-  const handleKeyboardFidelityChange = (fidelity: KeyboardFidelity) => {
-    setKeyboardFidelity(fidelity);
-    setKeyboardFidelityOverridden(true);
+  const handleLegibilityChange = (pct: number) => {
+    setLegibilityPct(Math.max(0, Math.min(100, Math.round(pct))));
+    setCustomized(true);
   };
 
   const applyConsent = async () => {
     setBusy(true);
     try {
       const types = getValidEventTypes();
-      const toSet: Record<string, string> = {};
+      const toSet: Record<string, unknown> = {};
       for (const t of types)
-        toSet[`collection_mode_${t}`] = collectorModes[t] || sharingMode;
-      toSet["keyboard_display_mode"] = keyboardFidelity;
+        toSet[`collection_mode_${t}`] = collectorModes[t] || "local";
+      toSet[LEGIBILITY_KEY] = legibilityPct;
       toSet["onboarding_complete"] = "true";
       if (email.trim()) {
         toSet["setup_email"] = email.trim();
@@ -146,6 +190,8 @@ export default function SetupPage() {
       setBusy(false);
     }
   };
+
+  const presetOrder: Preset[] = ["abstain", "participate", "allIn"];
 
   return (
     <div className="setup-page">
@@ -220,33 +266,66 @@ export default function SetupPage() {
             </div>
 
             <h2 className="setup-step__heading">
-              Choose how your data is collected
+              Do you want to participate in{" "}
+              <a
+                href="https://spencer.place/creation/internet-movement"
+                target="_blank"
+                rel="noreferrer"
+                className="setup-step__heading-link"
+              >
+                Internet Movement
+              </a>
+              , a living, collective Internet portrait?
             </h2>
-            <div className="setup-step__tabs">
-              <button
-                className={`setup-step__tab${
-                  sharingMode === "local" ? " setup-step__tab--active" : ""
-                }`}
-                onClick={() => handleSharingTabChange("local")}
-              >
-                Keep local
-              </button>
-              <button
-                className={`setup-step__tab${
-                  sharingMode === "shared" ? " setup-step__tab--active" : ""
-                }`}
-                onClick={() => handleSharingTabChange("shared")}
-              >
-                Share anonymously
-              </button>
+
+            <p className="setup-step__trust">
+              Your data is anonymously collected, stewarded by Spencer, and
+              will never be sold or shared for any other purpose without your
+              permission.
+            </p>
+
+            <div className="setup-step__preset-tabs">
+              {presetOrder.map((key) => {
+                const p = presets[key];
+                return (
+                  <button
+                    key={key}
+                    className={
+                      "setup-step__preset-tab" +
+                      (preset === key ? " setup-step__preset-tab--active" : "")
+                    }
+                    onClick={() => handlePresetChange(key)}
+                  >
+                    <span className="setup-step__preset-label">{p.label}</span>
+                    <span className="setup-step__preset-subhead">
+                      {p.subhead}
+                    </span>
+                    {p.recommended && (
+                      <span className="setup-step__preset-chip">
+                        Recommended
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Reuse the same collector card UI from the settings page */}
+            <p className="setup-step__preset-description">
+              {presets[preset].description}
+              {customized && (
+                <span className="setup-step__preset-customized">
+                  {" "}
+                  (customized)
+                </span>
+              )}
+            </p>
+
+            {/* Reuse the collector card UI from the settings page */}
             <CollectorList
               modes={collectorModes}
               onModeChange={handleCollectorModeChange}
-              keyboardPrivacyLevel={keyboardFidelity}
-              onKeyboardPrivacyChange={handleKeyboardFidelityChange}
+              keyboardLegibilityPct={legibilityPct}
+              onKeyboardLegibilityChange={handleLegibilityChange}
             />
 
             <div className="setup-step__actions">
