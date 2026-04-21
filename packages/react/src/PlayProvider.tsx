@@ -1,8 +1,42 @@
-import { PropsWithChildren, createContext, useEffect, useState } from "react";
+import {
+  PropsWithChildren,
+  createContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import playhtml from "./playhtml-singleton";
-import { InitOptions, CursorOptions, CursorZoneOptions } from "playhtml";
+import {
+  InitOptions,
+  CursorContainer,
+  CursorOptions,
+  CursorZoneOptions,
+} from "playhtml";
 import { useLocation } from "./hooks/useLocation";
 import { CursorEvents, CursorPresenceView, PlayerIdentity } from "@playhtml/common";
+
+type PlayProviderCursorContainer = CursorContainer | RefObject<HTMLElement>;
+
+function normalizeCursorContainer(
+  c: PlayProviderCursorContainer | undefined,
+): CursorContainer | undefined {
+  if (!c) return undefined;
+  if (typeof c === "object" && "current" in (c as object)) {
+    const ref = c as RefObject<HTMLElement>;
+    return () => ref.current;
+  }
+  return c as CursorContainer;
+}
+
+type PlayProviderCursorOptions = Omit<CursorOptions, "container"> & {
+  container?: CursorContainer | RefObject<HTMLElement>;
+};
+
+type PlayProviderInitOptions = Omit<InitOptions, "cursors"> & {
+  cursors?: PlayProviderCursorOptions;
+};
 
 export interface PlayContextInfo
   extends Pick<
@@ -89,13 +123,29 @@ export const PlayContext = createContext<PlayContextInfo>({
 });
 
 interface Props {
-  initOptions?: InitOptions;
+  initOptions?: PlayProviderInitOptions;
+  pathname?: string;
 }
 
 export function PlayProvider({
   children,
   initOptions,
+  pathname: pathnameProp,
 }: PropsWithChildren<Props>) {
+  const previousPathname = useRef<string | undefined>(pathnameProp);
+
+  useEffect(() => {
+    if (previousPathname.current === undefined) {
+      // First render with a pathname — capture, don't trigger.
+      previousPathname.current = pathnameProp;
+      return;
+    }
+    if (previousPathname.current !== pathnameProp) {
+      previousPathname.current = pathnameProp;
+      void playhtml.handleNavigation();
+    }
+  }, [pathnameProp]);
+
   const { pathname, search } = useLocation();
   useEffect(() => {
     // in future migrate this to a more "reactful" way by having all the elements rely state on this context
@@ -104,8 +154,20 @@ export function PlayProvider({
 
   const [hasSynced, setHasSynced] = useState(false);
 
+  const processedInitOptions = useMemo<InitOptions | undefined>(() => {
+    if (!initOptions) return initOptions as InitOptions | undefined;
+    if (!initOptions.cursors) return initOptions as InitOptions;
+    return {
+      ...initOptions,
+      cursors: {
+        ...initOptions.cursors,
+        container: normalizeCursorContainer(initOptions.cursors.container),
+      },
+    } as InitOptions;
+  }, [initOptions]);
+
   useEffect(() => {
-    playhtml.init(initOptions).then(
+    playhtml.init(processedInitOptions).then(
       () => {
         setHasSynced(true);
       },

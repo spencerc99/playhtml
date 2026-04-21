@@ -29,6 +29,7 @@ const mockedPlayhtml = {
   dispatchPlayEvent: vi.fn(),
   registerPlayEventListener: vi.fn().mockReturnValue("mock-id"),
   removePlayEventListener: vi.fn(),
+  handleNavigation: vi.fn().mockResolvedValue(undefined),
   presence: {
     setMyPresence: vi.fn((channel: string, data: unknown) => {
       mockPresences.set("me", { ...data, isMe: true, cursor: null });
