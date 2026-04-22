@@ -424,14 +424,30 @@ header.header {
   text-align: left;
   gap: 0.6rem;
 }
+/* Mono kicker sitting above the splash H1, in the register of the rest of
+ * the site's figure labels (FIG. 01 etc.). Calls out playhtml's positioning
+ * — infrastructure, not a product. */
+.ph-docs-hero__kicker {
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+  margin: 0 0 0.4rem;
+  line-height: 1.2;
+}
 .ph-docs-hero h1 {
   font-family: var(--ph-font-display);
   font-weight: 800;
-  font-size: clamp(2.2rem, 1.8rem + 2.2vw, 3.4rem);
+  /* Sized to fit the splash tagline on a single line inside Starlight's
+   * ~560px copy column. If you extend the tagline past ~22 characters,
+   * revisit the max or re-measure with the DOM. */
+  font-size: clamp(2rem, 1.7rem + 1.6vw, 3rem);
   letter-spacing: -0.025em;
-  line-height: 1;
+  line-height: 1.05;
   color: var(--ph-ink);
   margin: 0;
+  text-wrap: balance;
 }
 .ph-docs-hero .tagline {
   font-family: var(--ph-font-body);
