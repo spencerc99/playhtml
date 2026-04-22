@@ -38,7 +38,7 @@ This page also runs a few `can-play` demos directly in its margins — a [doodle
 
 ## can-move
 
-**What it does.** Drag anywhere. Position persists and syncs. Optional `.dragBounds` parent clamps the drag area.
+**What it does.** Drag anywhere. Position persists and syncs.
 
 **Use it for:** drag-and-drop affordances — fridge magnets, game pieces, arrangeable stickers, a puzzle.
 
@@ -49,28 +49,50 @@ This page also runs a few `can-play` demos directly in its margins — a [doodle
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<div class="dragBounds" style="position: relative; height: 320px;">
-  <img can-move id="hat" src="/yankees-hat.png" alt="" />
-  <img can-move id="cat" src="/long-cat.png" alt="" />
+<div id="arena" style="position: relative; height: 320px;">
+  <img can-move can-move-bounds="arena" id="hat" src="/yankees-hat.png" alt="" />
+  <img can-move can-move-bounds="arena" id="cat" src="/long-cat.png" alt="" />
 </div>
 ```
   </TabItem>
   <TabItem label="React">
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType, CanMoveBounds } from "@playhtml/common";
 
-<div className="dragBounds" style={{ position: "relative", height: 320 }}>
+<div id="arena" style={{ position: "relative", height: 320 }}>
   <CanPlayElement tagInfo={[TagType.CanMove]} id="hat" defaultData={{ x: 0, y: 0 }}>
-    {() => <img src="/yankees-hat.png" alt="" />}
+    {() => <img src="/yankees-hat.png" alt="" {...{ [CanMoveBounds]: "arena" }} />}
   </CanPlayElement>
   <CanPlayElement tagInfo={[TagType.CanMove]} id="cat" defaultData={{ x: 0, y: 0 }}>
-    {() => <img src="/long-cat.png" alt="" />}
+    {() => <img src="/long-cat.png" alt="" {...{ [CanMoveBounds]: "arena" }} />}
   </CanPlayElement>
 </div>
 ```
   </TabItem>
 </Tabs>
+
+### Constraining the drag area
+
+Add `can-move-bounds="<id-or-selector>"` to keep the element inside a container. The value is an element id (with or without the leading `#`) or any valid CSS selector.
+
+```html
+<div id="fridge" style="position: relative; height: 400px;">
+  <div can-move can-move-bounds="fridge" id="magnet-a">🍎</div>
+  <div can-move can-move-bounds="#fridge" id="magnet-b">🥐</div>
+</div>
+```
+
+The **cursor** can go past the container edge — only the element's position is clamped. By default, 25% of the element stays inside the container on every edge so readers always have something to grab. Override that ratio with `can-move-bounds-min-visible`:
+
+```html
+<!-- Keep 50% of the magnet inside the fridge at all times -->
+<div can-move can-move-bounds="fridge" can-move-bounds-min-visible="0.5" id="magnet">
+  🧲
+</div>
+```
+
+Use `can-move-bounds-min-visible="1"` to pin the element fully inside (legacy behavior), or `0` to let it slip out entirely.
 
 ## can-toggle
 

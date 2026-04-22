@@ -117,9 +117,10 @@ export interface RegisteredPlayEvent<T = any> extends PlayEvent<T> {
 /**
  * Rounds a number to one decimal place. Used for can-move x/y so synced
  * state stays compact over the wire (avoids long floats like 267.332275390625).
+ * `+ 0` normalizes -0 to 0 so equal positions compare strictly equal.
  */
 function roundToFirstDecimal(n: number): number {
-  return Math.round(n * 10) / 10;
+  return Math.round(n * 10) / 10 + 0;
 }
 
 function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
@@ -127,6 +128,21 @@ function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
   if (!raw) return null;
   const forId = raw.startsWith("#") ? raw.slice(1) : raw;
   return document.getElementById(forId) ?? document.querySelector(raw);
+}
+
+/**
+ * Fraction of the element that must stay inside the bounds container so a
+ * reader can still grab it. Clamped to [0, 1]. Default 0.25 = a quarter of
+ * the element remains visible / draggable on every edge.
+ */
+const DEFAULT_MIN_VISIBLE_FRACTION = 0.25;
+
+function getMinVisibleFraction(element: HTMLElement): number {
+  const raw = element.getAttribute(CanMoveBoundsMinVisible);
+  if (raw == null) return DEFAULT_MIN_VISIBLE_FRACTION;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return DEFAULT_MIN_VISIBLE_FRACTION;
+  return Math.max(0, Math.min(1, n));
 }
 
 /**
@@ -145,8 +161,20 @@ export type GrowData = {
   isHovering: boolean;
 };
 export const CanDuplicateTo = "can-duplicate-to";
-/** Optional id or selector (`#id` or `selector`) of a container; `can-move` clamps translate to stay inside it. */
+/**
+ * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
+ * `can-move` clamps the element's position so at least some of it stays inside.
+ * The cursor itself is unconstrained — you can drag past the edge — the
+ * element just stops when it would slip too far out to be grabbable.
+ */
 export const CanMoveBounds = "can-move-bounds";
+/**
+ * Fraction (0–1) of the element that must remain inside `can-move-bounds`.
+ * Defaults to 0.25 (quarter of the element stays visible on every edge).
+ * Use 0 to let the element slip fully out of view, 1 to keep it entirely
+ * inside the container (the original clamp behavior).
+ */
+export const CanMoveBoundsMinVisible = "can-move-bounds-min-visible";
 
 // Supported Tags
 export enum TagType {
@@ -342,19 +370,39 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       const boundsRoot = getMoveBoundsRoot(element);
       if (boundsRoot) {
-        const maxX = Math.max(
-          0,
-          boundsRoot.clientWidth - element.offsetWidth,
-        );
-        const maxY = Math.max(
-          0,
-          boundsRoot.clientHeight - element.offsetHeight,
-        );
+        // Allow the element to hang off the container's edges as long as
+        // `minVisible` of it is still inside — that way the reader has
+        // something to grab to drag it back. The cursor itself is not
+        // clamped; only the element's persisted translate is.
+        const minVisible = getMinVisibleFraction(element);
+        const w = element.offsetWidth;
+        const h = element.offsetHeight;
+        const minX = -w * (1 - minVisible);
+        const maxX = boundsRoot.clientWidth - w * minVisible;
+        const minY = -h * (1 - minVisible);
+        const maxY = boundsRoot.clientHeight - h * minVisible;
+        // If the container is narrower than the keep-visible slice, the
+        // min/max can invert. Fall back to pinning at 0 in that case so the
+        // element doesn't shoot off into negative space.
+        const clampedX = maxX < minX ? 0 : Math.min(maxX, Math.max(minX, newX));
+        const clampedY = maxY < minY ? 0 : Math.min(maxY, Math.max(minY, newY));
         setData({
-          x: roundToFirstDecimal(Math.min(maxX, Math.max(0, newX))),
-          y: roundToFirstDecimal(Math.min(maxY, Math.max(0, newY))),
+          x: roundToFirstDecimal(clampedX),
+          y: roundToFirstDecimal(clampedY),
         });
-        setLocalData({ startMouseX: clientX, startMouseY: clientY });
+        // Only advance the cursor anchor by the portion of the delta that
+        // actually translated the element. If the clamp ate some of the
+        // delta (cursor went past the bound), hold that "debt" in the
+        // anchor so the user has to drag the cursor all the way back
+        // before the element starts moving again. Without this, a fast
+        // drag past one edge lets the return drag fling the element to
+        // the opposite edge (apparent dt vs. clamped dt mismatch).
+        const usedDx = clampedX - data.x;
+        const usedDy = clampedY - data.y;
+        setLocalData({
+          startMouseX: localData.startMouseX + usedDx,
+          startMouseY: localData.startMouseY + usedDy,
+        });
         return;
       }
 
