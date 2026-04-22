@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   CanMoveBounds,
   CanMoveBoundsMinVisible,
+  CanMoveBoundsMinVisiblePx,
   TagType,
   TagTypeToElement,
 } from "@playhtml/common";
@@ -20,6 +21,7 @@ function makeDragHarness({
   containerWidth,
   containerHeight,
   minVisible,
+  minVisiblePx,
   startX = 0,
   startY = 0,
 }: {
@@ -28,6 +30,7 @@ function makeDragHarness({
   containerWidth: number;
   containerHeight: number;
   minVisible?: number;
+  minVisiblePx?: number;
   startX?: number;
   startY?: number;
 }) {
@@ -49,6 +52,9 @@ function makeDragHarness({
   element.setAttribute(CanMoveBounds, "arena");
   if (minVisible !== undefined) {
     element.setAttribute(CanMoveBoundsMinVisible, String(minVisible));
+  }
+  if (minVisiblePx !== undefined) {
+    element.setAttribute(CanMoveBoundsMinVisiblePx, String(minVisiblePx));
   }
   Object.defineProperty(element, "offsetWidth", {
     configurable: true,
@@ -97,48 +103,83 @@ describe("can-move bounds clamp", () => {
   });
 
   it("keeps the default fraction (25%) of the element visible when dragging past the right edge", () => {
-    // 100x100 element in a 300x300 container. Default minVisible = 0.25.
-    // Max x = 300 - 100 * 0.25 = 275 (75px of element hangs off to the right).
+    // 200x200 element in a 500x500 container. Default minVisible = 0.25,
+    // floor = 60px. Slice = max(50, 60) = 60. Max x = 500 - 60 = 440.
+    // Use 200x200 so the fraction (50) is larger than the floor (60)? No:
+    // 50 < 60 still. Use 400x400 so fraction (100) dominates floor.
     const { drag, state } = makeDragHarness({
-      elementWidth: 100,
-      elementHeight: 100,
-      containerWidth: 300,
-      containerHeight: 300,
+      elementWidth: 400,
+      elementHeight: 400,
+      containerWidth: 1000,
+      containerHeight: 1000,
     });
-    drag(10_000, 0); // cursor shoots far past the right edge
-    expect(state.data.x).toBe(275);
-    // No vertical movement yet, so y stays at 0.
+    drag(10_000, 0);
+    // Slice = max(400 * 0.25, 60) = max(100, 60) = 100. Max x = 1000 - 100 = 900.
+    expect(state.data.x).toBe(900);
     expect(state.data.y).toBe(0);
   });
 
   it("keeps the default fraction visible when dragging past the left edge", () => {
-    // min x = -100 * (1 - 0.25) = -75 (75px hangs off to the left).
+    // Slice = 100, min x = -(400 - 100) = -300.
+    const { drag, state } = makeDragHarness({
+      elementWidth: 400,
+      elementHeight: 400,
+      containerWidth: 1000,
+      containerHeight: 1000,
+    });
+    drag(-10_000, 0);
+    expect(state.data.x).toBe(-300);
+  });
+
+  it("60px absolute floor kicks in when fraction × size is smaller than 60", () => {
+    // 100x100 element, default fraction 0.25 → fraction slice = 25, but
+    // 25 < 60, so floor wins: slice = 60.
+    // max x = 300 - 60 = 240, min x = -(100 - 60) = -40.
     const { drag, state } = makeDragHarness({
       elementWidth: 100,
       elementHeight: 100,
       containerWidth: 300,
       containerHeight: 300,
     });
-    drag(-10_000, 0);
-    expect(state.data.x).toBe(-75);
+    drag(10_000, 0);
+    expect(state.data.x).toBe(240);
+    drag(-20_000, 0);
+    expect(state.data.x).toBe(-40);
   });
 
-  it("respects a custom min-visible fraction", () => {
-    // minVisible = 0.5 → max x = 300 - 50 = 250, min x = -50.
+  it("respects a custom min-visible fraction (floor disabled)", () => {
+    // minVisible = 0.5, floor explicitly 0 so fraction always wins.
+    // Slice = 50, max x = 300 - 50 = 250, min y = -50.
     const { drag, state } = makeDragHarness({
       elementWidth: 100,
       elementHeight: 100,
       containerWidth: 300,
       containerHeight: 300,
       minVisible: 0.5,
+      minVisiblePx: 0,
     });
     drag(10_000, -10_000);
     expect(state.data.x).toBe(250);
     expect(state.data.y).toBe(-50);
   });
 
+  it("respects a custom min-visible-px floor", () => {
+    // Large element so fraction would dominate: 400x400, fraction 0.25 → 100.
+    // Override floor to 200px: slice = max(100, 200) = 200.
+    // max x = 1000 - 200 = 800.
+    const { drag, state } = makeDragHarness({
+      elementWidth: 400,
+      elementHeight: 400,
+      containerWidth: 1000,
+      containerHeight: 1000,
+      minVisiblePx: 200,
+    });
+    drag(10_000, 0);
+    expect(state.data.x).toBe(800);
+  });
+
   it("min-visible of 1 pins the element fully inside (legacy behavior)", () => {
-    // min x = 0, max x = 300 - 100 = 200.
+    // Slice = max(100, 60) = 100 (the whole element). max x = 300 - 100 = 200.
     const { drag, state } = makeDragHarness({
       elementWidth: 100,
       elementHeight: 100,
@@ -151,14 +192,15 @@ describe("can-move bounds clamp", () => {
     expect(state.data.y).toBe(200);
   });
 
-  it("min-visible of 0 lets the element leave entirely", () => {
-    // min x = -100, max x = 300.
+  it("both attributes set to 0 lets the element leave entirely", () => {
+    // Opt fully out of the keep-visible guarantee.
     const { drag, state } = makeDragHarness({
       elementWidth: 100,
       elementHeight: 100,
       containerWidth: 300,
       containerHeight: 300,
       minVisible: 0,
+      minVisiblePx: 0,
     });
     drag(10_000, 0);
     expect(state.data.x).toBe(300);
@@ -167,16 +209,17 @@ describe("can-move bounds clamp", () => {
   });
 
   it("cursor debt: fast drag past an edge does not fling the element to the opposite edge on return", () => {
-    // This is the regression guard for the bug where clientX-startMouseX
-    // tracked the raw cursor. Sequence:
-    //   1. Cursor from 50 → 10_000 in one tick (past right edge).
-    //      Element clamps to 275. startMouseX advances only by 275 (the
-    //      amount the element actually translated) — not all the way to
-    //      10_000 — so we hold the "debt" of unused cursor distance.
-    //   2. Cursor back to 5_000. Delta from the debt-adjusted anchor is
-    //      small and the element stays clamped at 275.
-    //   3. Only when the cursor drags all the way back inside the bounds
-    //      does the element start moving again.
+    // Regression guard for the bug where clientX-startMouseX tracked the
+    // raw cursor. 100x100 element, default fraction 0.25, default floor
+    // 60px. Slice = 60, so max x = 300 - 60 = 240.
+    // Sequence:
+    //   1. Cursor from 0 → 10_000 in one tick (past right edge). Element
+    //      clamps to 240. startMouseX advances only by 240 (the amount
+    //      actually translated), not all the way to 10_000 — debt holds
+    //      the unused cursor distance.
+    //   2. Cursor back to 5_000. Still clamped at 240.
+    //   3. Only when the cursor comes all the way back inside does the
+    //      element start moving again.
     const { drag, state } = makeDragHarness({
       elementWidth: 100,
       elementHeight: 100,
@@ -184,24 +227,19 @@ describe("can-move bounds clamp", () => {
       containerHeight: 300,
     });
     drag(10_000, 0);
-    expect(state.data.x).toBe(275);
-    // Anchor advanced by clamped delta (275 - 0) = 275, not the raw delta.
-    expect(state.localData.startMouseX).toBe(275);
-    // Return drag: cursor at 5_000. newX = 275 + (5000 - 275) = 5000. Still
-    // clamped to 275.
+    expect(state.data.x).toBe(240);
+    expect(state.localData.startMouseX).toBe(240);
     drag(5_000, 0);
-    expect(state.data.x).toBe(275);
-    // Keep coming back: cursor at 250 should start pulling the element in.
-    // newX = 275 + (250 - 275) = 250. Inside bounds → element moves.
-    drag(250, 0);
-    expect(state.data.x).toBe(250);
+    expect(state.data.x).toBe(240);
+    // Cursor back to 200. newX = 240 + (200 - 240) = 200. Inside → moves.
+    drag(200, 0);
+    expect(state.data.x).toBe(200);
   });
 
-  it("falls back to 0 when min-visible × element is larger than the container (inverted clamp)", () => {
-    // 100px element, minVisible = 1 → needs 100px visible. If the container
-    // is only 40px wide, max (40-100=-60) < min (0) — the clamp range
-    // inverts. The fallback pins at 0 so the element doesn't fly off into
-    // negative space.
+  it("falls back to 0 when the keep-visible slice is larger than the container (inverted clamp)", () => {
+    // 100px element, minVisible = 1 → slice = max(100, 60) = 100. Container
+    // is only 40px wide, so max (40-100=-60) < min (0) — the clamp range
+    // inverts. Fallback pins at 0.
     const { drag, state } = makeDragHarness({
       elementWidth: 100,
       elementHeight: 100,
@@ -240,8 +278,9 @@ describe("can-move bounds clamp", () => {
         element,
       } as any,
     );
-    // max x = 200 - 80 * 0.25 = 180.
-    expect(setData).toHaveBeenCalledWith({ x: 180, y: 0 });
+    // 80px element, fraction 0.25 → fraction slice = 20. Floor = 60.
+    // Slice = max(20, 60) = 60. max x = 200 - 60 = 140.
+    expect(setData).toHaveBeenCalledWith({ x: 140, y: 0 });
   });
 
   it("clamps to one decimal place (rounds for wire compactness)", () => {

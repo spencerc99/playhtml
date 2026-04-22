@@ -83,16 +83,30 @@ Add `can-move-bounds="<id-or-selector>"` to keep the element inside a container.
 </div>
 ```
 
-The **cursor** can go past the container edge — only the element's position is clamped. By default, 25% of the element stays inside the container on every edge so readers always have something to grab. Override that ratio with `can-move-bounds-min-visible`:
+The **cursor** can go past the container edge — only the element's position is clamped. By default, the keep-visible slice is `max(25% of element size, 60px)` on every edge, so readers always have something to grab. Two attributes let you tune that:
+
+- `can-move-bounds-min-visible="0.5"` — fraction (0–1) of the element to keep inside. Use `1` to pin fully inside (the strict clamp), `0` to drop the fraction constraint entirely.
+- `can-move-bounds-min-visible-px="40"` — absolute pixel floor, applied on top of the fraction. Useful when an image has transparent padding around its paint — the fraction of the layout bbox might otherwise clip into invisible border.
+
+The effective slice on each axis is `max(fraction × size, pxFloor)`.
 
 ```html
-<!-- Keep 50% of the magnet inside the fridge at all times -->
-<div can-move can-move-bounds="fridge" can-move-bounds-min-visible="0.5" id="magnet">
+<!-- Keep 50% of the magnet inside the fridge, ignoring the px floor -->
+<div can-move can-move-bounds="fridge"
+     can-move-bounds-min-visible="0.5"
+     can-move-bounds-min-visible-px="0"
+     id="magnet">
   🧲
+</div>
+
+<!-- Small magnet: fraction of 0.25 × 40px = 10px is way too small to grab.
+     The 60px default floor keeps the whole magnet visible regardless. -->
+<div can-move can-move-bounds="fridge" id="tiny-magnet" style="width: 40px;">
+  🌶️
 </div>
 ```
 
-Use `can-move-bounds-min-visible="1"` to pin the element fully inside (legacy behavior), or `0` to let it slip out entirely.
+Set both attributes to `0` to opt fully out of the keep-visible guarantee and let the element slip entirely out of view.
 
 ## can-toggle
 

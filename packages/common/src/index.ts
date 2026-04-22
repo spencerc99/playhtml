@@ -137,12 +137,37 @@ function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
  */
 const DEFAULT_MIN_VISIBLE_FRACTION = 0.25;
 
+/**
+ * Absolute pixel floor on the keep-visible slice. This handles the case
+ * where an image has transparent padding around its paint — a fraction of
+ * the layout bbox might clip into the invisible border, leaving nothing
+ * visible to grab. 60px is roughly a comfortable minimum hit target.
+ */
+const DEFAULT_MIN_VISIBLE_PX = 60;
+
 function getMinVisibleFraction(element: HTMLElement): number {
   const raw = element.getAttribute(CanMoveBoundsMinVisible);
   if (raw == null) return DEFAULT_MIN_VISIBLE_FRACTION;
   const n = parseFloat(raw);
   if (!Number.isFinite(n)) return DEFAULT_MIN_VISIBLE_FRACTION;
   return Math.max(0, Math.min(1, n));
+}
+
+function getMinVisiblePx(element: HTMLElement): number {
+  const raw = element.getAttribute(CanMoveBoundsMinVisiblePx);
+  if (raw == null) return DEFAULT_MIN_VISIBLE_PX;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_MIN_VISIBLE_PX;
+  return n;
+}
+
+/** Keep-visible slice on a given axis: max(fraction × size, pxFloor), capped at size. */
+function keepVisibleSlice(
+  size: number,
+  fraction: number,
+  pxFloor: number,
+): number {
+  return Math.min(size, Math.max(size * fraction, pxFloor));
 }
 
 /**
@@ -175,6 +200,13 @@ export const CanMoveBounds = "can-move-bounds";
  * inside the container (the original clamp behavior).
  */
 export const CanMoveBoundsMinVisible = "can-move-bounds-min-visible";
+/**
+ * Absolute pixel floor on the keep-visible slice. Defaults to 60px. Useful
+ * when an image has transparent padding around its paint — a pure fraction
+ * of the layout bbox would let the visible pixels slip out of bounds. The
+ * effective slice is `max(minVisible × size, minVisiblePx)`.
+ */
+export const CanMoveBoundsMinVisiblePx = "can-move-bounds-min-visible-px";
 
 // Supported Tags
 export enum TagType {
@@ -371,16 +403,22 @@ export const TagTypeToElement: DefaultTagInitializers = {
       const boundsRoot = getMoveBoundsRoot(element);
       if (boundsRoot) {
         // Allow the element to hang off the container's edges as long as
-        // `minVisible` of it is still inside — that way the reader has
-        // something to grab to drag it back. The cursor itself is not
-        // clamped; only the element's persisted translate is.
+        // enough of it is still inside — a reader needs something to grab
+        // to drag it back. The keep-visible slice is
+        // max(minVisible × size, minVisiblePx) so an image with
+        // transparent padding doesn't end up with its visible paint
+        // outside the bounds. The cursor itself is not clamped; only the
+        // element's persisted translate is.
         const minVisible = getMinVisibleFraction(element);
+        const minVisiblePx = getMinVisiblePx(element);
         const w = element.offsetWidth;
         const h = element.offsetHeight;
-        const minX = -w * (1 - minVisible);
-        const maxX = boundsRoot.clientWidth - w * minVisible;
-        const minY = -h * (1 - minVisible);
-        const maxY = boundsRoot.clientHeight - h * minVisible;
+        const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
+        const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
+        const minX = -(w - keepX);
+        const maxX = boundsRoot.clientWidth - keepX;
+        const minY = -(h - keepY);
+        const maxY = boundsRoot.clientHeight - keepY;
         // If the container is narrower than the keep-visible slice, the
         // min/max can invert. Fall back to pinning at 0 in that case so the
         // element doesn't shoot off into negative space.
