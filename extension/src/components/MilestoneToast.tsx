@@ -242,6 +242,14 @@ export function MilestoneToast({
 
   return (
     <div ref={toastRef} className={cls}>
+      <button
+        type="button"
+        className="wwo-toast-close"
+        onClick={dismiss}
+        aria-label="Dismiss milestone"
+      >
+        ×
+      </button>
       <div className="wwo-toast-wordmark">wwo</div>
       <div className="wwo-toast-body">
         <div className="wwo-toast-accent">

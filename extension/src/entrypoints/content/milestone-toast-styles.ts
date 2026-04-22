@@ -32,10 +32,42 @@ export const MILESTONE_TOAST_CSS = `
   transform: translateY(4px);
 }
 
+.wwo-toast-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(61, 56, 51, 0.45);
+  font-family: 'Atkinson Hyperlegible', -apple-system, sans-serif;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wwo-toast-close:hover {
+  background: rgba(61, 56, 51, 0.06);
+  color: rgba(61, 56, 51, 0.75);
+}
+
+.wwo-toast-close:focus-visible {
+  outline: 2px solid rgba(74, 154, 138, 0.55);
+  outline-offset: 1px;
+}
+
 .wwo-toast-wordmark {
   position: absolute;
   top: 9px;
-  right: 12px;
+  right: 38px;
   font-family: 'Source Serif 4', 'Lora', Georgia, serif;
   font-style: italic;
   font-weight: 300;

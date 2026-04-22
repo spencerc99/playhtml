@@ -65,6 +65,7 @@ const CYCLE_MS = 3500;
 
 export function MilestoneToastPreview() {
   const [index, setIndex] = useState(0);
+  const [mountKey, setMountKey] = useState(0);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -76,9 +77,10 @@ export function MilestoneToastPreview() {
   return (
     <div className="setup-step__milestone-preview">
       <MilestoneToast
-        key={index}
+        key={`${index}-${mountKey}`}
         milestone={SAMPLES[index]}
         static={false}
+        onDismiss={() => setMountKey((k) => k + 1)}
       />
     </div>
   );
