@@ -163,6 +163,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
   ({ trailState, trailIndex, fixedMonoStrokeWidth, renderer, generatePath }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
+    const haloRef = useRef<SVGPathElement>(null);
 
     React.useImperativeHandle(ref, () => ({
       update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
@@ -194,6 +195,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
           if (pathData) {
             renderer.updatePath({
               pathEl,
+              haloEl: haloRef.current,
               pathData,
               trailOpacity,
               strokeWidth,
@@ -204,6 +206,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
             });
           } else {
             pathEl.style.display = "none";
+            if (haloRef.current) haloRef.current.style.display = "none";
           }
         }
 
@@ -215,6 +218,13 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
 
     return (
       <g ref={groupRef} opacity="0">
+        <path
+          ref={haloRef}
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "none" }}
+        />
         <path
           ref={pathRef}
           fill="none"
