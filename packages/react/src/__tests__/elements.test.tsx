@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 import "@testing-library/dom";
 import { CanPlayElement } from "../index";
+import { CanMoveElement } from "../elements";
 import { TagType } from "@playhtml/common";
 import type { ElementAwarenessEventHandlerData } from "@playhtml/common";
 
@@ -118,6 +119,49 @@ describe("CanPlayElement with built-in capabilities", () => {
 
     // onDrag should still be set on the element
     expect((element as any).onDrag).toBe(capabilityOnDrag);
+  });
+
+  it("CanMoveElement forwards bounds props as can-move-bounds* DOM attributes", () => {
+    const { container } = render(
+      <CanMoveElement
+        standalone
+        bounds="arena"
+        boundsMinVisible={0.5}
+        boundsMinVisiblePx={40}
+      >
+        <div id="bounded-child">drag me</div>
+      </CanMoveElement>,
+    );
+    const element = container.querySelector("#bounded-child") as HTMLElement;
+    expect(element).toBeTruthy();
+    expect(element.getAttribute("can-move-bounds")).toBe("arena");
+    expect(element.getAttribute("can-move-bounds-min-visible")).toBe("0.5");
+    expect(element.getAttribute("can-move-bounds-min-visible-px")).toBe("40");
+  });
+
+  it("CanMoveElement omits bounds attributes when props are not set", () => {
+    const { container } = render(
+      <CanMoveElement standalone>
+        <div id="unbounded-child">drag me</div>
+      </CanMoveElement>,
+    );
+    const element = container.querySelector("#unbounded-child") as HTMLElement;
+    expect(element).toBeTruthy();
+    expect(element.hasAttribute("can-move-bounds")).toBe(false);
+    expect(element.hasAttribute("can-move-bounds-min-visible")).toBe(false);
+    expect(element.hasAttribute("can-move-bounds-min-visible-px")).toBe(false);
+  });
+
+  it("CanMoveElement accepts selector form for bounds (e.g. `#id`)", () => {
+    const { container } = render(
+      <CanMoveElement standalone bounds="#fridge">
+        <div id="selector-bounded-child">drag me</div>
+      </CanMoveElement>,
+    );
+    const element = container.querySelector(
+      "#selector-bounded-child",
+    ) as HTMLElement;
+    expect(element.getAttribute("can-move-bounds")).toBe("#fridge");
   });
 
   it("works without a capability updateElement (pure can-play)", () => {

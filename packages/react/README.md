@@ -273,7 +273,7 @@ function CursorSettings() {
 }
 ```
 
-For full cursor configuration options, see the [cursor documentation](https://github.com/spencerc99/playhtml/blob/main/docs/cursors.md).
+For full cursor configuration options, see the [cursor documentation](https://playhtml.fun/docs/data/presence/cursors/).
 
 ## Navigation
 
@@ -304,7 +304,7 @@ function App() {
 
 The `cursors.container` ref ensures cursor DOM mounts inside an element you control, so marking it `transition:persist` (Astro) or the framework equivalent keeps cursors alive across body-swaps.
 
-See the full [navigation guide](https://github.com/spencerc99/playhtml/blob/main/docs/navigation.md) for htmx, Astro, and other framework specifics.
+See the full [navigation guide](https://playhtml.fun/docs/advanced/navigation/) for htmx, Astro, and other framework specifics.
 
 For full configuration, see the interface below.
 

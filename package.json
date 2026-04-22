@@ -6,16 +6,18 @@
     "packages/playhtml",
     "packages/react",
     "packages/common",
+    "apps/docs",
     "extension",
     "extension/website"
   ],
   "scripts": {
     "dev": "vite --config vite.config.site.mts",
+    "dev-docs": "cd apps/docs && bun run dev",
     "dev-server": "bunx wrangler dev partykit/party.ts --port 1999",
     "dev-extension": "cd extension && bun run dev",
     "deploy-server": "bunx wrangler deploy",
     "deploy-server:staging": "bunx wrangler deploy --env staging",
-    "build-site": "vite build website --config vite.config.site.mts",
+    "build-site": "vite build website --config vite.config.site.mts && cd apps/docs && bun run build",
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && bun run build); done",
     "build-extension": "cd extension && bun run build",
     "build-extension:website": "cd extension/website && bun run build",
@@ -26,6 +28,9 @@
     "load-test": "bun load-test/src/runner.ts",
     "load-test:full": "bun load-test/src/runner.ts --config full-suite",
     "generate-types": "bunx wrangler types --include-runtime=false"
+  },
+  "overrides": {
+    "yjs": "13.6.18"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

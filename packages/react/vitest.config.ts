@@ -13,6 +13,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Resolve workspace sibling to source so tests pick up changes without
+      // a rebuild of packages/common/dist.
+      "@playhtml/common": path.resolve(__dirname, "../common/src/index.ts"),
       // Deduplicate React so tests use a single instance. The local
       // node_modules has React 19 while the root has React 18; force everything
       // to resolve to the root's React 18 which @testing-library/react also uses.

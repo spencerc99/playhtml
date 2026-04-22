@@ -226,7 +226,7 @@ export const URLChat = withSharedState(
             </a>
           </li>
           <li>
-            <a href="https://github.com/spencerc99/playhtml/blob/main/docs/llm-prompting-guide.md">
+            <a href="https://playhtml.fun/docs/integrations/building-with-ai/">
               llm prompting guide
             </a>
           </li>

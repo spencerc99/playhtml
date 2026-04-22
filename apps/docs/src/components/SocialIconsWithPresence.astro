@@ -1,0 +1,15 @@
+---
+// Inject the presence HUD into Starlight's right-group, immediately before the
+// default social icons (GitHub). This replaces the earlier "sub-row" approach
+// so presence lives inline with the rest of the header chrome and never fights
+// the theme selector for space.
+import Default from '@astrojs/starlight/components/SocialIcons.astro';
+import { DocsPresenceBar } from './react/DocsPresenceBar';
+---
+<div class="ph-presence-slot">
+  {/* client:only avoids SSR — DocsPresenceBar reads from playhtml's cursor
+      awareness which only exists in the browser, and SSRing it produces
+      a placeholder that disagrees with the real initial render. */}
+  <DocsPresenceBar client:only="react" />
+</div>
+<Default />

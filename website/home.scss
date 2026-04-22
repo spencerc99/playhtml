@@ -235,23 +235,47 @@ i {
 .startContainer {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 #startLink {
 }
+
+// Primary CTA (Docs). Keeps the signature green glow so the homepage's
+// "alive" quality is preserved — docs is now the primary surface to enter.
 #start {
   transition: box-shadow 0.2s ease-in-out;
   font-weight: bold;
   font-size: 1.2em;
   padding: 1em 4em;
-  margin-left: auto;
-  margin-right: auto;
   border-radius: 24px;
   background: rgba(13, 119, 29, 1);
+  color: var(--color-background-neutral);
   box-shadow: rgba(13, 119, 29, 0.3) 0px 0px 12px 4px;
   &:hover,
   &.hovering {
     box-shadow: rgba(13, 119, 29, 0.3) 0px 0px 20px 8px;
+  }
+}
+
+// Secondary CTA (GitHub). Outlined ink-on-paper — same shape, less weight.
+#start-github {
+  transition: box-shadow 0.2s ease-in-out, background 0.2s ease-in-out,
+    color 0.2s ease-in-out;
+  font-weight: bold;
+  font-size: 1.05em;
+  padding: 0.9em 2.4em;
+  border-radius: 24px;
+  background: transparent;
+  color: var(--color-text);
+  border: 2px solid var(--color-text);
+  box-shadow: none;
+  &:hover,
+  &.hovering {
+    background: var(--color-text);
+    color: var(--color-background-neutral);
   }
 }
 

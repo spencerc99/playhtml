@@ -89,7 +89,7 @@ playhtml.init({ cursors: { enabled: true, room: "page" } }); // "page"|"domain"|
 window.cursors.allColors.length; // user count
 ```
 
-See `docs/cursors.md` for full API.
+See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 
 ## Common Mistakes
 

@@ -1,4 +1,9 @@
-### Shared Elements
+---
+title: "Shared elements"
+description: "Sync interactive elements across pages and domains."
+sidebar:
+  order: 2
+---
 
 Shared elements are a way to share data between different pages on the same site and even across different domains. Effectively, this allows for cross-origin data sharing that can be rendered with custom markup and styles. These are defined by a source page and can be referenced on the consumer page by their domain and path (the playhtml room that they are assigned to).
 

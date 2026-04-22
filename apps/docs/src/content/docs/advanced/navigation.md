@@ -1,4 +1,9 @@
-# Handling Navigation
+---
+title: "Navigation & SPAs"
+description: "How playhtml handles client-side navigation — React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo."
+sidebar:
+  order: 4
+---
 
 playhtml works out of the box on full-page-reload sites. For single-page apps (SPAs) and frameworks with client-side navigation — React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo — you'll want the patterns on this page so cursors, rooms, and element handlers stay consistent across navigation.
 
@@ -24,27 +29,29 @@ import { useLocation } from "react-router-dom";
 function App() {
   const { pathname } = useLocation();
   return (
-    <PlayProvider initOptions={{...}} pathname={pathname}>
+    <PlayProvider initOptions={{ /* ... */ }} pathname={pathname}>
       {/* ... */}
     </PlayProvider>
   );
 }
+```
 
+```tsx
 // Next.js App Router
 "use client";
 import { usePathname } from "next/navigation";
 
-function Providers({ children }) {
+function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return (
-    <PlayProvider initOptions={{...}} pathname={pathname}>
+    <PlayProvider initOptions={{ /* ... */ }} pathname={pathname}>
       {children}
     </PlayProvider>
   );
 }
 ```
 
-When `pathname` changes, playhtml refreshes. On Chromium, the browser's navigation API fires first and the prop-based call collapses into a no-op. On Safari and Firefox, the prop is load-bearing because neither browser has shipped the Navigation API yet.
+When `pathname` changes, playhtml refreshes. On Chromium, the browser's navigation API fires first and the prop-based call collapses into a no-op. On Safari and Firefox the prop is load-bearing because neither browser has shipped the Navigation API yet.
 
 ## Cursor container (surviving body-swaps)
 
@@ -55,7 +62,7 @@ Astro ViewTransitions, htmx boost, and Turbo swap `document.body` on navigation.
 <div id="cursor-layer" transition:persist></div>
 
 <script>
-  import { playhtml } from "@playhtml/playhtml";
+  import { playhtml } from "playhtml";
   playhtml.init({
     cursors: {
       enabled: true,
@@ -68,15 +75,18 @@ Astro ViewTransitions, htmx boost, and Turbo swap `document.body` on navigation.
 ```tsx
 // React
 const cursorLayerRef = useRef<HTMLDivElement>(null);
-<PlayProvider initOptions={{
-  cursors: {
-    enabled: true,
-    container: cursorLayerRef,
-  },
-}}>
+
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      container: cursorLayerRef,
+    },
+  }}
+>
   <div ref={cursorLayerRef} className="cursor-layer" />
   {/* app */}
-</PlayProvider>
+</PlayProvider>;
 ```
 
 `container` accepts:

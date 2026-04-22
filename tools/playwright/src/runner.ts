@@ -24,6 +24,7 @@ function parseArgs() {
     scene: get("--scene"),
     noVideo: has("--no-video"),
     headed: has("--headed"),
+    port: get("--port"),
   };
 }
 
@@ -117,6 +118,17 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   const sceneModule = await import(scenePath);
   const scene: SceneConfig = sceneModule.default;
+
+  // Apply --port: substitute {port} in the scene URL and expose on scene.port.
+  if (args.port) {
+    scene.port = args.port;
+  }
+  // Always resolve {port} so the initial page.goto() doesn't hit a literal
+  // placeholder. Scenes that care about the raw port read ctx.port.
+  if (scene.url.includes("{port}")) {
+    scene.url = scene.url.replace(/\{port\}/g, scene.port ?? "4321");
+  }
+
   const actorCount = scene.actors ?? 2;
   const viewport = scene.viewport ?? { width: 1280, height: 720 };
   const recordActor = scene.recordActor ?? 0;
@@ -279,8 +291,22 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   console.log("Running scene...\n");
   const sync = await createSyncHelpers();
 
+  // Close browser contexts cleanly on SIGINT so WebSockets get their close
+  // handshake — avoids "Network connection lost" noise on the server.
+  let shuttingDown = false;
+  async function shutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\nReceived ${signal}, closing browsers...`);
+    const allContexts = [...contexts, ...(cameraContext ? [cameraContext] : [])];
+    await Promise.allSettled(allContexts.map((c) => c.close()));
+    process.exit(0);
+  }
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
   try {
-    await scene.run({ pages, contexts, sync, camera: cameraPage ?? undefined });
+    await scene.run({ pages, contexts, sync, camera: cameraPage ?? undefined, port: scene.port });
   } catch (err) {
     console.error("Scene error:", err);
   }
