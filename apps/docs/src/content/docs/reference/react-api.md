@@ -121,6 +121,41 @@ interface CanPlayElementProps<T, V> {
 </CanPlayElement>
 ```
 
+## `<CanMoveElement>`
+
+Typed wrapper around `CanPlayElement` for draggable elements. Accepts the same `dataSource`, `shared`, and `standalone` props, plus three bounds props for constraining the drag area.
+
+```tsx
+interface CanMoveElementProps {
+  bounds?: string;
+  boundsMinVisible?: number;
+  boundsMinVisiblePx?: number;
+  dataSource?: string;
+  shared?: boolean | string;
+  standalone?: boolean;
+  children: React.ReactElement | ((data: MoveEventData) => React.ReactElement);
+}
+```
+
+- **`bounds`** — id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
+- **`boundsMinVisible`** — fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `0.25`. Use `1` to pin the element fully inside, `0` to drop the fraction constraint entirely.
+- **`boundsMinVisiblePx`** — absolute pixel floor on the keep-visible slice. Default `60`. Useful when an image has transparent padding around its paint — a pure fraction of the layout bbox might otherwise let the visible pixels clip into invisible border.
+
+The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
+
+```tsx
+import { CanMoveElement } from "@playhtml/react";
+
+<div id="fridge" style={{ position: "relative", height: 400 }}>
+  <CanMoveElement bounds="fridge">
+    <div id="magnet-a">🍎</div>
+  </CanMoveElement>
+  <CanMoveElement bounds="fridge" boundsMinVisible={0.5} boundsMinVisiblePx={0}>
+    <div id="magnet-b">🥐</div>
+  </CanMoveElement>
+</div>;
+```
+
 ## `usePlayContext()`
 
 Access the playhtml context from any descendant of `PlayProvider`.

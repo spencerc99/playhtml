@@ -1,6 +1,5 @@
 import React from "react";
-import { CanPlayElement } from "@playhtml/react";
-import { CanMoveBounds, TagType, TagTypeToElement } from "@playhtml/common";
+import { CanMoveElement } from "@playhtml/react";
 
 const MOVE_ARENA_ID = "ph-cap-move-arena";
 
@@ -11,40 +10,22 @@ export function MoveHatCatDemo(): React.ReactElement {
 
   return (
     <div id={MOVE_ARENA_ID} className="ph-move-arena" aria-label="Drag the hat and cat">
-      <CanPlayElement
-        standalone
-        tagInfo={[TagType.CanMove]}
-        {...TagTypeToElement[TagType.CanMove]}
-        id="ph-cap-hat"
-        defaultData={{ x: 16, y: 14 }}
-      >
-        {() => (
-          <div
-            id="ph-cap-hat"
-            className="ph-move-piece ph-move-piece--img"
-            {...{ [CanMoveBounds]: MOVE_ARENA_ID }}
-          >
-            <img src={hatSrc} alt="" className="ph-move-piece__img" draggable={false} />
-          </div>
-        )}
-      </CanPlayElement>
-      <CanPlayElement
-        standalone
-        tagInfo={[TagType.CanMove]}
-        {...TagTypeToElement[TagType.CanMove]}
-        id="ph-cap-cat"
-        defaultData={{ x: 108, y: 44 }}
-      >
-        {() => (
-          <div
-            id="ph-cap-cat"
-            className="ph-move-piece ph-move-piece--img ph-move-piece--cat"
-            {...{ [CanMoveBounds]: MOVE_ARENA_ID }}
-          >
-            <img src={catSrc} alt="" className="ph-move-piece__img" draggable={false} />
-          </div>
-        )}
-      </CanPlayElement>
+      <CanMoveElement standalone bounds={MOVE_ARENA_ID}>
+        <div
+          id="ph-cap-hat"
+          className="ph-move-piece ph-move-piece--img"
+        >
+          <img src={hatSrc} alt="" className="ph-move-piece__img" draggable={false} />
+        </div>
+      </CanMoveElement>
+      <CanMoveElement standalone bounds={MOVE_ARENA_ID}>
+        <div
+          id="ph-cap-cat"
+          className="ph-move-piece ph-move-piece--img ph-move-piece--cat"
+        >
+          <img src={catSrc} alt="" className="ph-move-piece__img" draggable={false} />
+        </div>
+      </CanMoveElement>
     </div>
   );
 }

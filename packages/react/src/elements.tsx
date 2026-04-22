@@ -1,16 +1,69 @@
-import { TagTypeToElement, TagType } from "@playhtml/common";
+import {
+  CanMoveBounds,
+  CanMoveBoundsMinVisible,
+  CanMoveBoundsMinVisiblePx,
+  TagTypeToElement,
+  TagType,
+} from "@playhtml/common";
 import classNames from "classnames";
 import React, { useState } from "react";
 import { CanPlayElement, WithPlayOptionalProps } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
 
+/**
+ * Props for clamping a `can-move` element to a container. Mirrors the
+ * `can-move-bounds*` HTML attributes; see the core library for behavior
+ * details. The cursor is never clamped — only the element's persisted
+ * position is.
+ */
+export interface CanMoveBoundsProps {
+  /** Id or selector of the container to keep the element inside of. */
+  bounds?: string;
+  /**
+   * Fraction (0–1) of the element that must stay inside `bounds`. Default
+   * 0.25. `1` pins fully inside, `0` drops the fraction constraint (pixel
+   * floor still applies unless also zeroed).
+   */
+  boundsMinVisible?: number;
+  /**
+   * Absolute pixel floor on the keep-visible slice (default 60). The
+   * effective slice is `max(boundsMinVisible × size, boundsMinVisiblePx)`.
+   * Useful when an image has transparent padding around its paint.
+   */
+  boundsMinVisiblePx?: number;
+}
+
+function boundsAttrs({
+  bounds,
+  boundsMinVisible,
+  boundsMinVisiblePx,
+}: CanMoveBoundsProps): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  if (bounds) attrs[CanMoveBounds] = bounds;
+  if (boundsMinVisible !== undefined)
+    attrs[CanMoveBoundsMinVisible] = String(boundsMinVisible);
+  if (boundsMinVisiblePx !== undefined)
+    attrs[CanMoveBoundsMinVisiblePx] = String(boundsMinVisiblePx);
+  return attrs;
+}
+
 export function CanMoveElement({
   children,
   dataSource,
   shared,
   standalone,
-}: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
+  bounds,
+  boundsMinVisible,
+  boundsMinVisiblePx,
+}: { children: SingleChildOrPlayable } & WithPlayOptionalProps &
+  CanMoveBoundsProps) {
+  const extraAttrs = boundsAttrs({
+    bounds,
+    boundsMinVisible,
+    boundsMinVisiblePx,
+  });
+  const hasExtraAttrs = Object.keys(extraAttrs).length > 0;
   return (
     <CanPlayElement
       // @ts-ignore
@@ -24,7 +77,12 @@ export function CanMoveElement({
           children,
           renderData
         );
-        return renderedChildren;
+        // Clone the user's child to stamp the bounds attributes onto its
+        // root DOM element — the same node `can-move` reads during drag.
+        if (!hasExtraAttrs || !React.isValidElement(renderedChildren)) {
+          return renderedChildren;
+        }
+        return React.cloneElement(renderedChildren, extraAttrs);
       }}
     />
   );

@@ -1,6 +1,7 @@
 ---
 "playhtml": minor
 "@playhtml/common": minor
+"@playhtml/react": minor
 ---
 
 `can-move` now supports a declarative `can-move-bounds` attribute that clamps a draggable element to a specific container. Set the value to the container's id (`can-move-bounds="arena"` or `can-move-bounds="#arena"`) or any CSS selector. The element can partially hang off the container edges — by default `max(25% of element size, 60px)` stays inside on every edge so readers always have something to grab — while the cursor itself is unconstrained and a fast drag past the edge won't fling the element back in the opposite direction.
@@ -20,6 +21,16 @@ Set both to `0` to opt fully out of the keep-visible guarantee.
        can-move-bounds-min-visible-px="0"
        id="magnet-b">🥐</div>
 </div>
+```
+
+In React, `<CanMoveElement>` gets typed `bounds`, `boundsMinVisible`, and `boundsMinVisiblePx` props that map to the same attributes:
+
+```tsx
+import { CanMoveElement } from "@playhtml/react";
+
+<CanMoveElement bounds="fridge" boundsMinVisible={0.5} boundsMinVisiblePx={0}>
+  <div id="magnet">🧲</div>
+</CanMoveElement>;
 ```
 
 Exported from `@playhtml/common`: `CanMoveBounds`, `CanMoveBoundsMinVisible`, `CanMoveBoundsMinVisiblePx`.
