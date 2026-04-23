@@ -40,7 +40,7 @@ function PlayHTMLPopup() {
   const [currentView, setCurrentView] = useState<
     "main" | "inventory" | "collections" | "profile" | "bag-settings"
   >("main");
-  const [devFeaturesEnabled, setDevFeaturesEnabled] = useState(false);
+  const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null,
   );
@@ -51,30 +51,32 @@ function PlayHTMLPopup() {
     (async () => {
       try {
         const result = await browser.storage.local.get([
-          "devFeaturesEnabled",
+          "internalDevFeaturesEnabled",
           "onboarding_complete",
         ]);
-        setDevFeaturesEnabled(Boolean(result.devFeaturesEnabled));
+        setInternalDevFeaturesEnabled(Boolean(result.internalDevFeaturesEnabled));
         setOnboardingComplete(
           result.onboarding_complete === "true" ||
             result.onboarding_complete === true,
         );
       } catch {
-        setDevFeaturesEnabled(false);
+        setInternalDevFeaturesEnabled(false);
         setOnboardingComplete(false);
       }
     })();
 
-    // Dev hotkey: Cmd/Ctrl+Shift+.
+    // Dev hotkey: Cmd/Ctrl+Shift+. — Shift changes "." to ">" on US layouts,
+    // so accept either e.key value. Also accept e.code === "Period" as a layout-safe fallback.
     const onKeyDown = async (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === ".") {
+      const isToggleKey = e.key === "." || e.key === ">" || e.code === "Period";
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && isToggleKey) {
         e.preventDefault();
-        setDevFeaturesEnabled((prev) => {
+        setInternalDevFeaturesEnabled((prev) => {
           const next = !prev;
-          // Fire and forget; state is source of truth for UI
           browser.storage.local
-            .set({ devFeaturesEnabled: next })
+            .set({ internalDevFeaturesEnabled: next })
             .catch(() => {});
+          console.log(`[we-were-online] internalDevFeaturesEnabled = ${next}`);
           return next;
         });
       }
@@ -243,7 +245,11 @@ function PlayHTMLPopup() {
     }
   };
 
-  const bagEnabled = devFeaturesEnabled || FLAGS.COPRESENCE;
+  // PlayHTML Bag is dev-only until public release.
+  // To enable: open the extension popup, then toggle via Cmd/Ctrl+Shift+. (or > on US keyboards).
+  // Alternative: from any extension page devtools, run
+  //   `browser.storage.local.set({ internalDevFeaturesEnabled: true })` and reopen the popup.
+  const bagEnabled = internalDevFeaturesEnabled;
 
   const pingContentScript = async () => {
     try {

@@ -6,4 +6,3 @@ export const FLAGS = {
   // Devs can override via Cmd+Shift+. in the popup
   COPRESENCE: true,
 } as const;
-

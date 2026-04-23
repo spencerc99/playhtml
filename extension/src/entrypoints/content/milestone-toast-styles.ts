@@ -37,29 +37,37 @@ export const MILESTONE_TOAST_CSS = `
   top: 6px;
   right: 8px;
   z-index: 2;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: rgba(61, 56, 51, 0.45);
+  color: rgba(61, 56, 51, 0.55);
   font-family: 'Atkinson Hyperlegible', -apple-system, sans-serif;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.wwo-milestone-toast:hover .wwo-toast-close,
+.wwo-milestone-toast:focus-within .wwo-toast-close {
+  opacity: 1;
 }
 
 .wwo-toast-close:hover {
-  background: rgba(61, 56, 51, 0.06);
-  color: rgba(61, 56, 51, 0.75);
+  background: rgba(61, 56, 51, 0.08);
+  color: rgba(61, 56, 51, 0.85);
 }
 
 .wwo-toast-close:focus-visible {
+  opacity: 1;
   outline: 2px solid rgba(74, 154, 138, 0.55);
   outline-offset: 1px;
 }
@@ -67,7 +75,7 @@ export const MILESTONE_TOAST_CSS = `
 .wwo-toast-wordmark {
   position: absolute;
   top: 9px;
-  right: 38px;
+  right: 12px;
   font-family: 'Source Serif 4', 'Lora', Georgia, serif;
   font-style: italic;
   font-weight: 300;
@@ -76,6 +84,12 @@ export const MILESTONE_TOAST_CSS = `
   letter-spacing: -0.01em;
   line-height: 1;
   user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.wwo-milestone-toast:hover .wwo-toast-wordmark,
+.wwo-milestone-toast:focus-within .wwo-toast-wordmark {
+  opacity: 0;
 }
 
 .wwo-toast-body {
