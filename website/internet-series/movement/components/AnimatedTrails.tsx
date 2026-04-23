@@ -21,6 +21,8 @@ const EVICTION_FADE_MS = 3000;
 // Finished trails dim to this opacity over COMPLETION_FADE_MS
 const COMPLETED_OPACITY = 0.5;
 const COMPLETION_FADE_MS = 3000;
+// Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
+// alive without spending too much background CPU.
 const HIDDEN_TAB_TICK_MS = 100;
 
 // How many points to show behind the cursor while drawing

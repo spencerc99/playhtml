@@ -25,7 +25,12 @@ const CROSSING_DISTANCE_THRESHOLD = 15;
 
 /** Minimum time between crossing triggers for the same pair (ms) */
 const CROSSING_COOLDOWN_MS = 500;
+/** Default user-facing volume when sound is enabled. */
 const DEFAULT_MASTER_VOLUME = 0.5;
+/**
+ * Lower bound for overlap normalization so dense scenes stay audible while
+ * preventing clipping/crackle when many trails stack at once.
+ */
 const MIN_POLYPHONY_GAIN_SCALE = 0.35;
 
 /** Configurable sound modes */
@@ -641,6 +646,8 @@ export class SoundEngine {
       return;
     }
     // Fallback for older browsers lacking cancelAndHoldAtTime.
+    // We intentionally avoid noisy compatibility logs in the audio hot path;
+    // this degrades safely by cancelling future automation only.
     param.cancelScheduledValues(time);
   }
 
