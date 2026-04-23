@@ -267,13 +267,16 @@ export function Collections({ onBack }: CollectionsProps) {
     }
   };
 
+  const [clearConfirmPending, setClearConfirmPending] = useState(false);
+
   const clearAllData = async () => {
-    if (
-      !window.confirm(
-        "Delete all locally stored events? This cannot be undone.",
-      )
-    )
+    if (!clearConfirmPending) {
+      setClearConfirmPending(true);
+      // Auto-reset after 3 seconds if user doesn't confirm
+      setTimeout(() => setClearConfirmPending(false), 3000);
       return;
+    }
+    setClearConfirmPending(false);
     try {
       const response = await browser.runtime.sendMessage({
         type: "CLEAR_ALL_EVENTS",
@@ -455,12 +458,6 @@ export function Collections({ onBack }: CollectionsProps) {
   };
 
   const handleRestoreFromServer = async () => {
-    if (
-      !confirm(
-        "Restore your shared events from the server? This will re-add any events from the server that aren't already in your local store (duplicates are ignored).",
-      )
-    )
-      return;
     setIsRestoring(true);
     setTransferStatus(null);
     try {
@@ -848,7 +845,9 @@ export function Collections({ onBack }: CollectionsProps) {
         </div>
 
         <button className="collections__clear-btn" onClick={clearAllData}>
-          Clear all local data
+          {clearConfirmPending
+            ? "Click again to confirm — this cannot be undone"
+            : "Clear all local data"}
         </button>
 
         <div className="collections__dev-mode">
