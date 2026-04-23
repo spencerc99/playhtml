@@ -259,12 +259,8 @@ export class SoundEngine {
           const now = this.ctx.currentTime;
           const pluckGain = gain * instrument.gain;
           // Sharp attack, quick decay — percussive envelope
-          voice.gainNode.gain.cancelScheduledValues(now);
-          // Start from current gain and ramp up quickly to avoid step-clicks.
-          voice.gainNode.gain.setValueAtTime(
-            Math.max(0.0001, voice.gainNode.gain.value),
-            now,
-          );
+          this.holdParam(voice.gainNode.gain, now);
+          // Hold the current automation value, then ramp up quickly.
           voice.gainNode.gain.linearRampToValueAtTime(pluckGain, now + 0.005);
           voice.gainNode.gain.exponentialRampToValueAtTime(
             0.001,
@@ -630,10 +626,22 @@ export class SoundEngine {
   ): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    const currentValue = param.value;
-    param.cancelScheduledValues(now);
-    param.setValueAtTime(currentValue, now);
+    this.holdParam(param, now);
     param.linearRampToValueAtTime(targetValue, now + durationSeconds);
+  }
+
+  private holdParam(param: AudioParam, time: number): void {
+    // cancelAndHoldAtTime preserves the instantaneous computed value and avoids
+    // discontinuities ("pops") from jumping to AudioParam.value mid-envelope.
+    const hold = (param as AudioParam & {
+      cancelAndHoldAtTime?: (time: number) => void;
+    }).cancelAndHoldAtTime;
+    if (hold) {
+      hold.call(param, time);
+      return;
+    }
+    // Fallback for older browsers lacking cancelAndHoldAtTime.
+    param.cancelScheduledValues(time);
   }
 
   dispose(): void {
