@@ -1,0 +1,48 @@
+name: Release Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "npm dist-tag to publish under (e.g. next, canary)"
+        required: true
+        default: "next"
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  snapshot:
+    name: Publish snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Build Packages
+        run: bun run build-packages
+
+      - name: Version Snapshot
+        run: bunx changeset version --snapshot ${{ inputs.tag }}
+
+      - name: Publish Snapshot
+        run: bunx changeset publish --tag ${{ inputs.tag }} --no-git-tag
+        env:
+          NPM_CONFIG_PROVENANCE: true

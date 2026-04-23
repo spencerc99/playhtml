@@ -6,5 +6,9 @@
   "linked": [],
   "access": "public",
   "baseBranch": "main",
-  "updateInternalDependencies": "patch"
+  "updateInternalDependencies": "patch",
+  "ignore": ["@playhtml/extension", "wewere-online", "@playhtml/docs-site"],
+  "snapshot": {
+    "prereleaseTemplate": "{tag}-{commit}"
+  }
 }
