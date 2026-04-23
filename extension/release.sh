@@ -1,42 +1,59 @@
 #!/bin/bash
-# ABOUTME: Build and publish extension as a GitHub release for beta distribution
-# ABOUTME: Usage: ./release.sh v0.1.0 ["optional release notes"]
+# ABOUTME: Build both browser zips into ./publish and submit to Chrome + Firefox stores via `wxt submit`.
+# ABOUTME: Usage: ./release.sh [--dry-run] [--skip-firefox] [--skip-chrome]
 
 set -euo pipefail
-
-VERSION="${1:-}"
-NOTES="${2:-"closed beta release"}"
-TAG="extension-${VERSION}"
-
-if [ -z "$VERSION" ]; then
-  echo "Usage: ./release.sh <version> [\"release notes\"]"
-  echo "  e.g. ./release.sh v0.1.0"
-  echo "  e.g. ./release.sh v0.1.1 \"fixed cursor color bug\""
-  exit 1
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-ZIP_NAME="we-were-online-${VERSION}.zip"
+DRY_RUN=""
+SKIP_FIREFOX=0
+SKIP_CHROME=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN="--dry-run" ;;
+    --skip-firefox) SKIP_FIREFOX=1 ;;
+    --skip-chrome) SKIP_CHROME=1 ;;
+    *) echo "Unknown arg: $arg"; exit 1 ;;
+  esac
+done
 
-echo "Building extension..."
-bun run build
+if [ ! -f ".env.submit" ]; then
+  echo "Missing .env.submit — run \`bunx wxt submit init\` first."
+  exit 1
+fi
 
-echo "Packaging ${ZIP_NAME}..."
-cd dist/chrome-mv3
-zip -r "../../${ZIP_NAME}" .
-cd "$SCRIPT_DIR"
+VERSION=$(node -p "require('./package.json').version")
+PUBLISH_DIR="publish"
 
-echo "Creating GitHub release ${TAG}..."
-gh release create "$TAG" "$ZIP_NAME" \
-  --title "we were online extension ${VERSION}" \
-  --notes "$NOTES" \
-  --prerelease
+echo "Building extension v${VERSION} into ${PUBLISH_DIR}/ ..."
+rm -rf "${PUBLISH_DIR}"
+WXT_OUT_DIR="${PUBLISH_DIR}" bun run wxt zip
+WXT_OUT_DIR="${PUBLISH_DIR}" bun run wxt zip -b firefox
 
-RELEASE_URL=$(gh release view "$TAG" --json url -q .url)
+CHROME_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-chrome.zip | head -1)
+FIREFOX_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-firefox.zip | head -1)
+SOURCES_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-sources.zip | head -1)
+
+echo "  chrome:  ${CHROME_ZIP}"
+echo "  firefox: ${FIREFOX_ZIP}"
+echo "  sources: ${SOURCES_ZIP}"
+
+SUBMIT_ARGS=()
+if [ "$SKIP_CHROME" -eq 0 ]; then
+  SUBMIT_ARGS+=(--chrome-zip "${CHROME_ZIP}")
+fi
+if [ "$SKIP_FIREFOX" -eq 0 ]; then
+  SUBMIT_ARGS+=(--firefox-zip "${FIREFOX_ZIP}" --firefox-sources-zip "${SOURCES_ZIP}")
+fi
+
+echo "Submitting to stores..."
+if [ -n "$DRY_RUN" ]; then
+  bun run wxt submit "$DRY_RUN" "${SUBMIT_ARGS[@]}"
+else
+  bun run wxt submit "${SUBMIT_ARGS[@]}"
+fi
+
 echo ""
-echo "Released ${TAG}"
-echo "${RELEASE_URL}"
-
-rm "$ZIP_NAME"
+echo "Done. Zips retained in ${PUBLISH_DIR}/ for record."

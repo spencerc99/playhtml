@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,8 @@
     "preview": "wxt preview",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "submit": "./release.sh",
+    "submit:dry": "./release.sh --dry-run",
     "test": "vitest",
     "postinstall": "wxt prepare"
   },

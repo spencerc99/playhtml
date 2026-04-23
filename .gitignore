@@ -39,6 +39,7 @@ dist-ssr
 .wxt
 .output
 extension/dist
+extension/publish
 
 internal-docs
 
@@ -54,3 +55,5 @@ tools/playwright/videos
 .superpowers
 .worktrees/
 .playwright-mcp/
+
+.env.submit
