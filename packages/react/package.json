@@ -61,9 +61,9 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
-    "@playhtml/common": "^0.6.0",
+    "@playhtml/common": "workspace:^",
     "classnames": "^2.3.2",
-    "playhtml": "^2.9.0",
+    "playhtml": "workspace:^",
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
     "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0"
   },

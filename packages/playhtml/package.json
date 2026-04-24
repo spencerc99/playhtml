@@ -61,7 +61,7 @@
     "happy-dom": "^15.11.6"
   },
   "dependencies": {
-    "@playhtml/common": "0.6.0",
+    "@playhtml/common": "workspace:^",
     "@syncedstore/core": "^0.6.0",
     "y-partyserver": "^1.0.0",
     "yjs": "13.6.18"
