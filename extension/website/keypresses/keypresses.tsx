@@ -5,9 +5,9 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { CollectionEvent } from "../shared/types";
 import { KeypressesGrid } from "../shared/components/KeypressesGrid";
+import { RECENT_EVENTS_URL } from "../shared/config";
 
-const API_URL =
-  "https://playhtml-game-api.spencerc99.workers.dev/events/recent";
+const API_URL = RECENT_EVENTS_URL;
 const PAGE_SIZE = 5000;
 const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
 

@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { AnimatedTrails } from "@movement/components/AnimatedTrails";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import type { CollectionEvent } from "@movement/types";
+import { WORKER_URL } from "@movement/config";
 import { PresenceIndicator } from "./components/PresenceIndicator";
 import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
@@ -61,7 +62,6 @@ function RisoTexture() {
   );
 }
 
-const WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 const EVENT_LIMIT = 150;
 
 const TRAIL_SETTINGS = {

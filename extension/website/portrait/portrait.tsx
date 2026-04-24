@@ -9,11 +9,9 @@ import {
   deriveRequiredEventTypes,
   DEFAULT_ACTIVE_VISUALIZATIONS,
 } from "../shared/components/registry";
+import { RECENT_EVENTS_URL, DAILY_COUNTS_URL } from "../shared/config";
 
-const API_BASE =
-  "https://playhtml-game-api.spencerc99.workers.dev";
-const EVENTS_URL = `${API_BASE}/events/recent`;
-const DAILY_COUNTS_URL = `${API_BASE}/events/daily-counts`;
+const EVENTS_URL = RECENT_EVENTS_URL;
 
 const InternetMovement = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);

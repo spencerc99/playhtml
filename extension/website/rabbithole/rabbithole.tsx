@@ -5,9 +5,9 @@ import "./rabbithole.scss";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 import { RabbitHoleVisualization, WikiTitle } from "../shared/components/RabbitHoleVisualization";
+import { RECENT_EVENTS_URL } from "../shared/config";
 
-const API_URL =
-  "https://playhtml-game-api.spencerc99.workers.dev/events/recent";
+const API_URL = RECENT_EVENTS_URL;
 
 // ── Title extraction ──────────────────────────────────────────────────────────
 
