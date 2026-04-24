@@ -96,8 +96,8 @@ const loadSettings = () => {
     navigationRadialBlobValleyDepth: 0.05,
     navigationRadialSegmentByDay: true,
     trailVisualStyle: "color",
-    soundChordVoicing: false,
-    soundCursorInstruments: false,
+    soundChordVoicing: true,
+    soundCursorInstruments: true,
     soundCrossingDissonance: false,
   };
 
