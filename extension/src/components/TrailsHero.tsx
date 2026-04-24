@@ -2,9 +2,9 @@
 // ABOUTME: Pre-generates many batches of trails and relies on AnimatedTrails eviction for fade-out
 
 import React, { useMemo } from "react";
-import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
-import { RISO_COLORS } from "../../../website/internet-series/movement/utils/eventUtils";
-import type { TrailState } from "../../../website/internet-series/movement/types";
+import { AnimatedTrails } from "@movement/components/AnimatedTrails";
+import { RISO_COLORS } from "@movement/utils/eventUtils";
+import type { TrailState } from "@movement/types";
 
 // Time between each batch of trails spawning (ms, in animation time)
 const BATCH_INTERVAL_MS = 7000;

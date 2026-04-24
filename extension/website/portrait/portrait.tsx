@@ -1,6 +1,6 @@
 // ABOUTME: Entry point for the Internet Movement visualization page
 // ABOUTME: Fetches events from the server API and passes them to MovementCanvas for rendering
-import "./portrait.scss";
+import "../shared/portrait-styles.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { CollectionEvent, DayCounts } from "../shared/types";
