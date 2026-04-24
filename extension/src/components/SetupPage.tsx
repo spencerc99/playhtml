@@ -2,7 +2,7 @@
 // ABOUTME: Handles data-sharing preset choice and cursor color customization
 import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
-import { getValidEventTypes } from "../shared/types";
+import { getValidEventTypes } from "@playhtml/extension-types";
 import { CursorSvg } from "./icons";
 import { CollectorList } from "./Collections";
 import { TrailsHero } from "./TrailsHero";

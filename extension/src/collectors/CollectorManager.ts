@@ -6,7 +6,7 @@ import { BaseCollector } from './BaseCollector';
 import type { CollectionEventType, CollectorStatus } from './types';
 import { EventBuffer } from '../storage/EventBuffer';
 import { VERBOSE } from '../config';
-import { getValidEventTypes } from '../shared/types';
+import { getValidEventTypes } from '@playhtml/extension-types';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
 

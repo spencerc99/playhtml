@@ -13,7 +13,7 @@ import type {
   CollectionEvent as SharedCollectionEvent,
   CollectionEventType as SharedCollectionEventType,
   EventMeta as SharedEventMeta,
-} from '../shared/types';
+} from '@playhtml/extension-types';
 
 // Re-export shared types for backward compatibility
 export type CollectionEventType = SharedCollectionEventType;
