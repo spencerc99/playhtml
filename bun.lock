@@ -127,6 +127,15 @@
         "vite-plugin-dts": "^3.0.3",
       },
     },
+    "packages/extension-types": {
+      "name": "@playhtml/extension-types",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^5.0.2",
+        "vite": "^7.1.2",
+        "vite-plugin-dts": "^3.0.3",
+      },
+    },
     "packages/playhtml": {
       "name": "playhtml",
       "version": "2.9.0",
@@ -602,6 +611,8 @@
     "@playhtml/docs-site": ["@playhtml/docs-site@workspace:apps/docs"],
 
     "@playhtml/extension": ["@playhtml/extension@workspace:extension"],
+
+    "@playhtml/extension-types": ["@playhtml/extension-types@workspace:packages/extension-types"],
 
     "@playhtml/react": ["@playhtml/react@workspace:packages/react"],
 
