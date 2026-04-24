@@ -10,6 +10,7 @@
     "apps/docs",
     "extension",
     "extension/website",
+    "extension/worker",
     "smoke-tests"
   ],
   "scripts": {

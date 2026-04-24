@@ -4,7 +4,7 @@
 // ABOUTME: this handler re-joins them by page_ref before returning.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
-import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
+import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 import { canonicalizeUrl, buildPageRef } from '../../../src/utils/pageMetadata';
 
 /**
