@@ -9,6 +9,7 @@
   "updateInternalDependencies": "patch",
   "ignore": ["@playhtml/extension", "wewere-online", "@playhtml/docs-site"],
   "snapshot": {
+    "useCalculatedVersion": true,
     "prereleaseTemplate": "{tag}-{commit}"
   }
 }
