@@ -26,12 +26,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Install Dependencies
         run: bun install
@@ -39,11 +43,11 @@ jobs:
       - name: Build Packages
         run: bun run build-packages
 
-      - name: Snapshot Release
-        uses: changesets/action@v1
-        with:
-          version: bunx changeset version --snapshot ${{ inputs.tag }}
-          publish: bunx changeset publish --tag ${{ inputs.tag }} --no-git-tag
+      - name: Version Snapshot
+        run: bunx changeset version --snapshot ${{ inputs.tag }}
+
+      - name: Publish Snapshot
+        run: bunx changeset publish --tag ${{ inputs.tag }} --no-git-tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
