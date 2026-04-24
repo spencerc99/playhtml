@@ -25,6 +25,7 @@ import { useViewportScroll } from "../hooks/useViewportScroll";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { extractDomain } from "../utils/eventUtils";
+import { parseSettingsFromUrl } from "../config";
 import type { DayCounts } from "../types";
 
 const SETTINGS_STORAGE_KEY = "internet-movement-settings";
@@ -100,6 +101,8 @@ const loadSettings = () => {
     soundCrossingDissonance: false,
   };
 
+  const urlOverrides = parseSettingsFromUrl();
+
   try {
     const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (stored) {
@@ -107,6 +110,7 @@ const loadSettings = () => {
       return {
         ...defaults,
         ...parsed,
+        ...urlOverrides,
         eventFilter: { ...defaults.eventFilter, ...(parsed.eventFilter || {}) },
         viewportEventFilter: {
           ...defaults.viewportEventFilter,
@@ -118,7 +122,7 @@ const loadSettings = () => {
     console.error("Failed to load settings from localStorage:", err);
   }
 
-  return defaults;
+  return { ...defaults, ...urlOverrides };
 };
 
 interface MovementCanvasProps {
