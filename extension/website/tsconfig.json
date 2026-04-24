@@ -22,7 +22,8 @@
 
     "baseUrl": ".",
     "paths": {
-      "@movement/*": ["../../website/internet-series/movement/*"]
+      "@movement/*": ["./shared/*"],
+      "@extension/*": ["../src/*"]
     }
   },
   "include": ["src"],

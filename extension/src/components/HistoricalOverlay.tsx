@@ -1,12 +1,12 @@
 // ABOUTME: Main overlay component that renders historical browsing data on pages
-// ABOUTME: Reuses visualization components from website/internet-series/movement/
+// ABOUTME: Reuses visualization components from extension/website/shared/
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import browser from "webextension-polyfill";
 import { loadHistoricalData, type FilterMode } from "../storage/historyLoader";
 import { VERBOSE } from "../config";
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
-import type { CollectionEvent as MovementCollectionEvent } from "../../../website/internet-series/movement/types";
+import type { CollectionEvent as MovementCollectionEvent } from "@movement/types";
 import { determineFilterScope, extractDomain } from "../utils/urlNormalization";
 import {
   compositePagePortrait,
@@ -15,19 +15,19 @@ import {
 import { PortraitCard, type PortraitCardProps } from "./PortraitCard";
 
 // Import visualization components from movement
-import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
+import { AnimatedTrails } from "@movement/components/AnimatedTrails";
 import {
   AnimatedClicks,
   type ScheduledClick,
-} from "../../../website/internet-series/movement/components/AnimatedClicks";
-import { AnimatedTyping } from "../../../website/internet-series/movement/components/AnimatedTyping";
-import { AnimatedScrollViewports } from "../../../website/internet-series/movement/AnimatedScrollViewports";
+} from "@movement/components/AnimatedClicks";
+import { AnimatedTyping } from "@movement/components/AnimatedTyping";
+import { AnimatedScrollViewports } from "@movement/AnimatedScrollViewports";
 
 // Import hooks
-import { useCursorTrails } from "../../../website/internet-series/movement/hooks/useCursorTrails";
-import { useKeyboardTyping } from "../../../website/internet-series/movement/hooks/useKeyboardTyping";
-import { useViewportScroll } from "../../../website/internet-series/movement/hooks/useViewportScroll";
-import { SoundEngine } from "../../../website/internet-series/movement/sound/SoundEngine";
+import { useCursorTrails } from "@movement/hooks/useCursorTrails";
+import { useKeyboardTyping } from "@movement/hooks/useKeyboardTyping";
+import { useViewportScroll } from "@movement/hooks/useViewportScroll";
+import { SoundEngine } from "@movement/sound/SoundEngine";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections

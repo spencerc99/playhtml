@@ -10,10 +10,10 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - **packages/react**: React wrapper components for playhtml functionality
 - **packages/common**: Shared TypeScript types and interfaces
 - **extension/**: Browser extension ("we were online") for collecting and visualizing browsing traces. See `extension/CLAUDE.md` for detailed architecture.
-- **extension/website/**: Marketing/landing site for the extension (separate Vite + React app)
+- **extension/website/**: `wewere.online` site — marketing pages (home, privacy) plus visualization experiments (`portrait/`, `rabbithole/`, `conversations/`, `keypresses/`, `sounds/`, `components-preview/`). Shared visualization code lives in `extension/website/shared/` and is reached via the `@movement` path alias.
 - **extension/worker/**: Cloudflare Worker backend for event ingestion (Supabase persistence)
 - **partykit/**: Real-time sync server using PartyKit and Yjs for collaborative state
-- **website/**: Demo site showcasing playhtml capabilities and the home page for the library. Test pages go here.
+- **website/**: Demo site for playhtml capabilities and the library's home page (`playhtml.fun`). Test pages go here.
 - **apps/docs/**: Astro + Starlight documentation site (served under `/docs/` in the combined production build).
 
 ## Development Commands

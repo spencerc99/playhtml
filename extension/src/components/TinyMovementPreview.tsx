@@ -4,10 +4,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import type { CollectionEvent } from "../collectors/types";
-import type { CollectionEvent as MovementCollectionEvent } from "../../../website/internet-series/movement/types";
+import type { CollectionEvent as MovementCollectionEvent } from "@movement/types";
 // Reuse movement visualization components
-import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
-import { useCursorTrails } from "../../../website/internet-series/movement/hooks/useCursorTrails";
+import { AnimatedTrails } from "@movement/components/AnimatedTrails";
+import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 
 export function TinyMovementPreview() {
   const [events, setEvents] = useState<CollectionEvent[]>([]);

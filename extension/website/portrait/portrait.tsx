@@ -1,19 +1,17 @@
 // ABOUTME: Entry point for the Internet Movement visualization page
 // ABOUTME: Fetches events from the server API and passes them to MovementCanvas for rendering
-import "./movement.scss";
+import "../shared/portrait-styles.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent, DayCounts } from "./types";
-import { MovementCanvas } from "./components/MovementCanvas";
+import { CollectionEvent, DayCounts } from "../shared/types";
+import { MovementCanvas } from "../shared/components/MovementCanvas";
 import {
   deriveRequiredEventTypes,
   DEFAULT_ACTIVE_VISUALIZATIONS,
-} from "./components/registry";
+} from "../shared/components/registry";
+import { RECENT_EVENTS_URL, DAILY_COUNTS_URL } from "../shared/config";
 
-const API_BASE =
-  "https://playhtml-game-api.spencerc99.workers.dev";
-const EVENTS_URL = `${API_BASE}/events/recent`;
-const DAILY_COUNTS_URL = `${API_BASE}/events/daily-counts`;
+const EVENTS_URL = RECENT_EVENTS_URL;
 
 const InternetMovement = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);

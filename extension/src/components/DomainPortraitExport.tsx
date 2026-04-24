@@ -2,8 +2,8 @@
 // ABOUTME: Renders paper texture + frozen trails + PortraitCard for snapshot export
 
 import React from "react";
-import type { TrailState } from "../../../website/internet-series/movement/types";
-import { AnimatedTrails } from "../../../website/internet-series/movement/components/AnimatedTrails";
+import type { TrailState } from "@movement/types";
+import { AnimatedTrails } from "@movement/components/AnimatedTrails";
 import { PortraitCard, type PortraitCardProps } from "./PortraitCard";
 
 interface DomainPortraitExportProps {

@@ -12,7 +12,7 @@
       "@@/*": ["./*"],
       "~~": ["."],
       "~~/*": ["./*"],
-      "@movement/*": ["../website/internet-series/movement/*"]
+      "@movement/*": ["./website/shared/*"]
     }
   },
   "exclude": ["dist", "website"]

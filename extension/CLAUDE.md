@@ -15,6 +15,24 @@ Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)
 - `cd worker && wrangler deploy`: Deploy to Cloudflare
 
+## Website & experiments (`extension/website/`)
+
+The `extension/website/` Vite app serves both the marketing/landing pages
+(`index.html`, `privacy.html`) and the visualization experiments:
+
+- `extension/website/portrait/` — main cursor-trail portrait (was `movement`)
+- `extension/website/rabbithole/`, `conversations/`, `keypresses/`,
+  `sounds/`, `components-preview/` — individual experiments
+
+Shared visualization code lives at `extension/website/shared/` and is reached
+via the `@movement` path alias from both `extension/website/src/**` and
+`extension/src/**`. The worker base URL is configured through
+`VITE_WORKER_URL` (see `extension/website/.env.example`); code reads it via
+`extension/website/shared/config.ts`.
+
+Deployed as the Cloudflare Pages project for `wewere.online`. Each experiment
+serves at its top-level path, e.g. `wewere.online/portrait`.
+
 ## Architecture
 
 ### Entrypoints (`src/entrypoints/`)

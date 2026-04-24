@@ -1,27 +1,32 @@
-// ABOUTME: Entry point for the Internet Keypresses visualization
-// ABOUTME: Fetches keyboard events with pagination and domain filtering, passes them to KeypressesGrid
-import "./keypresses.scss";
+// ABOUTME: Entry point for the Internet Conversations visualization
+// ABOUTME: Fetches keyboard events with pagination and renders them as a chat conversation between websites
+import "./conversations.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent } from "./types";
-import { KeypressesGrid } from "./components/KeypressesGrid";
+import { CollectionEvent } from "../shared/types";
+import { ConversationView } from "../shared/components/ConversationView";
+import { RECENT_EVENTS_URL } from "../shared/config";
 
-const API_URL =
-  "https://playhtml-game-api.spencerc99.workers.dev/events/recent";
+const API_URL = RECENT_EVENTS_URL;
 const PAGE_SIZE = 5000;
-const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
 
-const InternetKeypresses = () => {
+function parseStartTime(): Date | null {
+  const params = new URLSearchParams(window.location.search);
+  const start = params.get("start");
+  if (!start) return null;
+  const date = new Date(start);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+const InternetConversations = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [domainFilter, setDomainFilter] = useState<string>(
-    () => localStorage.getItem(DOMAIN_FILTER_KEY) ?? "",
-  );
   const fetchingRef = useRef(false);
+  const startTime = parseStartTime();
 
-  const fetchPage = useCallback(async (domain: string, beforeTs?: number) => {
+  const fetchPage = useCallback(async (beforeTs?: number) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
 
@@ -33,9 +38,7 @@ const InternetKeypresses = () => {
         limit: String(PAGE_SIZE),
         type: "keyboard",
       });
-      if (domain) {
-        params.set("domain", domain);
-      }
+      // Use 'to' param to fetch events older than the last batch
       if (beforeTs) {
         params.set("to", new Date(beforeTs - 1).toISOString());
       }
@@ -47,7 +50,7 @@ const InternetKeypresses = () => {
       if (data.length === 0) {
         setHasMore(false);
       } else {
-        setEvents((prev) => beforeTs ? [...prev, ...data] : data);
+        setEvents((prev) => [...prev, ...data]);
         if (data.length < PAGE_SIZE) {
           setHasMore(false);
         }
@@ -61,42 +64,31 @@ const InternetKeypresses = () => {
     }
   }, []);
 
-  // Fetch on mount and when domain filter changes
+  // Fetch first page on mount
   useEffect(() => {
-    setHasMore(true);
-    setEvents([]);
-    fetchPage(domainFilter);
-  }, [domainFilter, fetchPage]);
+    fetchPage();
+  }, [fetchPage]);
 
-  const handleRefresh = useCallback(() => {
-    setHasMore(true);
-    setEvents([]);
-    fetchPage(domainFilter);
-  }, [domainFilter, fetchPage]);
-
-  const handleFetchOlder = useCallback(() => {
-    if (!hasMore || fetchingRef.current || events.length === 0) return;
+  const handleNeedMore = useCallback(() => {
+    if (!hasMore || fetchingRef.current) return;
+    // Find the oldest timestamp in current events to paginate from
+    if (events.length === 0) return;
     const oldestTs = Math.min(...events.map((e) => e.ts));
-    fetchPage(domainFilter, oldestTs);
-  }, [events, hasMore, domainFilter, fetchPage]);
-
-  const handleDomainFilterChange = useCallback((domain: string) => {
-    setDomainFilter(domain);
-  }, []);
+    fetchPage(oldestTs);
+  }, [events, hasMore, fetchPage]);
 
   return (
-    <KeypressesGrid
+    <ConversationView
       events={events}
       loading={loading}
       error={error}
-      onRefresh={handleRefresh}
-      onFetchOlder={handleFetchOlder}
+      startTime={startTime}
       hasMore={hasMore}
-      onDomainFilterChange={handleDomainFilterChange}
+      onNeedMore={handleNeedMore}
     />
   );
 };
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
-).render(<InternetKeypresses />);
+).render(<InternetConversations />);
