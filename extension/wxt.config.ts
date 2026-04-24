@@ -1,4 +1,5 @@
 import { defineConfig } from "wxt";
+import path from "path";
 
 export default defineConfig({
   srcDir: "src",
@@ -40,6 +41,11 @@ export default defineConfig({
   vite: () => ({
     esbuild: {
       charset: "ascii",
+    },
+    resolve: {
+      alias: {
+        "@movement": path.resolve(__dirname, "website/shared"),
+      },
     },
   }),
 });
