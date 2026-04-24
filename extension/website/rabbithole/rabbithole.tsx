@@ -4,7 +4,7 @@
 import "./rabbithole.scss";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom/client";
-import { RabbitHoleVisualization, WikiTitle } from "./components/RabbitHoleVisualization";
+import { RabbitHoleVisualization, WikiTitle } from "../shared/components/RabbitHoleVisualization";
 
 const API_URL =
   "https://playhtml-game-api.spencerc99.workers.dev/events/recent";

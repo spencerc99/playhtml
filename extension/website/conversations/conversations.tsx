@@ -3,8 +3,8 @@
 import "./conversations.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent } from "./types";
-import { ConversationView } from "./components/ConversationView";
+import { CollectionEvent } from "../shared/types";
+import { ConversationView } from "../shared/components/ConversationView";
 
 const API_URL =
   "https://playhtml-game-api.spencerc99.workers.dev/events/recent";

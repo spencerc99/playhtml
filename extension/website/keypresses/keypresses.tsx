@@ -3,8 +3,8 @@
 import "./keypresses.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent } from "./types";
-import { KeypressesGrid } from "./components/KeypressesGrid";
+import { CollectionEvent } from "../shared/types";
+import { KeypressesGrid } from "../shared/components/KeypressesGrid";
 
 const API_URL =
   "https://playhtml-game-api.spencerc99.workers.dev/events/recent";

@@ -3,12 +3,12 @@
 import "./portrait.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent, DayCounts } from "./types";
-import { MovementCanvas } from "./components/MovementCanvas";
+import { CollectionEvent, DayCounts } from "../shared/types";
+import { MovementCanvas } from "../shared/components/MovementCanvas";
 import {
   deriveRequiredEventTypes,
   DEFAULT_ACTIVE_VISUALIZATIONS,
-} from "./components/registry";
+} from "../shared/components/registry";
 
 const API_BASE =
   "https://playhtml-game-api.spencerc99.workers.dev";

@@ -2,8 +2,8 @@
 // ABOUTME: Interactive page to audition each cursor type, chord voicing, and trail crossing dissonance
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { InstrumentConfig } from "./sound/types";
-import { CURSOR_INSTRUMENTS, CLICK_BELL, getInstrument } from "./sound/instruments";
+import { InstrumentConfig } from "../shared/sound/types";
+import { CURSOR_INSTRUMENTS, CLICK_BELL, getInstrument } from "../shared/sound/instruments";
 
 const D_MINOR_PENTATONIC = [
   { note: "D3", freq: 146.83 },
