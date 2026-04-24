@@ -25,6 +25,13 @@ const CROSSING_DISTANCE_THRESHOLD = 15;
 
 /** Minimum time between crossing triggers for the same pair (ms) */
 const CROSSING_COOLDOWN_MS = 500;
+/** Default user-facing volume when sound is enabled. */
+const DEFAULT_MASTER_VOLUME = 0.5;
+/**
+ * Lower bound for overlap normalization so dense scenes stay audible while
+ * preventing clipping/crackle when many trails stack at once.
+ */
+const MIN_POLYPHONY_GAIN_SCALE = 0.35;
 
 /** Configurable sound modes */
 export interface SoundConfig {
@@ -65,9 +72,12 @@ export class SoundEngine {
   private masterGain: GainNode | null = null;
   private reverbGain: GainNode | null = null;
   private convolver: ConvolverNode | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
   private voices: Map<number, Voice> = new Map();
   private canvasWidth: number = 0;
   private enabled: boolean = false;
+  private baseVolume: number = DEFAULT_MASTER_VOLUME;
+  private lastActiveTrailCount: number = 0;
   private prevPositions: Map<number, { x: number; y: number }> = new Map();
   /** Accumulated path history per trail for crossing detection */
   private trailPaths: Map<number, Array<{ x: number; y: number }>> = new Map();
@@ -81,7 +91,7 @@ export class SoundEngine {
     this.ctx = new AudioContext();
 
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 0.5;
+    this.masterGain.gain.value = this.baseVolume;
 
     this.convolver = this.ctx.createConvolver();
     this.convolver.buffer = this.createReverbImpulse(this.ctx, 3.0, 2.0);
@@ -89,10 +99,18 @@ export class SoundEngine {
     this.reverbGain = this.ctx.createGain();
     this.reverbGain.gain.value = 0.3;
 
-    this.masterGain.connect(this.ctx.destination);
+    this.compressor = this.ctx.createDynamicsCompressor();
+    this.compressor.threshold.value = -24;
+    this.compressor.knee.value = 24;
+    this.compressor.ratio.value = 12;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.2;
+
+    this.masterGain.connect(this.compressor);
     this.masterGain.connect(this.reverbGain);
     this.reverbGain.connect(this.convolver);
-    this.convolver.connect(this.ctx.destination);
+    this.convolver.connect(this.compressor);
+    this.compressor.connect(this.ctx.destination);
 
     this.enabled = true;
 
@@ -160,6 +178,8 @@ export class SoundEngine {
     }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
+    this.lastActiveTrailCount = activeTrails.length;
+    this.updateMasterGainForPolyphony(activeTrails.length);
 
     for (const [idx, voice] of this.voices) {
       if (!activeIndices.has(idx) && voice.active) {
@@ -244,24 +264,19 @@ export class SoundEngine {
           const now = this.ctx.currentTime;
           const pluckGain = gain * instrument.gain;
           // Sharp attack, quick decay — percussive envelope
-          voice.gainNode.gain.cancelScheduledValues(now);
-          voice.gainNode.gain.setValueAtTime(pluckGain, now);
+          this.holdParam(voice.gainNode.gain, now);
+          // Hold the current automation value, then ramp up quickly.
+          voice.gainNode.gain.linearRampToValueAtTime(pluckGain, now + 0.005);
           voice.gainNode.gain.exponentialRampToValueAtTime(
             0.001,
-            now + instrument.attack + instrument.decay + instrument.release,
+            now + 0.005 + instrument.attack + instrument.decay + instrument.release,
           );
         }
       } else {
-        voice.gainNode.gain.linearRampToValueAtTime(
-          gain * instrument.gain,
-          this.ctx.currentTime + 0.05,
-        );
+        this.rampParam(voice.gainNode.gain, gain * instrument.gain, 0.05);
       }
 
-      voice.panNode.pan.linearRampToValueAtTime(
-        pan,
-        this.ctx.currentTime + 0.05,
-      );
+      this.rampParam(voice.panNode.pan, pan, 0.05);
 
       voice.active = true;
     }
@@ -591,11 +606,49 @@ export class SoundEngine {
   }
 
   setVolume(volume: number): void {
+    this.baseVolume = Math.max(0, Math.min(1, volume));
+    this.updateMasterGainForPolyphony(this.lastActiveTrailCount);
+  }
+
+  private updateMasterGainForPolyphony(activeTrailCount: number): void {
     if (!this.masterGain || !this.ctx) return;
-    this.masterGain.gain.linearRampToValueAtTime(
-      volume,
-      this.ctx.currentTime + 0.05,
+    // When many trails overlap, reduce total output energy to avoid clipping artifacts.
+    const polyphonyScale = Math.max(
+      MIN_POLYPHONY_GAIN_SCALE,
+      1 / Math.sqrt(Math.max(1, activeTrailCount / 3)),
     );
+    this.rampParam(
+      this.masterGain.gain,
+      this.baseVolume * polyphonyScale,
+      0.08,
+    );
+  }
+
+  private rampParam(
+    param: AudioParam,
+    targetValue: number,
+    durationSeconds: number,
+  ): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.holdParam(param, now);
+    param.linearRampToValueAtTime(targetValue, now + durationSeconds);
+  }
+
+  private holdParam(param: AudioParam, time: number): void {
+    // cancelAndHoldAtTime preserves the instantaneous computed value and avoids
+    // discontinuities ("pops") from jumping to AudioParam.value mid-envelope.
+    const hold = (param as AudioParam & {
+      cancelAndHoldAtTime?: (time: number) => void;
+    }).cancelAndHoldAtTime;
+    if (hold) {
+      hold.call(param, time);
+      return;
+    }
+    // Fallback for older browsers lacking cancelAndHoldAtTime.
+    // We intentionally avoid noisy compatibility logs in the audio hot path;
+    // this degrades safely by cancelling future automation only.
+    param.cancelScheduledValues(time);
   }
 
   dispose(): void {

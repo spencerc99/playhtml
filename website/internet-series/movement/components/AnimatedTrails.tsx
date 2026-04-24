@@ -21,6 +21,9 @@ const EVICTION_FADE_MS = 3000;
 // Finished trails dim to this opacity over COMPLETION_FADE_MS
 const COMPLETED_OPACITY = 0.5;
 const COMPLETION_FADE_MS = 3000;
+// Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
+// alive without spending too much background CPU.
+const HIDDEN_TAB_TICK_MS = 100;
 
 // How many points to show behind the cursor while drawing
 const TAIL_LENGTH = 1000;
@@ -405,6 +408,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     );
 
     const animationRef = useRef<number>();
+    const timeoutRef = useRef<number>();
     const spawnedClicksRef = useRef<Map<string, Set<number>>>(new Map());
     const svgRef = useRef<SVGSVGElement>(null);
 
@@ -543,6 +547,29 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
+
+      const clearScheduledFrame = () => {
+        if (animationRef.current !== undefined) {
+          cancelAnimationFrame(animationRef.current);
+          animationRef.current = undefined;
+        }
+        if (timeoutRef.current !== undefined) {
+          window.clearTimeout(timeoutRef.current);
+          timeoutRef.current = undefined;
+        }
+      };
+
+      const scheduleNextFrame = () => {
+        clearScheduledFrame();
+        if (document.visibilityState === "hidden") {
+          timeoutRef.current = window.setTimeout(
+            () => animate(performance.now()),
+            HIDDEN_TAB_TICK_MS,
+          );
+          return;
+        }
+        animationRef.current = requestAnimationFrame(animate);
+      };
 
       const animate = (timestamp: number) => {
         if (startTime === null) startTime = timestamp;
@@ -704,15 +731,23 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Prune ripples for trails that became invisible
         scheduleRipplePrune();
 
-        animationRef.current = requestAnimationFrame(animate);
+        scheduleNextFrame();
       };
 
-      animationRef.current = requestAnimationFrame(animate);
+      // Hidden tabs throttle rAF heavily; switch scheduler mode immediately
+      // when visibility changes so audio progression does not get stuck.
+      const handleVisibilityChange = () => {
+        if (startTime !== null) {
+          scheduleNextFrame();
+        }
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      scheduleNextFrame();
 
       return () => {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        clearScheduledFrame();
       };
     }, [trailStates, timeRange.duration, frozen]);
 
