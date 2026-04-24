@@ -109,3 +109,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions for new built-in capabilit
 ## Support & Maintenance
 
 If you enjoy using this, please consider [sponsoring the project](https://github.com/sponsors/spencerc99). This helps fund the hosting costs for the syncing and persistence services and keeps the library maintained over time.
+
+## Licensing
+
+This repository uses two licenses:
+
+- **MIT** — applies to `packages/` (the playhtml library, React bindings, shared types, extension-types package). See [`LICENSE`](LICENSE).
+- **CC BY-NC-ND 4.0** — applies to everything else (`website/`, `extension/`, `tools/`, `apps/docs/`), which contain Spencer's personal art, product copy, visualizations, and exhibition work. See [`LICENSE-ART`](LICENSE-ART).
+
+The library is free to use, modify, and embed commercially. The art, experiments, and extension UI are visible as receipts of authorship but may not be copied commercially or redistributed as derivatives.
