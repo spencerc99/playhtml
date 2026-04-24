@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@playhtml/common": "workspace:*",
+    "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",
     "html2canvas": "^1.4.1",
     "playhtml": "workspace:*",
