@@ -1,5 +1,5 @@
-// ABOUTME: Vite configuration for the wewere.online homepage.
-// ABOUTME: Sets up React plugin, path aliases, and multi-page build with glob-based HTML discovery.
+// ABOUTME: Vite configuration for the wewere.online site (marketing pages + experiments).
+// ABOUTME: Multi-page glob discovery, @movement alias to ./shared, @extension alias for preview pages.
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -11,15 +11,18 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@movement": path.resolve(__dirname, "../../website/internet-series/movement"),
-      "playhtml": path.resolve(__dirname, "../../packages/playhtml/src/index.ts"),
+      "@movement": path.resolve(__dirname, "./shared"),
+      "@extension": path.resolve(__dirname, "../src"),
+      playhtml: path.resolve(__dirname, "../../packages/playhtml/src/index.ts"),
       "@playhtml/react": path.resolve(__dirname, "../../packages/react/src"),
       "@playhtml/common": path.resolve(__dirname, "../../packages/common/src"),
     },
   },
   build: {
     rollupOptions: {
-      input: glob.sync(path.resolve(__dirname, "*.html")),
+      input: glob.sync(path.resolve(__dirname, "**/*.html"), {
+        ignore: ["**/node_modules/**", "**/dist/**"],
+      }),
     },
     emptyOutDir: true,
   },
