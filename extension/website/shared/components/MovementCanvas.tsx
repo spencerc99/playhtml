@@ -25,10 +25,29 @@ import { useViewportScroll } from "../hooks/useViewportScroll";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { extractDomain } from "../utils/eventUtils";
+import { getTrailRenderer } from "../styles/trailRenderers";
 import { parseSettingsFromUrl } from "../config";
 import type { DayCounts } from "../types";
 
-const SETTINGS_STORAGE_KEY = "internet-movement-settings";
+// Bumped from "internet-movement-settings" so existing stale auto-saved
+// defaults stop overriding the new defaults. After this version, settings
+// only persist when the user explicitly modifies a control.
+const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
+
+/** Click-ripple defaults. Exported so the Controls panel can offer a per-section reset. */
+export const CLICK_DEFAULTS = {
+  clickMinRadius: 12,
+  clickMaxRadius: 80,
+  clickCoreRadius: 3,
+  clickMinDuration: 500,
+  clickMaxDuration: 2500,
+  clickStrokeWidth: 4,
+  clickOpacity: 0.3,
+  clickNumRings: 3,
+  clickRingDelayMs: 160,
+  clickExpansionDuration: 2400,
+  clickAnimationStopPoint: 0.45,
+};
 
 const loadSettings = () => {
   const defaults = {
@@ -42,16 +61,7 @@ const loadSettings = () => {
     randomizeColors: false,
     minGapBetweenTrails: 0.3,
     chaosIntensity: 1.0,
-    clickMinRadius: 10,
-    clickMaxRadius: 80,
-    clickMinDuration: 500,
-    clickMaxDuration: 2500,
-    clickStrokeWidth: 4,
-    clickOpacity: 0.3,
-    clickNumRings: 2,
-    clickRingDelayMs: 120,
-    clickExpansionDuration: 12300,
-    clickAnimationStopPoint: 0.45,
+    ...CLICK_DEFAULTS,
     eventFilter: {
       move: true,
       click: true,
@@ -166,6 +176,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
   const [soundEnabled, setSoundEnabled] = useState(defaultSoundEnabled);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  // The engine is created inside an async init().then(), so we mirror it into
+  // state once ready — refs alone don't trigger re-renders, which means
+  // children would never receive the engine as a prop.
+  const [soundEngineReady, setSoundEngineReady] = useState<SoundEngine | null>(
+    null,
+  );
 
   // Sync domain filter from prop (parent controls refetching)
   useEffect(() => {
@@ -195,17 +211,20 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             crossingDissonance: settings.soundCrossingDissonance,
           });
           soundEngineRef.current = engine;
+          setSoundEngineReady(engine);
         });
       }
     } else {
       if (soundEngineRef.current) {
         soundEngineRef.current.dispose();
         soundEngineRef.current = null;
+        setSoundEngineReady(null);
       }
     }
     return () => {
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
+      setSoundEngineReady(null);
     };
   }, [soundEnabled]);
 
@@ -268,8 +287,21 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     link.click();
   }, [selectedDay]);
 
-  // Persist settings to localStorage
+  // Only persist settings to localStorage AFTER the user has deliberately
+  // modified them via the Controls panel. We don't want first-load defaults
+  // (or auto-applied changes like domain filter sync) to bake in stale
+  // values that override future default tweaks.
+  const userTouchedSettingsRef = useRef(false);
+  const setSettingsFromControls = useCallback<typeof setSettings>(
+    (update) => {
+      userTouchedSettingsRef.current = true;
+      setSettings(update);
+    },
+    [setSettings],
+  );
+
   useEffect(() => {
+    if (!userTouchedSettingsRef.current) return;
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
     } catch (err) {
@@ -420,6 +452,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   }, [cursorTimeBounds, cursorCycleDuration]);
 
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
+    const clickColorRenderer = getTrailRenderer(
+      settings.trailVisualStyle ?? "color",
+    );
     const flat: ScheduledClick[] = [];
     trailStates.forEach((state, trailIndex) => {
       const { startOffsetMs, durationMs, trail, clicksWithProgress } = state;
@@ -429,7 +464,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           id: `trail-${trailIndex}-click-${clickIdx}`,
           x: click.x,
           y: click.y,
-          color: trail.color,
+          color: clickColorRenderer.getClickColor(trail.color),
           spawnAtMs,
           holdDuration: click.duration,
         });
@@ -440,28 +475,26 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
     flat.sort((a, b) => a.spawnAtMs - b.spawnAtMs);
 
+    // Preserve the natural rhythm of the original click events. Normalize so
+    // the first click fires at t=0; animationSpeed in AnimatedClicks is what
+    // compresses or stretches this whole timeline.
+    const firstSpawnAtMs = flat[0].spawnAtMs;
+    const normalized: ScheduledClick[] = flat.map((c) => ({
+      ...c,
+      spawnAtMs: c.spawnAtMs - firstSpawnAtMs,
+    }));
+
+    const lastSpawnAtMs = normalized[normalized.length - 1].spawnAtMs;
     const avgRippleDurationMs =
       (settings.clickMinDuration + settings.clickMaxDuration) / 2;
-    const overlapMultiplier = 1 - settings.overlapFactor * 0.8;
-    const baseInterval =
-      (avgRippleDurationMs / settings.maxConcurrentTrails) * overlapMultiplier;
-    const minGapMs = settings.minGapBetweenTrails * 1000;
-    const actualSpawnIntervalMs = Math.max(minGapMs, baseInterval);
+    const clickCycleDuration = lastSpawnAtMs + avgRippleDurationMs;
 
-    const scheduledClicks: ScheduledClick[] = flat.map((c, i) => ({
-      ...c,
-      spawnAtMs: i * actualSpawnIntervalMs,
-    }));
-    const clickCycleDuration = flat.length * actualSpawnIntervalMs;
-
-    return { scheduledClicks, clickCycleDuration };
+    return { scheduledClicks: normalized, clickCycleDuration };
   }, [
     trailStates,
-    settings.maxConcurrentTrails,
-    settings.overlapFactor,
-    settings.minGapBetweenTrails,
     settings.clickMinDuration,
     settings.clickMaxDuration,
+    settings.trailVisualStyle,
   ]);
 
   const keyboardSettings = useMemo(
@@ -614,7 +647,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       <Controls
         visible={controlsVisible}
         settings={settings}
-        setSettings={setSettings}
+        setSettings={setSettingsFromControls}
         loading={loading}
         error={error}
         events={events}
@@ -782,13 +815,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             timeRange={timeRange}
             showClickRipples={!showClicks}
             windowSize={settings.maxConcurrentTrails * 2}
-            soundEngine={soundEnabled ? soundEngineRef.current : null}
+            soundEngine={soundEnabled ? soundEngineReady : null}
             settings={{
               strokeWidth: settings.strokeWidth,
               trailOpacity: settings.trailOpacity,
               animationSpeed: settings.animationSpeed,
               clickMinRadius: settings.clickMinRadius,
               clickMaxRadius: settings.clickMaxRadius,
+              clickCoreRadius: settings.clickCoreRadius,
               clickMinDuration: settings.clickMinDuration,
               clickMaxDuration: settings.clickMaxDuration,
               clickExpansionDuration: settings.clickExpansionDuration,
@@ -807,10 +841,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             key={`clicks-${settings.domainFilter}`}
             scheduledClicks={scheduledClicks}
             timeRange={{ duration: clickCycleDuration }}
+            soundEngine={soundEnabled ? soundEngineReady : null}
             settings={{
               animationSpeed: settings.animationSpeed,
               clickMinRadius: settings.clickMinRadius,
               clickMaxRadius: settings.clickMaxRadius,
+              clickCoreRadius: settings.clickCoreRadius,
               clickMinDuration: settings.clickMinDuration,
               clickMaxDuration: settings.clickMaxDuration,
               clickExpansionDuration: settings.clickExpansionDuration,

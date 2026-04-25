@@ -381,7 +381,11 @@ export class SoundEngine {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
 
     const instrument = CLICK_BELL;
-    const now = this.ctx.currentTime;
+    // Delay the bell ~one frame so it lines up with the React paint that
+    // renders the matching ripple. Without this, audio (sample-accurate)
+    // arrives ~16ms before the SVG circle appears on screen.
+    const VISUAL_SYNC_DELAY = 0.016;
+    const now = this.ctx.currentTime + VISUAL_SYNC_DELAY;
 
     const osc = this.ctx.createOscillator();
     osc.type = instrument.oscillatorType;

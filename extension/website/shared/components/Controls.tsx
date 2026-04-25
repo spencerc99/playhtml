@@ -4,6 +4,7 @@ import React, { useState, memo } from "react";
 import { CollectionEvent, Trail } from "../types";
 import { VISUALIZATIONS } from "./registry";
 import { TRAIL_RENDERERS } from "../styles";
+import { CLICK_DEFAULTS } from "./MovementCanvas";
 
 interface ControlsProps {
   visible: boolean;
@@ -42,6 +43,7 @@ export const Controls: React.FC<ControlsProps> = memo(
       filters: true,
       cursorVisualizers: true,
       cursorSettings: true,
+      clickSettings: true,
       keyboard: true,
       scroll: true,
       navigation: true,
@@ -518,6 +520,234 @@ export const Controls: React.FC<ControlsProps> = memo(
               </div>
             </>
           )}
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Click Settings" sectionKey="clickSettings">
+          <div className="control-group">
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((s: any) => ({ ...s, ...CLICK_DEFAULTS }))
+              }
+              style={{
+                fontSize: "11px",
+                padding: "4px 8px",
+                marginBottom: "8px",
+                cursor: "pointer",
+              }}
+            >
+              Reset to defaults
+            </button>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-num-rings">Concentric Rings</label>
+            <input
+              id="click-num-rings"
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              value={settings.clickNumRings}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickNumRings: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickNumRings}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-ring-delay">Ring Delay (ms)</label>
+            <input
+              id="click-ring-delay"
+              type="range"
+              min="10"
+              max="1000"
+              step="10"
+              value={settings.clickRingDelayMs}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickRingDelayMs: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickRingDelayMs}ms</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-expansion-duration">Expansion Duration (ms)</label>
+            <input
+              id="click-expansion-duration"
+              type="range"
+              min="200"
+              max="6000"
+              step="100"
+              value={settings.clickExpansionDuration}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickExpansionDuration: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickExpansionDuration}ms</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-stop-point">Animation Stop Point</label>
+            <input
+              id="click-stop-point"
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.05"
+              value={settings.clickAnimationStopPoint}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickAnimationStopPoint: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.clickAnimationStopPoint.toFixed(2)}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-core-radius">Core Radius (px)</label>
+            <input
+              id="click-core-radius"
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              value={settings.clickCoreRadius}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickCoreRadius: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickCoreRadius}px</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-min-radius">Min Radius (px)</label>
+            <input
+              id="click-min-radius"
+              type="range"
+              min="2"
+              max="100"
+              step="1"
+              value={settings.clickMinRadius}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickMinRadius: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickMinRadius}px</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-max-radius">Max Radius (px)</label>
+            <input
+              id="click-max-radius"
+              type="range"
+              min="20"
+              max="400"
+              step="5"
+              value={settings.clickMaxRadius}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickMaxRadius: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickMaxRadius}px</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-min-duration">Min Duration (ms)</label>
+            <input
+              id="click-min-duration"
+              type="range"
+              min="100"
+              max="3000"
+              step="50"
+              value={settings.clickMinDuration}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickMinDuration: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickMinDuration}ms</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-max-duration">Max Duration (ms)</label>
+            <input
+              id="click-max-duration"
+              type="range"
+              min="500"
+              max="6000"
+              step="100"
+              value={settings.clickMaxDuration}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickMaxDuration: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.clickMaxDuration}ms</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-stroke-width">Stroke Width (px)</label>
+            <input
+              id="click-stroke-width"
+              type="range"
+              min="0.5"
+              max="20"
+              step="0.5"
+              value={settings.clickStrokeWidth}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickStrokeWidth: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.clickStrokeWidth.toFixed(1)}px</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="click-opacity">Opacity</label>
+            <input
+              id="click-opacity"
+              type="range"
+              min="0.05"
+              max="1"
+              step="0.05"
+              value={settings.clickOpacity}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  clickOpacity: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.clickOpacity.toFixed(2)}</span>
+          </div>
         </CollapsibleSection>
 
         <CollapsibleSection title="Keyboard Settings" sectionKey="keyboard">

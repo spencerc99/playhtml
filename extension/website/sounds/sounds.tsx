@@ -3,7 +3,31 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { InstrumentConfig } from "../shared/sound/types";
-import { CURSOR_INSTRUMENTS, CLICK_BELL, getInstrument } from "../shared/sound/instruments";
+import { CURSOR_INSTRUMENTS, getInstrument } from "../shared/sound/instruments";
+import { SoundEngine } from "../shared/sound/SoundEngine";
+import { RippleEffect, RippleSettings } from "../shared/components/ClickRipple";
+import { ClickEffect } from "../shared/types";
+
+const RANDOM_RIPPLE_COLORS = [
+  "#4a9a8a", // teal
+  "#c4724e", // rust
+  "#5b8db8", // blue
+  "#d4b85c", // gold
+];
+
+const PLAYGROUND_RIPPLE_SETTINGS: RippleSettings = {
+  clickMinRadius: 12,
+  clickMaxRadius: 80,
+  clickCoreRadius: 3,
+  clickMinDuration: 500,
+  clickMaxDuration: 2500,
+  clickExpansionDuration: 2400,
+  clickStrokeWidth: 4,
+  clickOpacity: 0.3,
+  clickNumRings: 3,
+  clickRingDelayMs: 160,
+  clickAnimationStopPoint: 0.45,
+};
 
 const D_MINOR_PENTATONIC = [
   { note: "D3", freq: 146.83 },
@@ -205,54 +229,18 @@ function playDissonance(
   osc2.stop(now + 2.1);
 }
 
-function playBell(ctx: AudioContext, dest: AudioNode, frequency: number): void {
-  const now = ctx.currentTime;
-  const instrument = CLICK_BELL;
-
-  const osc = ctx.createOscillator();
-  osc.type = instrument.oscillatorType;
-  osc.frequency.value = frequency;
-
-  const osc2 = ctx.createOscillator();
-  osc2.type = "sine";
-  osc2.frequency.value = frequency * 3;
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(instrument.gain, now + instrument.attack);
-  gain.gain.exponentialRampToValueAtTime(
-    0.001,
-    now + instrument.attack + instrument.release,
-  );
-
-  const gain2 = ctx.createGain();
-  gain2.gain.setValueAtTime(0, now);
-  gain2.gain.linearRampToValueAtTime(
-    instrument.gain * 0.3,
-    now + instrument.attack,
-  );
-  gain2.gain.exponentialRampToValueAtTime(
-    0.001,
-    now + instrument.attack + instrument.release / 2,
-  );
-
-  osc.connect(gain);
-  osc2.connect(gain2);
-  gain.connect(dest);
-  gain2.connect(dest);
-
-  osc.start(now);
-  osc2.start(now);
-  osc.stop(now + instrument.attack + instrument.release + 0.1);
-  osc2.stop(now + instrument.attack + instrument.release + 0.1);
-}
+// Click bells route through SoundEngine.triggerClick so the playground
+// always reflects the production click-bell behavior.
 
 const SoundPlayground = () => {
   const ctxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
+  const engineRef = useRef<SoundEngine | null>(null);
   const [selectedCursor, setSelectedCursor] = useState<string>("default");
   const [chordVoicing, setChordVoicing] = useState(false);
   const [activeNote, setActiveNote] = useState<string | null>(null);
+  const [bellHoldMs, setBellHoldMs] = useState(0);
+  const [ripples, setRipples] = useState<ClickEffect[]>([]);
 
   const ensureAudio = useCallback(() => {
     if (!ctxRef.current) {
@@ -299,13 +287,74 @@ const SoundPlayground = () => {
     [ensureAudio],
   );
 
+  const ensureEngine = useCallback(async () => {
+    if (!engineRef.current) {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setCanvasWidth(window.innerWidth);
+      engineRef.current = engine;
+    } else {
+      engineRef.current.resume();
+    }
+    return engineRef.current;
+  }, []);
+
   const handlePlayBell = useCallback(
-    (freq: number) => {
-      const { ctx, dest } = ensureAudio();
-      playBell(ctx, dest, freq);
+    async (freq: number) => {
+      const engine = await ensureEngine();
+      // Map frequency → vertical y so SoundEngine.triggerClick picks the
+      // matching pitch from its bell scale.
+      const BELL_SCALE = [293.66, 349.23, 392.0, 440.0, 523.25, 587.33];
+      const idx = BELL_SCALE.indexOf(freq);
+      const pitchRatio =
+        idx >= 0 ? (BELL_SCALE.length - 1 - idx) / BELL_SCALE.length : 0;
+      const y = pitchRatio * (window.innerHeight || 800);
+      engine.triggerClick({
+        x: window.innerWidth / 2,
+        y,
+        holdDuration: bellHoldMs > 0 ? bellHoldMs : undefined,
+      });
     },
-    [ensureAudio],
+    [ensureEngine, bellHoldMs],
   );
+
+  useEffect(() => {
+    return () => {
+      engineRef.current?.dispose();
+      engineRef.current = null;
+    };
+  }, []);
+
+  const handleRippleComplete = useCallback((id: string) => {
+    setRipples((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  const handlePlayRandomRipple = useCallback(async () => {
+    const engine = await ensureEngine();
+    // Pin ripple to viewport center so it's easy to validate.
+    const x = window.innerWidth / 2;
+    const y = window.innerHeight / 2;
+    const color =
+      RANDOM_RIPPLE_COLORS[
+        Math.floor(Math.random() * RANDOM_RIPPLE_COLORS.length)
+      ];
+    const holdDuration = bellHoldMs > 0 ? bellHoldMs : undefined;
+
+    engine.triggerClick({ x, y, holdDuration });
+
+    const effect: ClickEffect = {
+      id: `playground-${Date.now()}-${Math.random()}`,
+      x,
+      y,
+      color,
+      radiusFactor: Math.random(),
+      durationFactor: Math.random(),
+      startTime: Date.now(),
+      trailIndex: 0,
+      holdDuration,
+    };
+    setRipples((prev) => [...prev, effect]);
+  }, [ensureEngine, bellHoldMs]);
 
   // Keyboard: number keys 1-9,0 play notes
   useEffect(() => {
@@ -326,6 +375,27 @@ const SoundPlayground = () => {
   const selectedInstrument = getInstrument(selectedCursor);
 
   return (
+    <>
+      <svg
+        width={typeof window !== "undefined" ? window.innerWidth : 1000}
+        height={typeof window !== "undefined" ? window.innerHeight : 1000}
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      >
+        {ripples.map((r) => (
+          <RippleEffect
+            key={r.id}
+            effect={r}
+            settings={PLAYGROUND_RIPPLE_SETTINGS}
+            onComplete={handleRippleComplete}
+          />
+        ))}
+      </svg>
     <div style={styles.page}>
       <div style={styles.title}>sound playground</div>
       <div style={styles.subtitle}>
@@ -408,7 +478,33 @@ const SoundPlayground = () => {
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Click Bells</div>
         <div style={{ fontSize: "12px", color: "#8a8279", marginBottom: "8px" }}>
-          Bell sounds triggered by click events (D minor pentatonic, octave 4-5)
+          Bell sounds via SoundEngine.triggerClick (production path).
+          Each tap = exactly one bell.
+        </div>
+        <div
+          style={{
+            fontSize: "11px",
+            color: "#8a8279",
+            marginBottom: "12px",
+            fontFamily: "'Martian Mono', monospace",
+          }}
+        >
+          <label>
+            hold: {bellHoldMs}ms
+            <input
+              type="range"
+              min={0}
+              max={2500}
+              step={50}
+              value={bellHoldMs}
+              onChange={(e) => setBellHoldMs(Number(e.target.value))}
+              style={{
+                marginLeft: "12px",
+                verticalAlign: "middle",
+                width: "200px",
+              }}
+            />
+          </label>
         </div>
         <div style={styles.noteRow}>
           {[
@@ -427,6 +523,34 @@ const SoundPlayground = () => {
               {n.note}
             </div>
           ))}
+        </div>
+        <div style={{ marginTop: "16px" }}>
+          <button
+            onClick={handlePlayRandomRipple}
+            style={{
+              ...styles.noteButton,
+              padding: "10px 16px",
+              border: "1px solid #3d3833",
+              cursor: "pointer",
+              background: "#3d3833",
+              color: "#faf7f2",
+              fontFamily: "'Martian Mono', monospace",
+              fontSize: "11px",
+              textTransform: "uppercase",
+              letterSpacing: "1px",
+            }}
+          >
+            play random click + ripple
+          </button>
+          <span
+            style={{
+              marginLeft: "12px",
+              fontSize: "11px",
+              color: "#8a8279",
+            }}
+          >
+            one bell, one ripple — same path AnimatedClicks uses
+          </span>
         </div>
       </div>
 
@@ -451,6 +575,7 @@ const SoundPlayground = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

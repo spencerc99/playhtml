@@ -157,21 +157,24 @@ export function useCursorTrails(
       const cursorColor = groupEvents[0].meta.cursor_color;
       const timezone = groupEvents[0].meta.tz;
 
-      // Determine color: randomize > participant's chosen color > palette fallback
-      let color: string;
-      if (settings.randomizeColors) {
-        color = RISO_COLORS[trailColorIndex % RISO_COLORS.length];
-        trailColorIndex++;
-      } else if (cursorColor) {
-        // Derive from participant's chosen color + trail start time
-        color = deriveSessionColor(cursorColor, groupEvents[0].ts, timezone);
-      } else {
-        // Fallback: hash pid into palette
+      // Determine color resolution. When randomizeColors is on, every NEW
+      // trail picks a fresh palette color (so a single participant's session
+      // shows many colors instead of one). Otherwise the color is stable
+      // per participant+session, derived from their chosen cursor color.
+      const getTrailColor = (trailStartTs: number): string => {
+        if (settings.randomizeColors) {
+          const c = RISO_COLORS[trailColorIndex % RISO_COLORS.length];
+          trailColorIndex++;
+          return c;
+        }
+        if (cursorColor) {
+          return deriveSessionColor(cursorColor, trailStartTs, timezone);
+        }
         if (!participantColors.has(pid)) {
           participantColors.set(pid, getColorForParticipant(pid));
         }
-        color = participantColors.get(pid)!;
-      }
+        return participantColors.get(pid)!;
+      };
 
       let currentTrail: Array<{
         x: number;
@@ -266,7 +269,7 @@ export function useCursorTrails(
 
             trails.push({
               points: [...currentTrail],
-              color,
+              color: getTrailColor(startTime),
               opacity: settings.trailOpacity,
               startTime,
               endTime,
@@ -325,7 +328,7 @@ export function useCursorTrails(
 
         trails.push({
           points: currentTrail,
-          color,
+          color: getTrailColor(startTime),
           opacity: settings.trailOpacity,
           startTime,
           endTime,

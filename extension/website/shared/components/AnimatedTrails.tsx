@@ -380,6 +380,7 @@ interface AnimatedTrailsProps {
     animationSpeed: number;
     clickMinRadius: number;
     clickMaxRadius: number;
+    clickCoreRadius: number;
     clickMinDuration: number;
     clickMaxDuration: number;
     clickExpansionDuration: number;
@@ -778,6 +779,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               settings={{
                 clickMinRadius: settings.clickMinRadius,
                 clickMaxRadius: settings.clickMaxRadius,
+                clickCoreRadius: settings.clickCoreRadius,
                 clickMinDuration: settings.clickMinDuration,
                 clickMaxDuration: settings.clickMaxDuration,
                 clickExpansionDuration: settings.clickExpansionDuration,
@@ -833,6 +835,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
+      prevProps.settings.clickCoreRadius === nextProps.settings.clickCoreRadius &&
       prevProps.settings.clickMinDuration ===
         nextProps.settings.clickMinDuration &&
       prevProps.settings.clickMaxDuration ===
