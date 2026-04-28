@@ -9,7 +9,11 @@ import React, {
   useMemo,
 } from "react";
 import { TrailState, ClickEffect } from "../types";
-import { getCursorComponent } from "../cursors";
+import {
+  getCursorComponent,
+  getCursorHotspot,
+  getCursorScaleFactor,
+} from "../cursors";
 import { RippleEffect } from "./ClickRipple";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
@@ -293,13 +297,19 @@ const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorPro
 
     const color = renderer.getCursorColor(trailState.trail.color, cursorType);
 
+    // Position the cursor so its hotspot lands at (0,0) — the cursorGroup's
+    // translate then puts that hotspot exactly on the trail head.
+    // Each cursor draws its path at a natural unit scale; the effective
+    // scale applied to the path is (cursorSize / 24) * cursorScaleFactor.
+    const hotspot = getCursorHotspot(cursorType);
+    const cursorScaleFactor = getCursorScaleFactor(cursorType);
+    const effectiveScale = (cursorSize / 24) * cursorScaleFactor;
+    const hotspotOffsetX = -hotspot.x * effectiveScale;
+    const hotspotOffsetY = -hotspot.y * effectiveScale;
+
     return (
       <g ref={cursorGroupRef} style={{ display: "none" }}>
-        <g
-          transform={`translate(${-12 * (cursorSize / 24)}, ${
-            -4 * (cursorSize / 24)
-          })`}
-        >
+        <g transform={`translate(${hotspotOffsetX}, ${hotspotOffsetY})`}>
           <CursorComponent color={color} size={cursorSize} />
         </g>
       </g>

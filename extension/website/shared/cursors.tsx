@@ -8,25 +8,63 @@ interface CursorProps {
   size?: number; // Base size (default: 24)
 }
 
-// Default arrow cursor (pointer)
+// Hotspot offsets (in unscaled cursor-local coords) for each cursor type.
+// AnimatedTrails uses these to position the cursor so its hotspot lands on
+// the trail head, regardless of any per-cursor scaling done internally.
+// Numbers are the (x, y) of the visual tip / interaction point in the SVG
+// path's own coordinate system, before the size-based scale is applied.
+// Hotspot coordinates were measured against each path's actual geometry
+// (topmost point for arrow/finger cursors, center for I-beam/move) using
+// SVGPathElement.getPointAtLength, not estimated by eye.
+export const CURSOR_HOTSPOTS: Record<string, { x: number; y: number }> = {
+  default: { x: 12, y: 4 },
+  pointer: { x: 12.3, y: 8.4 },
+  text: { x: 12, y: 12 },
+  grab: { x: 15.9, y: 8.7 },
+  grabbing: { x: 15.9, y: 8.7 },
+  move: { x: 9, y: 9 },
+};
+
+export const getCursorHotspot = (cursorType: string | undefined) => {
+  return CURSOR_HOTSPOTS[cursorType ?? "default"] ?? CURSOR_HOTSPOTS.default;
+};
+
+// Each cursor's path is drawn at a *natural* scale within a unit box. This
+// returns the effective scale-down factor each cursor applies on top of
+// `size / 24`, so AnimatedTrails can apply the matching scale to the hotspot.
+export const CURSOR_SCALE_FACTORS: Record<string, number> = {
+  default: 1, // matches DefaultCursor's plain `size / 24`
+  pointer: 24 / 32,
+  text: 1,
+  grab: 24 / 32,
+  grabbing: 24 / 32,
+  move: 24 / 18,
+};
+
+export const getCursorScaleFactor = (cursorType: string | undefined) => {
+  return CURSOR_SCALE_FACTORS[cursorType ?? "default"] ?? 1;
+};
+
+// Default arrow cursor — macOS-style pointer.
+// Tip is at local (12, 4) in the unscaled path coords; positioning is handled
+// by AnimatedTrails using getCursorHotspot/getCursorScaleFactor.
+// The shape proportions match the macOS default arrow: ~13 units tall, short
+// tail. The 0.75 multiplier brings the visual weight in line with the OS
+// default arrow next to the pointer hand cursor.
 export const DefaultCursor = ({ color, size = 24 }: CursorProps) => {
   const scale = size / 24;
+  const arrowPath =
+    "M12 4 L12 16.5 L14.7 14 L16.7 18.5 L18.3 17.8 L16.3 13.4 L20 13.4 Z";
   return (
     <g transform={`scale(${scale})`}>
-      {/* White outline for contrast */}
+      <path d={arrowPath} fill="white" stroke="none" />
       <path
-        d="M12 4 L12 20 L16 16 L20 23 L23 21 L19 14 L24 14 Z"
-        fill="white"
-        stroke="none"
-      />
-      {/* Colored fill */}
-      <path
-        d="M12 4 L12 20 L16 16 L20 23 L23 21 L19 14 L24 14 Z"
+        d={arrowPath}
         fill={color}
         stroke="white"
         strokeWidth="0.5"
         strokeLinejoin="round"
-        transform="translate(-0.5, -0.5)"
+        transform="translate(-0.4, -0.4)"
       />
     </g>
   );
