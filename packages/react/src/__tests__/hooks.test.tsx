@@ -22,7 +22,7 @@ describe("usePresence", () => {
     }
 
     render(
-      <PlayProvider initOptions={{}}>
+      <PlayProvider>
         <TestComponent />
       </PlayProvider>,
     );
@@ -46,7 +46,7 @@ describe("usePresence", () => {
     }
 
     render(
-      <PlayProvider initOptions={{}}>
+      <PlayProvider>
         <TestComponent />
       </PlayProvider>,
     );
@@ -89,7 +89,7 @@ describe("usePageData", () => {
     }
 
     const { getByText } = render(
-      <PlayProvider initOptions={{}}>
+      <PlayProvider>
         <TestComponent />
       </PlayProvider>,
     );
@@ -108,7 +108,7 @@ describe("usePageData", () => {
     }
 
     const { getByText } = render(
-      <PlayProvider initOptions={{}}>
+      <PlayProvider>
         <TestComponent />
       </PlayProvider>,
     );
@@ -143,7 +143,7 @@ describe("usePresenceRoom", () => {
     }
 
     render(
-      <PlayProvider initOptions={{}}>
+      <PlayProvider>
         <TestComponent />
       </PlayProvider>,
     );

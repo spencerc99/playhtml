@@ -6,38 +6,19 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 expect.extend(matchers);
 
 // Runs a cleanup after each test case (e.g. clearing jsdom)
-afterEach(async () => {
+afterEach(() => {
   cleanup();
-  mockedPlayhtml.isInitialized = false;
-  mockedPlayhtml.isLoading = true;
-  mockReady = new Promise<void>((resolve) => {
-    mockReadyResolve = resolve;
-  });
-  // Lazy-import after vi.mock has been hoisted and applied.
-  const { __resetInitOwnerForTests } = await import("../PlayProvider");
-  __resetInitOwnerForTests();
 });
 
 // Create a mock playhtml instance
 const presenceListeners = new Map<string, Set<(presences: Map<string, unknown>) => void>>();
 const mockPresences = new Map<string, unknown>();
 
-let mockReadyResolve: () => void = () => {};
-let mockReady: Promise<void> = new Promise<void>((resolve) => {
-  mockReadyResolve = resolve;
-});
-
 const mockedPlayhtml = {
   isInitialized: false,
-  isLoading: true,
-  get ready() {
-    return mockReady;
-  },
   init: vi.fn().mockImplementation(() => {
     mockedPlayhtml.isInitialized = true;
-    mockedPlayhtml.isLoading = false;
-    mockReadyResolve();
-    return mockReady;
+    return Promise.resolve();
   }),
   setupPlayElements: vi.fn(),
   setupPlayElement: vi.fn(),

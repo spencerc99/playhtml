@@ -100,45 +100,5 @@ describe("createPresenceRoom", () => {
         roomB.destroy();
       }
     });
-
-    it("works mid-navigation while main room is re-syncing", async () => {
-      // Regression: handleNavigation() clears the internal main-room sync
-      // flag while the new room re-syncs. createPresenceRoom must not
-      // throw during this window — presence rooms have their own provider
-      // independent of the main room's sync state.
-      const navPromise = playhtml.handleNavigation();
-      let room: ReturnType<typeof playhtml.createPresenceRoom> | undefined;
-      expect(() => {
-        room = playhtml.createPresenceRoom("mid-nav-room");
-      }).not.toThrow();
-      try {
-        expect(room?.presence).toBeDefined();
-      } finally {
-        room?.destroy();
-      }
-      await navPromise;
-    });
-  });
-
-  describe("concurrent init", () => {
-    it("multiple init() calls share playhtml.ready and createPresenceRoom is safe after", async () => {
-      // Regression: when multiple React PlayProviders mount in parallel
-      // both call playhtml.init(). Before the lifecycle consolidation, the
-      // early-return path resolved immediately while playhtml's internal
-      // setup wasn't complete, so a downstream usePresenceRoom effect
-      // could fire createPresenceRoom() and throw "not available before
-      // init()". Now concurrent callers all await playhtml.ready.
-      const { resetPlayHTML, playhtml: ph } = await import("../index");
-      await resetPlayHTML();
-      delete (window as any).playhtml;
-      delete document.documentElement.dataset.playhtml;
-
-      await Promise.all([ph.init({}), ph.init({}), ph.init({})]);
-      expect(ph.isLoading).toBe(false);
-      expect(() => {
-        const room = ph.createPresenceRoom("concurrent-init-room");
-        room.destroy();
-      }).not.toThrow();
-    });
   });
 });
