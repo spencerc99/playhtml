@@ -1,10 +1,5 @@
-/*
- * GLITCH SAMPLE CODE
- */
-
-// Print a message in the browser's dev tools console each time the page loads
-// Use your menus or right-click / control-click and choose "Inspect" > "Console"
-console.log("Hello 🌎");
+// Print a message in the dev panel's console panel
+console.log("playhtml starter loaded");
 
 /* 
 Make the "Click me!" button move when the visitor clicks it:
@@ -18,23 +13,6 @@ if (btn) {
     btn.classList.toggle("dipped");
   };
 }
-
-// ----- GLITCH STARTER PROJECT HELPER CODE -----
-
-// Open file when the link in the preview is clicked
-let goto = (file, line) => {
-  window.parent.postMessage(
-    { type: "glitch/go-to-line", payload: { filePath: file, line: line } },
-    "*"
-  );
-};
-// Get the file opening button from its class name
-const filer = document.querySelectorAll(".fileopener");
-filer.forEach((f) => {
-  f.onclick = () => {
-    goto(f.dataset.file, f.dataset.line);
-  };
-});
 
 /*
  * PLAYHTML SETUP
