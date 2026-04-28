@@ -586,7 +586,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   const inIframe = window.parent !== window;
   let lastMirroredStatus: { connected: boolean; clientCount: number; roomId: string } | null = null;
 
-  function mirrorStatusToParent(partial: { clientCount?: number; elementCount?: number; connected?: boolean }) {
+  function mirrorStatusToParent(partial: { clientCount?: number; connected?: boolean }) {
     if (!inIframe) return;
     const next = {
       connected: partial.connected ?? lastMirroredStatus?.connected ?? true,
@@ -732,7 +732,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     });
     elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
 
-    mirrorStatusToParent({ clientCount: clients, elementCount: total });
+    mirrorStatusToParent({ clientCount: clients });
   }
   updateStatusCounts();
 
