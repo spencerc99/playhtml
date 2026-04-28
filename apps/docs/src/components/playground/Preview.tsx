@@ -1,7 +1,22 @@
-// ABOUTME: Playground preview pane: status strip, sandboxed iframe with srcdoc,
-// ABOUTME: reload button, postMessage receiver for dev panel status mirroring.
+// ABOUTME: Playground preview pane: sandboxed iframe with srcdoc, reload button.
+// ABOUTME: Connection / presence / room id are surfaced inside the iframe via the dev panel.
 import { useEffect, useRef, useState } from "react";
 import { buildIframeSrcdoc } from "./iframe-template";
+// Vite's `?raw` import reads the file at build/dev time and inlines its
+// source as a string. We use it to load the workspace playhtml ESM build
+// and hand the iframe a blob: URL pointing at it. This means library
+// edits to packages/playhtml/src/* reflect in the iframe after a rebuild
+// of the playhtml package (`bun run -C packages/playhtml build`).
+//
+// Why not unpkg: the published version doesn't have this branch's dev
+// panel changes (position attribute, console panel). Why not a Vite
+// import directly: the iframe is sandboxed without allow-same-origin and
+// runs in a different document context, so the parent's already-resolved
+// module URLs aren't visible to it. Blob URLs work cross-origin.
+//
+// The relative path bypasses Vite's `playhtml` alias (which points at
+// the source, not the built dist) and reaches the dist file directly.
+import playhtmlSource from "../../../../../packages/playhtml/dist/playhtml.es.js?raw";
 
 export type PreviewProps = {
   source: string;
@@ -10,48 +25,43 @@ export type PreviewProps = {
   reloadNonce: number;
 };
 
-type DevStatus = {
-  connected: boolean;
-  clientCount: number;
-  roomId: string;
-} | null;
-
-// Pinned to the published version. Phase 1 always uses unpkg; the
-// workspace dev shim (loaded via blob: URL from /docs/__dev/playhtml.js)
-// would let library iteration reflect live in the iframe but exposed a
-// runtime issue we haven't tracked down yet. Live library iteration via
-// the dev shim is queued as a follow-up — for editor work that doesn't
-// need to simultaneously edit playhtml itself, this is fine.
-const PLAYHTML_URL = "https://unpkg.com/playhtml@2.9.0";
-
 export function Preview(props: PreviewProps) {
   const { source, roomId, reloadNonce } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState<DevStatus>(null);
+  // Blob URL pointing at the workspace playhtml ESM source. Created once
+  // per Preview lifetime; the iframe template uses it inside its
+  // importmap so `import { playhtml } from "playhtml"` resolves here.
+  const [playhtmlBlobUrl, setPlayhtmlBlobUrl] = useState<string | null>(null);
 
-  // Listen for dev panel status mirroring from the iframe.
   useEffect(() => {
-    function onMessage(ev: MessageEvent) {
-      if (!ev.data || typeof ev.data !== "object") return;
-      if (ev.data.type !== "ph:dev-status") return;
-      const payload = ev.data.payload as DevStatus;
-      if (payload && typeof payload === "object") {
-        setStatus(payload);
-      }
-    }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    const blob = new Blob([playhtmlSource], { type: "application/javascript" });
+    const url = URL.createObjectURL(blob);
+    setPlayhtmlBlobUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
   }, []);
 
-  // (Re)mount the iframe whenever source, roomId, or reloadNonce changes.
-  // We replace the iframe element entirely so the old playhtml provider
-  // tears down cleanly (per spec §4.9).
+  // (Re)mount the iframe whenever source, roomId, reloadNonce, or the
+  // playhtml blob URL changes. We replace the iframe element entirely so
+  // the old playhtml provider tears down cleanly (per spec §4.9).
   useEffect(() => {
     if (!containerRef.current) return;
-    setStatus(null); // Clear stale status on reload
+    if (!playhtmlBlobUrl) return; // Wait for blob URL on first mount
 
     const iframe = document.createElement("iframe");
-    iframe.setAttribute("sandbox", "allow-scripts allow-popups");
+    // Sandbox attributes: spec §4.2 says "allow-scripts allow-popups" with NO
+    // allow-same-origin (security: prevent recipe code from touching the
+    // parent). In practice, removing allow-same-origin in dev causes Astro's
+    // dev server to block the iframe's own subresource fetches (images,
+    // CSS files served from the docs origin) because the sandboxed iframe
+    // becomes a unique opaque origin. For now we keep allow-same-origin so
+    // images and the dev panel render correctly. The security implication
+    // is documented as a known issue — recipe code is currently treated as
+    // trusted, which is acceptable for the seed/canonical recipes shipping
+    // in Phase 1 but needs revisiting before community submissions land
+    // (where untrusted code is the whole point).
+    iframe.setAttribute("sandbox", "allow-scripts allow-popups allow-same-origin");
     iframe.style.width = "100%";
     iframe.style.height = "100%";
     iframe.style.border = "none";
@@ -60,7 +70,7 @@ export function Preview(props: PreviewProps) {
 
     iframe.srcdoc = buildIframeSrcdoc({
       recipeHtml: source,
-      playhtmlUrl: PLAYHTML_URL,
+      playhtmlUrl: playhtmlBlobUrl,
       roomId,
     });
 
@@ -72,28 +82,17 @@ export function Preview(props: PreviewProps) {
       // Remove iframe on unmount (StrictMode double-invoke or component unmount)
       iframe.remove();
     };
-  }, [source, roomId, reloadNonce]);
+  }, [source, roomId, reloadNonce, playhtmlBlobUrl]);
 
   return (
     <div className="ph-preview-pane">
-      <div className="ph-preview-status">
-        <StatusDot connected={status?.connected ?? false} hasStatus={status !== null} />
-        <span className="ph-preview-status-count">
-          {status ? `${status.clientCount} ${status.clientCount === 1 ? "here" : "here"}` : "connecting…"}
-        </span>
-        <span className="ph-preview-status-sep">·</span>
-        <span className="ph-preview-status-room" title={status?.roomId ?? roomId}>
-          room: {truncateRoom(status?.roomId ?? roomId)}
-        </span>
+      <div className="ph-preview-toolbar">
+        <span className="ph-preview-toolbar-label">preview</span>
+        <span className="ph-preview-toolbar-spacer" />
         <button
           type="button"
           className="ph-preview-reload"
           onClick={() => {
-            // Forcing a re-mount happens via the parent bumping reloadNonce,
-            // so this button surfaces a callback. Implementation: just bump
-            // a local counter that adds to the parent's reloadNonce. To
-            // keep this component pure, the actual reload trigger is a
-            // dispatched custom event the parent listens for.
             window.dispatchEvent(new CustomEvent("ph:preview-reload-request"));
           }}
           title="Reload preview"
@@ -104,25 +103,4 @@ export function Preview(props: PreviewProps) {
       <div ref={containerRef} className="ph-preview-iframe-host" />
     </div>
   );
-}
-
-function StatusDot({ connected, hasStatus }: { connected: boolean; hasStatus: boolean }) {
-  const color = !hasStatus ? "#b0a99e" : connected ? "#4a9a8a" : "#c4724e";
-  return (
-    <span
-      className="ph-preview-status-dot"
-      style={{
-        width: 8,
-        height: 8,
-        borderRadius: "50%",
-        background: color,
-        flexShrink: 0,
-      }}
-    />
-  );
-}
-
-function truncateRoom(roomId: string): string {
-  if (roomId.length <= 36) return roomId;
-  return roomId.slice(0, 16) + "…" + roomId.slice(-16);
 }

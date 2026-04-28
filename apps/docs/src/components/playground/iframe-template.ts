@@ -99,17 +99,30 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
     return originalInit.call(this, { ...(opts ?? {}), room: FORCED_ROOM });
   };
 
-  // Watch for the dev panel to mount. When it does, set bottom position
-  // and auto-open it (click the trigger).
+  // Watch for the dev panel to mount. When the root appears, set
+  // data-position="bottom" so the consumer CSS layout kicks in, then
+  // wait for the trigger button to render and click it to auto-open.
+  // The two phases need to be separate because in setupDevUI() the root
+  // is created first, then the trigger is appended, then the bar is
+  // appended — between the root mount and the trigger mount we'd miss
+  // the click target if we tried to do both in one tick.
+  let positioned = false;
+  let opened = false;
   const obs = new MutationObserver(() => {
     const root = document.getElementById("playhtml-dev-root");
     if (!root) return;
-    root.dataset.position = "bottom";
-    const trigger = root.querySelector(".ph-trigger");
-    if (trigger instanceof HTMLElement && trigger.style.display !== "none") {
-      trigger.click();
+    if (!positioned) {
+      root.dataset.position = "bottom";
+      positioned = true;
     }
-    obs.disconnect();
+    if (!opened) {
+      const trigger = root.querySelector(".ph-trigger");
+      if (trigger instanceof HTMLElement && trigger.style.display !== "none") {
+        trigger.click();
+        opened = true;
+        obs.disconnect();
+      }
+    }
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
 </script>

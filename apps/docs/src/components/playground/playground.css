@@ -118,7 +118,10 @@
   flex-direction: column;
   height: 100%;
 }
-.ph-preview-status {
+/* Preview pane toolbar — minimal chrome above the iframe with just the
+   reload button. Connection / presence / room id all live inside the
+   iframe via the playhtml dev panel; no need to duplicate them here. */
+.ph-preview-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -131,16 +134,8 @@
   flex-shrink: 0;
   min-height: 24px;
 }
-.ph-preview-status-count { color: #3d3833; }
-.ph-preview-status-sep { color: #b0a99e; }
-.ph-preview-status-room {
-  font-size: 10px;
-  color: #6b6560;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.ph-preview-toolbar-label { color: #6b6560; }
+.ph-preview-toolbar-spacer { flex: 1; }
 .ph-preview-reload {
   font-family: inherit;
   font-size: 13px;

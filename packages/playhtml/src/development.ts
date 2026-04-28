@@ -679,34 +679,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   let hoveredElement: HTMLElement | null = null;
   const inspectLabels: HTMLElement[] = [];
 
-  // ── postMessage mirror to parent (no-op when not in an iframe) ──
-  // Lets the parent page render its own slim status strip without
-  // re-implementing connection-tracking logic. The editor's preview-pane
-  // chrome subscribes to these events.
-  const inIframe = window.parent !== window;
-  let lastMirroredStatus: { connected: boolean; clientCount: number; roomId: string } | null = null;
-
-  function mirrorStatusToParent(partial: { clientCount?: number; connected?: boolean }) {
-    if (!inIframe) return;
-    const next = {
-      connected: partial.connected ?? lastMirroredStatus?.connected ?? true,
-      clientCount: partial.clientCount ?? lastMirroredStatus?.clientCount ?? 1,
-      roomId: playhtml.roomId,
-    };
-    if (
-      lastMirroredStatus &&
-      lastMirroredStatus.connected === next.connected &&
-      lastMirroredStatus.clientCount === next.clientCount &&
-      lastMirroredStatus.roomId === next.roomId
-    ) {
-      return; // no change, skip
-    }
-    lastMirroredStatus = next;
-    try {
-      window.parent.postMessage({ type: "ph:dev-status", payload: next }, "*");
-    } catch {}
-  }
-
   // ── Root ──
   const root = el("div");
   root.id = "playhtml-dev-root";
@@ -831,8 +803,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       total += idMap.size;
     });
     elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
-
-    mirrorStatusToParent({ clientCount: clients });
   }
   updateStatusCounts();
 
@@ -1516,9 +1486,6 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
   // ── Trigger click to open ──
   trigger.addEventListener("click", () => open());
-
-  // Initial status mirror to parent (no-op outside iframes)
-  mirrorStatusToParent({});
 
   minimizeBtn.onclick = () => close();
 
