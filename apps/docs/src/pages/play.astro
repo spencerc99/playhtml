@@ -1,0 +1,25 @@
+---
+// ABOUTME: /play route — the live editor + preview playground.
+import { Playground } from "../components/playground/Playground";
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>playhtml playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+      body { background: #faf7f2; }
+    </style>
+  </head>
+  <body>
+    <Playground client:only="react" />
+  </body>
+</html>
