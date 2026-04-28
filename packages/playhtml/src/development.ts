@@ -1462,11 +1462,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   let lastElementCount = 0;
   elementHandlers.forEach((idMap) => { lastElementCount += idMap.size; });
 
-  const elementObserver = new MutationObserver((mutations) => {
-    // Ignore mutations from the dev tools UI itself
-    for (const m of mutations) {
-      if (root.contains(m.target)) return;
-    }
+  function checkElementCountChange() {
     let currentCount = 0;
     elementHandlers.forEach((idMap) => { currentCount += idMap.size; });
     if (currentCount !== lastElementCount) {
@@ -1476,12 +1472,27 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
         renderDataWalker();
       }
     }
+  }
+
+  const elementObserver = new MutationObserver((mutations) => {
+    // Ignore mutations from the dev tools UI itself
+    for (const m of mutations) {
+      if (root.contains(m.target)) return;
+    }
+    checkElementCountChange();
   });
   // Only watch childList — class changes on existing elements won't add new playhtml elements
   elementObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
   });
+
+  // Poll periodically too. The MutationObserver catches DOM additions, but
+  // playhtml registers handlers for already-existing DOM nodes during its
+  // async post-sync setup (no DOM mutation fires). Without the poll the
+  // panel would render an empty Data tab forever. 250ms is a good balance:
+  // fast enough to feel snappy, slow enough that the cost is negligible.
+  setInterval(checkElementCountChange, 250);
   activeElementObserver = elementObserver;
 
   // ── Trigger click to open ──

@@ -102,6 +102,30 @@ export const starterRecipe: { id: string; html: string } = {
   <script type="module">
     import { playhtml } from "playhtml";
 
+    // Configure the can-play reaction button BEFORE init. With can-play,
+    // playhtml reads the per-element handler properties off the DOM node
+    // itself: defaultData / updateElement / onClick / onMount. So we
+    // attach them before init scans the page.
+    const reactionBtn = document.getElementById("reactionBtn");
+    reactionBtn.defaultData = { count: 0 };
+    reactionBtn.onClick = ({ data, setData, element }) => {
+      const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
+      if (hasReacted) {
+        setData({ count: data.count - 1 });
+        localStorage.removeItem("reacted-reaction");
+        element.classList.remove("reacted");
+      } else {
+        setData({ count: data.count + 1 });
+        localStorage.setItem("reacted-reaction", "true");
+        element.classList.add("reacted");
+      }
+    };
+    reactionBtn.updateElement = ({ data, element }) => {
+      element.querySelector("#reactionCount").textContent = data.count;
+      const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
+      element.classList.toggle("reacted", hasReacted);
+    };
+
     await playhtml.init({
       developmentMode: true,
       cursors: { enabled: true, room: "page" },
@@ -137,31 +161,6 @@ export const starterRecipe: { id: string; html: string } = {
       window.playhtml.setupPlayElement(newMessage);
     }
     window.addGuestbook = addGuestbook;
-
-    window.playhtml.setupCustomElement({
-      selector: "#reactionBtn",
-      defaultData: { count: 0 },
-      onClick: (element, data, setData) => {
-        const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-        if (hasReacted) {
-          setData({ count: data.count - 1 });
-          localStorage.removeItem("reacted-reaction");
-          element.classList.remove("reacted");
-        } else {
-          setData({ count: data.count + 1 });
-          localStorage.setItem("reacted-reaction", "true");
-          element.classList.add("reacted");
-        }
-      },
-      onUpdate: (element, data) => {
-        document.getElementById("reactionCount").textContent = data.count;
-      },
-      onMount: (element, data) => {
-        const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-        if (hasReacted) element.classList.add("reacted");
-        document.getElementById("reactionCount").textContent = data.count;
-      },
-    });
 
     function changeColor() {
       const colorBox = document.getElementById("colorBox");

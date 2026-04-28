@@ -89,13 +89,16 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
 </script>
 <style>${DEV_PANEL_BOTTOM_CSS}</style>
 <script type="module">
-  // Monkey-patch playhtml.init to inject our roomId. Runs before the
-  // recipe's own script imports playhtml (top-level await in the recipe
-  // resolves after this module's import side-effects).
+  // Monkey-patch playhtml.init to inject our roomId. Static import (not
+  // dynamic) so the bootstrap's body runs before the recipe's <script
+  // type="module"> body — both modules await the same playhtml import,
+  // but document order determines which body runs first once the module
+  // record resolves. With a static import the patch lands BEFORE the
+  // recipe's call to playhtml.init runs.
+  import { playhtml } from "playhtml";
   const FORCED_ROOM = ${JSON.stringify(roomId)};
-  const mod = await import("playhtml");
-  const originalInit = mod.playhtml.init;
-  mod.playhtml.init = function patchedInit(opts) {
+  const originalInit = playhtml.init;
+  playhtml.init = function patchedInit(opts) {
     return originalInit.call(this, { ...(opts ?? {}), room: FORCED_ROOM });
   };
 
