@@ -1,7 +1,10 @@
 // ABOUTME: Single-file HTML starter loaded by bare /play. Showcase of the
 // ABOUTME: most-used playhtml capabilities, designed for "see the range, keep what you want."
 
-const IMG_BASE = "/playground-starter";
+// Astro's `base: "/docs"` config means this site lives under /docs in dev
+// and prod alike. Static assets in apps/docs/public/playground-starter/ are
+// served at /docs/playground-starter/.
+const IMG_BASE = "/docs/playground-starter";
 
 export const starterRecipe: { id: string; html: string } = {
   id: "_starter",

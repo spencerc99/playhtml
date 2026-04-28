@@ -16,15 +16,13 @@ type DevStatus = {
   roomId: string;
 } | null;
 
-const PROD_PLAYHTML_URL = "https://unpkg.com/playhtml@latest";
-const DEV_PLAYHTML_URL = "/docs/__dev/playhtml.js";
-const DEV_PANEL_CSS_URL = "/docs/playground/dev-panel-bottom.css";
-
-function isDevEnv(): boolean {
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  return h === "localhost" || h === "127.0.0.1" || h.endsWith(".local");
-}
+// Pinned to the published version. Phase 1 always uses unpkg; the
+// workspace dev shim (loaded via blob: URL from /docs/__dev/playhtml.js)
+// would let library iteration reflect live in the iframe but exposed a
+// runtime issue we haven't tracked down yet. Live library iteration via
+// the dev shim is queued as a follow-up — for editor work that doesn't
+// need to simultaneously edit playhtml itself, this is fine.
+const PLAYHTML_URL = "https://unpkg.com/playhtml@2.9.0";
 
 export function Preview(props: PreviewProps) {
   const { source, roomId, reloadNonce } = props;
@@ -62,9 +60,8 @@ export function Preview(props: PreviewProps) {
 
     iframe.srcdoc = buildIframeSrcdoc({
       recipeHtml: source,
-      playhtmlUrl: isDevEnv() ? DEV_PLAYHTML_URL : PROD_PLAYHTML_URL,
+      playhtmlUrl: PLAYHTML_URL,
       roomId,
-      devPanelStylesheetUrl: DEV_PANEL_CSS_URL,
     });
 
     // Clear any previous iframe and append the new one

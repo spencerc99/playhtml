@@ -4,13 +4,55 @@
 export type IframeTemplateArgs = {
   /** Recipe source. Must be a complete <!doctype html> document. */
   recipeHtml: string;
-  /** Resolved playhtml URL (dev shim or unpkg). */
+  /** Resolved playhtml URL (currently always unpkg; the workspace dev shim
+      is bypassed because Astro's dev server blocks cross-origin subresource
+      requests from sandboxed iframes that lack `allow-same-origin`). */
   playhtmlUrl: string;
   /** Room id the iframe's playhtml should join. */
   roomId: string;
-  /** URL of the dev-panel-bottom override stylesheet. */
-  devPanelStylesheetUrl: string;
 };
+
+// Inlined dev-panel-bottom CSS. Originally lived as a separate stylesheet at
+// /docs/playground/dev-panel-bottom.css and was loaded via <link>, but
+// Astro's dev server blocks cross-origin subresource fetches from sandboxed
+// iframes (Sec-Fetch-Site: cross-site, no-cors). Inlining sidesteps that
+// entirely and keeps the iframe self-contained for srcdoc loading.
+const DEV_PANEL_BOTTOM_CSS = `
+#playhtml-dev-root[data-position="bottom"] .ph-bar {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100% !important;
+  height: 240px;
+  border-left: none;
+  border-top: 3px solid #3d3833;
+  flex-direction: column;
+}
+#playhtml-dev-root[data-position="bottom"] .ph-bar-content {
+  flex: 1;
+  min-width: 0;
+}
+#playhtml-dev-root[data-position="bottom"] .ph-resize-handle {
+  width: 100%;
+  height: 6px;
+  cursor: ns-resize;
+  border-right: none;
+  border-bottom: 1px solid #8a8279;
+  flex-direction: row;
+}
+#playhtml-dev-root[data-position="bottom"] .ph-resize-handle::after {
+  width: 40px;
+  height: 2px;
+}
+#playhtml-dev-root[data-position="bottom"] .ph-trigger {
+  bottom: 0;
+  right: 16px;
+  border-bottom: none;
+  border-right: 3px solid;
+  border-right-color: #6b6560;
+}
+`;
 
 /**
  * Build the srcdoc string for the playground iframe.
@@ -20,13 +62,14 @@ export type IframeTemplateArgs = {
  * by string-splicing into the recipe's <head>:
  *
  *   1. Importmap so `import { playhtml } from "playhtml"` works.
- *   2. <link> to dev-panel-bottom.css so the dev panel renders at the bottom.
+ *   2. Inline <style> with dev-panel-bottom override CSS (inlined to avoid
+ *      Astro dev-server cross-origin block on sandboxed iframe subresources).
  *   3. A small bootstrap script that overrides playhtml.init's room option
  *      AND sets data-position="bottom" on the dev panel root (and clicks
  *      the trigger to auto-open it) once playhtml mounts.
  */
 export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
-  const { recipeHtml, playhtmlUrl, roomId, devPanelStylesheetUrl } = args;
+  const { recipeHtml, playhtmlUrl, roomId } = args;
 
   // The recipe's <script type="module"> calls `playhtml.init({...})`. We
   // need to override that init's `room` option so the iframe joins the
@@ -44,7 +87,7 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   }
 }
 </script>
-<link rel="stylesheet" href="${escapeAttr(devPanelStylesheetUrl)}">
+<style>${DEV_PANEL_BOTTOM_CSS}</style>
 <script type="module">
   // Monkey-patch playhtml.init to inject our roomId. Runs before the
   // recipe's own script imports playhtml (top-level await in the recipe
@@ -81,8 +124,4 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   }
   const insertAfter = recipeHtml.indexOf(">", headIdx) + 1;
   return recipeHtml.slice(0, insertAfter) + bootstrap + recipeHtml.slice(insertAfter);
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
