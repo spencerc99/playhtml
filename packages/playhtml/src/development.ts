@@ -483,6 +483,98 @@ const DEV_STYLES = `
 .ph-flash {
   animation: ph-flash 0.8s ease-out;
 }
+.ph-tabs {
+  display: flex;
+  gap: 0;
+  background: linear-gradient(180deg, #ede6da 0%, #d4cfc7 100%);
+  border-bottom: 1px solid #8a8279;
+  flex-shrink: 0;
+}
+.ph-tab {
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b6560;
+  background: transparent;
+  border: none;
+  border-right: 1px solid #b0a99e;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ph-tab:hover {
+  background: #f5f0e8;
+  color: #3d3833;
+}
+.ph-tab.ph-tab-active {
+  background: #f5f0e8;
+  color: #3d3833;
+  box-shadow: inset 0 -2px 0 #4a9a8a;
+}
+.ph-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 4px;
+  font-family: 'Martian Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 0;
+  color: #faf7f2;
+}
+.ph-tab-badge.ph-badge-error { background: #c4724e; }
+.ph-tab-badge.ph-badge-warn { background: #d4b85c; color: #3d3833; }
+.ph-tab-badge.ph-badge-info { background: #5b8db8; }
+.ph-console {
+  flex: 1;
+  overflow-y: auto;
+  background: #faf7f2;
+  font-family: 'Martian Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  padding: 4px 0;
+}
+.ph-console::-webkit-scrollbar { width: 4px; }
+.ph-console::-webkit-scrollbar-thumb { background: #d4cfc7; }
+.ph-console-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 8px;
+  border-bottom: 1px solid #ede6da;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ph-console-row.ph-log-error { background: rgba(196, 114, 78, 0.08); }
+.ph-console-row.ph-log-warn { background: rgba(212, 184, 92, 0.08); }
+.ph-console-time {
+  color: #b0a99e;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.ph-console-level {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-weight: 700;
+}
+.ph-console-level.ph-log-error { color: #c4724e; }
+.ph-console-level.ph-log-warn { color: #d4b85c; }
+.ph-console-level.ph-log-info { color: #5b8db8; }
+.ph-console-level.ph-log-log { color: #8a8279; }
+.ph-console-msg { flex: 1; min-width: 0; }
+.ph-console-empty {
+  padding: 20px;
+  text-align: center;
+  color: #8a8279;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 12px;
+}
 `;
 
 // ─── Shared Elements Listing ───────────────────────────────────────────
@@ -738,11 +830,179 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
   barContent.appendChild(status);
 
-  // Data area (takes remaining space)
+  // Tab strip (Data | Console) — sits between status and content
+  const tabs = el("div", "ph-tabs");
+
+  const dataTab = el("button", "ph-tab ph-tab-active");
+  dataTab.textContent = "Data";
+  tabs.appendChild(dataTab);
+
+  const consoleTab = el("button", "ph-tab");
+  consoleTab.textContent = "Console";
+  const consoleBadge = el("span", "ph-tab-badge");
+  consoleBadge.style.display = "none";
+  consoleTab.appendChild(consoleBadge);
+  tabs.appendChild(consoleTab);
+
+  barContent.appendChild(tabs);
+
+  // Content area (takes remaining space) — holds either dataArea or consoleArea
   const barMain = el("div", "ph-bar-main");
   const dataArea = el("div", "ph-data");
+  const consoleArea = el("div", "ph-console");
+  consoleArea.style.display = "none";
   barMain.appendChild(dataArea);
+  barMain.appendChild(consoleArea);
   barContent.appendChild(barMain);
+
+  function setActiveTab(next: "data" | "console") {
+    activeTab = next;
+    if (next === "data") {
+      dataTab.classList.add("ph-tab-active");
+      consoleTab.classList.remove("ph-tab-active");
+      dataArea.style.display = "";
+      consoleArea.style.display = "none";
+    } else {
+      dataTab.classList.remove("ph-tab-active");
+      consoleTab.classList.add("ph-tab-active");
+      dataArea.style.display = "none";
+      consoleArea.style.display = "";
+      // Clear unread on view
+      unreadError = 0;
+      unreadWarn = 0;
+      unreadInfo = 0;
+      updateTabBadges();
+      renderConsole();
+    }
+  }
+
+  dataTab.addEventListener("click", () => setActiveTab("data"));
+  consoleTab.addEventListener("click", () => setActiveTab("console"));
+
+  function updateTabBadges() {
+    const total = unreadError + unreadWarn + unreadInfo;
+    if (total === 0) {
+      consoleBadge.style.display = "none";
+      return;
+    }
+    consoleBadge.style.display = "";
+    consoleBadge.textContent = String(total);
+    // Highest-priority color wins
+    consoleBadge.classList.remove("ph-badge-error", "ph-badge-warn", "ph-badge-info");
+    if (unreadError > 0) consoleBadge.classList.add("ph-badge-error");
+    else if (unreadWarn > 0) consoleBadge.classList.add("ph-badge-warn");
+    else consoleBadge.classList.add("ph-badge-info");
+  }
+
+  function renderConsole() {
+    consoleArea.innerHTML = "";
+    if (consoleEntries.length === 0) {
+      const empty = el("div", "ph-console-empty");
+      empty.textContent = "No console output yet.";
+      consoleArea.appendChild(empty);
+      return;
+    }
+    for (const entry of consoleEntries) {
+      const row = el("div", `ph-console-row ph-log-${entry.level}`);
+      const time = el("span", "ph-console-time");
+      const d = new Date(entry.timestamp);
+      time.textContent = d.toLocaleTimeString([], { hour12: false });
+      const level = el("span", `ph-console-level ph-log-${entry.level}`);
+      level.textContent = entry.level === "error" ? "✕" : entry.level === "warn" ? "!" : entry.level === "info" ? "i" : "·";
+      const msg = el("span", "ph-console-msg");
+      msg.textContent = entry.parts.join(" ") + (entry.source ? `  @ ${entry.source}` : "");
+      row.appendChild(time);
+      row.appendChild(level);
+      row.appendChild(msg);
+      consoleArea.appendChild(row);
+    }
+    consoleArea.scrollTop = consoleArea.scrollHeight;
+  }
+
+  // ── Console capture state ──
+  type ConsoleEntry = {
+    level: "log" | "info" | "warn" | "error";
+    timestamp: number;
+    parts: string[]; // each console arg formatted to string
+    source?: string; // file:line for errors
+  };
+  const consoleEntries: ConsoleEntry[] = [];
+  const MAX_CONSOLE_ENTRIES = 500;
+  let unreadError = 0;
+  let unreadWarn = 0;
+  let unreadInfo = 0;
+  let activeTab: "data" | "console" = "data";
+  let autoSwitchedThisSession = false;
+
+  function formatArg(arg: unknown): string {
+    if (arg instanceof Error) return arg.stack || `${arg.name}: ${arg.message}`;
+    if (typeof arg === "string") return arg;
+    if (arg === null) return "null";
+    if (arg === undefined) return "undefined";
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  }
+
+  function pushConsoleEntry(entry: ConsoleEntry) {
+    consoleEntries.push(entry);
+    if (consoleEntries.length > MAX_CONSOLE_ENTRIES) {
+      consoleEntries.shift();
+    }
+    // Bump unread counters when console tab isn't visible
+    if (activeTab !== "console" || !bar.classList.contains("ph-open")) {
+      if (entry.level === "error") unreadError += 1;
+      else if (entry.level === "warn") unreadWarn += 1;
+      else unreadInfo += 1;
+    }
+    // Auto-switch on first uncaught error per panel-open session
+    if (entry.level === "error" && !autoSwitchedThisSession && bar.classList.contains("ph-open")) {
+      autoSwitchedThisSession = true;
+      setActiveTab("console");
+    }
+    updateTabBadges();
+    if (activeTab === "console") {
+      renderConsole();
+    }
+  }
+
+  // Monkey-patch console
+  const origConsole = {
+    log: console.log.bind(console),
+    info: console.info.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  };
+  (["log", "info", "warn", "error"] as const).forEach((level) => {
+    console[level] = (...args: unknown[]) => {
+      origConsole[level](...args);
+      pushConsoleEntry({
+        level,
+        timestamp: Date.now(),
+        parts: args.map(formatArg),
+      });
+    };
+  });
+
+  // Catch uncaught errors and rejections
+  window.addEventListener("error", (ev) => {
+    pushConsoleEntry({
+      level: "error",
+      timestamp: Date.now(),
+      parts: [ev.message || String(ev.error)],
+      source: ev.filename ? `${ev.filename}:${ev.lineno}:${ev.colno}` : undefined,
+    });
+  });
+  window.addEventListener("unhandledrejection", (ev) => {
+    pushConsoleEntry({
+      level: "error",
+      timestamp: Date.now(),
+      parts: ["Unhandled Promise rejection: " + formatArg(ev.reason)],
+    });
+  });
+
   bar.appendChild(resizeHandle);
   bar.appendChild(barContent);
 
@@ -1196,6 +1456,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     bar.classList.remove("ph-open");
     document.body.style.marginRight = originalBodyMarginRight;
     document.body.style.marginBottom = originalBodyMarginBottom;
+    autoSwitchedThisSession = false;
     // Exit inspect mode if active
     if (inspectMode) {
       inspectMode = false;
