@@ -1,5 +1,5 @@
 // ABOUTME: Top-level playground shell. Wires recipe-loader, Editor, Preview;
-// ABOUTME: handles draft restore banner and URL hash sync.
+// ABOUTME: handles silent draft restore, edited indicator, and URL hash sync.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
 import { Preview } from "./Preview";
@@ -11,27 +11,19 @@ import {
   saveDraft,
   discardDraft,
   pruneStaleDrafts,
-  formatRelativeTime,
 } from "./recipe-loader";
 import "./playground.css";
 
-type DraftBanner = {
-  recipeId: string;
-  source: string;
-  updatedAt: number;
-};
-
 export function Playground() {
-  // The "canonical" source for the loaded recipe (used to detect when the
-  // editor has been edited away from canonical, so saveDraft can clear
-  // the draft when the user reverts).
+  // The "canonical" source for the loaded recipe. We diff against this to
+  // know whether the user has edited away from the starter (controls the
+  // "edited" indicator and the visibility of the Reset button).
   const [recipeId, setRecipeId] = useState<string>("_starter");
   const [canonicalSource, setCanonicalSource] = useState<string>(starterRecipe.html);
   const [editorSource, setEditorSource] = useState<string>(starterRecipe.html);
   const [roomId, setRoomId] = useState<string>("");
   const [seedNonce, setSeedNonce] = useState<number>(0);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
-  const [banner, setBanner] = useState<DraftBanner | null>(null);
   // Flashes "✓ Copied" inside the Copy source button for ~1.5s after a
   // successful copy, then reverts to "Copy source".
   const [copyJustHappened, setCopyJustHappened] = useState<boolean>(false);
@@ -43,7 +35,10 @@ export function Playground() {
   const fromPayloadRef = useRef<boolean>(false);
   const sessionIdRef = useRef<string>(""); // current sessionId used for URL encoding
 
-  // Initial load: parse hash, prune stale drafts, check for draft restore.
+  // Initial load: parse hash, prune stale drafts, silently restore draft if
+  // one exists. No banner — the reader gets back exactly where they were.
+  // The "edited" indicator + Reset to starter button (below) make the
+  // edited state legible without being in the way every refresh.
   useEffect(() => {
     pruneStaleDrafts();
 
@@ -71,22 +66,23 @@ export function Playground() {
       sessionIdRef.current = loaded.roomId; // edit-<recipe>-<random>
     }
 
-    // Check for draft (only when not loaded from payload — payload URLs
-    // are authoritative; never silently mix in a local draft).
-    if (!loaded.fromPayload) {
+    // Source-of-truth resolution. Three cases:
+    //   1. URL has a payload (#c=...) — payload wins, never silently mix
+    //      in a local draft (the URL is shareable; honoring it is the
+    //      whole point).
+    //   2. Local draft exists and differs from canonical — restore it
+    //      silently. URL hash already encodes the source on every edit
+    //      (fork-on-first-edit handles the room-id update for us).
+    //   3. Otherwise — load the canonical recipe.
+    if (loaded.fromPayload) {
+      setEditorSource(loaded.source);
+    } else {
       const draft = loadDraft(loaded.recipeId);
       if (draft && draft.source !== canon) {
-        setBanner({
-          recipeId: loaded.recipeId,
-          source: draft.source,
-          updatedAt: draft.updatedAt,
-        });
-        setEditorSource(canon); // Show clean recipe; banner offers restore
+        setEditorSource(draft.source);
       } else {
         setEditorSource(loaded.source);
       }
-    } else {
-      setEditorSource(loaded.source);
     }
 
     setSeedNonce((n) => n + 1);
@@ -147,18 +143,21 @@ export function Playground() {
     [recipeId, canonicalSource],
   );
 
-  const handleRestoreDraft = useCallback(() => {
-    if (!banner) return;
-    setEditorSource(banner.source);
+  // Reset to the canonical recipe. Confirms once before discarding because
+  // the action is destructive (any unsaved edits go away).
+  const handleResetToStarter = useCallback(() => {
+    const ok = window.confirm(
+      "Discard your edits and reset to the starter? This cannot be undone.",
+    );
+    if (!ok) return;
+    discardDraft(recipeId);
+    setEditorSource(canonicalSource);
     setSeedNonce((n) => n + 1);
-    setBanner(null);
-  }, [banner]);
-
-  const handleDiscardDraft = useCallback(() => {
-    if (!banner) return;
-    discardDraft(banner.recipeId);
-    setBanner(null);
-  }, [banner]);
+    // Drop the URL hash payload so refreshing lands cleanly on canonical
+    if (window.location.hash) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, [recipeId, canonicalSource]);
 
   const handleCopySource = useCallback(async () => {
     try {
@@ -186,6 +185,10 @@ export function Playground() {
     };
   }, []);
 
+  // Derived: true when the editor source has diverged from the canonical
+  // recipe. Drives both the "edited" indicator and the Reset button.
+  const isEdited = editorSource !== canonicalSource;
+
   return (
     <div className="ph-play-root">
       <div className="ph-play-topbar">
@@ -194,23 +197,20 @@ export function Playground() {
           {recipeId !== "_starter" && (
             <span className="ph-play-title-recipe"> · {recipeId}</span>
           )}
+          {isEdited && <span className="ph-play-title-edited"> · edited</span>}
         </span>
         <span className="ph-play-spacer" />
+        {isEdited && (
+          <button
+            type="button"
+            className="ph-play-reset-btn"
+            onClick={handleResetToStarter}
+            title="Discard your edits and reload the starter"
+          >
+            Reset to starter
+          </button>
+        )}
       </div>
-
-      {banner && (
-        <div className="ph-play-banner">
-          <span className="ph-play-banner-msg">
-            You have unsaved edits from {formatRelativeTime(banner.updatedAt)}.
-          </span>
-          <button type="button" className="ph-play-banner-btn" onClick={handleRestoreDraft}>
-            Restore
-          </button>
-          <button type="button" className="ph-play-banner-btn" onClick={handleDiscardDraft}>
-            Discard
-          </button>
-        </div>
-      )}
 
       <div className="ph-play-panes">
         <div className="ph-play-pane ph-play-pane-editor">

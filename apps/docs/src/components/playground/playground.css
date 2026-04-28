@@ -64,13 +64,18 @@ body { background: var(--ph-paper); }
 }
 
 /* ── Top bar ────────────────────────────────────────────────────────── */
+/* Sage background ties the editor to the playhtml homepage palette and
+   gives the chrome a conspicuous contrast against the paper body so the
+   eye lands here as the primary frame. Pane headers and the preview
+   toolbar are quieter (paper-warm), so the visual weight cascades
+   topbar → pane headers → editor/iframe interior. */
 .ph-play-topbar {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  background: var(--ph-paper-warm);
-  border-bottom: 1px solid var(--ph-hairline);
+  background: var(--ph-sage);
+  border-bottom: 1px solid var(--ph-ink);
   flex-shrink: 0;
   font-size: 14px;
 }
@@ -88,22 +93,46 @@ body { background: var(--ph-paper); }
   font-size: 13px;
   margin-left: 6px;
 }
+/* "edited" indicator — quiet ink-3 weight, italic to read as state-not-name */
+.ph-play-title-edited {
+  color: var(--ph-ink-3);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 13px;
+  margin-left: 6px;
+}
 .ph-play-spacer { flex: 1; }
 
-/* ── Draft restore banner ───────────────────────────────────────────── */
-.ph-play-banner {
-  padding: 10px 18px;
-  background: var(--ph-mustard-wash);
-  border-bottom: 1px solid var(--ph-hairline);
-  font-size: 13px;
+/* Reset to starter — only visible when isEdited. Brick-shadow style
+   matches other primary actions; mustard-wash hover hints at the
+   destructive-ish nature without screaming. */
+.ph-play-reset-btn {
   font-family: var(--ph-font-body);
-  color: var(--ph-ink-2);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 5px 12px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  border: 1px solid var(--ph-ink);
+  border-radius: 0;
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast);
+  white-space: nowrap;
 }
-.ph-play-banner-msg { flex: 1; }
+.ph-play-reset-btn:hover {
+  background: var(--ph-mustard-wash);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--ph-ink);
+}
+.ph-play-reset-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
 
 /* ── Pane layout ────────────────────────────────────────────────────── */
 .ph-play-panes {
@@ -144,43 +173,9 @@ body { background: var(--ph-paper); }
 
 /* ── Buttons ────────────────────────────────────────────────────────── */
 
-/*
-  Standard playground button — letterpress brick-shadow style matching
-  .sl-link-button / .action in docs-extras.css. Stays flush by default,
-  lifts on hover (-1px translate, larger shadow), presses flush on
-  active (0px shadow, +2px translate so the bottom-right of the button
-  meets the original shadow position).
-*/
-.ph-play-btn {
-  font-family: var(--ph-font-body);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  padding: 5px 12px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  border: 1px solid var(--ph-ink);
-  border-radius: 0;
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
-  transition:
-    transform var(--ph-motion-fast),
-    box-shadow var(--ph-motion-fast),
-    background var(--ph-motion-fast);
-  white-space: nowrap;
-}
-.ph-play-btn:hover {
-  background: var(--ph-paper-warm);
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 0 var(--ph-ink);
-}
-.ph-play-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: var(--ph-shadow-brick-pressed);
-}
-
-/* Pane-header secondary button — quieter than the standard, no shadow,
-   just an ink-stroked outline that lights up on hover. */
+/* Pane-header secondary button — quieter than the topbar's brick-shadow
+   buttons. No shadow, just an ink-stroked outline that lights up on
+   hover. Used for low-stakes actions like Copy source. */
 .ph-play-pane-header-btn {
   font-family: var(--ph-font-body);
   font-size: 11px;
@@ -210,34 +205,6 @@ body { background: var(--ph-paper); }
   background: var(--ph-sage-wash);
   color: var(--ph-sage-deep);
   border-color: var(--ph-sage-deep);
-}
-
-/* Banner action buttons — share the brick-shadow vocabulary with the
-   standard button, just smaller. */
-.ph-play-banner-btn {
-  font-family: var(--ph-font-body);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  padding: 4px 10px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  border: 1px solid var(--ph-ink);
-  border-radius: 0;
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
-  transition:
-    transform var(--ph-motion-fast),
-    box-shadow var(--ph-motion-fast);
-}
-.ph-play-banner-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 0 var(--ph-ink);
-}
-.ph-play-banner-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: var(--ph-shadow-brick-pressed);
 }
 
 /* ── Preview pane ───────────────────────────────────────────────────── */
