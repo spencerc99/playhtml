@@ -1,5 +1,5 @@
 // ABOUTME: Top-level playground shell. Wires recipe-loader, Editor, Preview;
-// ABOUTME: handles draft restore banner, share button, and URL hash sync.
+// ABOUTME: handles draft restore banner and URL hash sync.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
 import { Preview } from "./Preview";
@@ -32,8 +32,10 @@ export function Playground() {
   const [seedNonce, setSeedNonce] = useState<number>(0);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
   const [banner, setBanner] = useState<DraftBanner | null>(null);
-  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
-  const [oversizeWarning, setOversizeWarning] = useState<boolean>(false);
+  // Flashes "✓ Copied" inside the Copy source button for ~1.5s after a
+  // successful copy, then reverts to "Copy source".
+  const [copyJustHappened, setCopyJustHappened] = useState<boolean>(false);
+  const copyResetTimeoutRef = useRef<number | null>(null);
 
   // Track whether this session was loaded from a payload (someone else's
   // remix). On first edit, we'll fork to a fresh editor room and update
@@ -124,12 +126,14 @@ export function Playground() {
       // Save draft (skipped if source matches canonical)
       saveDraft(recipeId, source, canonicalSource);
 
-      // Update URL hash with payload (or strip if source matches canonical)
+      // Update URL hash with payload (or strip if source matches canonical).
+      // Oversize remixes silently keep the previous hash — sharing UI is
+      // hidden in Phase 1 until we have a proper named-remix backend, so
+      // there's no point surfacing the size limit to the reader yet.
       if (source === canonicalSource) {
         if (window.location.hash) {
           history.replaceState(null, "", window.location.pathname + window.location.search);
         }
-        setOversizeWarning(false);
         return;
       }
       const enc = encodeHashPayload({
@@ -137,12 +141,7 @@ export function Playground() {
         sessionId: sessionIdRef.current,
         source,
       });
-      if (enc.tooLarge) {
-        setOversizeWarning(true);
-        // Don't update URL when oversize — keep whatever hash was there
-        return;
-      }
-      setOversizeWarning(false);
+      if (enc.tooLarge) return; // Skip URL update; payload too large
       history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${enc.hash}`);
     },
     [recipeId, canonicalSource],
@@ -164,23 +163,27 @@ export function Playground() {
   const handleCopySource = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(editorSource);
-      setShareFeedback("Source copied!");
-      setTimeout(() => setShareFeedback(null), 2000);
+      setCopyJustHappened(true);
+      if (copyResetTimeoutRef.current !== null) {
+        window.clearTimeout(copyResetTimeoutRef.current);
+      }
+      copyResetTimeoutRef.current = window.setTimeout(() => {
+        setCopyJustHappened(false);
+        copyResetTimeoutRef.current = null;
+      }, 1500);
     } catch {
-      setShareFeedback("Copy failed");
-      setTimeout(() => setShareFeedback(null), 2000);
+      // Clipboard write can fail in restricted contexts (e.g., insecure
+      // origin); silently no-op rather than alarm the reader.
     }
   }, [editorSource]);
 
-  const handleShare = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setShareFeedback("URL copied!");
-      setTimeout(() => setShareFeedback(null), 2000);
-    } catch {
-      setShareFeedback("Copy failed");
-      setTimeout(() => setShareFeedback(null), 2000);
-    }
+  // Cleanup the copy-confirm timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeoutRef.current !== null) {
+        window.clearTimeout(copyResetTimeoutRef.current);
+      }
+    };
   }, []);
 
   return (
@@ -193,17 +196,6 @@ export function Playground() {
           )}
         </span>
         <span className="ph-play-spacer" />
-        {oversizeWarning && (
-          <span style={{ color: "#c4724e", fontSize: 12 }}>
-            Remix too large to share via URL — persistent remix coming soon.
-          </span>
-        )}
-        <button type="button" className="ph-play-share-btn" onClick={handleShare}>
-          Share URL
-        </button>
-        {shareFeedback && (
-          <span className="ph-play-share-btn-feedback">{shareFeedback}</span>
-        )}
       </div>
 
       {banner && (
@@ -225,8 +217,13 @@ export function Playground() {
           <div className="ph-play-pane-header">
             <span>index.html</span>
             <span className="ph-play-pane-header-spacer" />
-            <button type="button" className="ph-play-pane-header-btn" onClick={handleCopySource}>
-              Copy source
+            <button
+              type="button"
+              className="ph-play-pane-header-btn ph-play-copy-btn"
+              data-copied={copyJustHappened ? "true" : "false"}
+              onClick={handleCopySource}
+            >
+              {copyJustHappened ? "✓ Copied" : "Copy source"}
             </button>
           </div>
           <div className="ph-play-pane-body">
