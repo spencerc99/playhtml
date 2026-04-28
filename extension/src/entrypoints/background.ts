@@ -8,7 +8,7 @@ import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '../shared/types'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
-import { normalizeUrl } from '../utils/urlNormalization'
+import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
 import {
   loadState,
   saveState,
@@ -78,13 +78,42 @@ export default defineBackground(() => {
     }
   })
 
-  // Set up 5-minute milestone check alarm
+  // Set up 5-minute milestone check alarm (backstop for non-navigation
+  // milestones like cursor distance and screen time). Domain milestones
+  // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create("checkMilestones", { periodInMinutes: 5 });
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name !== "checkMilestones") return;
     await runMilestoneCheck();
   });
+
+  // Single-flight + 1s trailing debounce. Rapid navigation events coalesce
+  // into one check, and we never run two checks concurrently (the function
+  // reads-modifies-writes shared state).
+  let milestoneCheckRunning = false;
+  let milestoneCheckQueued = false;
+  let milestoneCheckTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleMilestoneCheck() {
+    if (milestoneCheckTimer) return;
+    milestoneCheckTimer = setTimeout(async () => {
+      milestoneCheckTimer = null;
+      if (milestoneCheckRunning) {
+        milestoneCheckQueued = true;
+        return;
+      }
+      milestoneCheckRunning = true;
+      try {
+        await runMilestoneCheck();
+      } finally {
+        milestoneCheckRunning = false;
+        if (milestoneCheckQueued) {
+          milestoneCheckQueued = false;
+          scheduleMilestoneCheck();
+        }
+      }
+    }, 1000);
+  }
 
   // ECDSA P-256 raw public key = 65 bytes uncompressed = 130 hex chars + 'pk_' = 133 chars.
   // Old keys are 'pk_' + ~13 random chars from Math.random.
@@ -212,7 +241,17 @@ export default defineBackground(() => {
     if (message.type === 'STORE_EVENTS') {
       const events = (message.events || []) as CollectionEvent[]
       store.addEvents(events)
-        .then(() => reply({ success: true }))
+        .then(() => {
+          // A navigation focus is the canonical "user is now looking at this
+          // domain" signal — the moment a domain-visit milestone could fire
+          // with the right tab in front. Trigger an immediate check (cooldown
+          // and debounce keep this cheap).
+          const hasNavFocus = events.some(
+            (e) => e.type === 'navigation' && (e.data as any)?.event === 'focus'
+          )
+          if (hasNavFocus) scheduleMilestoneCheck()
+          reply({ success: true })
+        })
         .catch((e) => {
           console.error('[Background] STORE_EVENTS error:', e)
           reply({ success: false })
@@ -626,14 +665,24 @@ export default defineBackground(() => {
     const idleState = await browser.idle.queryState(60);
     if (idleState !== "active") return;
 
-    const finalState = recordToastShown(updatedState, today);
-    await saveState(finalState);
-
-    // Send to active tab. Use lastFocusedWindow rather than currentWindow so
+    // Resolve the active tab. Use lastFocusedWindow rather than currentWindow so
     // this works even when DevTools is the focused window.
     const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     const tab = tabs[0];
     if (!tab?.id) return;
+
+    // For domain-specific milestones, only deliver when the active tab is on
+    // that domain — otherwise the toast's favicon and copy refer to a site
+    // the user isn't currently looking at. Defer (don't burn the threshold)
+    // until the next alarm tick when they're back on the domain.
+    if (milestone.domain) {
+      const tabDomain = extractDomain(tab.url ?? null);
+      if (tabDomain !== milestone.domain) return;
+    }
+
+    const finalState = recordToastShown(updatedState, today);
+    await saveState(finalState);
+
     browser.tabs.sendMessage(tab.id, {
       type: 'SHOW_MILESTONE',
       milestone,

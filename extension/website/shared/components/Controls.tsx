@@ -617,6 +617,49 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="click-max-gap-enabled">
+              <input
+                id="click-max-gap-enabled"
+                type="checkbox"
+                checked={settings.clickMaxGapMs !== null}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    clickMaxGapMs: e.target.checked
+                      ? typeof s.clickMaxGapMs === "number" && s.clickMaxGapMs > 0
+                        ? s.clickMaxGapMs
+                        : 400
+                      : null,
+                  }))
+                }
+                style={{ marginRight: "6px" }}
+              />
+              Cap Max Gap Between Clicks
+            </label>
+          </div>
+
+          {settings.clickMaxGapMs !== null && (
+            <div className="control-group">
+              <label htmlFor="click-max-gap">Max Gap (ms)</label>
+              <input
+                id="click-max-gap"
+                type="range"
+                min="50"
+                max="2000"
+                step="50"
+                value={settings.clickMaxGapMs}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    clickMaxGapMs: parseInt(e.target.value, 10),
+                  }))
+                }
+              />
+              <span>{settings.clickMaxGapMs}ms</span>
+            </div>
+          )}
+
+          <div className="control-group">
             <label htmlFor="click-core-radius">Core Radius (px)</label>
             <input
               id="click-core-radius"

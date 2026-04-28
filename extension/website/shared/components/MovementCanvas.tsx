@@ -29,6 +29,109 @@ import { getTrailRenderer } from "../styles/trailRenderers";
 import { parseSettingsFromUrl } from "../config";
 import type { DayCounts } from "../types";
 
+/** Live clock readout shown when trails play in their natural-timestamp order.
+ * Mirrors AnimatedTrails' `(realElapsed * speed) % duration` math so the time
+ * shown tracks whatever moment is currently being drawn. Owns its own rAF and
+ * writes directly to a ref to avoid per-frame React re-renders. */
+const NaturalTimeReadout: React.FC<{
+  startTimestampMs: number;
+  durationMs: number;
+  animationSpeed: number;
+}> = ({ startTimestampMs, durationMs, animationSpeed }) => {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const speedRef = useRef(animationSpeed);
+  useEffect(() => {
+    speedRef.current = animationSpeed;
+  }, [animationSpeed]);
+
+  useEffect(() => {
+    if (!durationMs || !startTimestampMs) return;
+    let raf = 0;
+    let timeout = 0;
+    let startedAt: number | null = null;
+
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+
+    const tick = (ts: number) => {
+      if (startedAt === null) startedAt = ts;
+      const realElapsed = ts - startedAt;
+      const looped = (realElapsed * speedRef.current) % durationMs;
+      const node = textRef.current;
+      if (node) {
+        node.textContent = formatter.format(
+          new Date(startTimestampMs + looped),
+        );
+      }
+      schedule();
+    };
+
+    const schedule = () => {
+      if (document.visibilityState === "hidden") {
+        timeout = window.setTimeout(() => tick(performance.now()), 250);
+      } else {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timeout);
+    };
+  }, [startTimestampMs, durationMs]);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 100,
+        padding: "10px 16px",
+        background: "#faf9f6",
+        border: "1px solid rgba(0, 0, 0, 0.12)",
+        boxShadow:
+          "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
+        fontFamily: '"Martian Mono", "Space Mono", "Courier New", monospace',
+        fontSize: "11px",
+        fontWeight: 600,
+        color: "#333",
+        letterSpacing: "0.5px",
+        textTransform: "uppercase",
+        overflow: "hidden",
+        pointerEvents: "none",
+      }}
+    >
+      <svg
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          opacity: 0.15,
+          pointerEvents: "none",
+        }}
+      >
+        <filter id="timeNoise">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" />
+          <feColorMatrix type="saturate" values="0" />
+          <feComponentTransfer>
+            <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
+          </feComponentTransfer>
+        </filter>
+        <rect width="100%" height="100%" filter="url(#timeNoise)" />
+      </svg>
+      <span ref={textRef} style={{ position: "relative", zIndex: 1 }} />
+    </div>
+  );
+};
+
 // Bumped from "internet-movement-settings" so existing stale auto-saved
 // defaults stop overriding the new defaults. After this version, settings
 // only persist when the user explicitly modifies a control.
@@ -47,6 +150,11 @@ export const CLICK_DEFAULTS = {
   clickRingDelayMs: 160,
   clickExpansionDuration: 2400,
   clickAnimationStopPoint: 0.45,
+  /** Cap the gap between consecutive scheduled clicks. `null` = off (use the
+   * exact natural rhythm); a number = clamp any longer dead-air to this many
+   * milliseconds. Useful for promo / timelapse playback where you want
+   * cluster timing intact but don't want long pauses. */
+  clickMaxGapMs: null as number | null,
 };
 
 const loadSettings = () => {
@@ -476,13 +584,32 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     flat.sort((a, b) => a.spawnAtMs - b.spawnAtMs);
 
     // Preserve the natural rhythm of the original click events. Normalize so
-    // the first click fires at t=0; animationSpeed in AnimatedClicks is what
-    // compresses or stretches this whole timeline.
-    const firstSpawnAtMs = flat[0].spawnAtMs;
-    const normalized: ScheduledClick[] = flat.map((c) => ({
-      ...c,
-      spawnAtMs: c.spawnAtMs - firstSpawnAtMs,
-    }));
+    // the first click fires at t=0. Optionally cap the gap between
+    // consecutive clicks so dead-air sections collapse without disturbing
+    // cluster rhythm — when clickMaxGapMs is set, any gap longer than the
+    // cap gets clamped, but tighter spans stay verbatim.
+    const maxGap: number | null =
+      typeof settings.clickMaxGapMs === "number" && settings.clickMaxGapMs > 0
+        ? settings.clickMaxGapMs
+        : null;
+
+    const normalized: ScheduledClick[] = [];
+    let prevSrc = flat[0].spawnAtMs;
+    let prevOut = 0;
+    for (let i = 0; i < flat.length; i++) {
+      const c = flat[i];
+      if (i === 0) {
+        normalized.push({ ...c, spawnAtMs: 0 });
+        continue;
+      }
+      const naturalGap = c.spawnAtMs - prevSrc;
+      const cappedGap =
+        maxGap !== null ? Math.min(naturalGap, maxGap) : naturalGap;
+      const out = prevOut + cappedGap;
+      normalized.push({ ...c, spawnAtMs: out });
+      prevSrc = c.spawnAtMs;
+      prevOut = out;
+    }
 
     const lastSpawnAtMs = normalized[normalized.length - 1].spawnAtMs;
     const avgRippleDurationMs =
@@ -494,6 +621,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     trailStates,
     settings.clickMinDuration,
     settings.clickMaxDuration,
+    settings.clickMaxGapMs,
     settings.trailVisualStyle,
   ]);
 
@@ -715,6 +843,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           </div>
         </div>
       )}
+
+      {settings.trailAnimationMode === "natural" &&
+        showTrails &&
+        timeRange.min > 0 &&
+        timeRange.duration > 0 && (
+          <NaturalTimeReadout
+            startTimestampMs={timeRange.min}
+            durationMs={timeRange.duration}
+            animationSpeed={settings.animationSpeed}
+          />
+        )}
 
       <button
         onClick={handleToggleSound}
