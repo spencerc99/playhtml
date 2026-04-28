@@ -1132,15 +1132,31 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
   }
 
-  // ── Sidebar width state ──
+  // ── Sidebar size state ──
+  // Position is read from root.dataset.position, defaulting to "right".
+  // The consumer sets this attribute (typically via a MutationObserver
+  // watching for the panel root) to switch the panel from right-side
+  // sidebar to bottom-pinned drawer. Visual styles for the bottom layout
+  // come from a consumer-provided stylesheet; this code just handles the
+  // axis-dependent JS bits (resize handler + body margin direction).
   let sidebarWidth = 400;
+  let sidebarHeight = 240;
   const originalBodyMarginRight = document.body.style.marginRight;
+  const originalBodyMarginBottom = document.body.style.marginBottom;
+
+  function getPosition(): "right" | "bottom" {
+    return root.dataset.position === "bottom" ? "bottom" : "right";
+  }
 
   // ── Open / Close ──
   function open() {
     trigger.style.display = "none";
     bar.classList.add("ph-open");
-    document.body.style.marginRight = `${sidebarWidth}px`;
+    if (getPosition() === "bottom") {
+      document.body.style.marginBottom = `${sidebarHeight}px`;
+    } else {
+      document.body.style.marginRight = `${sidebarWidth}px`;
+    }
     updateStatusCounts();
     renderDataWalker();
   }
@@ -1149,6 +1165,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     trigger.style.display = "";
     bar.classList.remove("ph-open");
     document.body.style.marginRight = originalBodyMarginRight;
+    document.body.style.marginBottom = originalBodyMarginBottom;
     // Exit inspect mode if active
     if (inspectMode) {
       inspectMode = false;
@@ -1192,10 +1209,17 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   resizeHandle.addEventListener("mousedown", (e: MouseEvent) => {
     e.preventDefault();
 
+    const position = getPosition();
     const onMove = (ev: MouseEvent) => {
-      sidebarWidth = Math.max(280, Math.min(700, window.innerWidth - ev.clientX));
-      bar.style.width = `${sidebarWidth}px`;
-      document.body.style.marginRight = `${sidebarWidth}px`;
+      if (position === "bottom") {
+        sidebarHeight = Math.max(120, Math.min(window.innerHeight - 100, window.innerHeight - ev.clientY));
+        bar.style.height = `${sidebarHeight}px`;
+        document.body.style.marginBottom = `${sidebarHeight}px`;
+      } else {
+        sidebarWidth = Math.max(280, Math.min(700, window.innerWidth - ev.clientX));
+        bar.style.width = `${sidebarWidth}px`;
+        document.body.style.marginRight = `${sidebarWidth}px`;
+      }
     };
 
     const onUp = () => {
