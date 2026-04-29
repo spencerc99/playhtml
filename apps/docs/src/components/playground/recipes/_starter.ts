@@ -1,10 +1,15 @@
 // ABOUTME: Single-file HTML starter loaded by bare /play. Showcase of the
 // ABOUTME: most-used playhtml capabilities, designed for "see the range, keep what you want."
 
-// Astro's `base: "/docs"` config means this site lives under /docs in dev
-// and prod alike. Static assets in apps/docs/public/playground-starter/ are
-// served at /docs/playground-starter/.
-const IMG_BASE = "/docs/playground-starter";
+// Images are pulled from the live playhtml.fun deployment. Two reasons:
+//   1. The iframe is sandboxed without allow-same-origin (security: spec
+//      §4.2). That blocks fetches to same-origin URLs from inside the
+//      sandbox in dev. External URLs (cross-origin) aren't gated by the
+//      sandbox attribute the same way, so playhtml.fun-hosted assets
+//      load reliably.
+//   2. We get the existing playhtml visual identity for free — same
+//      Noguchi lamp, candle GIF, and logo the marketing site uses.
+const IMG_BASE = "https://playhtml.fun";
 
 export const starterRecipe: { id: string; html: string } = {
   id: "_starter",
@@ -38,7 +43,7 @@ export const starterRecipe: { id: string; html: string } = {
     #colorBox { width: 200px; height: 60px; margin-bottom: 10px; background-color: white; display: block; }
     #shootingStar { top: -36px; left: -36px; font-size: 36px; position: fixed; text-shadow: 0 0 4px yellow; }
     #catOrDog { width: 200px; }
-    #catOrDog.clicked { content: url("${IMG_BASE}/dog.png"); }
+    #catOrDog.clicked { content: url("${IMG_BASE}/candle-off.png"); }
     #plant { width: 200px; }
     #hoverBox.hovered { background: blue !important; transform: scale(1.1); }
     .reaction { transition: all 0.2s ease; cursor: pointer; }
@@ -49,15 +54,15 @@ export const starterRecipe: { id: string; html: string } = {
   <div class="wrapper">
     <div class="content" role="main">
       <h1 class="title" id="title">Hello World!</h1>
-      <img src="${IMG_BASE}/illustration.svg" class="illustration" alt="Editor illustration" title="Click the image!" id="illustration" can-spin />
+      <img src="${IMG_BASE}/playhtml-logo.png" class="illustration" alt="playhtml logo" title="Click the image!" id="illustration" can-spin />
 
       <div class="instructions">
-        <img src="${IMG_BASE}/open-sign.gif" can-move id="openSign" />
-        <img src="${IMG_BASE}/lamp.png" style="width: 200px; position: absolute; top:0; right: -16px" id="lamp" can-toggle />
+        <img src="${IMG_BASE}/candle-gif.gif" can-move id="openSign" />
+        <img src="${IMG_BASE}/noguchi-hanging-lamp.png" style="width: 200px; position: absolute; top:0; right: -16px" id="lamp" can-toggle />
 
         <div style="margin-bottom: 2em; gap: 2em; display: flex; flex-wrap: wrap; align-items: center;">
-          <img id="catOrDog" src="${IMG_BASE}/cat.jpg" can-toggle/>
-          <img id="plant" can-grow src="${IMG_BASE}/plant.png"/>
+          <img id="catOrDog" src="${IMG_BASE}/candle-gif.gif" can-toggle/>
+          <img id="plant" can-grow src="${IMG_BASE}/fire-hydrant.png"/>
           <div id="hoverBox" can-hover style="width: 100px; height: 100px; background: red;"></div>
           <button id="duplicateBtn" can-duplicate style="font-size: 24px; padding: 10px 20px;">Click to clone me!</button>
         </div>

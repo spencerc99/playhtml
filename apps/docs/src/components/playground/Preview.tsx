@@ -50,18 +50,15 @@ export function Preview(props: PreviewProps) {
     if (!playhtmlBlobUrl) return; // Wait for blob URL on first mount
 
     const iframe = document.createElement("iframe");
-    // Sandbox attributes: spec §4.2 says "allow-scripts allow-popups" with NO
-    // allow-same-origin (security: prevent recipe code from touching the
-    // parent). In practice, removing allow-same-origin in dev causes Astro's
-    // dev server to block the iframe's own subresource fetches (images,
-    // CSS files served from the docs origin) because the sandboxed iframe
-    // becomes a unique opaque origin. For now we keep allow-same-origin so
-    // images and the dev panel render correctly. The security implication
-    // is documented as a known issue — recipe code is currently treated as
-    // trusted, which is acceptable for the seed/canonical recipes shipping
-    // in Phase 1 but needs revisiting before community submissions land
-    // (where untrusted code is the whole point).
-    iframe.setAttribute("sandbox", "allow-scripts allow-popups allow-same-origin");
+    // Sandbox: scripts + popups only, no allow-same-origin. Per spec §4.2
+    // — the recipe runs in its own opaque origin so it can't touch the
+    // parent. Images load fine cross-origin (the sandbox doesn't gate
+    // those); same-origin fetches that the iframe might need (e.g. CSS,
+    // assets it expects to live alongside) wouldn't work, but recipes
+    // are designed to be self-contained: the iframe template inlines
+    // the dev panel's bottom-position CSS and the recipe references all
+    // images via absolute https URLs (playhtml.fun-hosted).
+    iframe.setAttribute("sandbox", "allow-scripts allow-popups");
     iframe.style.width = "100%";
     iframe.style.height = "100%";
     iframe.style.border = "none";
