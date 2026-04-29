@@ -6,6 +6,11 @@ import { normalizePath } from "@playhtml/common";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;
+// Polling tick that checks for new elementHandlers between MutationObserver
+// firings (playhtml's post-sync setup registers handlers on already-existing
+// DOM nodes, which doesn't fire the observer). Stored at module scope so
+// teardownDevUI can clear it; re-entry of setupDevUI (HMR) replaces it.
+let activeElementPoll: number | null = null;
 
 // Module-scope storage for the console patches and window listeners so
 // `teardownDevUI` can restore them, and so re-entry of `setupDevUI`
@@ -1492,7 +1497,11 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   // async post-sync setup (no DOM mutation fires). Without the poll the
   // panel would render an empty Data tab forever. 250ms is a good balance:
   // fast enough to feel snappy, slow enough that the cost is negligible.
-  setInterval(checkElementCountChange, 250);
+  // Clear any prior tick first so re-entry under HMR doesn't stack timers.
+  if (activeElementPoll !== null) {
+    window.clearInterval(activeElementPoll);
+  }
+  activeElementPoll = window.setInterval(checkElementCountChange, 250);
   activeElementObserver = elementObserver;
 
   // ── Trigger click to open ──
@@ -1698,6 +1707,10 @@ export function teardownDevUI(): void {
   if (activeElementObserver) {
     activeElementObserver.disconnect();
     activeElementObserver = null;
+  }
+  if (activeElementPoll !== null) {
+    window.clearInterval(activeElementPoll);
+    activeElementPoll = null;
   }
   if (activeDevRoot && activeDevRoot.parentElement) {
     activeDevRoot.parentElement.removeChild(activeDevRoot);
