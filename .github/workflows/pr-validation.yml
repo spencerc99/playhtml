@@ -29,12 +29,35 @@ jobs:
     - name: Build packages
       run: bun build-packages
 
-    - name: Run tests
+    - name: Run core tests
       run: cd packages/playhtml && bun run test
+
+    - name: Run react tests
+      # 2 pre-existing pathname-prop failures (mock-restore quirk) are
+      # tracked separately. Reports failures but does not block merge.
+      run: cd packages/react && bun run test
+      continue-on-error: true
 
     - name: Lint
       run: bun run lint
       continue-on-error: true  # Report lint results but do not block merge
-      
+
     - name: Build site
       run: bun build-site
+
+    - name: Install Playwright browsers
+      run: bunx playwright install --with-deps chromium
+      working-directory: smoke-tests
+
+    - name: Run smoke tests
+      run: bun smoke
+
+    - name: Upload smoke test report
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: smoke-test-report
+        path: |
+          smoke-tests/playwright-report
+          smoke-tests/test-results
+        retention-days: 7
