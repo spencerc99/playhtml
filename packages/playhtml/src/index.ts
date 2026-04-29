@@ -482,25 +482,8 @@ function onMessage(data: string) {
   }
 }
 
-// Tracks main-room sync state. Bistable: flips true after first sync, then
-// flips back to false during handleNavigation while the new room re-syncs.
-// Internal — used by setupElements per-tag work, awareness fingerprinting,
-// and runHandleNavigation.
-let mainRoomSynced = false;
-// Public lifecycle signal. Inverse of "init's one-time wiring has run".
-// Flips true → false once, after the first init() completes its setup hooks
-// (awareness binding, navigation controller). Stays false until
-// resetPlayHTML(). This is the single signal API consumers should gate on
-// for "is playhtml ready for API calls?".
-let isLoading = true;
-let readyResolve: () => void = () => {};
-let _ready: Promise<void> = new Promise<void>((resolve) => {
-  readyResolve = resolve;
-});
-// Flips true the moment init() begins its synchronous work. Distinct from
-// `isLoading` (which doesn't flip until setup has fully completed). Used
-// to dedupe concurrent in-process callers so they share `_ready`.
-let initStarted = false;
+let hasSynced = false;
+let firstSetup = true;
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
 let isDevelopmentMode = false;
@@ -679,8 +662,8 @@ function buildCursors(args: {
 }
 
 async function runHandleNavigation(): Promise<void> {
-  // isLoading is true before init and after resetPlayHTML — skip nav in both.
-  if (isLoading) return;
+  // firstSetup is true before init and after resetPlayHTML — skip nav in both.
+  if (firstSetup) return;
 
   const nextRoomInput =
     explicitRoomOption ?? getDefaultRoom(cachedDefaultRoomOptions);
@@ -716,7 +699,7 @@ async function runHandleNavigation(): Promise<void> {
 
   if (mainRoomChanged) {
     teardownMainProvider();
-    mainRoomSynced = false;
+    hasSynced = false;
     lastElementAwarenessFingerprint = null;
     buildMainProvider({
       room: newMainRoom,
@@ -749,14 +732,14 @@ async function runHandleNavigation(): Promise<void> {
 
   if (mainRoomChanged) {
     await new Promise<void>((resolve) => {
-      if (mainRoomSynced) {
+      if (hasSynced) {
         resolve();
         return;
       }
       yprovider.on("sync", (connected: boolean) => {
         if (!connected) console.error("Issue connecting to yjs...");
-        if (mainRoomSynced) return;
-        mainRoomSynced = true;
+        if (hasSynced) return;
+        hasSynced = true;
         resolve();
       });
     });
@@ -781,19 +764,11 @@ async function initPlayHTML({
   onError,
   developmentMode = false,
   cursors = {},
-}: InitOptions = {}): Promise<void> {
-  // Concurrent callers (e.g. multiple React PlayProviders mounting in
-  // parallel) all await the same _ready promise. `initStarted` flips true
-  // synchronously on the first call so subsequent calls in the same tick
-  // (or any later) skip the setup body entirely and just return _ready.
-  if (initStarted) return _ready;
-  if ("playhtml" in window) {
-    // Something external (e.g., a browser extension) set window.playhtml
-    // before our init started. Don't try to init again.
+}: InitOptions = {}) {
+  if (!firstSetup || "playhtml" in window) {
     console.error("playhtml already set up! ignoring");
-    return _ready;
+    return;
   }
-  initStarted = true;
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
   const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
@@ -909,55 +884,43 @@ async function initPlayHTML({
   // Mark all discovered playhtml elements as loading before sync
   markAllElementsAsLoading();
 
-  // await until yprovider is synced, with a safety timeout so a stuck
-  // WebSocket doesn't leave consumers waiting on `playhtml.ready` forever.
-  // After the timeout we run setupElements anyway so APIs become callable;
-  // writes will queue locally and flush when sync eventually completes.
-  await new Promise<void>((resolve) => {
-    if (mainRoomSynced) {
-      resolve();
-      return;
+  // await until yprovider is synced
+  await new Promise((resolve) => {
+    if (hasSynced) {
+      resolve(true);
     }
-
-    let resolved = false;
-    const finish = (reason: "sync" | "timeout") => {
-      if (resolved) return;
-      resolved = true;
-      if (!mainRoomSynced) {
-        if (reason === "timeout") {
-          console.warn(
-            "[PLAYHTML] yjs sync timed out after 10s — proceeding without sync. Reads/writes will queue until the WebSocket connects.",
-          );
-        }
-        mainRoomSynced = true;
-        console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
-        setupElements();
-        markAllElementsAsReady();
-
-        if (sharedReferences.length > 0) {
-          try {
-            const elementIds = sharedReferences.map((r) => r.elementId);
-            yprovider.sendMessage(
-              JSON.stringify({ type: "export-permissions", elementIds }),
-            );
-          } catch (error) {
-            console.error("[PLAYHTML] Error during post-sync setup:", error);
-          }
-        }
-      }
-      resolve();
-    };
-
-    const timeoutId = window.setTimeout(() => finish("timeout"), 10_000);
-
     yprovider.on("sync", (connected: boolean) => {
       if (!connected) {
         console.error("Issue connecting to yjs...");
       }
-      window.clearTimeout(timeoutId);
-      finish("sync");
+      if (hasSynced) {
+        return;
+      }
+      hasSynced = true;
+      console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+
+      setupElements();
+
+      // Mark all elements as ready after sync completes and elements are set up
+      markAllElementsAsReady();
+
+      // Fetch simple permissions for referenced shared elements so clients can block writes locally
+      if (sharedReferences.length > 0) {
+        try {
+          const elementIds = sharedReferences.map((r) => r.elementId);
+          yprovider.sendMessage(
+            JSON.stringify({ type: "export-permissions", elementIds })
+          );
+        } catch (error) {
+          console.error("[PLAYHTML] Error during post-sync setup:", error);
+        }
+      }
+
+      resolve(true);
     });
   });
+
+  return yprovider;
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
@@ -1247,7 +1210,7 @@ function onChangeAwareness() {
  * on the `playhtml` object on `window`.
  */
 function setupElements(): void {
-  if (!mainRoomSynced) {
+  if (!hasSynced) {
     return;
   }
 
@@ -1268,7 +1231,7 @@ function setupElements(): void {
     );
   }
 
-  if (!isLoading) {
+  if (!firstSetup) {
     return;
   }
 
@@ -1285,16 +1248,11 @@ function setupElements(): void {
   });
   detachNavListeners = attachNavigationListeners(navigationController);
 
-  isLoading = false;
-  readyResolve();
+  firstSetup = false;
 }
 
 function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
-  // Page data uses module-level `doc` and `store.play` which survive
-  // navigation, so we only need init to have completed wiring — not for the
-  // main room to currently be synced. Mid-navigation calls return a channel
-  // pointing at the same doc; writes flush once the new provider connects.
-  if (isLoading) {
+  if (!hasSynced) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
   return createPageDataChannel(name, defaultValue, {
@@ -1310,12 +1268,7 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
 }
 
 function createPresenceRoom(name: string): PresenceRoom {
-  // Presence rooms have their own YProvider independent of the main room, so
-  // they only require init() to have completed once — not for the main room
-  // to be currently synced. Using `mainRoomSynced` here would race with
-  // handleNavigation(), which clears `mainRoomSynced` mid-flight while the
-  // main room re-syncs. `isLoading` is the durable "init has run" signal.
-  if (isLoading) {
+  if (!hasSynced) {
     throw new Error("playhtml.createPresenceRoom is not available before init()");
   }
 
@@ -1343,20 +1296,6 @@ function createPresenceRoom(name: string): PresenceRoom {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
-  /**
-   * True until init() has finished its one-time setup wiring (awareness
-   * binding, navigation controller). Stays false until resetPlayHTML().
-   * Gate API calls (createPresenceRoom, createPageData, presence.*) on
-   * isLoading === false. After resolution `ready` resolves.
-   */
-  readonly isLoading: boolean;
-  /**
-   * Resolves once when init has finished setup wiring. Multiple concurrent
-   * init() calls all await the same promise. Never rejects — sync failures
-   * are logged but don't block readiness so APIs remain callable. After
-   * resetPlayHTML() this becomes a fresh pending promise.
-   */
-  readonly ready: Promise<void>;
   handleNavigation: () => Promise<void>;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
@@ -1393,8 +1332,7 @@ export interface PlayHTMLComponents {
  * isolation (beforeEach resets) only.
  */
 export async function resetPlayHTML(): Promise<void> {
-  // Idempotent: nothing to reset if init has never been called.
-  if (!initStarted) return;
+  if (firstSetup) return;
 
   try {
     if (navigationController) {
@@ -1452,13 +1390,9 @@ export async function resetPlayHTML(): Promise<void> {
     delete (window as any).playhtml;
     delete document.documentElement.dataset.playhtml;
 
-    mainRoomSynced = false;
+    hasSynced = false;
     lastElementAwarenessFingerprint = null;
-    isLoading = true;
-    initStarted = false;
-    _ready = new Promise<void>((resolve) => {
-      readyResolve = resolve;
-    });
+    firstSetup = true;
     __currentRoomId = "";
     __currentHost = "";
     presenceAPI = null;
@@ -1467,20 +1401,14 @@ export async function resetPlayHTML(): Promise<void> {
     cursorOptionsCache = undefined;
     cachedOnError = undefined;
   } finally {
-    // isLoading=true (set above) is the canonical "not initialized" flag —
-    // runHandleNavigation checks it to skip nav after reset.
+    // firstSetup = true (set above) is the canonical "not initialized"
+    // flag — runHandleNavigation checks it to skip nav after reset.
   }
 }
 
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
-  get isLoading() {
-    return isLoading;
-  },
-  get ready() {
-    return _ready;
-  },
   handleNavigation: async function handleNavigation(): Promise<void> {
     if (!navigationController) return;
     await navigationController.trigger();
@@ -1529,9 +1457,7 @@ function maybeSetupTag(tag: TagType | string): void {
     return;
   }
 
-  // Wait for first main-room sync before initializing the per-tag store —
-  // creating the entry before sync would race with the initial state load.
-  if (!mainRoomSynced) {
+  if (!hasSynced) {
     return;
   }
 
@@ -1574,10 +1500,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
-  // Reads initial state from the synced main-room doc to hydrate the
-  // element. Skip until first sync; subsequent navs leave already-set-up
-  // elements alone.
-  if (!mainRoomSynced) {
+  if (!hasSynced) {
     return;
   }
 
@@ -1755,7 +1678,7 @@ function setupPlayElement(
   );
 
   if (hasPlayhtmlAttributes) {
-    if (mainRoomSynced) {
+    if (hasSynced) {
       // If already synced, element will be ready immediately
       markElementAsReady(element);
     } else {
@@ -1806,7 +1729,7 @@ function removePlayElement(element: Element | null) {
  * @param elementId - The element ID
  */
 function deleteElementData(tag: string, elementId: string): void {
-  if (!mainRoomSynced) {
+  if (!hasSynced) {
     console.warn(
       `[PLAYHTML] Cannot remove element data before sync: ${tag}:${elementId}`,
     );

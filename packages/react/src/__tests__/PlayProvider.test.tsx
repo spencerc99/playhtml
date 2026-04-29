@@ -21,7 +21,7 @@ describe("PlayProvider", () => {
     };
 
     const { getByTestId } = render(
-      <PlayProvider initOptions={{}}>
+      <PlayProvider>
         <TestComponent />
       </PlayProvider>
     );

@@ -127,49 +127,6 @@ interface Props {
   pathname?: string;
 }
 
-// Flips true the first time any PlayProvider with initOptions calls init().
-// Used to detect and warn about a second init-owning PlayProvider mounting
-// later (whose options would be silently ignored by playhtml.init()).
-let hasInitOwner = false;
-let hasWarnedConflictingInit = false;
-
-/**
- * Test-only: reset the module-level init-owner tracking between tests.
- * Not part of the public API. The harness mocks playhtml itself, so this
- * just clears React's local bookkeeping that pairs with the mock reset.
- */
-export function __resetInitOwnerForTests(): void {
-  hasInitOwner = false;
-  hasWarnedConflictingInit = false;
-}
-
-/**
- * PlayProvider has two modes:
- *
- * 1. Init-owning: render with `initOptions`. Calls `playhtml.init()` on
- *    mount. Use this once at your app root.
- *
- *    ```tsx
- *    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
- *      <App />
- *    </PlayProvider>
- *    ```
- *
- * 2. Context-only: render bare (no `initOptions`). Does NOT call init —
- *    just relays context from the global playhtml singleton. Use this in
- *    additional React roots (e.g. Astro islands) that need
- *    `useCursorPresences`, `usePresenceRoom`, etc.
- *
- *    ```tsx
- *    <PlayProvider>
- *      <NestedIsland />
- *    </PlayProvider>
- *    ```
- *
- * The app must have either an init-owning provider OR call
- * `playhtml.init()` directly somewhere — context-only providers don't
- * trigger init.
- */
 export function PlayProvider({
   children,
   initOptions,
@@ -195,13 +152,10 @@ export function PlayProvider({
     playhtml.setupPlayElements();
   }, [pathname, search]);
 
-  // Subscribe to playhtml's module-level isLoading. Multiple PlayProviders
-  // mounted concurrently all observe the same `playhtml.ready` promise, so
-  // they flip together once init's setup wiring completes.
-  const [isLoading, setIsLoading] = useState(playhtml.isLoading);
+  const [hasSynced, setHasSynced] = useState(false);
 
   const processedInitOptions = useMemo<InitOptions | undefined>(() => {
-    if (!initOptions) return undefined;
+    if (!initOptions) return initOptions as InitOptions | undefined;
     if (!initOptions.cursors) return initOptions as InitOptions;
     return {
       ...initOptions,
@@ -213,38 +167,15 @@ export function PlayProvider({
   }, [initOptions]);
 
   useEffect(() => {
-    // PlayProvider has two modes:
-    //   1. init-owning: rendered with `initOptions`. Calls playhtml.init().
-    //      Only one such provider per app. A second init-owning provider
-    //      logs a warning — playhtml.init() is idempotent, so the late
-    //      options are silently dropped and would otherwise be invisible.
-    //   2. context-only: rendered without `initOptions` (typical for
-    //      nested Astro islands). Does NOT call init — relays context
-    //      from the global playhtml singleton. The app must have an
-    //      init-owning provider somewhere, or call playhtml.init() directly.
-    let cancelled = false;
-    if (processedInitOptions) {
-      if (hasInitOwner && !hasWarnedConflictingInit) {
-        hasWarnedConflictingInit = true;
-        console.warn(
-          "[@playhtml/react] Multiple <PlayProvider> instances passed `initOptions`. " +
-            "Only the first init-owning provider's options take effect; later options are " +
-            "silently ignored. Pass `initOptions` to exactly one PlayProvider (typically " +
-            "your app root) and render bare <PlayProvider> elsewhere for context-only mode.",
-        );
+    playhtml.init(processedInitOptions).then(
+      () => {
+        setHasSynced(true);
+      },
+      (err) => {
+        console.error(err);
+        setHasSynced(true);
       }
-      hasInitOwner = true;
-      playhtml.init(processedInitOptions).catch((err) => console.error(err));
-    }
-
-    // Whether or not we triggered init, wait for readiness so context
-    // accurately reflects the global state.
-    playhtml.ready.then(() => {
-      if (!cancelled) setIsLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
+    );
   }, []);
 
   const configureCursors = (options: Partial<CursorOptions>) => {
@@ -328,7 +259,7 @@ export function PlayProvider({
       client.off("name", handleName);
       unsubPresences();
     };
-  }, [isLoading]);
+  }, [hasSynced]);
 
   return (
     <PlayContext.Provider
@@ -338,8 +269,8 @@ export function PlayProvider({
         registerPlayEventListener: playhtml.registerPlayEventListener,
         removePlayEventListener: playhtml.removePlayEventListener,
         deleteElementData: playhtml.deleteElementData,
-        hasSynced: !isLoading,
-        isLoading,
+        hasSynced,
+        isLoading: !hasSynced,
         isProviderMissing: false,
         configureCursors,
         getMyPlayerIdentity,
