@@ -1,5 +1,5 @@
 // ABOUTME: Homepage for wewere.online
-// ABOUTME: Scrollable landing page with trails background, essay sections, guestbook, and presence
+// ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
 import { useState, useEffect } from "react";
 import { AnimatedTrails } from "@movement/components/AnimatedTrails";
@@ -11,6 +11,20 @@ import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import styles from "./App.module.scss";
+
+// TODO: replace with real Chrome Web Store / Firefox Add-ons URLs once published
+const CHROME_DOWNLOAD_URL =
+  "https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc?authuser=0&hl=en";
+const FIREFOX_DOWNLOAD_URL =
+  "https://addons.mozilla.org/en-US/firefox/addon/we-were-online/";
+
+const ALIVE_INTERNET_ESSAY_URL =
+  "https://news.spencer.place/p/alive-internet-theory";
+const BENCHES_ESSAY_URL =
+  "https://news.spencer.place/p/the-internet-has-no-benches";
+
+const HELP_MAILTO =
+  "mailto:hi@spencer.place?subject=help%20build%20we%20were%20online";
 
 function RisoTexture() {
   return (
@@ -95,6 +109,33 @@ const ANIMATION_SETTINGS = {
   clickAnimationStopPoint: 0.8,
 };
 
+function DownloadButtons({ size = "default" }: { size?: "default" | "large" }) {
+  const className =
+    size === "large"
+      ? `${styles.downloadGroup} ${styles.downloadGroupLarge}`
+      : styles.downloadGroup;
+  return (
+    <div className={className}>
+      <a
+        href={CHROME_DOWNLOAD_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={styles.downloadButton}
+      >
+        install for Chrome
+      </a>
+      <a
+        href={FIREFOX_DOWNLOAD_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={styles.downloadButton}
+      >
+        install for Firefox
+      </a>
+    </div>
+  );
+}
+
 export default function App() {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [viewportSize, setViewportSize] = useState({
@@ -146,30 +187,23 @@ export default function App() {
         <section className={styles.hero}>
           <h1 className={styles.wordmark}>we were online</h1>
           <p className={styles.tagline}>
-            a living archive of how we used the internet
+            turning the internet into a living, shared space
           </p>
           <div
             className={`${styles.siteCard} ${styles.siteCardTeal}`}
             can-spin="true"
             id="wewere-site-card-1"
           >
-            (welcome to everyone from the secret video!)
+            the cursor trails are from real people browsing
           </div>
           <div
             className={`${styles.siteCard} ${styles.siteCardRust}`}
             can-spin="true"
             id="wewere-site-card-2"
           >
-            this site is a living, shared space!
+            install the extension to try it out!
           </div>
-          <a
-            href="https://forms.gle/iX8Lfgcy3LW79EsRA"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.cta}
-          >
-            sign up to try it!
-          </a>
+          <DownloadButtons />
           <div className={styles.scrollHint} aria-hidden="true">
             <svg
               width="24"
@@ -256,27 +290,31 @@ export default function App() {
                 <Bench id="wewere-bench" />
               </aside>
               <p className={styles.benchesLine}>
-                I think it's because the Internet has no benches.
+                I think it's because{" "}
+                <a
+                  href={BENCHES_ESSAY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  the Internet has no benches
+                </a>
+                .
               </p>
             </div>
 
             <p>
-              One of my favorite things about walking around and sitting at a
-              cafe in the real world is how we can share space with other people
-              in low-pressure environments. We share a look with a stranger when
-              something funny happens or rise to the occasion when someone
-              trips. Sometimes these spontaneous encounters become intimate
-              conversations that leave a mark on us even if we don't remember
-              who they were or what we talked about.
+              One of my favorite things about walking around in the real world
+              is the causal sharing of space with other people. We share a look
+              when something funny happens or help out when a stranger trips.
+              Sometimes these spontaneous encounters become meaningful
+              encounters that stay with us.
             </p>
 
             <div className={styles.marginalia}>
               <p>
                 The Internet has none of this. Online, we're forced to perform
-                or consume. We're building an audience or we're stuck in the
-                flood. We have all this life around us on the web, but we can't
-                feel it. The opportunity for connection is still there, but we
-                don't have the environment to engage with it in a natural way.
+                or consume. We have all this life around us on the web, but we
+                can't feel it.
               </p>
               <aside className={styles.marginaliaAside}>
                 <CoffeeMachine id="wewere-coffee" />
@@ -284,144 +322,127 @@ export default function App() {
             </div>
 
             <p>
-              <em>we were online</em> is an online multiplayer world—part game,
-              artwork, and tool—that turns the existing Internet into a living,
-              shared world, actively shaped by its inhabitants.
+              <em>
+                <b style={{ fontSize: "1.1em" }}>we were online</b>
+              </em>{" "}
+              is an online multiplayer world—part game, artwork, and tool—that
+              turns the existing Internet into a living, shared world, actively
+              shaped by its inhabitants.
             </p>
 
             <p>
-              In this world, everything on the Internet becomes material for
-              connection. Assets, buttons, and other components can be created,
-              grown, moved, taken, and gifted. Pages have memory and show the
-              wear of use. Cursors become digital appendages that allow us to
-              bump into others who are there at the same time as us.
+              Built on <a href="https://playhtml.fun/">playhtml</a>, an
+              open-source library for creating shared experiences, the game is
+              designed to be customized and extended by its players. Individual
+              websites can create interactions that respond to live events on
+              other websites and change behavior depending on a user’s history
+              and personality.
             </p>
 
             <p>
-              By allowing us to see each other and affect the pages we visit,
-              isolated browsing becomes the site of serendipitous encounters,
-              websites become archives of our collective traces, and the
-              Internet becomes more like a hometown we share and co-create.
-            </p>
-
-            <p>
-              In this world, everything on the Internet becomes material for
-              connection like{" "}
-              <a
-                href="https://news.spencer.place/p/ti-09-the-internet-is-one-big-video"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                one big video game
-              </a>
-              . Built on{" "}
-              <a
-                href="https://playhtml.fun/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                playhtml
-              </a>
-              , an open-source library for creating shared experiences, the game
-              is designed to be customized and extended by its players.
-              Individual websites can create interactions that respond to live
-              events on other websites and change behavior depending on a user’s
-              history and personality. Traditional domain silos become open
-              islands that grow dense with connection and come alive with the
-              personality of dozens of personal websites.
+              Isolated browsing becomes the site of serendipitous encounters as
+              everything becomes material for connection. Assets, buttons, and
+              other components can be created, grown, moved, taken, and gifted.
+              Pages show wear as people pass through and use them. Cursors
+              become digital appendages for bumping into others.
             </p>
 
             <p>
               Instead of a new social platform, I'm invested in helping the
               existing Internet we already live in{" "}
               <a
-                href="https://news.spencer.place/p/alive-internet-theory"
+                href={ALIVE_INTERNET_ESSAY_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 come to life
               </a>{" "}
-              with our presence—one we can shape together, piece by piece. Not
+              with our presence — one we can shape together, piece by piece. Not
               as users, but as neighbors and stewards nurturing a home for
               generations to come.
             </p>
-
-            <b>open questions I'm exploring:</b>
-            <ol>
-              <li>
-                How do you foster{" "}
-                <a href="https://www.are.na/omayeli-arenyeka/solidarity-on-the-web">
-                  solidarity on the web
-                </a>
-                ?
-              </li>
-              <li>
-                What makes a digital space feel safe for you to express yourself
-                and how much of yourself do you need to reveal to feel genuinely
-                connected to a stranger online?
-              </li>
-              <li>
-                How can it feel genuinely good and meaningful to spend time
-                online without veering into addiction?
-              </li>
-              <li>
-                What can serve as a{" "}
-                <a href="https://www.poetryfoundation.org/poetrymagazine/articles/60484/the-third-thing">
-                  "third thing"
-                </a>{" "}
-                to help us find "joint rapture"?
-              </li>
-            </ol>
           </div>
+          <br />
+          <DownloadButtons />
         </section>
-        <section className={`${styles.section} ${styles.bottomCta}`}>
-          <a
-            href="https://forms.gle/iX8Lfgcy3LW79EsRA"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.cta}
-            style={{ fontSize: "2em" }}
-          >
-            sign up to try it!
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionHeading}>leave a mark</h2>
+          <AuraGuestbook id="wewere-online-guestbook" />
+        </section>
+
+        <section className={`${styles.section} ${styles.helpBuild}`}>
+          <p className={styles.helpBuildLead}>
+            want to make this world with us?
+          </p>
+          <p className={styles.helpBuildBody}>
+            I'm looking for people who want to help build this together.
+            Designers, artists, writers, all internet hopefuls welcome.
+          </p>
+          <a href={HELP_MAILTO} className={styles.helpBuildCta}>
+            say hi → hi@spencer.place
           </a>
         </section>
 
         <section className={styles.section}>
-          <AuraGuestbook id="wewere-online-guestbook" />
-        </section>
-
-        <section className={`${styles.section} ${styles.furtherReading}`}>
-          <h2 className={styles.sectionHeading}>further reading</h2>
+          <h2 className={styles.sectionHeading}>
+            {" "}
+            open questions I'm exploring:
+          </h2>
+          <ol className={styles.openQuestions}>
+            <li>
+              How do you foster{" "}
+              <a
+                href="https://www.are.na/omayeli-arenyeka/solidarity-on-the-web"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                solidarity on the web
+              </a>
+              ?
+            </li>
+            <li>
+              What makes a digital space feel safe for you to express yourself
+              and how much of yourself do you need to reveal to feel genuinely
+              connected to a stranger online?
+            </li>
+            <li>
+              How can it feel genuinely good and meaningful to spend time online
+              without veering into addiction?
+            </li>
+            <li>
+              What can serve as a{" "}
+              <a
+                href="https://www.poetryfoundation.org/poetrymagazine/articles/60484/the-third-thing"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                "third thing"
+              </a>{" "}
+              to help us find "joint rapture"?
+            </li>
+          </ol>
+          <h2 className={styles.sectionHeading}>read more</h2>
           <ul className={styles.linkList}>
             <li>
               <a
-                href="https://news.spencer.place/p/alive-internet-theory"
+                href={ALIVE_INTERNET_ESSAY_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                alive internet theory
+                Alive Internet Theory
               </a>{" "}
-              on how we'll never let the Internet die
+              — on how we'll never let the Internet die
             </li>
             <li>
               <a
-                href="https://news.spencer.place/p/ti-09-the-internet-is-one-big-video"
+                href={BENCHES_ESSAY_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                the internet is one big video game
+                The Internet Has No Benches
               </a>{" "}
-              on how the Internet was meant to be a place to talk to one another
-            </li>
-            <li>
-              <a
-                href="https://www.youtube.com/watch?v=l-2t-N96Bn8"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Perpetual motion machine
-              </a>{" "}
-              on searching for technology that propagates infinite cycles
+              — on the missing third places of the web
             </li>
           </ul>
         </section>
@@ -435,6 +456,14 @@ export default function App() {
               rel="noopener noreferrer"
             >
               spencer
+            </a>
+            , built on{" "}
+            <a
+              href="https://playhtml.fun/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              playhtml
             </a>
           </p>
           <p>

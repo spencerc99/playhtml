@@ -126,17 +126,42 @@ $accent-rust: #c4724e;
   }
 }
 
-.cta {
+// --- Download buttons ---
+
+.downloadGroup {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.downloadGroupLarge {
   margin-top: 8px;
+  gap: 16px;
+}
+
+.downloadButton {
   font-family: $font-body;
-  font-size: 0.8125rem;
-  color: $text-muted;
-  border-bottom: 1px solid currentColor;
-  padding-bottom: 1px;
-  transition: color 0.15s;
+  font-size: 0.9375rem;
+  color: $text;
+  background: rgba($bg, 0.7);
+  border: 1.5px solid rgba($text, 0.35);
+  border-radius: 4px;
+  padding: 10px 18px;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  backdrop-filter: blur(2px);
 
   &:hover {
-    color: $text;
+    background: rgba($bg, 0.95);
+    border-color: $text;
+    transform: translateY(-1px);
+  }
+
+  .downloadGroupLarge & {
+    font-size: 1.0625rem;
+    padding: 14px 24px;
   }
 }
 
@@ -246,7 +271,6 @@ $accent-rust: #c4724e;
     align-items: flex-start;
     gap: 24px;
 
-    // Keep the text at its natural width
     > p,
     > .benchesLine {
       flex: 1;
@@ -260,10 +284,8 @@ $accent-rust: #c4724e;
   }
 }
 
-// Left-side marginalia (aside before text in DOM)
 .marginaliaLeft {
   @media (min-width: 769px) {
-    // Let the bench extend beyond the section boundary into the left margin
     margin-left: -80px;
   }
 
@@ -289,8 +311,100 @@ $accent-rust: #c4724e;
 
 .bottomCta {
   text-align: center;
-  padding: 0 24px;
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bottomCtaLead {
+  font-family: $font-wordmark;
+  font-style: italic;
   font-weight: 600;
+  font-size: clamp(1.3rem, 3.5vw, 1.6rem);
+  color: $text;
+  margin: 0 0 12px;
+}
+
+// --- Open questions ---
+
+.openQuestionsHeading {
+  margin-top: 1.5em;
+}
+
+.openQuestions {
+  font-family: $font-body;
+  line-height: 1.6;
+  color: $text;
+  padding-left: 1.5em;
+  margin: 0.5em 0 0;
+
+  li {
+    margin-bottom: 0.5em;
+  }
+
+  a {
+    color: $accent-teal;
+    text-decoration: none;
+    border-bottom: 1px solid rgba($accent-teal, 0.3);
+    padding-bottom: 1px;
+    transition: color 0.2s, border-color 0.2s;
+
+    &:hover {
+      color: darken($accent-teal, 8%);
+      border-color: $accent-teal;
+    }
+  }
+}
+
+// --- Help build CTA ---
+
+.helpBuild {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.helpBuildLead {
+  font-family: $font-wordmark;
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(1.2rem, 3vw, 1.45rem);
+  color: $accent-rust;
+  margin: 0;
+}
+
+.helpBuildBody {
+  font-family: $font-body;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: $text-muted;
+  max-width: 48ch;
+  margin: 0;
+}
+
+.helpBuildCta {
+  font-family: $font-body;
+  font-size: 0.9375rem;
+  color: $text;
+  background: rgba($bg, 0.7);
+  border: 1.5px solid rgba($accent-rust, 0.5);
+  border-radius: 4px;
+  padding: 10px 18px;
+  text-decoration: none;
+  margin-top: 6px;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+
+  &:hover {
+    background: rgba($accent-rust, 0.08);
+    border-color: $accent-rust;
+    transform: translateY(-1px);
+  }
 }
 
 // --- Further reading ---

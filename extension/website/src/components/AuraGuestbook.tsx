@@ -52,12 +52,14 @@ function seededRandom(seed: number): number {
 function getCardTransform(timestamp: number, index: number, total: number) {
   const seed = timestamp + index * 7919;
   const rotation = (seededRandom(seed) - 0.5) * 20; // -10 to +10 deg
-  // Spread range grows with card count: few cards stay tight, many cards fill the width
-  const maxSpread = Math.min(40, 5 + total * 3); // 8% to 40% from center
-  const jitter = (seededRandom(seed + 3) - 0.5) * 2; // -1 to +1
-  const spreadX = 50 + jitter * maxSpread; // centered at 50%
-  const jitterY = (seededRandom(seed + 2) - 0.5) * 40; // -20 to +20 px
-  return { rotation, spreadX, jitterY };
+  // Spread range grows with card count: few cards stay tight, many cards fill the area
+  const maxSpreadX = Math.min(40, 5 + total * 3); // 8% to 40% from center
+  const maxSpreadY = Math.min(38, 6 + total * 3); // 9% to 38% from center
+  const jitterX = (seededRandom(seed + 3) - 0.5) * 2; // -1 to +1
+  const jitterY = (seededRandom(seed + 2) - 0.5) * 2; // -1 to +1
+  const spreadX = 50 + jitterX * maxSpreadX; // centered at 50%
+  const spreadY = 50 + jitterY * maxSpreadY; // centered at 50%
+  return { rotation, spreadX, spreadY };
 }
 
 // Format timestamp as colloquial time: "around 11pm on a Sunday"
@@ -391,7 +393,7 @@ export const AuraGuestbook = withSharedState(
             }`}
           >
             {sortedEntries.map((entry, i) => {
-              const { rotation, spreadX, jitterY } = getCardTransform(
+              const { rotation, spreadX, spreadY } = getCardTransform(
                 entry.timestamp,
                 i,
                 sortedEntries.length,
@@ -407,8 +409,8 @@ export const AuraGuestbook = withSharedState(
                     filter: ageFilter,
                     zIndex: i,
                     left: `${spreadX}%`,
-                    top: `50%`,
-                    transform: `translate(-50%, -50%) translate(0px, ${jitterY}px) rotate(${rotation}deg)`,
+                    top: `${spreadY}%`,
+                    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                     boxShadow: getGlowShadow(entry.color),
                   }}
                   onClick={() => setExpandedIndex(i)}

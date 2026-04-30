@@ -5,30 +5,32 @@
 
 .pill {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  bottom: 20px;
+  right: 20px;
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: rgba($bg, 0.8);
-  backdrop-filter: blur(8px);
+  gap: 12px;
+  padding: 10px 18px;
+  background: rgba($bg, 0.85);
+  backdrop-filter: blur(10px);
   border-radius: 999px;
-  border: 1px solid rgba($text, 0.08);
+  border: 1px solid rgba($text, 0.12);
+  box-shadow: 0 2px 12px rgba($text, 0.06);
   font-family: $font-body;
-  font-size: 0.75rem;
-  color: $text-muted;
+  font-size: 0.9375rem;
+  color: $text;
 }
 
 .count {
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .dots {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
 }
 
 .dotWrapper {
@@ -42,29 +44,29 @@
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 7px;
+  font-size: 9px;
   line-height: 1;
   color: $text-muted;
   white-space: nowrap;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   animation: pulse 3s ease-in-out infinite;
 }
 
 .dotYou {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
 }
 
 .overflow {
-  font-size: 0.625rem;
+  font-size: 0.8125rem;
   color: $text-muted;
-  margin-left: 2px;
+  margin-left: 3px;
 }
 
 @keyframes pulse {
