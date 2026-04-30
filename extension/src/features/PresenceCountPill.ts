@@ -27,24 +27,62 @@ export class PresenceCountPill {
       const pagePresences = this.presence.getPresences();
       const lobbyPresences = this.lobbyPresence.getPresences();
 
-      let pageOthers = 0;
-      pagePresences.forEach((p) => { if (!p.isMe) pageOthers++; });
+      const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
+      const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
+      const lobbyOtherKeys = this.uniqueOtherKeys(lobbyPresences, myKey);
 
-      let lobbyOthers = 0;
-      lobbyPresences.forEach((p) => { if (!p.isMe) lobbyOthers++; });
-
+      const pageOthers = pageOtherKeys.size;
+      const lobbyOthers = lobbyOtherKeys.size;
       const elsewhere = Math.max(0, lobbyOthers - pageOthers);
       const fingerprint = `${pageOthers}:${elsewhere}`;
 
       if (fingerprint !== this.lastFingerprint) {
         this.lastFingerprint = fingerprint;
-        this.render(pageOthers, elsewhere, pagePresences, lobbyPresences);
+        this.render(pageOthers, elsewhere, pagePresences, pageOtherKeys, myKey);
       }
     };
 
     const interval = setInterval(check, 1000);
     this.cleanups.push(() => clearInterval(interval));
     check();
+  }
+
+  private getMyPublicKey(...maps: Map<string, any>[]): string | null {
+    // Prefer the lobby's own identity (always populated locally) over scanning
+    // presences for isMe — remote tabs of the same human are NOT marked isMe,
+    // so relying on isMe alone misses the dedupe case we care about.
+    try {
+      const fromLobby = this.lobbyPresence.getMyIdentity?.()?.publicKey;
+      if (fromLobby) return fromLobby;
+    } catch { /* ignore */ }
+    try {
+      const fromPage = this.presence.getMyIdentity?.()?.publicKey;
+      if (fromPage) return fromPage;
+    } catch { /* ignore */ }
+    for (const m of maps) {
+      for (const p of m.values()) {
+        if (p.isMe && p.playerIdentity?.publicKey) return p.playerIdentity.publicKey;
+      }
+    }
+    return null;
+  }
+
+  // Lobby presences don't carry __playhtml_cursors__ for remote peers, so
+  // playerIdentity is undefined there. We piggy-back the pid on the `page`
+  // payload (set in wikipedia.ts) and read it back here.
+  private pidOf(p: any): string | null {
+    return p?.playerIdentity?.publicKey ?? p?.page?.pid ?? null;
+  }
+
+  private uniqueOtherKeys(presences: Map<string, any>, myKey: string | null): Set<string> {
+    const keys = new Set<string>();
+    presences.forEach((p, connectionId) => {
+      if (p.isMe) return;
+      const key = this.pidOf(p);
+      if (key && myKey && key === myKey) return;
+      keys.add(key ?? `conn:${connectionId}`);
+    });
+    return keys;
   }
 
   destroy(): void {
@@ -59,7 +97,8 @@ export class PresenceCountPill {
     pageOthers: number,
     elsewhere: number,
     pagePresences: Map<string, any>,
-    lobbyPresences: Map<string, any>,
+    pageOtherKeys: Set<string>,
+    myKey: string | null,
   ): void {
     const totalOthers = pageOthers + elsewhere;
     if (totalOthers === 0) {
@@ -73,7 +112,7 @@ export class PresenceCountPill {
       this.element = document.createElement("div");
       Object.assign(this.element.style, {
         position: "fixed",
-        top: "16px",
+        bottom: "16px",
         right: "16px",
         fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
         fontSize: "11px",
@@ -97,10 +136,15 @@ export class PresenceCountPill {
 
     this.element.textContent = "";
 
-    // Colored dots for users on this page (up to 5)
+    // Colored dots for unique users on this page (up to 5), deduped by publicKey
+    const seen = new Set<string>();
     let dotCount = 0;
     pagePresences.forEach((p) => {
       if (p.isMe || dotCount >= 5) return;
+      const key = this.pidOf(p);
+      if (key && myKey && key === myKey) return;
+      if (key && seen.has(key)) return;
+      if (key) seen.add(key);
       const color = p.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#8a8279";
       this.element!.appendChild(this.createDot(color));
       dotCount++;
@@ -166,10 +210,17 @@ export class PresenceCountPill {
 
   private jumpToSomeone(): void {
     const presences = this.lobbyPresence.getPresences();
+    const myKey = this.getMyPublicKey(presences, this.presence.getPresences());
     const otherPages: { url: string; title: string }[] = [];
+    const seenKeys = new Set<string>();
 
     presences.forEach((p) => {
       if (p.isMe) return;
+      const key = this.pidOf(p);
+      // Same human in another tab — skip so we don't teleport to our own pages.
+      if (key && myKey && key === myKey) return;
+      if (key && seenKeys.has(key)) return;
+      if (key) seenKeys.add(key);
       const page = (p as WikiPresenceView).page;
       if (page?.url && page.url !== location.href) {
         otherPages.push({ url: page.url, title: page.title });
@@ -189,7 +240,7 @@ export class PresenceCountPill {
     const toast = document.createElement("div");
     Object.assign(toast.style, {
       position: "fixed",
-      top: "44px",
+      bottom: "44px",
       right: "16px",
       fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
       fontSize: "11px",

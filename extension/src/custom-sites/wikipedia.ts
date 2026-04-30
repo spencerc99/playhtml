@@ -8,7 +8,7 @@ import { FollowManager } from "../features/FollowManager";
 export interface WikiPresenceFields {
   navigatingTo?: { url: string; title: string } | null;
   following?: string | null;
-  page?: { url: string; title: string; color: string } | null;
+  page?: { url: string; title: string; color: string; pid?: string } | null;
 }
 
 export type WikiPresenceView = PresenceView & WikiPresenceFields;
@@ -58,6 +58,7 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       url: location.href,
       title: document.title.replace(/ - Wikipedia$/, ""),
       color: deps.playerColor,
+      pid: lobby.presence.getMyIdentity().publicKey,
     });
     lobbyPresence = lobby.presence;
     cleanups.push(() => lobby.destroy());

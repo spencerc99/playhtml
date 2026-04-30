@@ -93,9 +93,7 @@ export class LinkGlowManager {
 
   private scanLinks(): void {
     const content = document.querySelector("#mw-content-text .mw-parser-output");
-    if (!content) {
-      return;
-    }
+    if (!content) return;
 
     const wikiLinks = content.querySelectorAll<HTMLAnchorElement>(
       'a[href^="/wiki/"]:not([href*=":"])'

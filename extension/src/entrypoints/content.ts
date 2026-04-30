@@ -1002,13 +1002,17 @@ export default defineContentScript({
         if (enableCursors) {
           const color =
             this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-          await initCustomSite({
-            createPageData: playhtml.createPageData,
-            createPresenceRoom: playhtml.createPresenceRoom,
-            presence: playhtml.presence,
-            cursorClient: playhtml.cursorClient,
-            playerColor: color,
-          });
+          try {
+            await initCustomSite({
+              createPageData: playhtml.createPageData,
+              createPresenceRoom: playhtml.createPresenceRoom,
+              presence: playhtml.presence,
+              cursorClient: playhtml.cursorClient,
+              playerColor: color,
+            });
+          } catch (err) {
+            console.error("[we-were-online] initCustomSite failed:", err);
+          }
         }
       }
 
