@@ -6,7 +6,13 @@ import { getStableIdForAwareness } from "./awareness-utils";
 
 const PRESENCE_FIELD = "__presence__";
 const CURSOR_FIELD = "__playhtml_cursors__";
-const SYSTEM_FIELDS = new Set(["playerIdentity", "cursor", "isMe"]);
+const IDENTITY_FIELD = "__playhtml_identity__";
+const SYSTEM_FIELDS = new Set([
+  "playerIdentity",
+  "cursor",
+  "isMe",
+  IDENTITY_FIELD,
+]);
 
 /** Minimal awareness interface matching YPartyKitProvider.awareness */
 interface AwarenessLike {
@@ -31,10 +37,19 @@ interface ChannelListener {
 export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
   const listeners = new Map<string, ChannelListener>();
   let awarenessListenerAttached = false;
+  let identityWritten = false;
   let nextListenerId = 0;
 
   function getAwareness(): AwarenessLike {
     return deps.getAwareness();
+  }
+
+  // Write our identity into a dedicated awareness field so remote peers can
+  // resolve playerIdentity even on rooms where no cursor client is running.
+  function ensureIdentityWritten(): void {
+    if (identityWritten) return;
+    identityWritten = true;
+    getAwareness().setLocalStateField(IDENTITY_FIELD, deps.getPlayerIdentity());
   }
 
   function channelFingerprint(
@@ -99,7 +114,9 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       | { cursor?: Cursor | null; playerIdentity?: PlayerIdentity; zone?: unknown }
       | undefined;
 
-    const playerIdentity = cursorState?.playerIdentity;
+    const playerIdentity =
+      cursorState?.playerIdentity ??
+      (state[IDENTITY_FIELD] as PlayerIdentity | undefined);
     const cursor = cursorState?.cursor ?? null;
     const customChannels = (state[PRESENCE_FIELD] as Record<string, unknown>) ?? {};
 
@@ -158,6 +175,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
 
   return {
     setMyPresence(channel: string, data: unknown): void {
+      ensureIdentityWritten();
       const awareness = getAwareness();
       const currentState = awareness.getLocalState() ?? {};
       const currentPresence = (currentState[PRESENCE_FIELD] as Record<string, unknown>) ?? {};
@@ -174,6 +192,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     },
 
     getPresences(): Map<string, PresenceView> {
+      ensureIdentityWritten();
       return buildPresences();
     },
 
@@ -181,6 +200,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       channel: string,
       callback: (presences: Map<string, PresenceView>) => void,
     ): () => void {
+      ensureIdentityWritten();
       const id = String(nextListenerId++);
       listeners.set(id, { channel, callback, lastFingerprint: "" });
       attachAwarenessListener();
