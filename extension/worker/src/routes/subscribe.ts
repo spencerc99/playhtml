@@ -15,6 +15,11 @@ const VALID_SOURCES: SignupSource[] = ['website', 'extension-setup'];
 
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_MS = 60_000;
+// Hard cap on the in-memory map. Workers isolates are short-lived so this
+// rarely matters, but a long-lived isolate seeing 100k unique IPs would
+// otherwise grow ipHits unboundedly. When we hit the cap, drop the oldest
+// half to keep the most recent activity.
+const RATE_LIMIT_MAX_TRACKED_IPS = 10_000;
 const ipHits = new Map<string, number[]>();
 
 function rateLimited(ip: string, now: number): boolean {
@@ -26,6 +31,15 @@ function rateLimited(ip: string, now: number): boolean {
   }
   hits.push(now);
   ipHits.set(ip, hits);
+  if (ipHits.size > RATE_LIMIT_MAX_TRACKED_IPS) {
+    // Drop oldest entries (Map iteration is insertion-ordered).
+    const toDrop = Math.floor(RATE_LIMIT_MAX_TRACKED_IPS / 2);
+    let i = 0;
+    for (const key of ipHits.keys()) {
+      if (i++ >= toDrop) break;
+      ipHits.delete(key);
+    }
+  }
   return false;
 }
 

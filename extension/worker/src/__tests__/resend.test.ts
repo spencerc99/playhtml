@@ -110,6 +110,38 @@ describe('createResendClient', () => {
     await expect(client.addContact('a@b.com', 'website')).rejects.toThrow('create failed');
   });
 
+  it('addContact throws on a generic "not found" message that is not name=not_found', async () => {
+    // Defensive: a "Segment not found" or "Audience not found" error from
+    // get should NOT be treated as "this contact is new".
+    mockContactsGet.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'validation_error', message: 'Segment not found' },
+    });
+
+    const client = createResendClient({ apiKey: 'k' });
+    await expect(client.addContact('a@b.com', 'website')).rejects.toThrow(
+      'Segment not found',
+    );
+    expect(mockContactsCreate).not.toHaveBeenCalled();
+  });
+
+  it('addContact returns alreadySubscribed when create races on a duplicate', async () => {
+    // Race: contacts.get returned not-found, but a concurrent request created
+    // the contact between then and our create. Resend surfaces "already exists".
+    mockContactsGet.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'not_found', message: 'Contact not found' },
+    });
+    mockContactsCreate.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'validation_error', message: 'Contact already exists' },
+    });
+
+    const client = createResendClient({ apiKey: 'k' });
+    const result = await client.addContact('a@b.com', 'website');
+    expect(result).toEqual({ created: false });
+  });
+
   it('sendWelcomeEmail calls emails.send with from, to, subject, html, text + idempotency key', async () => {
     mockEmailsSend.mockResolvedValueOnce({ data: { id: 'em_1' }, error: null });
 

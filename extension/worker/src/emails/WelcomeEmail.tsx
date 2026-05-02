@@ -28,7 +28,7 @@ export const WELCOME_EMAIL_SUBJECT = 'welcome to we were online!';
 
 export const WELCOME_EMAIL_TEXT = `Hi everyone!
 
-Thank you for filling out the form and being willing to try something that makes the Internet hopefully feel a bit more alive :) I'm excited to share the beta of we were online (${HOMEPAGE_URL}) with you.
+Thanks for signing up and being willing to try something that makes the Internet hopefully feel a bit more alive :) I'm excited to share the beta of we were online (${HOMEPAGE_URL}) with you.
 
 - Download on Chrome (or chromium equivalents): ${CHROME_URL}
 - Download on Firefox: ${FIREFOX_URL}
@@ -120,9 +120,9 @@ export function WelcomeEmail() {
           </Heading>
           <Text style={styles.paragraph}>Hi everyone!</Text>
           <Text style={styles.paragraph}>
-            Thank you for filling out the form and being willing to try something
-            that makes the Internet hopefully feel a bit more alive :) I'm
-            excited to share the beta of{' '}
+            Thanks for signing up and being willing to try something that makes
+            the Internet hopefully feel a bit more alive :) I'm excited to share
+            the beta of{' '}
             <Link href={HOMEPAGE_URL}>
               <em>we were online</em>
             </Link>{' '}

@@ -32,7 +32,6 @@ compatibility_date = "2024-01-01"
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 
-[env.production]
-routes = [
-  { pattern = "playhtml-game-api.*.workers.dev", zone_name = "your-domain.com" }
-]
+# Deploys to the workers.dev subdomain by default; no custom domain needed.
+# Note: rate limiting in /subscribe is per-isolate (in-memory Map), so the
+# effective limit is ~5/min × N active isolates. Acceptable at this scale.

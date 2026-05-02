@@ -22,9 +22,19 @@ export interface ResendClient {
 const FROM_ADDRESS = 'spencer <hi@spencer.place>';
 
 function isNotFoundError(error: { name?: string; message?: string }): boolean {
-  // Resend returns name 'not_found' (and message includes "not found")
-  // when a contact lookup misses. This is the expected path for new emails.
-  return error.name === 'not_found' || /not found/i.test(error.message || '');
+  // Resend returns name 'not_found' when a contact lookup misses.
+  // We deliberately don't fall back to message matching — a generic "not
+  // found" string from a different error (audience/segment) shouldn't be
+  // treated as "this contact is new".
+  return error.name === 'not_found';
+}
+
+function isDuplicateContactError(error: { name?: string; message?: string }): boolean {
+  // Defensive: if Resend ever changes contacts.create from silent-upsert
+  // back to surfacing a duplicate-key error, treat it as "already subscribed"
+  // rather than failing the request. This races against contacts.get when
+  // two requests for the same email arrive within ms of each other.
+  return /already.*exist/i.test(error.message || '');
 }
 
 export function createResendClient(config: ResendClientConfig): ResendClient {
@@ -50,7 +60,10 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
         email,
         unsubscribed: false,
         // Tag contact source via firstName so it shows up in the dashboard
-        // without needing custom contact properties (which are a paid feature).
+        // without needing custom contact properties (which are a paid feature
+        // on Resend). TODO: swap to proper metadata/tags once available on
+        // the free tier — note that this means dashboard 'first name' shows
+        // 'website' or 'extension-setup', not a real name.
         firstName: source,
         ...(config.segmentId
           ? { segments: [{ id: config.segmentId }] }
@@ -58,6 +71,11 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
       });
 
       if (createError) {
+        // Race-condition guard: if a duplicate slipped through between
+        // .get and .create, treat it as already-subscribed.
+        if (isDuplicateContactError(createError)) {
+          return { created: false };
+        }
         throw new Error(createError.message);
       }
 
