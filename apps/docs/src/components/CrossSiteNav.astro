@@ -1,25 +1,14 @@
 ---
 // ABOUTME: Cross-site link cluster (home / docs / /play) used in the docs
-// ABOUTME: SiteTitle slot and the /play page header. Active state is parent-passed.
+// ABOUTME: SiteTitle slot. Active state is parent-passed.
+import { crossSiteLinks, type SurfaceKey } from "./cross-site-links";
 
 interface Props {
-  active: "home" | "docs" | "play";
+  active: SurfaceKey;
 }
 
 const { active } = Astro.props;
-
-// Link targets follow the production layout (set by Astro's `base: "/docs"`
-// + the website build serving `/`):
-//   home  → `/`              (the website Vite build's root)
-//   docs  → `/docs/`         (Starlight base)
-//   /play → `/docs/play`     (Astro page emitted under the docs base)
-// The label "/play" is the friendly name Spencer uses; the href is the
-// real built path.
-const links: Array<{ key: Props["active"]; label: string; href: string }> = [
-  { key: "home", label: "home", href: "/" },
-  { key: "docs", label: "docs", href: "/docs/" },
-  { key: "play", label: "/play", href: "/docs/play" },
-];
+const links = crossSiteLinks;
 ---
 
 <nav class="ph-crossnav" aria-label="playhtml sites">

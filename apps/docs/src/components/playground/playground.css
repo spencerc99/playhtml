@@ -71,7 +71,7 @@ body { background: var(--ph-paper); }
    topbar → pane headers → editor/iframe interior. */
 .ph-play-topbar {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 12px;
   padding: 10px 18px;
   background: var(--ph-sage);
@@ -79,12 +79,94 @@ body { background: var(--ph-paper); }
   flex-shrink: 0;
   font-size: 14px;
 }
+
+/* Wordmark — mirrors the docs SiteTitle exactly so the two surfaces feel
+   like one site. Carter One, ink color, 1.55rem; "play" stem is the home
+   link, each letter in "html" is a `can-toggle`. Mustard glow on toggled
+   letters matches docs. */
+.ph-play-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  font-family: "Carter One", var(--ph-font-display);
+  font-size: 1.55rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ph-ink);
+  user-select: none;
+}
+.ph-play-wordmark__home {
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--ph-motion-fast);
+}
+.ph-play-wordmark__home:hover .ph-play-wordmark__stem {
+  color: var(--ph-ultramarine-deep);
+}
+/* Static letters — no can-toggle behavior on /play (see Playground.tsx).
+   Kept as separate spans so the visual rhythm matches the docs wordmark
+   exactly even though they don't animate. */
+.ph-play-wordmark__letter {
+  display: inline-block;
+  color: var(--ph-ink);
+}
+
+/* Cross-site nav. Sits inside the sage topbar between the wordmark and the
+   recipe/edited title. Hairline divider on the right separates nav from
+   the editor's own title content. */
+.ph-play-crossnav {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--ph-hairline);
+  font-family: var(--ph-font-body);
+  font-size: 13px;
+  line-height: 1;
+}
+.ph-play-crossnav__link {
+  color: var(--ph-ink-2);
+  text-decoration: none;
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+  transition: color var(--ph-motion-fast);
+}
+.ph-play-crossnav__link:hover {
+  color: var(--ph-ultramarine-deep);
+}
+.ph-play-crossnav__link.is-active {
+  color: var(--ph-ink);
+  border-bottom-color: var(--ph-ultramarine);
+}
+
+/* Vertical hairline between the nav cluster and the recipe/edited indicator.
+   Renders as a 1px ink-tone bar so it reads as a separator without adding
+   visual weight to the sage band. */
+.ph-play-topbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--ph-hairline);
+  margin: 0 4px;
+  align-self: center;
+}
+
 .ph-play-title {
   font-family: var(--ph-font-display);
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--ph-ink);
-  font-size: 16px;
+  font-size: 14px;
+}
+
+/* On narrow widths, hide the nav cluster — desktop-first editor.
+   Wordmark + recipe/edited indicator + reset button stay visible. */
+@media (max-width: 600px) {
+  .ph-play-crossnav,
+  .ph-play-topbar-divider {
+    display: none;
+  }
 }
 .ph-play-title-recipe {
   color: var(--ph-ink-3);

@@ -12,6 +12,7 @@ import {
   discardDraft,
   pruneStaleDrafts,
 } from "./recipe-loader";
+import { crossSiteLinks } from "../cross-site-links";
 import "./playground.css";
 
 export function Playground() {
@@ -192,10 +193,43 @@ export function Playground() {
   return (
     <div className="ph-play-root">
       <div className="ph-play-topbar">
+        {/* Wordmark visually mirrors the docs SiteTitle (Carter One, 1.55rem,
+            "play" stem links home). The live `can-toggle` letter behavior
+            from docs is intentionally NOT replicated here — playhtml runs
+            inside the preview iframe, not on the /play host page, and adding
+            a second playhtml room just to animate the chrome wordmark would
+            cost a connection without meaningfully changing the surface. The
+            preview iframe owns the live-demo affordance on /play. */}
+        <span className="ph-play-wordmark" translate="no">
+          <a href="/" className="ph-play-wordmark__home" aria-label="playhtml home">
+            <span className="ph-play-wordmark__stem">play</span>
+          </a>
+          <span className="ph-play-wordmark__letter">h</span>
+          <span className="ph-play-wordmark__letter">t</span>
+          <span className="ph-play-wordmark__letter">m</span>
+          <span className="ph-play-wordmark__letter">l</span>
+        </span>
+        <nav className="ph-play-crossnav" aria-label="playhtml sites">
+          {crossSiteLinks.map((link) => (
+            <a
+              key={link.key}
+              href={link.href}
+              className={
+                "ph-play-crossnav__link" +
+                (link.key === "play" ? " is-active" : "")
+              }
+              aria-current={link.key === "play" ? "page" : undefined}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+        <span className="ph-play-topbar-divider" aria-hidden="true" />
         <span className="ph-play-title">
-          playhtml playground
-          {recipeId !== "_starter" && (
-            <span className="ph-play-title-recipe"> · {recipeId}</span>
+          {recipeId !== "_starter" ? (
+            <span className="ph-play-title-recipe">{recipeId}</span>
+          ) : (
+            <span className="ph-play-title-recipe">starter</span>
           )}
           {isEdited && <span className="ph-play-title-edited"> · edited</span>}
         </span>
