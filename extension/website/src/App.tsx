@@ -10,13 +10,8 @@ import { PresenceIndicator } from "./components/PresenceIndicator";
 import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
+import { DownloadGate } from "./components/DownloadGate";
 import styles from "./App.module.scss";
-
-// TODO: replace with real Chrome Web Store / Firefox Add-ons URLs once published
-const CHROME_DOWNLOAD_URL =
-  "https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc?authuser=0&hl=en";
-const FIREFOX_DOWNLOAD_URL =
-  "https://addons.mozilla.org/en-US/firefox/addon/we-were-online/";
 
 const ALIVE_INTERNET_ESSAY_URL =
   "https://news.spencer.place/p/alive-internet-theory";
@@ -109,33 +104,6 @@ const ANIMATION_SETTINGS = {
   clickAnimationStopPoint: 0.8,
 };
 
-function DownloadButtons({ size = "default" }: { size?: "default" | "large" }) {
-  const className =
-    size === "large"
-      ? `${styles.downloadGroup} ${styles.downloadGroupLarge}`
-      : styles.downloadGroup;
-  return (
-    <div className={className}>
-      <a
-        href={CHROME_DOWNLOAD_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.downloadButton}
-      >
-        install for Chrome
-      </a>
-      <a
-        href={FIREFOX_DOWNLOAD_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.downloadButton}
-      >
-        install for Firefox
-      </a>
-    </div>
-  );
-}
-
 export default function App() {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [viewportSize, setViewportSize] = useState({
@@ -203,7 +171,7 @@ export default function App() {
           >
             install the extension to try it out!
           </div>
-          <DownloadButtons />
+          <DownloadGate />
           <div className={styles.scrollHint} aria-hidden="true">
             <svg
               width="24"
@@ -363,7 +331,7 @@ export default function App() {
             </p>
           </div>
           <br />
-          <DownloadButtons />
+          <DownloadGate />
         </section>
 
         <section className={styles.section}>
