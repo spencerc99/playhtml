@@ -27,6 +27,7 @@ import { SharedSlider } from "../../packages/react/examples/SharedSlider";
 import { LiveReactions } from "../../packages/react/examples/LiveReactions";
 // import { CursorOverlap } from "../../packages/react/examples/CursorOverlap";
 import { SharedSound } from "../../packages/react/examples/SharedSound";
+import { UniquePeoplePill } from "../../packages/react/examples/UniquePeoplePill";
 
 const Candle = withSharedState(
   { defaultData: { on: false } },
@@ -174,6 +175,15 @@ ReactDOM.createRoot(
       </div>
 
       <LoadingStateTest />
+      <div style={{ padding: "20px", border: "2px solid #333", margin: "20px 0" }}>
+        <h3>Unique People Pill (presence-room dedupe)</h3>
+        <p style={{ marginBottom: "12px", color: "#666" }}>
+          Open this page in multiple tabs as the same browser/user — "people" stays at 1 while "tabs" climbs.
+          Open in another browser or incognito → "people" goes to 2. Regression check for the
+          presence-identity-on-non-cursor-rooms fix.
+        </p>
+        <UniquePeoplePill />
+      </div>
       <Candle />
       <ReactionView reaction={{ emoji: "🧡", count: 1 }} />
       <SharedLamp />
