@@ -7,6 +7,8 @@
     "dev": "wrangler dev --config wrangler.toml",
     "deploy": "wrangler deploy --config wrangler.toml",
     "tail": "wrangler tail --config wrangler.toml",
+    "secret": "wrangler --config wrangler.toml secret",
+    "secrets": "wrangler --config wrangler.toml secret list",
     "test": "vitest run"
   },
   "dependencies": {
