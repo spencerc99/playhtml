@@ -21,10 +21,10 @@ export interface ResendClient {
 
 const FROM_ADDRESS = 'spencer <hi@spencer.place>';
 
-function isAlreadyExistsError(message: string): boolean {
-  // Resend returns an error with a message containing "already exists"
-  // when a contact is already present.
-  return /already.*exists/i.test(message);
+function isNotFoundError(error: { name?: string; message?: string }): boolean {
+  // Resend returns name 'not_found' (and message includes "not found")
+  // when a contact lookup misses. This is the expected path for new emails.
+  return error.name === 'not_found' || /not found/i.test(error.message || '');
 }
 
 export function createResendClient(config: ResendClientConfig): ResendClient {
@@ -32,7 +32,21 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
 
   return {
     async addContact(email, source) {
-      const { data, error } = await resend.contacts.create({
+      // Check if the contact already exists. We do this explicitly rather than
+      // relying on contacts.create to surface a duplicate error, because v6 of
+      // the SDK silently upserts in some configurations.
+      const { data: existing, error: getError } = await resend.contacts.get({
+        email,
+      });
+
+      if (existing) {
+        return { created: false };
+      }
+      if (getError && !isNotFoundError(getError)) {
+        throw new Error(getError.message);
+      }
+
+      const { error: createError } = await resend.contacts.create({
         email,
         unsubscribed: false,
         // Tag contact source via firstName so it shows up in the dashboard
@@ -43,14 +57,11 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
           : {}),
       });
 
-      if (error) {
-        if (isAlreadyExistsError(error.message)) {
-          return { created: false };
-        }
-        throw new Error(error.message);
+      if (createError) {
+        throw new Error(createError.message);
       }
 
-      return { created: !!data };
+      return { created: true };
     },
 
     async sendWelcomeEmail(email) {

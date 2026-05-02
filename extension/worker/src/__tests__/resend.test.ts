@@ -3,12 +3,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mockContactsGet = vi.fn();
 const mockContactsCreate = vi.fn();
 const mockEmailsSend = vi.fn();
 
 vi.mock('resend', () => ({
   Resend: vi.fn().mockImplementation(() => ({
-    contacts: { create: mockContactsCreate },
+    contacts: { get: mockContactsGet, create: mockContactsCreate },
     emails: { send: mockEmailsSend },
   })),
 }));
@@ -17,11 +18,16 @@ import { createResendClient } from '../lib/resend';
 
 describe('createResendClient', () => {
   beforeEach(() => {
+    mockContactsGet.mockReset();
     mockContactsCreate.mockReset();
     mockEmailsSend.mockReset();
   });
 
-  it('addContact returns { created: true } when contact is new', async () => {
+  it('addContact returns { created: true } when contact does not exist yet', async () => {
+    mockContactsGet.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'not_found', message: 'Contact not found' },
+    });
     mockContactsCreate.mockResolvedValueOnce({
       data: { id: 'contact_123', email: 'a@b.com' },
       error: null,
@@ -31,6 +37,7 @@ describe('createResendClient', () => {
     const result = await client.addContact('a@b.com', 'website');
 
     expect(result).toEqual({ created: true });
+    expect(mockContactsGet).toHaveBeenCalledWith({ email: 'a@b.com' });
     expect(mockContactsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'a@b.com',
@@ -38,13 +45,15 @@ describe('createResendClient', () => {
         firstName: 'website',
       }),
     );
-    // No audienceId/segmentId by default
-    const call = mockContactsCreate.mock.calls[0][0];
-    expect(call.audienceId).toBeUndefined();
-    expect(call.segments).toBeUndefined();
+    const createCall = mockContactsCreate.mock.calls[0][0];
+    expect(createCall.segments).toBeUndefined();
   });
 
   it('addContact passes segmentId via segments array when configured', async () => {
+    mockContactsGet.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'not_found', message: 'Contact not found' },
+    });
     mockContactsCreate.mockResolvedValueOnce({
       data: { id: 'contact_123', email: 'a@b.com' },
       error: null,
@@ -63,25 +72,42 @@ describe('createResendClient', () => {
   });
 
   it('addContact returns { created: false } when contact already exists', async () => {
-    mockContactsCreate.mockResolvedValueOnce({
-      data: null,
-      error: { name: 'validation_error', message: 'Contact already exists' },
+    mockContactsGet.mockResolvedValueOnce({
+      data: { id: 'contact_existing', email: 'a@b.com' },
+      error: null,
     });
 
     const client = createResendClient({ apiKey: 'k' });
     const result = await client.addContact('a@b.com', 'website');
 
     expect(result).toEqual({ created: false });
+    // Critically: we did NOT call create when the contact already exists.
+    expect(mockContactsCreate).not.toHaveBeenCalled();
   });
 
-  it('addContact throws on unexpected errors', async () => {
-    mockContactsCreate.mockResolvedValueOnce({
+  it('addContact throws when contacts.get fails with a non-not-found error', async () => {
+    mockContactsGet.mockResolvedValueOnce({
       data: null,
       error: { name: 'internal_server_error', message: 'boom' },
     });
 
     const client = createResendClient({ apiKey: 'k' });
     await expect(client.addContact('a@b.com', 'website')).rejects.toThrow('boom');
+    expect(mockContactsCreate).not.toHaveBeenCalled();
+  });
+
+  it('addContact throws when contacts.create fails', async () => {
+    mockContactsGet.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'not_found', message: 'Contact not found' },
+    });
+    mockContactsCreate.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'internal_server_error', message: 'create failed' },
+    });
+
+    const client = createResendClient({ apiKey: 'k' });
+    await expect(client.addContact('a@b.com', 'website')).rejects.toThrow('create failed');
   });
 
   it('sendWelcomeEmail calls emails.send with from, to, subject, html, text + idempotency key', async () => {
