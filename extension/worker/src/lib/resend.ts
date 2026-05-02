@@ -56,15 +56,15 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
         throw new Error(getError.message);
       }
 
+      // We accept `source` from callers but don't pass it to Resend — custom
+      // contact properties are a paid feature, and using firstName as a tag
+      // pollutes the dashboard. If we ever need to segment by signup source,
+      // do it via a proper Resend Segment.
+      void source;
+
       const { error: createError } = await resend.contacts.create({
         email,
         unsubscribed: false,
-        // Tag contact source via firstName so it shows up in the dashboard
-        // without needing custom contact properties (which are a paid feature
-        // on Resend). TODO: swap to proper metadata/tags once available on
-        // the free tier — note that this means dashboard 'first name' shows
-        // 'website' or 'extension-setup', not a real name.
-        firstName: source,
         ...(config.segmentId
           ? { segments: [{ id: config.segmentId }] }
           : {}),

@@ -42,11 +42,13 @@ describe('createResendClient', () => {
       expect.objectContaining({
         email: 'a@b.com',
         unsubscribed: false,
-        firstName: 'website',
       }),
     );
     const createCall = mockContactsCreate.mock.calls[0][0];
     expect(createCall.segments).toBeUndefined();
+    // We deliberately do NOT pass firstName — we'd be polluting the dashboard
+    // with the source value otherwise (custom properties are paid).
+    expect(createCall.firstName).toBeUndefined();
   });
 
   it('addContact passes segmentId via segments array when configured', async () => {
@@ -65,7 +67,6 @@ describe('createResendClient', () => {
     expect(mockContactsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'a@b.com',
-        firstName: 'extension-setup',
         segments: [{ id: 'seg_xyz' }],
       }),
     );
