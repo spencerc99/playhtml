@@ -64,7 +64,7 @@ export async function handleSubscribe(request: Request, env: Env): Promise<Respo
 
   const resend = createResendClient({
     apiKey: env.RESEND_API_KEY,
-    audienceId: env.RESEND_AUDIENCE_ID,
+    segmentId: env.RESEND_SEGMENT_ID,
   });
 
   let result: { created: boolean };

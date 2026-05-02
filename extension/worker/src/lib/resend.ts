@@ -8,7 +8,10 @@ export type SignupSource = 'website' | 'extension-setup';
 
 export interface ResendClientConfig {
   apiKey: string;
-  audienceId: string;
+  // Optional: if provided, new contacts are assigned to this segment.
+  // Resend's Audiences API was deprecated in favor of Segments — contacts
+  // can exist without one and segment assignment is purely for organization.
+  segmentId?: string;
 }
 
 export interface ResendClient {
@@ -19,8 +22,8 @@ export interface ResendClient {
 const FROM_ADDRESS = 'spencer <hi@spencer.place>';
 
 function isAlreadyExistsError(message: string): boolean {
-  // Resend returns a 400 validation error with a message containing
-  // "already exists" when a contact is already in the audience.
+  // Resend returns an error with a message containing "already exists"
+  // when a contact is already present.
   return /already.*exists/i.test(message);
 }
 
@@ -30,13 +33,14 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
   return {
     async addContact(email, source) {
       const { data, error } = await resend.contacts.create({
-        audienceId: config.audienceId,
         email,
         unsubscribed: false,
-        // Resend's TS types don't expose arbitrary metadata, but it accepts
-        // firstName which renders cleanly in the dashboard. Use it as a tag
-        // for source so future broadcasts can segment if we want.
-        firstName: source === 'extension-setup' ? 'extension-setup' : 'website',
+        // Tag contact source via firstName so it shows up in the dashboard
+        // without needing custom contact properties (which are a paid feature).
+        firstName: source,
+        ...(config.segmentId
+          ? { segments: [{ id: config.segmentId }] }
+          : {}),
       });
 
       if (error) {
@@ -51,13 +55,19 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
 
     async sendWelcomeEmail(email) {
       const html = await renderWelcomeEmail();
-      const { error } = await resend.emails.send({
-        from: FROM_ADDRESS,
-        to: email,
-        subject: WELCOME_EMAIL_SUBJECT,
-        html,
-        text: WELCOME_EMAIL_TEXT,
-      });
+      const { error } = await resend.emails.send(
+        {
+          from: FROM_ADDRESS,
+          to: email,
+          replyTo: 'hi@spencer.place',
+          subject: WELCOME_EMAIL_SUBJECT,
+          html,
+          text: WELCOME_EMAIL_TEXT,
+        },
+        // Idempotency key prevents duplicate sends if the worker retries
+        // within Resend's 24h dedup window.
+        { idempotencyKey: `welcome-email/${email}` },
+      );
 
       if (error) {
         throw new Error(error.message);

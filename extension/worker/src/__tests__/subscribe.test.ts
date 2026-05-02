@@ -21,7 +21,6 @@ const ENV: Env = {
   SUPABASE_SECRET_KEY: 'k',
   ADMIN_KEY: 'a',
   RESEND_API_KEY: 'r',
-  RESEND_AUDIENCE_ID: 'aud_1',
 };
 
 function makeRequest(body: unknown, ip = '1.2.3.4'): Request {

@@ -39,5 +39,5 @@ export interface Env {
   SUPABASE_SECRET_KEY: string;  // Supabase "secret" API key (full database access)
   ADMIN_KEY: string;            // Required for admin endpoints (stats, export)
   RESEND_API_KEY: string;       // Resend API key for sending welcome emails
-  RESEND_AUDIENCE_ID: string;   // Resend Audience ID for the subscriber list
+  RESEND_SEGMENT_ID?: string;   // Optional: assign new contacts to this Resend segment
 }
