@@ -118,4 +118,44 @@ describe("createPresenceAPI identity propagation", () => {
     api.getPresences();
     expect(calls).toBe(1);
   });
+
+  it("re-arms the identity write after the awareness provider is rebuilt", () => {
+    // Regression: SPA navigation rebuilds the cursor/main provider, which
+    // creates a fresh awareness object with no identity field. The presence
+    // API must write identity into the new awareness on next use.
+    let awareness = makeAwareness(1);
+    const identity = makeIdentity("pk_local");
+
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => identity,
+    });
+
+    api.getPresences();
+    expect(awareness.getLocalState()?.[IDENTITY_FIELD]).toEqual(identity);
+
+    // Simulate provider rebind on navigation: brand-new awareness instance.
+    awareness = makeAwareness(2);
+    expect(awareness.getLocalState()?.[IDENTITY_FIELD]).toBeUndefined();
+
+    api.getPresences();
+    expect(awareness.getLocalState()?.[IDENTITY_FIELD]).toEqual(identity);
+  });
+
+  it("returns playerIdentity undefined for peers with no identity at all", () => {
+    // Pin the contract: missing both cursor field and identity field should
+    // not throw; playerIdentity is simply undefined on the view.
+    const awareness = makeAwareness(1);
+    awareness.states.set(2, { __presence__: { tab: { id: "x" } } });
+
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => makeIdentity("pk_local"),
+    });
+
+    const presences = api.getPresences();
+    const remote = Array.from(presences.values()).find((p) => !p.isMe);
+    expect(remote).toBeDefined();
+    expect(remote!.playerIdentity).toBeUndefined();
+  });
 });
