@@ -1,0 +1,121 @@
+// ABOUTME: Styles for the email-gate component on wewere.online.
+// ABOUTME: Mirrors the existing .downloadGroup / .downloadButton aesthetic from App.module.scss.
+
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 32rem;
+  margin: 0 auto;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.input {
+  flex: 1 1 18rem;
+  min-width: 0;
+  padding: 0.65rem 0.85rem;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text, #3d3833);
+  background: var(--surface, #f5f0e8);
+  border: 1px solid rgba(61, 56, 51, 0.25);
+  border-radius: 4px;
+  outline: none;
+
+  &:focus {
+    border-color: var(--accent-teal, #4a9a8a);
+    box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.18);
+  }
+
+  &[aria-invalid="true"] {
+    border-color: var(--accent-rust, #c4724e);
+  }
+}
+
+.submit {
+  padding: 0.65rem 1.1rem;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--bg, #faf7f2);
+  background: var(--accent-teal, #4a9a8a);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.subtext {
+  font-size: 0.875rem;
+  color: var(--text-muted, #8a8279);
+  text-align: center;
+  margin: 0;
+}
+
+.errorText {
+  font-size: 0.875rem;
+  color: var(--accent-rust, #c4724e);
+  text-align: center;
+  margin: 0;
+}
+
+.successNote {
+  font-size: 0.95rem;
+  color: var(--text, #3d3833);
+  text-align: center;
+  margin: 0 0 0.5rem 0;
+}
+
+.downloadGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.downloadGroupLarge {
+  font-size: 1.1rem;
+}
+
+.downloadButton {
+  padding: 0.7rem 1.2rem;
+  font-weight: 600;
+  color: var(--bg, #faf7f2);
+  background: var(--text, #3d3833);
+  border-radius: 4px;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  .downloadGroupLarge & {
+    padding: 0.85rem 1.4rem;
+    font-size: 1.05rem;
+  }
+}
