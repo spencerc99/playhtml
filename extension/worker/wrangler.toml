@@ -12,11 +12,15 @@ compatibility_date = "2024-01-01"
 #   Set secrets via: wrangler secret put SUPABASE_URL
 #   Set secrets via: wrangler secret put SUPABASE_SECRET_KEY
 #   Set secrets via: wrangler secret put ADMIN_KEY
+#   Set secrets via: wrangler secret put RESEND_API_KEY
+#   Set secrets via: wrangler secret put RESEND_AUDIENCE_ID
 #
 # Required variables:
 # - SUPABASE_URL - Your Supabase project URL
 # - SUPABASE_SECRET_KEY - Your Supabase "secret" API key (full database access)
 # - ADMIN_KEY - Required for admin endpoints (stats, export) - protects user data
+# - RESEND_API_KEY - Resend API key for sending welcome emails (and adding to Audience)
+# - RESEND_AUDIENCE_ID - Resend Audience ID for the subscriber list
 #
 # Security model:
 # - POST /events: Public (validated + rate limited)
