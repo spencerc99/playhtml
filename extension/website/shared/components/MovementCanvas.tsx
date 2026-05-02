@@ -145,7 +145,7 @@ export const CLICK_DEFAULTS = {
   clickMinDuration: 500,
   clickMaxDuration: 2500,
   clickStrokeWidth: 4,
-  clickOpacity: 0.3,
+  clickOpacity: 0.6,
   clickNumRings: 3,
   clickRingDelayMs: 160,
   clickExpansionDuration: 2400,
