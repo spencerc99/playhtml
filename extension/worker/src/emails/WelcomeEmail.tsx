@@ -24,8 +24,7 @@ const SELF_PORTRAIT_URL =
   'https://spencer.place/creation/self-portrait-(internet)';
 const REPLY_EMAIL = 'hi@spencer.place';
 
-export const WELCOME_EMAIL_SUBJECT =
-  'welcome to we were online — install links inside';
+export const WELCOME_EMAIL_SUBJECT = 'welcome to we were online!';
 
 export const WELCOME_EMAIL_TEXT = `Hi everyone!
 

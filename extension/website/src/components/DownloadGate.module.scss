@@ -1,10 +1,15 @@
-// ABOUTME: Styles for the email-gate component on wewere.online.
-// ABOUTME: Uses shared design tokens; mirrors the original .downloadButton aesthetic.
+// ABOUTME: Styles for the download/email-gate component on wewere.online.
+// ABOUTME: Desktop shows install buttons; mobile (no hover, coarse pointer) shows the email form.
 
 @use "../styles/variables" as *;
 
 $accent-teal: #4a9a8a;
 $accent-rust: #c4724e;
+
+// Hover-capable + fine pointer = desktop. Anything else (phones, tablets
+// without a mouse) gets the email form because they can't install a
+// browser extension on the device they're holding.
+$mobile-query: "(hover: none) and (pointer: coarse)";
 
 .gate {
   margin-top: 16px;
@@ -13,9 +18,26 @@ $accent-rust: #c4724e;
   align-items: center;
   gap: 10px;
   width: 100%;
-  max-width: 32rem;
+  max-width: 24rem;
   margin-left: auto;
   margin-right: auto;
+}
+
+.desktopOnly {
+  display: contents;
+
+  @media #{$mobile-query} {
+    display: none;
+  }
+}
+
+.mobileOnly {
+  display: none;
+  width: 100%;
+
+  @media #{$mobile-query} {
+    display: block;
+  }
 }
 
 .form {
@@ -28,12 +50,13 @@ $accent-rust: #c4724e;
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
+  align-items: stretch;
 }
 
 .input {
-  flex: 1 1 18rem;
+  flex: 0 1 14rem;
   min-width: 0;
   font-family: $font-body;
   font-size: 0.9375rem;
@@ -41,7 +64,7 @@ $accent-rust: #c4724e;
   background: rgba($bg, 0.85);
   border: 1.5px solid rgba($text, 0.35);
   border-radius: 4px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   outline: none;
   backdrop-filter: blur(2px);
   transition: border-color 0.15s, box-shadow 0.15s;

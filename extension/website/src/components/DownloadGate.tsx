@@ -1,5 +1,5 @@
-// ABOUTME: Email-gated download component for wewere.online.
-// ABOUTME: Submits to worker /subscribe, then reveals Chrome/Firefox install links.
+// ABOUTME: Desktop shows install links; mobile shows an email form to send the install link.
+// ABOUTME: Submission posts to worker /subscribe (with source: 'website').
 
 import { useState, useEffect } from 'react';
 import { WORKER_URL } from '@movement/config';
@@ -12,10 +12,10 @@ const FIREFOX_DOWNLOAD_URL =
 
 const SUBSCRIBED_KEY = 'wewere.subscribed';
 
-type GateState =
+type FormState =
   | { status: 'idle' }
   | { status: 'submitting' }
-  | { status: 'success'; firstTime: boolean; email: string | null }
+  | { status: 'success'; firstTime: boolean; email: string }
   | { status: 'error'; message: string };
 
 interface SubscribeResponse {
@@ -67,19 +67,18 @@ function DownloadButtons({ size = 'default' }: { size?: 'default' | 'large' }) {
   );
 }
 
-export function DownloadGate({ size = 'default' }: { size?: 'default' | 'large' }) {
-  const [state, setState] = useState<GateState>(() =>
+function MobileEmailForm() {
+  const [state, setState] = useState<FormState>(() =>
     isLocallySubscribed()
-      ? { status: 'success', firstTime: false, email: null }
+      ? { status: 'success', firstTime: false, email: '' }
       : { status: 'idle' },
   );
   const [email, setEmail] = useState('');
 
-  // Keep multiple instances of <DownloadGate /> in sync after one of them submits.
   useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key === SUBSCRIBED_KEY && e.newValue === '1') {
-        setState({ status: 'success', firstTime: false, email: null });
+        setState({ status: 'success', firstTime: false, email: '' });
       }
     }
     window.addEventListener('storage', onStorage);
@@ -117,7 +116,6 @@ export function DownloadGate({ size = 'default' }: { size?: 'default' | 'large' 
       }
 
       markSubscribed();
-      // Notify other gates on the page (storage event only fires cross-tab; dispatch manually)
       window.dispatchEvent(
         new StorageEvent('storage', {
           key: SUBSCRIBED_KEY,
@@ -139,14 +137,16 @@ export function DownloadGate({ size = 'default' }: { size?: 'default' | 'large' 
 
   if (state.status === 'success') {
     return (
-      <div className={styles.gate}>
+      <p className={styles.successNote}>
         {state.firstTime && state.email ? (
-          <p className={styles.successNote}>
-            sent to <strong>{state.email}</strong> — and here are the links:
-          </p>
-        ) : null}
-        <DownloadButtons size={size} />
-      </div>
+          <>
+            sent to <strong>{state.email}</strong>! excited to make internet feel
+            more alive together :)
+          </>
+        ) : (
+          <>install link sent — check your email :)</>
+        )}
+      </p>
     );
   }
 
@@ -154,31 +154,41 @@ export function DownloadGate({ size = 'default' }: { size?: 'default' | 'large' 
   const errorMessage = state.status === 'error' ? state.message : null;
 
   return (
-    <div className={styles.gate}>
-      <form className={styles.form} onSubmit={onSubmit}>
-        <div className={styles.row}>
-          <input
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            required
-            placeholder="your email"
-            className={styles.input}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={submitting}
-            aria-invalid={errorMessage ? 'true' : undefined}
-          />
-          <button type="submit" className={styles.submit} disabled={submitting}>
-            {submitting ? 'sending…' : 'get the install links'}
-          </button>
-        </div>
-        {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
-      </form>
+    <form className={styles.form} onSubmit={onSubmit}>
+      <div className={styles.row}>
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          required
+          placeholder="your email"
+          className={styles.input}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={submitting}
+          aria-invalid={errorMessage ? 'true' : undefined}
+        />
+        <button type="submit" className={styles.submit} disabled={submitting}>
+          {submitting ? 'sending…' : 'download'}
+        </button>
+      </div>
+      {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
       <p className={styles.subtext}>
-        the extension installs on desktop. if you're on mobile, we'll email so you
-        can install when you're back at a computer.
+        we'll email you a link so you can install on your computer
       </p>
+    </form>
+  );
+}
+
+export function DownloadGate({ size = 'default' }: { size?: 'default' | 'large' }) {
+  return (
+    <div className={styles.gate}>
+      <div className={styles.desktopOnly}>
+        <DownloadButtons size={size} />
+      </div>
+      <div className={styles.mobileOnly}>
+        <MobileEmailForm />
+      </div>
     </div>
   );
 }
