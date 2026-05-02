@@ -12,6 +12,7 @@ import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
+import { WORKER_URL } from "@movement/config";
 
 type Step = "welcome" | "configure" | "done";
 type Preset = "abstain" | "participate" | "allIn";
@@ -147,14 +148,17 @@ export default function SetupPage() {
       toSet[LEGIBILITY_KEY] = legibilityPct;
       toSet["onboarding_complete"] = "true";
       if (email.trim()) {
-        toSet["setup_email"] = email.trim();
-        // Submit to Google Form (fire-and-forget)
-        const formUrl =
-          "https://docs.google.com/forms/d/e/1FAIpQLSe6rJ8uAflDqE-B07E8hTEiPwsis8xEqX0-E_uTuUXwRrH0PA/formResponse";
-        const body = new URLSearchParams({ "entry.1423870775": email.trim() });
-        fetch(formUrl, { method: "POST", body, mode: "no-cors" }).catch(
-          () => {},
-        );
+        const trimmedEmail = email.trim();
+        toSet["setup_email"] = trimmedEmail;
+        // Subscribe via worker (fire-and-forget — onboarding shouldn't block on this)
+        fetch(`${WORKER_URL}/subscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: trimmedEmail,
+            source: "extension-setup",
+          }),
+        }).catch(() => {});
       }
 
       await browser.storage.local.set(toSet);
