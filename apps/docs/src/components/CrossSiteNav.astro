@@ -1,0 +1,74 @@
+---
+// ABOUTME: Cross-site link cluster (home / docs / /play) used in the docs
+// ABOUTME: SiteTitle slot and the /play page header. Active state is parent-passed.
+
+interface Props {
+  active: "home" | "docs" | "play";
+}
+
+const { active } = Astro.props;
+
+// Link targets follow the production layout (set by Astro's `base: "/docs"`
+// + the website build serving `/`):
+//   home  → `/`              (the website Vite build's root)
+//   docs  → `/docs/`         (Starlight base)
+//   /play → `/docs/play`     (Astro page emitted under the docs base)
+// The label "/play" is the friendly name Spencer uses; the href is the
+// real built path.
+const links: Array<{ key: Props["active"]; label: string; href: string }> = [
+  { key: "home", label: "home", href: "/" },
+  { key: "docs", label: "docs", href: "/docs/" },
+  { key: "play", label: "/play", href: "/docs/play" },
+];
+---
+
+<nav class="ph-crossnav" aria-label="playhtml sites">
+  {
+    links.map((link) => (
+      <a
+        href={link.href}
+        class:list={["ph-crossnav__link", { "is-active": link.key === active }]}
+        aria-current={link.key === active ? "page" : undefined}
+      >
+        {link.label}
+      </a>
+    ))
+  }
+</nav>
+
+<style>
+  .ph-crossnav {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-left: 18px;
+    padding-left: 18px;
+    border-left: 1px solid var(--ph-hairline);
+    font-family: var(--ph-font-body);
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+  .ph-crossnav__link {
+    color: var(--ph-ink-2);
+    text-decoration: none;
+    padding: 2px 0;
+    transition: color var(--ph-motion-fast);
+    border-bottom: 1px solid transparent;
+  }
+  .ph-crossnav__link:hover {
+    color: var(--ph-ultramarine-deep);
+  }
+  .ph-crossnav__link.is-active {
+    color: var(--ph-ink);
+    border-bottom-color: var(--ph-ultramarine);
+  }
+
+  /* Hide on narrow widths — docs already collapses to a hamburger,
+     /play is desktop-first. Keeps the wordmark + right-side icons
+     legible on phones without the link cluster fighting for space. */
+  @media (max-width: 600px) {
+    .ph-crossnav {
+      display: none;
+    }
+  }
+</style>

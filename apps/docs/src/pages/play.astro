@@ -1,6 +1,7 @@
 ---
 // ABOUTME: /play route — the live editor + preview playground.
 import { Playground } from "../components/playground/Playground";
+import CrossSiteNav from "../components/CrossSiteNav.astro";
 ---
 <!doctype html>
 <html lang="en">
@@ -22,6 +23,48 @@ import { Playground } from "../components/playground/Playground";
     -->
   </head>
   <body>
+    <header class="ph-play-header">
+      <a href="/" class="ph-play-header__wordmark" aria-label="playhtml home">
+        <span class="ph-play-header__stem">play</span><span class="ph-play-header__letters">html</span>
+      </a>
+      <CrossSiteNav active="play" />
+    </header>
     <Playground client:only="react" />
+
+    <style is:global>
+      .ph-play-header {
+        display: flex;
+        align-items: baseline;
+        gap: 0;
+        padding: 8px 18px;
+        background: var(--ph-paper);
+        border-bottom: 1px solid var(--ph-hairline);
+        flex-shrink: 0;
+        font-family: var(--ph-font-body);
+      }
+      .ph-play-header__wordmark {
+        font-family: var(--ph-font-wordmark, "Carter One", system-ui);
+        font-size: 1.4rem;
+        line-height: 1;
+        color: var(--ph-ink);
+        text-decoration: none;
+        letter-spacing: -0.01em;
+        transition: color var(--ph-motion-fast);
+      }
+      .ph-play-header__wordmark:hover {
+        color: var(--ph-ultramarine-deep);
+      }
+      .ph-play-header__stem,
+      .ph-play-header__letters {
+        display: inline;
+      }
+      /* Account for the new header in the playground's full-viewport layout —
+         .ph-play-root assumes 100vh, which would push the editor below the
+         fold once we add chrome above it. Use dynamic viewport units so
+         mobile browsers' chrome doesn't double-count. */
+      .ph-play-root {
+        height: calc(100dvh - var(--ph-play-header-height, 41px)) !important;
+      }
+    </style>
   </body>
 </html>
