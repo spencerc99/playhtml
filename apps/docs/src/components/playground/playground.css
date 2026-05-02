@@ -1,0 +1,276 @@
+/* ABOUTME: Playground shell styles. Uses the docs-extras design tokens */
+/* ABOUTME: (warm paper, ink hairlines, 2px brick-shadow buttons). */
+
+/*
+  Visual language: flat blocks of warm paper, separated by 1px ink-toned
+  hairlines. Buttons are 1px ink-stroked rectangles with a 2px brick
+  shadow that lifts on hover and presses flush on active. No gradients,
+  no beveled borders. Matches Spencer's letterpress aesthetic from the
+  rest of the docs site (apps/docs/src/styles/docs-extras.css).
+
+  Design tokens are redeclared here (rather than imported from
+  docs-extras.css) because /play is a standalone Astro page that
+  doesn't load Starlight's stylesheets. Keeping them in sync with
+  docs-extras.css is a manual responsibility for now.
+*/
+
+:root {
+  --ph-paper: #f4efe5;
+  --ph-paper-warm: #ebe4d5;
+  --ph-paper-deep: #e0d8c6;
+  --ph-ink: #1c1c1c;
+  --ph-ink-2: #3b3b3b;
+  --ph-ink-3: #6a6a66;
+  --ph-hairline: rgba(28, 28, 28, 0.18);
+  --ph-hairline-soft: rgba(28, 28, 28, 0.09);
+  --ph-sage: #c3d1b7;
+  --ph-sage-wash: rgba(195, 209, 183, 0.45);
+  --ph-sage-deep: #7a9574;
+  --ph-ultramarine: #274b9e;
+  --ph-ultramarine-deep: #1c3875;
+  --ph-ultramarine-wash: rgba(39, 75, 158, 0.08);
+  --ph-mustard: #e8a63a;
+  --ph-mustard-wash: rgba(232, 166, 58, 0.16);
+  --ph-brick: #c0373c;
+  --ph-brick-wash: rgba(192, 55, 60, 0.12);
+  --ph-font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --ph-font-body: "Play", ui-sans-serif, system-ui, sans-serif;
+  --ph-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  --ph-motion-fast: 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ph-motion: 200ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ph-shadow-brick: 2px 2px 0 0 var(--ph-ink);
+  --ph-shadow-brick-pressed: 0 0 0 0 var(--ph-ink);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--ph-font-body);
+  color: var(--ph-ink);
+}
+body { background: var(--ph-paper); }
+
+.ph-play-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+  overflow: hidden;
+}
+
+/* ── Top bar ────────────────────────────────────────────────────────── */
+/* Sage background ties the editor to the playhtml homepage palette and
+   gives the chrome a conspicuous contrast against the paper body so the
+   eye lands here as the primary frame. Pane headers and the preview
+   toolbar are quieter (paper-warm), so the visual weight cascades
+   topbar → pane headers → editor/iframe interior. */
+.ph-play-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  background: var(--ph-sage);
+  border-bottom: 1px solid var(--ph-ink);
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.ph-play-title {
+  font-family: var(--ph-font-display);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ph-ink);
+  font-size: 16px;
+}
+.ph-play-title-recipe {
+  color: var(--ph-ink-3);
+  font-weight: 400;
+  font-family: var(--ph-font-mono);
+  font-size: 13px;
+  margin-left: 6px;
+}
+/* "edited" indicator — quiet ink-3 weight, italic to read as state-not-name */
+.ph-play-title-edited {
+  color: var(--ph-ink-3);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 13px;
+  margin-left: 6px;
+}
+.ph-play-spacer { flex: 1; }
+
+/* Reset to starter — only visible when isEdited. Brick-shadow style
+   matches other primary actions; mustard-wash hover hints at the
+   destructive-ish nature without screaming. */
+.ph-play-reset-btn {
+  font-family: var(--ph-font-body);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 5px 12px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  border: 1px solid var(--ph-ink);
+  border-radius: 0;
+  cursor: pointer;
+  box-shadow: var(--ph-shadow-brick);
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast);
+  white-space: nowrap;
+}
+.ph-play-reset-btn:hover {
+  background: var(--ph-mustard-wash);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--ph-ink);
+}
+.ph-play-reset-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--ph-shadow-brick-pressed);
+}
+
+/* ── Pane layout ────────────────────────────────────────────────────── */
+.ph-play-panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.ph-play-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.ph-play-pane-editor {
+  flex: 1;
+  border-right: 1px solid var(--ph-hairline);
+}
+.ph-play-pane-preview { flex: 1; }
+
+/* Pane header strip — shows filename / pane label + a single right-aligned
+   action button. Lower-contrast bar to keep the eye on the content. */
+.ph-play-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--ph-paper-warm);
+  border-bottom: 1px solid var(--ph-hairline-soft);
+  font-size: 12px;
+  font-family: var(--ph-font-mono);
+  font-weight: 500;
+  color: var(--ph-ink-3);
+  flex-shrink: 0;
+  min-height: 32px;
+}
+.ph-play-pane-header-spacer { flex: 1; }
+.ph-play-pane-body { flex: 1; min-height: 0; overflow: hidden; }
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+
+/* Pane-header secondary button — quieter than the topbar's brick-shadow
+   buttons. No shadow, just an ink-stroked outline that lights up on
+   hover. Used for low-stakes actions like Copy source. */
+.ph-play-pane-header-btn {
+  font-family: var(--ph-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--ph-ink-2);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--ph-motion-fast),
+    color var(--ph-motion-fast),
+    border-color var(--ph-motion-fast);
+}
+.ph-play-pane-header-btn:hover {
+  background: var(--ph-paper-deep);
+  color: var(--ph-ink);
+  border-color: var(--ph-ink-2);
+}
+
+/* Copy source: when copy just landed, swap to sage wash + sage deep ink
+   so the checkmark reads as confirmation without being loud. */
+.ph-play-copy-btn[data-copied="true"] {
+  background: var(--ph-sage-wash);
+  color: var(--ph-sage-deep);
+  border-color: var(--ph-sage-deep);
+}
+
+/* ── Preview pane ───────────────────────────────────────────────────── */
+
+.ph-preview-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.ph-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--ph-paper-warm);
+  border-bottom: 1px solid var(--ph-hairline-soft);
+  font-size: 12px;
+  font-family: var(--ph-font-mono);
+  font-weight: 500;
+  color: var(--ph-ink-3);
+  flex-shrink: 0;
+  min-height: 32px;
+}
+.ph-preview-toolbar-label { color: var(--ph-ink-3); }
+.ph-preview-toolbar-spacer { flex: 1; }
+
+/* Reload button — small icon-only button. Same outline-on-hover treatment
+   as the pane-header secondary button so they read as siblings. */
+.ph-preview-reload {
+  font-family: var(--ph-font-body);
+  font-size: 14px;
+  line-height: 1;
+  width: 26px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--ph-ink-2);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--ph-motion-fast),
+    color var(--ph-motion-fast),
+    border-color var(--ph-motion-fast);
+}
+.ph-preview-reload:hover {
+  background: var(--ph-paper-deep);
+  color: var(--ph-ink);
+  border-color: var(--ph-ink-2);
+}
+
+.ph-preview-iframe-host {
+  flex: 1;
+  min-height: 0;
+  background: var(--ph-paper);
+}
+
+/* ── Mobile (stacked) ───────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .ph-play-panes { flex-direction: column; }
+  .ph-play-pane-editor {
+    border-right: none;
+    border-bottom: 1px solid var(--ph-hairline);
+    height: 50vh;
+  }
+  .ph-play-pane-preview { height: 50vh; }
+}

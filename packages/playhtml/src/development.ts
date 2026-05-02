@@ -6,6 +6,19 @@ import { normalizePath } from "@playhtml/common";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;
+// Polling tick that checks for new elementHandlers between MutationObserver
+// firings (playhtml's post-sync setup registers handlers on already-existing
+// DOM nodes, which doesn't fire the observer). Stored at module scope so
+// teardownDevUI can clear it; re-entry of setupDevUI (HMR) replaces it.
+let activeElementPoll: number | null = null;
+
+// Module-scope storage for the console patches and window listeners so
+// `teardownDevUI` can restore them, and so re-entry of `setupDevUI`
+// (e.g. under HMR) doesn't stack patches on top of patches.
+type ConsoleMethod = "log" | "info" | "warn" | "error";
+let originalConsoleMethods: Record<ConsoleMethod, (...args: unknown[]) => void> | null = null;
+let activeWindowErrorListener: ((ev: ErrorEvent) => void) | null = null;
+let activeWindowRejectionListener: ((ev: PromiseRejectionEvent) => void) | null = null;
 
 // ─── Logo (base64 PNG, 48x48 — self-contained, no external deps) ─────
 const LOGO_URI = "data:image/png;base64,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";
@@ -483,6 +496,98 @@ const DEV_STYLES = `
 .ph-flash {
   animation: ph-flash 0.8s ease-out;
 }
+.ph-tabs {
+  display: flex;
+  gap: 0;
+  background: linear-gradient(180deg, #ede6da 0%, #d4cfc7 100%);
+  border-bottom: 1px solid #8a8279;
+  flex-shrink: 0;
+}
+.ph-tab {
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b6560;
+  background: transparent;
+  border: none;
+  border-right: 1px solid #b0a99e;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ph-tab:hover {
+  background: #f5f0e8;
+  color: #3d3833;
+}
+.ph-tab.ph-tab-active {
+  background: #f5f0e8;
+  color: #3d3833;
+  box-shadow: inset 0 -2px 0 #4a9a8a;
+}
+.ph-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 4px;
+  font-family: 'Martian Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 0;
+  color: #faf7f2;
+}
+.ph-tab-badge.ph-badge-error { background: #c4724e; }
+.ph-tab-badge.ph-badge-warn { background: #d4b85c; color: #3d3833; }
+.ph-tab-badge.ph-badge-info { background: #5b8db8; }
+.ph-console {
+  flex: 1;
+  overflow-y: auto;
+  background: #faf7f2;
+  font-family: 'Martian Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  padding: 4px 0;
+}
+.ph-console::-webkit-scrollbar { width: 4px; }
+.ph-console::-webkit-scrollbar-thumb { background: #d4cfc7; }
+.ph-console-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 8px;
+  border-bottom: 1px solid #ede6da;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ph-console-row.ph-log-error { background: rgba(196, 114, 78, 0.08); }
+.ph-console-row.ph-log-warn { background: rgba(212, 184, 92, 0.08); }
+.ph-console-time {
+  color: #b0a99e;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.ph-console-level {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-weight: 700;
+}
+.ph-console-level.ph-log-error { color: #c4724e; }
+.ph-console-level.ph-log-warn { color: #d4b85c; }
+.ph-console-level.ph-log-info { color: #5b8db8; }
+.ph-console-level.ph-log-log { color: #8a8279; }
+.ph-console-msg { flex: 1; min-width: 0; }
+.ph-console-empty {
+  padding: 20px;
+  text-align: center;
+  color: #8a8279;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 12px;
+}
 `;
 
 // ─── Shared Elements Listing ───────────────────────────────────────────
@@ -708,11 +813,194 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
   barContent.appendChild(status);
 
-  // Data area (takes remaining space)
+  // Tab strip (Data | Console) — sits between status and content
+  const tabs = el("div", "ph-tabs");
+
+  const dataTab = el("button", "ph-tab ph-tab-active");
+  dataTab.textContent = "Data";
+  tabs.appendChild(dataTab);
+
+  const consoleTab = el("button", "ph-tab");
+  consoleTab.textContent = "Console";
+  const consoleBadge = el("span", "ph-tab-badge");
+  consoleBadge.style.display = "none";
+  consoleTab.appendChild(consoleBadge);
+  tabs.appendChild(consoleTab);
+
+  barContent.appendChild(tabs);
+
+  // Content area (takes remaining space) — holds either dataArea or consoleArea
   const barMain = el("div", "ph-bar-main");
   const dataArea = el("div", "ph-data");
+  const consoleArea = el("div", "ph-console");
+  consoleArea.style.display = "none";
   barMain.appendChild(dataArea);
+  barMain.appendChild(consoleArea);
   barContent.appendChild(barMain);
+
+  function setActiveTab(next: "data" | "console") {
+    activeTab = next;
+    if (next === "data") {
+      dataTab.classList.add("ph-tab-active");
+      consoleTab.classList.remove("ph-tab-active");
+      dataArea.style.display = "";
+      consoleArea.style.display = "none";
+    } else {
+      dataTab.classList.remove("ph-tab-active");
+      consoleTab.classList.add("ph-tab-active");
+      dataArea.style.display = "none";
+      consoleArea.style.display = "";
+      // Clear unread on view
+      unreadError = 0;
+      unreadWarn = 0;
+      unreadInfo = 0;
+      updateTabBadges();
+      renderConsole();
+    }
+  }
+
+  dataTab.addEventListener("click", () => setActiveTab("data"));
+  consoleTab.addEventListener("click", () => setActiveTab("console"));
+
+  function updateTabBadges() {
+    const total = unreadError + unreadWarn + unreadInfo;
+    if (total === 0) {
+      consoleBadge.style.display = "none";
+      return;
+    }
+    consoleBadge.style.display = "";
+    consoleBadge.textContent = String(total);
+    // Highest-priority color wins
+    consoleBadge.classList.remove("ph-badge-error", "ph-badge-warn", "ph-badge-info");
+    if (unreadError > 0) consoleBadge.classList.add("ph-badge-error");
+    else if (unreadWarn > 0) consoleBadge.classList.add("ph-badge-warn");
+    else consoleBadge.classList.add("ph-badge-info");
+  }
+
+  function renderConsole() {
+    consoleArea.innerHTML = "";
+    if (consoleEntries.length === 0) {
+      const empty = el("div", "ph-console-empty");
+      empty.textContent = "No console output yet.";
+      consoleArea.appendChild(empty);
+      return;
+    }
+    for (const entry of consoleEntries) {
+      const row = el("div", `ph-console-row ph-log-${entry.level}`);
+      const time = el("span", "ph-console-time");
+      const d = new Date(entry.timestamp);
+      time.textContent = d.toLocaleTimeString([], { hour12: false });
+      const level = el("span", `ph-console-level ph-log-${entry.level}`);
+      level.textContent = entry.level === "error" ? "✕" : entry.level === "warn" ? "!" : entry.level === "info" ? "i" : "·";
+      const msg = el("span", "ph-console-msg");
+      msg.textContent = entry.parts.join(" ") + (entry.source ? `  @ ${entry.source}` : "");
+      row.appendChild(time);
+      row.appendChild(level);
+      row.appendChild(msg);
+      consoleArea.appendChild(row);
+    }
+    consoleArea.scrollTop = consoleArea.scrollHeight;
+  }
+
+  // ── Console capture state ──
+  type ConsoleEntry = {
+    level: "log" | "info" | "warn" | "error";
+    timestamp: number;
+    parts: string[]; // each console arg formatted to string
+    source?: string; // file:line for errors
+  };
+  const consoleEntries: ConsoleEntry[] = [];
+  const MAX_CONSOLE_ENTRIES = 500;
+  let unreadError = 0;
+  let unreadWarn = 0;
+  let unreadInfo = 0;
+  let activeTab: "data" | "console" = "data";
+  let autoSwitchedThisSession = false;
+
+  function formatArg(arg: unknown): string {
+    if (arg instanceof Error) return arg.stack || `${arg.name}: ${arg.message}`;
+    if (typeof arg === "string") return arg;
+    if (arg === null) return "null";
+    if (arg === undefined) return "undefined";
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  }
+
+  function pushConsoleEntry(entry: ConsoleEntry) {
+    consoleEntries.push(entry);
+    if (consoleEntries.length > MAX_CONSOLE_ENTRIES) {
+      consoleEntries.shift();
+    }
+    // Bump unread counters when console tab isn't visible
+    if (activeTab !== "console" || !bar.classList.contains("ph-open")) {
+      if (entry.level === "error") unreadError += 1;
+      else if (entry.level === "warn") unreadWarn += 1;
+      else unreadInfo += 1;
+    }
+    // Auto-switch on first uncaught error per panel-open session
+    if (entry.level === "error" && !autoSwitchedThisSession && bar.classList.contains("ph-open")) {
+      autoSwitchedThisSession = true;
+      setActiveTab("console");
+    }
+    updateTabBadges();
+    if (activeTab === "console") {
+      renderConsole();
+    }
+  }
+
+  // Monkey-patch console. Capture the very-first originals (module-scoped)
+  // so re-entry of setupDevUI under HMR doesn't stack wrappers, and so
+  // teardownDevUI can restore the originals later.
+  if (!originalConsoleMethods) {
+    originalConsoleMethods = {
+      log: console.log.bind(console),
+      info: console.info.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+    };
+  }
+  const origConsole = originalConsoleMethods;
+  (["log", "info", "warn", "error"] as const).forEach((level) => {
+    console[level] = (...args: unknown[]) => {
+      origConsole[level](...args);
+      pushConsoleEntry({
+        level,
+        timestamp: Date.now(),
+        parts: args.map(formatArg),
+      });
+    };
+  });
+
+  // Catch uncaught errors and rejections. Remove any listeners from a
+  // prior setupDevUI call (HMR) before installing fresh ones, and store
+  // the new refs at module scope so teardownDevUI can remove them.
+  if (activeWindowErrorListener) {
+    window.removeEventListener("error", activeWindowErrorListener);
+  }
+  if (activeWindowRejectionListener) {
+    window.removeEventListener("unhandledrejection", activeWindowRejectionListener);
+  }
+  activeWindowErrorListener = (ev) => {
+    pushConsoleEntry({
+      level: "error",
+      timestamp: Date.now(),
+      parts: [ev.message || String(ev.error)],
+      source: ev.filename ? `${ev.filename}:${ev.lineno}:${ev.colno}` : undefined,
+    });
+  };
+  activeWindowRejectionListener = (ev) => {
+    pushConsoleEntry({
+      level: "error",
+      timestamp: Date.now(),
+      parts: ["Unhandled Promise rejection: " + formatArg(ev.reason)],
+    });
+  };
+  window.addEventListener("error", activeWindowErrorListener);
+  window.addEventListener("unhandledrejection", activeWindowRejectionListener);
+
   bar.appendChild(resizeHandle);
   bar.appendChild(barContent);
 
@@ -1132,15 +1420,31 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
   }
 
-  // ── Sidebar width state ──
+  // ── Sidebar size state ──
+  // Position is read from root.dataset.position, defaulting to "right".
+  // The consumer sets this attribute (typically via a MutationObserver
+  // watching for the panel root) to switch the panel from right-side
+  // sidebar to bottom-pinned drawer. Visual styles for the bottom layout
+  // come from a consumer-provided stylesheet; this code just handles the
+  // axis-dependent JS bits (resize handler + body margin direction).
   let sidebarWidth = 400;
+  let sidebarHeight = 240;
   const originalBodyMarginRight = document.body.style.marginRight;
+  const originalBodyMarginBottom = document.body.style.marginBottom;
+
+  function getPosition(): "right" | "bottom" {
+    return root.dataset.position === "bottom" ? "bottom" : "right";
+  }
 
   // ── Open / Close ──
   function open() {
     trigger.style.display = "none";
     bar.classList.add("ph-open");
-    document.body.style.marginRight = `${sidebarWidth}px`;
+    if (getPosition() === "bottom") {
+      document.body.style.marginBottom = `${sidebarHeight}px`;
+    } else {
+      document.body.style.marginRight = `${sidebarWidth}px`;
+    }
     updateStatusCounts();
     renderDataWalker();
   }
@@ -1149,6 +1453,8 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     trigger.style.display = "";
     bar.classList.remove("ph-open");
     document.body.style.marginRight = originalBodyMarginRight;
+    document.body.style.marginBottom = originalBodyMarginBottom;
+    autoSwitchedThisSession = false;
     // Exit inspect mode if active
     if (inspectMode) {
       inspectMode = false;
@@ -1161,11 +1467,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   let lastElementCount = 0;
   elementHandlers.forEach((idMap) => { lastElementCount += idMap.size; });
 
-  const elementObserver = new MutationObserver((mutations) => {
-    // Ignore mutations from the dev tools UI itself
-    for (const m of mutations) {
-      if (root.contains(m.target)) return;
-    }
+  function checkElementCountChange() {
     let currentCount = 0;
     elementHandlers.forEach((idMap) => { currentCount += idMap.size; });
     if (currentCount !== lastElementCount) {
@@ -1175,12 +1477,31 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
         renderDataWalker();
       }
     }
+  }
+
+  const elementObserver = new MutationObserver((mutations) => {
+    // Ignore mutations from the dev tools UI itself
+    for (const m of mutations) {
+      if (root.contains(m.target)) return;
+    }
+    checkElementCountChange();
   });
   // Only watch childList — class changes on existing elements won't add new playhtml elements
   elementObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
   });
+
+  // Poll periodically too. The MutationObserver catches DOM additions, but
+  // playhtml registers handlers for already-existing DOM nodes during its
+  // async post-sync setup (no DOM mutation fires). Without the poll the
+  // panel would render an empty Data tab forever. 250ms is a good balance:
+  // fast enough to feel snappy, slow enough that the cost is negligible.
+  // Clear any prior tick first so re-entry under HMR doesn't stack timers.
+  if (activeElementPoll !== null) {
+    window.clearInterval(activeElementPoll);
+  }
+  activeElementPoll = window.setInterval(checkElementCountChange, 250);
   activeElementObserver = elementObserver;
 
   // ── Trigger click to open ──
@@ -1192,10 +1513,17 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   resizeHandle.addEventListener("mousedown", (e: MouseEvent) => {
     e.preventDefault();
 
+    const position = getPosition();
     const onMove = (ev: MouseEvent) => {
-      sidebarWidth = Math.max(280, Math.min(700, window.innerWidth - ev.clientX));
-      bar.style.width = `${sidebarWidth}px`;
-      document.body.style.marginRight = `${sidebarWidth}px`;
+      if (position === "bottom") {
+        sidebarHeight = Math.max(120, Math.min(window.innerHeight - 100, window.innerHeight - ev.clientY));
+        bar.style.height = `${sidebarHeight}px`;
+        document.body.style.marginBottom = `${sidebarHeight}px`;
+      } else {
+        sidebarWidth = Math.max(280, Math.min(700, window.innerWidth - ev.clientX));
+        bar.style.width = `${sidebarWidth}px`;
+        document.body.style.marginRight = `${sidebarWidth}px`;
+      }
     };
 
     const onUp = () => {
@@ -1359,9 +1687,30 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 }
 
 export function teardownDevUI(): void {
+  // Restore patched console methods
+  if (originalConsoleMethods) {
+    console.log = originalConsoleMethods.log;
+    console.info = originalConsoleMethods.info;
+    console.warn = originalConsoleMethods.warn;
+    console.error = originalConsoleMethods.error;
+    originalConsoleMethods = null;
+  }
+  // Remove window error listeners
+  if (activeWindowErrorListener) {
+    window.removeEventListener("error", activeWindowErrorListener);
+    activeWindowErrorListener = null;
+  }
+  if (activeWindowRejectionListener) {
+    window.removeEventListener("unhandledrejection", activeWindowRejectionListener);
+    activeWindowRejectionListener = null;
+  }
   if (activeElementObserver) {
     activeElementObserver.disconnect();
     activeElementObserver = null;
+  }
+  if (activeElementPoll !== null) {
+    window.clearInterval(activeElementPoll);
+    activeElementPoll = null;
   }
   if (activeDevRoot && activeDevRoot.parentElement) {
     activeDevRoot.parentElement.removeChild(activeDevRoot);

@@ -1,0 +1,27 @@
+---
+// ABOUTME: /play route — the live editor + preview playground.
+import { Playground } from "../components/playground/Playground";
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>playhtml playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=Play:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!--
+      Design tokens + html/body resets live in playground.css (imported
+      by Playground.tsx). We avoid an Astro <style> block here because
+      Astro scopes them to the page, which rewrites :root selectors and
+      strips them from html / body.
+    -->
+  </head>
+  <body>
+    <Playground client:only="react" />
+  </body>
+</html>
