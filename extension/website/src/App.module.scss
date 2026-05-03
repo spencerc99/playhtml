@@ -126,45 +126,6 @@ $accent-rust: #c4724e;
   }
 }
 
-// --- Download buttons ---
-
-.downloadGroup {
-  margin-top: 16px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.downloadGroupLarge {
-  margin-top: 8px;
-  gap: 16px;
-}
-
-.downloadButton {
-  font-family: $font-body;
-  font-size: 0.9375rem;
-  color: $text;
-  background: rgba($bg, 0.7);
-  border: 1.5px solid rgba($text, 0.35);
-  border-radius: 4px;
-  padding: 10px 18px;
-  text-decoration: none;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
-  backdrop-filter: blur(2px);
-
-  &:hover {
-    background: rgba($bg, 0.95);
-    border-color: $text;
-    transform: translateY(-1px);
-  }
-
-  .downloadGroupLarge & {
-    font-size: 1.0625rem;
-    padding: 14px 24px;
-  }
-}
-
 .scrollHint {
   margin-top: 32px;
   color: $text-muted;

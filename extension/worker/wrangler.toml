@@ -12,11 +12,17 @@ compatibility_date = "2024-01-01"
 #   Set secrets via: wrangler secret put SUPABASE_URL
 #   Set secrets via: wrangler secret put SUPABASE_SECRET_KEY
 #   Set secrets via: wrangler secret put ADMIN_KEY
+#   Set secrets via: wrangler secret put RESEND_API_KEY
+#   Optional:        wrangler secret put RESEND_SEGMENT_ID
 #
 # Required variables:
 # - SUPABASE_URL - Your Supabase project URL
 # - SUPABASE_SECRET_KEY - Your Supabase "secret" API key (full database access)
 # - ADMIN_KEY - Required for admin endpoints (stats, export) - protects user data
+# - RESEND_API_KEY - Resend API key for sending welcome emails and adding contacts
+#
+# Optional variables:
+# - RESEND_SEGMENT_ID - If set, new contacts are tagged with this Resend segment
 #
 # Security model:
 # - POST /events: Public (validated + rate limited)
@@ -26,7 +32,6 @@ compatibility_date = "2024-01-01"
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 
-[env.production]
-routes = [
-  { pattern = "playhtml-game-api.*.workers.dev", zone_name = "your-domain.com" }
-]
+# Deploys to the workers.dev subdomain by default; no custom domain needed.
+# Note: rate limiting in /subscribe is per-isolate (in-memory Map), so the
+# effective limit is ~5/min × N active isolates. Acceptable at this scale.

@@ -6,13 +6,23 @@
   "scripts": {
     "dev": "wrangler dev --config wrangler.toml",
     "deploy": "wrangler deploy --config wrangler.toml",
-    "tail": "wrangler tail --config wrangler.toml"
+    "tail": "wrangler tail --config wrangler.toml",
+    "secret": "wrangler --config wrangler.toml secret",
+    "secrets": "wrangler --config wrangler.toml secret list",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "resend": "^6.9.2",
+    "@react-email/components": "^0.0.31",
+    "@react-email/render": "^1.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240208.0",
+    "@types/react": "^18.3.17",
+    "vitest": "^2.1.8",
     "wrangler": "^3.19.0"
   }
 }
