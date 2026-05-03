@@ -1,7 +1,7 @@
 // ABOUTME: Tests for PlayProvider's SPA-navigation integrations —
 // ABOUTME: ref-to-container conversion and pathname-driven navigation.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { useRef, useState, type RefObject } from "react";
 import { PlayProvider } from "../PlayProvider";
 import playhtml from "../playhtml-singleton";
@@ -15,7 +15,9 @@ describe("PlayProvider cursor container ref", () => {
   });
 
   it("converts a RefObject to a getter for cursors.container", async () => {
-    const initSpy = vi.spyOn(playhtml, "init").mockResolvedValue(undefined as any);
+    const initSpy = vi.mocked(playhtml.init);
+    initSpy.mockClear();
+    initSpy.mockResolvedValue(undefined as any);
 
     function Wrapper() {
       const ref = useRef<HTMLDivElement>(null);
@@ -41,8 +43,6 @@ describe("PlayProvider cursor container ref", () => {
     // Invoking the getter should return the rendered element.
     const resolved = callArgs.cursors.container();
     expect(resolved).toBe(container.querySelector("#cursor-layer"));
-
-    initSpy.mockRestore();
   });
 });
 
@@ -51,6 +51,8 @@ describe("PlayProvider pathname prop", () => {
     document.body.innerHTML = "";
     delete (window as any).playhtml;
     delete document.documentElement.dataset.playhtml;
+    vi.mocked(playhtml.init).mockClear();
+    vi.mocked(playhtml.init).mockResolvedValue(undefined as any);
   });
 
   it("calls handleNavigation when pathname changes", async () => {
@@ -70,9 +72,12 @@ describe("PlayProvider pathname prop", () => {
     }
 
     const { getByText } = render(<Wrapper />);
+    await waitFor(() => {
+      expect(playhtml.init).toHaveBeenCalled();
+    });
     spy.mockClear(); // ignore any mount-time calls
 
-    getByText("nav").click();
+    fireEvent.click(getByText("nav"));
     await waitFor(() => {
       expect(spy).toHaveBeenCalled();
     });
@@ -90,6 +95,9 @@ describe("PlayProvider pathname prop", () => {
         pathname="/initial"
       />,
     );
+    await waitFor(() => {
+      expect(playhtml.init).toHaveBeenCalled();
+    });
 
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
