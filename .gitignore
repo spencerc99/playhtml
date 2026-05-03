@@ -34,6 +34,7 @@ dist-ssr
 .dev.vars
 
 .claude
+.codex/
 
 
 .wxt
