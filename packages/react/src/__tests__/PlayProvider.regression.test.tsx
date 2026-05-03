@@ -4,10 +4,12 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, waitFor } from "@testing-library/react";
-import { PlayProvider } from "../index";
+import { PlayContext, PlayProvider } from "../index";
 
 const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   init: ReturnType<typeof vi.fn>;
+  resetReady: () => void;
+  resolveReady: () => void;
 };
 
 describe("PlayProvider bootstrap contract", () => {
@@ -41,6 +43,33 @@ describe("PlayProvider bootstrap contract", () => {
 
     await waitFor(() => {
       expect(mockedPlayhtml.init).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps context loading until playhtml.ready resolves", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.init.mockImplementation(() => Promise.resolve());
+
+    function Status() {
+      const context = React.useContext(PlayContext);
+      return <div data-testid="status">{context.isLoading ? "loading" : "ready"}</div>;
+    }
+
+    const { getByTestId } = render(
+      <PlayProvider>
+        <Status />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mockedPlayhtml.init).toHaveBeenCalledTimes(1);
+    });
+    expect(getByTestId("status")).toHaveTextContent("loading");
+
+    mockedPlayhtml.resolveReady();
+
+    await waitFor(() => {
+      expect(getByTestId("status")).toHaveTextContent("ready");
     });
   });
 });

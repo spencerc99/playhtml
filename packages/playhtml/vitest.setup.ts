@@ -1,6 +1,19 @@
+// ABOUTME: Configures browser API shims and provider fakes for playhtml tests.
+// ABOUTME: Keeps unit tests deterministic without opening real network providers.
 // JSDOM doesn't implement some layout APIs; mock minimal ones we use.
 Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
 Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
+
+const appendHeadChild = document.head.appendChild.bind(document.head);
+document.head.appendChild = ((child: Node) => {
+  if (
+    child instanceof HTMLLinkElement &&
+    child.href.includes("https://unpkg.com/playhtml@latest/dist/style.css")
+  ) {
+    child.href = "data:text/css,/* playhtml */";
+  }
+  return appendHeadChild(child);
+}) as typeof document.head.appendChild;
 
 // Basic getBoundingClientRect mock for created elements in tests
 if (!HTMLElement.prototype.getBoundingClientRect) {
@@ -55,7 +68,10 @@ vi.mock("y-partyserver/provider", () => {
           getStates: () => states,
           on: (t: string, cb: any) => this.on(t, cb),
         };
-        queueMicrotask(() => this.emit("sync", true));
+        ((globalThis as any).PLAYHTML_TEST_PROVIDERS ??= []).push(this);
+        if (!(globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC) {
+          queueMicrotask(() => this.emit("sync", true));
+        }
       }
       on(t: string, cb: any) {
         this.listeners[t] ??= [];

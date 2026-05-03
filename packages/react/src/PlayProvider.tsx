@@ -1,3 +1,5 @@
+// ABOUTME: Provides React context for playhtml state and lifecycle readiness.
+// ABOUTME: Bootstraps the playhtml singleton and exposes cursor/presence helpers.
 import {
   PropsWithChildren,
   createContext,
@@ -152,7 +154,7 @@ export function PlayProvider({
     playhtml.setupPlayElements();
   }, [pathname, search]);
 
-  const [hasSynced, setHasSynced] = useState(false);
+  const [hasSynced, setHasSynced] = useState(playhtml.isLoading === false);
 
   const processedInitOptions = useMemo<InitOptions | undefined>(() => {
     if (!initOptions) return initOptions as InitOptions | undefined;
@@ -167,15 +169,26 @@ export function PlayProvider({
   }, [initOptions]);
 
   useEffect(() => {
-    playhtml.init(processedInitOptions).then(
+    let cancelled = false;
+    const initPromise = playhtml.init(processedInitOptions);
+    const readyPromise =
+      playhtml.ready && typeof playhtml.ready.then === "function"
+        ? playhtml.ready
+        : initPromise;
+
+    readyPromise.then(
       () => {
-        setHasSynced(true);
+        if (!cancelled) setHasSynced(true);
       },
       (err) => {
         console.error(err);
-        setHasSynced(true);
+        if (!cancelled) setHasSynced(true);
       }
     );
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const configureCursors = (options: Partial<CursorOptions>) => {

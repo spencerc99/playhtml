@@ -1,3 +1,5 @@
+// ABOUTME: Tests SyncedStore-backed element data and nested CRDT operations.
+// ABOUTME: Verifies value updates, mutator updates, arrays, and nested objects.
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { playhtml } from "../index";
 
@@ -66,12 +68,11 @@ describe("playhtml SyncedStore CRDT behavior", () => {
 
   it("supports CRDT array operations with mutator form", async () => {
     const tag = "can-duplicate";
-    const el = setupSimpleElement(tag, "e2", { "can-duplicate": "target" });
     const target = document.createElement("div");
     target.id = "target";
     document.body.appendChild(target);
+    const el = setupSimpleElement(tag, "e2", { "can-duplicate": "target" });
 
-    // Re-setup element now that attributes changed
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
 
@@ -98,10 +99,10 @@ describe("playhtml SyncedStore CRDT behavior", () => {
 
   it("supports CRDT array splice operations", async () => {
     const tag = "can-duplicate";
-    const el = setupSimpleElement(tag, "e3", { "can-duplicate": "target3" });
     const target = document.createElement("div");
     target.id = "target3";
     document.body.appendChild(target);
+    const el = setupSimpleElement(tag, "e3", { "can-duplicate": "target3" });
 
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
@@ -136,10 +137,10 @@ describe("playhtml SyncedStore CRDT behavior", () => {
 
   it("handles concurrent-like operations through CRDT merging", async () => {
     const tag = "can-duplicate";
-    const el = setupSimpleElement(tag, "e4", { "can-duplicate": "target4" });
     const target = document.createElement("div");
     target.id = "target4";
     document.body.appendChild(target);
+    const el = setupSimpleElement(tag, "e4", { "can-duplicate": "target4" });
 
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
@@ -204,10 +205,10 @@ describe("playhtml SyncedStore CRDT behavior", () => {
 
   it("throws helpful errors for unsupported CRDT array operations", async () => {
     const tag = "can-duplicate";
-    const el = setupSimpleElement(tag, "e6", { "can-duplicate": "target6" });
     const target = document.createElement("div");
     target.id = "target6";
     document.body.appendChild(target);
+    const el = setupSimpleElement(tag, "e6", { "can-duplicate": "target6" });
 
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);

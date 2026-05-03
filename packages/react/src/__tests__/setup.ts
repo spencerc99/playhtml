@@ -1,3 +1,5 @@
+// ABOUTME: Configures React test assertions and the mocked playhtml singleton.
+// ABOUTME: Provides deterministic readiness, presence, and page-data test doubles.
 import { expect, afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import * as matchers from "@testing-library/jest-dom/matchers";
@@ -8,17 +10,45 @@ expect.extend(matchers);
 // Runs a cleanup after each test case (e.g. clearing jsdom)
 afterEach(() => {
   cleanup();
+  resetMockReady();
 });
 
 // Create a mock playhtml instance
 const presenceListeners = new Map<string, Set<(presences: Map<string, unknown>) => void>>();
 const mockPresences = new Map<string, unknown>();
 
+let mockReadyResolve: () => void = () => {};
+let mockReady: Promise<void>;
+
+function resetMockReady() {
+  mockReady = new Promise<void>((resolve) => {
+    mockReadyResolve = resolve;
+  });
+  mockedPlayhtml.isLoading = true;
+  mockedPlayhtml.init.mockImplementation(() => {
+    mockedPlayhtml.isInitialized = true;
+    mockedPlayhtml.isLoading = false;
+    mockReadyResolve();
+    return mockReady;
+  });
+}
+
 const mockedPlayhtml = {
   isInitialized: false,
+  isLoading: true,
+  get ready() {
+    return mockReady;
+  },
+  resetReady: resetMockReady,
+  resolveReady: () => {
+    mockedPlayhtml.isLoading = false;
+    mockReadyResolve();
+  },
   init: vi.fn().mockImplementation(() => {
     mockedPlayhtml.isInitialized = true;
-    return Promise.resolve();
+    mockedPlayhtml.isLoading = false;
+    mockReadyResolve();
+    return mockReady;
   }),
   setupPlayElements: vi.fn(),
   setupPlayElement: vi.fn(),
@@ -71,6 +101,8 @@ const mockedPlayhtml = {
     destroy: vi.fn(),
   })),
 };
+
+resetMockReady();
 
 // Make mock available to tests
 vi.stubGlobal("MOCKED_PLAYHTML", mockedPlayhtml);
