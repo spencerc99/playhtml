@@ -7,6 +7,25 @@ sidebar:
 
 Every playhtml element owns a piece of shared data. Getting the shape right, writing to it correctly, and cleaning it up when elements go away are the three skills that separate a toy demo from a real feature. This page covers all three.
 
+## When to use which primitive
+
+playhtml has four primitives for moving state between readers. Pick by **lifetime** first ("should this survive a reload?"), then by **scope** ("does this belong to one element, the whole page, or one user?").
+
+| Want | Use | Survives reload | Scope |
+|---|---|---|---|
+| A toggle, position, count, or any state tied to one element | [Element data](/docs/data/data-essentials/) (`defaultData` / `can-play`) | Yes | One element |
+| A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`) | Yes | One page |
+| "Who is connected right now?" / "How many readers?" | [Presence](/docs/data/presence/) (`playhtml.presence.getPresences()`) | No | Per-user |
+| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) | No | Per-user |
+| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) | No | Per-user |
+| Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
+| "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
+
+Two rules that catch most mistakes:
+
+- **If a new reader opening the page should see the state, it's persistent data.** If they shouldn't, it's presence or an event.
+- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync — see [rule 7 below](#7-use-localstorage-for-per-user-preferences).
+
 ## Updating data: mutator vs replacement
 
 `setData` accepts two shapes, and the one you pick determines merge semantics. Picking wrong can silently clobber concurrent edits from other readers.

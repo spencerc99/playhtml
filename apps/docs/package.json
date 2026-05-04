@@ -13,6 +13,7 @@
   "dependencies": {
     "@astrojs/react": "^5.0.3",
     "@astrojs/starlight": "^0.38.3",
+    "agentation": "^2.2.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-html": "^6.4.11",
     "@codemirror/language": "^6.12.3",

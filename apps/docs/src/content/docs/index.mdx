@@ -15,8 +15,8 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
-import { LampToggleDemo } from '../../components/react/LampToggleDemo';
+import { Card, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
+import { LampToggleDemo } from "../../components/react/LampToggleDemo";
 
 <figure class="ph-splash-lamp ph-splash-lamp--furniture" aria-label="live demo">
   <LampToggleDemo client:only="react" id="ph-splash-lamp" />
@@ -28,10 +28,22 @@ import { LampToggleDemo } from '../../components/react/LampToggleDemo';
 
 <div class="ph-splash-pitch">
   <ul class="ph-splash-pitch__list">
-    <li><strong>Communal by default.</strong> Shared state, presence, and cursors out of the box — lived-in spaces instead of solitary feeds.</li>
-    <li><strong>Library-agnostic, fast, expressive.</strong> Works with plain HTML, React, or any framework. One attribute turns an element live.</li>
-    <li><strong>No backend to run.</strong> Real-time sync and persistence are handled for you — just deploy your static site.</li>
-    <li><strong>Extend it to anything.</strong> Ship your own capabilities with <code>can-play</code> when the built-ins aren't enough.</li>
+    <li>
+      <strong>Communal by default.</strong> Shared state, presence, and cursors
+      for shared spaces rather than solitary feeds.
+    </li>
+    <li>
+      <strong>Library-agnostic, fast, expressive.</strong> Works with plain
+      HTML, React, or any framework.
+    </li>
+    <li>
+      <strong>No backend to run.</strong> Real-time sync and persistence taken
+      care of.
+    </li>
+    <li>
+      <strong>Customize as needed.</strong> Extend the library with your own
+      expressive experiences.
+    </li>
   </ul>
 </div>
 
@@ -67,16 +79,16 @@ import { PlayProvider, CanToggleElement } from "@playhtml/react";
   <div class="ph-splash-section__label">FIG. 02 &nbsp;·&nbsp; start here</div>
   <CardGrid>
     <Card title="Getting started" icon="rocket">
-      Install playhtml and ship your first live element.
-      [Read &rarr;](/docs/getting-started/)
+      Install playhtml and ship your first live element. [Read
+      &rarr;](/docs/getting-started/)
     </Card>
     <Card title="Core concepts" icon="open-book">
-      Element data, page data, presence, events — when to use each.
-      [Read &rarr;](/docs/concepts/)
+      Element data, page data, presence, events — when to use each. [Read
+      &rarr;](/docs/concepts/)
     </Card>
     <Card title="Capabilities" icon="puzzle">
-      Every built-in `can-*` attribute with live demos.
-      [Read &rarr;](/docs/capabilities/)
+      Every built-in `can-*` attribute with live demos. [Read
+      &rarr;](/docs/capabilities/)
     </Card>
   </CardGrid>
 </div>

@@ -96,14 +96,8 @@ Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watc
 
 > Looking for a "live reactions" bursting button? That's an [event](/docs/data/events/), not presence. The docs for events have a live demo.
 
-## When to use which primitive
-
-| Want | Use |
-|---|---|
-| "Who is connected right now?" | `playhtml.presence.getPresences()` |
-| "Who's typing in this input?" | Custom channel (`typing`) |
-| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) |
-| "How many people reacted to this post?" | [Persistent data](/docs/data/data-essentials/), not presence |
-| "Fire a confetti burst for everyone here now" | [Events](/docs/data/events/), not presence |
+## Is presence really what you want?
 
 Presence shines for _ambient awareness_ — the quiet hum of other people existing on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
+
+Not sure which primitive fits? The full decision table — covering element data, page data, presence, cursors, and events — is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).

@@ -51,8 +51,32 @@ playhtml makes HTML elements collaborative and real-time. Here's what you need t
 
 CRITICAL REQUIREMENTS:
 - All elements MUST have a unique `id` attribute
-- Vanilla HTML: Configure element BEFORE importing playhtml
-- React: Must be wrapped in <PlayProvider>
+- Vanilla HTML: Configure element properties BEFORE calling playhtml.init()
+- React: Components must be wrapped in <PlayProvider>
+
+SETUP — Vanilla HTML (can-play with custom logic):
+The ordering rule is strict: assign all the custom properties BEFORE you call playhtml.init().
+
+  const element = document.getElementById("myElement");
+
+  element.defaultData = { /* ... */ };
+  element.onClick = (e, { data, setData }) => { /* ... */ };
+  element.updateElement = ({ data }) => { /* ... */ };
+
+  import { playhtml } from "https://unpkg.com/playhtml";
+  playhtml.init();
+
+SETUP — React:
+
+  import { PlayProvider } from "@playhtml/react";
+
+  function App() {
+    return (
+      <PlayProvider>
+        <MyPlayhtmlComponent />
+      </PlayProvider>
+    );
+  }
 
 DATA TYPES (choose the right one):
 1. Persistent data (defaultData): State that syncs and persists (position, count, messages, etc.)
@@ -134,33 +158,4 @@ The LLM should push back before writing code if:
 
 Don't let the assistant guess. playhtml has different patterns for different use cases, and using the right one matters.
 
-## Setup reference
-
-### Vanilla HTML configuration order
-
-The ordering rule is strict: assign all the custom properties **before** you import playhtml.
-
-```javascript
-const element = document.getElementById("myElement");
-
-element.defaultData = { /* ... */ };
-element.onClick = (e, { data, setData }) => { /* ... */ };
-element.updateElement = ({ data }) => { /* ... */ };
-
-import { playhtml } from "https://unpkg.com/playhtml@latest";
-playhtml.init();
-```
-
-### React setup
-
-```tsx
-import { PlayProvider } from "@playhtml/react";
-
-function App() {
-  return (
-    <PlayProvider>
-      <MyPlayhtmlComponent />
-    </PlayProvider>
-  );
-}
-```
+For the canonical setup walkthrough, see [getting started](/docs/getting-started/).

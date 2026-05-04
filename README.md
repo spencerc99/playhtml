@@ -73,37 +73,6 @@ Each has a live demo and full docs in the [capabilities reference](https://playh
 - **[Dynamic elements](https://playhtml.fun/docs/advanced/dynamic-elements/)** — `setupPlayElement` and `selector-id` for runtime-added nodes
 - **[SPA navigation](https://playhtml.fun/docs/advanced/navigation/)** — works with Astro ViewTransitions, React Router, Next.js, htmx boost, Turbo
 
-## Navigation
-
-playhtml works on sites with client-side navigation, not just full page reloads. It auto-detects URL changes via the browser's Navigation API and `popstate`, then rebuilds rooms and rescans the DOM as needed.
-
-**React** — pass `pathname` from your router, plus a ref for the cursor layer so it persists across navigations:
-
-```tsx
-const cursorLayerRef = useRef<HTMLDivElement>(null);
-const { pathname } = useLocation(); // React Router / Next.js usePathname() / etc.
-
-<PlayProvider
-  initOptions={{ cursors: { enabled: true, container: cursorLayerRef } }}
-  pathname={pathname}
->
-  <div ref={cursorLayerRef} id="cursor-layer" />
-  {/* app */}
-</PlayProvider>;
-```
-
-**Vanilla** — a `container` selector survives body-swaps when marked `transition:persist` (Astro) or the framework equivalent:
-
-```html
-<div id="cursor-layer" transition:persist></div>
-<script type="module">
-  import { playhtml } from "https://unpkg.com/playhtml";
-  playhtml.init({ cursors: { enabled: true, container: "#cursor-layer" } });
-</script>
-```
-
-Also available: `playhtml.handleNavigation()` (manual trigger for routers that bypass the Navigation API and popstate) and a `playhtml:navigated` CustomEvent on `document` with `detail.room`. Full guide: [docs/advanced/navigation](https://playhtml.fun/docs/advanced/navigation/).
-
 ## Building with AI
 
 playhtml works well with coding assistants.
@@ -127,7 +96,7 @@ claude plugin install playhtml@playhtml
 
 - **Docs:** [playhtml.fun/docs](https://playhtml.fun/docs/)
 - **Discord:** [discord.gg/SKbsSf4ptU](https://discord.gg/SKbsSf4ptU)
-- **Email:** [spencerc99@gmail.com](mailto:spencerc99@gmail.com)
+- **Email:** [hi@spencer.place](mailto:hi@spencer.place)
 
 ## Data policy
 

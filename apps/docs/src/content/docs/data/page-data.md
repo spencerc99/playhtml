@@ -13,4 +13,6 @@ counter.setData((draft) => { draft.count += 1; });
 counter.onUpdate((data) => { /* re-render */ });
 ```
 
+When you should reach for `createPageData` vs. element data, presence, or events: see the [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+
 > This page will include a working inline visit counter built with `createPageData` so you can see the numbers climb in real time.

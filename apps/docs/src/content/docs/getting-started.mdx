@@ -15,57 +15,68 @@ Pick your setup:
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 
-## Install
+There are two paths. Pick the one that matches your project.
 
-Add the package with your package manager, or load it from a CDN without a build step:
+### Path A: drop-in script (no build, no module syntax)
+
+The fastest path — no `import`, no `playhtml.init()` call. Add the script tag at the end of your `<body>`, after your interactive elements:
+
+```html
+<body>
+  <button id="my-lamp" can-toggle>lamp</button>
+
+  <script type="module" src="https://unpkg.com/playhtml/init.js"></script>
+</body>
+```
+
+Give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
+
+> Why end-of-body? `init.js` runs `playhtml.init()` immediately, and `init()` scans the DOM for capability attributes (`can-toggle`, `can-move`, etc.) when it runs. Place it after the elements it should find.
+
+> Want options like cursors? Use Path B — the drop-in `init.js` calls `playhtml.init({})` with no options.
+
+### Path B: import + manual init (when you need options or a bundler)
+
+Reach for this when you want to pass options to `init()` (cursors, custom rooms, etc.) or you're already using a bundler.
+
+**From a CDN, no build step:** put the script at the end of `<body>` so the elements exist when `init()` runs.
+
+```html
+<body>
+  <button id="my-lamp" can-toggle>lamp</button>
+
+  <script type="module">
+    import { playhtml } from "https://unpkg.com/playhtml";
+    playhtml.init({ cursors: { enabled: true } });
+  </script>
+</body>
+```
+
+**From npm with a bundler:**
 
 ```bash
 npm install playhtml
 ```
 
-```html
-<script type="module" src="https://unpkg.com/playhtml"></script>
+```js
+import { playhtml } from "playhtml";
+playhtml.init({ cursors: { enabled: true } });
 ```
 
-## Initialize
+Bundlers usually handle script placement for you; just make sure `init()` runs after your interactive elements are in the DOM (e.g. on `DOMContentLoaded` or after your framework mounts).
 
-Call `playhtml.init()` once on page load. Cursors are opt-in.
-
-```html
-<script type="module">
-  import { playhtml } from "playhtml";
-  playhtml.init({ cursors: { enabled: true } });
-</script>
-```
-
-If you loaded playhtml from the CDN `<script>` tag above, the library is available as a global — no import needed:
-
-```html
-<script>
-  playhtml.init({ cursors: { enabled: true } });
-</script>
-```
-
-## Add a capability
-
-Mark any element with a capability attribute — for example, `can-toggle`:
-
-```html
-<button id="my-lamp" can-toggle>lamp</button>
-```
-
-Give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
+Either way, give every interactive element a unique `id` — that's how state is keyed and synced across everyone on the page.
 
   </TabItem>
   <TabItem label="React">
 
-## Install
+### Install
 
 ```bash
 npm install @playhtml/react @playhtml/common
 ```
 
-## Initialize
+### Initialize
 
 Wrap your tree in `PlayProvider` once, then drop in a capability component. Cursors are opt-in.
 
