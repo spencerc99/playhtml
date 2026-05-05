@@ -1,3 +1,5 @@
+// ABOUTME: Hosts the playhtml PartyServer Durable Object for Yjs sync and room-to-room sharing.
+// ABOUTME: Persists room documents, coordinates shared element bridges, and handles admin operations.
 import type * as Party from "partyserver";
 import { getServerByName, routePartykitRequest } from "partyserver";
 import { YServer } from "y-partyserver";
@@ -54,6 +56,10 @@ function internalRequest(path: string, body: unknown): Request {
 }
 
 export class PartyServer extends YServer {
+  static options = {
+    hibernate: true,
+  };
+
   // Public flag to pause autosave during administrative resets
   // This prevents the server from overwriting the clean DB state with
   // in-memory state while we are performing a reset.
@@ -78,6 +84,11 @@ export class PartyServer extends YServer {
 
   private observersAttached = false;
   private adminHandler = new AdminHandler(this);
+
+  override async onStart(): Promise<void> {
+    await super.onStart();
+    await this.attachImmediateBridgeObservers();
+  }
 
   async getSubscribers(): Promise<Subscriber[]> {
     if (this.cachedSubscribers !== null) return this.cachedSubscribers;
@@ -676,9 +687,6 @@ export class PartyServer extends YServer {
     }
 
     await super.onConnect(connection, ctx);
-
-    // Attach immediate-update observers once
-    await this.attachImmediateBridgeObservers();
   }
 
   // Benign disconnect errors thrown by the Cloudflare runtime when a client's
