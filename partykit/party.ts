@@ -21,6 +21,8 @@ import {
 import {
   STORAGE_KEYS,
   DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
+  DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
+  DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
   ORIGIN_S2C,
@@ -48,6 +50,8 @@ import {
 import {
   getNextAlarmTime,
   isCompactionAutosave,
+  shouldCheckEmergencyCompaction,
+  shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
 
@@ -61,6 +65,23 @@ function internalRequest(path: string, body: unknown): Request {
   });
 }
 
+function readPositiveNumberEnv(name: string, fallback: number): number {
+  const value = (env as unknown as Record<string, string | undefined>)[name];
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  console.warn(
+    `[PartyServer] Ignoring invalid numeric env ${name}=${value}; using ${fallback}`
+  );
+  return fallback;
+}
+
 export class PartyServer extends YServer {
   static options = {
     hibernate: true,
@@ -71,7 +92,7 @@ export class PartyServer extends YServer {
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
   private emptyRoomCompactionPromise: Promise<void> | null = null;
-  private emptyRoomCompactionAutosaveSnapshot: string | null = null;
+  private compactionAutosaveSnapshot: string | null = null;
 
   // In-memory caches for hot-path data that rarely changes.
   // Invalidated on writes via the set* methods.
@@ -164,6 +185,36 @@ export class PartyServer extends YServer {
     await this.ctx.storage.delete(STORAGE_KEYS.emptyRoomCompactAfter);
   }
 
+  private async getEmergencyCompactCheckAfter(): Promise<number | null> {
+    const value = await this.ctx.storage.get(
+      STORAGE_KEYS.emergencyCompactCheckAfter
+    );
+    return typeof value === "number" ? value : null;
+  }
+
+  private async setEmergencyCompactCheckAfter(
+    timestamp: number
+  ): Promise<void> {
+    await this.ctx.storage.put(
+      STORAGE_KEYS.emergencyCompactCheckAfter,
+      timestamp
+    );
+  }
+
+  private getEmergencyCompactCheckBytes(): number {
+    return readPositiveNumberEnv(
+      "EMERGENCY_COMPACT_CHECK_BYTES",
+      DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES
+    );
+  }
+
+  private getEmergencyCompactRecheckDelayMs(): number {
+    return readPositiveNumberEnv(
+      "EMERGENCY_COMPACT_RECHECK_DELAY_MS",
+      DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS
+    );
+  }
+
   private async waitForEmptyRoomCompaction(): Promise<void> {
     const pending = this.emptyRoomCompactionPromise;
     if (pending) {
@@ -171,9 +222,9 @@ export class PartyServer extends YServer {
     }
   }
 
-  private consumeEmptyRoomCompactionAutosave(documentBase64: string): boolean {
-    const compactionSnapshot = this.emptyRoomCompactionAutosaveSnapshot;
-    this.emptyRoomCompactionAutosaveSnapshot = null;
+  private consumeCompactionAutosave(documentBase64: string): boolean {
+    const compactionSnapshot = this.compactionAutosaveSnapshot;
+    this.compactionAutosaveSnapshot = null;
     return isCompactionAutosave(documentBase64, compactionSnapshot);
   }
 
@@ -710,11 +761,13 @@ export class PartyServer extends YServer {
         resetEpoch: serverResetEpoch,
       });
       this.sendCustomMessage(connection, resetMessage);
+      // The WebSocket has already been accepted by PartyServer, so closing it
+      // is part of enforcing the reset boundary.
+      connection.close(4000, "Room Reset");
       console.log(
-        `[PartyServer] Sent room-reset message to connectionId=${connectionId}, returning early (no Y.js sync). Client will reload and reconnect.`
+        `[PartyServer] Sent room-reset message to connectionId=${connectionId} and closed stale connection. Client will reload and reconnect.`
       );
       // Don't proceed with normal Y.js connection setup
-      // Client will reload after receiving the message, closing the connection naturally
       return;
     }
 
@@ -880,15 +933,147 @@ export class PartyServer extends YServer {
       console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
     }
 
-    if (!error && activeConnectionCount === 0) {
-      if (this.consumeEmptyRoomCompactionAutosave(documentBase64)) {
+    if (!error) {
+      if (this.consumeCompactionAutosave(documentBase64)) {
         console.log(
-          `[PartyServer] Empty-room compaction autosave completed: room=${this.name}`
+          `[PartyServer] Compaction autosave completed: room=${this.name}`
         );
         return;
       }
+    }
 
+    if (!error && activeConnectionCount > 0) {
+      const compacted = await this.maybeCompactLargeConnectedRoom({
+        documentSize,
+        now: Date.now(),
+      });
+      if (compacted) {
+        return;
+      }
+    }
+
+    if (!error && activeConnectionCount === 0) {
       await this.scheduleEmptyRoomCompaction();
+    }
+  }
+
+  private async maybeCompactLargeConnectedRoom({
+    documentSize,
+    now,
+  }: {
+    documentSize: number;
+    now: number;
+  }): Promise<boolean> {
+    const thresholdBytes = this.getEmergencyCompactCheckBytes();
+    const nextCheckAt = await this.getEmergencyCompactCheckAfter();
+
+    if (
+      !shouldCheckEmergencyCompaction({
+        documentSize,
+        thresholdBytes,
+        nextCheckAt,
+        now,
+      })
+    ) {
+      return false;
+    }
+
+    const recheckAfter = now + this.getEmergencyCompactRecheckDelayMs();
+
+    // Connected rooms normally keep raw Yjs history so hibernated clients can
+    // resume without merging against a rewritten snapshot. This path is the
+    // exception: once a never-empty room crosses the high-watermark threshold,
+    // the server pays the expensive docToJson/jsonToDoc/encode check at most
+    // once per cooldown window. If compaction is useful, it is enforced as a
+    // reset boundary by broadcasting room-reset and closing active sockets.
+    // That disruption is intentional because silently replacing Yjs history
+    // while clients are connected can merge stale client history back into the
+    // room. If compaction is not useful, the cooldown prevents every later
+    // autosave of a naturally large document from rebuilding the whole Y.Doc.
+    const liveYDoc = this.document;
+    const currentPlayData = docToJson(liveYDoc);
+    if (!currentPlayData) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
+      return false;
+    }
+
+    const resetEpoch = Date.now();
+    const compactDoc = jsonToDoc(currentPlayData);
+    setDocResetEpoch(compactDoc, resetEpoch);
+    const compactBase64 = encodeDocToBase64(compactDoc);
+    const compactSize = compactBase64.length;
+
+    if (
+      !shouldUseEmergencyCompactedDocument({
+        beforeSize: documentSize,
+        afterSize: compactSize,
+        thresholdBytes,
+      })
+    ) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
+      console.log(
+        `[PartyServer] Emergency compaction skipped: room=${this.name}, ${documentSize} -> ${compactSize} bytes, nextCheckAt=${recheckAfter}`
+      );
+      return false;
+    }
+
+    this.isSkippingSave = true;
+    const rollbackResetEpoch = await this.getResetEpoch();
+    let compactedDocumentSaved = false;
+
+    try {
+      await this.setResetEpoch(resetEpoch);
+
+      const { error } = await supabase.from("documents").upsert(
+        {
+          name: this.name,
+          document: compactBase64,
+        },
+        { onConflict: "name" }
+      );
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      compactedDocumentSaved = true;
+      this.compactionAutosaveSnapshot = compactBase64;
+      replaceDocFromSnapshot(liveYDoc, compactBase64);
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
+      await this.clearEmptyRoomCompactAfter();
+
+      const resetMessage = JSON.stringify({
+        type: "room-reset",
+        timestamp: resetEpoch,
+        resetEpoch,
+      });
+      this.broadcastCustomMessage(resetMessage);
+
+      const connections = [...this.getConnections()];
+      connections.forEach((conn) => {
+        try {
+          conn.close(4000, "Room Compacted");
+        } catch (error) {
+          console.error("[PartyServer] Failed to close connection:", error);
+        }
+      });
+
+      console.log(
+        `[PartyServer] Emergency compacted connected room: room=${this.name}, ${documentSize} -> ${compactSize} bytes (${((1 - compactSize / documentSize) * 100).toFixed(1)}% reduction), resetEpoch=${resetEpoch}, closed=${connections.length}`
+      );
+      return true;
+    } catch (error) {
+      if (!compactedDocumentSaved) {
+        if (rollbackResetEpoch === null) {
+          await this.ctx.storage.delete(STORAGE_KEYS.resetEpoch);
+        } else {
+          await this.setResetEpoch(rollbackResetEpoch);
+        }
+      }
+      this.compactionAutosaveSnapshot = null;
+      throw error;
+    } finally {
+      this.isSkippingSave = false;
     }
   }
 
@@ -1390,7 +1575,7 @@ export class PartyServer extends YServer {
         }
 
         compactedDocumentSaved = true;
-        this.emptyRoomCompactionAutosaveSnapshot = compactBase64;
+        this.compactionAutosaveSnapshot = compactBase64;
         replaceDocFromSnapshot(liveYDoc, compactBase64);
         await this.clearEmptyRoomCompactAfter();
 
@@ -1405,7 +1590,7 @@ export class PartyServer extends YServer {
             await this.setResetEpoch(rollbackResetEpoch);
           }
         }
-        this.emptyRoomCompactionAutosaveSnapshot = null;
+        this.compactionAutosaveSnapshot = null;
         throw error;
       } finally {
         this.isSkippingSave = false;

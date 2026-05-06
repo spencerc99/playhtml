@@ -6,8 +6,10 @@ import {
   createStore,
   getHost,
   getNumberEnv,
+  inspectRoom as inspectPartyRoom,
   loadSmokeEnv,
   sleep,
+  waitForProviderStatus,
   waitForRoomReset,
   waitForSync,
 } from "./shared.mjs";
@@ -35,23 +37,7 @@ function connectSmokeRoom(doc, params = {}) {
 }
 
 async function inspectRoom() {
-  const response = await fetch(
-    `https://${host}/parties/main/${encodeURIComponent(room)}/admin/inspect`,
-    {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    }
-  );
-  const text = await response.text();
-  let body;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    throw new Error(`inspect returned non-JSON ${response.status}: ${text}`);
-  }
-  if (!response.ok) {
-    throw new Error(`inspect failed ${response.status}: ${text}`);
-  }
-  return body;
+  return inspectPartyRoom({ host, room, adminToken });
 }
 
 async function waitForCompaction(beforeResetEpoch, timeoutMs = 2 * 60 * 1000) {
@@ -127,6 +113,8 @@ if (after.documentSize >= before.documentSize) {
 const staleProvider = connectSmokeRoom(doc);
 const staleResetEpoch = await waitForRoomReset(staleProvider);
 console.log(`stale reconnect received room-reset resetEpoch=${staleResetEpoch}`);
+await waitForProviderStatus(staleProvider, "disconnected");
+console.log("stale reconnect was disconnected");
 staleProvider.destroy();
 
 const freshDoc = new Y.Doc();

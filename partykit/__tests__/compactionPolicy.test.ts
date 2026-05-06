@@ -4,6 +4,8 @@ import { describe, expect, it } from "bun:test";
 import {
   getNextAlarmTime,
   isCompactionAutosave,
+  shouldCheckEmergencyCompaction,
+  shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "../compactionPolicy";
 
@@ -20,6 +22,82 @@ describe("isCompactionAutosave", () => {
     expect(isCompactionAutosave("snapshot-a", "snapshot-a")).toBe(true);
     expect(isCompactionAutosave("snapshot-b", "snapshot-a")).toBe(false);
     expect(isCompactionAutosave("snapshot-a", null)).toBe(false);
+  });
+});
+
+describe("shouldCheckEmergencyCompaction", () => {
+  it("only runs the expensive check after the size threshold and cooldown", () => {
+    expect(
+      shouldCheckEmergencyCompaction({
+        documentSize: 999,
+        thresholdBytes: 1_000,
+        nextCheckAt: null,
+        now: 5_000,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldCheckEmergencyCompaction({
+        documentSize: 1_000,
+        thresholdBytes: 1_000,
+        nextCheckAt: 6_000,
+        now: 5_000,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldCheckEmergencyCompaction({
+        documentSize: 1_000,
+        thresholdBytes: 1_000,
+        nextCheckAt: 5_000,
+        now: 5_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldCheckEmergencyCompaction({
+        documentSize: 1_000,
+        thresholdBytes: 1_000,
+        nextCheckAt: null,
+        now: 5_000,
+      })
+    ).toBe(true);
+  });
+});
+
+describe("shouldUseEmergencyCompactedDocument", () => {
+  it("requires compaction to move a large room below threshold or save meaningful space", () => {
+    expect(
+      shouldUseEmergencyCompactedDocument({
+        beforeSize: 1_200,
+        afterSize: 900,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldUseEmergencyCompactedDocument({
+        beforeSize: 2_000,
+        afterSize: 1_700,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldUseEmergencyCompactedDocument({
+        beforeSize: 2_000,
+        afterSize: 1_900,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldUseEmergencyCompactedDocument({
+        beforeSize: 2_000,
+        afterSize: 2_000,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(false);
   });
 });
 

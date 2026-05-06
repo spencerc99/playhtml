@@ -120,6 +120,58 @@ export function waitForRoomReset(provider, timeoutMs = 20_000) {
   });
 }
 
+export function waitForProviderStatus(
+  provider,
+  expectedStatus,
+  timeoutMs = 20_000
+) {
+  return new Promise((resolveStatus, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(
+        new Error(
+          `provider did not report status=${expectedStatus} within ${timeoutMs}ms`
+        )
+      );
+    }, timeoutMs);
+
+    const onStatus = (event) => {
+      console.log(`provider status=${event.status}`);
+      if (event.status === expectedStatus) {
+        cleanup();
+        resolveStatus();
+      }
+    };
+
+    function cleanup() {
+      clearTimeout(timer);
+      provider.off("status", onStatus);
+    }
+
+    provider.on("status", onStatus);
+  });
+}
+
+export async function inspectRoom({ host, room, adminToken }) {
+  const response = await fetch(
+    `https://${host}/parties/main/${encodeURIComponent(room)}/admin/inspect`,
+    {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }
+  );
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`inspect returned non-JSON ${response.status}: ${text}`);
+  }
+  if (!response.ok) {
+    throw new Error(`inspect failed ${response.status}: ${text}`);
+  }
+  return body;
+}
+
 export function loadSmokeEnv() {
   const candidates = process.env.SMOKE_ENV_FILE
     ? [resolve(process.env.SMOKE_ENV_FILE)]
