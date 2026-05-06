@@ -53,15 +53,22 @@ i {
 .site-console {
   align-items: center;
   backdrop-filter: blur(10px);
-  background: color-mix(
-    in srgb,
-    var(--color-background-neutral) 84%,
-    transparent
+  background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-background-neutral) 92%, transparent),
+      color-mix(in srgb, var(--background) 78%, transparent)
+    ),
+    repeating-linear-gradient(
+      -35deg,
+      transparent 0 8px,
+      color-mix(in srgb, var(--color-text) 7%, transparent) 8px 9px
   );
-  border: 1px solid var(--color-text-translucent);
-  border-radius: 8px 8px 0 0;
+  border: 2px solid color-mix(in srgb, var(--color-text) 52%, transparent);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
   bottom: 0;
-  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 -5px 0 color-mix(in srgb, var(--color-text) 12%, transparent),
+    0 -12px 28px rgba(0, 0, 0, 0.2);
   box-sizing: border-box;
   display: flex;
   gap: 12px;
@@ -74,18 +81,42 @@ i {
   width: max-content;
   z-index: 10000;
 
+  &::before {
+    background: linear-gradient(
+      90deg,
+      rgb(245, 169, 15),
+      var(--color-text-link),
+      rgb(16, 210, 16),
+      hsl(317, 67%, 61%)
+    );
+    content: "";
+    height: 3px;
+    left: 12px;
+    position: absolute;
+    right: 12px;
+    top: -2px;
+  }
+
   a,
   summary {
+    background: color-mix(in srgb, var(--color-background-neutral) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+    border-radius: 4px;
     color: var(--color-text);
     cursor: pointer;
     font-size: 0.95rem;
     line-height: 1;
+    padding: 5px 7px;
+    text-decoration: none;
     text-decoration-color: var(--color-text-translucent);
     text-underline-offset: 3px;
     white-space: nowrap;
 
     &:hover,
     &:focus-visible {
+      background: color-mix(in srgb, var(--color-text-link) 14%, transparent);
+      border-color: var(--color-text-link);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--color-text-link) 28%, transparent);
       color: var(--color-text-link);
       text-decoration-color: currentColor;
     }
@@ -94,10 +125,14 @@ i {
 
 .site-console__status {
   align-items: center;
-  color: var(--color-text-translucent);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+  border-radius: 999px;
+  color: var(--color-text);
   display: inline-flex;
   font-size: 0.85rem;
   gap: 6px;
+  padding: 5px 8px;
   white-space: nowrap;
 }
 
@@ -131,8 +166,12 @@ i {
 }
 
 .site-console__menu {
-  background: var(--color-background-neutral);
-  border: 1px solid var(--color-text-translucent);
+  background: linear-gradient(
+    145deg,
+    var(--color-background-neutral),
+    color-mix(in srgb, var(--background) 82%, var(--color-background-neutral))
+  );
+  border: 2px solid color-mix(in srgb, var(--color-text) 45%, transparent);
   border-radius: 8px;
   bottom: calc(100% + 10px);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
@@ -323,9 +362,14 @@ i {
 
 .wewere-callout {
   align-items: flex-start;
-  border: 1px solid var(--color-text-translucent);
+  background: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--color-background-neutral) 42%, transparent),
+    color-mix(in srgb, var(--background) 90%, transparent)
+  );
+  border: 2px solid color-mix(in srgb, var(--color-text) 42%, transparent);
   border-radius: 8px;
-  box-shadow: 5px 5px 0 color-mix(in srgb, var(--color-text) 14%, transparent);
+  box-shadow: 5px 5px 0 color-mix(in srgb, var(--color-text) 18%, transparent);
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(96px, 0.35fr) 1fr;
@@ -352,7 +396,8 @@ i {
 }
 
 .wewere-callout__trace {
-  border: 1px solid var(--color-text-translucent);
+  background: color-mix(in srgb, var(--color-background-neutral) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 32%, transparent);
   border-radius: 6px;
   min-height: 120px;
   overflow: hidden;
@@ -362,13 +407,13 @@ i {
     background: linear-gradient(
         140deg,
         transparent 0 28%,
-        color-mix(in srgb, var(--color-text-link) 32%, transparent) 29% 31%,
+        color-mix(in srgb, var(--color-text-link) 46%, transparent) 29% 31%,
         transparent 32% 100%
       ),
       linear-gradient(
         25deg,
         transparent 0 42%,
-        rgba(245, 169, 15, 0.36) 43% 45%,
+        rgba(245, 169, 15, 0.5) 43% 45%,
         transparent 46% 100%
       );
     content: "";
