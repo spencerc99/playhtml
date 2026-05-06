@@ -1,3 +1,5 @@
+// ABOUTME: Defines storage keys, timing constants, and shared bridge types for PartyServer.
+// ABOUTME: Keeps Durable Object room metadata and lease timing consistent across modules.
 // Storage key constants for consistency
 export const STORAGE_KEYS = {
   // Stores consumer room ids and the elementIds they are interested in
@@ -7,6 +9,8 @@ export const STORAGE_KEYS = {
   sharedPermissions: "sharedPermissions",
   // Stores the reset epoch timestamp to detect when a room was reset
   resetEpoch: "resetEpoch",
+  // Stores a timestamp after which an empty room can compact its Y.Doc history
+  emptyRoomCompactAfter: "emptyRoomCompactAfter",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
@@ -16,6 +20,10 @@ export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
 // https://docs.partykit.io/guides/scheduling-tasks-with-alarms/
 export const DEFAULT_PRUNE_INTERVAL_MS = (() => {
   return 60 * 60 * 1000 * 4;
+})();
+// Empty-room compaction waits so transient reconnects do not trigger reloads.
+export const DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS = (() => {
+  return 60 * 1000 * 5;
 })();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
