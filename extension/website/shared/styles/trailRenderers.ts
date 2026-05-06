@@ -148,6 +148,48 @@ interface MonochromeStyle {
   opacity: number;
 }
 
+interface AppliedAttributes {
+  d?: string;
+  filter?: string;
+  opacity?: string;
+  stroke?: string;
+  strokeWidth?: string;
+}
+
+const appliedAttributesByPath = new WeakMap<SVGPathElement, AppliedAttributes>();
+
+function setPathAttribute(
+  pathEl: SVGPathElement,
+  attributeName: keyof AppliedAttributes,
+  value: string,
+): void {
+  let applied = appliedAttributesByPath.get(pathEl);
+  if (!applied) {
+    applied = {};
+    appliedAttributesByPath.set(pathEl, applied);
+  }
+
+  if (applied[attributeName] === value) return;
+
+  const svgAttributeName =
+    attributeName === "strokeWidth" ? "stroke-width" : attributeName;
+  pathEl.setAttribute(svgAttributeName, value);
+  applied[attributeName] = value;
+}
+
+function removePathAttribute(
+  pathEl: SVGPathElement,
+  attributeName: keyof AppliedAttributes,
+): void {
+  const applied = appliedAttributesByPath.get(pathEl);
+  if (applied?.[attributeName] === undefined) return;
+
+  const svgAttributeName =
+    attributeName === "strokeWidth" ? "stroke-width" : attributeName;
+  pathEl.removeAttribute(svgAttributeName);
+  applied[attributeName] = undefined;
+}
+
 function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
   switch (cursorType) {
     case "pointer":
@@ -172,11 +214,11 @@ export const colorRenderer: TrailRenderer = {
   id: "color",
   name: "Color",
   updatePath({ pathEl, haloEl, pathData, trailOpacity, strokeWidth, trailColor }) {
-    pathEl.setAttribute("d", pathData);
-    pathEl.setAttribute("stroke", trailColor);
-    pathEl.setAttribute("opacity", String(trailOpacity));
-    pathEl.setAttribute("stroke-width", String(strokeWidth));
-    pathEl.removeAttribute("filter");
+    setPathAttribute(pathEl, "d", pathData);
+    setPathAttribute(pathEl, "stroke", trailColor);
+    setPathAttribute(pathEl, "opacity", String(trailOpacity));
+    setPathAttribute(pathEl, "strokeWidth", String(strokeWidth));
+    removePathAttribute(pathEl, "filter");
     pathEl.style.display = "";
 
     if (haloEl) {
@@ -186,14 +228,16 @@ export const colorRenderer: TrailRenderer = {
           ? getPlateColor(trailColor, distance)
           : null;
       if (plateColor) {
-        haloEl.setAttribute("d", pathData);
-        haloEl.setAttribute("stroke", plateColor);
-        haloEl.setAttribute(
+        setPathAttribute(haloEl, "d", pathData);
+        setPathAttribute(haloEl, "stroke", plateColor);
+        setPathAttribute(
+          haloEl,
           "opacity",
           String(trailOpacity * PLATE_OPACITY_FACTOR),
         );
-        haloEl.setAttribute(
-          "stroke-width",
+        setPathAttribute(
+          haloEl,
+          "strokeWidth",
           String(strokeWidth * PLATE_STROKE_MULTIPLIER),
         );
         haloEl.style.display = "";
@@ -218,11 +262,11 @@ export const monochromeRenderer: TrailRenderer = {
     <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
   </filter>`,
   updatePath({ pathEl, haloEl, pathData, trailOpacity, fixedMonoStrokeWidth }) {
-    pathEl.setAttribute("d", pathData);
-    pathEl.setAttribute("stroke", "#000");
-    pathEl.setAttribute("opacity", String(0.8 * trailOpacity));
-    pathEl.setAttribute("stroke-width", String(fixedMonoStrokeWidth));
-    pathEl.setAttribute("filter", "url(#ink-texture)");
+    setPathAttribute(pathEl, "d", pathData);
+    setPathAttribute(pathEl, "stroke", "#000");
+    setPathAttribute(pathEl, "opacity", String(0.8 * trailOpacity));
+    setPathAttribute(pathEl, "strokeWidth", String(fixedMonoStrokeWidth));
+    setPathAttribute(pathEl, "filter", "url(#ink-texture)");
     pathEl.style.display = "";
     if (haloEl) haloEl.style.display = "none";
   },

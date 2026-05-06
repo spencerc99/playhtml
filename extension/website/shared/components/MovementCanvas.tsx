@@ -766,6 +766,43 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     ],
   );
 
+  const trailAnimationSettings = useMemo(
+    () => ({
+      strokeWidth: settings.strokeWidth,
+      trailOpacity: settings.trailOpacity,
+      animationSpeed: settings.animationSpeed,
+      clickMinRadius: settings.clickMinRadius,
+      clickMaxRadius: settings.clickMaxRadius,
+      clickCoreRadius: settings.clickCoreRadius,
+      clickMinDuration: settings.clickMinDuration,
+      clickMaxDuration: settings.clickMaxDuration,
+      clickExpansionDuration: settings.clickExpansionDuration,
+      clickStrokeWidth: settings.clickStrokeWidth,
+      clickOpacity: settings.clickOpacity,
+      clickNumRings: settings.clickNumRings,
+      clickRingDelayMs: settings.clickRingDelayMs,
+      clickAnimationStopPoint: settings.clickAnimationStopPoint,
+      trailVisualStyle: settings.trailVisualStyle,
+    }),
+    [
+      settings.strokeWidth,
+      settings.trailOpacity,
+      settings.animationSpeed,
+      settings.clickMinRadius,
+      settings.clickMaxRadius,
+      settings.clickCoreRadius,
+      settings.clickMinDuration,
+      settings.clickMaxDuration,
+      settings.clickExpansionDuration,
+      settings.clickStrokeWidth,
+      settings.clickOpacity,
+      settings.clickNumRings,
+      settings.clickRingDelayMs,
+      settings.clickAnimationStopPoint,
+      settings.trailVisualStyle,
+    ],
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -953,23 +990,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             showClickRipples={!showClicks}
             windowSize={settings.maxConcurrentTrails * 2}
             soundEngine={soundEnabled ? soundEngineReady : null}
-            settings={{
-              strokeWidth: settings.strokeWidth,
-              trailOpacity: settings.trailOpacity,
-              animationSpeed: settings.animationSpeed,
-              clickMinRadius: settings.clickMinRadius,
-              clickMaxRadius: settings.clickMaxRadius,
-              clickCoreRadius: settings.clickCoreRadius,
-              clickMinDuration: settings.clickMinDuration,
-              clickMaxDuration: settings.clickMaxDuration,
-              clickExpansionDuration: settings.clickExpansionDuration,
-              clickStrokeWidth: settings.clickStrokeWidth,
-              clickOpacity: settings.clickOpacity,
-              clickNumRings: settings.clickNumRings,
-              clickRingDelayMs: settings.clickRingDelayMs,
-              clickAnimationStopPoint: settings.clickAnimationStopPoint,
-              trailVisualStyle: settings.trailVisualStyle,
-            }}
+            settings={trailAnimationSettings}
           />
         )}
 
