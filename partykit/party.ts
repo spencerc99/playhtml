@@ -804,7 +804,7 @@ export class PartyServer extends YServer {
       `[PartyServer] Autosave: room=${this.name}, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(2)} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
     );
 
-    // Save the compacted document to the database
+    // Save the document to the database
     const { data: _data, error } = await supabase.from("documents").upsert(
       {
         name: this.name,
