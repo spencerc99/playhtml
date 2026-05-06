@@ -1,4 +1,6 @@
 <!DOCTYPE html>
+<!-- ABOUTME: Hosts the interactive public homepage for the playhtml library. -->
+<!-- ABOUTME: Provides live examples, project links, and visitor-facing calls to action. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -27,6 +29,32 @@
     <script async defer src="https://buttons.github.io/buttons.js"></script>
   </head>
   <body>
+    <nav class="site-console" aria-label="Site">
+      <div class="site-console__status">
+        <span class="site-console__dot" aria-hidden="true"></span>
+        <span>live page</span>
+      </div>
+      <a href="/docs/">docs</a>
+      <a href="/docs/play">/play</a>
+      <a href="#experiments">experiments</a>
+      <a href="#the-lore">about</a>
+      <span class="site-console__secondary">
+        <a href="https://wewere.online">wewere.online</a>
+        <a href="https://github.com/spencerc99/playhtml">github</a>
+        <a href="https://discord.gg/SKbsSf4ptU">discord</a>
+      </span>
+      <details class="site-console__more">
+        <summary>more</summary>
+        <div class="site-console__menu">
+          <a class="site-console__project-link" href="https://wewere.online">
+            <span>wewere.online</span>
+            <small>browser extension / related research</small>
+          </a>
+          <a href="https://github.com/spencerc99/playhtml">github</a>
+          <a href="https://discord.gg/SKbsSf4ptU">discord</a>
+        </div>
+      </details>
+    </nav>
     <div id="app">
       <div can-move id="sign">in beta</div>
       <div id="plantContainer" can-move>
@@ -113,6 +141,7 @@
         </p>
 
         <div id="reactContent"></div>
+        <div id="experiments" class="section-anchor" aria-hidden="true"></div>
 
         <!-- candle credit: https://nyknck.itch.io/candle -->
         <img
@@ -146,7 +175,7 @@
         <div class="startContainer">
           <a href="/docs/"><button id="start">Get Started</button></a>
         </div>
-        <details>
+        <details id="the-lore">
           <summary><h3 style="display: inline">the lore</h3></summary>
           <p>
             This project started out as a way to explore how I could make
@@ -192,6 +221,22 @@
           </form>
           <div id="guestbookMessages"></div>
         </div>
+        <aside class="wewere-callout" aria-labelledby="wewere-callout-title">
+          <div class="wewere-callout__trace" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div>
+            <p class="wewere-callout__eyebrow">related research</p>
+            <h2 id="wewere-callout-title">wewere.online</h2>
+            <p>
+              A browser extension exploring browsing traces, shared presence,
+              and the feeling of having been somewhere online.
+            </p>
+            <a href="https://wewere.online">see the research project</a>
+          </div>
+        </aside>
         <script>
           // TODO: convert the guestbook to react and make the hook to make that possible
           function saveName(e) {
