@@ -54,6 +54,13 @@ import {
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
+import { isResetEpochStale, parseClientResetEpoch } from "./resetEpochPolicy";
+
+const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
+
+type ResetEpochConnectionState = Record<string, unknown> & {
+  [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
+};
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
 // The URL is synthetic — the target server's onRequest reads the body, not the path.
@@ -93,6 +100,7 @@ export class PartyServer extends YServer {
   public isSkippingSave = false;
   private emptyRoomCompactionPromise: Promise<void> | null = null;
   private compactionAutosaveSnapshot: string | null = null;
+  private cachedResetEpoch: number | null | undefined;
 
   // In-memory caches for hot-path data that rarely changes.
   // Invalidated on writes via the set* methods.
@@ -229,11 +237,74 @@ export class PartyServer extends YServer {
   }
 
   async getResetEpoch(): Promise<number | null> {
-    return (await this.ctx.storage.get(STORAGE_KEYS.resetEpoch)) || null;
+    if (this.cachedResetEpoch !== undefined) {
+      return this.cachedResetEpoch;
+    }
+
+    const value = await this.ctx.storage.get(STORAGE_KEYS.resetEpoch);
+    this.cachedResetEpoch = typeof value === "number" ? value : null;
+    return this.cachedResetEpoch;
   }
 
   async setResetEpoch(epoch: number): Promise<void> {
-    await this.ctx.storage.put(STORAGE_KEYS.resetEpoch, epoch);
+    this.cachedResetEpoch = epoch;
+    try {
+      await this.ctx.storage.put(STORAGE_KEYS.resetEpoch, epoch);
+    } catch (error) {
+      this.cachedResetEpoch = undefined;
+      throw error;
+    }
+  }
+
+  private async clearResetEpoch(): Promise<void> {
+    this.cachedResetEpoch = null;
+    try {
+      await this.ctx.storage.delete(STORAGE_KEYS.resetEpoch);
+    } catch (error) {
+      this.cachedResetEpoch = undefined;
+      throw error;
+    }
+  }
+
+  private setConnectionAcceptedResetEpoch(
+    connection: Party.Connection,
+    resetEpoch: number | null
+  ): void {
+    const resetConnection =
+      connection as Party.Connection<ResetEpochConnectionState>;
+    resetConnection.setState((previousState) => {
+      const state =
+        previousState && typeof previousState === "object" ? previousState : {};
+      return {
+        ...(state as Record<string, unknown>),
+        [ACCEPTED_RESET_EPOCH_STATE_KEY]: resetEpoch,
+      };
+    });
+  }
+
+  private getConnectionAcceptedResetEpoch(
+    connection: Party.Connection
+  ): number | null {
+    const state = (connection as Party.Connection<ResetEpochConnectionState>)
+      .state;
+    const value = state?.[ACCEPTED_RESET_EPOCH_STATE_KEY];
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  private sendRoomResetAndClose(
+    connection: Party.Connection,
+    resetEpoch: number,
+    reason: string
+  ): void {
+    this.sendCustomMessage(
+      connection,
+      JSON.stringify({
+        type: "room-reset",
+        timestamp: resetEpoch,
+        resetEpoch,
+      })
+    );
+    connection.close(4000, reason);
   }
 
   /**
@@ -252,10 +323,7 @@ export class PartyServer extends YServer {
     candidateEpoch: number | null,
     serverEpoch: number | null
   ): boolean {
-    return (
-      serverEpoch !== null &&
-      (candidateEpoch === null || candidateEpoch < serverEpoch)
-    );
+    return isResetEpochStale(candidateEpoch, serverEpoch);
   }
 
   /**
@@ -715,10 +783,7 @@ export class PartyServer extends YServer {
     let serverResetEpoch: number | null = null;
     try {
       const clientResetEpochParam = url.searchParams.get("clientResetEpoch");
-      const clientResetEpoch =
-        clientResetEpochParam !== null
-          ? parseInt(clientResetEpochParam, 10)
-          : null;
+      const clientResetEpoch = parseClientResetEpoch(clientResetEpochParam);
 
       serverResetEpoch = await this.getResetEpoch();
 
@@ -755,21 +820,17 @@ export class PartyServer extends YServer {
       console.log(
         `[PartyServer] Rejecting stale client connection (connectionId=${connectionId}), sending room-reset message with epoch=${serverResetEpoch}`
       );
-      const resetMessage = JSON.stringify({
-        type: "room-reset",
-        timestamp: serverResetEpoch,
-        resetEpoch: serverResetEpoch,
-      });
-      this.sendCustomMessage(connection, resetMessage);
       // The WebSocket has already been accepted by PartyServer, so closing it
       // is part of enforcing the reset boundary.
-      connection.close(4000, "Room Reset");
+      this.sendRoomResetAndClose(connection, serverResetEpoch, "Room Reset");
       console.log(
         `[PartyServer] Sent room-reset message to connectionId=${connectionId} and closed stale connection. Client will reload and reconnect.`
       );
       // Don't proceed with normal Y.js connection setup
       return;
     }
+
+    this.setConnectionAcceptedResetEpoch(connection, serverResetEpoch);
 
     console.log(
       `[PartyServer] Proceeding with normal Y.js connection setup for connectionId=${connectionId}`
@@ -809,6 +870,31 @@ export class PartyServer extends YServer {
     }
 
     await super.onConnect(connection, ctx);
+  }
+
+  override async onMessage(
+    connection: Party.Connection,
+    message: Party.WSMessage
+  ): Promise<void> {
+    const serverResetEpoch = await this.getResetEpoch();
+    const connectionResetEpoch =
+      this.getConnectionAcceptedResetEpoch(connection);
+
+    // A reset can happen while an accepted socket is still closing. Reject
+    // messages from sockets accepted under earlier history before y-partyserver
+    // can merge them into the compacted Y.Doc.
+    if (
+      serverResetEpoch !== null &&
+      this.isEpochStale(connectionResetEpoch, serverResetEpoch)
+    ) {
+      console.warn(
+        `[PartyServer] Closing stale socket message: connectionId=${connection.id}, client=${connectionResetEpoch}, server=${serverResetEpoch}`
+      );
+      this.sendRoomResetAndClose(connection, serverResetEpoch, "Room Reset");
+      return;
+    }
+
+    await super.onMessage(connection, message);
   }
 
   override async onClose(
@@ -1065,7 +1151,7 @@ export class PartyServer extends YServer {
     } catch (error) {
       if (!compactedDocumentSaved) {
         if (rollbackResetEpoch === null) {
-          await this.ctx.storage.delete(STORAGE_KEYS.resetEpoch);
+          await this.clearResetEpoch();
         } else {
           await this.setResetEpoch(rollbackResetEpoch);
         }
@@ -1585,7 +1671,7 @@ export class PartyServer extends YServer {
       } catch (error) {
         if (!compactedDocumentSaved) {
           if (rollbackResetEpoch === null) {
-            await this.ctx.storage.delete(STORAGE_KEYS.resetEpoch);
+            await this.clearResetEpoch();
           } else {
             await this.setResetEpoch(rollbackResetEpoch);
           }

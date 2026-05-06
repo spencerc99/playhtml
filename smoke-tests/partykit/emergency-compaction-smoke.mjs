@@ -97,6 +97,8 @@ console.log(`sent bloated connected doc: entries=${created}, rawSize=${rawSize}`
 
 const resetEpoch = await resetEpochPromise;
 console.log(`emergency compaction received room-reset resetEpoch=${resetEpoch}`);
+store.play.canMove[elementId].x = -1;
+console.log("attempted stale update after reset signal");
 await disconnectedPromise;
 console.log("emergency compaction disconnected active client");
 provider.destroy();
@@ -116,6 +118,11 @@ if (compacted.documentSize >= rawSize) {
     `expected compacted size below raw size: before=${rawSize}, after=${compacted.documentSize}`
   );
 }
+if (compacted.ydoc.play.canMove[elementId].x !== created) {
+  throw new Error(
+    `expected compacted doc to keep x=${created}, got ${compacted.ydoc.play.canMove[elementId].x}`
+  );
+}
 
 const freshDoc = new Y.Doc();
 const freshStore = createStore(freshDoc);
@@ -127,9 +134,9 @@ try {
   await waitForSync(freshProvider, "fresh", 60_000);
   const x = freshStore.play.canMove?.[elementId]?.x;
   console.log(`fresh reconnect observed x=${x}`);
-  if (x !== store.play.canMove[elementId].x) {
+  if (x !== created) {
     throw new Error(
-      `expected fresh reconnect to observe x=${store.play.canMove[elementId].x}, got ${x}`
+      `expected fresh reconnect to observe x=${created}, got ${x}`
     );
   }
 } finally {
