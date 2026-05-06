@@ -151,6 +151,7 @@ interface ImperativeTrailHandle {
     strokeWidth: number,
     evictionFade: number,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
+  getGroup(): SVGGElement | null;
 }
 
 interface TrailPathProps {
@@ -219,6 +220,9 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
 
         return { trailProgress, cursorPosition };
       },
+      getGroup() {
+        return groupRef.current;
+      },
     }));
 
     const color = trailState.trail.color;
@@ -238,7 +242,7 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
           stroke={color}
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{ mixBlendMode: "multiply", display: "none" }}
+          style={{ display: "none" }}
         />
       </g>
     );
@@ -422,6 +426,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const timeoutRef = useRef<number>();
     const spawnedClicksRef = useRef<Map<string, Set<number>>>(new Map());
     const svgRef = useRef<SVGSVGElement>(null);
+    const pathLayerRef = useRef<SVGGElement>(null);
 
     const generatePath = useRef(createPathGenerator()).current;
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
@@ -629,6 +634,13 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Collect trail frame results for sound engine
         const soundFrames: TrailSoundFrame[] = [];
 
+        // Track currently-drawing trails so we can reorder their <g> to the
+        // end of the path layer, ensuring active heads paint on top of any
+        // earlier-rendered (older) trail body that overlaps them in SVG paint
+        // order. Sorted by startOffsetMs so the most recently started trail
+        // ends up last.
+        const activeIndices: number[] = [];
+
         // Update all trail paths and cursors imperatively
         for (let idx = 0; idx < currentTrailStates.length; idx++) {
           const handle = trailHandles.current[idx];
@@ -643,6 +655,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
 
           if (fade > 0) newVisible.add(idx);
+
+          if (result && fade > 0 && result.trailProgress < 1) {
+            activeIndices.push(idx);
+          }
 
           // Update cursor icon in the separate cursor layer
           const ts = currentTrailStates[idx];
@@ -727,6 +743,27 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           }
         }
 
+        // Reorder active trail groups so they paint on top of finished /
+        // earlier-started trails. Sort by startOffsetMs ascending — the
+        // latest-started active trail ends up last in DOM order, so its head
+        // paints over any other active trail's body it crosses. appendChild
+        // on an existing node moves it within the parent.
+        const pathLayer = pathLayerRef.current;
+        if (pathLayer && activeIndices.length > 0) {
+          activeIndices.sort(
+            (a, b) =>
+              currentTrailStates[a].startOffsetMs -
+              currentTrailStates[b].startOffsetMs,
+          );
+          for (let i = 0; i < activeIndices.length; i++) {
+            const handle = trailHandles.current[activeIndices[i]];
+            const group = handle?.getGroup();
+            if (group && group.parentNode === pathLayer) {
+              pathLayer.appendChild(group);
+            }
+          }
+        }
+
         // Feed sound engine with collected trail frames
         if (soundFrames.length > 0) {
           soundEngineRef.current?.tick(loopedElapsed, soundFrames);
@@ -801,22 +838,24 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }}
             />
           ))}
-        {trailStates.map((ts, idx) => (
-          <TrailPath
-            key={`trail-path-${idx}`}
-            ref={(handle) => {
-              while (trailHandles.current.length <= idx) {
-                trailHandles.current.push(null);
-              }
-              trailHandles.current[idx] = handle;
-            }}
-            trailState={ts}
-            trailIndex={idx}
-            fixedMonoStrokeWidth={1 + ((idx * 7 + 3) % 5)}
-            renderer={renderer}
-            generatePath={generatePath}
-          />
-        ))}
+        <g ref={pathLayerRef}>
+          {trailStates.map((ts, idx) => (
+            <TrailPath
+              key={`trail-path-${idx}`}
+              ref={(handle) => {
+                while (trailHandles.current.length <= idx) {
+                  trailHandles.current.push(null);
+                }
+                trailHandles.current[idx] = handle;
+              }}
+              trailState={ts}
+              trailIndex={idx}
+              fixedMonoStrokeWidth={1 + ((idx * 7 + 3) % 5)}
+              renderer={renderer}
+              generatePath={generatePath}
+            />
+          ))}
+        </g>
         {trailStates.map((ts, idx) => (
           <TrailCursor
             key={`trail-cursor-${idx}`}
