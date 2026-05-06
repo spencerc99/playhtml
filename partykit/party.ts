@@ -772,32 +772,32 @@ export class PartyServer extends YServer {
       return;
     }
 
-    // Compact the doc before saving: rebuild from current JSON state to
-    // strip CRDT history and tombstones. This keeps the stored doc minimal
-    // so that cold-loading it on DO restart never exceeds the 128MB memory limit.
+    // Active WebSockets can survive hibernation with their existing Yjs history.
+    // Persist that same history while connections are present so wake-up sync
+    // merges against an equivalent base document.
     const rawSize = Y.encodeStateAsUpdate(doc).byteLength;
+    const activeConnectionCount = Array.from(this.getConnections()).length;
     const currentPlayData = docToJson(doc);
-    let compactedBase64: string;
+    let documentBase64: string;
 
-    if (currentPlayData) {
+    if (currentPlayData && activeConnectionCount === 0) {
       const compactDoc = jsonToDoc(currentPlayData);
       setDocResetEpoch(
         compactDoc,
         docResetEpoch ?? serverResetEpoch ?? Date.now()
       );
-      compactedBase64 = encodeDocToBase64(compactDoc);
-      const compactedSize = Math.ceil((compactedBase64.length * 3) / 4);
+      documentBase64 = encodeDocToBase64(compactDoc);
+      const compactedSize = Math.ceil((documentBase64.length * 3) / 4);
       if (compactedSize < rawSize) {
         console.log(
           `[PartyServer] Compacted: room=${this.name}, ${rawSize} -> ${compactedSize} bytes (${((1 - compactedSize / rawSize) * 100).toFixed(1)}% reduction)`
         );
       }
     } else {
-      // Doc is empty — just encode as-is
-      compactedBase64 = encodeDocToBase64(doc);
+      documentBase64 = encodeDocToBase64(doc);
     }
 
-    const documentSize = compactedBase64.length;
+    const documentSize = documentBase64.length;
 
     // Log structured information about the save
     console.log(
@@ -808,7 +808,7 @@ export class PartyServer extends YServer {
     const { data: _data, error } = await supabase.from("documents").upsert(
       {
         name: this.name,
-        document: compactedBase64,
+        document: documentBase64,
       },
       { onConflict: "name" }
     );
