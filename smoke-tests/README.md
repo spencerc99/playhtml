@@ -27,6 +27,32 @@ For each page in `smoke.spec.ts`'s `PAGES` list:
 Cross-origin failures (PartyKit WebSocket, Google Fonts) are deliberately
 ignored — this is a build-output smoke test, not a backend integration test.
 
+## PartyKit staging smoke tests
+
+The PartyKit smoke scripts run against a real deployed Worker and Supabase.
+They are manual because they take several minutes, wait for real Durable Object
+alarms, and need staging secrets.
+
+```bash
+# Verifies bridge observers reattach after Durable Object hibernation.
+bun smoke:partykit:hibernation
+
+# Verifies empty-room compaction, reset rejection, and fresh reconnect.
+SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:compaction
+
+# Runs both checks.
+SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit
+```
+
+Config:
+
+- `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
+- `SMOKE_ENV_FILE`: optional `.dev.vars` or `.env` file to load before the script reads `ADMIN_TOKEN`.
+- `ADMIN_TOKEN`: required for `test:partykit:compaction`.
+- `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.
+- `PARTYKIT_EMPTY_ROOM_COMPACT_DELAY_MS`: expected server empty-room compaction delay. Defaults to `300000`.
+- `PARTYKIT_SKIP_COMPACTION_SETTLE_CHECK=1`: skips the extra no-op alarm wait after reconnect.
+
 ## Adding a new page
 
 Add its URL path to `PAGES`. Add new error patterns to

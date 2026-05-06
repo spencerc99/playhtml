@@ -31,6 +31,9 @@
     "load-test": "bun load-test/src/runner.ts",
     "load-test:full": "bun load-test/src/runner.ts --config full-suite",
     "smoke": "cd smoke-tests && bun run test",
+    "smoke:partykit": "cd smoke-tests && bun run test:partykit",
+    "smoke:partykit:hibernation": "cd smoke-tests && bun run test:partykit:hibernation",
+    "smoke:partykit:compaction": "cd smoke-tests && bun run test:partykit:compaction",
     "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
   },
   "overrides": {
