@@ -20,6 +20,7 @@ import {
 } from "./docUtils";
 import {
   STORAGE_KEYS,
+  DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
   ORIGIN_S2C,
@@ -44,6 +45,10 @@ import {
   parseSharedReferencesFromUrl,
   SharedElementPermissions,
 } from "./sharing";
+import {
+  getNextAlarmTime,
+  shouldStoreCompactedDocument,
+} from "./compactionPolicy";
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
 // The URL is synthetic — the target server's onRequest reads the body, not the path.
@@ -64,6 +69,7 @@ export class PartyServer extends YServer {
   // This prevents the server from overwriting the clean DB state with
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
+  private emptyRoomCompactionPromise: Promise<void> | null = null;
 
   // In-memory caches for hot-path data that rarely changes.
   // Invalidated on writes via the set* methods.
@@ -137,6 +143,30 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     this.cachedSharedPerms = permissions;
     await this.ctx.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+  }
+
+  private getOpenConnectionCount(): number {
+    return Array.from(this.getConnections()).length;
+  }
+
+  private async getEmptyRoomCompactAfter(): Promise<number | null> {
+    const value = await this.ctx.storage.get(STORAGE_KEYS.emptyRoomCompactAfter);
+    return typeof value === "number" ? value : null;
+  }
+
+  private async setEmptyRoomCompactAfter(timestamp: number): Promise<void> {
+    await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
+  }
+
+  private async clearEmptyRoomCompactAfter(): Promise<void> {
+    await this.ctx.storage.delete(STORAGE_KEYS.emptyRoomCompactAfter);
+  }
+
+  private async waitForEmptyRoomCompaction(): Promise<void> {
+    const pending = this.emptyRoomCompactionPromise;
+    if (pending) {
+      await pending;
+    }
   }
 
   async getResetEpoch(): Promise<number | null> {
@@ -306,12 +336,26 @@ export class PartyServer extends YServer {
     }
   }
 
-  // Ensure an alarm is set if subscribers exist; avoids rescheduling if one is set sooner
-  private async ensureAlarmIfSubscribersPresent(): Promise<void> {
+  // Ensure an alarm is set for bridge lease pruning or empty-room compaction.
+  private async ensureAlarmScheduled(): Promise<void> {
+    await this.scheduleNextAlarm();
+  }
+
+  private async scheduleNextAlarm(): Promise<void> {
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
-    if (!subs.length && !refs.length) return;
-    const nextAlarm = Date.now() + DEFAULT_PRUNE_INTERVAL_MS;
+    const nextAlarm = getNextAlarmTime({
+      compactAfter: await this.getEmptyRoomCompactAfter(),
+      hasBridgeLeases: Boolean(subs.length || refs.length),
+      now: Date.now(),
+      pruneIntervalMs: DEFAULT_PRUNE_INTERVAL_MS,
+    });
+
+    if (nextAlarm === null) {
+      await this.ctx.storage.deleteAlarm?.();
+      return;
+    }
+
     const previousAlarm = await this.ctx.storage.getAlarm?.();
     if (
       previousAlarm === null ||
@@ -320,6 +364,19 @@ export class PartyServer extends YServer {
     ) {
       await this.ctx.storage.setAlarm?.(nextAlarm);
     }
+  }
+
+  private async scheduleEmptyRoomCompaction(): Promise<void> {
+    if (this.isSkippingSave) return;
+    if (this.getOpenConnectionCount() !== 0) return;
+
+    const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
+    await this.setEmptyRoomCompactAfter(compactAfter);
+    await this.scheduleNextAlarm();
+
+    console.log(
+      `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
+    );
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -586,6 +643,8 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     ctx: Party.ConnectionContext
   ) {
+    await this.waitForEmptyRoomCompaction();
+
     const url = new URL(ctx.request.url);
     const connectionId = connection.id;
     console.log(
@@ -655,8 +714,10 @@ export class PartyServer extends YServer {
       `[PartyServer] Proceeding with normal Y.js connection setup for connectionId=${connectionId}`
     );
 
-    // Opportunistically schedule an alarm if subscribers exist
-    await this.ensureAlarmIfSubscribersPresent();
+    await this.clearEmptyRoomCompactAfter();
+
+    // Opportunistically schedule an alarm if bridge leases or compaction need one
+    await this.ensureAlarmScheduled();
 
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL
@@ -687,6 +748,16 @@ export class PartyServer extends YServer {
     }
 
     await super.onConnect(connection, ctx);
+  }
+
+  override async onClose(
+    connection: Party.Connection,
+    code: number,
+    reason: string,
+    wasClean: boolean
+  ): Promise<void> {
+    await super.onClose(connection, code, reason, wasClean);
+    await this.scheduleEmptyRoomCompaction();
   }
 
   // Benign disconnect errors thrown by the Cloudflare runtime when a client's
@@ -772,32 +843,11 @@ export class PartyServer extends YServer {
       return;
     }
 
-    // Active WebSockets can survive hibernation with their existing Yjs history.
-    // Persist that same history while connections are present so wake-up sync
-    // merges against an equivalent base document.
-    const rawSize = Y.encodeStateAsUpdate(doc).byteLength;
-    const activeConnectionCount = Array.from(this.getConnections()).length;
-    const currentPlayData = docToJson(doc);
-    let documentBase64: string;
-
-    if (currentPlayData && activeConnectionCount === 0) {
-      const compactDoc = jsonToDoc(currentPlayData);
-      setDocResetEpoch(
-        compactDoc,
-        docResetEpoch ?? serverResetEpoch ?? Date.now()
-      );
-      documentBase64 = encodeDocToBase64(compactDoc);
-      const compactedSize = Math.ceil((documentBase64.length * 3) / 4);
-      if (compactedSize < rawSize) {
-        console.log(
-          `[PartyServer] Compacted: room=${this.name}, ${rawSize} -> ${compactedSize} bytes (${((1 - compactedSize / rawSize) * 100).toFixed(1)}% reduction)`
-        );
-      }
-    } else {
-      documentBase64 = encodeDocToBase64(doc);
-    }
-
+    // Ordinary autosave preserves Yjs history so reconnecting clients can merge
+    // safely. Empty-room compaction is handled as a reset boundary by alarms.
+    const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
+    const activeConnectionCount = this.getOpenConnectionCount();
 
     // Log structured information about the save
     console.log(
@@ -820,6 +870,10 @@ export class PartyServer extends YServer {
       );
     } else {
       console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
+    }
+
+    if (!error && activeConnectionCount === 0) {
+      await this.scheduleEmptyRoomCompaction();
     }
   }
 
@@ -1264,9 +1318,104 @@ export class PartyServer extends YServer {
     }
   }
 
+  private async compactEmptyRoomDocument(): Promise<void> {
+    if (this.emptyRoomCompactionPromise) {
+      await this.emptyRoomCompactionPromise;
+      return;
+    }
+
+    if (this.isSkippingSave) return;
+    if (this.getOpenConnectionCount() !== 0) return;
+
+    const run = async () => {
+      const liveYDoc = this.document;
+      const currentPlayData = docToJson(liveYDoc);
+      if (!currentPlayData) {
+        await this.clearEmptyRoomCompactAfter();
+        return;
+      }
+
+      const beforeSize = encodeDocToBase64(liveYDoc).length;
+      const resetEpoch = Date.now();
+      const compactDoc = jsonToDoc(currentPlayData);
+      setDocResetEpoch(compactDoc, resetEpoch);
+      const compactBase64 = encodeDocToBase64(compactDoc);
+      const afterSize = compactBase64.length;
+
+      if (!shouldStoreCompactedDocument(beforeSize, afterSize)) {
+        await this.clearEmptyRoomCompactAfter();
+        console.log(
+          `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${beforeSize} -> ${afterSize} bytes`
+        );
+        return;
+      }
+
+      this.isSkippingSave = true;
+      const rollbackResetEpoch = await this.getResetEpoch();
+      let compactedDocumentSaved = false;
+
+      try {
+        if (this.getOpenConnectionCount() !== 0) {
+          await this.clearEmptyRoomCompactAfter();
+          return;
+        }
+
+        await this.setResetEpoch(resetEpoch);
+
+        const { error } = await supabase.from("documents").upsert(
+          {
+            name: this.name,
+            document: compactBase64,
+          },
+          { onConflict: "name" }
+        );
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        compactedDocumentSaved = true;
+        replaceDocFromSnapshot(liveYDoc, compactBase64);
+        setDocResetEpoch(liveYDoc, resetEpoch);
+        await this.clearEmptyRoomCompactAfter();
+
+        console.log(
+          `[PartyServer] Empty-room compacted: room=${this.name}, ${beforeSize} -> ${afterSize} bytes (${((1 - afterSize / beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${resetEpoch}`
+        );
+      } catch (error) {
+        if (!compactedDocumentSaved) {
+          if (rollbackResetEpoch === null) {
+            await this.ctx.storage.delete(STORAGE_KEYS.resetEpoch);
+          } else {
+            await this.setResetEpoch(rollbackResetEpoch);
+          }
+        }
+        throw error;
+      } finally {
+        this.isSkippingSave = false;
+      }
+    };
+
+    this.emptyRoomCompactionPromise = run();
+    try {
+      await this.emptyRoomCompactionPromise;
+    } finally {
+      this.emptyRoomCompactionPromise = null;
+    }
+  }
+
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
     try {
+      const compactAfter = await this.getEmptyRoomCompactAfter();
+      if (compactAfter !== null && compactAfter <= Date.now()) {
+        if (this.getOpenConnectionCount() === 0) {
+          await this.compactEmptyRoomDocument();
+        } else {
+          await this.clearEmptyRoomCompactAfter();
+        }
+      }
+
       const subscribers = await this.getSubscribers();
 
       if (subscribers.length) {
@@ -1301,14 +1450,7 @@ export class PartyServer extends YServer {
         }
       }
     } finally {
-      // Reschedule the next alarm only if there are subscribers or refs remaining
-      const subs = await this.getSubscribers();
-      const refs = await this.getSharedReferences();
-      if (subs.length || refs.length) {
-        await this.ctx.storage.setAlarm?.(
-          Date.now() + DEFAULT_PRUNE_INTERVAL_MS
-        );
-      }
+      await this.scheduleNextAlarm();
     }
   }
 
