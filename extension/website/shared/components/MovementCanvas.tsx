@@ -505,7 +505,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const cursorSettings = useMemo(
     () => ({
-      trailOpacity: settings.trailOpacity,
       randomizeColors: settings.randomizeColors,
       domainFilter: settings.domainFilter,
       eventFilter: settings.eventFilter,
@@ -518,7 +517,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       documentSpace: settings.documentSpace,
     }),
     [
-      settings.trailOpacity,
       settings.randomizeColors,
       settings.domainFilter,
       settings.eventFilter,
