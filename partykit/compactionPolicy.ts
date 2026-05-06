@@ -7,6 +7,16 @@ export function shouldStoreCompactedDocument(
   return afterSize < beforeSize;
 }
 
+export function isCompactionAutosave(
+  documentBase64: string,
+  compactionSnapshotBase64: string | null
+): boolean {
+  return (
+    compactionSnapshotBase64 !== null &&
+    documentBase64 === compactionSnapshotBase64
+  );
+}
+
 export function getNextAlarmTime({
   compactAfter,
   hasBridgeLeases,

@@ -3,6 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   getNextAlarmTime,
+  isCompactionAutosave,
   shouldStoreCompactedDocument,
 } from "../compactionPolicy";
 
@@ -11,6 +12,14 @@ describe("shouldStoreCompactedDocument", () => {
     expect(shouldStoreCompactedDocument(100, 99)).toBe(true);
     expect(shouldStoreCompactedDocument(100, 100)).toBe(false);
     expect(shouldStoreCompactedDocument(100, 101)).toBe(false);
+  });
+});
+
+describe("isCompactionAutosave", () => {
+  it("matches only the compacted snapshot autosave", () => {
+    expect(isCompactionAutosave("snapshot-a", "snapshot-a")).toBe(true);
+    expect(isCompactionAutosave("snapshot-b", "snapshot-a")).toBe(false);
+    expect(isCompactionAutosave("snapshot-a", null)).toBe(false);
   });
 });
 

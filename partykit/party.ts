@@ -47,6 +47,7 @@ import {
 } from "./sharing";
 import {
   getNextAlarmTime,
+  isCompactionAutosave,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
 
@@ -70,6 +71,7 @@ export class PartyServer extends YServer {
   // in-memory state while we are performing a reset.
   public isSkippingSave = false;
   private emptyRoomCompactionPromise: Promise<void> | null = null;
+  private emptyRoomCompactionAutosaveSnapshot: string | null = null;
 
   // In-memory caches for hot-path data that rarely changes.
   // Invalidated on writes via the set* methods.
@@ -167,6 +169,12 @@ export class PartyServer extends YServer {
     if (pending) {
       await pending;
     }
+  }
+
+  private consumeEmptyRoomCompactionAutosave(documentBase64: string): boolean {
+    const compactionSnapshot = this.emptyRoomCompactionAutosaveSnapshot;
+    this.emptyRoomCompactionAutosaveSnapshot = null;
+    return isCompactionAutosave(documentBase64, compactionSnapshot);
   }
 
   async getResetEpoch(): Promise<number | null> {
@@ -873,6 +881,13 @@ export class PartyServer extends YServer {
     }
 
     if (!error && activeConnectionCount === 0) {
+      if (this.consumeEmptyRoomCompactionAutosave(documentBase64)) {
+        console.log(
+          `[PartyServer] Empty-room compaction autosave completed: room=${this.name}`
+        );
+        return;
+      }
+
       await this.scheduleEmptyRoomCompaction();
     }
   }
@@ -1375,8 +1390,8 @@ export class PartyServer extends YServer {
         }
 
         compactedDocumentSaved = true;
+        this.emptyRoomCompactionAutosaveSnapshot = compactBase64;
         replaceDocFromSnapshot(liveYDoc, compactBase64);
-        setDocResetEpoch(liveYDoc, resetEpoch);
         await this.clearEmptyRoomCompactAfter();
 
         console.log(
@@ -1390,6 +1405,7 @@ export class PartyServer extends YServer {
             await this.setResetEpoch(rollbackResetEpoch);
           }
         }
+        this.emptyRoomCompactionAutosaveSnapshot = null;
         throw error;
       } finally {
         this.isSkippingSave = false;
