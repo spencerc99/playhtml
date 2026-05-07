@@ -17,7 +17,12 @@ import {
 import { RippleEffect } from "./ClickRipple";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
-import { getTrailRenderer, TRAIL_RENDERERS, type TrailRenderer } from "../styles/trailRenderers";
+import { getTrailRenderer, type TrailRenderer } from "../styles/trailRenderers";
+import {
+  buildStraightPathSegment,
+  getFinishedTrailRenderRange,
+  type FinishedTrailOrderEntry,
+} from "../utils/trailAnimation";
 
 // How many ms to spend fading a trail out when evicted by windowSize
 const EVICTION_FADE_MS = 3000;
@@ -32,61 +37,11 @@ const HIDDEN_TAB_TICK_MS = 100;
 // How many points to show behind the cursor while drawing
 const TAIL_LENGTH = 1000;
 
-// Path generation from varied points, with LRU cache
-function createPathGenerator() {
-  const cache = new Map<string, string>();
-
-  return (points: Array<{ x: number; y: number }>, style: string): string => {
-    if (points.length < 2) return "";
-
-    const cacheKey = `${style}-${points.length}-${points[0].x.toFixed(
-      0,
-    )}-${points[0].y.toFixed(0)}-${points[points.length - 1].x.toFixed(
-      0,
-    )}-${points[points.length - 1].y.toFixed(0)}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-
-    let path = `M ${points[0].x} ${points[0].y}`;
-
-    if (style === "straight") {
-      for (let i = 1; i < points.length; i++) {
-        path += ` L ${points[i].x} ${points[i].y}`;
-      }
-    } else {
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        path += ` Q ${p1.x} ${p1.y} ${(p1.x + p2.x) / 2} ${(p1.y + p2.y) / 2}`;
-      }
-
-      if (points.length > 1) {
-        const lastPoint = points[points.length - 1];
-        const secondLast = points[points.length - 2];
-        path += ` Q ${secondLast.x} ${secondLast.y} ${lastPoint.x} ${lastPoint.y}`;
-      }
-    }
-
-    cache.set(cacheKey, path);
-
-    if (cache.size > 500) {
-      const firstKey = cache.keys().next().value!;
-      cache.delete(firstKey);
-    }
-
-    return path;
-  };
-}
-
 // Compute visible points and path data for a trail at a given elapsed time.
-function computeTrailFrame(
-  trailState: TrailState,
-  elapsedTimeMs: number,
-  generatePath: (pts: Array<{ x: number; y: number }>, style: string) => string,
-) {
+function computeTrailFrame(trailState: TrailState, elapsedTimeMs: number) {
   const { trail, startOffsetMs, durationMs, variedPoints } = trailState;
 
-  if (trail.points.length < 2) return null;
+  if (trail.points.length < 2 || variedPoints.length < 2) return null;
 
   const trailElapsedMs = elapsedTimeMs - startOffsetMs;
   if (trailElapsedMs < 0) return null;
@@ -104,27 +59,28 @@ function computeTrailFrame(
     : Math.max(0, headIndex - TAIL_LENGTH + 1);
   const tailEnd = Math.min(headIndex, totalVariedPoints - 1);
 
-  const pointsToDraw: Array<{ x: number; y: number }> = [];
-  for (let i = tailStart; i <= tailEnd; i++) {
-    pointsToDraw.push(variedPoints[i]);
-  }
-
+  let interpolatedHead: { x: number; y: number } | undefined;
   if (!isFinished && headIndex < totalVariedPoints - 1 && headFraction > 0) {
     const p1 = variedPoints[headIndex];
     const p2 = variedPoints[headIndex + 1];
-    pointsToDraw.push({
+    interpolatedHead = {
       x: p1.x + (p2.x - p1.x) * headFraction,
       y: p1.y + (p2.y - p1.y) * headFraction,
-    });
+    };
   }
 
-  const cursorPosition =
-    pointsToDraw.length > 0
-      ? pointsToDraw[pointsToDraw.length - 1]
-      : variedPoints[0] || { x: 0, y: 0 };
+  const cursorPosition = interpolatedHead ?? variedPoints[tailEnd];
 
+  const pointCount = tailEnd - tailStart + 1 + (interpolatedHead ? 1 : 0);
   const pathData =
-    pointsToDraw.length >= 2 ? generatePath(pointsToDraw, "straight") : "";
+    pointCount >= 2
+      ? buildStraightPathSegment(
+          variedPoints,
+          tailStart,
+          tailEnd,
+          interpolatedHead,
+        )
+      : "";
 
   const currentPointIndex = Math.min(
     Math.floor((trail.points.length - 1) * trailProgress),
@@ -152,78 +108,129 @@ interface ImperativeTrailHandle {
     evictionFade: number,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
   getGroup(): SVGGElement | null;
+  hide(): void;
 }
 
 interface TrailPathProps {
   trailState: TrailState;
-  trailIndex: number;
   fixedMonoStrokeWidth: number;
   renderer: TrailRenderer;
-  generatePath: (
-    points: Array<{ x: number; y: number }>,
-    style: string,
-  ) => string;
 }
 
 // Renders only the trail path (no cursor). The parent rAF loop drives updates
 // via the imperative handle.
 const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
-  ({ trailState, trailIndex, fixedMonoStrokeWidth, renderer, generatePath }, ref) => {
+  ({ trailState, fixedMonoStrokeWidth, renderer }, ref) => {
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
     const haloRef = useRef<SVGPathElement>(null);
+    const lastGroupOpacityRef = useRef("");
+    const lastPathDataRef = useRef("");
+    const lastRendererIdRef = useRef("");
+    const lastTrailOpacityRef = useRef<number | null>(null);
+    const lastStrokeWidthRef = useRef<number | null>(null);
+    const lastCursorTypeRef = useRef<string | undefined>(undefined);
+    const lastTrailColorRef = useRef("");
+    const finishedFrameRef = useRef<ReturnType<typeof computeTrailFrame>>(null);
 
-    React.useImperativeHandle(ref, () => ({
-      update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
-        const group = groupRef.current;
-        if (!group) return null;
+    useEffect(() => {
+      finishedFrameRef.current = null;
+      lastPathDataRef.current = "";
+      lastRendererIdRef.current = "";
+      lastTrailOpacityRef.current = null;
+      lastStrokeWidthRef.current = null;
+      lastCursorTypeRef.current = undefined;
+      lastTrailColorRef.current = "";
+    }, [trailState]);
 
-        if (evictionFade <= 0) {
-          group.setAttribute("opacity", "0");
-          return null;
-        }
+    const hideTrail = useCallback(() => {
+      const group = groupRef.current;
+      if (group && lastGroupOpacityRef.current !== "0") {
+        group.setAttribute("opacity", "0");
+        lastGroupOpacityRef.current = "0";
+      }
+    }, []);
 
-        const frame = computeTrailFrame(
-          trailState,
-          elapsedTimeMs,
-          generatePath,
-        );
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        hide: hideTrail,
+        getGroup() {
+          return groupRef.current;
+        },
+        update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
+          const group = groupRef.current;
+          if (!group) return null;
 
-        if (!frame) {
-          group.setAttribute("opacity", "0");
-          return null;
-        }
-
-        group.setAttribute("opacity", String(evictionFade));
-
-        const { pathData, trailProgress, cursorPosition } = frame;
-
-        const pathEl = pathRef.current;
-        if (pathEl) {
-          if (pathData) {
-            renderer.updatePath({
-              pathEl,
-              haloEl: haloRef.current,
-              pathData,
-              trailOpacity,
-              strokeWidth,
-              cursorType: frame.cursorType,
-              trailProgress,
-              trailColor: trailState.trail.color,
-              fixedMonoStrokeWidth,
-            });
-          } else {
-            pathEl.style.display = "none";
-            if (haloRef.current) haloRef.current.style.display = "none";
+          if (evictionFade <= 0) {
+            hideTrail();
+            return null;
           }
-        }
 
-        return { trailProgress, cursorPosition };
-      },
-      getGroup() {
-        return groupRef.current;
-      },
-    }));
+          const isPastEnd =
+            elapsedTimeMs - trailState.startOffsetMs >= trailState.durationMs;
+          let frame = isPastEnd ? finishedFrameRef.current : null;
+          if (!frame) {
+            frame = computeTrailFrame(trailState, elapsedTimeMs);
+            if (isPastEnd) {
+              finishedFrameRef.current = frame;
+            }
+          }
+
+          if (!frame) {
+            hideTrail();
+            return null;
+          }
+
+          const groupOpacity = String(evictionFade);
+          if (lastGroupOpacityRef.current !== groupOpacity) {
+            group.setAttribute("opacity", groupOpacity);
+            lastGroupOpacityRef.current = groupOpacity;
+          }
+
+          const { pathData, trailProgress, cursorPosition } = frame;
+
+          const pathEl = pathRef.current;
+          if (pathEl) {
+            if (pathData) {
+              if (
+                lastPathDataRef.current !== pathData ||
+                lastRendererIdRef.current !== renderer.id ||
+                lastTrailOpacityRef.current !== trailOpacity ||
+                lastStrokeWidthRef.current !== strokeWidth ||
+                lastCursorTypeRef.current !== frame.cursorType ||
+                lastTrailColorRef.current !== trailState.trail.color
+              ) {
+                renderer.updatePath({
+                  pathEl,
+                  haloEl: haloRef.current,
+                  pathData,
+                  trailOpacity,
+                  strokeWidth,
+                  cursorType: frame.cursorType,
+                  trailProgress,
+                  trailColor: trailState.trail.color,
+                  fixedMonoStrokeWidth,
+                });
+                lastPathDataRef.current = pathData;
+                lastRendererIdRef.current = renderer.id;
+                lastTrailOpacityRef.current = trailOpacity;
+                lastStrokeWidthRef.current = strokeWidth;
+                lastCursorTypeRef.current = frame.cursorType;
+                lastTrailColorRef.current = trailState.trail.color;
+              }
+            } else {
+              pathEl.style.display = "none";
+              if (haloRef.current) haloRef.current.style.display = "none";
+              lastPathDataRef.current = "";
+            }
+          }
+
+          return { trailProgress, cursorPosition };
+        },
+      }),
+      [fixedMonoStrokeWidth, hideTrail, renderer, trailState],
+    );
 
     const color = trailState.trail.color;
 
@@ -251,7 +258,6 @@ const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
 
 interface TrailCursorProps {
   trailState: TrailState;
-  trailIndex: number;
   renderer: TrailRenderer;
 }
 
@@ -265,11 +271,14 @@ interface ImperativeTrailCursorHandle {
     trailProgress: number,
     evictionFade: number,
   ): void;
+  hide(): void;
 }
 
 const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
   ({ trailState, renderer }, ref) => {
     const cursorGroupRef = useRef<SVGGElement>(null);
+    const cursorVisibleRef = useRef(false);
+    const lastTransformRef = useRef("");
 
     const [cursorType, setCursorType] = useState<string | undefined>(
       trailState.trail.points[0]?.cursor,
@@ -277,27 +286,41 @@ const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorPro
     const CursorComponent = getCursorComponent(cursorType);
     const cursorSize = 32;
 
+    const hideCursor = useCallback(() => {
+      const cursorGroup = cursorGroupRef.current;
+      if (cursorGroup && cursorVisibleRef.current) {
+        cursorGroup.style.display = "none";
+        cursorVisibleRef.current = false;
+      }
+    }, []);
+
     React.useImperativeHandle(ref, () => ({
+      hide: hideCursor,
       update(cursorPosition, newCursorType, isFinished, trailProgress, evictionFade) {
         const cursorGroup = cursorGroupRef.current;
         if (!cursorGroup) return;
 
         if (evictionFade <= 0 || isFinished || trailProgress <= 0) {
-          cursorGroup.style.display = "none";
+          hideCursor();
           return;
         }
 
-        cursorGroup.style.display = "";
-        cursorGroup.setAttribute(
-          "transform",
-          `translate(${cursorPosition.x}, ${cursorPosition.y})`,
-        );
+        if (!cursorVisibleRef.current) {
+          cursorGroup.style.display = "";
+          cursorVisibleRef.current = true;
+        }
+
+        const transform = `translate(${cursorPosition.x}, ${cursorPosition.y})`;
+        if (lastTransformRef.current !== transform) {
+          cursorGroup.setAttribute("transform", transform);
+          lastTransformRef.current = transform;
+        }
 
         if (newCursorType !== cursorType) {
           setCursorType(newCursorType);
         }
       },
-    }));
+    }), [cursorType, hideCursor]);
 
     const color = renderer.getCursorColor(trailState.trail.color, cursorType);
 
@@ -321,59 +344,38 @@ const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorPro
   },
 );
 
-// Compute eviction fade for each trail index at a given time.
-function computeEvictionFades(
-  trailStates: TrailState[],
-  sortedFinishOrder: Array<{ originalIndex: number; finishedAtMs: number }>,
+function computeTrailFade(
+  trailState: TrailState,
+  finishPosition: number,
+  sortedFinishOrder: FinishedTrailOrderEntry[],
   elapsedTimeMs: number,
   windowSize: number,
-): Float64Array {
-  // Returns an array indexed by originalIndex with eviction fade values.
-  // 0 = hidden (not started or fully evicted), >0 = visible.
-  const fades = new Float64Array(trailStates.length);
+  finishedCount: number,
+): number {
+  const trailElapsedMs = elapsedTimeMs - trailState.startOffsetMs;
+  if (trailElapsedMs < 0) return 0;
 
-  const finished: Array<{ originalIndex: number; finishedAtMs: number }> = [];
+  const trailProgress = Math.min(1, trailElapsedMs / trailState.durationMs);
+  if (trailProgress < 1) return 1;
 
-  for (const entry of sortedFinishOrder) {
-    const ts = trailStates[entry.originalIndex];
-    const trailElapsedMs = elapsedTimeMs - ts.startOffsetMs;
-    if (trailElapsedMs < 0) continue; // not started
-
-    const trailProgress = Math.min(1, trailElapsedMs / ts.durationMs);
-    if (trailProgress < 1) {
-      fades[entry.originalIndex] = 1; // active
-    } else {
-      finished.push(entry);
-    }
+  const excessCount = Math.max(0, finishedCount - windowSize);
+  if (finishPosition < excessCount) {
+    const displacerIndex = finishPosition + windowSize;
+    const evictedAtMs =
+      displacerIndex < finishedCount
+        ? sortedFinishOrder[displacerIndex].finishedAtMs
+        : elapsedTimeMs;
+    const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
+    return Math.max(
+      0,
+      COMPLETED_OPACITY * (1 - timeSinceEvicted / EVICTION_FADE_MS),
+    );
   }
 
-  const excessCount = Math.max(0, finished.length - windowSize);
-  for (let i = 0; i < finished.length; i++) {
-    const f = finished[i];
-    if (i < excessCount) {
-      // Fade based on when this trail was pushed out of the window, not when
-      // it finished. The trail at index windowSize is the one that displaced
-      // trail i — so use its finishedAtMs as the eviction trigger time.
-      const displacerIndex = i + windowSize;
-      const evictedAtMs =
-        displacerIndex < finished.length
-          ? finished[displacerIndex].finishedAtMs
-          : elapsedTimeMs;
-      const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
-      // Fade from COMPLETED_OPACITY (not full opacity) to avoid a brightness jump
-      fades[f.originalIndex] = Math.max(
-        0,
-        COMPLETED_OPACITY * (1 - timeSinceEvicted / EVICTION_FADE_MS),
-      );
-    } else {
-      // Dim finished trails so active ones are visually prominent
-      const timeSinceFinished = elapsedTimeMs - f.finishedAtMs;
-      const fadeFraction = Math.min(1, timeSinceFinished / COMPLETION_FADE_MS);
-      fades[f.originalIndex] = 1 - fadeFraction * (1 - COMPLETED_OPACITY);
-    }
-  }
-
-  return fades;
+  const finishedAtMs = trailState.startOffsetMs + trailState.durationMs;
+  const timeSinceFinished = elapsedTimeMs - finishedAtMs;
+  const fadeFraction = Math.min(1, timeSinceFinished / COMPLETION_FADE_MS);
+  return 1 - fadeFraction * (1 - COMPLETED_OPACITY);
 }
 
 interface AnimatedTrailsProps {
@@ -422,13 +424,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       [],
     );
 
-    const animationRef = useRef<number>();
-    const timeoutRef = useRef<number>();
-    const spawnedClicksRef = useRef<Map<string, Set<number>>>(new Map());
+    const animationRef = useRef<number | undefined>(undefined);
+    const timeoutRef = useRef<number | undefined>(undefined);
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
 
-    const generatePath = useRef(createPathGenerator()).current;
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
     const rendererRef = useRef(renderer);
     useEffect(() => { rendererRef.current = renderer; }, [renderer]);
@@ -452,6 +452,24 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           finishedAtMs: ts.startOffsetMs + ts.durationMs,
         }))
         .sort((a, b) => a.finishedAtMs - b.finishedAtMs);
+    }, [trailStates]);
+
+    const finishPositionByTrail = useMemo(() => {
+      const positions = new Int32Array(trailStates.length);
+      sortedFinishOrder.forEach((entry, position) => {
+        positions[entry.originalIndex] = position;
+      });
+      return positions;
+    }, [sortedFinishOrder, trailStates.length]);
+
+    const sortedStartOrder = useMemo(() => {
+      return trailStates
+        .map((ts, i) => ({
+          originalIndex: i,
+          startOffsetMs: ts.startOffsetMs,
+          finishedAtMs: ts.startOffsetMs + ts.durationMs,
+        }))
+        .sort((a, b) => a.startOffsetMs - b.startOffsetMs);
     }, [trailStates]);
 
     // Store one ref handle per trail index for paths and cursors separately.
@@ -484,6 +502,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     // Refs the rAF loop reads (kept current via effects)
     const trailStatesRef = useRef(trailStates);
     const sortedFinishOrderRef = useRef(sortedFinishOrder);
+    const finishPositionByTrailRef = useRef(finishPositionByTrail);
+    const sortedStartOrderRef = useRef(sortedStartOrder);
     const windowSizeRef = useRef(windowSize);
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
@@ -499,6 +519,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       sortedFinishOrderRef.current = sortedFinishOrder;
     }, [sortedFinishOrder]);
     useEffect(() => {
+      finishPositionByTrailRef.current = finishPositionByTrail;
+    }, [finishPositionByTrail]);
+    useEffect(() => {
+      sortedStartOrderRef.current = sortedStartOrder;
+    }, [sortedStartOrder]);
+    useEffect(() => {
       windowSizeRef.current = windowSize;
     }, [windowSize]);
     useEffect(() => {
@@ -512,6 +538,27 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     // Updated from rAF loop but only triggers a React re-render for ripple cleanup.
     const visibleSetRef = useRef<Set<number>>(new Set());
     const ripplePruneScheduled = useRef(false);
+    const activeTrailIndicesRef = useRef<number[]>([]);
+    const nextStartOrderIndexRef = useRef(0);
+    const visibleMarksRef = useRef(new Uint32Array(trailStates.length));
+    const visibleFrameIdRef = useRef(1);
+    const visibleIndicesScratchRef = useRef<number[]>([]);
+    const previousVisibleIndicesRef = useRef<number[]>([]);
+    const nextClickIndexByTrailRef = useRef(new Int32Array(trailStates.length));
+    const soundFramesRef = useRef<TrailSoundFrame[]>([]);
+    const activePaintOrderIndicesRef = useRef<number[]>([]);
+    const previousActivePaintOrderIndicesRef = useRef<number[]>([]);
+
+    useEffect(() => {
+      visibleMarksRef.current = new Uint32Array(trailStates.length);
+      nextClickIndexByTrailRef.current = new Int32Array(trailStates.length);
+      activeTrailIndicesRef.current = [];
+      visibleIndicesScratchRef.current = [];
+      previousVisibleIndicesRef.current = [];
+      activePaintOrderIndicesRef.current = [];
+      previousActivePaintOrderIndicesRef.current = [];
+      nextStartOrderIndexRef.current = 0;
+    }, [trailStates]);
 
     const scheduleRipplePrune = useCallback(() => {
       if (ripplePruneScheduled.current) return;
@@ -558,11 +605,19 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       // Reset per-loop state so stale prevElapsed from a previous loop doesn't
       // look like a wrap and trigger a mass re-spawn of all clicks at once.
       prevElapsedRef.current = 0;
-      spawnedClicksRef.current.clear();
+      nextClickIndexByTrailRef.current.fill(0);
+      activeTrailIndicesRef.current = [];
+      nextStartOrderIndexRef.current = 0;
       setActiveClickEffects([]);
       soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
+
+      const resetPlaybackTrackers = () => {
+        activeTrailIndicesRef.current = [];
+        nextStartOrderIndexRef.current = 0;
+        nextClickIndexByTrailRef.current.fill(0);
+      };
 
       const clearScheduledFrame = () => {
         if (animationRef.current !== undefined) {
@@ -610,7 +665,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
         // Detect loop wrap
         if (loopedElapsed < prevElapsedRef.current) {
-          spawnedClicksRef.current.clear();
+          resetPlaybackTrackers();
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
         }
@@ -620,33 +675,95 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         const trailOpacity = trailOpacityRef.current;
         const strokeWidth = strokeWidthRef.current;
 
-        // Compute per-trail eviction fades
-        const fades = computeEvictionFades(
-          currentTrailStates,
-          sortedFinishOrderRef.current,
+        const frameId = visibleFrameIdRef.current++;
+        if (visibleFrameIdRef.current === Number.MAX_SAFE_INTEGER) {
+          visibleMarksRef.current.fill(0);
+          visibleFrameIdRef.current = 1;
+        }
+
+        const visibleMarks = visibleMarksRef.current;
+        const visibleIndices = visibleIndicesScratchRef.current;
+        visibleIndices.length = 0;
+
+        const markVisible = (trailIndex: number) => {
+          if (visibleMarks[trailIndex] === frameId) return;
+          visibleMarks[trailIndex] = frameId;
+          visibleIndices.push(trailIndex);
+        };
+
+        const sortedStartOrder = sortedStartOrderRef.current;
+        while (
+          nextStartOrderIndexRef.current < sortedStartOrder.length &&
+          sortedStartOrder[nextStartOrderIndexRef.current].startOffsetMs <=
+            loopedElapsed
+        ) {
+          const entry = sortedStartOrder[nextStartOrderIndexRef.current];
+          if (entry.finishedAtMs > loopedElapsed) {
+            activeTrailIndicesRef.current.push(entry.originalIndex);
+          }
+          nextStartOrderIndexRef.current++;
+        }
+
+        const activeTrailIndices = activeTrailIndicesRef.current;
+        let activeWriteIndex = 0;
+        for (let i = 0; i < activeTrailIndices.length; i++) {
+          const trailIndex = activeTrailIndices[i];
+          const trailState = currentTrailStates[trailIndex];
+          const finishedAtMs = trailState.startOffsetMs + trailState.durationMs;
+          if (
+            trailState.startOffsetMs <= loopedElapsed &&
+            finishedAtMs > loopedElapsed
+          ) {
+            activeTrailIndices[activeWriteIndex] = trailIndex;
+            activeWriteIndex++;
+            markVisible(trailIndex);
+          }
+        }
+        activeTrailIndices.length = activeWriteIndex;
+
+        const sortedFinishOrder = sortedFinishOrderRef.current;
+        const finishedRange = getFinishedTrailRenderRange(
+          sortedFinishOrder,
           loopedElapsed,
           windowSizeRef.current,
+          EVICTION_FADE_MS,
         );
+        for (let i = finishedRange.start; i < finishedRange.end; i++) {
+          markVisible(sortedFinishOrder[i].originalIndex);
+        }
 
-        // Track which trails are visible this frame for ripple pruning
-        const newVisible = new Set<number>();
+        let visibilityChanged =
+          previousVisibleIndicesRef.current.length !== visibleIndices.length;
+        for (const trailIndex of previousVisibleIndicesRef.current) {
+          if (visibleMarks[trailIndex] !== frameId) {
+            trailHandles.current[trailIndex]?.hide();
+            cursorHandles.current[trailIndex]?.hide();
+            visibilityChanged = true;
+          }
+        }
 
-        // Collect trail frame results for sound engine
-        const soundFrames: TrailSoundFrame[] = [];
+        const soundEngine = soundEngineRef.current;
+        const soundEnabled = soundEngine?.isEnabled() ?? false;
+        const soundFrames = soundFramesRef.current;
+        soundFrames.length = 0;
+        const activePaintOrderIndices = activePaintOrderIndicesRef.current;
+        activePaintOrderIndices.length = 0;
 
-        // Track currently-drawing trails so we can reorder their <g> to the
-        // end of the path layer, ensuring active heads paint on top of any
-        // earlier-rendered (older) trail body that overlaps them in SVG paint
-        // order. Sorted by startOffsetMs so the most recently started trail
-        // ends up last.
-        const activeIndices: number[] = [];
-
-        // Update all trail paths and cursors imperatively
-        for (let idx = 0; idx < currentTrailStates.length; idx++) {
+        // Update visible trail paths and cursors imperatively
+        for (const idx of visibleIndices) {
           const handle = trailHandles.current[idx];
           if (!handle) continue;
 
-          const fade = fades[idx];
+          const fade = computeTrailFade(
+            currentTrailStates[idx],
+            finishPositionByTrailRef.current[idx],
+            sortedFinishOrder,
+            loopedElapsed,
+            windowSizeRef.current,
+            finishedRange.finishedCount,
+          );
+          if (fade <= 0) continue;
+
           const result = handle.update(
             loopedElapsed,
             trailOpacity,
@@ -654,10 +771,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             fade,
           );
 
-          if (fade > 0) newVisible.add(idx);
-
           if (result && fade > 0 && result.trailProgress < 1) {
-            activeIndices.push(idx);
+            activePaintOrderIndices.push(idx);
           }
 
           // Update cursor icon in the separate cursor layer
@@ -684,7 +799,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           }
 
           // Collect frame data for sound engine
-          if (result && fade > 0 && soundEngineRef.current?.isEnabled()) {
+          if (result && fade > 0 && soundEnabled) {
             const cpIdx = Math.min(
               Math.floor(
                 (ts.trail.points.length - 1) * result.trailProgress,
@@ -707,69 +822,89 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           // Spawn clicks
           if (result && showClickRipplesRef.current) {
             const ts = currentTrailStates[idx];
-            const trailKey = `trail-${idx}`;
-            if (!spawnedClicksRef.current.has(trailKey)) {
-              spawnedClicksRef.current.set(trailKey, new Set());
+            let clickIdx = nextClickIndexByTrailRef.current[idx];
+            while (
+              clickIdx < ts.clicksWithProgress.length &&
+              result.trailProgress >= ts.clicksWithProgress[clickIdx].progress
+            ) {
+              const click = ts.clicksWithProgress[clickIdx];
+
+              soundEngine?.triggerClick({
+                x: result.cursorPosition.x,
+                y: result.cursorPosition.y,
+                holdDuration: click.duration,
+              });
+
+              pendingClicks.current.push({
+                id: `${idx}-${clickIdx}-${Date.now()}`,
+                x: result.cursorPosition.x,
+                y: result.cursorPosition.y,
+                color: rendererRef.current.getClickColor(ts.trail.color),
+                radiusFactor: Math.random(),
+                durationFactor: Math.random(),
+                startTime: Date.now(),
+                trailIndex: idx,
+                holdDuration: click.duration,
+              });
+
+              clickIdx++;
             }
-            const spawnedSet = spawnedClicksRef.current.get(trailKey)!;
-
-            ts.clicksWithProgress.forEach((click, clickIdx) => {
-              if (
-                result.trailProgress >= click.progress &&
-                !spawnedSet.has(clickIdx)
-              ) {
-                spawnedSet.add(clickIdx);
-
-                // Trigger click sound
-                soundEngineRef.current?.triggerClick({
-                  x: result.cursorPosition.x,
-                  y: result.cursorPosition.y,
-                  holdDuration: click.duration,
-                });
-
-                pendingClicks.current.push({
-                  id: `${idx}-${clickIdx}-${Date.now()}`,
-                  x: result.cursorPosition.x,
-                  y: result.cursorPosition.y,
-                  color: rendererRef.current.getClickColor(ts.trail.color),
-                  radiusFactor: Math.random(),
-                  durationFactor: Math.random(),
-                  startTime: Date.now(),
-                  trailIndex: idx,
-                  holdDuration: click.duration,
-                });
-              }
-            });
+            nextClickIndexByTrailRef.current[idx] = clickIdx;
           }
         }
 
-        // Reorder active trail groups so they paint on top of finished /
-        // earlier-started trails. Sort by startOffsetMs ascending — the
-        // latest-started active trail ends up last in DOM order, so its head
-        // paints over any other active trail's body it crosses. appendChild
-        // on an existing node moves it within the parent.
         const pathLayer = pathLayerRef.current;
-        if (pathLayer && activeIndices.length > 0) {
-          activeIndices.sort(
-            (a, b) =>
-              currentTrailStates[a].startOffsetMs -
-              currentTrailStates[b].startOffsetMs,
-          );
-          for (let i = 0; i < activeIndices.length; i++) {
-            const handle = trailHandles.current[activeIndices[i]];
-            const group = handle?.getGroup();
-            if (group && group.parentNode === pathLayer) {
-              pathLayer.appendChild(group);
+        if (pathLayer && activePaintOrderIndices.length > 0) {
+          const previousActivePaintOrder =
+            previousActivePaintOrderIndicesRef.current;
+          let activePaintOrderChanged =
+            previousActivePaintOrder.length !== activePaintOrderIndices.length;
+
+          if (!activePaintOrderChanged) {
+            for (let i = 0; i < activePaintOrderIndices.length; i++) {
+              if (previousActivePaintOrder[i] !== activePaintOrderIndices[i]) {
+                activePaintOrderChanged = true;
+                break;
+              }
             }
           }
+
+          if (activePaintOrderChanged) {
+            // Active heads paint over earlier or finished bodies.
+            activePaintOrderIndices.sort(
+              (a, b) =>
+                currentTrailStates[a].startOffsetMs -
+                currentTrailStates[b].startOffsetMs,
+            );
+
+            for (const idx of activePaintOrderIndices) {
+              const group = trailHandles.current[idx]?.getGroup();
+              if (group && group.parentNode === pathLayer) {
+                pathLayer.appendChild(group);
+              }
+            }
+            previousActivePaintOrder.length = activePaintOrderIndices.length;
+            for (let i = 0; i < activePaintOrderIndices.length; i++) {
+              previousActivePaintOrder[i] = activePaintOrderIndices[i];
+            }
+          }
+        } else {
+          previousActivePaintOrderIndicesRef.current.length = 0;
         }
 
         // Feed sound engine with collected trail frames
-        if (soundFrames.length > 0) {
-          soundEngineRef.current?.tick(loopedElapsed, soundFrames);
+        if (soundFrames.length > 0 && soundEngine) {
+          soundEngine.tick(loopedElapsed, soundFrames);
         }
 
-        visibleSetRef.current = newVisible;
+        if (visibilityChanged) {
+          const visibleSet = visibleSetRef.current;
+          visibleSet.clear();
+          for (const trailIndex of visibleIndices) {
+            visibleSet.add(trailIndex);
+          }
+          previousVisibleIndicesRef.current = [...visibleIndices];
+        }
 
         // Flush pending clicks
         if (pendingClicks.current.length > 0) {
@@ -777,7 +912,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         }
 
         // Prune ripples for trails that became invisible
-        scheduleRipplePrune();
+        if (visibilityChanged) {
+          scheduleRipplePrune();
+        }
 
         scheduleNextFrame();
       };
@@ -849,10 +986,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 trailHandles.current[idx] = handle;
               }}
               trailState={ts}
-              trailIndex={idx}
               fixedMonoStrokeWidth={1 + ((idx * 7 + 3) % 5)}
               renderer={renderer}
-              generatePath={generatePath}
             />
           ))}
         </g>
@@ -866,7 +1001,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               cursorHandles.current[idx] = handle;
             }}
             trailState={ts}
-            trailIndex={idx}
             renderer={renderer}
           />
         ))}
@@ -882,6 +1016,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
       prevProps.soundEngine === nextProps.soundEngine &&
+      prevProps.settings.strokeWidth === nextProps.settings.strokeWidth &&
+      prevProps.settings.trailOpacity === nextProps.settings.trailOpacity &&
+      prevProps.settings.animationSpeed ===
+        nextProps.settings.animationSpeed &&
+      prevProps.settings.trailVisualStyle ===
+        nextProps.settings.trailVisualStyle &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
       prevProps.settings.clickCoreRadius === nextProps.settings.clickCoreRadius &&
