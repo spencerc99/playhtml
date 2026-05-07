@@ -406,12 +406,23 @@ export class CursorClientAwareness {
   private clientToStorage(clientX: number, clientY: number): { x: number; y: number } {
     const m = this.getContainerMatrix();
     if (m) {
-      // The container has `transform-origin: 0 0` (the only origin we
-      // support; `getBoundingClientRect()` already reflects the post-
-      // transform top-left). To recover container-local pre-transform
-      // coords, subtract the rect origin and undo the matrix's scale/rotate.
-      // The matrix's translate component is already absorbed into rect.left
-      // / rect.top, so we apply only the linear (a, b, c, d) part.
+      // ASSUMPTION: the container uses `transform-origin: 0 0`. Hosts
+      // applying their own pan/zoom transform almost always do so — it's
+      // the natural choice for a canvas where (0, 0) in content space
+      // maps to the container's top-left. With this origin, the post-
+      // transform top-left equals `rect.left / rect.top` directly, AND
+      // an absolutely-positioned child rendered at (left, top) inside the
+      // container ends up at viewport position
+      //   (rect.left + a*left + c*top, rect.top + b*left + d*top)
+      // i.e. only the linear (a, b, c, d) part of the matrix is applied
+      // to the child's local coordinates — the matrix's translate (e, f)
+      // is already absorbed into rect.left / rect.top by the browser's
+      // layout. So to invert, subtract the rect origin and undo only
+      // the linear part. Other origins (e.g. `center`) would shift the
+      // anchor and produce off-by-half-the-container errors; we don't
+      // support them here. If a host needs that, they can pre-multiply
+      // their transform with the equivalent translate to bake the origin
+      // into (e, f) and keep `transform-origin: 0 0`.
       const a = m.matrix.a;
       const b = m.matrix.b;
       const c = m.matrix.c;
@@ -431,8 +442,10 @@ export class CursorClientAwareness {
   private storageToClient(x: number, y: number): { x: number; y: number } {
     const m = this.getContainerMatrix();
     if (m) {
-      // Mirror clientToStorage: apply only the linear part of the matrix
-      // and add the rect origin. Translate is already in rect.left/top.
+      // Mirror clientToStorage; same `transform-origin: 0 0` assumption.
+      // Apply only the linear part of the matrix to the local coord and
+      // add the rect origin — the translate (e, f) is already in
+      // rect.left / rect.top.
       const a = m.matrix.a;
       const b = m.matrix.b;
       const c = m.matrix.c;
