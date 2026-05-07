@@ -106,14 +106,21 @@ React UI for extension surfaces:
 - **DomainPortraitExport**: Export portrait as image/data
 - **icons.tsx**: Collector and UI icon components
 
-### Shared Types (`src/shared/types.ts`)
+### Shared Types (`@playhtml/extension-types`)
 
-Shared between extension and Cloudflare Worker:
+Shared between extension and Cloudflare Worker via the published
+`@playhtml/extension-types` package (source at
+`packages/extension-types/src/types.ts`). The worker depends on a pinned
+version so contract changes follow a version bump rather than a live-source
+sync.
+
+Key exports:
 
 - `CollectionEventType`: `'cursor' | 'navigation' | 'viewport' | 'keyboard'`
 - `CollectionEvent`: `{ id, type, ts, data, meta, domain?, normalizedUrl? }`
 - `EventMeta`: `{ sid, pid, url, vw, vh, tz, cursor_color? }`
 - `PageMetadataSnapshot`: `{ page_ref, canonical_url, title, favicon_url, metadata_hash, observed_at_ts }`
+- `getValidEventTypes()`: returns the `CollectionEventType[]` array for runtime validation.
 
 ### Worker Backend (`worker/`)
 

@@ -9,6 +9,7 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - **packages/playhtml**: Core library that adds interactive capabilities to HTML elements
 - **packages/react**: React wrapper components for playhtml functionality
 - **packages/common**: Shared TypeScript types and interfaces
+- **packages/extension-types**: Shared event/metadata type contract between the extension and its Cloudflare Worker (`@playhtml/extension-types`)
 - **extension/**: Browser extension ("we were online") for collecting and visualizing browsing traces. See `extension/CLAUDE.md` for detailed architecture.
 - **extension/website/**: `wewere.online` site — marketing pages (home, privacy) plus visualization experiments (`portrait/`, `rabbithole/`, `conversations/`, `keypresses/`, `sounds/`, `components-preview/`). Shared visualization code lives in `extension/website/shared/` and is reached via the `@movement` path alias. Homepage uses `<DownloadGate />` (`src/components/DownloadGate.tsx`) which shows install buttons directly on desktop and an email-signup form on mobile (mobile detected via `(hover: none) and (pointer: coarse)` media query). The form POSTs to the worker's `/subscribe` endpoint which adds the contact to Resend and sends a welcome email with install links.
 - **extension/worker/**: Cloudflare Worker backend for event ingestion (Supabase persistence)
@@ -119,8 +120,10 @@ Bun workspaces (from root `package.json`):
 1. `packages/playhtml`
 2. `packages/react`
 3. `packages/common`
-4. `extension`
-5. `extension/website`
+4. `packages/extension-types`
+5. `extension`
+6. `extension/website`
+7. `extension/worker`
 
 Bun handles workspace linking automatically. Changes across packages are immediately available without manual linking. Run `bun install` at the root to set up workspace dependencies.
 
