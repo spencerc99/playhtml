@@ -146,7 +146,10 @@ interface CursorOptions {
 }
 ```
 
-`container` is only needed when your framework swaps `document.body` on navigation (Astro ViewTransitions, htmx boost, Turbo). Mark the container with the framework's persist directive (e.g. `transition:persist`) and cursors survive navigation. See [navigation](/docs/advanced/navigation/) for examples.
+Set `container` for either of two reasons:
+
+1. **Surviving SPA navigation.** If your framework swaps `document.body` on route changes (Astro ViewTransitions, htmx boost, Turbo), mark the container with the framework's persist directive (e.g. `transition:persist`). See [navigation](/docs/advanced/navigation/).
+2. **Anchoring cursors to a transformed canvas.** If the container has its own CSS `transform` (pannable / zoomable wrapper), playhtml stores cursor coords in the container's local space so collaborators with different pan/zoom agree on a cursor's content position. See [Anchoring cursors to a transformed canvas](/docs/data/presence/cursors/#anchoring-cursors-to-a-transformed-canvas) and the [fridge demo](https://github.com/spencerc99/playhtml/blob/main/website/fridge.tsx).
 
 Minimal opt-in:
 
