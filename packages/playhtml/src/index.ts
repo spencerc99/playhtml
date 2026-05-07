@@ -497,9 +497,27 @@ let firstSetup = true;
 let isLoading = true;
 let initStarted = false;
 let readyResolve: () => void = () => {};
-let readyPromise: Promise<void> = new Promise<void>((resolve) => {
-  readyResolve = resolve;
-});
+let readyReject: (error: unknown) => void = () => {};
+
+function createReadyPromise(): Promise<void> {
+  const promise = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  promise.catch(() => {});
+  return promise;
+}
+
+let readyPromise: Promise<void> = createReadyPromise();
+
+function isPromiseLike(value: unknown): value is Promise<void> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in value &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
 let isDevelopmentMode = false;
@@ -770,7 +788,40 @@ async function runHandleNavigation(): Promise<void> {
   dispatchNavigated(__currentRoomId);
 }
 
-async function initPlayHTML({
+function initPlayHTML(options: InitOptions = {}) {
+  if (initStarted) return readyPromise;
+
+  const existingPlayhtml = (window as any).playhtml;
+  if (existingPlayhtml) {
+    if (isPromiseLike(existingPlayhtml.ready)) {
+      readyPromise = existingPlayhtml.ready;
+      readyPromise.then(
+        () => {
+          isLoading = false;
+        },
+        () => {},
+      );
+      initStarted = true;
+      return readyPromise;
+    }
+
+    const error = new Error(
+      "playhtml is already set up by an incompatible instance. Make sure @playhtml/react and playhtml use matching versions.",
+    );
+    readyReject(error);
+    initStarted = true;
+    return readyPromise;
+  }
+
+  initStarted = true;
+  const initPromise = initPlayHTMLOnce(options);
+  initPromise.catch((error) => {
+    readyReject(error);
+  });
+  return initPromise;
+}
+
+async function initPlayHTMLOnce({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
   extraCapabilities,
@@ -781,12 +832,6 @@ async function initPlayHTML({
   developmentMode = false,
   cursors = {},
 }: InitOptions = {}) {
-  if (initStarted) return readyPromise;
-  if ("playhtml" in window) {
-    console.error("playhtml already set up! ignoring");
-    return readyPromise;
-  }
-  initStarted = true;
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
   const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
@@ -1354,7 +1399,7 @@ export interface PlayHTMLComponents {
  * isolation (beforeEach resets) only.
  */
 export async function resetPlayHTML(): Promise<void> {
-  if (firstSetup) return;
+  if (firstSetup && !initStarted) return;
 
   try {
     if (navigationController) {
@@ -1417,9 +1462,7 @@ export async function resetPlayHTML(): Promise<void> {
     firstSetup = true;
     isLoading = true;
     initStarted = false;
-    readyPromise = new Promise<void>((resolve) => {
-      readyResolve = resolve;
-    });
+    readyPromise = createReadyPromise();
     __currentRoomId = "";
     __currentHost = "";
     presenceAPI = null;

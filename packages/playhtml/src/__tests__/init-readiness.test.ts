@@ -7,6 +7,7 @@ import { playhtml, resetPlayHTML } from "../index";
 describe("playhtml init readiness", () => {
   beforeEach(async () => {
     (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = false;
+    (globalThis as any).PLAYHTML_TEST_PROVIDER_THROW = false;
     (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
     await resetPlayHTML();
     document.body.innerHTML = "";
@@ -61,5 +62,37 @@ describe("playhtml init readiness", () => {
 
     expect(playhtml.isLoading).toBe(true);
     expect(playhtml.ready).not.toBe(resolvedReady);
+  });
+
+  it("uses an existing global playhtml ready promise", async () => {
+    let resolveExistingReady: () => void = () => {};
+    const existingReady = new Promise<void>((resolve) => {
+      resolveExistingReady = resolve;
+    });
+    (window as any).playhtml = {
+      ready: existingReady,
+      isLoading: true,
+    };
+
+    const initReady = playhtml.init({});
+
+    expect(playhtml.ready).toBe(existingReady);
+    expect(playhtml.isLoading).toBe(true);
+
+    resolveExistingReady();
+    await expect(initReady).resolves.toBeUndefined();
+
+    expect(playhtml.isLoading).toBe(false);
+  });
+
+  it("rejects duplicate init callers when setup fails", async () => {
+    (globalThis as any).PLAYHTML_TEST_PROVIDER_THROW = true;
+
+    const firstInit = playhtml.init({});
+    const secondInit = playhtml.init({});
+
+    await expect(firstInit).rejects.toThrow("test provider init failure");
+    await expect(secondInit).rejects.toThrow("test provider init failure");
+    await expect(playhtml.ready).rejects.toThrow("test provider init failure");
   });
 });
