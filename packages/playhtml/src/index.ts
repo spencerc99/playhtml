@@ -358,6 +358,14 @@ export interface CursorOptions {
    * Where to mount cursor DOM and the cursor style tag. Defaults to
    * document.body / document.head. Pass a container you control (and mark
    * with transition:persist or equivalent) to survive SPA body-swaps.
+   *
+   * If the container has its own CSS transform (e.g. a pannable canvas
+   * applies `transform: translate(...) scale(...)`), cursors are stored
+   * AND rendered in the container's local coordinate space. The library
+   * reads the live transform matrix from getComputedStyle, so two clients
+   * with different pan/zoom agree on a cursor's content position; the
+   * container's CSS transform then maps that position into each viewer's
+   * own pixels — anchoring cursors to content rather than to the viewport.
    */
   container?: CursorContainer;
 }
