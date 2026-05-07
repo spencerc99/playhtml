@@ -1,5 +1,74 @@
 # Change Log
 
+## 0.11.0
+
+### Minor Changes
+
+- 278e7d2: `can-move` now supports a declarative `can-move-bounds` attribute that clamps a draggable element to a specific container. Set the value to the container's id (`can-move-bounds="arena"` or `can-move-bounds="#arena"`) or any CSS selector. The element can partially hang off the container edges — by default `max(25% of element size, 60px)` stays inside on every edge so readers always have something to grab — while the cursor itself is unconstrained and a fast drag past the edge won't fling the element back in the opposite direction.
+
+  Tune the keep-visible slice with two optional attributes:
+  - `can-move-bounds-min-visible` (0–1) — fraction of the element to keep visible. Use `1` to pin fully inside (legacy strict clamp), `0` to drop the fraction constraint.
+  - `can-move-bounds-min-visible-px` (pixels, default 60) — absolute floor, useful when an image has transparent padding that would otherwise let the visible paint slip out. The effective slice is `max(fraction × size, pxFloor)`.
+
+  Set both to `0` to opt fully out of the keep-visible guarantee.
+
+  ```html
+  <div id="fridge">
+    <div can-move can-move-bounds="fridge" id="magnet-a">🍎</div>
+    <div
+      can-move
+      can-move-bounds="#fridge"
+      can-move-bounds-min-visible="0.5"
+      can-move-bounds-min-visible-px="0"
+      id="magnet-b"
+    >
+      🥐
+    </div>
+  </div>
+  ```
+
+  In React, `<CanMoveElement>` gets typed `bounds`, `boundsMinVisible`, and `boundsMinVisiblePx` props that map to the same attributes:
+
+  ```tsx
+  import { CanMoveElement } from "@playhtml/react";
+
+  <CanMoveElement bounds="fridge" boundsMinVisible={0.5} boundsMinVisiblePx={0}>
+    <div id="magnet">🧲</div>
+  </CanMoveElement>;
+  ```
+
+  Exported from `@playhtml/common`: `CanMoveBounds`, `CanMoveBoundsMinVisible`, `CanMoveBoundsMinVisiblePx`.
+
+- a0936aa: Add `usePresence`, `usePageData`, and `usePresenceRoom` hooks that are safe to call before playhtml has finished initializing. They return empty/default values and no-op setters until sync completes, then wire up automatically — no `hasSynced` guards needed at call sites.
+
+  Also adds `isLoading` to `PlayContext` as the preferred way to check init state. `hasSynced` is still present (inverse semantics) but deprecated.
+
+- 234d732: SPA navigation compatibility. playhtml now detects client-side navigation (Astro ViewTransitions, React Router, Next.js, htmx boost, Turbo) via the browser's Navigation API and `popstate`, rebuilding rooms and rescanning the DOM as URLs change.
+
+  New public API:
+  - `playhtml.handleNavigation()` — manual trigger for routers that bypass both Navigation API and `popstate`.
+  - `CursorOptions.container` accepts `HTMLElement | string | (() => HTMLElement | null)` — cursor DOM and styles mount inside this element, so marking it with `transition:persist` (or equivalent) keeps cursors across body-swaps.
+  - `<PlayProvider>` accepts a `pathname` prop that calls `playhtml.handleNavigation()` when it changes, and a `RefObject` for `cursors.container`.
+  - `playhtml:navigated` CustomEvent fires on `document` after each navigation, with `detail.room`.
+
+  See https://playhtml.fun/docs/advanced/navigation/ for framework-specific usage.
+
+### Patch Changes
+
+- 4803cc5: Add `playhtml.ready` and `playhtml.isLoading` as public lifecycle signals. Concurrent `playhtml.init()` calls now share the same readiness promise, so multiple React roots can safely mount providers without one root marking itself ready before the singleton has finished syncing.
+
+  `<PlayProvider>` still bootstraps playhtml when rendered with or without `initOptions`, preserving the existing bare-provider behavior while using the shared readiness signal for React context loading state.
+
+- Updated dependencies [278e7d2]
+- Updated dependencies [c8d1f9b]
+- Updated dependencies [a0936aa]
+- Updated dependencies [07747ee]
+- Updated dependencies [4803cc5]
+- Updated dependencies [43d1353]
+- Updated dependencies [234d732]
+  - playhtml@2.10.0
+  - @playhtml/common@0.7.0
+
 ## 0.10.1
 
 ### Patch Changes
@@ -57,7 +126,7 @@
   const unsubscribe = playhtml.cursorClient.onCursorPresencesChange(
     (presences) => {
       // presences is Map<string, CursorPresenceView>
-    }
+    },
   );
 
   // Get my stable player identity
@@ -96,7 +165,6 @@
   **Breaking Change - Awareness Scope:**
 
   Element awareness now follows cursor scope instead of always being page-specific:
-
   - If cursors are configured with `room: "domain"`, element awareness is domain-wide
   - If cursors are configured with `room: "page"`, element awareness is page-specific
   - If cursors are configured with `room: "section"`, element awareness is section-specific
@@ -104,7 +172,6 @@
   This is more intuitive (your user state follows you) but may affect apps that relied on the old behavior. To restore page-specific awareness when cursors are domain-wide, you can configure cursors to use page scope separately.
 
   **Benefits:**
-
   - Stable user IDs (`playerIdentity.publicKey`) persist across page refreshes
   - No need to access `(playhtml.cursorClient as any).provider` - use clean public APIs
   - Easier to correlate cursor positions with user-specific awareness data
@@ -156,7 +223,6 @@
   Previously, user cursor names and colors were randomly generated on each page visit, creating a confusing experience where users would have different identities across sessions. This update introduces localStorage persistence so users maintain consistent cursor identity.
 
   **Key Changes:**
-
   - Added `generatePersistentPlayerIdentity()` function that saves/loads identity from localStorage
   - Enhanced `setColor()` and `setName()` methods to persist changes automatically
   - Added `getCursors()` function to PlayContext for better React integration
@@ -254,7 +320,7 @@ export const ToggleSquare = withPlay<Props>()(
         onClick={() => setData({ on: !data.on })}
       />
     );
-  }
+  },
 );
 ```
 
@@ -274,7 +340,7 @@ export const ToggleSquare = withSharedState(
         onClick={() => setData({ on: !data.on })}
       />
     );
-  }
+  },
 );
 ```
 
