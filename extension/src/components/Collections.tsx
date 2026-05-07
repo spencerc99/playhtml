@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import browser from "webextension-polyfill";
 import type { CollectorStatus } from "../collectors/types";
-import { getValidEventTypes } from "../shared/types";
+import { getValidEventTypes } from "@playhtml/extension-types";
 import { CollectorIcon } from "./icons";
 import { triggerDownload } from "../utils/portraitExport";
 import {

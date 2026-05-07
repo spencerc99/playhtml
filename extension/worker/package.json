@@ -12,12 +12,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "resend": "^6.9.2",
+    "@playhtml/extension-types": "workspace:*",
     "@react-email/components": "^0.0.31",
     "@react-email/render": "^1.0.5",
+    "@supabase/supabase-js": "^2.39.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "resend": "^6.9.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240208.0",

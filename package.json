@@ -6,9 +6,11 @@
     "packages/playhtml",
     "packages/react",
     "packages/common",
+    "packages/extension-types",
     "apps/docs",
     "extension",
     "extension/website",
+    "extension/worker",
     "smoke-tests"
   ],
   "scripts": {
