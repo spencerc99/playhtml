@@ -18,12 +18,15 @@ const presenceListeners = new Map<string, Set<(presences: Map<string, unknown>) 
 const mockPresences = new Map<string, unknown>();
 
 let mockReadyResolve: () => void = () => {};
+let mockReadyReject: (error: unknown) => void = () => {};
 let mockReady: Promise<void>;
 
 function resetMockReady() {
-  mockReady = new Promise<void>((resolve) => {
+  mockReady = new Promise<void>((resolve, reject) => {
     mockReadyResolve = resolve;
+    mockReadyReject = reject;
   });
+  mockReady.catch(() => {});
   mockedPlayhtml.isLoading = true;
   mockedPlayhtml.init.mockImplementation(() => {
     mockedPlayhtml.isInitialized = true;
@@ -43,6 +46,9 @@ const mockedPlayhtml = {
   resolveReady: () => {
     mockedPlayhtml.isLoading = false;
     mockReadyResolve();
+  },
+  rejectReady: (error: unknown) => {
+    mockReadyReject(error);
   },
   init: vi.fn().mockImplementation(() => {
     mockedPlayhtml.isInitialized = true;

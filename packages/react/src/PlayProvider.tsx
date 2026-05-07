@@ -32,6 +32,15 @@ function normalizeCursorContainer(
   return c as CursorContainer;
 }
 
+function isReadyPromise(value: unknown): value is Promise<void> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in value &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
 type PlayProviderCursorOptions = Omit<CursorOptions, "container"> & {
   container?: CursorContainer | RefObject<HTMLElement>;
 };
@@ -155,6 +164,11 @@ export function PlayProvider({
   }, [pathname, search]);
 
   const [hasSynced, setHasSynced] = useState(playhtml.isLoading === false);
+  const [initError, setInitError] = useState<unknown>(null);
+
+  if (initError) {
+    throw initError;
+  }
 
   const processedInitOptions = useMemo<InitOptions | undefined>(() => {
     if (!initOptions) return initOptions as InitOptions | undefined;
@@ -171,10 +185,7 @@ export function PlayProvider({
   useEffect(() => {
     let cancelled = false;
     const initPromise = playhtml.init(processedInitOptions);
-    const readyPromise =
-      playhtml.ready && typeof playhtml.ready.then === "function"
-        ? playhtml.ready
-        : initPromise;
+    const readyPromise = isReadyPromise(playhtml.ready) ? playhtml.ready : initPromise;
 
     readyPromise.then(
       () => {
@@ -182,7 +193,7 @@ export function PlayProvider({
       },
       (err) => {
         console.error(err);
-        if (!cancelled) setHasSynced(true);
+        if (!cancelled) setInitError(err);
       }
     );
 
