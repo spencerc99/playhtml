@@ -147,7 +147,7 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 ## Commit & PR Guidelines
 
 - **Commits:** Short imperative subject; scope paths when helpful (e.g., `react:`, `extension:`). Group mechanical changes separately.
-- **Changesets:** Use `bun run changeset` when user-facing packages change. Config in `.changeset/config.json` (public access, patch for internal deps).
+- **Changesets:** ALWAYS add a changeset whenever you modify code under `packages/` (core libraries: `playhtml`, `@playhtml/react`, `@playhtml/common`). Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps). Skip changesets only for changes outside `packages/` (website, extension, docs, internal-docs).
 - **Releases:** `bun run version-packages` then `bun run release` (builds + publishes via changesets).
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
 

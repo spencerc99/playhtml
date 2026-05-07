@@ -431,7 +431,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 2000;
+const MaxWords = 3000;
 const MaxWordLength = 40;
 
 interface ToolboxProps {
@@ -1197,6 +1197,10 @@ function Main() {
         cursors: {
           enabled: true,
           coordinateMode: "absolute",
+          // Mount cursors inside `.content` so its CSS transform (pinch
+          // zoom + pan) carries them visually, and so stored coords are
+          // content-space — every viewer sees a cursor on the same word.
+          container: ".content",
         },
       }}
     >

@@ -177,6 +177,62 @@ cursors: {
 }
 ```
 
+### `container`
+
+Where playhtml mounts cursor DOM (and the cursor stylesheet). Defaults to `document.body`. Two reasons to set it:
+
+1. **Surviving SPA navigation.** If your framework swaps `document.body` on route changes (Astro ViewTransitions, htmx boost, Turbo), pass a container you mark as persistent so cursors don't get blown away. See [navigation](/docs/advanced/navigation/).
+2. **Anchoring cursors to a pannable / zoomable canvas.** If the container has its own CSS `transform` (e.g. you implement pinch-zoom and pan by setting `transform: translate(...) scale(...)` on a wrapper), playhtml stores cursor coordinates in that container's local space — so two viewers with different pan/zoom agree on which content a cursor is hovering. See the next section.
+
+**Type:** `HTMLElement | string | (() => HTMLElement | null) | React.RefObject<HTMLElement>`
+
+## Anchoring cursors to a transformed canvas
+
+If your page implements its own pan and zoom by applying a CSS transform to a wrapper element, the default cursor behavior doesn't do what you want: cursors are stored in viewport pixels, so when one user pans, their cursor for everyone else lands at the wrong word / shape / cell. The fix is one option:
+
+```js
+playhtml.init({
+  cursors: {
+    enabled: true,
+    container: ".canvas",  // your transformed wrapper
+  },
+});
+```
+
+When `container` resolves to a non-`document.body` element, playhtml reads its live transform matrix from `getComputedStyle()` on every pointer event:
+
+- **Storage** is the container's local (pre-transform) coordinate space. Two clients with different pan/zoom now agree on cursor positions.
+- **Rendering** mounts cursors inside the container with `position: absolute`. The container's own CSS transform composes them into each viewer's viewport pixels for free — no JavaScript per-frame repositioning, no resize-event nudging.
+
+### Requirements
+
+- The container must be `position: relative` (or any non-`static` position) so absolute children anchor to it.
+- The container should use **`transform-origin: 0 0`**. This is the standard for canvas-style apps; with any other origin, cursor positions will be shifted by the origin offset. If you need a different visual origin, pre-bake the offset into the matrix's translate component instead of changing `transform-origin`.
+- Only 2D affine transforms are supported (translate, scale, rotate, skew). 3D transforms aren't read.
+- Local-cursor proximity / visibility math, the cursor SVG icon, and `getCursorStyle` continue to work unchanged.
+
+### Example: Fridge Poetry
+
+The [`website/fridge.tsx`](https://github.com/spencerc99/playhtml/blob/main/website/fridge.tsx) demo (live at [playhtml.fun/fridge](https://playhtml.fun/fridge)) uses this pattern. Each user pans and pinch-zooms `.content` independently. With `container: ".content"`, when one user hovers the word "love," every other user sees their cursor glued to "love" in their own view, regardless of their own pan or zoom state.
+
+```tsx
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      container: ".content",
+    },
+  }}
+>
+  <div className="content">
+    {/* pan/zoom transform applied here via React state */}
+    {words.map(w => <FridgeWord key={w.id} {...w} />)}
+  </div>
+</PlayProvider>
+```
+
+The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like — inline `style.transform`, a CSS class, or a CSS variable. playhtml just reads it.
+
 ## Global Cursor API
 
 Cursors expose a global `window.cursors` object for accessing user presence data.
