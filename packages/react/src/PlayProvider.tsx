@@ -1,3 +1,5 @@
+// ABOUTME: Provides React context for playhtml state and lifecycle readiness.
+// ABOUTME: Bootstraps the playhtml singleton and exposes cursor/presence helpers.
 import {
   PropsWithChildren,
   createContext,
@@ -28,6 +30,15 @@ function normalizeCursorContainer(
     return () => ref.current;
   }
   return c as CursorContainer;
+}
+
+function isReadyPromise(value: unknown): value is Promise<void> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in value &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
 }
 
 type PlayProviderCursorOptions = Omit<CursorOptions, "container"> & {
@@ -152,7 +163,12 @@ export function PlayProvider({
     playhtml.setupPlayElements();
   }, [pathname, search]);
 
-  const [hasSynced, setHasSynced] = useState(false);
+  const [hasSynced, setHasSynced] = useState(playhtml.isLoading === false);
+  const [initError, setInitError] = useState<unknown>(null);
+
+  if (initError) {
+    throw initError;
+  }
 
   const processedInitOptions = useMemo<InitOptions | undefined>(() => {
     if (!initOptions) return initOptions as InitOptions | undefined;
@@ -167,15 +183,23 @@ export function PlayProvider({
   }, [initOptions]);
 
   useEffect(() => {
-    playhtml.init(processedInitOptions).then(
+    let cancelled = false;
+    const initPromise = playhtml.init(processedInitOptions);
+    const readyPromise = isReadyPromise(playhtml.ready) ? playhtml.ready : initPromise;
+
+    readyPromise.then(
       () => {
-        setHasSynced(true);
+        if (!cancelled) setHasSynced(true);
       },
       (err) => {
         console.error(err);
-        setHasSynced(true);
+        if (!cancelled) setInitError(err);
       }
     );
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const configureCursors = (options: Partial<CursorOptions>) => {

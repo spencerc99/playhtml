@@ -1,3 +1,5 @@
+// ABOUTME: Initializes playhtml's collaborative DOM runtime and public singleton API.
+// ABOUTME: Manages shared state, element handlers, presence, cursors, and navigation.
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
 import YProvider from "y-partyserver/provider";
@@ -492,6 +494,30 @@ function onMessage(data: string) {
 
 let hasSynced = false;
 let firstSetup = true;
+let isLoading = true;
+let initStarted = false;
+let readyResolve: () => void = () => {};
+let readyReject: (error: unknown) => void = () => {};
+
+function createReadyPromise(): Promise<void> {
+  const promise = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  promise.catch(() => {});
+  return promise;
+}
+
+let readyPromise: Promise<void> = createReadyPromise();
+
+function isPromiseLike(value: unknown): value is Promise<void> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in value &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
 let isDevelopmentMode = false;
@@ -762,7 +788,40 @@ async function runHandleNavigation(): Promise<void> {
   dispatchNavigated(__currentRoomId);
 }
 
-async function initPlayHTML({
+function initPlayHTML(options: InitOptions = {}) {
+  if (initStarted) return readyPromise;
+
+  const existingPlayhtml = (window as any).playhtml;
+  if (existingPlayhtml) {
+    if (isPromiseLike(existingPlayhtml.ready)) {
+      readyPromise = existingPlayhtml.ready;
+      readyPromise.then(
+        () => {
+          isLoading = false;
+        },
+        () => {},
+      );
+      initStarted = true;
+      return readyPromise;
+    }
+
+    const error = new Error(
+      "playhtml is already set up by an incompatible instance. Make sure @playhtml/react and playhtml use matching versions.",
+    );
+    readyReject(error);
+    initStarted = true;
+    return readyPromise;
+  }
+
+  initStarted = true;
+  const initPromise = initPlayHTMLOnce(options);
+  initPromise.catch((error) => {
+    readyReject(error);
+  });
+  return initPromise;
+}
+
+async function initPlayHTMLOnce({
   // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
   host,
   extraCapabilities,
@@ -773,10 +832,6 @@ async function initPlayHTML({
   developmentMode = false,
   cursors = {},
 }: InitOptions = {}) {
-  if (!firstSetup || "playhtml" in window) {
-    console.error("playhtml already set up! ignoring");
-    return;
-  }
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
   const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
@@ -911,6 +966,8 @@ async function initPlayHTML({
 
       // Mark all elements as ready after sync completes and elements are set up
       markAllElementsAsReady();
+      isLoading = false;
+      readyResolve();
 
       // Fetch simple permissions for referenced shared elements so clients can block writes locally
       if (sharedReferences.length > 0) {
@@ -1304,6 +1361,8 @@ function createPresenceRoom(name: string): PresenceRoom {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
+  readonly isLoading: boolean;
+  readonly ready: Promise<void>;
   handleNavigation: () => Promise<void>;
   setupPlayElements: typeof setupElements;
   setupPlayElement: typeof setupPlayElement;
@@ -1340,7 +1399,7 @@ export interface PlayHTMLComponents {
  * isolation (beforeEach resets) only.
  */
 export async function resetPlayHTML(): Promise<void> {
-  if (firstSetup) return;
+  if (firstSetup && !initStarted) return;
 
   try {
     if (navigationController) {
@@ -1401,6 +1460,9 @@ export async function resetPlayHTML(): Promise<void> {
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
     firstSetup = true;
+    isLoading = true;
+    initStarted = false;
+    readyPromise = createReadyPromise();
     __currentRoomId = "";
     __currentHost = "";
     presenceAPI = null;
@@ -1417,6 +1479,12 @@ export async function resetPlayHTML(): Promise<void> {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  get isLoading() {
+    return isLoading;
+  },
+  get ready() {
+    return readyPromise;
+  },
   handleNavigation: async function handleNavigation(): Promise<void> {
     if (!navigationController) return;
     await navigationController.trigger();
