@@ -6,9 +6,14 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",
+    "test:partykit": "bun run test:partykit:hibernation && bun run test:partykit:compaction",
+    "test:partykit:hibernation": "node partykit/hibernation-bridge-smoke.mjs",
+    "test:partykit:compaction": "node partykit/empty-room-compaction-smoke.mjs",
+    "test:partykit:emergency": "node partykit/emergency-compaction-smoke.mjs",
     "install-browsers": "playwright install chromium --with-deps"
   },
   "devDependencies": {
-    "@playwright/test": "^1.48.0"
+    "@playwright/test": "^1.48.0",
+    "ws": "^8.19.0"
   }
 }

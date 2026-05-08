@@ -1,6 +1,11 @@
+The MIT License below applies to the contents of the `packages/` directory
+only. All other directories — including `website/`, `extension/`, `tools/`,
+and `apps/docs/` — are licensed separately under the terms described in
+`LICENSE-ART`.
+
 MIT License
 
-Copyright (c) 2023 Spencer Chang
+Copyright (c) 2023-2026 Spencer Chang
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

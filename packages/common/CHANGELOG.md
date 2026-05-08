@@ -1,11 +1,53 @@
 # @playhtml/common
 
+## 0.7.0
+
+### Minor Changes
+
+- 278e7d2: `can-move` now supports a declarative `can-move-bounds` attribute that clamps a draggable element to a specific container. Set the value to the container's id (`can-move-bounds="arena"` or `can-move-bounds="#arena"`) or any CSS selector. The element can partially hang off the container edges — by default `max(25% of element size, 60px)` stays inside on every edge so readers always have something to grab — while the cursor itself is unconstrained and a fast drag past the edge won't fling the element back in the opposite direction.
+
+  Tune the keep-visible slice with two optional attributes:
+  - `can-move-bounds-min-visible` (0–1) — fraction of the element to keep visible. Use `1` to pin fully inside (legacy strict clamp), `0` to drop the fraction constraint.
+  - `can-move-bounds-min-visible-px` (pixels, default 60) — absolute floor, useful when an image has transparent padding that would otherwise let the visible paint slip out. The effective slice is `max(fraction × size, pxFloor)`.
+
+  Set both to `0` to opt fully out of the keep-visible guarantee.
+
+  ```html
+  <div id="fridge">
+    <div can-move can-move-bounds="fridge" id="magnet-a">🍎</div>
+    <div
+      can-move
+      can-move-bounds="#fridge"
+      can-move-bounds-min-visible="0.5"
+      can-move-bounds-min-visible-px="0"
+      id="magnet-b"
+    >
+      🥐
+    </div>
+  </div>
+  ```
+
+  In React, `<CanMoveElement>` gets typed `bounds`, `boundsMinVisible`, and `boundsMinVisiblePx` props that map to the same attributes:
+
+  ```tsx
+  import { CanMoveElement } from "@playhtml/react";
+
+  <CanMoveElement bounds="fridge" boundsMinVisible={0.5} boundsMinVisiblePx={0}>
+    <div id="magnet">🧲</div>
+  </CanMoveElement>;
+  ```
+
+  Exported from `@playhtml/common`: `CanMoveBounds`, `CanMoveBoundsMinVisible`, `CanMoveBoundsMinVisiblePx`.
+
+### Patch Changes
+
+- a0936aa: Cache `generatePersistentPlayerIdentity()` at the module level so repeated calls return a reference-stable identity. Previously each call re-parsed localStorage, producing a new object with identical data — causing React effect deps and memo comparisons keyed on identity to invalidate on every render. Also fixes two edge cases where corrupt or locked localStorage would cause different identities to be returned across calls in the same session.
+
 ## 0.6.0
 
 ### Minor Changes
 
 - cd467ce: Add page-level shared data and presence API
-
   - `playhtml.createPageData(name, default)` for named persistent data channels not tied to DOM elements
   - `playhtml.presence` for unified per-user presence with named channels, `isMe` flag, and channel-scoped `onPresenceChange`
   - Deprecate `playhtml.cursorClient` in favor of `playhtml.presence`
@@ -42,7 +84,7 @@
   const unsubscribe = playhtml.cursorClient.onCursorPresencesChange(
     (presences) => {
       // presences is Map<string, CursorPresenceView>
-    }
+    },
   );
 
   // Get my stable player identity
@@ -81,7 +123,6 @@
   **Breaking Change - Awareness Scope:**
 
   Element awareness now follows cursor scope instead of always being page-specific:
-
   - If cursors are configured with `room: "domain"`, element awareness is domain-wide
   - If cursors are configured with `room: "page"`, element awareness is page-specific
   - If cursors are configured with `room: "section"`, element awareness is section-specific
@@ -89,7 +130,6 @@
   This is more intuitive (your user state follows you) but may affect apps that relied on the old behavior. To restore page-specific awareness when cursors are domain-wide, you can configure cursors to use page scope separately.
 
   **Benefits:**
-
   - Stable user IDs (`playerIdentity.publicKey`) persist across page refreshes
   - No need to access `(playhtml.cursorClient as any).provider` - use clean public APIs
   - Easier to correlate cursor positions with user-specific awareness data
@@ -122,7 +162,6 @@
   Previously, user cursor names and colors were randomly generated on each page visit, creating a confusing experience where users would have different identities across sessions. This update introduces localStorage persistence so users maintain consistent cursor identity.
 
   **Key Changes:**
-
   - Added `generatePersistentPlayerIdentity()` function that saves/loads identity from localStorage
   - Enhanced `setColor()` and `setName()` methods to persist changes automatically
   - Added `getCursors()` function to PlayContext for better React integration

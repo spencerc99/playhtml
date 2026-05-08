@@ -385,6 +385,79 @@ export class CursorClientAwareness {
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
+
+  // When the cursor container is a non-body element with a CSS transform,
+  // cursors are stored and rendered in container-local coordinates. The
+  // matrix is read live from getComputedStyle so host pan/zoom updates flow
+  // through automatically. Returns null for the document.body default
+  // (identity, fast path) so today's behavior is preserved.
+  private getContainerMatrix(): { matrix: DOMMatrixReadOnly; rect: DOMRect; el: HTMLElement } | null {
+    const el = resolveCursorContainer(this.options.container);
+    if (!el || el === document.body) return null;
+    if (typeof DOMMatrixReadOnly === "undefined") return null;
+    const t = getComputedStyle(el).transform;
+    const matrix =
+      !t || t === "none"
+        ? new DOMMatrixReadOnly()
+        : new DOMMatrixReadOnly(t);
+    return { matrix, rect: el.getBoundingClientRect(), el };
+  }
+
+  private clientToStorage(clientX: number, clientY: number): { x: number; y: number } {
+    const m = this.getContainerMatrix();
+    if (m) {
+      // ASSUMPTION: the container uses `transform-origin: 0 0`. Hosts
+      // applying their own pan/zoom transform almost always do so — it's
+      // the natural choice for a canvas where (0, 0) in content space
+      // maps to the container's top-left. With this origin, the post-
+      // transform top-left equals `rect.left / rect.top` directly, AND
+      // an absolutely-positioned child rendered at (left, top) inside the
+      // container ends up at viewport position
+      //   (rect.left + a*left + c*top, rect.top + b*left + d*top)
+      // i.e. only the linear (a, b, c, d) part of the matrix is applied
+      // to the child's local coordinates — the matrix's translate (e, f)
+      // is already absorbed into rect.left / rect.top by the browser's
+      // layout. So to invert, subtract the rect origin and undo only
+      // the linear part. Other origins (e.g. `center`) would shift the
+      // anchor and produce off-by-half-the-container errors; we don't
+      // support them here. If a host needs that, they can pre-multiply
+      // their transform with the equivalent translate to bake the origin
+      // into (e, f) and keep `transform-origin: 0 0`.
+      const a = m.matrix.a;
+      const b = m.matrix.b;
+      const c = m.matrix.c;
+      const d = m.matrix.d;
+      const det = a * d - b * c;
+      if (det === 0) return { x: 0, y: 0 };
+      const dx = clientX - m.rect.left;
+      const dy = clientY - m.rect.top;
+      return {
+        x: (d * dx - c * dy) / det,
+        y: (a * dy - b * dx) / det,
+      };
+    }
+    return clientToStorageCoordinates(clientX, clientY, this.coordinateMode);
+  }
+
+  private storageToClient(x: number, y: number): { x: number; y: number } {
+    const m = this.getContainerMatrix();
+    if (m) {
+      // Mirror clientToStorage; same `transform-origin: 0 0` assumption.
+      // Apply only the linear part of the matrix to the local coord and
+      // add the rect origin — the translate (e, f) is already in
+      // rect.left / rect.top.
+      const a = m.matrix.a;
+      const b = m.matrix.b;
+      const c = m.matrix.c;
+      const d = m.matrix.d;
+      return {
+        x: a * x + c * y + m.rect.left,
+        y: b * x + d * y + m.rect.top,
+      };
+    }
+    return storageToClientCoordinates(x, y, this.coordinateMode);
+  }
+
   private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
   private currentZone: CursorZonePosition | null = null;
   private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
@@ -567,11 +640,7 @@ export class CursorClientAwareness {
       );
       if (!valid) return;
 
-      const clientCoords = storageToClientCoordinates(
-        valid.cursor.x,
-        valid.cursor.y,
-        this.coordinateMode,
-      );
+      const clientCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
       this.spatialGrid.insert({
         id: stableId,
         x: clientCoords.x,
@@ -589,11 +658,7 @@ export class CursorClientAwareness {
       this.options.proximityThreshold || PROXIMITY_THRESHOLD;
 
     // Convert our cursor to client coordinates for proximity check
-    const ourClientCoords = storageToClientCoordinates(
-      this.currentCursor.x,
-      this.currentCursor.y,
-      this.coordinateMode,
-    );
+    const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
 
     // Use spatial grid to efficiently find nearby cursors (grid already has client coords)
     const nearbyItems = this.spatialGrid.findNearby(
@@ -608,11 +673,7 @@ export class CursorClientAwareness {
       if (!presence.cursor) continue;
 
       // Convert their cursor to client coordinates for distance calculation
-      const theirClientCoords = storageToClientCoordinates(
-        presence.cursor.x,
-        presence.cursor.y,
-        this.coordinateMode,
-      );
+      const theirClientCoords = this.storageToClient(presence.cursor.x, presence.cursor.y);
       const distance = calculateDistance(
         {
           x: ourClientCoords.x,
@@ -716,8 +777,14 @@ export class CursorClientAwareness {
 
       // In absolute mode, use position:absolute so the browser handles
       // scroll compositing natively (no per-frame repositioning needed).
+      // When the cursor container has its own CSS transform, cursors are
+      // appended inside it and rendered in container-local space — also
+      // position:absolute, so the parent's transform composes for free.
       // In relative mode, use position:fixed since coords are viewport-relative.
-      el.style.position = this.coordinateMode === "absolute" ? "absolute" : "fixed";
+      el.style.position =
+        this.coordinateMode === "absolute" || this.getContainerMatrix()
+          ? "absolute"
+          : "fixed";
       el.style.left = `${position.x}px`;
       el.style.top = `${position.y}px`;
       el.style.zIndex = "999999";
@@ -726,14 +793,18 @@ export class CursorClientAwareness {
   }
 
   // Resolves storage coordinates to the coordinate space used for positioning.
-  // In absolute mode, storage coords are already document coords and cursors
-  // use position:absolute, so no conversion needed. In relative mode, we
-  // convert to viewport pixels for position:fixed.
+  // In absolute mode (default container) storage coords are document coords
+  // and cursors use position:absolute, so no conversion is needed. With a
+  // transformed cursor container, storage coords are container-local — and
+  // since cursors are appended inside that container with position:absolute,
+  // the CSS transform composes them into the right viewport pixels for free,
+  // so again no conversion is needed. Relative mode converts to viewport
+  // pixels for position:fixed.
   private resolveTargetCoords(storageX: number, storageY: number): { x: number; y: number } {
-    if (this.coordinateMode === "absolute") {
+    if (this.coordinateMode === "absolute" || this.getContainerMatrix()) {
       return { x: storageX, y: storageY };
     }
-    return storageToClientCoordinates(storageX, storageY, this.coordinateMode);
+    return this.storageToClient(storageX, storageY);
   }
 
   // Apply zone-specific cursor styling, or revert to global styling when
@@ -833,11 +904,7 @@ export class CursorClientAwareness {
       }
 
       // Convert to storage coordinates based on mode
-      const storageCoords = clientToStorageCoordinates(
-        e.clientX,
-        e.clientY,
-        this.coordinateMode,
-      );
+      const storageCoords = this.clientToStorage(e.clientX, e.clientY);
       this.currentCursor = {
         x: storageCoords.x,
         y: storageCoords.y,
@@ -854,11 +921,7 @@ export class CursorClientAwareness {
       const touch = e.touches[0];
       if (touch) {
         // Convert to storage coordinates based on mode
-        const storageCoords = clientToStorageCoordinates(
-          touch.clientX,
-          touch.clientY,
-          this.coordinateMode,
-        );
+        const storageCoords = this.clientToStorage(touch.clientX, touch.clientY);
         this.currentCursor = {
           x: storageCoords.x,
           y: storageCoords.y,
@@ -974,13 +1037,12 @@ export class CursorClientAwareness {
 
       // In absolute mode, non-zone cursors use position:absolute with
       // document coords — the browser handles scroll, nothing to do.
-      if (this.coordinateMode === "absolute") continue;
+      // With a transformed cursor container, cursors are also positioned
+      // absolutely (in container-local coords) and the parent's CSS
+      // transform composes them into viewport pixels for free.
+      if (this.coordinateMode === "absolute" || this.getContainerMatrix()) continue;
 
-      const targetCoords = storageToClientCoordinates(
-        valid.cursor.x,
-        valid.cursor.y,
-        this.coordinateMode,
-      );
+      const targetCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
       animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
     }
 
@@ -1228,11 +1290,7 @@ export class CursorClientAwareness {
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
       // Convert our cursor to client coordinates for distance calculation
-      const ourClientCoords = storageToClientCoordinates(
-        this.currentCursor.x,
-        this.currentCursor.y,
-        this.coordinateMode,
-      );
+      const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
       // Use target coordinates for distance (viewport pixels)
       const distance = calculateDistance(
         { x: targetCoords.x, y: targetCoords.y, pointer: cursor.pointer },
@@ -1660,11 +1718,7 @@ export class CursorClientAwareness {
     if (!this.currentCursor || !this.visibilityThreshold) return;
 
     // Convert our cursor to client coordinates so distance is in pixels (visibilityThreshold is in px)
-    const ourClientCoords = storageToClientCoordinates(
-      this.currentCursor.x,
-      this.currentCursor.y,
-      this.coordinateMode,
-    );
+    const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
 
     this.cursors.forEach((cursorElement, stableId) => {
       // Get cursor data from spatial grid
@@ -1673,11 +1727,7 @@ export class CursorClientAwareness {
 
       if (cursorData && cursorData.cursor) {
         // Convert to viewport coordinates for distance calculation
-        const theirClientCoords = storageToClientCoordinates(
-          cursorData.cursor.x,
-          cursorData.cursor.y,
-          this.coordinateMode,
-        );
+        const theirClientCoords = this.storageToClient(cursorData.cursor.x, cursorData.cursor.y);
         const distance = calculateDistance(
           { ...ourClientCoords, pointer: this.currentCursor!.pointer },
           { ...theirClientCoords, pointer: cursorData.cursor.pointer },
@@ -1854,11 +1904,7 @@ export class CursorClientAwareness {
         state as Record<string, unknown>,
         clientId,
       );
-      const clientCoords = storageToClientCoordinates(
-        valid.cursor.x,
-        valid.cursor.y,
-        this.coordinateMode,
-      );
+      const clientCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
       presences.set(stableId, {
         cursor: {
           x: clientCoords.x,
@@ -1966,11 +2012,7 @@ export class CursorClientAwareness {
     if (!this.currentCursor) return false;
 
     const color = getPrimaryColor(this.playerIdentity);
-    const coords = storageToClientCoordinates(
-      this.currentCursor.x,
-      this.currentCursor.y,
-      this.coordinateMode,
-    );
+    const coords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
 
     // Create a temporary cursor element matching the standard cursor shape
     const ghost = document.createElement("div");

@@ -25,7 +25,6 @@ import {
 
 // Settings interface for cursor trails
 export interface CursorTrailSettings {
-  trailOpacity: number;
   randomizeColors: boolean;
   domainFilter: string;
   eventFilter: {
@@ -190,10 +189,6 @@ export function useCursorTrails(
         duration?: number;
       }> = [];
       let lastTimestamp = 0;
-      // Track last viewport-relative position (normalized 0-1) to detect
-      // scroll-only samples where the cursor hasn't actually moved.
-      let lastNormX = -1;
-      let lastNormY = -1;
 
       groupEvents.forEach((event) => {
         const eventType = event.data.event || "move";
@@ -207,24 +202,6 @@ export function useCursorTrails(
           !settings.eventFilter.cursor_change
         )
           return;
-
-        // In document space mode, skip move events that are scroll-induced:
-        // the cursor barely moved in viewport-relative terms between samples.
-        // Threshold is 5% of viewport — small enough to catch a stationary
-        // cursor while scrolling, large enough to keep real cursor movement.
-        // Clicks and holds always pass through.
-        // if (
-        //   settings.documentSpace &&
-        //   eventType === "move" &&
-        //   lastNormX >= 0 &&
-        //   Math.abs(event.data.x - lastNormX) < 0.05 &&
-        //   Math.abs(event.data.y - lastNormY) < 0.05
-        // ) {
-        //   lastTimestamp = event.ts;
-        //   lastNormX = event.data.x;
-        //   lastNormY = event.data.y;
-        //   return;
-        // }
 
         // Convert normalized coordinates (0-1) to pixel coordinates.
         // In document space mode: reconstruct the absolute document position using
@@ -270,7 +247,7 @@ export function useCursorTrails(
             trails.push({
               points: [...currentTrail],
               color: getTrailColor(startTime),
-              opacity: settings.trailOpacity,
+              opacity: 1,
               startTime,
               endTime,
               clicks: [...currentClicks],
@@ -317,8 +294,6 @@ export function useCursorTrails(
         }
 
         lastTimestamp = event.ts;
-        lastNormX = event.data.x;
-        lastNormY = event.data.y;
       });
 
       // Don't forget the last trail
@@ -329,7 +304,7 @@ export function useCursorTrails(
         trails.push({
           points: currentTrail,
           color: getTrailColor(startTime),
-          opacity: settings.trailOpacity,
+          opacity: 1,
           startTime,
           endTime,
           clicks: [...currentClicks],
@@ -348,7 +323,6 @@ export function useCursorTrails(
     settings.randomizeColors,
     settings.domainFilter,
     settings.eventFilter,
-    settings.trailOpacity,
     settings.documentSpace,
     viewportSize,
   ]);

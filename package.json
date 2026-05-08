@@ -6,9 +6,11 @@
     "packages/playhtml",
     "packages/react",
     "packages/common",
+    "packages/extension-types",
     "apps/docs",
     "extension",
     "extension/website",
+    "extension/worker",
     "smoke-tests"
   ],
   "scripts": {
@@ -31,6 +33,10 @@
     "load-test": "bun load-test/src/runner.ts",
     "load-test:full": "bun load-test/src/runner.ts --config full-suite",
     "smoke": "cd smoke-tests && bun run test",
+    "smoke:partykit": "cd smoke-tests && bun run test:partykit",
+    "smoke:partykit:hibernation": "cd smoke-tests && bun run test:partykit:hibernation",
+    "smoke:partykit:compaction": "cd smoke-tests && bun run test:partykit:compaction",
+    "smoke:partykit:emergency": "cd smoke-tests && bun run test:partykit:emergency",
     "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
   },
   "overrides": {
@@ -38,7 +44,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
-    "@cloudflare/workers-types": "^4.20230518.0",
+    "@cloudflare/workers-types": "^4.20260424.1",
     "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^20.3.3",
     "@types/randomcolor": "^0.5.9",
@@ -57,12 +63,12 @@
     "@supabase/supabase-js": "^2.57.4",
     "canvas-confetti": "^1.9.2",
     "html2canvas": "^1.4.1",
-    "partyserver": "^0.1.0",
+    "partyserver": "^0.5.5",
     "profane-words": "^1.5.11",
     "randomcolor": "^0.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "y-partyserver": "^1.0.0",
+    "y-partyserver": "^2.2.0",
     "yjs": "13.6.18"
   }
 }

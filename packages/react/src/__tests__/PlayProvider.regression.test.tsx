@@ -1,14 +1,35 @@
 // ABOUTME: Regression tests locking in PlayProvider's bootstrap contract.
 // ABOUTME: Catches breakages where bare <PlayProvider> stops initializing playhtml.
 
-import React from "react";
+import React, { PropsWithChildren } from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, waitFor } from "@testing-library/react";
-import { PlayProvider } from "../index";
+import { PlayContext, PlayProvider } from "../index";
 
 const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   init: ReturnType<typeof vi.fn>;
+  resetReady: () => void;
+  resolveReady: () => void;
+  rejectReady: (error: unknown) => void;
 };
+
+class ErrorBoundary extends React.Component<
+  PropsWithChildren,
+  { error: Error | null }
+> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return <div data-testid="error">{this.state.error.message}</div>;
+    }
+    return this.props.children;
+  }
+}
 
 describe("PlayProvider bootstrap contract", () => {
   beforeEach(() => {
@@ -42,5 +63,58 @@ describe("PlayProvider bootstrap contract", () => {
     await waitFor(() => {
       expect(mockedPlayhtml.init).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("keeps context loading until playhtml.ready resolves", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.init.mockImplementation(() => Promise.resolve());
+
+    function Status() {
+      const context = React.useContext(PlayContext);
+      return <div data-testid="status">{context.isLoading ? "loading" : "ready"}</div>;
+    }
+
+    const { getByTestId } = render(
+      <PlayProvider>
+        <Status />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mockedPlayhtml.init).toHaveBeenCalledTimes(1);
+    });
+    expect(getByTestId("status")).toHaveTextContent("loading");
+
+    mockedPlayhtml.resolveReady();
+
+    await waitFor(() => {
+      expect(getByTestId("status")).toHaveTextContent("ready");
+    });
+  });
+
+  it("surfaces init failures to error boundaries", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.init.mockImplementation(() => Promise.resolve());
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { getByTestId } = render(
+      <ErrorBoundary>
+        <PlayProvider>
+          <div data-testid="child" />
+        </PlayProvider>
+      </ErrorBoundary>,
+    );
+
+    await waitFor(() => {
+      expect(mockedPlayhtml.init).toHaveBeenCalledTimes(1);
+    });
+
+    mockedPlayhtml.rejectReady(new Error("init failed"));
+
+    await waitFor(() => {
+      expect(getByTestId("error")).toHaveTextContent("init failed");
+    });
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });

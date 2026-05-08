@@ -7,7 +7,7 @@ import {
   getValidEventTypes,
   type CollectionEventType,
   type PageMetadataSnapshot,
-} from '../../../src/shared/types';
+} from '@playhtml/extension-types';
 
 // Rate limiting: max events per request
 const MAX_EVENTS_PER_REQUEST = 500;

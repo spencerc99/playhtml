@@ -2,7 +2,7 @@
 // ABOUTME: Admin-authenticated endpoint for extracting edition data from Supabase.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
-import type { CollectionEvent, EventMeta } from '../../../src/shared/types';
+import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 
 /**
  * POST /events/export

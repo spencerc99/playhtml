@@ -1,0 +1,40 @@
+{
+  "name": "@playhtml/extension-types",
+  "description": "Shared event/metadata types for the playhtml 'we were online' extension and its Cloudflare Worker.",
+  "version": "0.2.0",
+  "license": "MIT",
+  "type": "module",
+  "author": "Spencer Chang <spencerc99@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spencerc99/playhtml.git",
+    "directory": "packages/extension-types"
+  },
+  "bugs": {
+    "url": "https://github.com/spencerc99/playhtml/issues"
+  },
+  "main": "./dist/playhtml-extension-types.es.js",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/playhtml-extension-types.es.js",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/playhtml-extension-types.es.js",
+      "require": "./dist/playhtml-extension-types.umd.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc && vite build"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.2",
+    "vite": "^7.1.2",
+    "vite-plugin-dts": "^3.0.3"
+  }
+}
