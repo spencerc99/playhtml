@@ -49,3 +49,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+
+      - name: Announce release on Discord
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: node .github/scripts/announce-release.mjs
