@@ -13,6 +13,7 @@
     "zip:firefox": "wxt zip -b firefox",
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
+    "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",
     "test": "vitest",
     "postinstall": "wxt prepare"
   },
