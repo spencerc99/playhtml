@@ -15,6 +15,41 @@ Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)
 - `cd worker && wrangler deploy`: Deploy to Cloudflare
 
+## Releases
+
+The extension uses the same Changesets flow as the core packages. Add a
+`.changeset/<slug>.md` file describing user-facing changes (frontmatter:
+`"@playhtml/extension": patch|minor|major`). Changesets bumps the version,
+updates `extension/CHANGELOG.md`, and pushes a tag (`@playhtml/extension@x.y.z`)
+when the "Release: Version packages" PR merges. Because the package is
+`private: true`, `changeset publish` skips npm — the tag is the trigger.
+
+The tag push fires `.github/workflows/extension-release.yml`, which builds
+Chrome + Firefox zips and runs `wxt submit` for both stores.
+
+**Required GitHub Actions secrets** (set once at repo level):
+
+Chrome Web Store:
+- `CHROME_EXTENSION_ID`
+- `CHROME_CLIENT_ID` — OAuth Desktop-app client (NOT Web app — Web clients use
+  the deprecated OOB flow which Google penalizes with ~7-day token expiry)
+- `CHROME_CLIENT_SECRET`
+- `CHROME_REFRESH_TOKEN` — generated once via OAuth Playground, scope
+  `https://www.googleapis.com/auth/chromewebstore`. Long-lived but can be
+  invalidated by Google account password change, 6-month inactivity, or
+  security events. Regenerate locally with `bun run submit:refresh-chrome-token`
+  and update the secret if CI fails with an OAuth error.
+
+Firefox AMO:
+- `FIREFOX_EXTENSION_ID`
+- `FIREFOX_JWT_ISSUER` — from addons.mozilla.org → Developer Hub → Manage API Keys
+- `FIREFOX_JWT_SECRET`
+
+**Manual fallback / testing:** The workflow also supports `workflow_dispatch`
+with a `dry-run` toggle (defaults to true) — run it from the Actions tab to
+verify zips build and credentials work without actually submitting. The local
+`./release.sh` continues to work as a manual escape hatch.
+
 ## Website & experiments (`extension/website/`)
 
 The `extension/website/` Vite app serves both the marketing/landing pages
