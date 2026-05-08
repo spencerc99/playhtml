@@ -16,6 +16,7 @@ export class PresenceCountPill {
   private jumpBtn: HTMLElement | null = null;
   private cleanups: (() => void)[] = [];
   private lastFingerprint = "";
+  private isHidden = false;
 
   constructor(
     private presence: PresenceAPI,
@@ -45,6 +46,20 @@ export class PresenceCountPill {
     const interval = setInterval(check, 1000);
     this.cleanups.push(() => clearInterval(interval));
     check();
+
+    const onHashChange = () => this.updateHiddenState();
+    window.addEventListener("hashchange", onHashChange);
+    this.cleanups.push(() => window.removeEventListener("hashchange", onHashChange));
+    this.updateHiddenState();
+  }
+
+  private updateHiddenState(): void {
+    const shouldHide = /^#\/media\//.test(location.hash);
+    if (shouldHide === this.isHidden) return;
+    this.isHidden = shouldHide;
+    if (this.element) {
+      this.element.style.display = shouldHide ? "none" : "flex";
+    }
   }
 
   private getMyPublicKey(...maps: Map<string, any>[]): string | null {
@@ -129,6 +144,7 @@ export class PresenceCountPill {
         opacity: "0",
       });
       document.body.appendChild(this.element);
+      if (this.isHidden) this.element.style.display = "none";
       requestAnimationFrame(() => {
         if (this.element) this.element.style.opacity = "1";
       });

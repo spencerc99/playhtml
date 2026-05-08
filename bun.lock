@@ -140,7 +140,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -149,7 +149,7 @@
     },
     "packages/extension-types": {
       "name": "@playhtml/extension-types",
-      "version": "0.1.0",
+      "version": "0.3.0",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -158,7 +158,7 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.9.0",
+      "version": "2.10.0",
       "dependencies": {
         "@playhtml/common": "workspace:^",
         "@syncedstore/core": "^0.6.0",
@@ -177,7 +177,7 @@
     },
     "packages/react": {
       "name": "@playhtml/react",
-      "version": "0.10.1",
+      "version": "0.11.0",
       "dependencies": {
         "@playhtml/common": "workspace:^",
         "classnames": "^2.3.2",
@@ -199,6 +199,7 @@
         "vitest": "^3.1.1",
       },
       "peerDependencies": {
+        "playhtml": "^2.10.0",
         "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
         "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
       },
