@@ -17,15 +17,17 @@ Worker backend (in `worker/`):
 
 ## Releases
 
-The extension uses the same Changesets flow as the core packages. Add a
-`.changeset/<slug>.md` file describing user-facing changes (frontmatter:
-`"@playhtml/extension": patch|minor|major`). Changesets bumps the version,
-updates `extension/CHANGELOG.md`, and pushes a tag (`@playhtml/extension@x.y.z`)
-when the "Release: Version packages" PR merges. Because the package is
-`private: true`, `changeset publish` skips npm — the tag is the trigger.
+The extension ships independently of the core packages. Trigger a release from
+the GitHub Actions tab: `Actions → Extension Release → Run workflow`. Pick a
+bump type (`patch`/`minor`/`major`/`custom`) and the workflow:
 
-The tag push fires `.github/workflows/extension-release.yml`, which builds
-Chrome + Firefox zips and runs `wxt submit` for both stores.
+1. Bumps `extension/package.json`
+2. Builds Chrome + Firefox zips
+3. Runs `wxt submit` for both stores
+4. Commits the version bump to `main` and tags it as `@playhtml/extension@x.y.z`
+
+Use the `dry-run` toggle (off by default) to validate build + auth without
+submitting or committing — useful for testing credentials.
 
 **Required GitHub Actions secrets** (set once at repo level):
 
@@ -45,10 +47,9 @@ Firefox AMO:
 - `FIREFOX_JWT_ISSUER` — from addons.mozilla.org → Developer Hub → Manage API Keys
 - `FIREFOX_JWT_SECRET`
 
-**Manual fallback / testing:** The workflow also supports `workflow_dispatch`
-with a `dry-run` toggle (defaults to true) — run it from the Actions tab to
-verify zips build and credentials work without actually submitting. The local
-`./release.sh` continues to work as a manual escape hatch.
+**Manual fallback:** The local `./release.sh` continues to work as an escape
+hatch (uses `.env.submit` instead of GitHub secrets, requires a manual
+`extension/package.json` bump first).
 
 ## Website & experiments (`extension/website/`)
 

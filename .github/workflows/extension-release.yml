@@ -1,15 +1,21 @@
 name: Extension Release
 
 on:
-  push:
-    tags:
-      - "@playhtml/extension@*"
   workflow_dispatch:
     inputs:
+      bump:
+        description: "Version bump type (or pick 'custom' and set version)"
+        type: choice
+        options: [patch, minor, major, custom]
+        default: patch
+      version:
+        description: "Custom version (only used when bump=custom, e.g. 0.2.0)"
+        type: string
+        default: ""
       dry-run:
-        description: "Dry run (build + validate, do not submit)"
+        description: "Dry run (build + validate, do not submit, do not commit)"
         type: boolean
-        default: true
+        default: false
       skip-chrome:
         description: "Skip Chrome submission"
         type: boolean
@@ -19,22 +25,27 @@ on:
         type: boolean
         default: false
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency: ${{ github.workflow }}
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  submit:
-    name: Build and submit to stores
+  release:
+    name: Bump, build, submit
     runs-on: ubuntu-latest
     env:
+      BUMP: ${{ inputs.bump }}
+      CUSTOM_VERSION: ${{ inputs.version }}
       DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
       SKIP_CHROME: ${{ inputs.skip-chrome && 'true' || 'false' }}
       SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -52,9 +63,31 @@ jobs:
       - name: Build packages
         run: bun run build-packages
 
-      - name: Read extension version
+      - name: Bump extension version
         id: version
-        run: echo "version=$(node -p "require('./extension/package.json').version")" >> "$GITHUB_OUTPUT"
+        working-directory: extension
+        run: |
+          if [ "$BUMP" = "custom" ]; then
+            if [ -z "$CUSTOM_VERSION" ]; then
+              echo "bump=custom requires a version input" >&2
+              exit 1
+            fi
+            NEW_VERSION="$CUSTOM_VERSION"
+          else
+            NEW_VERSION=$(node -p "
+              const semver = require('./package.json').version.split('.').map(Number);
+              const [maj, min, pat] = semver;
+              ({ patch: [maj, min, pat + 1], minor: [maj, min + 1, 0], major: [maj + 1, 0, 0] })['$BUMP'].join('.')
+            ")
+          fi
+          echo "Bumping to $NEW_VERSION"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build Chrome zip
         if: env.SKIP_CHROME != 'true'
@@ -70,16 +103,14 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ -d publish ]; then
-            CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
-            FIREFOX_ZIP=$(ls publish/*-"$VERSION"-firefox.zip 2>/dev/null | head -1 || true)
-            SOURCES_ZIP=$(ls publish/*-"$VERSION"-sources.zip 2>/dev/null | head -1 || true)
-            echo "chrome=$CHROME_ZIP" >> "$GITHUB_OUTPUT"
-            echo "firefox=$FIREFOX_ZIP" >> "$GITHUB_OUTPUT"
-            echo "sources=$SOURCES_ZIP" >> "$GITHUB_OUTPUT"
-            echo "Built artifacts:"
-            ls -la publish/
-          fi
+          CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
+          FIREFOX_ZIP=$(ls publish/*-"$VERSION"-firefox.zip 2>/dev/null | head -1 || true)
+          SOURCES_ZIP=$(ls publish/*-"$VERSION"-sources.zip 2>/dev/null | head -1 || true)
+          echo "chrome=$CHROME_ZIP" >> "$GITHUB_OUTPUT"
+          echo "firefox=$FIREFOX_ZIP" >> "$GITHUB_OUTPUT"
+          echo "sources=$SOURCES_ZIP" >> "$GITHUB_OUTPUT"
+          echo "Built artifacts:"
+          ls -la publish/
 
       - name: Submit to stores
         working-directory: extension
@@ -107,6 +138,19 @@ jobs:
           else
             bun run wxt submit "${ARGS[@]}"
           fi
+
+      - name: Commit version bump and tag
+        if: env.DRY_RUN != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extension/package.json
+          git commit -m "extension: release v$VERSION"
+          git tag "@playhtml/extension@$VERSION"
+          git push origin HEAD:main
+          git push origin "@playhtml/extension@$VERSION"
 
       - name: Upload zips as artifacts
         if: always()
