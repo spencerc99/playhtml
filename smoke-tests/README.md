@@ -37,6 +37,9 @@ alarms, and need staging secrets.
 # Verifies bridge observers reattach after Durable Object hibernation.
 bun smoke:partykit:hibernation
 
+# Verifies normal traffic survives while oversized and burst clients are closed.
+bun smoke:partykit:limits
+
 # Verifies empty-room compaction, reset rejection, and fresh reconnect.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:compaction
 
@@ -62,6 +65,8 @@ bunx wrangler deploy --config partykit/wrangler.jsonc --env staging
 Config:
 
 - `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
+- `PARTYKIT_SMOKE_MAX_MESSAGE_BYTES`: expected server message-size limit for the limits smoke. Defaults to `16777216`.
+- `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `120`.
 - `SMOKE_ENV_FILE`: optional `.dev.vars` or `.env` file to load before the script reads `ADMIN_TOKEN`.
 - `ADMIN_TOKEN`: required for `test:partykit:compaction`.
 - `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.

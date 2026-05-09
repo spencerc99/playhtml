@@ -44,10 +44,10 @@ export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
   return 120;
 })();
 export const DEFAULT_MAX_MESSAGE_BYTES = (() => {
-  return 1024 * 1024;
+  return 1024 * 1024 * 16;
 })();
 export const DEFAULT_MAX_REQUEST_BYTES = (() => {
-  return 1024 * 1024;
+  return 1024 * 1024 * 16;
 })();
 export const DEFAULT_MAX_DOCUMENT_BYTES = (() => {
   return 1024 * 1024 * 64;
