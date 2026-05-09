@@ -1561,6 +1561,28 @@ function isElementValidForTag(
   );
 }
 
+function describeElementForError(element: HTMLElement): string {
+  const tagName = element.tagName.toLowerCase();
+  const id = element.id ? `#${element.id}` : "";
+  const classes = Array.from(element.classList)
+    .map((className) => `.${className}`)
+    .join("");
+
+  return `<${tagName}${id}${classes}>`;
+}
+
+function reportDuplicateElementId(
+  tag: TagType | string,
+  elementId: string,
+  existingElement: HTMLElement,
+  duplicateElement: HTMLElement,
+): void {
+  console.error(
+    `[playhtml] Duplicate element id "${elementId}" for ${tag}. Element IDs must be unique per capability tag because playhtml stores shared data by tag and ID. Keeping ${describeElementForError(existingElement)} and ignoring ${describeElementForError(duplicateElement)}.`,
+    { existingElement, duplicateElement },
+  );
+}
+
 /**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
@@ -1621,9 +1643,19 @@ async function setupPlayElementForTag<T extends TagType | string>(
     elementInitializerInfo,
     elementId,
   );
-  if (tagElementHandlers.has(elementId)) {
-    // Try to update the elements info
-    tagElementHandlers.get(elementId)!.reinitializeElementData(elementData);
+  const existingHandler = tagElementHandlers.get(elementId);
+  if (existingHandler) {
+    if (existingHandler.element !== element) {
+      reportDuplicateElementId(
+        tag,
+        elementId,
+        existingHandler.element,
+        element,
+      );
+      return;
+    }
+
+    existingHandler.reinitializeElementData(elementData);
     // ensure observer is attached
     attachSyncedStoreObserver(tag as string, elementId);
     return;

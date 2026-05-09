@@ -653,6 +653,36 @@ export function listSharedElements() {
   return out;
 }
 
+export interface DuplicatePlayElement {
+  tagType: string;
+  elementId: string;
+  elements: HTMLElement[];
+}
+
+export function listDuplicatePlayElements(
+  tagTypes: Iterable<string>,
+): DuplicatePlayElement[] {
+  const duplicates: DuplicatePlayElement[] = [];
+
+  for (const tagType of tagTypes) {
+    const elementsById = new Map<string, HTMLElement[]>();
+    document.querySelectorAll(`[${tagType}]`).forEach((node) => {
+      if (!(node instanceof HTMLElement) || !node.id) return;
+
+      const elements = elementsById.get(node.id) ?? [];
+      elements.push(node);
+      elementsById.set(node.id, elements);
+    });
+
+    elementsById.forEach((elements, elementId) => {
+      if (elements.length < 2) return;
+      duplicates.push({ tagType, elementId, elements });
+    });
+  }
+
+  return duplicates;
+}
+
 // ─── Helper: create element with classes ───────────────────────────────
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -764,6 +794,11 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   statusRow1.appendChild(sep1);
   const elCountNode = document.createTextNode("");
   statusRow1.appendChild(elCountNode);
+  const sepConflicts = el("span", "ph-sep");
+  sepConflicts.textContent = "\u00B7";
+  statusRow1.appendChild(sepConflicts);
+  const conflictCountNode = el("span");
+  statusRow1.appendChild(conflictCountNode);
   status.appendChild(statusRow1);
 
   // Row 2: room + host
@@ -804,10 +839,18 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     clientCountNode.textContent = `${clients} client${clients !== 1 ? "s" : ""}`;
 
     let total = 0;
-    elementHandlers.forEach((idMap) => {
+    const tagTypes = new Set<string>();
+    elementHandlers.forEach((idMap, tagType) => {
       total += idMap.size;
+      tagTypes.add(tagType);
     });
     elCountNode.textContent = `${total} element${total !== 1 ? "s" : ""}`;
+
+    const conflicts = listDuplicatePlayElements(tagTypes).length;
+    sepConflicts.style.display = conflicts > 0 ? "" : "none";
+    conflictCountNode.style.display = conflicts > 0 ? "" : "none";
+    conflictCountNode.textContent =
+      conflicts > 0 ? `${conflicts} conflict${conflicts !== 1 ? "s" : ""}` : "";
   }
   updateStatusCounts();
 
@@ -1213,6 +1256,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     // Collect all tag types for the filter dropdown
     const tagTypes = new Set<string>();
     elementHandlers.forEach((_idMap, tagType) => tagTypes.add(tagType));
+    const duplicateElements = listDuplicatePlayElements(tagTypes);
 
     if (tagTypes.size > 1) {
       const filterSelect = el("select", "ph-tag-filter");
@@ -1370,6 +1414,51 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
         const noMatch = el("div", "ph-empty");
         noMatch.textContent = "No elements match the current filter.";
         dataArea.appendChild(noMatch);
+      }
+    }
+
+    if (duplicateElements.length > 0) {
+      const dividerEl = document.createElement("hr");
+      dividerEl.style.border = "none";
+      dividerEl.style.borderTop = "1px solid #d4cfc7";
+      dividerEl.style.margin = "6px 0";
+      dataArea.appendChild(dividerEl);
+
+      const duplicateHeader = el("div", "ph-data-header");
+      duplicateHeader.textContent = "Duplicate IDs";
+      duplicateHeader.style.fontSize = "10px";
+      dataArea.appendChild(duplicateHeader);
+
+      for (const entry of duplicateElements) {
+        const row = el("div", "ph-tree-item");
+
+        const badge = el("span", "ph-tree-badge");
+        badge.textContent = entry.tagType;
+        badge.style.background = "#c4724e";
+
+        const elName = el("span", "ph-tree-el-name");
+        elName.textContent = `#${entry.elementId} (${entry.elements.length})`;
+        elName.title =
+          "Multiple elements with this ID share the same capability tag.";
+        elName.onclick = (e) => {
+          e.stopPropagation();
+          for (const duplicateElement of entry.elements) {
+            duplicateElement.classList.add("ph-flash");
+            duplicateElement.addEventListener(
+              "animationend",
+              () => duplicateElement.classList.remove("ph-flash"),
+              { once: true }
+            );
+          }
+          entry.elements[0]?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        };
+
+        row.appendChild(badge);
+        row.appendChild(elName);
+        dataArea.appendChild(row);
       }
     }
 
