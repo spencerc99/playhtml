@@ -37,6 +37,21 @@ export const DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES = (() => {
 export const DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS = (() => {
   return 60 * 60 * 1000;
 })();
+export const DEFAULT_MESSAGE_RATE_WINDOW_MS = (() => {
+  return 1000;
+})();
+export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
+  return 120;
+})();
+export const DEFAULT_MAX_MESSAGE_BYTES = (() => {
+  return 1024 * 1024;
+})();
+export const DEFAULT_MAX_REQUEST_BYTES = (() => {
+  return 1024 * 1024;
+})();
+export const DEFAULT_MAX_DOCUMENT_BYTES = (() => {
+  return 1024 * 1024 * 64;
+})();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

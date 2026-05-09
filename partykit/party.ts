@@ -23,6 +23,11 @@ import {
   DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
+  DEFAULT_MAX_DOCUMENT_BYTES,
+  DEFAULT_MAX_MESSAGE_BYTES,
+  DEFAULT_MAX_REQUEST_BYTES,
+  DEFAULT_MESSAGE_RATE_LIMIT,
+  DEFAULT_MESSAGE_RATE_WINDOW_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
   ORIGIN_S2C,
@@ -42,6 +47,14 @@ import {
   isApplySubtreesImmediateRequest,
 } from "./request";
 import {
+  checkMessageLimits,
+  getMessageSizeBytes,
+  shouldAcceptRequestBody,
+  shouldPersistDocument,
+  type MessageLimitState,
+  type ServerLimits,
+} from "./serverLimits";
+import {
   getSourceRoomId,
   parseSharedElementsFromUrl,
   parseSharedReferencesFromUrl,
@@ -57,9 +70,11 @@ import {
 import { isResetEpochStale, parseClientResetEpoch } from "./resetEpochPolicy";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
+const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
 
-type ResetEpochConnectionState = Record<string, unknown> & {
+type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
+  [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
 };
 
 type CompactedDocument = {
@@ -114,6 +129,7 @@ export class PartyServer extends YServer {
   private emptyRoomCompactionPromise: Promise<void> | null = null;
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
+  private lastKnownDocumentBytes = 0;
 
   // In-memory caches for hot-path data that rarely changes.
   // Invalidated on writes via the set* methods.
@@ -234,6 +250,69 @@ export class PartyServer extends YServer {
       "EMERGENCY_COMPACT_RECHECK_DELAY_MS",
       DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS
     );
+  }
+
+  private getServerLimits(): ServerLimits {
+    return {
+      maxMessagesPerWindow: readPositiveNumberEnv(
+        "MESSAGE_RATE_LIMIT",
+        DEFAULT_MESSAGE_RATE_LIMIT
+      ),
+      messageRateWindowMs: readPositiveNumberEnv(
+        "MESSAGE_RATE_WINDOW_MS",
+        DEFAULT_MESSAGE_RATE_WINDOW_MS
+      ),
+      maxMessageBytes: readPositiveNumberEnv(
+        "MAX_MESSAGE_BYTES",
+        DEFAULT_MAX_MESSAGE_BYTES
+      ),
+      maxRequestBytes: readPositiveNumberEnv(
+        "MAX_REQUEST_BYTES",
+        DEFAULT_MAX_REQUEST_BYTES
+      ),
+      maxDocumentBytes: readPositiveNumberEnv(
+        "MAX_DOCUMENT_BYTES",
+        DEFAULT_MAX_DOCUMENT_BYTES
+      ),
+    };
+  }
+
+  private checkConnectionMessageLimits(
+    connection: Party.Connection,
+    message: Party.WSMessage
+  ) {
+    const limitConnection =
+      connection as Party.Connection<PartyServerConnectionState>;
+    const messageSizeBytes = getMessageSizeBytes(message);
+    const decision = checkMessageLimits({
+      limits: this.getServerLimits(),
+      messageSizeBytes,
+      currentDocumentBytes: this.lastKnownDocumentBytes,
+      now: Date.now(),
+      state: limitConnection.state?.[MESSAGE_LIMIT_STATE_KEY],
+    });
+
+    limitConnection.setState((previousState) => {
+      const state =
+        previousState && typeof previousState === "object" ? previousState : {};
+      return {
+        ...(state as Record<string, unknown>),
+        [MESSAGE_LIMIT_STATE_KEY]: decision.state,
+      };
+    });
+
+    return { messageSizeBytes, violation: decision.violation };
+  }
+
+  private async readLimitedJson(request: Request): Promise<unknown | Response> {
+    const bodyText = await request.text();
+    const bodySizeBytes = new TextEncoder().encode(bodyText).byteLength;
+
+    if (!shouldAcceptRequestBody(bodySizeBytes, this.getServerLimits())) {
+      return new Response("Payload Too Large", { status: 413 });
+    }
+
+    return JSON.parse(bodyText);
   }
 
   private async waitForEmptyRoomCompaction(): Promise<void> {
@@ -357,7 +436,7 @@ export class PartyServer extends YServer {
     resetEpoch: number | null
   ): void {
     const resetConnection =
-      connection as Party.Connection<ResetEpochConnectionState>;
+      connection as Party.Connection<PartyServerConnectionState>;
     resetConnection.setState((previousState) => {
       const state =
         previousState && typeof previousState === "object" ? previousState : {};
@@ -371,7 +450,7 @@ export class PartyServer extends YServer {
   private getConnectionAcceptedResetEpoch(
     connection: Party.Connection
   ): number | null {
-    const state = (connection as Party.Connection<ResetEpochConnectionState>)
+    const state = (connection as Party.Connection<PartyServerConnectionState>)
       .state;
     const value = state?.[ACCEPTED_RESET_EPOCH_STATE_KEY];
     return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -946,6 +1025,21 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     message: Party.WSMessage
   ): Promise<void> {
+    const limitResult = this.checkConnectionMessageLimits(connection, message);
+    if (limitResult.violation) {
+      console.warn(
+        `[PartyServer] Closing connection for ${limitResult.violation.kind}: ` +
+          `connectionId=${connection.id}, ` +
+          `messageBytes=${limitResult.messageSizeBytes}, ` +
+          `documentBytes=${this.lastKnownDocumentBytes}`
+      );
+      connection.close(
+        limitResult.violation.closeCode,
+        limitResult.violation.reason
+      );
+      return;
+    }
+
     const serverResetEpoch = await this.getResetEpoch();
     const connectionResetEpoch =
       this.getConnectionAcceptedResetEpoch(connection);
@@ -1016,6 +1110,8 @@ export class PartyServer extends YServer {
     }
 
     if (data) {
+      this.lastKnownDocumentBytes =
+        typeof data.document === "string" ? data.document.length : 0;
       Y.applyUpdate(
         this.document,
         new Uint8Array(Buffer.from(data.document, "base64"))
@@ -1064,7 +1160,19 @@ export class PartyServer extends YServer {
     // safely. Empty-room compaction is handled as a reset boundary by alarms.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
+    this.lastKnownDocumentBytes = documentSize;
     const activeConnectionCount = this.getOpenConnectionCount();
+
+    const serverLimits = this.getServerLimits();
+    if (!shouldPersistDocument(documentSize, serverLimits)) {
+      console.warn(
+        `[PartyServer] Autosave rejected for room ${this.name}: ` +
+          `documentBytes=${documentSize}, ` +
+          `maxDocumentBytes=${serverLimits.maxDocumentBytes}`
+      );
+      this.closeConnections("Document Too Large");
+      return;
+    }
 
     // Log structured information about the save
     console.log(
@@ -1210,7 +1318,10 @@ export class PartyServer extends YServer {
         return new Response("Method Not Allowed", { status: 405 });
       }
 
-      const body: unknown = await request.json();
+      const body = await this.readLimitedJson(request);
+      if (body instanceof Response) {
+        return body;
+      }
 
       if (isSubscribeRequest(body)) {
         // Called on SOURCE room; registers a consumer room id
