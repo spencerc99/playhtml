@@ -129,6 +129,22 @@ signup, admin endpoints) lives in a separate private repo:
 **[`spencerc99/we-were-online-worker`](https://github.com/spencerc99/we-were-online-worker)**.
 Worker name (Cloudflare): `playhtml-game-api`.
 
+**For agents working in this repo:** the worker source is no longer here.
+Spencer's local checkout is typically at `~/Projects/we-were-online-worker/`.
+
+- If a task only changes the **wire contract** (event types, URL
+  canonicalization), edit `packages/extension-types/` here, add a changeset,
+  and let publish flow normally. The worker repo will pick up the new version
+  when Spencer bumps `@playhtml/extension-types` there.
+- If a task changes **server logic** (route handlers, Supabase queries,
+  Resend templates, secrets), it has to happen in the private repo. Tell
+  Spencer what needs to change and let him handle it there, or ask whether
+  to operate in `~/Projects/we-were-online-worker/` directly.
+- For local end-to-end testing where the extension talks to a local worker:
+  Spencer runs `bun run dev` in `~/Projects/we-were-online-worker/` (worker
+  on `localhost:8787`); no setup needed in this repo beyond what's already
+  in `extension/src/storage/sync.ts`.
+
 Endpoints (called from the extension and from `wewere.online` experiments):
 
 - `POST /events`: Public event ingestion (rate limited)
