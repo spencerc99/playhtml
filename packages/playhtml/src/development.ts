@@ -463,6 +463,40 @@ const DEV_STYLES = `
   font-size: 12px;
   font-family: 'Atkinson Hyperlegible', sans-serif;
 }
+.ph-duplicate-warning {
+  margin: 0 0 8px 0;
+  padding: 8px 10px;
+  background: #fff0ec;
+  border: 2px solid #c4724e;
+  box-shadow: inset 3px 0 0 #c4724e;
+  color: #3d3833;
+}
+.ph-duplicate-warning-title {
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #9f3f2a;
+}
+.ph-duplicate-warning-message {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #6b352b;
+}
+.ph-duplicate-warning-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: 'Martian Mono', 'SF Mono', monospace;
+  font-size: 11px;
+}
+.ph-duplicate-warning-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 .ph-inspect-highlight {
   outline: 2px dashed #4a9a8a;
   outline-offset: 2px;
@@ -1292,6 +1326,37 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     searchBar.appendChild(resetAllBtn);
 
     dataArea.appendChild(searchBar);
+
+    if (duplicateElements.length > 0) {
+      const warning = el("div", "ph-duplicate-warning");
+
+      const warningTitle = el("div", "ph-duplicate-warning-title");
+      warningTitle.textContent = "Error: Duplicate playhtml IDs";
+      warning.appendChild(warningTitle);
+
+      const warningMessage = el("div", "ph-duplicate-warning-message");
+      warningMessage.textContent =
+        "These elements share synced data and later duplicates are ignored.";
+      warning.appendChild(warningMessage);
+
+      const warningList = el("div", "ph-duplicate-warning-list");
+      for (const entry of duplicateElements) {
+        const item = el("div", "ph-duplicate-warning-item");
+
+        const badge = el("span", "ph-tree-badge");
+        badge.textContent = entry.tagType;
+        badge.style.background = "#c4724e";
+
+        const label = el("span");
+        label.textContent = `#${entry.elementId} (${entry.elements.length})`;
+
+        item.appendChild(badge);
+        item.appendChild(label);
+        warningList.appendChild(item);
+      }
+      warning.appendChild(warningList);
+      dataArea.insertBefore(warning, searchBar);
+    }
 
     // Restore focus to search input after re-render
     requestAnimationFrame(() => {

@@ -1,7 +1,7 @@
 // ABOUTME: Verifies playhtml reports duplicate element IDs during setup.
 // ABOUTME: Covers live registration diagnostics and dev UI conflict grouping.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listDuplicatePlayElements } from "../development";
+import { listDuplicatePlayElements, setupDevUI } from "../development";
 import { playhtml, resetPlayHTML } from "../index";
 
 describe("duplicate playhtml element IDs", () => {
@@ -76,5 +76,49 @@ describe("duplicate playhtml element IDs", () => {
         elements: [firstToggle, secondToggle],
       },
     ]);
+  });
+
+  it("renders duplicate IDs as an error callout in dev tools", () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const firstToggle = document.createElement("div");
+    firstToggle.id = "shared-id";
+    firstToggle.setAttribute("can-toggle", "");
+
+    const secondToggle = document.createElement("button");
+    secondToggle.id = "shared-id";
+    secondToggle.setAttribute("can-toggle", "");
+
+    document.body.append(firstToggle, secondToggle);
+
+    setupDevUI({
+      elementHandlers: new Map([
+        [
+          "can-toggle",
+          new Map([
+            [
+              "shared-id",
+              {
+                element: firstToggle,
+                data: { on: false },
+                defaultData: { on: false },
+                setData: vi.fn(),
+              },
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+
+    const warning = document.querySelector<HTMLElement>(".ph-duplicate-warning");
+    expect(warning).toBeTruthy();
+    expect(warning!.textContent).toContain("Duplicate playhtml IDs");
+    expect(warning!.textContent).toContain("shared-id");
+    expect(warning!.textContent).toContain("can-toggle");
   });
 });
