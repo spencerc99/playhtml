@@ -1,10 +1,17 @@
 // ABOUTME: Controls panel component for the Internet Movement visualization
 // ABOUTME: Provides UI for adjusting visualization settings and displaying stats
-import React, { useState, memo } from "react";
+import React, { useState, memo, useMemo } from "react";
 import { CollectionEvent, Trail } from "../types";
 import { VISUALIZATIONS } from "./registry";
 import { TRAIL_RENDERERS } from "../styles";
-import { CLICK_DEFAULTS } from "./MovementCanvas";
+import { CLICK_DEFAULTS } from "./clickDefaults";
+import {
+  collectEventCategories,
+  computeHotspots,
+  computeOverallStats,
+  pickStripBucketMs,
+  rankSustainedWindows,
+} from "../utils/hotspots";
 
 interface ControlsProps {
   visible: boolean;
@@ -13,13 +20,32 @@ interface ControlsProps {
   loading: boolean;
   error: string | null;
   events: CollectionEvent[];
+  /** Count of events after the time-range filter is applied (what the
+   * canvas is actually drawing). Falls back to events.length when no range
+   * is selected. */
+  filteredEventCount?: number;
   trails: Trail[];
   availableDomains: string[];
   fetchEvents: () => void;
   timeRange: { min: number; max: number; duration: number };
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  /** When non-null, the canvas is scoped to this absolute-time window. */
+  selectedTimeRange?: { startMs: number; endMs: number } | null;
+  /** Set/clear the canvas time-range filter from the Hotspots panel. */
+  onSelectTimeRange?: (
+    range: { startMs: number; endMs: number } | null,
+  ) => void;
 }
+
+const WINDOW_LENGTH_OPTIONS: Array<{ label: string; ms: number }> = [
+  { label: "5 min", ms: 5 * 60 * 1000 },
+  { label: "15 min", ms: 15 * 60 * 1000 },
+  { label: "30 min", ms: 30 * 60 * 1000 },
+  { label: "1 hour", ms: 60 * 60 * 1000 },
+  { label: "2 hours", ms: 2 * 60 * 60 * 1000 },
+  { label: "6 hours", ms: 6 * 60 * 60 * 1000 },
+];
 
 export const Controls: React.FC<ControlsProps> = memo(
   ({
@@ -29,12 +55,15 @@ export const Controls: React.FC<ControlsProps> = memo(
     loading,
     error,
     events,
+    filteredEventCount,
     trails,
     availableDomains,
     fetchEvents,
     timeRange,
     activeVisualizations,
     onSetActiveVisualizations,
+    selectedTimeRange,
+    onSelectTimeRange,
   }) => {
     // All sections expanded by default
     const [expandedSections, setExpandedSections] = useState<
@@ -48,7 +77,76 @@ export const Controls: React.FC<ControlsProps> = memo(
       scroll: true,
       navigation: true,
       sound: false,
+      hotspots: true,
     });
+
+    // Hotspot analysis: sliding-window length + per-event-type filter.
+    // Defaults skew toward "show me the densest 30-min windows" — that's the
+    // most useful artifact length for showcase loops.
+    const [windowLengthMs, setWindowLengthMs] = useState(30 * 60 * 1000);
+    const [hotspotTypes, setHotspotTypes] = useState<Set<string>>(new Set());
+    const [hotspotLimit, setHotspotLimit] = useState(10);
+
+    const allCategories = useMemo(
+      () => collectEventCategories(events),
+      [events],
+    );
+
+    const overallStats = useMemo(
+      () => computeOverallStats(events),
+      [events],
+    );
+
+    // Rank sustained-density windows. The sub-bucket size needs to be small
+    // enough that "sustained" means something but large enough that each
+    // sub-bucket has a real shot at catching multiple unique people. With
+    // archival cursor sampling at ~250ms and an event burst on focus, ~5min
+    // sub-buckets are a sweet spot: a sustained window has ~6 sub-buckets
+    // for a 30-min target and the "min unique people across sub-buckets"
+    // floor stays meaningful instead of collapsing to 0.
+    const rankedHotspots = useMemo(() => {
+      if (events.length === 0) return [];
+      const targetSubBucketsPerWindow = 6;
+      const subBucketMs = Math.max(
+        60 * 1000,
+        Math.round(windowLengthMs / targetSubBucketsPerWindow),
+      );
+      const subBuckets = computeHotspots(events, {
+        bucketMs: subBucketMs,
+        allowedTypes: hotspotTypes.size > 0 ? hotspotTypes : undefined,
+      });
+      return rankSustainedWindows(subBuckets, windowLengthMs, hotspotLimit);
+    }, [events, windowLengthMs, hotspotTypes, hotspotLimit]);
+
+    const toggleHotspotType = (cat: string) => {
+      setHotspotTypes((prev) => {
+        const next = new Set(prev);
+        if (next.has(cat)) next.delete(cat);
+        else next.add(cat);
+        return next;
+      });
+    };
+
+    const formatRangeLabel = (startMs: number, endMs: number) => {
+      const start = new Date(startMs);
+      const end = new Date(endMs);
+      const sameDay = start.toDateString() === end.toDateString();
+      const dateStr = start.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      });
+      const startTime = start.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const endTime = end.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return sameDay
+        ? `${dateStr} ${startTime}–${endTime}`
+        : `${dateStr} ${startTime} → ${end.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${endTime}`;
+    };
 
     const toggleSection = (section: string) => {
       setExpandedSections((prev) => ({
@@ -108,7 +206,13 @@ export const Controls: React.FC<ControlsProps> = memo(
     return (
       <div
         className="controls"
-        style={{ maxHeight: "calc(100vh - 40px)", overflowY: "auto" }}
+        style={{
+          maxHeight: "calc(100vh - 40px)",
+          overflowY: "auto",
+          width: 320,
+          maxWidth: 320,
+          boxSizing: "border-box",
+        }}
       >
         {/* Randomize Colors at the very top */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
@@ -1439,6 +1543,240 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
         </CollapsibleSection>
 
+        <CollapsibleSection title="Activity Hotspots" sectionKey="hotspots">
+          <div
+            style={{
+              fontSize: "11px",
+              opacity: 0.75,
+              marginBottom: "8px",
+              lineHeight: 1.4,
+            }}
+          >
+            Sustained dense windows — picks the spans where many unique people
+            stay active for the entire window. Use the strip above the day
+            picker to scrub visually, or click a row to scope the canvas.
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="hotspot-window-length">Window length</label>
+            <select
+              id="hotspot-window-length"
+              value={windowLengthMs}
+              onChange={(e) => setWindowLengthMs(parseInt(e.target.value, 10))}
+            >
+              {WINDOW_LENGTH_OPTIONS.map((opt) => (
+                <option key={opt.ms} value={opt.ms}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="hotspot-limit">Show top</label>
+            <input
+              id="hotspot-limit"
+              type="range"
+              min="3"
+              max="30"
+              step="1"
+              value={hotspotLimit}
+              onChange={(e) => setHotspotLimit(parseInt(e.target.value, 10))}
+            />
+            <span>{hotspotLimit} results</span>
+          </div>
+
+          {allCategories.length > 0 && (
+            <div className="control-group">
+              <label
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  marginBottom: "4px",
+                  display: "block",
+                }}
+              >
+                Filter by event type{" "}
+                {hotspotTypes.size === 0 && (
+                  <span style={{ opacity: 0.5, fontWeight: "normal" }}>
+                    (all)
+                  </span>
+                )}
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "4px",
+                  marginTop: "4px",
+                }}
+              >
+                {allCategories.map((cat) => {
+                  const active = hotspotTypes.has(cat);
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => toggleHotspotType(cat)}
+                      style={{
+                        fontSize: "10px",
+                        padding: "3px 8px",
+                        border: `1px solid ${active ? "#4a9a8a" : "rgba(0,0,0,0.15)"}`,
+                        background: active ? "#4a9a8a" : "transparent",
+                        color: active ? "#faf9f6" : "#3d3833",
+                        cursor: "pointer",
+                        borderRadius: "2px",
+                        textTransform: "lowercase",
+                      }}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+                {hotspotTypes.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setHotspotTypes(new Set())}
+                    style={{
+                      fontSize: "10px",
+                      padding: "3px 8px",
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      background: "transparent",
+                      cursor: "pointer",
+                      borderRadius: "2px",
+                      opacity: 0.7,
+                    }}
+                  >
+                    clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: "8px",
+              maxHeight: "320px",
+              overflowY: "auto",
+              border: "1px solid rgba(0,0,0,0.08)",
+              borderRadius: "2px",
+            }}
+          >
+            {rankedHotspots.length === 0 ? (
+              <div
+                style={{
+                  padding: "12px",
+                  fontSize: "11px",
+                  opacity: 0.6,
+                  textAlign: "center",
+                }}
+              >
+                No data in current event set.
+              </div>
+            ) : (
+              rankedHotspots.map((w, i) => {
+                const isSelected =
+                  selectedTimeRange &&
+                  selectedTimeRange.startMs === w.startMs &&
+                  selectedTimeRange.endMs === w.endMs;
+                return (
+                  <button
+                    key={w.startMs}
+                    type="button"
+                    onClick={() =>
+                      onSelectTimeRange?.(
+                        isSelected
+                          ? null
+                          : { startMs: w.startMs, endMs: w.endMs },
+                      )
+                    }
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      border: "none",
+                      borderBottom:
+                        i < rankedHotspots.length - 1
+                          ? "1px solid rgba(0,0,0,0.05)"
+                          : "none",
+                      background: isSelected
+                        ? "rgba(74, 154, 138, 0.15)"
+                        : "transparent",
+                      cursor: "pointer",
+                      fontFamily:
+                        '"Atkinson Hyperlegible", system-ui, sans-serif',
+                      fontSize: "11px",
+                      color: "#3d3833",
+                      display: "block",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: "8px",
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>
+                        {formatRangeLabel(w.startMs, w.endMs)}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily:
+                            '"Martian Mono", "Space Mono", monospace',
+                          fontSize: "10px",
+                          color: "#4a9a8a",
+                          fontWeight: 600,
+                        }}
+                        title="Average unique people across the window (sustained presence)"
+                      >
+                        avg {Math.round(w.meanPidsPerBucket * 10) / 10}p
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        opacity: 0.7,
+                        marginTop: "2px",
+                        fontFamily:
+                          '"Martian Mono", "Space Mono", monospace',
+                      }}
+                    >
+                      floor {w.minPidsPerBucket}p ·{" "}
+                      {w.eventCount.toLocaleString()} ev ·{" "}
+                      {w.occupiedBuckets}/{w.bucketCount} active
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {selectedTimeRange && (
+            <button
+              type="button"
+              onClick={() => onSelectTimeRange?.(null)}
+              style={{
+                marginTop: "8px",
+                fontSize: "11px",
+                padding: "6px 10px",
+                cursor: "pointer",
+                width: "100%",
+                background: "#faf9f6",
+                color: "#3d3833",
+                border: "1px solid rgba(196,114,78,0.55)",
+                borderRadius: "3px",
+                fontWeight: 600,
+                letterSpacing: "0.3px",
+              }}
+            >
+              Clear range filter
+            </button>
+          )}
+        </CollapsibleSection>
+
         <div
           style={{
             borderBottom: "1px solid #eee",
@@ -1476,8 +1814,26 @@ export const Controls: React.FC<ControlsProps> = memo(
             {error && <div className="error">{error}</div>}
             {!loading && events.length > 0 && (
               <div className="info">
-                {events.length.toLocaleString()} events,{" "}
-                {trails.length.toLocaleString()} trails
+                {events.length.toLocaleString()} events
+                {typeof filteredEventCount === "number" &&
+                  filteredEventCount !== events.length &&
+                  ` (${filteredEventCount.toLocaleString()} in range)`}
+                , {trails.length.toLocaleString()} trails
+                <div
+                  style={{
+                    fontSize: "10px",
+                    marginTop: "4px",
+                    opacity: 0.8,
+                    fontFamily: '"Martian Mono", "Space Mono", monospace',
+                  }}
+                >
+                  {overallStats.uniquePids.toLocaleString()} unique{" "}
+                  {overallStats.uniquePids === 1 ? "person" : "people"} ·{" "}
+                  {overallStats.uniqueSids.toLocaleString()} session
+                  {overallStats.uniqueSids === 1 ? "" : "s"} ·{" "}
+                  {overallStats.uniqueDomains.toLocaleString()} domain
+                  {overallStats.uniqueDomains === 1 ? "" : "s"}
+                </div>
                 <br />
                 <div
                   style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}

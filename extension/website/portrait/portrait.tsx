@@ -95,10 +95,21 @@ const InternetMovement = () => {
       setError(null);
 
       try {
-        const params = new URLSearchParams({ limit: "5000" });
+        // When a specific day is requested we scope tightly to that day with
+        // the original 5k limit. With no day selected the dev panel needs
+        // multi-day resolution so cross-day hotspots are visible — pull a
+        // wider window with a bigger limit. 14 days is enough to cover the
+        // recent past at hour/6-hour resolution while keeping payload
+        // bounded.
+        const params = new URLSearchParams();
         if (day) {
+          params.set("limit", "5000");
           params.set("from", day);
           params.set("to", `${day}T23:59:59Z`);
+        } else {
+          params.set("limit", "20000");
+          const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+          params.set("from", fourteenDaysAgo.toISOString().slice(0, 10));
         }
         if (domain) {
           params.set("domain", domain);

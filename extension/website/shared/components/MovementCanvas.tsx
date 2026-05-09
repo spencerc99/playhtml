@@ -19,6 +19,7 @@ import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
 import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
+import { ActivityStrip } from "./ActivityStrip";
 import { useCursorTrails } from "../hooks/useCursorTrails";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
@@ -28,6 +29,51 @@ import { extractDomain } from "../utils/eventUtils";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import { parseSettingsFromUrl } from "../config";
 import type { DayCounts } from "../types";
+import { CLICK_DEFAULTS } from "./clickDefaults";
+
+export { CLICK_DEFAULTS } from "./clickDefaults";
+
+const READOUT_WRAPPER_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: "20px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  zIndex: 100,
+  padding: "10px 16px",
+  background: "#faf9f6",
+  border: "1px solid rgba(0, 0, 0, 0.12)",
+  boxShadow:
+    "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
+  fontFamily: '"Martian Mono", "Space Mono", "Courier New", monospace',
+  fontSize: "11px",
+  fontWeight: 600,
+  color: "#333",
+  letterSpacing: "0.5px",
+  textTransform: "uppercase",
+  overflow: "hidden",
+};
+
+const ReadoutNoise: React.FC<{ id: string }> = ({ id }) => (
+  <svg
+    style={{
+      position: "absolute",
+      inset: 0,
+      width: "100%",
+      height: "100%",
+      opacity: 0.15,
+      pointerEvents: "none",
+    }}
+  >
+    <filter id={id}>
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" />
+      <feColorMatrix type="saturate" values="0" />
+      <feComponentTransfer>
+        <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
+      </feComponentTransfer>
+    </filter>
+    <rect width="100%" height="100%" filter={`url(#${id})`} />
+  </svg>
+);
 
 /** Live clock readout shown when trails play in their natural-timestamp order.
  * Mirrors AnimatedTrails' `(realElapsed * speed) % duration` math so the time
@@ -86,49 +132,50 @@ const NaturalTimeReadout: React.FC<{
   }, [startTimestampMs, durationMs]);
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: "20px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 100,
-        padding: "10px 16px",
-        background: "#faf9f6",
-        border: "1px solid rgba(0, 0, 0, 0.12)",
-        boxShadow:
-          "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
-        fontFamily: '"Martian Mono", "Space Mono", "Courier New", monospace',
-        fontSize: "11px",
-        fontWeight: 600,
-        color: "#333",
-        letterSpacing: "0.5px",
-        textTransform: "uppercase",
-        overflow: "hidden",
-        pointerEvents: "none",
-      }}
-    >
-      <svg
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          opacity: 0.15,
-          pointerEvents: "none",
-        }}
-      >
-        <filter id="timeNoise">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" />
-          <feColorMatrix type="saturate" values="0" />
-          <feComponentTransfer>
-            <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
-          </feComponentTransfer>
-        </filter>
-        <rect width="100%" height="100%" filter="url(#timeNoise)" />
-      </svg>
+    <div style={{ ...READOUT_WRAPPER_STYLE, pointerEvents: "none" }}>
+      <ReadoutNoise id="timeNoise" />
       <span ref={textRef} style={{ position: "relative", zIndex: 1 }} />
     </div>
+  );
+};
+
+/** Static readout for a user-selected time range — replaces the live clock
+ * when a hotspot has scoped the canvas. Same visual frame as
+ * NaturalTimeReadout so it slots into the existing top-center spot. */
+const SelectedRangeReadout: React.FC<{
+  startMs: number;
+  endMs: number;
+  onClear: () => void;
+}> = ({ startMs, endMs, onClear }) => {
+  const start = new Date(startMs);
+  const end = new Date(endMs);
+  const sameDay = start.toDateString() === end.toDateString();
+  const dateFmt: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+  };
+  const timeFmt: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+  };
+  const label = sameDay
+    ? `${start.toLocaleDateString(undefined, dateFmt)} ${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleTimeString(undefined, timeFmt)}`
+    : `${start.toLocaleDateString(undefined, dateFmt)} ${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleDateString(undefined, dateFmt)} ${end.toLocaleTimeString(undefined, timeFmt)}`;
+
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      title="Click to clear time range"
+      style={{
+        ...READOUT_WRAPPER_STYLE,
+        cursor: "pointer",
+        borderColor: "rgba(196,114,78,0.55)",
+      }}
+    >
+      <ReadoutNoise id="rangeReadoutNoise" />
+      <span style={{ position: "relative", zIndex: 1 }}>{label}</span>
+    </button>
   );
 };
 
@@ -136,26 +183,6 @@ const NaturalTimeReadout: React.FC<{
 // defaults stop overriding the new defaults. After this version, settings
 // only persist when the user explicitly modifies a control.
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
-
-/** Click-ripple defaults. Exported so the Controls panel can offer a per-section reset. */
-export const CLICK_DEFAULTS = {
-  clickMinRadius: 12,
-  clickMaxRadius: 80,
-  clickCoreRadius: 3,
-  clickMinDuration: 500,
-  clickMaxDuration: 2500,
-  clickStrokeWidth: 4,
-  clickOpacity: 0.6,
-  clickNumRings: 3,
-  clickRingDelayMs: 160,
-  clickExpansionDuration: 2400,
-  clickAnimationStopPoint: 0.45,
-  /** Cap the gap between consecutive scheduled clicks. `null` = off (use the
-   * exact natural rhythm); a number = clamp any longer dead-air to this many
-   * milliseconds. Useful for promo / timelapse playback where you want
-   * cluster timing intact but don't want long pauses. */
-  clickMaxGapMs: null as number | null,
-};
 
 const loadSettings = () => {
   const defaults = {
@@ -277,6 +304,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
+  /** When set, only events whose timestamp falls in [start, end) are passed
+   * downstream to the visualization hooks. Used by the Hotspots dev tool to
+   * scope the canvas to a specific span for capturing artifacts. */
+  const [selectedTimeRange, setSelectedTimeRange] = useState<
+    { startMs: number; endMs: number } | null
+  >(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
@@ -503,6 +536,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // ── Event processing hooks ──────────────────────────────────────────────────
 
+  // Apply the dev-tool time-range filter before any visualization hook sees
+  // the data. Hooks already pay attention to event identity, so memoizing is
+  // important — when no range is active we just pass the events array
+  // through untouched.
+  const filteredEvents = useMemo(() => {
+    if (!selectedTimeRange) return events;
+    const { startMs, endMs } = selectedTimeRange;
+    return events.filter((e) => e.ts >= startMs && e.ts < endMs);
+  }, [events, selectedTimeRange]);
+
   const cursorSettings = useMemo(
     () => ({
       randomizeColors: settings.randomizeColors,
@@ -535,7 +578,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-  } = useCursorTrails(events, viewportSize, cursorSettings);
+  } = useCursorTrails(filteredEvents, viewportSize, cursorSettings);
 
   const timeRange = useMemo(() => {
     const allMins: number[] = [];
@@ -643,7 +686,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { typingStates } = useKeyboardTyping(
-    events,
+    filteredEvents,
     viewportSize,
     keyboardSettings,
     timeRange.duration,
@@ -659,7 +702,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { animations: scrollAnimations } = useViewportScroll(
-    events,
+    filteredEvents,
     viewportSize,
     viewportSettings,
   );
@@ -682,7 +725,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { timelineState } = useNavigationTimeline(
-    events,
+    filteredEvents,
     navigationTimelineSettings,
   );
 
@@ -705,7 +748,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     ],
   );
 
-  const { radialState } = useNavigationRadial(events, navigationRadialSettings);
+  const { radialState } = useNavigationRadial(
+    filteredEvents,
+    navigationRadialSettings,
+  );
 
   const typingSettings = useMemo(
     () => ({
@@ -814,12 +860,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         loading={loading}
         error={error}
         events={events}
+        filteredEventCount={filteredEvents.length}
         trails={trails}
         availableDomains={availableDomains}
         fetchEvents={fetchEvents}
         timeRange={timeRange}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={onSetActiveVisualizations}
+        selectedTimeRange={selectedTimeRange}
+        onSelectTimeRange={setSelectedTimeRange}
       />
 
       {settings.domainFilter && (
@@ -879,7 +928,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         </div>
       )}
 
-      {settings.trailAnimationMode === "natural" &&
+      {selectedTimeRange ? (
+        <SelectedRangeReadout
+          startMs={selectedTimeRange.startMs}
+          endMs={selectedTimeRange.endMs}
+          onClear={() => setSelectedTimeRange(null)}
+        />
+      ) : (
+        settings.trailAnimationMode === "natural" &&
         showTrails &&
         timeRange.min > 0 &&
         timeRange.duration > 0 && (
@@ -888,7 +944,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             durationMs={timeRange.duration}
             animationSpeed={settings.animationSpeed}
           />
-        )}
+        )
+      )}
 
       <button
         onClick={handleToggleSound}
@@ -1069,11 +1126,23 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showFavicons && (
           <FaviconPortrait
-            events={events}
+            events={filteredEvents}
             domainFilter={settings.domainFilter}
           />
         )}
       </div>
+
+      {controlsVisible && (events.length > 0 || (dayCounts && dayCounts.size > 0)) && (
+        <ActivityStrip
+          events={events}
+          dayCounts={dayCounts}
+          selectedDay={selectedDay}
+          onSelectDay={onSelectDay}
+          selectedRange={selectedTimeRange}
+          onSelectRange={setSelectedTimeRange}
+          leftOffset={controlsVisible ? 360 : 16}
+        />
+      )}
 
       {dayCounts && onSelectDay && (
         <DaySelector

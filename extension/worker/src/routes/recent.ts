@@ -66,7 +66,7 @@ async function fetchMetaByPageRef(
  *
  * Query parameters:
  * - type: Event type filter (default: 'cursor')
- * - limit: Maximum number of events (default: 1000, max: 5000). Pagination is used to return up to 5000.
+ * - limit: Maximum number of events (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
  * - pid: Participant ID filter (optional) - restore-from-server flow uses this
  * - from: ISO date string, inclusive lower bound on ts (optional)
@@ -82,7 +82,7 @@ export async function handleRecent(
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || 'cursor';
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 5000);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 20000);
     const domainFilter = url.searchParams.get('domain') || null;
     const pidFilter = url.searchParams.get('pid') || null;
     const requireTitle = url.searchParams.get('require_title') === 'true';
