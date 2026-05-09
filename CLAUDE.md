@@ -12,7 +12,7 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - **packages/extension-types**: Shared event/metadata type contract between the extension and its Cloudflare Worker (`@playhtml/extension-types`)
 - **extension/**: Browser extension ("we were online") for collecting and visualizing browsing traces. See `extension/CLAUDE.md` for detailed architecture.
 - **extension/website/**: `wewere.online` site — marketing pages (home, privacy) plus visualization experiments (`portrait/`, `rabbithole/`, `conversations/`, `keypresses/`, `sounds/`, `components-preview/`). Shared visualization code lives in `extension/website/shared/` and is reached via the `@movement` path alias. Homepage uses `<DownloadGate />` (`src/components/DownloadGate.tsx`) which shows install buttons directly on desktop and an email-signup form on mobile (mobile detected via `(hover: none) and (pointer: coarse)` media query). The form POSTs to the worker's `/subscribe` endpoint which adds the contact to Resend and sends a welcome email with install links.
-- **extension/worker/**: Cloudflare Worker backend for event ingestion (Supabase persistence)
+- **extension/worker/**: moved to private repo [`spencerc99/we-were-online-worker`](https://github.com/spencerc99/we-were-online-worker). The deployed worker (Cloudflare worker name `playhtml-game-api`) is unchanged; only the source location moved.
 - **partykit/**: Real-time sync server using PartyKit and Yjs for collaborative state
 - **website/**: Demo site for playhtml capabilities and the library's home page (`playhtml.fun`). Test pages go here.
 - **apps/docs/**: Astro + Starlight documentation site (served under `/docs/` in the combined production build).
@@ -123,7 +123,6 @@ Bun workspaces (from root `package.json`):
 4. `packages/extension-types`
 5. `extension`
 6. `extension/website`
-7. `extension/worker`
 
 Bun handles workspace linking automatically. Changes across packages are immediately available without manual linking. Run `bun install` at the root to set up workspace dependencies.
 

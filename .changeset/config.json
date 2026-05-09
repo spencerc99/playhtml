@@ -7,7 +7,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@playhtml/extension", "@playhtml/extension-worker", "wewere-online", "@playhtml/docs-site"],
+  "ignore": ["@playhtml/extension", "wewere-online", "@playhtml/docs-site"],
   "snapshot": {
     "useCalculatedVersion": true,
     "prereleaseTemplate": "{tag}-{commit}"

@@ -15,8 +15,9 @@ const STORAGE_KEYS = {
 const PROD_WORKER_URL = 'https://playhtml-game-api.spencerc99.workers.dev';
 
 /**
- * Development worker URL (localhost)
- * Run with: cd extension/worker && wrangler dev
+ * Development worker URL (localhost).
+ * Worker source lives in the private repo `spencerc99/we-were-online-worker`.
+ * Run there with: bun run dev
  */
 const DEV_WORKER_URL = 'http://localhost:8787';
 
@@ -130,7 +131,7 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
     // If using localhost:8787 and it fails, provide helpful message
     if (workerUrl.includes('localhost:8787')) {
       console.warn('[Sync] Local worker not responding. Make sure wrangler dev is running:');
-      console.warn('[Sync]   cd extension/worker && wrangler dev');
+      console.warn('[Sync]   cd ~/Projects/we-were-online-worker && bun run dev');
       // Still throw so EventBuffer can retry when worker comes online
     }
     

@@ -122,20 +122,40 @@ Key exports:
 - `PageMetadataSnapshot`: `{ page_ref, canonical_url, title, favicon_url, metadata_hash, observed_at_ts }`
 - `getValidEventTypes()`: returns the `CollectionEventType[]` array for runtime validation.
 
-### Worker Backend (`worker/`)
+### Worker Backend
 
-Cloudflare Worker + Supabase PostgreSQL + Resend:
+The Cloudflare Worker that backs the extension (event ingestion, mailing-list
+signup, admin endpoints) lives in a separate private repo:
+**[`spencerc99/we-were-online-worker`](https://github.com/spencerc99/we-were-online-worker)**.
+Worker name (Cloudflare): `playhtml-game-api`.
+
+Endpoints (called from the extension and from `wewere.online` experiments):
 
 - `POST /events`: Public event ingestion (rate limited)
-- `GET /events/recent`: Public (for artwork visualizations)
+- `GET /events/recent`: Public (used by visualization pages)
+- `GET /events/daily-counts`: Public per-day event counts
 - `GET /events/stats`, `POST /events/export`: Admin key required
-- `POST /subscribe`: Public mailing-list signup (rate limited 5/min/IP). Adds the contact to Resend and sends a one-time welcome email on first signup; idempotent on repeat. Used by both the website (`<DownloadGate />` on mobile) and the extension setup form. Body: `{ email, source: 'website' | 'extension-setup' }`.
+- `GET|PUT /participants`: Per-participant identity + cursor color sync
+- `POST /subscribe`: Public mailing-list signup (rate-limited 5/min/IP). Adds
+  the contact to Resend and sends a one-time welcome email on first signup;
+  idempotent on repeat. Used by both the website (`<DownloadGate />` on
+  mobile) and the extension setup form. Body: `{ email, source: 'website' | 'extension-setup' }`.
 
-**Resend integration:** the worker uses Resend Audiences/Contacts as the mailing-list store and welcome-email sender. Email addresses are NOT linked to browsing data — the `/subscribe` endpoint accepts only `email + source`, never participant or session IDs. The welcome template lives at `worker/src/emails/WelcomeEmail.tsx` (built with `react-email`).
+**Resend integration:** the worker uses Resend Audiences/Contacts as the
+mailing-list store and welcome-email sender. Email addresses are NOT linked
+to browsing data — the `/subscribe` endpoint accepts only `email + source`,
+never participant or session IDs.
 
-**Worker secrets:** `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ADMIN_KEY`, `RESEND_API_KEY` (required); `RESEND_SEGMENT_ID` (optional, tags new contacts).
+The worker depends on the `@playhtml/extension-types` package (this repo's
+`packages/extension-types/`) for the shared event contract + URL
+canonicalization helpers. When adding or changing a field on
+`CollectionEvent` or the `canonicalizeUrl`/`buildPageRef` algorithm, bump
+that package on this repo, let changesets publish, then update the worker
+repo's pinned version.
 
-**Wrangler config gotcha:** `bun run` scripts in `extension/worker/package.json` (`dev`, `deploy`, `tail`, `secret`, `secrets`) all pin `--config wrangler.toml`. Do NOT invoke bare `wrangler ...` from `extension/worker/` — wrangler walks up the filesystem and finds the partykit config in `partykit/wrangler.jsonc`, applying secrets/deploys to the wrong worker. Use the `bun run` wrappers.
+**Worker secrets** (set on Cloudflare via `wrangler secret`):
+`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ADMIN_KEY`, `RESEND_API_KEY`
+(required); `RESEND_SEGMENT_ID` (optional, tags new contacts).
 
 ## Configuration
 
