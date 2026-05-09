@@ -31,7 +31,6 @@ describe("checkMessageLimits", () => {
     const first = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 1_000,
       state: undefined,
     });
@@ -40,7 +39,6 @@ describe("checkMessageLimits", () => {
     const second = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 1_500,
       state: first.state,
     });
@@ -51,21 +49,18 @@ describe("checkMessageLimits", () => {
     const first = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 1_000,
       state: undefined,
     });
     const second = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 1_100,
       state: first.state,
     });
     const third = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 1_200,
       state: second.state,
     });
@@ -81,14 +76,12 @@ describe("checkMessageLimits", () => {
     const first = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 1_000,
       state: undefined,
     });
     const second = checkMessageLimits({
       limits,
       messageSizeBytes: 5,
-      currentDocumentBytes: 10,
       now: 2_000,
       state: first.state,
     });
@@ -101,7 +94,6 @@ describe("checkMessageLimits", () => {
     const result = checkMessageLimits({
       limits,
       messageSizeBytes: 11,
-      currentDocumentBytes: 10,
       now: 1_000,
       state: undefined,
     });
@@ -113,20 +105,15 @@ describe("checkMessageLimits", () => {
     });
   });
 
-  it("rejects messages that would exceed the document limit", () => {
+  it("does not reject ordinary messages just because the document is near its limit", () => {
     const result = checkMessageLimits({
       limits,
       messageSizeBytes: 6,
-      currentDocumentBytes: 25,
       now: 1_000,
       state: undefined,
     });
 
-    expect(result.violation).toEqual({
-      kind: "document-size",
-      closeCode: 1009,
-      reason: "Document Too Large",
-    });
+    expect(result.violation).toBe(null);
   });
 });
 

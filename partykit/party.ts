@@ -287,7 +287,6 @@ export class PartyServer extends YServer {
     const decision = checkMessageLimits({
       limits: this.getServerLimits(),
       messageSizeBytes,
-      currentDocumentBytes: this.lastKnownDocumentBytes,
       now: Date.now(),
       state: limitConnection.state?.[MESSAGE_LIMIT_STATE_KEY],
     });

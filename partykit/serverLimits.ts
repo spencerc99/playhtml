@@ -49,13 +49,11 @@ export function getMessageSizeBytes(message: unknown): number {
 export function checkMessageLimits({
   limits,
   messageSizeBytes,
-  currentDocumentBytes,
   now,
   state,
 }: {
   limits: ServerLimits;
   messageSizeBytes: number;
-  currentDocumentBytes: number;
   now: number;
   state: MessageLimitState | undefined;
 }): { state: MessageLimitState; violation: LimitViolation | null } {
@@ -74,17 +72,6 @@ export function checkMessageLimits({
         kind: "message-size",
         closeCode: 1009,
         reason: "Message Too Large",
-      },
-    };
-  }
-
-  if (currentDocumentBytes + messageSizeBytes > limits.maxDocumentBytes) {
-    return {
-      state: nextState,
-      violation: {
-        kind: "document-size",
-        closeCode: 1009,
-        reason: "Document Too Large",
       },
     };
   }
