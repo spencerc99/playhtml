@@ -17,17 +17,35 @@ Worker backend (in `worker/`):
 
 ## Releases
 
-The extension ships independently of the core packages. Trigger a release from
-the GitHub Actions tab: `Actions → Extension Release → Run workflow`. Pick a
-bump type (`patch`/`minor`/`major`/`custom`) and the workflow:
+The extension ships independently of the core packages, mirroring the
+changesets release-PR flow but on a separate cadence.
 
-1. Bumps `extension/package.json`
-2. Builds Chrome + Firefox zips
-3. Runs `wxt submit` for both stores
-4. Commits the version bump to `main` and tags it as `@playhtml/extension@x.y.z`
+**Day-to-day:** when a PR touches `extension/**`, add a bullet to
+`extension/PENDING.md` describing the user-facing change. That's it.
 
-Use the `dry-run` toggle (off by default) to validate build + auth without
-submitting or committing — useful for testing credentials.
+**What the bot does:**
+
+- `.github/workflows/extension-release-prep.yml` runs on every push to `main`.
+  When `PENDING.md` has any bullets, it (re)builds the `extension-release`
+  branch with: bumped `package.json` (patch by default), prepended `CHANGELOG.md`
+  entry, cleared `PENDING.md`. Opens or updates a PR titled
+  `Release: @playhtml/extension v{version}`. Force-pushes the release branch
+  on every prep cycle so the PR always reflects current `main`.
+- Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
+  which builds Chrome + Firefox zips, runs `wxt submit` for both stores, and
+  pushes a `@playhtml/extension@x.y.z` tag.
+
+**To bump minor or major instead of patch:** edit `extension/package.json`
+on the release branch directly (in the GitHub PR UI is fine). The prep
+workflow preserves any manual override that's higher than the auto-computed
+patch bump.
+
+**To skip a release entirely:** empty out `PENDING.md` on `main`. The next
+prep run will close the open release PR.
+
+**Manual trigger / testing:** the release workflow also supports
+`workflow_dispatch` with a `dry-run` toggle (defaults to true). Use it to
+validate credentials and build without submitting.
 
 **Required GitHub Actions secrets** (set once at repo level):
 

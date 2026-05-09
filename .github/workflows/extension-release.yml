@@ -1,21 +1,17 @@
 name: Extension Release
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "extension/package.json"
   workflow_dispatch:
     inputs:
-      bump:
-        description: "Version bump type (or pick 'custom' and set version)"
-        type: choice
-        options: [patch, minor, major, custom]
-        default: patch
-      version:
-        description: "Custom version (only used when bump=custom, e.g. 0.2.0)"
-        type: string
-        default: ""
       dry-run:
-        description: "Dry run (build + validate, do not submit, do not commit)"
+        description: "Dry run (build + validate, do not submit, do not tag)"
         type: boolean
-        default: false
+        default: true
       skip-chrome:
         description: "Skip Chrome submission"
         type: boolean
@@ -31,15 +27,65 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Bump, build, submit
+  guard:
+    name: Should this run trigger a release?
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Decide
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Triggered manually."
+            VERSION=$(node -p "require('./extension/package.json').version")
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # For push events: only release if the head commit is the prep
+          # workflow's release commit. This avoids accidental releases from
+          # unrelated edits to extension/package.json (e.g. dependency bumps).
+          FIRST_LINE=$(echo "$HEAD_MSG" | head -n 1)
+          case "$FIRST_LINE" in
+            "extension: release v"*)
+              VERSION=$(node -p "require('./extension/package.json').version")
+              EXPECTED="extension: release v$VERSION"
+              if [ "$FIRST_LINE" = "$EXPECTED" ]; then
+                echo "Release commit detected for v$VERSION."
+                echo "should_release=true" >> "$GITHUB_OUTPUT"
+                echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              else
+                echo "Release commit message ($FIRST_LINE) doesn't match package.json version ($VERSION). Skipping."
+                echo "should_release=false" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            *)
+              echo "Head commit is not a release commit. Skipping."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+  submit:
+    name: Build and submit to stores
+    needs: guard
+    if: needs.guard.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     env:
-      BUMP: ${{ inputs.bump }}
-      CUSTOM_VERSION: ${{ inputs.version }}
       DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
       SKIP_CHROME: ${{ inputs.skip-chrome && 'true' || 'false' }}
       SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
+      VERSION: ${{ needs.guard.outputs.version }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -63,32 +109,6 @@ jobs:
       - name: Build packages
         run: bun run build-packages
 
-      - name: Bump extension version
-        id: version
-        working-directory: extension
-        run: |
-          if [ "$BUMP" = "custom" ]; then
-            if [ -z "$CUSTOM_VERSION" ]; then
-              echo "bump=custom requires a version input" >&2
-              exit 1
-            fi
-            NEW_VERSION="$CUSTOM_VERSION"
-          else
-            NEW_VERSION=$(node -p "
-              const semver = require('./package.json').version.split('.').map(Number);
-              const [maj, min, pat] = semver;
-              ({ patch: [maj, min, pat + 1], minor: [maj, min + 1, 0], major: [maj + 1, 0, 0] })['$BUMP'].join('.')
-            ")
-          fi
-          echo "Bumping to $NEW_VERSION"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '$NEW_VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Build Chrome zip
         if: env.SKIP_CHROME != 'true'
         run: WXT_OUT_DIR=publish bun run -C extension wxt zip
@@ -100,8 +120,6 @@ jobs:
       - name: Resolve zip paths
         id: zips
         working-directory: extension
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
           FIREFOX_ZIP=$(ls publish/*-"$VERSION"-firefox.zip 2>/dev/null | head -1 || true)
@@ -139,24 +157,25 @@ jobs:
             bun run wxt submit "${ARGS[@]}"
           fi
 
-      - name: Commit version bump and tag
+      - name: Tag release
         if: env.DRY_RUN != 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add extension/package.json
-          git commit -m "extension: release v$VERSION"
-          git tag "@playhtml/extension@$VERSION"
-          git push origin HEAD:main
-          git push origin "@playhtml/extension@$VERSION"
+          TAG="@playhtml/extension@$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Tagged $TAG"
+          fi
 
       - name: Upload zips as artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: extension-${{ steps.version.outputs.version }}
+          name: extension-${{ env.VERSION }}
           path: extension/publish/*.zip
           retention-days: 30
           if-no-files-found: warn
