@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension-types",
-  "description": "Shared event/metadata types for the playhtml 'we were online' extension and its Cloudflare Worker.",
+  "description": "Shared event/metadata types and URL canonicalization helpers for the playhtml 'we were online' extension and its Cloudflare Worker.",
   "version": "0.3.0",
   "license": "MIT",
   "type": "module",
