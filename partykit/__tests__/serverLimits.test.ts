@@ -1,6 +1,7 @@
 // ABOUTME: Verifies PartyServer abuse limits for message rate, payload size, and document size.
 // ABOUTME: Keeps limit decisions testable without a Cloudflare Durable Object runtime.
 import { describe, expect, it } from "bun:test";
+import { DEFAULT_MESSAGE_RATE_LIMIT } from "../const";
 import {
   checkMessageLimits,
   getMessageSizeBytes,
@@ -114,6 +115,25 @@ describe("checkMessageLimits", () => {
     });
 
     expect(result.violation).toBe(null);
+  });
+
+  it("allows sustained interaction traffic below the default rate limit", () => {
+    let state = undefined;
+    const interactionMessages = 420;
+
+    for (let i = 0; i < interactionMessages; i += 1) {
+      const result = checkMessageLimits({
+        limits: {
+          ...limits,
+          maxMessagesPerWindow: DEFAULT_MESSAGE_RATE_LIMIT,
+        },
+        messageSizeBytes: 6,
+        now: 1_000,
+        state,
+      });
+      expect(result.violation).toBe(null);
+      state = result.state;
+    }
   });
 });
 

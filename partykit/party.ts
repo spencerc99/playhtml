@@ -304,14 +304,65 @@ export class PartyServer extends YServer {
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
-    const bodyText = await request.text();
-    const bodySizeBytes = new TextEncoder().encode(bodyText).byteLength;
+    const limits = this.getServerLimits();
+    const contentLength = request.headers.get("content-length");
+    const declaredBodySize =
+      contentLength === null ? null : Number(contentLength);
+    const declaredTooLarge =
+      declaredBodySize !== null &&
+      (!Number.isFinite(declaredBodySize) ||
+        !shouldAcceptRequestBody(declaredBodySize, limits));
 
-    if (!shouldAcceptRequestBody(bodySizeBytes, this.getServerLimits())) {
-      return new Response("Payload Too Large", { status: 413 });
+    const bodyText = await this.readLimitedRequestText(
+      request,
+      limits,
+      declaredTooLarge
+    );
+    if (bodyText instanceof Response) {
+      return bodyText;
     }
 
     return JSON.parse(bodyText);
+  }
+
+  private async readLimitedRequestText(
+    request: Request,
+    limits: ServerLimits,
+    alreadyTooLarge: boolean
+  ): Promise<string | Response> {
+    if (!request.body) {
+      return alreadyTooLarge
+        ? new Response("Payload Too Large", { status: 413 })
+        : "";
+    }
+
+    const reader = request.body.getReader();
+    const decoder = new TextDecoder();
+    let bodyText = "";
+    let bodySizeBytes = 0;
+    let isTooLarge = alreadyTooLarge;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      bodySizeBytes += value.byteLength;
+      if (isTooLarge || !shouldAcceptRequestBody(bodySizeBytes, limits)) {
+        isTooLarge = true;
+        continue;
+      }
+
+      bodyText += decoder.decode(value, { stream: true });
+    }
+
+    if (isTooLarge) {
+      return new Response("Payload Too Large", { status: 413 });
+    }
+
+    bodyText += decoder.decode();
+    return bodyText;
   }
 
   private async waitForEmptyRoomCompaction(): Promise<void> {

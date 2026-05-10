@@ -66,7 +66,9 @@ Config:
 
 - `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
 - `PARTYKIT_SMOKE_MAX_MESSAGE_BYTES`: expected server message-size limit for the limits smoke. Defaults to `16777216`.
-- `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `120`.
+- `PARTYKIT_SMOKE_MAX_REQUEST_BYTES`: expected server request-body limit for the limits smoke. Defaults to `16777216`.
+- `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `1000`.
+- `PARTYKIT_SMOKE_NORMAL_MESSAGES`: normal Yjs updates sent quickly before the abusive raw-client cases. Defaults to `420`.
 - `SMOKE_ENV_FILE`: optional `.dev.vars` or `.env` file to load before the script reads `ADMIN_TOKEN`.
 - `ADMIN_TOKEN`: required for `test:partykit:compaction`.
 - `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.

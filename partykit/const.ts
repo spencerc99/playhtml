@@ -41,7 +41,7 @@ export const DEFAULT_MESSAGE_RATE_WINDOW_MS = (() => {
   return 1000;
 })();
 export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
-  return 120;
+  return 1000;
 })();
 export const DEFAULT_MAX_MESSAGE_BYTES = (() => {
   return 1024 * 1024 * 16;

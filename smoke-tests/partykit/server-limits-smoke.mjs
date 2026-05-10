@@ -7,6 +7,7 @@ import {
   createStore,
   getHost,
   getNumberEnv,
+  getPartyHttpUrl,
   getPartyWebSocketUrl,
   sleep,
   waitForSync,
@@ -16,14 +17,24 @@ const host = getHost();
 const stamp = Date.now();
 const normalRoom = `codex-server-limits-normal-${stamp}`;
 const oversizedRoom = `codex-server-limits-oversized-${stamp}`;
+const oversizedRequestRoom = `codex-server-limits-request-${stamp}`;
 const rateRoom = `codex-server-limits-rate-${stamp}`;
 const maxMessageBytes = getNumberEnv(
   "PARTYKIT_SMOKE_MAX_MESSAGE_BYTES",
   1024 * 1024 * 16
 );
+const maxRequestBytes = getNumberEnv(
+  "PARTYKIT_SMOKE_MAX_REQUEST_BYTES",
+  1024 * 1024 * 16
+);
 const messageRateLimit = getNumberEnv(
   "PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT",
-  120
+  1000
+);
+const normalTrafficLimit = Math.max(1, Math.floor((messageRateLimit - 1) / 2));
+const normalTrafficMessages = Math.min(
+  getNumberEnv("PARTYKIT_SMOKE_NORMAL_MESSAGES", 420),
+  normalTrafficLimit
 );
 
 function waitForPosition(store, expectedX, label, timeoutMs = 20_000) {
@@ -54,14 +65,24 @@ function waitForPosition(store, expectedX, label, timeoutMs = 20_000) {
   });
 }
 
-function waitForAwareness(provider, label, timeoutMs = 20_000) {
+function waitForAwareness(
+  provider,
+  label,
+  expectedSequence = undefined,
+  timeoutMs = 20_000
+) {
   return new Promise((resolveAwareness, reject) => {
     const started = Date.now();
 
     async function poll() {
       while (Date.now() - started < timeoutMs) {
         for (const state of provider.awareness.getStates().values()) {
-          if (state?.smoke?.ok === true) {
+          const smoke = state?.smoke;
+          if (
+            smoke?.ok === true &&
+            (expectedSequence === undefined ||
+              smoke.sequence === expectedSequence)
+          ) {
             console.log(`${label}: observed awareness`);
             resolveAwareness(state.smoke);
             return;
@@ -75,6 +96,24 @@ function waitForAwareness(provider, label, timeoutMs = 20_000) {
 
     poll();
   });
+}
+
+function watchDisconnect(provider, label) {
+  let disconnected = false;
+  const onStatus = (event) => {
+    if (event.status === "disconnected") {
+      disconnected = true;
+    }
+  };
+
+  provider.on("status", onStatus);
+
+  return () => {
+    provider.off("status", onStatus);
+    if (disconnected) {
+      throw new Error(`${label} disconnected during normal traffic`);
+    }
+  };
 }
 
 function openRawRoom(room) {
@@ -180,6 +219,37 @@ async function runNormalTrafficCase() {
 
     firstProvider.awareness.setLocalStateField("smoke", { ok: true });
     await waitForAwareness(secondProvider, "normal awareness");
+
+    const assertStayedConnected = watchDisconnect(
+      firstProvider,
+      "normal provider"
+    );
+    const finalAwarenessSequence =
+      normalTrafficMessages % 2 === 0
+        ? normalTrafficMessages - 2
+        : normalTrafficMessages - 1;
+
+    for (let i = 0; i < normalTrafficMessages; i += 1) {
+      firstStore.play.canMove.shared = { x: i + 2, y: i + 3 };
+      if (i % 2 === 0) {
+        firstProvider.awareness.setLocalStateField("smoke", {
+          ok: true,
+          sequence: i,
+        });
+      }
+    }
+
+    await waitForPosition(
+      secondStore,
+      normalTrafficMessages + 1,
+      "normal sustained sync"
+    );
+    await waitForAwareness(
+      secondProvider,
+      "normal sustained awareness",
+      finalAwarenessSequence
+    );
+    assertStayedConnected();
   } finally {
     firstProvider.destroy();
     secondProvider.destroy();
@@ -197,6 +267,23 @@ async function runOversizedMessageCase() {
   console.log(
     `oversized raw client: closed code=${closeEvent.code} reason=${closeEvent.reason}`
   );
+}
+
+async function runOversizedRequestCase() {
+  const response = await fetch(getPartyHttpUrl(host, oversizedRequestRoom), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "x".repeat(maxRequestBytes + 1),
+  });
+  const text = await response.text();
+
+  if (response.status !== 413 || text !== "Payload Too Large") {
+    throw new Error(
+      `oversized request returned ${response.status} ${text}; expected 413 Payload Too Large`
+    );
+  }
+
+  console.log(`oversized request: status=${response.status} body=${text}`);
 }
 
 async function runRateLimitCase() {
@@ -223,8 +310,11 @@ async function runRateLimitCase() {
 console.log(`host=${host}`);
 console.log(`normalRoom=${normalRoom}`);
 console.log(`maxMessageBytes=${maxMessageBytes}`);
+console.log(`maxRequestBytes=${maxRequestBytes}`);
 console.log(`messageRateLimit=${messageRateLimit}`);
+console.log(`normalTrafficMessages=${normalTrafficMessages}`);
 await runNormalTrafficCase();
 await runOversizedMessageCase();
+await runOversizedRequestCase();
 await runRateLimitCase();
 console.log("server limits smoke passed");
