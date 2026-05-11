@@ -14,11 +14,14 @@ import {
   RISO_COLORS,
   getColorForParticipant,
   extractDomain,
+  eventMatchesPath,
 } from "../utils/eventUtils";
 
 // Settings interface for navigation graph
 export interface NavigationGraphSettings {
   domainFilter: string;
+  pathFilter: string;
+  pidFilter: string;
   navigationMaxNodes: number;
   navigationMinVisits: number;
 }
@@ -64,13 +67,20 @@ export function useNavigationGraph(
       return null;
     }
 
-    // Apply domain filter
-    const filteredEvents = settings.domainFilter
-      ? navigationEvents.filter((event) => {
-          const eventDomain = extractDomain(event.meta.url || "");
-          return eventDomain === settings.domainFilter;
-        })
-      : navigationEvents;
+    // Apply domain + path + pid filter
+    const filteredEvents =
+      settings.domainFilter || settings.pathFilter || settings.pidFilter
+        ? navigationEvents.filter((event) => {
+            if (settings.pidFilter && event.meta?.pid !== settings.pidFilter)
+              return false;
+            const url = event.meta.url || "";
+            if (settings.domainFilter) {
+              const eventDomain = extractDomain(url);
+              if (eventDomain !== settings.domainFilter) return false;
+            }
+            return eventMatchesPath(url, settings.pathFilter);
+          })
+        : navigationEvents;
 
     if (filteredEvents.length === 0) {
       return null;
@@ -465,6 +475,8 @@ export function useNavigationGraph(
     navigationEvents,
     viewportSize,
     settings.domainFilter,
+    settings.pathFilter,
+    settings.pidFilter,
     settings.navigationMaxNodes,
     settings.navigationMinVisits,
   ]);

@@ -27,9 +27,13 @@ import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { extractDomain } from "../utils/eventUtils";
 import { getTrailRenderer } from "../styles/trailRenderers";
-import { parseSettingsFromUrl } from "../config";
+import {
+  parseSettingsFromUrl,
+  parseTimeRangeFromUrl,
+  parseCleanFromUrl,
+} from "../config";
 import type { DayCounts } from "../types";
-import { CLICK_DEFAULTS } from "./clickDefaults";
+import { DEFAULT_SETTINGS } from "./settingsDefaults";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
@@ -140,44 +144,150 @@ const NaturalTimeReadout: React.FC<{
 };
 
 /** Static readout for a user-selected time range — replaces the live clock
- * when a hotspot has scoped the canvas. Same visual frame as
- * NaturalTimeReadout so it slots into the existing top-center spot. */
+ * when a hotspot has scoped the canvas. Visually matches the DaySelector
+ * pill (light cream, subtle border, monospace) so the bottom-left date
+ * pill and this top-center time-range pill read as a coordinated pair.
+ * Date is intentionally omitted — DaySelector already shows it. */
 const SelectedRangeReadout: React.FC<{
   startMs: number;
   endMs: number;
-  onClear: () => void;
-}> = ({ startMs, endMs, onClear }) => {
+}> = ({ startMs, endMs }) => {
   const start = new Date(startMs);
   const end = new Date(endMs);
-  const sameDay = start.toDateString() === end.toDateString();
-  const dateFmt: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-  };
   const timeFmt: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
   };
-  const label = sameDay
-    ? `${start.toLocaleDateString(undefined, dateFmt)} ${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleTimeString(undefined, timeFmt)}`
-    : `${start.toLocaleDateString(undefined, dateFmt)} ${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleDateString(undefined, dateFmt)} ${end.toLocaleTimeString(undefined, timeFmt)}`;
+  const label = `${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleTimeString(undefined, timeFmt)}`;
 
   return (
-    <button
-      type="button"
-      onClick={onClear}
-      title="Click to clear time range"
+    <div
       style={{
-        ...READOUT_WRAPPER_STYLE,
-        cursor: "pointer",
-        borderColor: "rgba(196,114,78,0.55)",
+        // Sit just above the DaySelector pill so the date and the time
+        // range read as a paired unit at the bottom-left. DaySelector lives
+        // at bottom: 16, and its collapsed pill is roughly 32px tall —
+        // bottom: 56 puts this with a small gap above it.
+        position: "absolute",
+        bottom: 56,
+        left: 16,
+        zIndex: 101,
+        background: "rgba(250,249,246,0.92)",
+        border: "1px solid rgba(61,56,51,0.12)",
+        borderRadius: 4,
+        padding: "6px 12px",
+        backdropFilter: "blur(6px)",
+        fontFamily: "'Martian Mono', monospace",
+        fontSize: 10,
+        fontWeight: 500,
+        color: "#4a9a8a",
+        letterSpacing: "0.5px",
+        pointerEvents: "none",
+        whiteSpace: "nowrap",
       }}
     >
-      <ReadoutNoise id="rangeReadoutNoise" />
-      <span style={{ position: "relative", zIndex: 1 }}>{label}</span>
-    </button>
+      {label}
+    </div>
   );
 };
+
+/** A player ID is `pk_` + 130 hex chars — too long for a pill or filename.
+ * Show `pk_abcd…wxyz` (first 4 + last 4 of the hex portion). Identifiable
+ * across runs but visually compact. */
+function shortenPid(pid: string): string {
+  if (!pid) return "";
+  if (pid.length <= 12) return pid;
+  const prefix = pid.slice(0, 7); // "pk_" + 4 hex
+  const suffix = pid.slice(-4);
+  return `${prefix}…${suffix}`;
+}
+
+/** Map viz registry IDs to short, human-readable labels used in saved
+ * filenames. Lives next to handleCapture so it's easy to find when
+ * adding a new viz to the registry. Keys must match `VisualizationDef.id`
+ * in `registry.ts`. */
+const VIZ_FILE_LABELS: Record<string, string> = {
+  trails: "moving",
+  navigation: "browsing",
+  clicks: "clicking",
+  typing: "typing",
+  scrolling: "scrolling",
+  favicons: "sites",
+};
+
+/** Compose the viz-label segment of a screenshot filename from the active
+ * viz IDs. Multiple active vizs join with `+` so you can tell at a glance
+ * what the capture contains. Falls back to "movement" when nothing is
+ * active (which shouldn't normally happen). */
+function formatVizLabel(activeVizIds: string[]): string {
+  if (activeVizIds.length === 0) return "movement";
+  const labels = activeVizIds
+    .map((id) => VIZ_FILE_LABELS[id] ?? id)
+    .filter(Boolean);
+  return labels.length > 0 ? labels.join("+") : "movement";
+}
+
+/** Synth a short camera-shutter "click" so the user gets audible confirmation
+ * a screenshot was taken. Two-stage burst: a high-pitched square attack for
+ * the mechanical click, then a quick filtered-noise puff for the lens-cap
+ * shuffle. ~180ms total. Runs through its own AudioContext so it works
+ * regardless of the canvas sound-engine state. */
+function playShutterSound() {
+  if (typeof window === "undefined") return;
+  try {
+    const Ctx =
+      (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const t0 = ctx.currentTime;
+
+    // Click: short square wave attack
+    const clickOsc = ctx.createOscillator();
+    const clickGain = ctx.createGain();
+    clickOsc.type = "square";
+    clickOsc.frequency.setValueAtTime(2400, t0);
+    clickOsc.frequency.exponentialRampToValueAtTime(800, t0 + 0.04);
+    clickGain.gain.setValueAtTime(0.0001, t0);
+    clickGain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.005);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+    clickOsc.connect(clickGain).connect(ctx.destination);
+    clickOsc.start(t0);
+    clickOsc.stop(t0 + 0.07);
+
+    // Whoosh: filtered noise burst slightly after the click
+    const noiseDuration = 0.12;
+    const noiseBuffer = ctx.createBuffer(
+      1,
+      Math.floor(ctx.sampleRate * noiseDuration),
+      ctx.sampleRate,
+    );
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(3000, t0 + 0.06);
+    filter.frequency.exponentialRampToValueAtTime(800, t0 + 0.18);
+    filter.Q.value = 1.5;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, t0 + 0.06);
+    noiseGain.gain.exponentialRampToValueAtTime(0.06, t0 + 0.08);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    noise.connect(filter).connect(noiseGain).connect(ctx.destination);
+    noise.start(t0 + 0.06);
+    noise.stop(t0 + 0.06 + noiseDuration);
+
+    // Tear down the context once the sound is done so we don't accumulate
+    // suspended contexts across captures.
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 300);
+  } catch {
+    /* shutter sound is non-critical — silently swallow */
+  }
+}
 
 // Bumped from "internet-movement-settings" so existing stale auto-saved
 // defaults stop overriding the new defaults. After this version, settings
@@ -185,67 +295,7 @@ const SelectedRangeReadout: React.FC<{
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
 const loadSettings = () => {
-  const defaults = {
-    trailOpacity: 0.7,
-    strokeWidth: 5,
-    animationSpeed: 1,
-    trailStyle: "chaotic" as "straight" | "smooth" | "organic" | "chaotic",
-    maxConcurrentTrails: 15,
-    trailAnimationMode: "stagger" as "natural" | "stagger",
-    overlapFactor: 0.8,
-    randomizeColors: false,
-    minGapBetweenTrails: 0.3,
-    chaosIntensity: 1.0,
-    ...CLICK_DEFAULTS,
-    eventFilter: {
-      move: true,
-      click: true,
-      hold: true,
-      cursor_change: true,
-    },
-    viewportEventFilter: {
-      scroll: true,
-      resize: true,
-      zoom: true,
-    },
-    domainFilter: "",
-    documentSpace: false,
-    scrollSpeed: 1.0,
-    backgroundOpacity: 0.7,
-    maxConcurrentScrolls: 5,
-    showPagePreview: false,
-    allowOverlap: false,
-    showScrollEvents: true,
-    showResizeEvents: true,
-    showZoomEvents: true,
-    windowScale: 0.5,
-    keyboardOverlapFactor: 0.9,
-    textboxOpacity: 0.2,
-    keyboardMinFontSize: 12,
-    keyboardMaxFontSize: 18,
-    keyboardShowCaret: true,
-    keyboardAnimationSpeed: 0.5,
-    keyboardPositionRandomness: 0.3,
-    keyboardRandomizeOrder: false,
-    keyboardDisplayMode: "full" as "full" | "abstract",
-    navigationWindowOpacity: 0.9,
-    navigationEdgeOpacity: 0.2,
-    navigationScrollSpeed: 80,
-    navigationMaxSessions: 8,
-    navigationMinSessionEvents: 3,
-    navigationViewMode: "timeline" as "timeline" | "radial",
-    navigationMaxParallelEdges: 3,
-    navigationRadialBlobSamples: 64,
-    navigationRadialBlobCurveTension: 0.5,
-    navigationRadialBlobEdgeNoise: 0.45,
-    navigationRadialBlobValleyDepth: 0.05,
-    navigationRadialSegmentByDay: true,
-    trailVisualStyle: "color",
-    soundChordVoicing: true,
-    soundCursorInstruments: true,
-    soundCrossingDissonance: false,
-  };
-
+  const defaults = DEFAULT_SETTINGS;
   const urlOverrides = parseSettingsFromUrl();
 
   try {
@@ -309,7 +359,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
    * scope the canvas to a specific span for capturing artifacts. */
   const [selectedTimeRange, setSelectedTimeRange] = useState<
     { startMs: number; endMs: number } | null
-  >(null);
+  >(() => parseTimeRangeFromUrl() ?? null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
@@ -324,6 +374,23 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     null,
   );
 
+  /** Demo / clean-presentation mode. Hides the sound toggle and time
+   * readouts so the canvas reads as a finished art piece. URL `?clean=1`
+   * sets this on load; the "save image" flow flips it on transiently
+   * during capture so the rendered PNG doesn't include any UI chrome. */
+  /** Clean-presentation level. URL sets the baseline; the save-image
+   * flow can bump it transiently. We take the max of the two so a
+   * `?clean=2` URL never gets *downgraded* mid-capture. See `CleanLevel`
+   * docs in `../config.ts` for what each tier hides. */
+  const cleanFromUrl = useMemo(() => parseCleanFromUrl(), []);
+  const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
+  const cleanLevel = Math.max(
+    cleanFromUrl,
+    captureCleanOverride ? 1 : 0,
+  ) as 0 | 1 | 2;
+  const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
+  const printMode = cleanLevel >= 2; // level 2: also hides metadata pill + DaySelector
+
   // Sync domain filter from prop (parent controls refetching)
   useEffect(() => {
     if (
@@ -334,9 +401,19 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }
   }, [domainFilterProp]);
 
-  // Notify parent when internal domain filter changes so it can refetch
+  // Notify parent when internal domain filter changes so it can refetch.
+  // CRITICAL: only call when the values actually disagree — otherwise on
+  // mount with `prop=""` and `settings.domainFilter="google.com"` (loaded
+  // from localStorage), this would push "google.com" back up while the
+  // sync-from-prop effect simultaneously pushes "" down, creating an
+  // infinite render+fetch loop.
   useEffect(() => {
-    onSetDomainFilter?.(settings.domainFilter);
+    if (
+      domainFilterProp !== undefined &&
+      domainFilterProp !== settings.domainFilter
+    ) {
+      onSetDomainFilter?.(settings.domainFilter);
+    }
   }, [settings.domainFilter]);
 
   // Manage SoundEngine lifecycle
@@ -417,16 +494,30 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const handleCapture = useCallback(async () => {
     if (!containerRef.current) return;
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(containerRef.current, {
-      backgroundColor: "#faf9f6",
-      scale: 2,
-    });
-    const link = document.createElement("a");
-    link.download = `movement-${selectedDay ?? "all"}-${Date.now()}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  }, [selectedDay]);
+    // Toggle clean mode for the duration of the capture so the saved PNG
+    // doesn't bake in the sound button or time readouts. Wait two rAFs
+    // after the state flip so React commits the render before html2canvas
+    // serializes the DOM.
+    setCaptureCleanOverride(true);
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(containerRef.current, {
+        backgroundColor: "#faf9f6",
+        scale: 2,
+      });
+      const link = document.createElement("a");
+      const vizLabel = formatVizLabel(activeVisualizations);
+      link.download = `[INT-MV] ${vizLabel}-${selectedDay ?? "all"}-${Date.now()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      playShutterSound();
+    } finally {
+      setCaptureCleanOverride(false);
+    }
+  }, [selectedDay, activeVisualizations]);
 
   // Only persist settings to localStorage AFTER the user has deliberately
   // modified them via the Controls panel. We don't want first-load defaults
@@ -450,13 +541,28 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }
   }, [settings]);
 
-  // Keyboard shortcuts: double-tap D to toggle controls, double-tap R to reload
+  // Keyboard shortcuts:
+  //   double-tap D — toggle controls panel
+  //   double-tap R — reload data
+  //   Cmd/Ctrl+Shift+S — save PNG screenshot in clean UI mode
   useEffect(() => {
     let lastDKeyTime = 0;
     let lastRKeyTime = 0;
     const DOUBLE_TAP_THRESHOLD = 300;
 
     const handleKeyPress = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+Shift+S → screenshot. Check this first so the modifier
+      // combo never falls through to the bare-S double-tap family below.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        (e.key === "s" || e.key === "S")
+      ) {
+        e.preventDefault();
+        handleCapture();
+        return;
+      }
+
       const now = Date.now();
       if (e.key === "d" || e.key === "D") {
         if (now - lastDKeyTime < DOUBLE_TAP_THRESHOLD) {
@@ -477,7 +583,31 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [fetchEvents]);
+  }, [fetchEvents, handleCapture]);
+
+  // Expose a `window.__movementReady` promise that resolves once data has
+  // loaded and the first animation frame has rendered. Used by the
+  // capture-matrix script to know when to start recording so every clip
+  // begins from a comparable starting state. No-op in production usage —
+  // it just sits on the window object.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+    if (events.length === 0) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        (window as unknown as { __movementReady?: boolean }).__movementReady =
+          true;
+        window.dispatchEvent(new CustomEvent("movement:ready"));
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [loading, events.length]);
 
   // Track canvas size via ResizeObserver
   useEffect(() => {
@@ -550,6 +680,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({
       randomizeColors: settings.randomizeColors,
       domainFilter: settings.domainFilter,
+      pathFilter: settings.pathFilter,
+      pidFilter: settings.pidFilter,
       eventFilter: settings.eventFilter,
       trailStyle: settings.trailStyle,
       chaosIntensity: settings.chaosIntensity,
@@ -562,6 +694,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     [
       settings.randomizeColors,
       settings.domainFilter,
+      settings.pathFilter,
+      settings.pidFilter,
       settings.eventFilter,
       settings.trailStyle,
       settings.chaosIntensity,
@@ -669,6 +803,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const keyboardSettings = useMemo(
     () => ({
       domainFilter: settings.domainFilter,
+      pathFilter: settings.pathFilter,
+      pidFilter: settings.pidFilter,
       keyboardOverlapFactor: settings.keyboardOverlapFactor,
       keyboardMinFontSize: settings.keyboardMinFontSize,
       keyboardMaxFontSize: settings.keyboardMaxFontSize,
@@ -677,6 +813,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }),
     [
       settings.domainFilter,
+      settings.pathFilter,
+      settings.pidFilter,
       settings.keyboardOverlapFactor,
       settings.keyboardMinFontSize,
       settings.keyboardMaxFontSize,
@@ -696,9 +834,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const viewportSettings = useMemo(
     () => ({
       domainFilter: settings.domainFilter,
+      pathFilter: settings.pathFilter,
+      pidFilter: settings.pidFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.domainFilter, settings.viewportEventFilter],
+    [settings.domainFilter, settings.pathFilter, settings.viewportEventFilter],
   );
 
   const { animations: scrollAnimations } = useViewportScroll(
@@ -710,6 +850,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const navigationTimelineSettings = useMemo(
     () => ({
       domainFilter: settings.domainFilter,
+      pathFilter: settings.pathFilter,
+      pidFilter: settings.pidFilter,
       maxSessions: settings.navigationMaxSessions,
       minSessionEvents: settings.navigationMinSessionEvents,
       canvasWidth: viewportSize.width,
@@ -717,6 +859,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }),
     [
       settings.domainFilter,
+      settings.pathFilter,
+      settings.pidFilter,
       settings.navigationMaxSessions,
       settings.navigationMinSessionEvents,
       viewportSize.width,
@@ -732,6 +876,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const navigationRadialSettings = useMemo(
     () => ({
       domainFilter: settings.domainFilter,
+      pathFilter: settings.pathFilter,
+      pidFilter: settings.pidFilter,
       maxSessions: settings.navigationMaxSessions,
       minSessionEvents: settings.navigationMinSessionEvents,
       canvasWidth: viewportSize.width,
@@ -740,6 +886,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }),
     [
       settings.domainFilter,
+      settings.pathFilter,
+      settings.pidFilter,
       settings.navigationMaxSessions,
       settings.navigationMinSessionEvents,
       settings.navigationRadialSegmentByDay,
@@ -871,7 +1019,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         onSelectTimeRange={setSelectedTimeRange}
       />
 
-      {settings.domainFilter && (
+      {!printMode && (settings.domainFilter || settings.pathFilter || settings.pidFilter) && (
         <div
           style={{
             position: "absolute",
@@ -922,17 +1070,25 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               <rect width="100%" height="100%" filter="url(#domainNoise)" />
             </svg>
             <span style={{ position: "relative", zIndex: 1 }}>
-              {settings.domainFilter}
+              {settings.domainFilter || settings.pathFilter
+                ? (settings.domainFilter || "*") +
+                  (settings.pathFilter
+                    ? (settings.pathFilter.startsWith("/") ? "" : "/") +
+                      settings.pathFilter
+                    : "")
+                : ""}
+              {settings.pidFilter
+                ? `${settings.domainFilter || settings.pathFilter ? " ~ " : "~"}${shortenPid(settings.pidFilter)}`
+                : ""}
             </span>
           </div>
         </div>
       )}
 
-      {selectedTimeRange ? (
+      {!cleanMode && (selectedTimeRange ? (
         <SelectedRangeReadout
           startMs={selectedTimeRange.startMs}
           endMs={selectedTimeRange.endMs}
-          onClear={() => setSelectedTimeRange(null)}
         />
       ) : (
         settings.trailAnimationMode === "natural" &&
@@ -945,8 +1101,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             animationSpeed={settings.animationSpeed}
           />
         )
-      )}
+      ))}
 
+      {!cleanMode && (
       <button
         onClick={handleToggleSound}
         title={soundEnabled ? "Mute" : "Play sound"}
@@ -986,6 +1143,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           )}
         </svg>
       </button>
+      )}
 
       <div className="canvas-container" ref={containerRef}>
         {/* RISO paper texture overlay */}
@@ -1144,7 +1302,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         />
       )}
 
-      {dayCounts && onSelectDay && (
+      {!printMode && dayCounts && onSelectDay && (
         <DaySelector
           dayCounts={dayCounts}
           selectedDay={selectedDay}

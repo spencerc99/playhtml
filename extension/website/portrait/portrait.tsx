@@ -9,7 +9,12 @@ import {
   deriveRequiredEventTypes,
   DEFAULT_ACTIVE_VISUALIZATIONS,
 } from "../shared/components/registry";
-import { RECENT_EVENTS_URL, DAILY_COUNTS_URL } from "../shared/config";
+import {
+  RECENT_EVENTS_URL,
+  DAILY_COUNTS_URL,
+  parseDomainFromUrl,
+  parseVizFromUrl,
+} from "../shared/config";
 
 const EVENTS_URL = RECENT_EVENTS_URL;
 
@@ -19,9 +24,28 @@ const InternetMovement = () => {
   const [error, setError] = useState<string | null>(null);
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [domainFilter, setDomainFilter] = useState<string>("");
+  const [domainFilter, setDomainFilter] = useState<string>(() => {
+    // URL wins. Otherwise mirror whatever MovementCanvas will load from
+    // localStorage on first render — if portrait disagrees on mount, the
+    // bidirectional sync between portrait.domainFilter and
+    // MovementCanvas.settings.domainFilter ping-pongs forever (each side
+    // re-asserts its initial value from a separate effect on every render).
+    const fromUrl = parseDomainFromUrl();
+    if (fromUrl !== undefined) return fromUrl;
+    try {
+      const stored = localStorage.getItem("internet-movement-settings-v2");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (typeof parsed?.domainFilter === "string") return parsed.domainFilter;
+      }
+    } catch { /* ignore */ }
+    return "";
+  });
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
     () => {
+      // URL param wins over localStorage so capture runs are deterministic.
+      const fromUrl = parseVizFromUrl();
+      if (fromUrl !== undefined) return fromUrl;
       try {
         const stored = localStorage.getItem("movement_active_viz");
         if (stored) return JSON.parse(stored);
@@ -30,8 +54,11 @@ const InternetMovement = () => {
     },
   );
 
-  // Persist visualization selection
+  // Persist visualization selection. Skip the persist when a URL override is
+  // present so capture runs don't poison the user's saved preference.
+  const vizUrlOverrideRef = useRef(parseVizFromUrl() !== undefined);
   useEffect(() => {
+    if (vizUrlOverrideRef.current) return;
     localStorage.setItem("movement_active_viz", JSON.stringify(activeVisualizations));
   }, [activeVisualizations]);
 
@@ -95,37 +122,98 @@ const InternetMovement = () => {
       setError(null);
 
       try {
-        // When a specific day is requested we scope tightly to that day with
-        // the original 5k limit. With no day selected the dev panel needs
-        // multi-day resolution so cross-day hotspots are visible — pull a
-        // wider window with a bigger limit. 14 days is enough to cover the
-        // recent past at hour/6-hour resolution while keeping payload
-        // bounded.
-        const params = new URLSearchParams();
+        // Single-day fetch: scope tightly with the original limit.
+        // No-day fetch: a single broad request hits the worker's order-by-ts
+        // cap and returns only the newest few hours. To get genuine multi-
+        // day coverage for the activity strip, fan out one request per day
+        // across the recent window. Each per-day request caps at a small
+        // limit (still gives a representative sample for unique-pid signal),
+        // and they parallelize so total page-load latency stays acceptable.
+        const buildUrl = (extraParams: Record<string, string>, type: string) => {
+          const params = new URLSearchParams(extraParams);
+          if (domain) params.set("domain", domain);
+          params.set("type", type);
+          return `${EVENTS_URL}?${params}`;
+        };
+
+        const fetchOne = (
+          extraParams: Record<string, string>,
+          type: string,
+        ): Promise<CollectionEvent[]> =>
+          fetch(buildUrl(extraParams, type)).then((r) => {
+            if (!r.ok)
+              throw new Error(`Failed to fetch ${type} events: ${r.status}`);
+            return r.json();
+          });
+
+        let fetched: CollectionEvent[] = [];
         if (day) {
-          params.set("limit", "5000");
-          params.set("from", day);
-          params.set("to", `${day}T23:59:59Z`);
+          const results = await Promise.all(
+            [...typesToFetch].map((type) =>
+              fetchOne(
+                {
+                  limit: "5000",
+                  from: day,
+                  to: `${day}T23:59:59Z`,
+                },
+                type,
+              ),
+            ),
+          );
+          fetched = results.flat();
         } else {
-          params.set("limit", "20000");
-          const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-          params.set("from", fourteenDaysAgo.toISOString().slice(0, 10));
+          // Fan out across the last DAYS_BACK days. Per-day limit kept
+          // modest so total payload stays bounded — the strip needs spread,
+          // not depth, and the per-day samples are enough to estimate
+          // unique-pid presence per bucket.
+          const DAYS_BACK = 14;
+          const PER_DAY_LIMIT = 800;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const dayKeys: string[] = [];
+          for (let i = 0; i < DAYS_BACK; i++) {
+            const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            dayKeys.push(`${y}-${m}-${dd}`);
+          }
+          // Throttle: 14 days × N types = up to 56 requests if we go fully
+          // parallel, which can saturate connection limits and produce
+          // sporadic `TypeError: Failed to fetch` from the browser. Run in
+          // small batches so the browser stays under its concurrent-request
+          // ceiling.
+          const allTasks: Array<{ dayKey: string; type: string }> = [];
+          for (const dayKey of dayKeys) {
+            for (const type of typesToFetch) {
+              allTasks.push({ dayKey, type });
+            }
+          }
+          const BATCH_SIZE = 6;
+          const results: CollectionEvent[][] = [];
+          for (let i = 0; i < allTasks.length; i += BATCH_SIZE) {
+            const batch = allTasks.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(
+              batch.map(({ dayKey, type }) =>
+                fetchOne(
+                  {
+                    limit: String(PER_DAY_LIMIT),
+                    from: dayKey,
+                    to: `${dayKey}T23:59:59Z`,
+                  },
+                  type,
+                ).catch((err) => {
+                  // Don't fail the whole load when one day errors — just
+                  // skip it and let the rest populate.
+                  console.warn(`Failed to fetch ${dayKey}/${type}:`, err);
+                  return [] as CollectionEvent[];
+                }),
+              ),
+            );
+            results.push(...batchResults);
+          }
+          fetched = results.flat();
         }
-        if (domain) {
-          params.set("domain", domain);
-        }
-
-        const promises: Promise<CollectionEvent[]>[] = [...typesToFetch].map(
-          (type) =>
-            fetch(`${EVENTS_URL}?${params}&type=${type}`).then((r) => {
-              if (!r.ok)
-                throw new Error(`Failed to fetch ${type} events: ${r.status}`);
-              return r.json();
-            }),
-        );
-
-        const results = await Promise.all(promises);
-        const fetched = results.flat();
 
         // Track what we've fetched
         for (const t of typesToFetch) {

@@ -213,6 +213,35 @@ export function extractDomain(url: string): string {
   }
 }
 
+/**
+ * Extract the pathname from a URL (no query string, no hash). Returns "/"
+ * for URLs without an explicit path. Mirrors `extractDomain`'s tolerance
+ * of bare hostnames by lazily prepending https://.
+ */
+export function extractPath(url: string): string {
+  if (!url) return "";
+  try {
+    const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return urlObj.pathname || "/";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * True when the event's URL path starts with `pathFilter`. Empty filter
+ * matches everything. The leading `/` is optional in the filter — both
+ * `/maps` and `maps` match `https://google.com/maps/...`. Used together
+ * with a domain filter to scope a viz to a sub-section of a site.
+ */
+export function eventMatchesPath(eventUrl: string, pathFilter: string): boolean {
+  if (!pathFilter) return true;
+  const path = extractPath(eventUrl);
+  if (!path) return false;
+  const needle = pathFilter.startsWith("/") ? pathFilter : `/${pathFilter}`;
+  return path.startsWith(needle);
+}
+
 // Constants used across event processing
 export const TRAIL_TIME_THRESHOLD = 300000; // 5 minutes - gap that breaks a trail into separate trails
 export const SCROLL_SESSION_THRESHOLD = 900000; // 15 minutes - gap that breaks scroll sessions

@@ -6,6 +6,7 @@ import { CollectionEvent, ScrollAnimation } from "../types";
 import {
   getColorForParticipant,
   extractDomain,
+  eventMatchesPath,
   SCROLL_SESSION_THRESHOLD,
   SCROLL_TIME_COMPRESSION,
   MAX_VIEWPORT_ANIMATION_DURATION,
@@ -14,6 +15,8 @@ import {
 // Settings interface for viewport scroll
 export interface ViewportScrollSettings {
   domainFilter: string;
+  pathFilter: string;
+  pidFilter: string;
   viewportEventFilter: {
     scroll: boolean;
     resize: boolean;
@@ -62,13 +65,20 @@ export function useViewportScroll(
       eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
     });
 
-    // Apply domain filter
-    const filteredEvents = settings.domainFilter
-      ? viewportEvents.filter((event) => {
-          const eventDomain = extractDomain(event.meta.url || "");
-          return eventDomain === settings.domainFilter;
-        })
-      : viewportEvents;
+    // Apply domain + path + pid filter
+    const filteredEvents =
+      settings.domainFilter || settings.pathFilter || settings.pidFilter
+        ? viewportEvents.filter((event) => {
+            if (settings.pidFilter && event.meta?.pid !== settings.pidFilter)
+              return false;
+            const url = event.meta.url || "";
+            if (settings.domainFilter) {
+              const eventDomain = extractDomain(url);
+              if (eventDomain !== settings.domainFilter) return false;
+            }
+            return eventMatchesPath(url, settings.pathFilter);
+          })
+        : viewportEvents;
 
     if (filteredEvents.length === 0) {
       return { animations: [], timeBounds: { min: 0, max: 0 } };
@@ -416,6 +426,8 @@ export function useViewportScroll(
     viewportEvents,
     viewportSize.width,
     settings.domainFilter,
+    settings.pathFilter,
+    settings.pidFilter,
     settings.viewportEventFilter,
   ]);
 

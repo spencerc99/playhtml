@@ -20,6 +20,7 @@ import {
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
   extractDomain,
+  eventMatchesPath,
   deriveSessionColor,
 } from "../utils/eventUtils";
 
@@ -27,6 +28,8 @@ import {
 export interface CursorTrailSettings {
   randomizeColors: boolean;
   domainFilter: string;
+  pathFilter: string;
+  pidFilter: string;
   eventFilter: {
     move: boolean;
     click: boolean;
@@ -93,13 +96,26 @@ export function useCursorTrails(
       return { trails: [] as Trail[], documentCanvasSize: null };
     }
 
-    // Apply domain filter
-    const filteredEvents = settings.domainFilter
-      ? cursorEvents.filter((event) => {
-          const eventDomain = extractDomain(event.meta.url || "");
-          return eventDomain === settings.domainFilter;
-        })
-      : cursorEvents;
+    // Apply domain + path + pid filters. Each is independent and AND'd
+    // when set; absent filters short-circuit. Path filter is prefix-based;
+    // pid is exact-match against `event.meta.pid`.
+    const filteredEvents =
+      settings.domainFilter || settings.pathFilter || settings.pidFilter
+        ? cursorEvents.filter((event) => {
+            if (
+              settings.pidFilter &&
+              event.meta?.pid !== settings.pidFilter
+            ) {
+              return false;
+            }
+            const url = event.meta.url || "";
+            if (settings.domainFilter) {
+              const eventDomain = extractDomain(url);
+              if (eventDomain !== settings.domainFilter) return false;
+            }
+            return eventMatchesPath(url, settings.pathFilter);
+          })
+        : cursorEvents;
 
     // In document space mode, compute the document bounding box so the overlay
     // knows how tall/wide to make itself to cover all trail positions.
@@ -322,6 +338,8 @@ export function useCursorTrails(
     cursorEvents,
     settings.randomizeColors,
     settings.domainFilter,
+    settings.pathFilter,
+    settings.pidFilter,
     settings.eventFilter,
     settings.documentSpace,
     viewportSize,

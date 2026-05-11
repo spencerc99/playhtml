@@ -9,11 +9,17 @@ import {
   TypingAnimation,
   TypingState,
 } from "../types";
-import { getColorForParticipant, extractDomain } from "../utils/eventUtils";
+import {
+  getColorForParticipant,
+  extractDomain,
+  eventMatchesPath,
+} from "../utils/eventUtils";
 
 // Settings interface for keyboard typing
 export interface KeyboardTypingSettings {
   domainFilter: string;
+  pathFilter: string;
+  pidFilter: string;
   keyboardOverlapFactor: number;
   keyboardMinFontSize: number;
   keyboardMaxFontSize: number;
@@ -81,12 +87,17 @@ export function useKeyboardTyping(
       return [];
     }
 
-    // Apply domain filter if set
+    // Apply domain + path + pid filter if set
     let filteredKeyboardEvents = keyboardEvents;
-    if (settings.domainFilter) {
+    if (settings.domainFilter || settings.pathFilter || settings.pidFilter) {
       filteredKeyboardEvents = keyboardEvents.filter((e) => {
-        const eventDomain = extractDomain(e.meta.url || "");
-        return eventDomain === settings.domainFilter;
+        if (settings.pidFilter && e.meta?.pid !== settings.pidFilter) return false;
+        const url = e.meta.url || "";
+        if (settings.domainFilter) {
+          const eventDomain = extractDomain(url);
+          if (eventDomain !== settings.domainFilter) return false;
+        }
+        return eventMatchesPath(url, settings.pathFilter);
       });
     }
 
@@ -218,6 +229,8 @@ export function useKeyboardTyping(
   }, [
     keyboardEvents,
     settings.domainFilter,
+    settings.pathFilter,
+    settings.pidFilter,
     viewportSize.width,
     viewportSize.height,
     settings.keyboardRandomizeOrder,

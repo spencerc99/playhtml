@@ -13,10 +13,13 @@ import {
   RADIAL_ORGANIC_COLORS,
   RADIAL_EDGE_COLORS,
   extractDomain,
+  eventMatchesPath,
 } from "../utils/eventUtils";
 
 export interface NavigationRadialSettings {
   domainFilter: string;
+  pathFilter: string;
+  pidFilter: string;
   maxSessions: number;
   minSessionEvents: number;
   canvasWidth: number;
@@ -90,12 +93,19 @@ export function useNavigationRadial(
       return null;
     }
 
-    const filteredEvents = settings.domainFilter
-      ? navigationEvents.filter((event) => {
-          const eventDomain = extractDomain(event.meta.url || "");
-          return eventDomain === settings.domainFilter;
-        })
-      : navigationEvents;
+    const filteredEvents =
+      settings.domainFilter || settings.pathFilter || settings.pidFilter
+        ? navigationEvents.filter((event) => {
+            if (settings.pidFilter && event.meta?.pid !== settings.pidFilter)
+              return false;
+            const url = event.meta.url || "";
+            if (settings.domainFilter) {
+              const eventDomain = extractDomain(url);
+              if (eventDomain !== settings.domainFilter) return false;
+            }
+            return eventMatchesPath(url, settings.pathFilter);
+          })
+        : navigationEvents;
 
     if (filteredEvents.length === 0) return null;
 
@@ -294,6 +304,8 @@ export function useNavigationRadial(
   }, [
     navigationEvents,
     settings.domainFilter,
+    settings.pathFilter,
+    settings.pidFilter,
     settings.maxSessions,
     settings.minSessionEvents,
     settings.canvasWidth,

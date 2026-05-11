@@ -9,11 +9,17 @@ import {
   TimelineSession,
   TimelineState,
 } from "../types";
-import { RISO_COLORS, extractDomain } from "../utils/eventUtils";
+import {
+  RISO_COLORS,
+  extractDomain,
+  eventMatchesPath,
+} from "../utils/eventUtils";
 
 // Settings interface for navigation timeline
 export interface NavigationTimelineSettings {
   domainFilter: string;
+  pathFilter: string;
+  pidFilter: string;
   maxSessions: number;
   minSessionEvents: number;
   canvasWidth: number;
@@ -96,13 +102,20 @@ export function useNavigationTimeline(
       return null;
     }
 
-    // Apply domain filter
-    const filteredEvents = settings.domainFilter
-      ? navigationEvents.filter((event) => {
-          const eventDomain = extractDomain(event.meta.url || "");
-          return eventDomain === settings.domainFilter;
-        })
-      : navigationEvents;
+    // Apply domain + path + pid filter
+    const filteredEvents =
+      settings.domainFilter || settings.pathFilter || settings.pidFilter
+        ? navigationEvents.filter((event) => {
+            if (settings.pidFilter && event.meta?.pid !== settings.pidFilter)
+              return false;
+            const url = event.meta.url || "";
+            if (settings.domainFilter) {
+              const eventDomain = extractDomain(url);
+              if (eventDomain !== settings.domainFilter) return false;
+            }
+            return eventMatchesPath(url, settings.pathFilter);
+          })
+        : navigationEvents;
 
     if (filteredEvents.length === 0) {
       return null;
@@ -336,6 +349,8 @@ export function useNavigationTimeline(
   }, [
     navigationEvents,
     settings.domainFilter,
+    settings.pathFilter,
+    settings.pidFilter,
     settings.maxSessions,
     settings.minSessionEvents,
     settings.canvasWidth,
