@@ -20,6 +20,7 @@ import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
 import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
 import { ActivityStrip } from "./ActivityStrip";
+import { StatsConsole } from "./StatsConsole";
 import { useCursorTrails } from "../hooks/useCursorTrails";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
@@ -1018,6 +1019,22 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
       />
+
+      {/* Top-of-screen stats console. Paired with the bottom ActivityStrip
+          (same gating + leftOffset math) so the dev surface has a
+          symmetrical "instrument frame" around the canvas. */}
+      {controlsVisible && events.length > 0 && (
+        <StatsConsole
+          events={events}
+          filteredEventCount={filteredEvents.length}
+          trailCount={trails.length}
+          cycleDurationMs={timeRange.duration}
+          animationSpeed={settings.animationSpeed}
+          leftOffset={controlsVisible ? 340 : 16}
+          loading={loading}
+          error={error}
+        />
+      )}
 
       {!printMode && (settings.domainFilter || settings.pathFilter || settings.pidFilter) && (
         <div
