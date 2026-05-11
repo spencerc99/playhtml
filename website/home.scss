@@ -55,58 +55,51 @@ i {
   backdrop-filter: blur(10px);
   background: linear-gradient(
       145deg,
-      color-mix(in srgb, var(--color-background-neutral) 92%, transparent),
-      color-mix(in srgb, var(--background) 78%, transparent)
-    ),
-    repeating-linear-gradient(
-      -35deg,
-      transparent 0 8px,
-      color-mix(in srgb, var(--color-text) 7%, transparent) 8px 9px
+      color-mix(in srgb, var(--color-background-neutral) 82%, transparent),
+      color-mix(in srgb, var(--background) 72%, transparent)
   );
-  border: 2px solid color-mix(in srgb, var(--color-text) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 28%, transparent);
   border-bottom: 0;
-  border-radius: 10px 10px 0 0;
+  border-radius: 8px 8px 0 0;
   bottom: 0;
-  box-shadow: 0 -5px 0 color-mix(in srgb, var(--color-text) 12%, transparent),
-    0 -12px 28px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 -3px 0 color-mix(in srgb, var(--color-text) 16%, transparent),
+    0 -14px 32px rgba(0, 0, 0, 0.18);
   box-sizing: border-box;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   left: 50%;
-  max-width: min(920px, calc(100vw - 32px));
+  max-width: min(720px, calc(100vw - 24px));
   min-height: 46px;
-  padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+  padding: 7px 12px calc(7px + env(safe-area-inset-bottom));
   position: fixed;
   transform: translateX(-50%);
   width: max-content;
   z-index: 10000;
 
   &::before {
-    background: linear-gradient(
-      90deg,
-      rgb(245, 169, 15),
-      var(--color-text-link),
-      rgb(16, 210, 16),
-      hsl(317, 67%, 61%)
-    );
+    background: color-mix(in srgb, var(--color-text) 24%, transparent);
     content: "";
-    height: 3px;
+    height: 1px;
     left: 12px;
     position: absolute;
     right: 12px;
-    top: -2px;
+    top: 0;
   }
 
   a,
   summary {
-    background: color-mix(in srgb, var(--color-background-neutral) 68%, transparent);
+    align-items: center;
+    background: color-mix(in srgb, var(--color-background-neutral) 70%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
-    border-radius: 4px;
+    border-radius: 5px;
     color: var(--color-text);
     cursor: pointer;
+    display: inline-flex;
     font-size: 0.95rem;
+    gap: 6px;
     line-height: 1;
-    padding: 5px 7px;
+    min-height: 30px;
+    padding: 0 9px;
     text-decoration: none;
     text-decoration-color: var(--color-text-translucent);
     text-underline-offset: 3px;
@@ -125,14 +118,15 @@ i {
 
 .site-console__status {
   align-items: center;
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
-  border-radius: 999px;
+  background: color-mix(in srgb, rgb(16, 210, 16) 9%, var(--color-background-neutral));
+  border: 1px solid color-mix(in srgb, rgb(16, 210, 16) 34%, var(--color-text));
+  border-radius: 5px;
   color: var(--color-text);
   display: inline-flex;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   gap: 6px;
-  padding: 5px 8px;
+  min-height: 30px;
+  padding: 0 9px;
   white-space: nowrap;
 }
 
@@ -145,11 +139,43 @@ i {
   width: 8px;
 }
 
+.site-console__wwo {
+  background: color-mix(in srgb, rgb(16, 210, 16) 13%, var(--color-background-neutral)) !important;
+  border-color: color-mix(in srgb, rgb(16, 210, 16) 42%, var(--color-text)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 40%, transparent),
+    0 0 12px color-mix(in srgb, rgb(16, 210, 16) 24%, transparent);
+
+  img {
+    height: 18px;
+    object-fit: contain;
+    width: 18px;
+  }
+
+  span {
+    font-family: "Carter One", "Cooper Black", Georgia, serif;
+    font-style: italic;
+    letter-spacing: 0;
+  }
+}
+
 .site-console__secondary {
   border-left: 1px solid var(--color-text-translucent);
   display: inline-flex;
-  gap: 12px;
-  padding-left: 12px;
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.site-console__icon-link {
+  justify-content: center;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  width: 32px;
+
+  svg {
+    fill: currentColor;
+    height: 17px;
+    width: 17px;
+  }
 }
 
 .site-console__more {
@@ -178,24 +204,17 @@ i {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-width: 180px;
+  min-width: 150px;
   padding: 12px;
   position: absolute;
   right: 0;
 }
 
-.site-console__project-link {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-
-  small {
-    color: var(--color-text-translucent);
-    font-size: 0.75rem;
-    line-height: 1.2;
-    max-width: 180px;
-    text-decoration: none;
-    white-space: normal;
+.site-console__menu-icon-link {
+  svg {
+    fill: currentColor;
+    height: 17px;
+    width: 17px;
   }
 }
 
@@ -360,93 +379,6 @@ i {
   }
 }
 
-.wewere-callout {
-  align-items: flex-start;
-  background: linear-gradient(
-    155deg,
-    color-mix(in srgb, var(--color-background-neutral) 42%, transparent),
-    color-mix(in srgb, var(--background) 90%, transparent)
-  );
-  border: 2px solid color-mix(in srgb, var(--color-text) 42%, transparent);
-  border-radius: 8px;
-  box-shadow: 5px 5px 0 color-mix(in srgb, var(--color-text) 18%, transparent);
-  display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(96px, 0.35fr) 1fr;
-  margin: 32px 0;
-  padding: 18px;
-
-  h2 {
-    font-family: "Carter One";
-    font-size: 1.6rem;
-    margin: 0 0 8px;
-  }
-
-  p {
-    margin: 0 0 10px;
-  }
-}
-
-.wewere-callout__eyebrow {
-  color: var(--color-text-translucent);
-  font-size: 0.75rem;
-  font-weight: bold;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.wewere-callout__trace {
-  background: color-mix(in srgb, var(--color-background-neutral) 38%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text) 32%, transparent);
-  border-radius: 6px;
-  min-height: 120px;
-  overflow: hidden;
-  position: relative;
-
-  &::before {
-    background: linear-gradient(
-        140deg,
-        transparent 0 28%,
-        color-mix(in srgb, var(--color-text-link) 46%, transparent) 29% 31%,
-        transparent 32% 100%
-      ),
-      linear-gradient(
-        25deg,
-        transparent 0 42%,
-        rgba(245, 169, 15, 0.5) 43% 45%,
-        transparent 46% 100%
-      );
-    content: "";
-    inset: 0;
-    position: absolute;
-  }
-
-  span {
-    background: var(--color-text-link);
-    border-radius: 50%;
-    height: 8px;
-    position: absolute;
-    width: 8px;
-
-    &:nth-child(1) {
-      left: 18%;
-      top: 64%;
-    }
-
-    &:nth-child(2) {
-      background: rgb(245, 169, 15);
-      left: 48%;
-      top: 34%;
-    }
-
-    &:nth-child(3) {
-      background: rgb(16, 210, 16);
-      left: 74%;
-      top: 58%;
-    }
-  }
-}
-
 .guestbook-entry {
   margin: 10px 0;
   display: grid;
@@ -487,7 +419,7 @@ i {
 }
 
 // Primary CTA (Docs). Keeps the signature green glow so the homepage's
-// "alive" quality is preserved — docs is now the primary surface to enter.
+// "alive" quality is preserved while docs stays the main entry point.
 #start {
   transition: box-shadow 0.2s ease-in-out;
   font-weight: bold;
@@ -736,20 +668,43 @@ footer {
     border-left: 0;
     border-radius: 0;
     border-right: 0;
-    gap: 10px;
-    justify-content: center;
+    gap: 7px;
+    justify-content: flex-start;
     left: 0;
     max-width: none;
     overflow: visible;
-    padding-left: 10px;
-    padding-right: 10px;
+    padding-left: 8px;
+    padding-right: 8px;
     transform: none;
     width: 100%;
+
+    a,
+    summary {
+      font-size: 0.92rem;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
   }
 
   .site-console__status {
-    font-size: 0;
-    gap: 0;
+    flex: 0 0 auto;
+    font-size: 0.92rem;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .site-console__status-label {
+    display: none;
+  }
+
+  .site-console__wwo {
+    padding-left: 7px;
+    padding-right: 8px;
+
+    img {
+      height: 17px;
+      width: 17px;
+    }
   }
 
   .site-console__secondary {
@@ -758,17 +713,11 @@ footer {
 
   .site-console__more {
     display: block;
+    margin-left: auto;
   }
 
   .site-console__menu {
-    right: 0;
+    right: 8px;
   }
 
-  .wewere-callout {
-    grid-template-columns: 1fr;
-  }
-
-  .wewere-callout__trace {
-    min-height: 86px;
-  }
 }

@@ -1,0 +1,379 @@
+// ABOUTME: Styles the homepage experiments archive as a compact console table.
+// ABOUTME: Keeps experiment navigation readable across desktop and mobile.
+
+.experiments-archive {
+  background: color-mix(in srgb, var(--color-background-neutral) 54%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-text) 42%, transparent);
+  border-radius: 6px;
+  box-shadow: 5px 5px 0 color-mix(in srgb, var(--color-text) 15%, transparent);
+  margin: 34px 0;
+  position: relative;
+}
+
+.experiments-archive__header {
+  align-items: center;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-text) 86%, transparent),
+    color-mix(in srgb, var(--color-text) 74%, transparent)
+  );
+  color: var(--color-background-neutral);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+
+  > span {
+    border: 1px solid color-mix(in srgb, var(--color-background-neutral) 28%, transparent);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    padding: 4px 7px;
+    white-space: nowrap;
+  }
+}
+
+.experiments-archive__header h2 {
+  color: inherit;
+  font-family: "Carter One";
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+.experiments-archive__body {
+  background: color-mix(in srgb, var(--color-background-neutral) 86%, var(--background));
+}
+
+.experiments-archive__section-label {
+  background: color-mix(in srgb, var(--color-text-link) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent);
+  color: color-mix(in srgb, var(--color-text) 54%, transparent);
+  font-size: 0.72rem;
+  font-weight: bold;
+  letter-spacing: 0.18em;
+  margin: 0;
+  padding: 8px 18px 7px;
+  text-transform: uppercase;
+
+  &:not(:first-child) {
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+  }
+}
+
+.experiments-archive__row {
+  align-items: center;
+  color: var(--color-text);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 64px minmax(112px, 0.76fr) minmax(180px, 1fr) minmax(86px, max-content);
+  min-height: 38px;
+  padding: 0 18px;
+  position: relative;
+  text-decoration: none;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent);
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    outline: none;
+
+    em {
+      color: var(--color-text-link);
+      text-decoration-color: currentColor;
+    }
+  }
+
+  strong {
+    font-weight: 700;
+    position: relative;
+    z-index: 1;
+  }
+
+  strong:first-child {
+    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+    font-size: 0.84rem;
+    letter-spacing: 0.06em;
+  }
+
+  .experiments-archive__description {
+    color: color-mix(in srgb, var(--color-text) 76%, transparent);
+    position: relative;
+    z-index: 1;
+
+    .experiments-archive__meta {
+      color: color-mix(in srgb, var(--color-text) 52%, transparent);
+      display: block;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+  }
+
+  em {
+    color: var(--color-text-link);
+    font-style: normal;
+    position: relative;
+    z-index: 1;
+    text-align: right;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--color-text-link) 42%, transparent);
+    text-underline-offset: 3px;
+    white-space: nowrap;
+  }
+}
+
+.experiments-archive__row--random-active {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--randomizer-color) 30%, transparent),
+      transparent 62%
+    ),
+    color-mix(in srgb, var(--color-background-neutral) 82%, transparent);
+
+  &::before {
+    background: var(--randomizer-color);
+    content: "";
+    inset: 0 auto 0 0;
+    position: absolute;
+    width: 4px;
+    z-index: 1;
+  }
+}
+
+.experiments-archive__row--random-selected {
+  animation: experiment-random-selected 760ms steps(1, end) both;
+}
+
+.experiments-archive__row--static {
+  cursor: default;
+
+  em {
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+    text-decoration: none;
+  }
+
+  &:hover,
+  &:focus-visible {
+    em {
+      color: color-mix(in srgb, var(--color-text) 50%, transparent);
+    }
+  }
+}
+
+.experiments-archive__row--event {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, rgb(245, 169, 15) 16%, transparent),
+      transparent 26%
+    ),
+    color-mix(in srgb, var(--color-background-neutral) 78%, transparent);
+}
+
+.experiments-archive__fingerprints {
+  inset: 0 84px 0 64px;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+
+  i {
+    background:
+      radial-gradient(
+        ellipse at 48% 42%,
+        color-mix(in srgb, var(--trace-color) 18%, transparent) 0 8%,
+        color-mix(in srgb, var(--trace-color) 14%, transparent) 24%,
+        color-mix(in srgb, var(--trace-color) 9%, transparent) 46%,
+        color-mix(in srgb, var(--trace-color) 4%, transparent) 70%,
+        transparent 100%
+      );
+    filter: blur(8px);
+    height: 50px;
+    left: var(--trace-x);
+    opacity: var(--trace-opacity);
+    position: absolute;
+    top: var(--trace-y);
+    transform: translate(-50%, -50%) rotate(var(--trace-rotate));
+    width: 70px;
+  }
+}
+
+.experiments-archive__preview {
+  background: color-mix(in srgb, var(--color-background-neutral) 72%, white);
+  border: 1px solid color-mix(in srgb, var(--color-text) 34%, transparent);
+  border-radius: 5px;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--color-text) 16%, transparent);
+  display: block;
+  padding: 7px;
+  position: absolute;
+  right: 18px;
+  top: calc(100% - 4px);
+  width: min(260px, 40vw);
+  z-index: 5;
+
+  &::before {
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+    content: "preview";
+    display: block;
+    font-size: 0.7rem;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+  }
+
+  img {
+    aspect-ratio: 4 / 3;
+    display: block;
+    object-fit: cover;
+    width: 100%;
+  }
+}
+
+.experiments-archive__row:hover {
+  z-index: 4;
+}
+
+.experiments-archive__footer {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-background-neutral) 72%, var(--background));
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px;
+
+  button {
+    background: color-mix(in srgb, var(--color-background-neutral) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-text) 28%, transparent);
+    box-shadow: 2px 2px 0 color-mix(in srgb, var(--color-text) 14%, transparent);
+    color: var(--color-text-link);
+    font-family: "Play";
+    padding: 7px 12px;
+
+    &:hover,
+    &:focus-visible {
+      background: color-mix(in srgb, var(--color-text) 8%, var(--color-background-neutral));
+      outline: none;
+    }
+
+    &:disabled {
+      color: color-mix(in srgb, var(--color-text) 46%, transparent);
+      cursor: wait;
+      opacity: 0.72;
+    }
+  }
+
+  span {
+    color: color-mix(in srgb, var(--color-text) 58%, transparent);
+    font-size: 0.86rem;
+  }
+}
+
+.experiments-archive__random-users {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+
+  i {
+    background: var(--user-color);
+    border: 1px solid color-mix(in srgb, var(--color-text) 24%, transparent);
+    border-radius: 999px;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--user-color) 62%, transparent);
+    display: block;
+    height: 9px;
+    width: 9px;
+  }
+}
+
+@keyframes experiment-random-selected {
+  0%,
+  28%,
+  56%,
+  84%,
+  100% {
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--randomizer-color) 36%, transparent),
+        transparent 66%
+      ),
+      color-mix(in srgb, var(--color-background-neutral) 84%, transparent);
+  }
+
+  14%,
+  42%,
+  70% {
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--randomizer-color) 70%, transparent),
+        color-mix(in srgb, var(--randomizer-color) 16%, transparent) 78%
+      ),
+      color-mix(in srgb, var(--color-background-neutral) 86%, transparent);
+  }
+}
+
+@media screen and (max-width: 760px) {
+  .experiments-archive {
+    border-left-width: 1px;
+    border-right-width: 1px;
+    margin: 28px 0;
+  }
+
+  .experiments-archive__header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .experiments-archive__row {
+    gap: 5px 10px;
+    grid-template-columns: 62px minmax(0, 1fr) max-content;
+    min-height: auto;
+    padding: 12px 14px;
+
+    strong:first-child {
+      grid-column: 1;
+      grid-row: 1 / 3;
+    }
+
+    strong:nth-child(2),
+    span {
+      grid-column: 2;
+    }
+
+    em {
+      grid-column: 3;
+      grid-row: 1;
+    }
+
+    em {
+      align-self: start;
+    }
+  }
+
+  .experiments-archive__preview {
+    display: none;
+  }
+
+  .experiments-archive__row:hover,
+  .experiments-archive__row:focus-visible {
+    .experiments-archive__preview {
+      display: none;
+    }
+  }
+
+  .experiments-archive__footer {
+    align-items: stretch;
+    flex-direction: column;
+
+    span {
+      display: none;
+    }
+  }
+}
