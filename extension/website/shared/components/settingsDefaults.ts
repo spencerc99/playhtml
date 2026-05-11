@@ -1,0 +1,71 @@
+// ABOUTME: Settings defaults for MovementCanvas, extracted so utilities
+// ABOUTME: like the share-URL builder can compare against them without a cycle.
+
+import { CLICK_DEFAULTS } from "./clickDefaults";
+
+/** Settings defaults — extracted so the share-URL builder can compare
+ * against them and only emit params that diverge. Keep this in sync with
+ * `parseSettingsFromUrl` in `../config.ts` (anything you want shareable
+ * needs both a default here and a parser there). */
+export const DEFAULT_SETTINGS = {
+  trailOpacity: 0.7,
+  strokeWidth: 5,
+  animationSpeed: 1,
+  trailStyle: "chaotic" as "straight" | "smooth" | "organic" | "chaotic",
+  maxConcurrentTrails: 15,
+  trailAnimationMode: "stagger" as "natural" | "stagger",
+  overlapFactor: 0.8,
+  randomizeColors: false,
+  minGapBetweenTrails: 0.3,
+  chaosIntensity: 1.0,
+  ...CLICK_DEFAULTS,
+  eventFilter: {
+    move: true,
+    click: true,
+    hold: true,
+    cursor_change: true,
+  },
+  viewportEventFilter: {
+    scroll: true,
+    resize: true,
+    zoom: true,
+  },
+  domainFilter: "",
+  pathFilter: "",
+  pidFilter: "",
+  documentSpace: false,
+  scrollSpeed: 1.0,
+  backgroundOpacity: 0.7,
+  maxConcurrentScrolls: 5,
+  showPagePreview: false,
+  allowOverlap: false,
+  showScrollEvents: true,
+  showResizeEvents: true,
+  showZoomEvents: true,
+  windowScale: 0.5,
+  keyboardOverlapFactor: 0.9,
+  textboxOpacity: 0.2,
+  keyboardMinFontSize: 12,
+  keyboardMaxFontSize: 18,
+  keyboardShowCaret: true,
+  keyboardAnimationSpeed: 0.5,
+  keyboardPositionRandomness: 0.3,
+  keyboardRandomizeOrder: false,
+  keyboardDisplayMode: "full" as "full" | "abstract",
+  navigationWindowOpacity: 0.9,
+  navigationEdgeOpacity: 0.2,
+  navigationScrollSpeed: 80,
+  navigationMaxSessions: 8,
+  navigationMinSessionEvents: 3,
+  navigationViewMode: "timeline" as "timeline" | "radial",
+  navigationMaxParallelEdges: 3,
+  navigationRadialBlobSamples: 64,
+  navigationRadialBlobCurveTension: 0.5,
+  navigationRadialBlobEdgeNoise: 0.45,
+  navigationRadialBlobValleyDepth: 0.05,
+  navigationRadialSegmentByDay: true,
+  trailVisualStyle: "color",
+  soundChordVoicing: true,
+  soundCursorInstruments: true,
+  soundCrossingDissonance: false,
+};

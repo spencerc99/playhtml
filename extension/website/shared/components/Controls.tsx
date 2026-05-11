@@ -1,6 +1,6 @@
 // ABOUTME: Controls panel component for the Internet Movement visualization
 // ABOUTME: Provides UI for adjusting visualization settings and displaying stats
-import React, { useState, memo, useMemo } from "react";
+import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import { CollectionEvent, Trail } from "../types";
 import { VISUALIZATIONS } from "./registry";
 import { TRAIL_RENDERERS } from "../styles";
@@ -12,6 +12,16 @@ import {
   pickStripBucketMs,
   rankSustainedWindows,
 } from "../utils/hotspots";
+import { buildShareUrl } from "../utils/shareUrl";
+import { parseCleanFromUrl } from "../config";
+import {
+  addSavedConfig,
+  buildAutoName,
+  loadSavedConfigs,
+  subscribeSavedConfigs,
+  type SavedConfig,
+} from "../utils/savedConfigs";
+import { DEFAULT_SETTINGS } from "./settingsDefaults";
 
 interface ControlsProps {
   visible: boolean;
@@ -46,6 +56,494 @@ const WINDOW_LENGTH_OPTIONS: Array<{ label: string; ms: number }> = [
   { label: "2 hours", ms: 2 * 60 * 60 * 1000 },
   { label: "6 hours", ms: 6 * 60 * 60 * 1000 },
 ];
+
+/** Top-of-panel share + save section.
+ *
+ * - "Copy URL" → minimal share URL to clipboard (via `buildShareUrl`).
+ * - "Save" + optional title → persists current config to localStorage.
+ *   When the title is blank, an auto-name is derived from the active
+ *   vizs / domain / path / trail style / time range (see
+ *   `buildAutoName`).
+ * - List of saved configs (newest first). Click a row to navigate to
+ *   the saved URL (full reload reapplies settings). × deletes.
+ *
+ * Hoisted to module scope for stable component identity (same reason as
+ * `CollapsibleSection` and `PathFilterInput`). */
+const ShareConfigSection: React.FC<{
+  settings: Record<string, unknown>;
+  activeVisualizations: string[];
+  selectedTimeRange: { startMs: number; endMs: number } | null;
+}> = ({ settings, activeVisualizations, selectedTimeRange }) => {
+  const [copyFeedback, setCopyFeedback] = useState<"idle" | "ok" | "err">(
+    "idle",
+  );
+  const [titleDraft, setTitleDraft] = useState("");
+  const [saved, setSaved] = useState<SavedConfig[]>(() => loadSavedConfigs());
+
+  const buildCurrentUrl = () =>
+    buildShareUrl({
+      settings,
+      defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+      activeVisualizations,
+      selectedTimeRange,
+      // Preserve whichever clean tier the page is currently in (set via
+      // URL). If someone tweaks controls inside `?clean=2` and copies the
+      // URL, the next person should land in the same print mode.
+      clean: parseCleanFromUrl(),
+    });
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(buildCurrentUrl());
+      setCopyFeedback("ok");
+    } catch {
+      setCopyFeedback("err");
+    }
+    window.setTimeout(() => setCopyFeedback("idle"), 1500);
+  };
+
+  const onSave = () => {
+    const title = titleDraft.trim();
+    const autoName = buildAutoName({
+      activeVisualizations,
+      domainFilter: (settings.domainFilter as string | undefined) ?? "",
+      pathFilter: (settings.pathFilter as string | undefined) ?? "",
+      pidFilter: (settings.pidFilter as string | undefined) ?? "",
+      trailStyle: settings.trailStyle as string | undefined,
+      trailStyleIsDefault:
+        (settings.trailStyle as string | undefined) ===
+        DEFAULT_SETTINGS.trailStyle,
+      selectedTimeRange,
+    });
+    const name = title || autoName;
+    const url = buildCurrentUrl();
+    setSaved((prev) => addSavedConfig(prev, { name, url }));
+    setTitleDraft("");
+  };
+
+  // Cross-tab sync: when the management page (or another tab) edits the
+  // list, this panel updates without a manual reload.
+  useEffect(() => {
+    const unsub = subscribeSavedConfigs((next) => setSaved(next));
+    return unsub;
+  }, []);
+
+  const onRestore = (cfg: SavedConfig) => {
+    // Always-new-tab so the dev session in this tab is preserved.
+    window.open(cfg.url, "_blank", "noopener");
+  };
+
+  const PANEL_RECENT_LIMIT = 8;
+  const recent = saved.slice(0, PANEL_RECENT_LIMIT);
+  const hasMore = saved.length > PANEL_RECENT_LIMIT;
+
+  const copyLabel =
+    copyFeedback === "ok"
+      ? "Copied!"
+      : copyFeedback === "err"
+        ? "Copy failed"
+        : "Copy URL";
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <button
+          type="button"
+          onClick={onCopy}
+          title="Copy a minimal URL that reproduces this configuration"
+          style={{
+            flex: 1,
+            padding: "6px 10px",
+            fontSize: "11px",
+            fontWeight: 600,
+            fontFamily: "'Martian Mono', 'Space Mono', monospace",
+            letterSpacing: "0.5px",
+            textTransform: "uppercase",
+            background: copyFeedback === "ok" ? "#e6f4f1" : "#faf9f6",
+            color: copyFeedback === "err" ? "#c4724e" : "#3d3833",
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 3,
+            cursor: "pointer",
+          }}
+        >
+          {copyLabel}
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <input
+          type="text"
+          value={titleDraft}
+          placeholder="Optional title (blank = auto-name)"
+          onChange={(e) => setTitleDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSave();
+            }
+          }}
+          style={{
+            flex: 1,
+            fontSize: 11,
+            padding: "5px 8px",
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 3,
+          }}
+        />
+        <button
+          type="button"
+          onClick={onSave}
+          title="Save this configuration to localStorage"
+          style={{
+            padding: "5px 10px",
+            fontSize: "11px",
+            fontWeight: 600,
+            fontFamily: "'Martian Mono', 'Space Mono', monospace",
+            letterSpacing: "0.5px",
+            textTransform: "uppercase",
+            background: "#faf9f6",
+            color: "#3d3833",
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 3,
+            cursor: "pointer",
+          }}
+        >
+          Save
+        </button>
+      </div>
+
+      {saved.length > 0 && (
+        <div
+          style={{
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: 3,
+            background: "#fdfcf9",
+            maxHeight: 180,
+            overflowY: "auto",
+          }}
+        >
+          {recent.map((cfg, idx) => (
+            <button
+              key={cfg.id}
+              type="button"
+              onClick={() => onRestore(cfg)}
+              title={`Open in new tab — ${cfg.url}`}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                border: "none",
+                borderBottom:
+                  idx < recent.length - 1
+                    ? "1px solid rgba(0,0,0,0.05)"
+                    : "none",
+                padding: "5px 8px",
+                cursor: "pointer",
+                color: "#3d3833",
+                fontSize: 11,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {cfg.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(hasMore || saved.length > 0) && (
+        <div style={{ marginTop: 6, textAlign: "right" }}>
+          <a
+            href="/portrait/saved.html"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              fontSize: 10,
+              color: "#5b8db8",
+              textDecoration: "none",
+              fontFamily: "'Martian Mono', monospace",
+              letterSpacing: "0.5px",
+              textTransform: "uppercase",
+            }}
+          >
+            {hasMore
+              ? `View all ${saved.length} →`
+              : "Manage saved configs →"}
+          </a>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Split a free-form filter string into `{ domain, pathPrefix }`. Accepts
+ * full URLs, hostname/path combos, bare paths, or bare hostnames.
+ *
+ *   "https://google.com/maps?q=x" → { domain: "google.com", pathPrefix: "/maps" }
+ *   "google.com/maps"             → { domain: "google.com", pathPrefix: "/maps" }
+ *   "google.com"                  → { domain: "google.com", pathPrefix: "" }
+ *   "/maps"                       → { domain: "",           pathPrefix: "/maps" }
+ *   "maps"                        → { domain: "",           pathPrefix: "/maps" }
+ *
+ * The "has a dot before the first slash" heuristic decides whether the
+ * leading segment is a hostname or part of the path. Strips protocol,
+ * `www.`, query string, and hash. */
+function splitFilterInput(raw: string): { domain: string; pathPrefix: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { domain: "", pathPrefix: "" };
+
+  // Try as a real URL first when a protocol is present.
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      const domain = u.hostname.replace(/^www\./, "");
+      const pathPrefix = u.pathname && u.pathname !== "/" ? u.pathname : "";
+      return { domain, pathPrefix };
+    } catch {
+      // fall through to manual split
+    }
+  }
+
+  // Strip query/hash for manual cases.
+  const cleaned = trimmed.replace(/[?#].*$/, "");
+  const slashIdx = cleaned.indexOf("/");
+  const head = slashIdx === -1 ? cleaned : cleaned.slice(0, slashIdx);
+  const tail = slashIdx === -1 ? "" : cleaned.slice(slashIdx); // includes "/"
+
+  // Leading segment is a hostname iff it contains a "." (e.g. "google.com").
+  if (head.includes(".")) {
+    const domain = head.replace(/^www\./, "");
+    return { domain, pathPrefix: tail };
+  }
+
+  // No dot in head — treat the whole input as a path. Prepend "/" if missing.
+  if (!cleaned) return { domain: "", pathPrefix: "" };
+  const pathPrefix = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return { domain: "", pathPrefix };
+}
+
+/** Path-filter input with two affordances:
+ *   1. Local draft state with a 350ms debounce — typing doesn't thrash
+ *      the visualization (every keystroke would otherwise re-run all
+ *      hooks and re-fire the worker fetch via the domain-sync chain).
+ *   2. Smart split on commit — if the typed/pasted value parses as
+ *      `domain[/path]`, the domain part is routed to `setDomainFilter`
+ *      and the path remains in `pathFilter`. Pasting `google.com/maps`
+ *      fills both fields in one action.
+ *
+ * Hoisted to module scope alongside CollapsibleSection for the same
+ * reason — stable component identity prevents focus loss. */
+const PathFilterInput: React.FC<{
+  pathFilter: string;
+  domainFilter: string;
+  setSettings: React.Dispatch<React.SetStateAction<any>>;
+}> = ({ pathFilter, domainFilter, setSettings }) => {
+  // Local draft so typing stays responsive even if upstream re-renders.
+  // Initialize from prop and reset whenever the prop changes from outside
+  // (e.g. another control or URL nav).
+  const [draft, setDraft] = useState(pathFilter ?? "");
+  const lastPropRef = useRef(pathFilter ?? "");
+  useEffect(() => {
+    if (pathFilter !== lastPropRef.current) {
+      lastPropRef.current = pathFilter;
+      setDraft(pathFilter ?? "");
+    }
+  }, [pathFilter]);
+
+  // Debounce-commit: write to settings (which triggers all the downstream
+  // hook re-runs) only after the user pauses typing.
+  useEffect(() => {
+    if (draft === (pathFilter ?? "")) return;
+    const t = window.setTimeout(() => {
+      const { domain, pathPrefix } = splitFilterInput(draft);
+      setSettings((s: any) => {
+        // Only set domain when smart-paste extracted one — otherwise
+        // typing into the path field would clobber an already-set domain.
+        const next: any = { ...s, pathFilter: pathPrefix };
+        if (domain) next.domainFilter = domain;
+        return next;
+      });
+      lastPropRef.current = pathPrefix;
+      // Reflect the normalized value in the input (keeps display tidy
+      // when user pasted "https://google.com/maps?q=x" — they'll see
+      // "/maps" after the debounce fires).
+      if (draft !== pathPrefix) setDraft(pathPrefix);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [draft, pathFilter, setSettings]);
+
+  const clear = () => {
+    setDraft("");
+    setSettings((s: any) => ({ ...s, pathFilter: "" }));
+  };
+
+  return (
+    <div className="control-group">
+      <label htmlFor="path-filter">Path Filter</label>
+      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <input
+          id="path-filter"
+          type="text"
+          value={draft}
+          placeholder="/maps  or  google.com/maps"
+          onChange={(e) => setDraft(e.target.value)}
+          style={{ flex: 1 }}
+        />
+        {(draft || pathFilter) && (
+          <button
+            onClick={clear}
+            style={{
+              padding: "4px 8px",
+              fontSize: "11px",
+              cursor: "pointer",
+            }}
+            title="Clear path filter"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          color: "#8a8279",
+          marginTop: 4,
+          fontStyle: "italic",
+        }}
+      >
+        Prefix-matches event URL path. Paste a full URL (e.g.
+        <code>google.com/maps</code>) to fill domain + path together.
+        {domainFilter && !pathFilter ? (
+          <>
+            {" "}Currently scoped to <strong>{domainFilter}</strong>.
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+/** Exact-string filter on `event.meta.pid` (the persistent ECDSA-derived
+ * player ID). Debounced like PathFilterInput so typing stays responsive
+ * even while all the downstream viz hooks re-run on commit. No
+ * smart-paste — pids are opaque, no value in trying to split them. */
+const UserFilterInput: React.FC<{
+  pidFilter: string;
+  setSettings: React.Dispatch<React.SetStateAction<any>>;
+}> = ({ pidFilter, setSettings }) => {
+  const [draft, setDraft] = useState(pidFilter ?? "");
+  const lastPropRef = useRef(pidFilter ?? "");
+  useEffect(() => {
+    if (pidFilter !== lastPropRef.current) {
+      lastPropRef.current = pidFilter;
+      setDraft(pidFilter ?? "");
+    }
+  }, [pidFilter]);
+
+  useEffect(() => {
+    if (draft === (pidFilter ?? "")) return;
+    const t = window.setTimeout(() => {
+      const trimmed = draft.trim();
+      setSettings((s: any) => ({ ...s, pidFilter: trimmed }));
+      lastPropRef.current = trimmed;
+      if (draft !== trimmed) setDraft(trimmed);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [draft, pidFilter, setSettings]);
+
+  const clear = () => {
+    setDraft("");
+    setSettings((s: any) => ({ ...s, pidFilter: "" }));
+  };
+
+  return (
+    <div className="control-group">
+      <label htmlFor="user-filter">User Filter</label>
+      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <input
+          id="user-filter"
+          type="text"
+          value={draft}
+          placeholder="pk_… (player ID)"
+          onChange={(e) => setDraft(e.target.value)}
+          style={{ flex: 1, fontFamily: "'Martian Mono', monospace", fontSize: 10 }}
+        />
+        {(draft || pidFilter) && (
+          <button
+            onClick={clear}
+            style={{
+              padding: "4px 8px",
+              fontSize: "11px",
+              cursor: "pointer",
+            }}
+            title="Clear user filter"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          color: "#8a8279",
+          marginTop: 4,
+          fontStyle: "italic",
+        }}
+      >
+        Show only events from this player ID. Right-click a trail to copy
+        its pid (coming soon), or paste one you already have.
+      </div>
+    </div>
+  );
+};
+
+/** Hoisted out of `Controls` so its component identity is stable across
+ * renders. When this lived inside `Controls` as a closure, every parent
+ * re-render minted a new function value, which React treated as a different
+ * component type and remounted the entire subtree on each keystroke into
+ * any input — including blowing away input focus. Keep this at module
+ * scope and pass section state in via props. */
+const CollapsibleSection: React.FC<{
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}> = ({ title, expanded, onToggle, children }) => (
+  <div
+    style={{
+      borderBottom: "1px solid #eee",
+      paddingBottom: "8px",
+      marginBottom: "8px",
+    }}
+  >
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        background: "none",
+        border: "none",
+        padding: "8px 0",
+        cursor: "pointer",
+        fontSize: "13px",
+        fontWeight: "600",
+        color: "#333",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <span>{title}</span>
+      <span style={{ fontSize: "12px", opacity: 0.6 }}>
+        {expanded ? "▼" : "▶"}
+      </span>
+    </button>
+    {expanded && <div style={{ marginTop: "8px" }}>{children}</div>}
+  </div>
+);
 
 export const Controls: React.FC<ControlsProps> = memo(
   ({
@@ -155,52 +653,6 @@ export const Controls: React.FC<ControlsProps> = memo(
       }));
     };
 
-    const CollapsibleSection = ({
-      title,
-      sectionKey,
-      children,
-    }: {
-      title: string;
-      sectionKey: string;
-      children: React.ReactNode;
-    }) => {
-      const isExpanded = expandedSections[sectionKey];
-      return (
-        <div
-          style={{
-            borderBottom: "1px solid #eee",
-            paddingBottom: "8px",
-            marginBottom: "8px",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => toggleSection(sectionKey)}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              background: "none",
-              border: "none",
-              padding: "8px 0",
-              cursor: "pointer",
-              fontSize: "13px",
-              fontWeight: "600",
-              color: "#333",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <span>{title}</span>
-            <span style={{ fontSize: "12px", opacity: 0.6 }}>
-              {isExpanded ? "▼" : "▶"}
-            </span>
-          </button>
-          {isExpanded && <div style={{ marginTop: "8px" }}>{children}</div>}
-        </div>
-      );
-    };
-
     if (!visible) return null;
 
     return (
@@ -214,6 +666,12 @@ export const Controls: React.FC<ControlsProps> = memo(
           boxSizing: "border-box",
         }}
       >
+        <ShareConfigSection
+          settings={settings}
+          activeVisualizations={activeVisualizations}
+          selectedTimeRange={selectedTimeRange ?? null}
+        />
+
         {/* Randomize Colors at the very top */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
           <label htmlFor="randomize-colors">
@@ -234,7 +692,11 @@ export const Controls: React.FC<ControlsProps> = memo(
         </div>
 
         {/* Visualizations multiselect and domain filter */}
-        <CollapsibleSection title="Visualizations" sectionKey="filters">
+        <CollapsibleSection
+          title="Visualizations"
+          expanded={!!expandedSections["filters"]}
+          onToggle={() => toggleSection("filters")}
+        >
           <div className="control-group">
             <label
               style={{
@@ -423,10 +885,25 @@ export const Controls: React.FC<ControlsProps> = memo(
               )}
             </div>
           </div>
+
+          <PathFilterInput
+            pathFilter={settings.pathFilter ?? ""}
+            domainFilter={settings.domainFilter ?? ""}
+            setSettings={setSettings}
+          />
+
+          <UserFilterInput
+            pidFilter={settings.pidFilter ?? ""}
+            setSettings={setSettings}
+          />
         </CollapsibleSection>
 
         {/* Cursor Settings - merged from Appearance and Animation */}
-        <CollapsibleSection title="Cursor Settings" sectionKey="cursorSettings">
+        <CollapsibleSection
+          title="Cursor Settings"
+          expanded={!!expandedSections["cursorSettings"]}
+          onToggle={() => toggleSection("cursorSettings")}
+        >
           <div className="control-group">
             <label htmlFor="trail-visual-style">Visual Style</label>
             <select
@@ -553,7 +1030,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="max-concurrent"
               type="range"
               min="1"
-              max="25"
+              max="40"
               step="1"
               value={settings.maxConcurrentTrails}
               onChange={(e) =>
@@ -626,7 +1103,11 @@ export const Controls: React.FC<ControlsProps> = memo(
           )}
         </CollapsibleSection>
 
-        <CollapsibleSection title="Click Settings" sectionKey="clickSettings">
+        <CollapsibleSection
+          title="Click Settings"
+          expanded={!!expandedSections["clickSettings"]}
+          onToggle={() => toggleSection("clickSettings")}
+        >
           <div className="control-group">
             <button
               type="button"
@@ -897,7 +1378,11 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="Keyboard Settings" sectionKey="keyboard">
+        <CollapsibleSection
+          title="Keyboard Settings"
+          expanded={!!expandedSections["keyboard"]}
+          onToggle={() => toggleSection("keyboard")}
+        >
           <div className="control-group">
             <label htmlFor="keyboard-display-mode">Display Mode</label>
             <select
@@ -1068,7 +1553,11 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="Scroll Animation" sectionKey="scroll">
+        <CollapsibleSection
+          title="Scroll Animation"
+          expanded={!!expandedSections["scroll"]}
+          onToggle={() => toggleSection("scroll")}
+        >
           <div className="control-group">
             <label htmlFor="scroll-speed">Scroll Speed</label>
             <input
@@ -1215,7 +1704,11 @@ export const Controls: React.FC<ControlsProps> = memo(
 
         </CollapsibleSection>
 
-        <CollapsibleSection title="Navigation" sectionKey="navigation">
+        <CollapsibleSection
+          title="Navigation"
+          expanded={!!expandedSections["navigation"]}
+          onToggle={() => toggleSection("navigation")}
+        >
           <div className="control-group">
             <span style={{ display: "block", marginBottom: "4px" }}>
               View mode
@@ -1489,7 +1982,11 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="Sound Settings" sectionKey="sound">
+        <CollapsibleSection
+          title="Sound Settings"
+          expanded={!!expandedSections["sound"]}
+          onToggle={() => toggleSection("sound")}
+        >
           <div className="control-group">
             <label htmlFor="sound-chord-voicing">
               <input
@@ -1543,7 +2040,11 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="Activity Hotspots" sectionKey="hotspots">
+        <CollapsibleSection
+          title="Activity Hotspots"
+          expanded={!!expandedSections["hotspots"]}
+          onToggle={() => toggleSection("hotspots")}
+        >
           <div
             style={{
               fontSize: "11px",
