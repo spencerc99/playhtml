@@ -63,7 +63,9 @@ function getRandomExperimentStepDelay(index: number) {
   return 55 * index + index * index * 4;
 }
 
-function isRandomExperimentEvent(payload: unknown): payload is RandomExperimentEvent {
+function isRandomExperimentEvent(
+  payload: unknown,
+): payload is RandomExperimentEvent {
   if (!payload || typeof payload !== "object") return false;
 
   const event = payload as Partial<RandomExperimentEvent>;
@@ -174,14 +176,14 @@ const pastEvents: ExperimentArchiveEntry[] = [
   {
     number: "EV-03",
     name: "neighborhood internets",
-    description: "Neighborhood internets workshop",
+    description: "creating tiny social networks",
     institution: "If, Then",
     eventType: "Workshop",
   },
   {
     number: "EV-04",
     name: "neighborhood internets",
-    description: "Neighborhood internets workshop",
+    description: "creating tiny social networks",
     href: "https://spencer.place/creation/neighborhood-internets-workshop/",
     image: "/experiments/index-previews/event-gray-area.png",
     institution: "Gray Area",
@@ -484,13 +486,20 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
     );
 
     useEffect(() => {
-      if (!hasSynced || !registerPlayEventListener || !removePlayEventListener) {
+      if (
+        !hasSynced ||
+        !registerPlayEventListener ||
+        !removePlayEventListener
+      ) {
         return;
       }
 
       const listenerId = registerPlayEventListener(RandomExperimentEventType, {
         onEvent: (payload: unknown) => {
-          if (!isRandomExperimentEvent(payload) || payload.sequence.length === 0) {
+          if (
+            !isRandomExperimentEvent(payload) ||
+            payload.sequence.length === 0
+          ) {
             return;
           }
 
@@ -578,72 +587,75 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
           eventPayload: payload,
         });
       },
-      [
-        dispatchPlayEvent,
-        getMyPlayerIdentity,
-        hasSynced,
-        myColor,
-      ],
+      [dispatchPlayEvent, getMyPlayerIdentity, hasSynced, myColor],
     );
 
-  return (
-    <section
-      className="experiments-archive"
-      id="experiments-index"
-      aria-labelledby="experiments-archive-title"
-    >
-      <div className="experiments-archive__header">
-        <h2 id="experiments-archive-title">Experiments index</h2>
-        <span>
-          {experiments.length} experiments / {pastEvents.length} events
-        </span>
-      </div>
-      <div className="experiments-archive__body">
-        <div className="experiments-archive__table">
-          <p className="experiments-archive__section-label">experiments</p>
-          {experiments.map((experiment) => (
-            <ExperimentsArchiveRow
-              entry={experiment}
-              key={experiment.number}
-              randomizerColor={randomizer.color}
-              traces={tracesByRow.get(experiment.number) ?? []}
-              isRandomActive={randomizer.activeNumber === experiment.number}
-              isRandomSelected={
-                randomizer.isFlashing &&
-                randomizer.selectedNumber === experiment.number
-              }
-              onExperimentClick={handleExperimentClick}
-            />
-          ))}
-          <p className="experiments-archive__section-label">past events</p>
-          {pastEvents.map((event) => (
-            <ExperimentsArchiveRow
-              entry={event}
-              isEvent
-              key={event.number}
-              randomizerColor={randomizer.color}
-              onExperimentClick={handleExperimentClick}
-            />
-          ))}
+    return (
+      <section
+        className="experiments-archive"
+        id="experiments-index"
+        aria-labelledby="experiments-archive-title"
+      >
+        <div className="experiments-archive__header">
+          <h2 id="experiments-archive-title">All Experiments</h2>
+          <span>
+            {experiments.length} experiments / {pastEvents.length} events
+          </span>
         </div>
-      </div>
-      <div className="experiments-archive__footer">
-        <span>hover a row for a page preview</span>
-        <span className="experiments-archive__random-users" aria-hidden="true">
-          {randomizer.clickerColors.map((color) => (
-            <i key={color} style={{ "--user-color": color } as CSSProperties} />
-          ))}
-        </span>
-        <button
-          type="button"
-          disabled={!hasSynced || !dispatchPlayEvent}
-          onClick={handleRandomExperiment}
-        >
-          {hasSynced && dispatchPlayEvent ? "random experiment" : "syncing..."}
-        </button>
-      </div>
-    </section>
-  );
+        <div className="experiments-archive__body">
+          <div className="experiments-archive__table">
+            <p className="experiments-archive__section-label">experiments</p>
+            {experiments.map((experiment) => (
+              <ExperimentsArchiveRow
+                entry={experiment}
+                key={experiment.number}
+                randomizerColor={randomizer.color}
+                traces={tracesByRow.get(experiment.number) ?? []}
+                isRandomActive={randomizer.activeNumber === experiment.number}
+                isRandomSelected={
+                  randomizer.isFlashing &&
+                  randomizer.selectedNumber === experiment.number
+                }
+                onExperimentClick={handleExperimentClick}
+              />
+            ))}
+            <p className="experiments-archive__section-label">past events</p>
+            {pastEvents.map((event) => (
+              <ExperimentsArchiveRow
+                entry={event}
+                isEvent
+                key={event.number}
+                randomizerColor={randomizer.color}
+                onExperimentClick={handleExperimentClick}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="experiments-archive__footer">
+          <span>hover a row for a page preview</span>
+          <span
+            className="experiments-archive__random-users"
+            aria-hidden="true"
+          >
+            {randomizer.clickerColors.map((color) => (
+              <i
+                key={color}
+                style={{ "--user-color": color } as CSSProperties}
+              />
+            ))}
+          </span>
+          <button
+            type="button"
+            disabled={!hasSynced || !dispatchPlayEvent}
+            onClick={handleRandomExperiment}
+          >
+            {hasSynced && dispatchPlayEvent
+              ? "random experiment"
+              : "syncing..."}
+          </button>
+        </div>
+      </section>
+    );
   },
 );
 
