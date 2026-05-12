@@ -1,5 +1,5 @@
 // ABOUTME: Renders a compact homepage index of playhtml experiments and spaces.
-// ABOUTME: Provides direct navigation without relying on the older slot machine.
+// ABOUTME: Provides direct navigation to experiments and event archives.
 
 import {
   type CSSProperties,
