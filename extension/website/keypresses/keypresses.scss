@@ -130,6 +130,77 @@ body {
   }
 }
 
+.filter-input {
+  cursor: text;
+  width: 11ch;
+  transition: width 120ms ease;
+
+  &::placeholder {
+    color: #aaa;
+  }
+
+  &:focus {
+    width: 18ch;
+  }
+}
+
+// ── Domain filter combobox ───────────────────────────────────────────────────
+.domain-filter {
+  position: relative;
+  display: inline-block;
+}
+
+.domain-filter-menu {
+  // Anchored to bottom of input; the info bar is fixed to bottom of viewport
+  // so the popover opens upward.
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 100%;
+  max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  font-family: "Courier Prime", "Courier New", monospace;
+  font-size: 0.7rem;
+  color: #444;
+  z-index: 20;
+  display: none;
+
+  &.open {
+    display: block;
+  }
+}
+
+.domain-filter-item {
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &.highlighted {
+    background: #eee;
+  }
+
+  &.selected {
+    font-weight: 700;
+    color: #111;
+  }
+}
+
+.domain-filter-empty {
+  padding: 4px 8px;
+  color: #aaa;
+  font-style: italic;
+}
+
 // ── Dev-mode speed control ────────────────────────────────────────────────────
 .speed-control {
   display: flex;

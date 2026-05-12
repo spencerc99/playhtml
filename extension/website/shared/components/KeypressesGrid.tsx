@@ -4,6 +4,7 @@
 // ABOUTME: Visual variety comes from typography (font, weight, shade) not color.
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useCombobox } from "downshift";
 import { CollectionEvent, KeyboardEventData, TypingAction } from "../types";
 import { extractDomain } from "../utils/eventUtils";
 
@@ -15,7 +16,7 @@ const SPEED_STORAGE_KEY = "keypresses-animation-speed";
 const RANDOMIZE_STORAGE_KEY = "keypresses-randomize-order";
 const DEFAULT_SPEED = 1.0;
 const MERGE_THRESHOLD_MS = 35000;
-const MAX_SESSIONS = 150;
+const MAX_SESSIONS = 1000;
 /** Empty cells inserted between sessions for visual breathing room. */
 const SESSION_GAP = 3;
 /**
@@ -343,6 +344,147 @@ function buildSessions(
   });
 }
 
+// ── Domain filter autocomplete ────────────────────────────────────────────────
+/**
+ * Combobox over the loaded domain list, powered by downshift. Substring
+ * matches are case-insensitive. Free-typed values are also accepted (so the
+ * filter can target a domain that's not in the currently-loaded events).
+ *
+ * Commits when the user picks an item, presses Enter, or blurs the input.
+ * Clearing commits "" which the parent treats as "all domains".
+ */
+const DomainFilterInput: React.FC<{
+  value: string;
+  options: string[];
+  onCommit: (val: string) => void;
+}> = ({ value, options, onCommit }) => {
+  const [items, setItems] = useState<string[]>(options);
+
+  // Keep the filtered list in sync when the source options change
+  useEffect(() => {
+    setItems(options);
+  }, [options]);
+
+  const {
+    isOpen,
+    getInputProps,
+    getMenuProps,
+    getItemProps,
+    highlightedIndex,
+    inputValue,
+    setInputValue,
+    closeMenu,
+  } = useCombobox<string>({
+    items,
+    initialInputValue: value,
+    itemToString: (item) => item ?? "",
+    // Two behavior overrides:
+    // 1. Open the menu on input click and focus (downshift's default is to
+    //    only open while the user types).
+    // 2. Auto-highlight the first match while the user is typing, so Enter
+    //    commits the obvious top choice instead of silently dropping the
+    //    typed value when nothing is explicitly highlighted.
+    stateReducer: (state, { type, changes }) => {
+      const t = useCombobox.stateChangeTypes;
+      if (type === t.InputClick || type === t.InputFocus) {
+        return { ...changes, isOpen: true };
+      }
+      if (type === t.InputChange) {
+        return {
+          ...changes,
+          highlightedIndex: changes.inputValue ? 0 : -1,
+        };
+      }
+      return changes;
+    },
+    onInputValueChange: ({ inputValue }) => {
+      const q = (inputValue ?? "").toLowerCase();
+      setItems(
+        q ? options.filter((d) => d.toLowerCase().includes(q)) : options,
+      );
+    },
+    onSelectedItemChange: ({ selectedItem }) => {
+      const v = selectedItem ?? "";
+      lastCommittedRef.current = v;
+      onCommit(v);
+    },
+  });
+
+  // Tracks the most recently committed value across Enter / blur / item
+  // selection. Without this, downshift's own onSelectedItemChange and our
+  // onKeyDown Enter handler can both fire in quick succession, producing two
+  // commits with different values (the selected item and the typed prefix).
+  const lastCommittedRef = useRef<string>(value);
+  useEffect(() => {
+    lastCommittedRef.current = value;
+  }, [value]);
+
+  // Single source of truth for "commit whatever's currently typed."
+  // Used by both Enter and blur. Trims, no-ops if unchanged from what's
+  // already committed, accepts free-typed values not in the option list.
+  const commitCurrentInput = () => {
+    const trimmed = (inputValue ?? "").trim();
+    if (trimmed !== lastCommittedRef.current) {
+      lastCommittedRef.current = trimmed;
+      onCommit(trimmed);
+    }
+  };
+
+  // External value changes (e.g. localStorage hydration) sync into the input
+  useEffect(() => {
+    if (value !== inputValue) setInputValue(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div className="domain-filter">
+      <input
+        {...getInputProps({
+          className: "filter-select filter-input",
+          placeholder: "all domains",
+          onBlur: commitCurrentInput,
+          onKeyDown: (e) => {
+            // When Enter fires and downshift WILL pick a highlighted item,
+            // do nothing here — onSelectedItemChange handles the commit.
+            // Otherwise (no highlighted item, or downshift's selection would
+            // be a no-op), commit whatever's typed so the user doesn't have
+            // to also tab/click away to apply the filter.
+            if (e.key === "Enter") {
+              const willDownshiftSelect =
+                highlightedIndex >= 0 && highlightedIndex < items.length;
+              if (!willDownshiftSelect) {
+                commitCurrentInput();
+              }
+              closeMenu();
+              (e.currentTarget as HTMLInputElement).blur();
+            }
+          },
+        })}
+      />
+      <ul
+        {...getMenuProps()}
+        className={`domain-filter-menu${isOpen ? " open" : ""}`}
+      >
+        {isOpen &&
+          items.map((item, index) => (
+            <li
+              key={item}
+              {...getItemProps({ item, index })}
+              className={`domain-filter-item${
+                highlightedIndex === index ? " highlighted" : ""
+              }${value === item ? " selected" : ""}`}
+            >
+              {item}
+            </li>
+          ))}
+        {isOpen && items.length === 0 && (
+          <li className="domain-filter-empty">no matches</li>
+        )}
+      </ul>
+    </div>
+  );
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 /** Extract available dates and domains from raw events (before session building). */
 function extractFilterOptions(events: CollectionEvent[]): { dates: string[]; domains: string[] } {
@@ -403,6 +545,10 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
   // virtualTime at which each session first entered the viewport
   const sessionEntryRef = useRef<Map<number, number>>(new Map());
   const prevScrollRef = useRef(0);      // detects loop reset
+  // Last rendered text per session — used to skip the cell loop when a
+  // session's text hasn't changed since the previous frame (e.g. once it has
+  // finished typing, or while it's outside the activation window).
+  const sessionLastTextRef = useRef<Map<number, string>>(new Map());
 
   const animRef = useRef<number>();
 
@@ -474,6 +620,7 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
 
     // Reset all scroll-driven state so sessions re-activate cleanly
     sessionEntryRef.current.clear();
+    sessionLastTextRef.current.clear();
     virtualTimeRef.current = 0;
     prevTsRef.current = null;
     prevScrollRef.current = 0;
@@ -500,52 +647,86 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
       // When the scroll position wraps back to the top, reset all session timers
       if (loopedScroll < prevScrollRef.current - CELL_SIZE * 2) {
         sessionEntryRef.current.clear();
+        sessionLastTextRef.current.clear();
       }
+      // Only push a new scroll position when it changes by at least 1px —
+      // calling window.scrollTo every frame triggers a forced layout on the
+      // (very tall) document even when the value is the same.
+      const scrollDelta = Math.abs(loopedScroll - prevScrollRef.current);
       prevScrollRef.current = loopedScroll;
-      window.scrollTo(0, loopedScroll);
+      if (scrollDelta >= 1) {
+        window.scrollTo(0, loopedScroll);
+      }
 
       const cells = cellsRef.current;
       const prevChar = prevCharRef.current;
       const prevFilled = prevFilledRef.current;
       const currentCols = colsRef.current;
+      const sessionLastText = sessionLastTextRef.current;
+      const sessionEntry = sessionEntryRef.current;
+
+      // Visible window in CSS px, with a one-viewport buffer above and below
+      // so sessions just outside the visible region still pre-render rather
+      // than popping in/out as the page scrolls.
+      const viewTop = loopedScroll - viewportH;
+      const viewBottom = loopedScroll + viewportH * 2;
 
       for (let si = 0; si < sessions.length; si++) {
         const session = sessions[si];
         const sessionTopRow = Math.floor(session.gridStartIndex / currentCols);
         const sessionTopPx = sessionTopRow * CELL_SIZE;
+        const sessionBottomPx =
+          Math.ceil((session.gridStartIndex + session.maxLength) / currentCols) *
+          CELL_SIZE;
+
+        // Cull sessions outside the visible window — the dominant cost in the
+        // previous implementation was running replaySequence + the per-cell
+        // loop for the ~95% of sessions not on screen.
+        if (sessionBottomPx < viewTop || sessionTopPx > viewBottom) {
+          continue;
+        }
 
         // Activate the session when its first row enters the viewport.
         // Each session gets a seeded random delay multiplier so some arrive
         // already partially typed (low multiplier) while others only begin
         // when near the bottom of the screen (high multiplier).  The seed
         // keeps each session's multiplier stable across frames and loop resets.
-        if (!sessionEntryRef.current.has(si) && sessionTopPx < loopedScroll + viewportH) {
+        if (!sessionEntry.has(si) && sessionTopPx < loopedScroll + viewportH) {
           const distFromViewportTop = Math.max(0, sessionTopPx - loopedScroll);
           // Multiplier range: 0.1 (starts typing very early → arrives more done)
           //                   to 1.6 (only kicks off near the bottom edge)
           const delayMultiplier = 0.1 + seededRandom(session.seed * 3.7 + 13) * 1.5;
           const delay = (distFromViewportTop / viewportH) * TYPING_INIT_DELAY_MS * delayMultiplier;
-          sessionEntryRef.current.set(si, virtualTimeRef.current + delay);
+          sessionEntry.set(si, virtualTimeRef.current + delay);
         }
 
-        const entryVirtualTime = sessionEntryRef.current.get(si);
+        const entryVirtualTime = sessionEntry.get(si);
+
+        // Compute the session's current text once per frame (rather than once
+        // per cell). replaySequence is the most expensive call in this loop.
+        let currentText = "";
+        if (entryVirtualTime !== undefined) {
+          // Clamp to 0: entryVirtualTime may be in the future during the delay window
+          const sessionElapsedMs = Math.max(0, virtualTimeRef.current - entryVirtualTime);
+          currentText =
+            sessionElapsedMs >= session.durationMs
+              ? session.finalText
+              : replaySequence(session.sequence, sessionElapsedMs, session.seed);
+        }
+
+        // Skip the per-cell loop when this session's visible text is
+        // unchanged from last frame (typical for finished sessions, and for
+        // sessions still inside their typing-init delay window).
+        if (sessionLastText.get(si) === currentText) {
+          continue;
+        }
+        sessionLastText.set(si, currentText);
 
         for (let j = 0; j < session.maxLength; j++) {
           const idx = session.gridStartIndex + j;
           if (!cells[idx]) continue;
 
-          let char = "";
-          if (entryVirtualTime !== undefined) {
-            // Clamp to 0: entryVirtualTime may be in the future during the delay window
-            const sessionElapsedMs = Math.max(0, virtualTimeRef.current - entryVirtualTime);
-            // Use cached finalText once the session has fully typed out
-            const currentText =
-              sessionElapsedMs >= session.durationMs
-                ? session.finalText
-                : replaySequence(session.sequence, sessionElapsedMs, session.seed);
-            char = j < currentText.length ? currentText[j] : "";
-          }
-
+          const char = j < currentText.length ? currentText[j] : "";
           const wasFilled = prevFilled[idx];
 
           if (prevChar[idx] !== char) {
@@ -619,21 +800,15 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
           ))}
         </select>
 
-        <select
-          className="filter-select"
+        <DomainFilterInput
           value={domainFilter}
-          onChange={(e) => {
-            const val = e.target.value;
+          options={filterOptions.domains}
+          onCommit={(val) => {
             setDomainFilter(val);
             localStorage.setItem(DOMAIN_FILTER_KEY, val);
             if (onDomainFilterChange) onDomainFilterChange(val);
           }}
-        >
-          <option value="">all domains</option>
-          {filterOptions.domains.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
+        />
 
         <button
           className={`toggle-btn${randomize ? " active" : ""}`}

@@ -8,7 +8,7 @@ import { KeypressesGrid } from "../shared/components/KeypressesGrid";
 import { RECENT_EVENTS_URL } from "../shared/config";
 
 const API_URL = RECENT_EVENTS_URL;
-const PAGE_SIZE = 5000;
+const PAGE_SIZE = 20000;
 const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
 
 const InternetKeypresses = () => {

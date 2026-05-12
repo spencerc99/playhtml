@@ -60,7 +60,7 @@ Individual collectors:
 - **CursorCollector**: 60fps real-time to PartyKit, 250ms archival sampling. Tracks moves (normalized 0-1), clicks (2s debounce with quantity), holds (>250ms), cursor style changes. 15px movement threshold for archival.
 - **NavigationCollector**: focus/blur/popstate/beforeunload events. 2s dedup window. Captures canonical URL, title, favicon on navigation.
 - **ViewportCollector**: Scroll (100ms throttle, normalized 0-1 position), resize (200ms debounce), zoom (via VisualViewport API, 2s debounce).
-- **KeyboardCollector**: Privacy levels `abstract` (frequency/length only) or `full` (text with PII redaction). Redacts emails, phones, SSNs with U+2588 block char. Excludes password inputs. 5s debounce for typing sessions.
+- **KeyboardCollector**: Legibility is a continuous 0–100% slider (5% increments) stored under `collection_keyboard_privacy_level`. 0% = cadence only (every non-whitespace replaced with U+2588), 100% = full text with PII redacted, intermediate values randomly redact a proportion of non-PII characters using a deterministic per-session seed. PII (emails, US phone numbers, SSNs) is always redacted with U+2588 regardless of level. Excludes password inputs. 5s debounce for typing sessions. Legacy `"abstract"` / `"full"` storage values are migrated to 0 / 100 on read.
 
 ### Storage (`src/storage/`)
 
@@ -154,7 +154,7 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 
 1. **Dual-layer collection**: High-frequency real-time (PartyKit) + sparse archival (IndexedDB/Supabase)
 2. **Message-based architecture**: Content scripts communicate with background via `browser.runtime.sendMessage` -- no direct DOM access from background
-3. **Privacy tiers**: Keyboard abstract/full modes, collection off/local/shared modes, PII redaction
+3. **Privacy tiers**: Keyboard legibility 0–100% slider, collection off/local/shared modes, PII redaction (always-on)
 4. **Stats pre-computation**: Aggregates computed at insert time for O(1) domain-level queries
 5. **Session + identity separation**: Persistent ECDSA identity vs ephemeral browser-session IDs
 
