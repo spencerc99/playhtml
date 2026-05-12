@@ -56,7 +56,12 @@ interface RandomizerDisplay {
 
 const RandomExperimentEventType = "homepage-experiments-randomize";
 const RandomExperimentFlashMs = 760;
+const RandomExperimentLandingPauseMs = 130;
 const TraceNavigationDelayMs = 700;
+
+function getRandomExperimentStepDelay(index: number) {
+  return 55 * index + index * index * 4;
+}
 
 function isRandomExperimentEvent(payload: unknown): payload is RandomExperimentEvent {
   if (!payload || typeof payload !== "object") return false;
@@ -94,7 +99,7 @@ const experiments: ExperimentArchiveEntry[] = [
     number: "EX-03",
     name: "fridge words",
     description: "Visitor-added fridge poetry",
-    href: "/experiments/3/",
+    href: "/fridge",
     image: "/experiments/index-previews/ex-03.png",
     actionLabel: "Open",
   },
@@ -263,7 +268,7 @@ function ExperimentsArchiveRow({
           })}
         </span>
       ) : null}
-      <strong>{entry.number}</strong>
+      <span className="experiments-archive__number">{entry.number}</span>
       <strong>{entry.name}</strong>
       <span className="experiments-archive__description">
         {entry.description}
@@ -431,13 +436,15 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
               clickerColors: colors,
               isFlashing: false,
             }));
-          }, 55 * index + index * index * 4);
+          }, getRandomExperimentStepDelay(index));
 
           timeoutsRef.current.push(timeout);
         });
 
+        const finalStepIndex = Math.max(0, event.sequence.length - 1);
         const landingDelay =
-          55 * event.sequence.length + event.sequence.length * event.sequence.length * 4;
+          getRandomExperimentStepDelay(finalStepIndex) +
+          RandomExperimentLandingPauseMs;
         const flashTimeout = window.setTimeout(() => {
           setRandomizer((current) => ({
             ...current,

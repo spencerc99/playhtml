@@ -153,11 +153,16 @@ describe("getExperimentTraceIndexesToRemove", () => {
 });
 
 describe("buildRandomExperimentSequence", () => {
-  test("returns only experiment entries and repeats before landing", () => {
+  test("returns only experiment entries and naturally lands on the selection", () => {
     const sequence = buildRandomExperimentSequence(experiments, 1);
 
     expect(sequence.at(-1)).toEqual(experiments[1]);
-    expect(sequence).toHaveLength(10);
+    expect(sequence).toHaveLength(11);
+    expect(sequence.slice(-3)).toEqual([
+      experiments[2],
+      experiments[0],
+      experiments[1],
+    ]);
     expect(sequence.every((entry) => entry.number.startsWith("EX-"))).toBe(
       true,
     );

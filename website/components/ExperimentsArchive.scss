@@ -85,15 +85,20 @@
     }
   }
 
-  strong {
-    font-weight: 700;
+  strong,
+  .experiments-archive__number {
     position: relative;
     z-index: 1;
   }
 
-  strong:first-child {
+  strong {
+    font-weight: 700;
+  }
+
+  .experiments-archive__number {
     color: color-mix(in srgb, var(--color-text) 62%, transparent);
     font-size: 0.84rem;
+    font-weight: 700;
     letter-spacing: 0.06em;
   }
 
@@ -337,13 +342,13 @@
     min-height: auto;
     padding: 12px 14px;
 
-    strong:first-child {
+    .experiments-archive__number {
       grid-column: 1;
       grid-row: 1 / 3;
     }
 
-    strong:nth-child(2),
-    span {
+    strong,
+    .experiments-archive__description {
       grid-column: 2;
     }
 

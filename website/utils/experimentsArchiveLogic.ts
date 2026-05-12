@@ -83,11 +83,9 @@ export function buildRandomExperimentSequence<T extends ExperimentEntry>(
   const normalizedIndex =
     ((selectedIndex % experiments.length) + experiments.length) %
     experiments.length;
-  const selectedExperiment = experiments[normalizedIndex];
-  const repeatedExperiments = Array.from(
-    { length: experiments.length * 3 },
+
+  return Array.from(
+    { length: experiments.length * 3 + normalizedIndex + 1 },
     (_, index) => experiments[index % experiments.length],
   );
-
-  return [...repeatedExperiments, selectedExperiment];
 }
