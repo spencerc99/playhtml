@@ -102,6 +102,25 @@
     letter-spacing: 0.06em;
   }
 
+  .experiments-archive__recommend-star {
+    align-items: center;
+    background: #fff4b7;
+    border: 1px solid color-mix(in srgb, var(--color-text) 28%, transparent);
+    box-shadow: 1px 1px 0 color-mix(in srgb, var(--color-text) 16%, transparent);
+    color: #202722;
+    display: inline-flex;
+    font-size: 0.64rem;
+    height: 14px;
+    justify-content: center;
+    left: 0;
+    line-height: 1;
+    position: absolute;
+    top: 0;
+    transform: rotate(-7deg);
+    width: 14px;
+    z-index: 2;
+  }
+
   .experiments-archive__description {
     color: color-mix(in srgb, var(--color-text) 76%, transparent);
     position: relative;

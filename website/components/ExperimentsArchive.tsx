@@ -31,6 +31,7 @@ interface ExperimentArchiveEntry {
   institution?: string;
   date?: string;
   eventType?: string;
+  recommended?: boolean;
 }
 
 interface ExperimentsArchiveData {
@@ -92,18 +93,19 @@ const experiments: ExperimentArchiveEntry[] = [
   {
     number: "EX-02",
     name: "cursor party",
-    description: "Cursors dancing together",
+    description: "Dance with other cursors",
     href: "/experiments/two/",
     image: "/experiments/index-previews/ex-02.png",
     actionLabel: "Open",
   },
   {
     number: "EX-03",
-    name: "fridge words",
-    description: "Visitor-added fridge poetry",
+    name: "the poems we found",
+    description: "A huge collective fridge poetry game",
     href: "/fridge",
     image: "/experiments/index-previews/ex-03.png",
     actionLabel: "Open",
+    recommended: true,
   },
   {
     number: "EX-04",
@@ -112,14 +114,16 @@ const experiments: ExperimentArchiveEntry[] = [
     href: "/experiments/4/",
     image: "/experiments/index-previews/ex-04.png",
     actionLabel: "Open",
+    recommended: true,
   },
   {
     number: "EX-05",
-    name: "minute faces",
+    name: "minute faces (together)",
     description: "A day colored minute by minute",
     href: "/experiments/5/",
     image: "/experiments/index-previews/ex-05.png",
     actionLabel: "Open",
+    recommended: true,
   },
   {
     number: "EX-06",
@@ -131,7 +135,7 @@ const experiments: ExperimentArchiveEntry[] = [
   },
   {
     number: "EX-07",
-    name: "hand holding",
+    name: "when cursors meet",
     description: "Hold hands through the browser",
     href: "/experiments/7/",
     image: "/experiments/index-previews/ex-07.png",
@@ -139,19 +143,20 @@ const experiments: ExperimentArchiveEntry[] = [
   },
   {
     number: "EX-08",
-    name: "grid paper typing",
-    description: "Sharing one input box",
+    name: "grid paper",
+    description: "A shared sheet of paper",
     href: "/experiments/8/",
     image: "/experiments/index-previews/ex-08.png",
     actionLabel: "Open",
   },
   {
     number: "EX-09",
-    name: "drunk cursor",
+    name: "cursor bar",
     description: "Rewind after a long day scrolling",
     href: "/experiments/9/",
     image: "/experiments/index-previews/ex-09.png",
     actionLabel: "Open",
+    recommended: true,
   },
 ];
 
@@ -235,9 +240,11 @@ function ExperimentsArchiveRow({
   const now = Date.now();
   const rowClassName = `experiments-archive__row${
     isEvent ? " experiments-archive__row--event" : ""
-  }${entry.href ? "" : " experiments-archive__row--static"}${
-    isRandomActive ? " experiments-archive__row--random-active" : ""
-  }${isRandomSelected ? " experiments-archive__row--random-selected" : ""}`;
+  }${entry.recommended ? " experiments-archive__row--recommended" : ""}${
+    entry.href ? "" : " experiments-archive__row--static"
+  }${isRandomActive ? " experiments-archive__row--random-active" : ""}${
+    isRandomSelected ? " experiments-archive__row--random-selected" : ""
+  }`;
   const rowStyle = {
     "--randomizer-color": randomizerColor,
   } as CSSProperties;
@@ -268,6 +275,15 @@ function ExperimentsArchiveRow({
               />
             );
           })}
+        </span>
+      ) : null}
+      {entry.recommended ? (
+        <span
+          className="experiments-archive__recommend-star"
+          aria-label="Recommended experiment"
+          title="Recommended experiment"
+        >
+          ★
         </span>
       ) : null}
       <span className="experiments-archive__number">{entry.number}</span>

@@ -708,6 +708,21 @@ footer {
   }
 
   .site-console__secondary {
+    display: inline-flex;
+  }
+
+  .site-console__more {
+    display: none;
+  }
+
+  .site-console__menu {
+    right: 8px;
+  }
+
+}
+
+@media screen and (max-width: 380px) {
+  .site-console__secondary {
     display: none;
   }
 
@@ -715,9 +730,4 @@ footer {
     display: block;
     margin-left: auto;
   }
-
-  .site-console__menu {
-    right: 8px;
-  }
-
 }
