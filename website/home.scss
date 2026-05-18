@@ -1,3 +1,6 @@
+// ABOUTME: Styles the interactive public homepage and its living examples.
+// ABOUTME: Defines persistent navigation, guestbook, and homepage object treatments.
+
 $color-text-light: hsl(140, 5%, 12%);
 :root {
   color-scheme: light dark;
@@ -25,7 +28,7 @@ a {
 body {
   background: var(--background);
   font-family: "Play";
-  margin-bottom: 80px;
+  margin-bottom: calc(104px + env(safe-area-inset-bottom));
   color: var(--color-text);
 }
 
@@ -45,6 +48,178 @@ i {
   align-items: center;
   margin: 0px 4vw;
   position: relative;
+}
+
+.site-console {
+  align-items: center;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-background-neutral) 82%, transparent),
+      color-mix(in srgb, var(--background) 72%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--color-text) 28%, transparent);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  bottom: 0;
+  box-shadow: 0 -3px 0 color-mix(in srgb, var(--color-text) 16%, transparent),
+    0 -14px 32px rgba(0, 0, 0, 0.18);
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  left: 50%;
+  max-width: min(720px, calc(100vw - 24px));
+  min-height: 46px;
+  padding: 7px 12px calc(7px + env(safe-area-inset-bottom));
+  position: fixed;
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 10000;
+
+  &::before {
+    background: color-mix(in srgb, var(--color-text) 24%, transparent);
+    content: "";
+    height: 1px;
+    left: 12px;
+    position: absolute;
+    right: 12px;
+    top: 0;
+  }
+
+  a,
+  summary {
+    align-items: center;
+    background: color-mix(in srgb, var(--color-background-neutral) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+    border-radius: 5px;
+    color: var(--color-text);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.95rem;
+    gap: 6px;
+    line-height: 1;
+    min-height: 30px;
+    padding: 0 9px;
+    text-decoration: none;
+    text-decoration-color: var(--color-text-translucent);
+    text-underline-offset: 3px;
+    white-space: nowrap;
+
+    &:hover,
+    &:focus-visible {
+      background: color-mix(in srgb, var(--color-text-link) 14%, transparent);
+      border-color: var(--color-text-link);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--color-text-link) 28%, transparent);
+      color: var(--color-text-link);
+      text-decoration-color: currentColor;
+    }
+  }
+}
+
+.site-console__status {
+  align-items: center;
+  background: color-mix(in srgb, rgb(16, 210, 16) 9%, var(--color-background-neutral));
+  border: 1px solid color-mix(in srgb, rgb(16, 210, 16) 34%, var(--color-text));
+  border-radius: 5px;
+  color: var(--color-text);
+  display: inline-flex;
+  font-size: 0.95rem;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.site-console__dot {
+  background: rgb(16, 210, 16);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(16, 210, 16, 0.6);
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
+.site-console__wwo {
+  background: color-mix(in srgb, rgb(16, 210, 16) 13%, var(--color-background-neutral)) !important;
+  border-color: color-mix(in srgb, rgb(16, 210, 16) 42%, var(--color-text)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 40%, transparent),
+    0 0 12px color-mix(in srgb, rgb(16, 210, 16) 24%, transparent);
+
+  img {
+    height: 18px;
+    object-fit: contain;
+    width: 18px;
+  }
+
+  span {
+    font-family: "Carter One", "Cooper Black", Georgia, serif;
+    font-style: italic;
+    letter-spacing: 0;
+  }
+}
+
+.site-console__secondary {
+  border-left: 1px solid var(--color-text-translucent);
+  display: inline-flex;
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.site-console__icon-link {
+  justify-content: center;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  width: 32px;
+
+  svg {
+    fill: currentColor;
+    height: 17px;
+    width: 17px;
+  }
+}
+
+.site-console__more {
+  display: none;
+  position: relative;
+
+  summary {
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+}
+
+.site-console__menu {
+  background: linear-gradient(
+    145deg,
+    var(--color-background-neutral),
+    color-mix(in srgb, var(--background) 82%, var(--color-background-neutral))
+  );
+  border: 2px solid color-mix(in srgb, var(--color-text) 45%, transparent);
+  border-radius: 8px;
+  bottom: calc(100% + 10px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 150px;
+  padding: 12px;
+  position: absolute;
+  right: 0;
+}
+
+.site-console__menu-icon-link {
+  svg {
+    fill: currentColor;
+    height: 17px;
+    width: 17px;
+  }
+}
+
+.section-anchor {
+  scroll-margin-top: 48px;
 }
 
 #stamp {
@@ -244,7 +419,7 @@ i {
 }
 
 // Primary CTA (Docs). Keeps the signature green glow so the homepage's
-// "alive" quality is preserved — docs is now the primary surface to enter.
+// "alive" quality is preserved while docs stays the main entry point.
 #start {
   transition: box-shadow 0.2s ease-in-out;
   font-weight: bold;
@@ -469,12 +644,8 @@ code {
 }
 
 footer {
-  @media screen and ((min-width: 768px) or (min-height: 768px)) {
-    position: fixed;
-    bottom: 32px;
-  }
-
   margin-top: 20px;
+  margin-bottom: calc(72px + env(safe-area-inset-bottom));
   display: flex;
   justify-content: center;
   width: 100%;
@@ -485,5 +656,78 @@ footer {
     text-align: center;
     backdrop-filter: blur(2px);
     border-radius: 8px;
+  }
+}
+
+@media screen and (max-width: 760px) {
+  body {
+    margin-bottom: calc(116px + env(safe-area-inset-bottom));
+  }
+
+  .site-console {
+    border-left: 0;
+    border-radius: 0;
+    border-right: 0;
+    gap: 7px;
+    justify-content: flex-start;
+    left: 0;
+    max-width: none;
+    overflow: visible;
+    padding-left: 8px;
+    padding-right: 8px;
+    transform: none;
+    width: 100%;
+
+    a,
+    summary {
+      font-size: 0.92rem;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+  }
+
+  .site-console__status {
+    flex: 0 0 auto;
+    font-size: 0.92rem;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .site-console__status-label {
+    display: none;
+  }
+
+  .site-console__wwo {
+    padding-left: 7px;
+    padding-right: 8px;
+
+    img {
+      height: 17px;
+      width: 17px;
+    }
+  }
+
+  .site-console__secondary {
+    display: inline-flex;
+  }
+
+  .site-console__more {
+    display: none;
+  }
+
+  .site-console__menu {
+    right: 8px;
+  }
+
+}
+
+@media screen and (max-width: 380px) {
+  .site-console__secondary {
+    display: none;
+  }
+
+  .site-console__more {
+    display: block;
+    margin-left: auto;
   }
 }

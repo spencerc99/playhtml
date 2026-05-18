@@ -1,3 +1,6 @@
+// ABOUTME: Runs the collaborative fridge words page with shared room state.
+// ABOUTME: Provides fridge-specific controls for words, walls, zoom, and moderation.
+
 import "./fridge.scss";
 import profaneWords from "profane-words";
 import { MoveData, TagType } from "@playhtml/common";
@@ -463,7 +466,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [deleteMode, setDeleteMode] = React.useState(false);
     const [deleteCount, setDeleteCount] = React.useState(0);
     const [wallInputValue, setWallInputValue] = React.useState(wall);
-    const [showWallControls, setShowWallControls] = React.useState(false);
+    const [showWallControls, setShowWallControls] = React.useState(true);
     const { deleteElementData } = useContext(PlayContext);
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;

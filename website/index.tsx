@@ -1,12 +1,15 @@
+// ABOUTME: Boots the playhtml homepage and its React-backed shared examples.
+// ABOUTME: Wires homepage-only collaboration state into non-React page chrome.
+
 import { ElementInitializer } from "@playhtml/common";
 import words from "profane-words";
 import "./home.scss";
-// NOTE: this pins it to the working code so we can test out new library changes through this home page.
-import React from "react";
+// NOTE: this pins it to the working code so we can test library changes through this home page.
+import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { PlayProvider } from "@playhtml/react";
+import { PlayProvider, useCursorPresences } from "@playhtml/react";
 import FeaturesGrid from "./components/FeaturesGrid";
-import ExampleSlotMachine from "./components/ExampleSlotMachine";
+import ExperimentsArchive from "./components/ExperimentsArchive";
 
 interface FormData {
   name: string;
@@ -16,6 +19,24 @@ interface FormData {
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
+}
+
+function HomepageConsoleStatus() {
+  const cursorPresences = useCursorPresences();
+  const peopleCount = Math.max(cursorPresences.size, 1);
+
+  useEffect(() => {
+    const countElement = document.getElementById("site-console-count-number");
+    const countLabel = document.querySelector(".site-console__status-label");
+    if (!countElement || !countLabel) return;
+
+    if (countElement.textContent === String(peopleCount)) return;
+
+    countElement.textContent = String(peopleCount);
+    countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
+  }, [peopleCount]);
+
+  return null;
 }
 
 // Render React components
@@ -92,12 +113,11 @@ if (reactContentElement) {
 
               setLocalData({ addedEntries });
             },
-            onMount: ({ getElement, getData, setData }) => {
+            onMount: ({ getElement, setData }) => {
               const element = getElement();
               element.addEventListener("submit", (e: SubmitEvent) => {
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                const entries = getData();
 
                 const formData = new FormData(e.target as HTMLFormElement);
                 // massage formData into new object
@@ -155,8 +175,9 @@ if (reactContentElement) {
         },
       }}
     >
+      <HomepageConsoleStatus />
       <FeaturesGrid />
-      <ExampleSlotMachine />
+      <ExperimentsArchive />
     </PlayProvider>
   );
 }
