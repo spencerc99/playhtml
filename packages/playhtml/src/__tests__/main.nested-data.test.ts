@@ -66,6 +66,127 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     expect(playhtml.syncedStore["can-toggle"]["el1"]).toEqual({ on: false });
   });
 
+  it("prevents browser scripts from mutating public shared state", async () => {
+    setupSimpleElement("can-toggle", "readonly-el");
+
+    const handler = playhtml
+      .elementHandlers!.get("can-toggle")!
+      .get("readonly-el")!;
+    expect(handler.data).toEqual({ on: false });
+    expect(playhtml.syncedStore["can-toggle"]["readonly-el"]).toEqual({
+      on: false,
+    });
+
+    expect(() => {
+      playhtml.syncedStore["can-toggle"]["readonly-el"] = {
+        corrupted: true,
+      };
+    }).toThrow(/read-only/);
+    await waitForSync();
+
+    expect(handler.data).toEqual({ on: false });
+    expect(playhtml.syncedStore["can-toggle"]["readonly-el"]).toEqual({
+      on: false,
+    });
+  });
+
+  it("prevents browser scripts from mutating nested public shared state", async () => {
+    setupSimpleElement("can-mirror", "readonly-nested-el");
+
+    const handler = playhtml
+      .elementHandlers!.get("can-mirror")!
+      .get("readonly-nested-el")!;
+    expect(handler.data.attributes.id).toBe("readonly-nested-el");
+
+    expect(() => {
+      playhtml.syncedStore["can-mirror"][
+        "readonly-nested-el"
+      ].attributes.id = "corrupted";
+    }).toThrow(/read-only/);
+    expect(() => {
+      delete playhtml.syncedStore["can-mirror"][
+        "readonly-nested-el"
+      ].attributes.id;
+    }).toThrow(/read-only/);
+    await waitForSync();
+
+    expect(handler.data.attributes.id).toBe("readonly-nested-el");
+    expect(
+      playhtml.syncedStore["can-mirror"]["readonly-nested-el"].attributes.id,
+    ).toBe("readonly-nested-el");
+  });
+
+  it("keeps public shared state inspectable while blocking object mutation APIs", async () => {
+    setupSimpleElement("can-toggle", "readonly-api-el");
+
+    const tagData = playhtml.syncedStore["can-toggle"];
+    const elementData = tagData["readonly-api-el"];
+
+    expect(Object.keys(playhtml.syncedStore)).toContain("can-toggle");
+    expect(Object.keys(tagData)).toContain("readonly-api-el");
+    expect(elementData).toEqual({ on: false });
+
+    expect(() => {
+      delete tagData["readonly-api-el"];
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.defineProperty(tagData, "other", {
+        value: { on: true },
+      });
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.setPrototypeOf(elementData, null);
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.preventExtensions(elementData);
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.freeze(elementData);
+    }).toThrow(/read-only/);
+    await waitForSync();
+
+    expect(playhtml.syncedStore["can-toggle"]["readonly-api-el"]).toEqual({
+      on: false,
+    });
+  });
+
+  it("prevents browser scripts from mutating public shared arrays", async () => {
+    const tag = "can-duplicate";
+    const target = document.createElement("div");
+    target.id = "readonly-array-target";
+    document.body.appendChild(target);
+    const el = setupSimpleElement(tag, "readonly-array-el", {
+      "can-duplicate": "readonly-array-target",
+    });
+
+    // @ts-ignore
+    await playhtml.setupPlayElementForTag(el, tag);
+
+    const handler = playhtml
+      .elementHandlers!.get(tag)!
+      .get("readonly-array-el")!;
+    handler.setData((draft: any) => {
+      draft.push("existing");
+    });
+    await waitForSync();
+
+    expect(() => {
+      playhtml.syncedStore[tag]["readonly-array-el"].push("corrupted");
+    }).toThrow(/read-only/);
+    expect(() => {
+      playhtml.syncedStore[tag]["readonly-array-el"][0] = "corrupted";
+    }).toThrow(/read-only/);
+    expect(() => {
+      playhtml.syncedStore[tag]["readonly-array-el"].length = 0;
+    }).toThrow(/read-only/);
+    await waitForSync();
+
+    expect(handler.data).toEqual(["existing"]);
+    expect(playhtml.syncedStore[tag]["readonly-array-el"]).toEqual([
+      "existing",
+    ]);
+  });
+
   it("supports CRDT array operations with mutator form", async () => {
     const tag = "can-duplicate";
     const target = document.createElement("div");

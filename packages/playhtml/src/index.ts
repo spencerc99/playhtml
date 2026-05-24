@@ -47,6 +47,7 @@ import {
 import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
 import { createPageDataChannel, PAGE_TAG } from "./page-data";
+import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -85,6 +86,7 @@ type StoreShape = {
 };
 const store = syncedStore<StoreShape>({ play: {} });
 const doc = getYjsDoc(store);
+const publicSyncedStore = createReadOnlyStore(store.play);
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
@@ -1369,7 +1371,7 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  syncedStore: (typeof store)["play"];
+  syncedStore: ReadOnlyStore<(typeof store)["play"]>;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -1494,7 +1496,7 @@ export const playhtml: PlayHTMLComponents = {
   removePlayElement,
   deleteElementData,
   setupPlayElementForTag,
-  syncedStore: store.play,
+  syncedStore: publicSyncedStore,
   elementHandlers,
   eventHandlers,
   dispatchPlayEvent,
