@@ -116,6 +116,40 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     ).toBe("readonly-nested-el");
   });
 
+  it("keeps public shared state inspectable while blocking object mutation APIs", async () => {
+    setupSimpleElement("can-toggle", "readonly-api-el");
+
+    const tagData = playhtml.syncedStore["can-toggle"];
+    const elementData = tagData["readonly-api-el"];
+
+    expect(Object.keys(playhtml.syncedStore)).toContain("can-toggle");
+    expect(Object.keys(tagData)).toContain("readonly-api-el");
+    expect(elementData).toEqual({ on: false });
+
+    expect(() => {
+      delete tagData["readonly-api-el"];
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.defineProperty(tagData, "other", {
+        value: { on: true },
+      });
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.setPrototypeOf(elementData, null);
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.preventExtensions(elementData);
+    }).toThrow(/read-only/);
+    expect(() => {
+      Object.freeze(elementData);
+    }).toThrow(/read-only/);
+    await waitForSync();
+
+    expect(playhtml.syncedStore["can-toggle"]["readonly-api-el"]).toEqual({
+      on: false,
+    });
+  });
+
   it("prevents browser scripts from mutating public shared arrays", async () => {
     const tag = "can-duplicate";
     const target = document.createElement("div");
@@ -138,6 +172,12 @@ describe("playhtml SyncedStore CRDT behavior", () => {
 
     expect(() => {
       playhtml.syncedStore[tag]["readonly-array-el"].push("corrupted");
+    }).toThrow(/read-only/);
+    expect(() => {
+      playhtml.syncedStore[tag]["readonly-array-el"][0] = "corrupted";
+    }).toThrow(/read-only/);
+    expect(() => {
+      playhtml.syncedStore[tag]["readonly-array-el"].length = 0;
     }).toThrow(/read-only/);
     await waitForSync();
 
