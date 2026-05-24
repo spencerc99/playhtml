@@ -1,7 +1,10 @@
+// ABOUTME: Provides the browser test admin console for inspecting PlayHTML room state.
+// ABOUTME: Includes backup comparison tools for validating collaborative document state.
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Buffer } from "buffer";
 import { useStickyState } from "../hooks/useStickyState";
+import { findDocumentRowInBackup } from "../utils/backup";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -848,8 +851,7 @@ const AdminConsole: React.FC = () => {
               `Re-processing backup for new room: ${decodeRoomId(roomId)}`
             );
             try {
-              const text = await currentBackupFile.text();
-              await processBackupText(text, currentBackupFile.name, roomId);
+              await processBackupFile(currentBackupFile, roomId);
             } catch (error) {
               addLog(
                 "error",
@@ -874,9 +876,8 @@ const AdminConsole: React.FC = () => {
                   1024
                 ).toFixed(2)} MB)`
               );
-              const text = await file.text();
               setCurrentBackupFile(file);
-              await processBackupText(text, file.name, roomId);
+              await processBackupFile(file, roomId);
             } else {
               addLog("warn", "Saved backup path found but file not in OPFS");
               setSavedBackupPath(null);
@@ -1681,14 +1682,11 @@ const AdminConsole: React.FC = () => {
         ).toFixed(2)} MB)`
       );
 
-      // Read backup file
-      const text = await file.text();
-
       // Store the file for re-processing on reload
       setCurrentBackupFile(file);
 
       // Process the backup
-      await processBackupText(text, file.name, currentRoomId);
+      await processBackupFile(file, currentRoomId);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to load backup file: ${msg}`, error);
@@ -1744,36 +1742,18 @@ const AdminConsole: React.FC = () => {
     }
   };
 
-  const processBackupText = async (
-    text: string,
-    fileName: string,
-    targetRoomId: string
-  ) => {
+  const processBackupFile = async (file: File, targetRoomId: string) => {
     try {
       setShowBackupComparison(true);
       addLog("info", "Searching for documents section in backup...");
 
-      // Find COPY public.documents section
-      const copyMatch = text.match(
-        /COPY public\.documents \(id, created_at, document, name\) FROM stdin;\n([\s\S]*?)\n\\\.\n/
-      );
-      if (!copyMatch) {
-        throw new Error(
-          "Could not find COPY public.documents section in backup file"
-        );
-      }
-
-      addLog("info", "Found documents section, searching for room...");
-
-      // Split into lines and find matching room
-      const lines = copyMatch[1].split("\n").filter((l) => l.trim());
       const encodedRoomId = ensureEncodedRoomId(targetRoomId);
-      const roomLine = lines.find((line) => {
-        const cols = line.split("\t");
-        return cols[3] === encodedRoomId;
-      });
+      const backupRow = await findDocumentRowInBackup(
+        file.stream(),
+        encodedRoomId
+      );
 
-      if (!roomLine) {
+      if (!backupRow) {
         addLog(
           "warn",
           `Room ${decodeRoomId(encodedRoomId)} not found in backup file`
@@ -1783,10 +1763,8 @@ const AdminConsole: React.FC = () => {
 
       addLog("info", `Found room data in backup`);
 
-      // Parse the line: id, created_at, document (base64), name
-      const cols = roomLine.split("\t");
-      const backupTimestamp = cols[1];
-      const base64Doc = cols[2];
+      const backupTimestamp = backupRow.timestamp;
+      const base64Doc = backupRow.base64Doc;
 
       // Store the base64 for copy functionality
       setBackupBase64(base64Doc);
