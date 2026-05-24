@@ -8,10 +8,7 @@ type DeepReadonlyStore<T> = T extends (...args: any[]) => any
       ? { readonly [K in keyof T]: DeepReadonlyStore<T[K]> }
       : T;
 
-const READ_ONLY_STORE_MESSAGE = [
-  "playhtml.syncedStore is read-only.",
-  "Use setData() or the admin console to change shared data.",
-].join(" ");
+const READ_ONLY_STORE_MESSAGE = "playhtml.syncedStore is read-only.";
 const ARRAY_MUTATION_METHODS = new Set<PropertyKey>([
   "copyWithin",
   "fill",

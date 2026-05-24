@@ -53,6 +53,26 @@ describe("createReadOnlyStore", () => {
     });
   });
 
+  it("does not expose mutation instructions in thrown errors", () => {
+    const view = createReadOnlyStore({
+      "can-toggle": {
+        element: { on: false },
+      },
+    });
+
+    let thrownError: unknown;
+    try {
+      view["can-toggle"].element.on = true;
+    } catch (error) {
+      thrownError = error;
+    }
+
+    expect(thrownError).toBeInstanceOf(Error);
+    expect((thrownError as Error).message).toBe(
+      "playhtml.syncedStore is read-only.",
+    );
+  });
+
   it("blocks array mutation paths", () => {
     const source = {
       "can-duplicate": {
