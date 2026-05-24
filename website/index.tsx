@@ -17,6 +17,12 @@ interface FormData {
   timestamp: number;
 }
 
+const GuestbookSubmissionLimit = {
+  maxEntries: 3,
+  windowMs: 10 * 60 * 1000,
+  storageKey: "playhtml:guestbook-submission-timestamps",
+};
+
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
 }
@@ -115,6 +121,26 @@ if (reactContentElement) {
             },
             onMount: ({ getElement, setData }) => {
               const element = getElement();
+              let guestbookSubmissionTimestamps: number[] = [];
+
+              try {
+                const storedTimestamps = window.localStorage.getItem(
+                  GuestbookSubmissionLimit.storageKey
+                );
+                if (storedTimestamps) {
+                  const parsedTimestamps = JSON.parse(storedTimestamps);
+                  if (Array.isArray(parsedTimestamps)) {
+                    guestbookSubmissionTimestamps = parsedTimestamps.filter(
+                      (timestamp): timestamp is number =>
+                        typeof timestamp === "number" &&
+                        Number.isFinite(timestamp)
+                    );
+                  }
+                }
+              } catch {
+                guestbookSubmissionTimestamps = [];
+              }
+
               element.addEventListener("submit", (e: SubmitEvent) => {
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -157,6 +183,23 @@ if (reactContentElement) {
                 // TODO: add length validation here
 
                 const timestamp = Date.now();
+                const earliestAllowedSubmission =
+                  timestamp - GuestbookSubmissionLimit.windowMs;
+                guestbookSubmissionTimestamps =
+                  guestbookSubmissionTimestamps.filter(
+                    (submittedAt) =>
+                      submittedAt > earliestAllowedSubmission &&
+                      submittedAt <= timestamp
+                  );
+
+                if (
+                  guestbookSubmissionTimestamps.length >=
+                  GuestbookSubmissionLimit.maxEntries
+                ) {
+                  alert("please wait a bit before adding more guestbook notes");
+                  return false;
+                }
+
                 const newEntry: FormData = {
                   name: "someone",
                   message: "something",
@@ -167,6 +210,18 @@ if (reactContentElement) {
                 setData((d: FormData[]) => {
                   d.push(newEntry);
                 });
+                guestbookSubmissionTimestamps = [
+                  ...guestbookSubmissionTimestamps,
+                  timestamp,
+                ];
+                try {
+                  window.localStorage.setItem(
+                    GuestbookSubmissionLimit.storageKey,
+                    JSON.stringify(guestbookSubmissionTimestamps)
+                  );
+                } catch {
+                  // Ignore local storage failures so valid guestbook posts still work.
+                }
                 clearMessage();
                 return false;
               });
