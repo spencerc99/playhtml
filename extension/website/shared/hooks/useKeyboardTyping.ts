@@ -11,20 +11,29 @@ import {
 } from "../types";
 import {
   getColorForParticipant,
-  extractDomain,
-  eventMatchesPath,
+  eventMatchesAnyFilter,
+  type FilterChip,
 } from "../utils/eventUtils";
 
 // Settings interface for keyboard typing
 export interface KeyboardTypingSettings {
-  domainFilter: string;
-  pathFilter: string;
+  filters: readonly FilterChip[];
   pidFilter: string;
   keyboardOverlapFactor: number;
   keyboardMinFontSize: number;
   keyboardMaxFontSize: number;
   keyboardPositionRandomness: number;
   keyboardRandomizeOrder: boolean;
+  /** Used by the scheduler to derive base spacing — `(avgDuration / cap) ×
+   * overlapMultiplier`. Mirrors how cursor trails compute spacing from
+   * maxConcurrentTrails. The runtime concurrency cap also gates admission
+   * in AnimatedTyping, but baking it into the schedule prevents the
+   * underlying clumping that produced visible bombardment waves. */
+  maxConcurrentTyping: number;
+  /** Max box size as a fraction of viewport size. Captured inputs from
+   * page-sized containers (e.g. a full Google Docs body) get clamped so
+   * they don't swallow the canvas. 1.0 = no clamping (raw captured size). */
+  keyboardSizeCap: number;
 }
 
 // Keyboard schedule item for animation timing
@@ -38,6 +47,10 @@ interface KeyboardScheduleItem {
 export interface UseKeyboardTypingResult {
   typingStates: TypingState[];
   timeBounds: { min: number; max: number };
+  /** Duration this viz needs to fit every session at its current spacing.
+   * The canvas takes the max of this and other vizs' cycles to size its
+   * shared animation loop. */
+  cycleDuration: number;
 }
 
 // Merge threshold for combining fragmented typing sequences
@@ -61,16 +74,14 @@ function calculateTypingDuration(sequence: TypingAction[]): number {
  * @param events - All collection events (will be filtered to keyboard type)
  * @param viewportSize - Current viewport dimensions for coordinate scaling
  * @param settings - Keyboard typing settings
- * @param timeRangeDuration - Duration of the unified time range for scheduling
- * @param timeRangeMin - Start of the unified time range for offset calculation
- * @returns Typing states ready for rendering, plus time bounds for coordination
+ * @returns Typing states ready for rendering, plus time bounds and the
+ *   cycle duration this viz needs to fit all sessions at its current
+ *   spacing. The canvas reconciles this with other vizs' cycles.
  */
 export function useKeyboardTyping(
   events: CollectionEvent[],
   viewportSize: { width: number; height: number },
   settings: KeyboardTypingSettings,
-  timeRangeDuration: number,
-  timeRangeMin: number
 ): UseKeyboardTypingResult {
   // Filter to keyboard events only
   const keyboardEvents = useMemo(() => {
@@ -87,17 +98,13 @@ export function useKeyboardTyping(
       return [];
     }
 
-    // Apply domain + path + pid filter if set
+    // Apply URL-scope chips and pid filter.
     let filteredKeyboardEvents = keyboardEvents;
-    if (settings.domainFilter || settings.pathFilter || settings.pidFilter) {
+    const hasFilters = (settings.filters?.length ?? 0) > 0;
+    if (hasFilters || settings.pidFilter) {
       filteredKeyboardEvents = keyboardEvents.filter((e) => {
         if (settings.pidFilter && e.meta?.pid !== settings.pidFilter) return false;
-        const url = e.meta.url || "";
-        if (settings.domainFilter) {
-          const eventDomain = extractDomain(url);
-          if (eventDomain !== settings.domainFilter) return false;
-        }
-        return eventMatchesPath(url, settings.pathFilter);
+        return eventMatchesAnyFilter(e.meta.url || "", settings.filters);
       });
     }
 
@@ -228,8 +235,7 @@ export function useKeyboardTyping(
     return animations;
   }, [
     keyboardEvents,
-    settings.domainFilter,
-    settings.pathFilter,
+    settings.filters,
     settings.pidFilter,
     viewportSize.width,
     viewportSize.height,
@@ -249,37 +255,76 @@ export function useKeyboardTyping(
     };
   }, [keyboardEvents]);
 
-  // Create typing schedule with high overlap
-  const keyboardSchedule = useMemo(() => {
-    if (keyboardAnimations.length === 0 || timeRangeDuration === 0) {
-      return [] as KeyboardScheduleItem[];
+  // Build the typing schedule. Mirrors the cursor-trail approach in
+  // useCursorTrails: spacing is derived from the real average session
+  // duration divided by the concurrency cap, then scaled by an overlap
+  // multiplier. The cycle duration expands to fit every session at that
+  // spacing, so sessions never wrap on top of each other.
+  //
+  // Earlier versions hardcoded avgDuration=3000 and did `index * spacing %
+  // timeRangeDuration`, which made multiple sessions land at the same
+  // offset whenever the data spanned less than `count * spacing`. That
+  // clumping was the root cause of the "bombardment" waves: the runtime
+  // concurrency cap deferred the clump, the cap freed when one wave
+  // finished, then the next clump dumped in.
+  const { keyboardSchedule, cycleDuration: keyboardCycleDuration } = useMemo(() => {
+    if (keyboardAnimations.length === 0) {
+      return {
+        keyboardSchedule: [] as KeyboardScheduleItem[],
+        cycleDuration: 0,
+      };
     }
 
-    // Use much higher overlap for keyboard (settings.keyboardOverlapFactor, default 0.9)
-    const avgDuration = 3000; // Average typing animation duration
-    const overlapMultiplier = 1 - settings.keyboardOverlapFactor * 0.95;
-    const actualSpacing = avgDuration * overlapMultiplier;
+    // Pacing is decoupled from session duration. The original schedule used
+    // `(realAvgDuration / cap) * overlapMultiplier` (mirroring cursor
+    // trails), but typing sessions can be many minutes long when a user
+    // wrote a continuous doc — that pushed spacing into the 30+ second
+    // range and made the canvas feel empty.
+    //
+    // Instead: fixed 2s baseline at overlap=0, scaled down by the overlap
+    // factor (overlap=1 → ~100ms between admissions). The runtime cap in
+    // AnimatedTyping keeps concurrent sessions bounded regardless of how
+    // long any individual session runs.
+    const baseSpacing = 2000;
+    const overlapMultiplier = Math.max(
+      0.05,
+      1 - settings.keyboardOverlapFactor * 0.95,
+    );
+    const actualSpacing = Math.max(100, baseSpacing * overlapMultiplier);
 
-    // Stagger mode similar to trails
+    // Play phase: all sessions start within this window, spaced by
+    // actualSpacing. Hold phase: after the play phase ends, the cycle
+    // continues for HOLD_MS more before wrapping, leaving the finished
+    // composition (managed by the completed-tail buffer) on screen as a
+    // deliberate "intermission" before the next cycle.
+    const playDuration = Math.max(
+      keyboardAnimations.length * actualSpacing,
+      60000,
+    );
+    const HOLD_MS = 45000;
+    const cycleDuration = playDuration + HOLD_MS;
+
     const schedule = keyboardAnimations.map((anim, index) => {
       const typingDuration = calculateTypingDuration(anim.sequence);
-      const startOffset = (index * actualSpacing) % timeRangeDuration;
+      // Modulo by playDuration (NOT cycleDuration) so sessions stay in
+      // the play phase — the hold is meant to be a pause, not a thinner
+      // schedule.
+      const startOffset = (index * actualSpacing) % playDuration;
 
       return {
         index,
-        startTime: timeRangeMin + startOffset,
-        endTime: timeRangeMin + startOffset + typingDuration,
+        // startTime/endTime are kept relative to the cycle origin (offset
+        // from 0). The canvas's animation loop works in elapsed-time
+        // space, not wall-clock space, so we don't need to anchor to any
+        // absolute timestamp.
+        startTime: startOffset,
+        endTime: startOffset + typingDuration,
         duration: typingDuration,
       };
     });
 
-    return schedule;
-  }, [
-    keyboardAnimations,
-    timeRangeDuration,
-    timeRangeMin,
-    settings.keyboardOverlapFactor,
-  ]);
+    return { keyboardSchedule: schedule, cycleDuration };
+  }, [keyboardAnimations, settings.keyboardOverlapFactor]);
 
   // Generate TypingState[] with visual variations
   const typingStates = useMemo((): TypingState[] => {
@@ -335,9 +380,29 @@ export function useKeyboardTyping(
         settings.keyboardMinFontSize + seededRandom(3) * fontSizeRange;
 
       if (capturedStyle) {
-        // Use captured width with slight variation
-        width = capturedStyle.w + (seededRandom(1) - 0.5) * 20;
-        height = capturedStyle.h + (seededRandom(2) - 0.5) * 10;
+        // Use captured width/height with slight variation. The cap is
+        // user-controlled via `keyboardSizeCap` (fraction of viewport):
+        // 1.0 leaves captured sizes untouched (page-sized inputs like
+        // Google Docs body or ChatGPT contenteditable containers will
+        // span the canvas), 0.5 is a balanced default, smaller values
+        // shrink even modest inputs.
+        // Floor (60px wide, 24px tall) prevents the ±10px jitter from
+        // pushing very narrow captured inputs (search fields, etc.) into
+        // negative or near-zero territory.
+        const rawW = Math.max(60, capturedStyle.w + (seededRandom(1) - 0.5) * 20);
+        const rawH = Math.max(24, capturedStyle.h + (seededRandom(2) - 0.5) * 10);
+        if (settings.keyboardSizeCap >= 1) {
+          width = rawW;
+          height = rawH;
+        } else {
+          // Height cap is slightly tighter than width: typical canvases
+          // are wider than tall, and a box that's 50% tall feels more
+          // dominating than one that's 50% wide.
+          const maxW = Math.max(200, viewportSize.width * settings.keyboardSizeCap);
+          const maxH = Math.max(80, viewportSize.height * settings.keyboardSizeCap * 0.8);
+          width = Math.min(maxW, rawW);
+          height = Math.min(maxH, rawH);
+        }
       } else {
         // Fallback to computed dimensions
         const MAX_WIDTH = 400;
@@ -394,7 +459,9 @@ export function useKeyboardTyping(
 
       return {
         animation: anim,
-        startOffsetMs: schedule.startTime - timeRangeMin,
+        // schedule.startTime is already cycle-relative (offset from 0), so
+        // it IS the startOffsetMs directly. No subtraction needed.
+        startOffsetMs: schedule.startTime,
         durationMs: schedule.duration,
         textboxSize: { width, height },
         fontSize,
@@ -405,10 +472,10 @@ export function useKeyboardTyping(
   }, [
     keyboardAnimations,
     keyboardSchedule,
-    timeRangeMin,
     settings.keyboardMinFontSize,
     settings.keyboardMaxFontSize,
     settings.keyboardPositionRandomness,
+    settings.keyboardSizeCap,
     viewportSize.width,
     viewportSize.height,
   ]);
@@ -416,5 +483,6 @@ export function useKeyboardTyping(
   return {
     typingStates,
     timeBounds,
+    cycleDuration: keyboardCycleDuration,
   };
 }

@@ -61,7 +61,8 @@ export function TinyMovementPreview() {
       // Match internet movement defaults where sensible for a preview
       trailOpacity: 0.7,
       randomizeColors: true,
-      domainFilter: "",
+      filters: [],
+      pidFilter: "",
       eventFilter: { move: true, click: true, hold: true, cursor_change: true },
       trailStyle: "chaotic" as const,
       chaosIntensity: 0.5,

@@ -220,6 +220,21 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
         events: number;
         pids: number;
       }> = [];
+      // Per-day rows: total events from dayCounts, sampled events + pids
+      // from the loaded slice. We compute a "density" score that gives a
+      // multi-day view where days with proportionally more unique people
+      // (pids per sampled event) stand out — that's the real "people are
+      // here" signal, not just raw event volume.
+      type DayRow = {
+        day: string;
+        ms: number;
+        totalEvents: number;
+        sampledEvents: number;
+        pids: number;
+        /** pids per 100 sampled events — proxy for people-density. */
+        density: number;
+      };
+      const filledRows: DayRow[] = [];
       if (entries.length > 0) {
         const startMs = dayKeyToMs(entries[0].day);
         const endMs = dayKeyToMs(entries[entries.length - 1].day);
@@ -228,66 +243,90 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
           const dayCount =
             entries.find((e) => e.day === k)?.count ?? 0;
           const stats = dayStats.get(k);
-          filled.push({
+          const sampledEvents = stats?.events ?? 0;
+          const pids = stats?.pids.size ?? 0;
+          filledRows.push({
             day: k,
             ms: t,
-            events: dayCount || stats?.events || 0,
-            pids: stats?.pids.size ?? 0,
+            totalEvents: dayCount || sampledEvents,
+            sampledEvents,
+            pids,
+            density:
+              sampledEvents > 0 ? (pids / sampledEvents) * 100 : 0,
           });
         }
       }
-      const maxPids = filled.reduce((m, e) => Math.max(m, e.pids), 0);
-      const maxEvents = filled.reduce((m, e) => Math.max(m, e.events), 0);
-      const formatSublabel = (pids: number, ev: number) =>
-        pids > 0
-          ? `${pids}p · ${ev.toLocaleString()} ev`
-          : `${ev.toLocaleString()} ev`;
+      const maxPids = filledRows.reduce((m, e) => Math.max(m, e.pids), 0);
+      const maxEvents = filledRows.reduce(
+        (m, e) => Math.max(m, e.totalEvents),
+        0,
+      );
+      const formatSublabel = (row: DayRow) => {
+        if (row.pids === 0) return `${row.totalEvents.toLocaleString()} ev`;
+        // When sample == total we have a complete count; otherwise note the
+        // observed minimum so the user knows it's a sample.
+        const fullCoverage = row.sampledEvents >= row.totalEvents;
+        const pidLabel = fullCoverage ? `${row.pids}p` : `≥${row.pids}p`;
+        return `${pidLabel} · ${row.totalEvents.toLocaleString()} ev`;
+      };
 
       if (zoom === "days") {
-        return filled.map((e) => ({
+        return filledRows.map((e) => ({
           startMs: e.ms,
           endMs: e.ms + DAY_MS,
           // Prefer unique-pid scale when we have any data; else event scale.
-          primary: e.pids > 0 ? e.pids : e.events,
+          primary: e.pids > 0 ? e.pids : e.totalEvents,
           sustainFrac:
             e.pids > 0
               ? maxPids > 0
                 ? e.pids / maxPids
                 : 0
               : maxEvents > 0
-                ? e.events / maxEvents
+                ? e.totalEvents / maxEvents
                 : 0,
           label: new Date(e.ms).toLocaleDateString(undefined, {
             month: "short",
             day: "numeric",
           }),
-          sublabel: formatSublabel(e.pids, e.events),
+          sublabel: formatSublabel(e),
           dayKey: e.day,
         }));
       }
-      // Weeks: bundle 7 days at a time. Sum events; sum pids per day (a
+      // Weeks: bundle 7 days at a time. Sum events and pids per day (a
       // person who shows up on multiple days within a week counts once
-      // per day, which is what we want — a "person-day" attendance count).
-      if (filled.length === 0) return [];
+      // per day — a "person-day" attendance count).
+      if (filledRows.length === 0) return [];
       const groups: Bar[] = [];
       let i = 0;
-      while (i < filled.length) {
-        const groupStart = filled[i].ms;
+      while (i < filledRows.length) {
+        const groupStart = filledRows[i].ms;
         const groupEnd = groupStart + WEEK_MS;
-        let evSum = 0;
+        let totalEvSum = 0;
+        let sampledEvSum = 0;
         let pidSum = 0;
-        while (i < filled.length && filled[i].ms < groupEnd) {
-          evSum += filled[i].events;
-          pidSum += filled[i].pids;
+        while (i < filledRows.length && filledRows[i].ms < groupEnd) {
+          totalEvSum += filledRows[i].totalEvents;
+          sampledEvSum += filledRows[i].sampledEvents;
+          pidSum += filledRows[i].pids;
           i++;
         }
+        const fullCoverage = sampledEvSum >= totalEvSum;
+        const pidLabel =
+          pidSum > 0
+            ? fullCoverage
+              ? `${pidSum}p`
+              : `≥${pidSum}p`
+            : null;
         groups.push({
           startMs: groupStart,
           endMs: groupEnd,
-          primary: pidSum > 0 ? pidSum : evSum,
+          primary: pidSum > 0 ? pidSum : totalEvSum,
           sustainFrac: 0,
           label: formatBucketLabel(groupStart, groupEnd, "weeks"),
-          sublabel: formatSublabel(pidSum, evSum),
+          sublabel:
+            pidLabel !== null
+              ? `${pidLabel} · ${totalEvSum.toLocaleString()} ev`
+              : `${totalEvSum.toLocaleString()} ev`,
         });
       }
       const maxGroup = groups.reduce((m, g) => Math.max(m, g.primary), 0);
@@ -399,11 +438,12 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
       const bar = bars[idx];
       if (!bar) return;
       if (zoom === "days" && bar.dayKey && onSelectDay) {
-        // Pick the specific day → parent fetches that day's events with
-        // higher resolution. Auto-zoom into Hours so the user sees the
-        // hourly breakdown of the day they just picked.
+        // Pick the day so the parent narrows its fetch and the canvas
+        // renders just that day. Stay in Days view — the bar gets the
+        // highlight treatment, and the user can `+` zoom into 6-hour /
+        // Hours when they want a finer breakdown. Auto-zooming caused a
+        // jarring flash where the strip switched modes mid-refetch.
         onSelectDay(bar.dayKey);
-        setZoom("hours");
       } else if (zoom === "weeks") {
         // Drill into Days view; auto-scroll will center on the clicked week.
         // Pick the *first* day in the week so the scroll target is sensible.
@@ -554,7 +594,22 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
             </span>
           )}
         </span>
-        <span style={{ display: "flex", gap: 4 }}>
+        <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {selectedRange && (
+            <button
+              type="button"
+              onClick={() => onSelectRange(null)}
+              title="Clear time range"
+              style={{
+                ...zoomBtnStyle(true),
+                color: "#c4724e",
+                borderColor: "rgba(196,114,78,0.45)",
+                marginRight: 4,
+              }}
+            >
+              clear range
+            </button>
+          )}
           <button
             type="button"
             onClick={zoomOut}

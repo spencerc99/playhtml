@@ -12,9 +12,10 @@ import {
 import {
   RECENT_EVENTS_URL,
   DAILY_COUNTS_URL,
-  parseDomainFromUrl,
+  parseFiltersFromUrl,
   parseVizFromUrl,
 } from "../shared/config";
+import type { FilterChip } from "../shared/utils/eventUtils";
 
 const EVENTS_URL = RECENT_EVENTS_URL;
 
@@ -24,23 +25,31 @@ const InternetMovement = () => {
   const [error, setError] = useState<string | null>(null);
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [domainFilter, setDomainFilter] = useState<string>(() => {
+  const [filters, setFilters] = useState<FilterChip[]>(() => {
     // URL wins. Otherwise mirror whatever MovementCanvas will load from
     // localStorage on first render — if portrait disagrees on mount, the
-    // bidirectional sync between portrait.domainFilter and
-    // MovementCanvas.settings.domainFilter ping-pongs forever (each side
+    // bidirectional sync between portrait.filters and
+    // MovementCanvas.settings.filters ping-pongs forever (each side
     // re-asserts its initial value from a separate effect on every render).
-    const fromUrl = parseDomainFromUrl();
+    const fromUrl = parseFiltersFromUrl();
     if (fromUrl !== undefined) return fromUrl;
     try {
       const stored = localStorage.getItem("internet-movement-settings-v2");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (typeof parsed?.domainFilter === "string") return parsed.domainFilter;
+        if (Array.isArray(parsed?.filters)) return parsed.filters;
       }
     } catch { /* ignore */ }
-    return "";
+    return [];
   });
+
+  /** Server-side fetch optimization: when the chip list is exactly one
+   * chip with a domain set, we can ask the worker to pre-filter by that
+   * domain (the existing `?domain=` query param). Any other shape (zero
+   * chips, multiple chips, or a chip with only a path) requires a broad
+   * fetch so client-side OR-filtering has all the events to work with. */
+  const serverDomain =
+    filters.length === 1 && filters[0].domain ? filters[0].domain : "";
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
     () => {
       // URL param wins over localStorage so capture runs are deterministic.
@@ -122,13 +131,6 @@ const InternetMovement = () => {
       setError(null);
 
       try {
-        // Single-day fetch: scope tightly with the original limit.
-        // No-day fetch: a single broad request hits the worker's order-by-ts
-        // cap and returns only the newest few hours. To get genuine multi-
-        // day coverage for the activity strip, fan out one request per day
-        // across the recent window. Each per-day request caps at a small
-        // limit (still gives a representative sample for unique-pid signal),
-        // and they parallelize so total page-load latency stays acceptable.
         const buildUrl = (extraParams: Record<string, string>, type: string) => {
           const params = new URLSearchParams(extraParams);
           if (domain) params.set("domain", domain);
@@ -148,6 +150,7 @@ const InternetMovement = () => {
 
         let fetched: CollectionEvent[] = [];
         if (day) {
+          // Single-day fetch: scope tightly with the original limit.
           const results = await Promise.all(
             [...typesToFetch].map((type) =>
               fetchOne(
@@ -162,56 +165,23 @@ const InternetMovement = () => {
           );
           fetched = results.flat();
         } else {
-          // Fan out across the last DAYS_BACK days. Per-day limit kept
-          // modest so total payload stays bounded — the strip needs spread,
-          // not depth, and the per-day samples are enough to estimate
-          // unique-pid presence per bucket.
-          const DAYS_BACK = 14;
-          const PER_DAY_LIMIT = 800;
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const dayKeys: string[] = [];
-          for (let i = 0; i < DAYS_BACK; i++) {
-            const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, "0");
-            const dd = String(d.getDate()).padStart(2, "0");
-            dayKeys.push(`${y}-${m}-${dd}`);
-          }
-          // Throttle: 14 days × N types = up to 56 requests if we go fully
-          // parallel, which can saturate connection limits and produce
-          // sporadic `TypeError: Failed to fetch` from the browser. Run in
-          // small batches so the browser stays under its concurrent-request
-          // ceiling.
-          const allTasks: Array<{ dayKey: string; type: string }> = [];
-          for (const dayKey of dayKeys) {
-            for (const type of typesToFetch) {
-              allTasks.push({ dayKey, type });
-            }
-          }
-          const BATCH_SIZE = 6;
-          const results: CollectionEvent[][] = [];
-          for (let i = 0; i < allTasks.length; i += BATCH_SIZE) {
-            const batch = allTasks.slice(i, i + BATCH_SIZE);
-            const batchResults = await Promise.all(
-              batch.map(({ dayKey, type }) =>
-                fetchOne(
-                  {
-                    limit: String(PER_DAY_LIMIT),
-                    from: dayKey,
-                    to: `${dayKey}T23:59:59Z`,
-                  },
-                  type,
-                ).catch((err) => {
-                  // Don't fail the whole load when one day errors — just
-                  // skip it and let the rest populate.
-                  console.warn(`Failed to fetch ${dayKey}/${type}:`, err);
-                  return [] as CollectionEvent[];
-                }),
-              ),
-            );
-            results.push(...batchResults);
-          }
+          // No-day fetch: one broad request per type, no date range. The
+          // worker returns the 20000 most recent matching events (its hard
+          // ceiling), which for typical domains covers months. The earlier
+          // 14-day × 800-per-day fan-out introduced a hidden cliff that
+          // capped visible history regardless of how much data existed —
+          // see the activity strip showing months while the canvas only
+          // rendered the most recent two weeks. (The activity strip's
+          // per-day counts come from a separate /events/daily-counts
+          // endpoint and are not affected by this change.)
+          const results = await Promise.all(
+            [...typesToFetch].map((type) =>
+              fetchOne({ limit: "20000" }, type).catch((err) => {
+                console.warn(`Failed to fetch ${type} events:`, err);
+                return [] as CollectionEvent[];
+              }),
+            ),
+          );
           fetched = results.flat();
         }
 
@@ -235,21 +205,21 @@ const InternetMovement = () => {
     [],
   );
 
-  // When day or domain filter changes, refetch with server-side filtering
+  // When day or server-side domain changes, refetch.
   useEffect(() => {
-    fetchEvents(selectedDay, activeVisualizations, domainFilter);
-  }, [selectedDay, domainFilter]);
+    fetchEvents(selectedDay, activeVisualizations, serverDomain);
+  }, [selectedDay, serverDomain]);
 
   // When active visualizations change, fetch any missing event types
   useEffect(() => {
-    fetchEvents(selectedDay, activeVisualizations, domainFilter);
+    fetchEvents(selectedDay, activeVisualizations, serverDomain);
   }, [activeVisualizations]);
 
   const handleRefresh = useCallback(() => {
     fetchedTypesRef.current = new Set();
     lastFetchKeyRef.current = "";
-    fetchEvents(selectedDay, activeVisualizations, domainFilter, true);
-  }, [selectedDay, domainFilter, activeVisualizations, fetchEvents]);
+    fetchEvents(selectedDay, activeVisualizations, serverDomain, true);
+  }, [selectedDay, serverDomain, activeVisualizations, fetchEvents]);
 
   return (
     <>
@@ -277,8 +247,8 @@ const InternetMovement = () => {
         dayCounts={dayCounts}
         selectedDay={selectedDay}
         onSelectDay={setSelectedDay}
-        domainFilter={domainFilter}
-        onSetDomainFilter={setDomainFilter}
+        filters={filters}
+        onSetFilters={setFilters}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
       />

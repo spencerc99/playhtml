@@ -19,16 +19,15 @@ import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
-  extractDomain,
-  eventMatchesPath,
+  eventMatchesAnyFilter,
   deriveSessionColor,
+  type FilterChip,
 } from "../utils/eventUtils";
 
 // Settings interface for cursor trails
 export interface CursorTrailSettings {
   randomizeColors: boolean;
-  domainFilter: string;
-  pathFilter: string;
+  filters: readonly FilterChip[];
   pidFilter: string;
   eventFilter: {
     move: boolean;
@@ -96,11 +95,12 @@ export function useCursorTrails(
       return { trails: [] as Trail[], documentCanvasSize: null };
     }
 
-    // Apply domain + path + pid filters. Each is independent and AND'd
-    // when set; absent filters short-circuit. Path filter is prefix-based;
-    // pid is exact-match against `event.meta.pid`.
+    // Apply URL-scope chips (OR across chips, AND inside a chip) and the
+    // pid filter (exact match on `event.meta.pid`). Both are independent
+    // and AND'd against each other; absent filters short-circuit.
+    const hasFilters = (settings.filters?.length ?? 0) > 0;
     const filteredEvents =
-      settings.domainFilter || settings.pathFilter || settings.pidFilter
+      hasFilters || settings.pidFilter
         ? cursorEvents.filter((event) => {
             if (
               settings.pidFilter &&
@@ -108,12 +108,7 @@ export function useCursorTrails(
             ) {
               return false;
             }
-            const url = event.meta.url || "";
-            if (settings.domainFilter) {
-              const eventDomain = extractDomain(url);
-              if (eventDomain !== settings.domainFilter) return false;
-            }
-            return eventMatchesPath(url, settings.pathFilter);
+            return eventMatchesAnyFilter(event.meta.url || "", settings.filters);
           })
         : cursorEvents;
 
@@ -337,8 +332,7 @@ export function useCursorTrails(
   }, [
     cursorEvents,
     settings.randomizeColors,
-    settings.domainFilter,
-    settings.pathFilter,
+    settings.filters,
     settings.pidFilter,
     settings.eventFilter,
     settings.documentSpace,

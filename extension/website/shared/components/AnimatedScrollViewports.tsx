@@ -2,8 +2,9 @@
 // ABOUTME: Renders viewports on-demand with fade transitions and dynamic space packing
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
-import { RISO_COLORS } from "../utils/eventUtils";
+import { RISO_COLORS, extractDomain } from "../utils/eventUtils";
 import { PagePreview } from "./PagePreview";
+import { useDebugHover } from "./DebugHover";
 
 // Configuration constants
 const FADE_IN_DURATION = 400; // ms
@@ -28,7 +29,13 @@ interface AnimatedScrollViewportsProps {
     showResizeEvents?: boolean;
     showZoomEvents?: boolean;
     windowScale?: number;
+    windowBleed?: number;
+    showTitleBar?: boolean;
   };
+  // Live URL → metadata lookup. Read at render time so title bars update as
+  // navigation events stream in, even for viewports that were added before
+  // the metadata for their URL arrived.
+  urlMetadata?: Map<string, { title?: string; favicon?: string }>;
 }
 
 // Generate unique ID for viewports
@@ -188,7 +195,7 @@ const calculateViewportSize = (
 };
 
 export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
-  memo(({ animations, canvasSize, settings }) => {
+  memo(({ animations, canvasSize, settings, urlMetadata }) => {
     const [activeViewports, setActiveViewports] = useState<ActiveViewport[]>(
       [],
     );
@@ -270,11 +277,56 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         // Find position — skip collision check when overlap is allowed
         let position: { x: number; y: number } | null;
         if (settingsRef.current.allowOverlap) {
-          // Random position, no collision check
-          position = {
-            x: seededRandom(seed, 0) * Math.max(1, canvasSize.width - size.width),
-            y: seededRandom(seed, 1) * Math.max(1, canvasSize.height - size.height),
-          };
+          // Spread viewports across the FULL canvas, not just the rect of
+          // valid top-left positions. Uniform top-left placement biases
+          // coverage toward the middle (since center pixels fall inside more
+          // candidate rects than edge pixels). Sampling the *center*
+          // uniformly across the whole canvas — and allowing each viewport
+          // to hang up to half its size off any edge — gives a flat coverage
+          // distribution that reaches the corners.
+          const overhangFrac = settingsRef.current.windowBleed ?? 0.45;
+          const overhangX = size.width * overhangFrac;
+          const overhangY = size.height * overhangFrac;
+
+          // Coverage-aware tie-break: try a few candidates and pick the one
+          // whose center is farthest from any currently-active viewport.
+          // Cheap (4 samples × N active), keeps placements from clumping.
+          const activeCenters = activeViewports
+            .filter((v) => v.phase !== "fade-out")
+            .map((v) => ({
+              cx: v.rect.x + v.rect.width / 2,
+              cy: v.rect.y + v.rect.height / 2,
+            }));
+          const NUM_CANDIDATES = 4;
+          let best: { x: number; y: number } | null = null;
+          let bestScore = -Infinity;
+          for (let c = 0; c < NUM_CANDIDATES; c++) {
+            const cx =
+              seededRandom(seed, c * 2) * canvasSize.width;
+            const cy =
+              seededRandom(seed, c * 2 + 1) * canvasSize.height;
+            const x = Math.max(
+              -overhangX,
+              Math.min(canvasSize.width - size.width + overhangX, cx - size.width / 2),
+            );
+            const y = Math.max(
+              -overhangY,
+              Math.min(canvasSize.height - size.height + overhangY, cy - size.height / 2),
+            );
+            let nearest = Infinity;
+            for (const a of activeCenters) {
+              const dx = a.cx - (x + size.width / 2);
+              const dy = a.cy - (y + size.height / 2);
+              const d2 = dx * dx + dy * dy;
+              if (d2 < nearest) nearest = d2;
+            }
+            const score = activeCenters.length === 0 ? 0 : nearest;
+            if (score > bestScore) {
+              bestScore = score;
+              best = { x, y };
+            }
+          }
+          position = best;
         } else {
           const occupiedRects = activeViewports
             .filter((v) => v.phase !== "fade-out")
@@ -452,17 +504,45 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           </filter>
         </defs>
 
-        {activeViewports.map((viewport) => (
-          <DynamicViewportRect
-            key={viewport.id}
-            viewport={viewport}
-            currentTime={currentTime}
-            settings={settingsRef.current}
-          />
-        ))}
+        {activeViewports.map((viewport) => {
+          const live = urlMetadata?.get(viewport.animation.pageUrl);
+          return (
+            <DynamicViewportRect
+              key={viewport.id}
+              viewport={viewport}
+              currentTime={currentTime}
+              settings={settingsRef.current}
+              livePageTitle={live?.title}
+              liveFaviconUrl={live?.favicon}
+            />
+          );
+        })}
       </svg>
     );
   });
+
+// Best-effort title derivation purely from the URL — used as a fallback when
+// no captured page title is available. Currently handles Wikipedia articles
+// since the article slug IS the title; everything else returns null so the
+// caller can fall through to the domain.
+function deriveTitleFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith("wikipedia.org")) {
+      const m = parsed.pathname.match(/^\/wiki\/(.+)$/);
+      if (m) {
+        const slug = decodeURIComponent(m[1]).replace(/_/g, " ");
+        // Skip namespace pages (Special:, Talk:, User:, Category:, etc.) and
+        // the Main Page — neither is useful as a title-bar label.
+        if (/^[A-Za-z_]+:/.test(slug) || slug === "Main Page") return null;
+        return slug;
+      }
+    }
+  } catch {
+    // ignore malformed URLs
+  }
+  return null;
+}
 
 // Helper functions for animation calculations (unchanged from original)
 function calculateScrollPosition(
@@ -579,6 +659,8 @@ const DynamicViewportRect = memo(
     viewport,
     currentTime,
     settings,
+    livePageTitle,
+    liveFaviconUrl,
   }: {
     viewport: ActiveViewport;
     currentTime: number;
@@ -591,7 +673,10 @@ const DynamicViewportRect = memo(
       showScrollEvents?: boolean;
       showResizeEvents?: boolean;
       showZoomEvents?: boolean;
+      showTitleBar?: boolean;
     };
+    livePageTitle?: string;
+    liveFaviconUrl?: string;
   }) => {
     const {
       animation,
@@ -802,8 +887,54 @@ const DynamicViewportRect = memo(
     const scrollbarThumbColorValue = Math.round(scrollbarThumbLuminosity * 255);
     const scrollbarThumbColor = `rgb(${scrollbarThumbColorValue}, ${scrollbarThumbColorValue}, ${scrollbarThumbColorValue})`;
 
+    const debug = useDebugHover();
+    const showDebug = () => {
+      if (!debug.enabled) return;
+      const scrollCount = animation.scrollEvents.length;
+      const resizeCount = animation.resizeEvents?.length ?? 0;
+      const zoomCount = animation.zoomEvents?.length ?? 0;
+      debug.show({
+        kind: "Scroll viewport",
+        id: viewport.id,
+        color: animation.color,
+        title: animation.pageTitle || animation.pageUrl,
+        fields: [
+          { label: "url", value: animation.pageUrl },
+          { label: "scrolls", value: String(scrollCount) },
+          { label: "resizes", value: String(resizeCount) },
+          { label: "zooms", value: String(zoomCount) },
+          {
+            label: "duration",
+            value: `${Math.round((animation.endTime - animation.startTime) / 1000)}s`,
+          },
+          {
+            label: "viewport",
+            value: `${animation.startViewportWidth}×${animation.startViewportHeight}`,
+          },
+          {
+            label: "pid",
+            value: `${animation.participantId.slice(0, 7)}…${animation.participantId.slice(-4)}`,
+          },
+        ],
+      });
+    };
+    const hideDebug = () => {
+      if (!debug.enabled) return;
+      debug.hide(viewport.id);
+    };
+
     return (
-      <g opacity={opacity} style={{ transition: "opacity 0.1s ease-out" }}>
+      <g
+        opacity={opacity}
+        style={{
+          transition: "opacity 0.1s ease-out",
+          pointerEvents: debug.enabled ? "auto" : undefined,
+          cursor: debug.enabled ? "help" : undefined,
+        }}
+        onMouseEnter={debug.enabled ? showDebug : undefined}
+        onMouseMove={debug.enabled ? showDebug : undefined}
+        onMouseLeave={debug.enabled ? hideDebug : undefined}
+      >
         <defs>
           <clipPath id={`viewport-clip-${viewport.id}`}>
             <rect
@@ -1457,6 +1588,21 @@ const DynamicViewportRect = memo(
           />
         </g>
 
+        {/* Window title bar — favicon + page title, browser-chrome style */}
+        {settings.showTitleBar !== false && (
+          <ViewportTitleBar
+            viewportId={viewport.id}
+            x={visualX}
+            y={visualY}
+            width={visualWidth}
+            height={visualHeight}
+            pageUrl={animation.pageUrl}
+            pageTitle={livePageTitle ?? animation.pageTitle}
+            faviconUrl={liveFaviconUrl ?? animation.faviconUrl}
+            accentColor={edgeTintColor}
+          />
+        )}
+
         {/* Border with activity-based styling */}
         <rect
           x={visualX}
@@ -1499,3 +1645,117 @@ const DynamicViewportRect = memo(
     );
   },
 );
+
+// Renders a thin browser-chrome-style title bar across the top of a viewport.
+// Sized relative to viewport width so it stays legible at any scale.
+const TITLE_BAR_MIN_HEIGHT = 14;
+const TITLE_BAR_MAX_HEIGHT = 22;
+
+const ViewportTitleBar = memo(
+  ({
+    viewportId,
+    x,
+    y,
+    width,
+    height,
+    pageUrl,
+    pageTitle,
+    faviconUrl,
+    accentColor,
+  }: {
+    viewportId: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageUrl: string;
+    pageTitle?: string;
+    faviconUrl?: string;
+    accentColor: string;
+  }) => {
+    const barHeight = Math.max(
+      TITLE_BAR_MIN_HEIGHT,
+      Math.min(TITLE_BAR_MAX_HEIGHT, Math.round(height * 0.075)),
+    );
+    const padX = Math.max(4, Math.round(barHeight * 0.45));
+    const iconSize = Math.max(8, barHeight - 6);
+    const fontSize = Math.max(8, Math.round(barHeight * 0.55));
+
+    const domain = extractDomain(pageUrl);
+    const displayTitle =
+      (pageTitle && pageTitle.trim()) ||
+      deriveTitleFromUrl(pageUrl) ||
+      domain ||
+      pageUrl;
+    const resolvedFavicon =
+      faviconUrl ||
+      (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : undefined);
+
+    const clipId = `titlebar-clip-${viewportId}`;
+    const washId = `titlebar-wash-${viewportId}`;
+
+    return (
+      <g pointerEvents="none">
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={x} y={y} width={width} height={barHeight} />
+          </clipPath>
+          <linearGradient id={washId} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="rgb(245,240,232)" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="rgb(210,204,193)" stopOpacity="0.85" />
+          </linearGradient>
+        </defs>
+
+        <g clipPath={`url(#${clipId})`}>
+          {/* Base wash */}
+          <rect x={x} y={y} width={width} height={barHeight} fill={`url(#${washId})`} />
+          {/* Subtle paper noise to match the textured aesthetic */}
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={barHeight}
+            fill="#000"
+            filter="url(#scrollGrain)"
+            opacity={0.08}
+          />
+          {/* Hairline accent across the bottom edge in the participant/RISO color */}
+          <rect
+            x={x}
+            y={y + barHeight - 1}
+            width={width}
+            height={1}
+            fill={accentColor}
+            opacity={0.45}
+          />
+
+          {/* Favicon */}
+          {resolvedFavicon && (
+            <image
+              href={resolvedFavicon}
+              x={x + padX}
+              y={y + (barHeight - iconSize) / 2}
+              width={iconSize}
+              height={iconSize}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          )}
+
+          {/* Title text */}
+          <text
+            x={x + padX + (resolvedFavicon ? iconSize + padX * 0.6 : 0)}
+            y={y + barHeight / 2}
+            fontSize={fontSize}
+            fontFamily="Atkinson Hyperlegible, system-ui, sans-serif"
+            fill="rgb(61, 56, 51)"
+            opacity={0.85}
+            dominantBaseline="central"
+          >
+            {displayTitle}
+          </text>
+        </g>
+      </g>
+    );
+  },
+);
+ViewportTitleBar.displayName = "ViewportTitleBar";
