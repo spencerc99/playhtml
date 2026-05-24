@@ -20,8 +20,13 @@ function installCryptoWithoutRandomUuid(): void {
 }
 
 describe("participant storage fallbacks", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.resetModules();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -50,6 +55,10 @@ describe("participant storage fallbacks", () => {
 
     expect(first.startsWith("sid_")).toBe(true);
     expect(first).toBe(second);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[Participant] browser.storage.session unavailable; using in-memory session id",
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it("falls back to generated participant id without crypto.randomUUID", async () => {
@@ -69,5 +78,9 @@ describe("participant storage fallbacks", () => {
 
     expect(pid.startsWith("pk_temp_")).toBe(true);
     expect(pid.length).toBeGreaterThan("pk_temp_".length + 8);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Failed to get participant ID:",
+      expect.any(Error),
+    );
   });
 });
