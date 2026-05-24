@@ -5,17 +5,16 @@ import { useMemo } from "react";
 import { CollectionEvent, ScrollAnimation } from "../types";
 import {
   getColorForParticipant,
-  extractDomain,
-  eventMatchesPath,
+  eventMatchesAnyFilter,
   SCROLL_SESSION_THRESHOLD,
   SCROLL_TIME_COMPRESSION,
   MAX_VIEWPORT_ANIMATION_DURATION,
+  type FilterChip,
 } from "../utils/eventUtils";
 
 // Settings interface for viewport scroll
 export interface ViewportScrollSettings {
-  domainFilter: string;
-  pathFilter: string;
+  filters: readonly FilterChip[];
   pidFilter: string;
   viewportEventFilter: {
     scroll: boolean;
@@ -27,6 +26,7 @@ export interface ViewportScrollSettings {
 export interface UseViewportScrollResult {
   animations: ScrollAnimation[];
   timeBounds: { min: number; max: number };
+  urlMetadata: Map<string, { title?: string; favicon?: string }>;
 }
 
 // Visibility thresholds for filtering animations
@@ -52,6 +52,33 @@ export function useViewportScroll(
     return events.filter((e) => e.type === "viewport");
   }, [events]);
 
+  // Build a per-URL metadata index from any navigation events that happen to
+  // be in `events` (when navigation/favicon viz is also active). When only the
+  // scroll viz is active, navigation events aren't fetched and title bars
+  // fall back to the domain — by design, to keep the scroll fetch focused.
+  const urlMetadata = useMemo(() => {
+    const byUrl = new Map<string, { title?: string; favicon?: string; ts: number }>();
+    for (const e of events) {
+      if (e.type !== "navigation") continue;
+      const url = e.meta?.url;
+      if (!url) continue;
+      const data = e.data as Record<string, unknown> | undefined;
+      const title = typeof data?.title === "string" ? (data!.title as string) : undefined;
+      const favicon =
+        typeof data?.favicon_url === "string" ? (data!.favicon_url as string) : undefined;
+      if (!title && !favicon) continue;
+      const prev = byUrl.get(url);
+      if (!prev || e.ts >= prev.ts) {
+        byUrl.set(url, {
+          title: title || prev?.title,
+          favicon: favicon || prev?.favicon,
+          ts: e.ts,
+        });
+      }
+    }
+    return byUrl;
+  }, [events]);
+
   // Process viewport events into scroll animations
   const result = useMemo(() => {
     if (viewportEvents.length === 0 || viewportSize.width === 0) {
@@ -65,18 +92,14 @@ export function useViewportScroll(
       eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
     });
 
-    // Apply domain + path + pid filter
+    // Apply URL-scope chips + pid filter.
+    const hasFilters = (settings.filters?.length ?? 0) > 0;
     const filteredEvents =
-      settings.domainFilter || settings.pathFilter || settings.pidFilter
+      hasFilters || settings.pidFilter
         ? viewportEvents.filter((event) => {
             if (settings.pidFilter && event.meta?.pid !== settings.pidFilter)
               return false;
-            const url = event.meta.url || "";
-            if (settings.domainFilter) {
-              const eventDomain = extractDomain(url);
-              if (eventDomain !== settings.domainFilter) return false;
-            }
-            return eventMatchesPath(url, settings.pathFilter);
+            return eventMatchesAnyFilter(event.meta.url || "", settings.filters);
           })
         : viewportEvents;
 
@@ -328,10 +351,14 @@ export function useViewportScroll(
               cappedScrollEvents[cappedScrollEvents.length - 1].viewportHeight;
           }
 
+          const animUrl = mergedSessionEvents[0].meta.url;
+          const metadata = urlMetadata.get(animUrl);
           const anim = {
             participantId: mergedSessionEvents[0].meta.pid,
             sessionId: mergedSessionEvents[0].meta.sid,
-            pageUrl: mergedSessionEvents[0].meta.url,
+            pageUrl: animUrl,
+            pageTitle: metadata?.title,
+            faviconUrl: metadata?.favicon,
             color: getColorForParticipant(mergedSessionEvents[0].meta.pid),
             scrollEvents:
               cappedScrollEvents.length > 0 ? cappedScrollEvents : [],
@@ -424,12 +451,14 @@ export function useViewportScroll(
     return { animations: animationsToUse, timeBounds };
   }, [
     viewportEvents,
+    urlMetadata,
     viewportSize.width,
-    settings.domainFilter,
-    settings.pathFilter,
+    settings.filters,
     settings.pidFilter,
     settings.viewportEventFilter,
   ]);
 
-  return result;
+  // urlMetadata is already memoized above; expose as-is. Consumers only read
+  // `title` and `favicon`, so passing the extra `ts` field is harmless.
+  return { ...result, urlMetadata } as UseViewportScrollResult;
 }

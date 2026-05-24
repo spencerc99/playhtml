@@ -47,8 +47,9 @@ function formatTimeRange(range: { startMs: number; endMs: number }): string {
 
 export interface AutoNameInput {
   activeVisualizations: string[];
-  domainFilter: string;
-  pathFilter: string;
+  /** URL-scope chip list — each chip is `{domain, path}` and they OR
+   * together. The auto-name shows up to two; "+N more" for the rest. */
+  filters: { domain: string; path: string }[];
   /** Persistent player ID — shortened to `pk_abcd…wxyz` in the name. */
   pidFilter: string;
   trailStyle?: string;
@@ -80,14 +81,24 @@ function shortenPid(pid: string): string {
 export function buildAutoName(input: AutoNameInput): string {
   const parts: string[] = [formatVizLabel(input.activeVisualizations)];
 
-  // Location segment: domain + path, then user-id postfix if scoped.
-  if (input.domainFilter || input.pathFilter || input.pidFilter) {
-    const path = input.pathFilter
-      ? (input.pathFilter.startsWith("/") ? "" : "/") + input.pathFilter
-      : "";
+  const chipLabel = (c: { domain: string; path: string }): string => {
+    if (!c.domain && !c.path) return "";
+    if (!c.domain) {
+      return c.path.startsWith("/") ? `*${c.path}` : `*/${c.path}`;
+    }
+    if (!c.path) return c.domain;
+    const path = c.path.startsWith("/") ? c.path : `/${c.path}`;
+    return `${c.domain}${path}`;
+  };
+
+  // Location segment: chip list (capped) + user-id postfix.
+  const chipLabels = (input.filters ?? []).map(chipLabel).filter(Boolean);
+  if (chipLabels.length > 0 || input.pidFilter) {
     let loc = "";
-    if (input.domainFilter || input.pathFilter) {
-      loc = input.domainFilter ? `${input.domainFilter}${path}` : `*${path}`;
+    if (chipLabels.length > 0) {
+      const shown = chipLabels.slice(0, 2).join(",");
+      const extra = chipLabels.length - 2;
+      loc = extra > 0 ? `${shown}+${extra}` : shown;
     }
     if (input.pidFilter) {
       const short = shortenPid(input.pidFilter);
