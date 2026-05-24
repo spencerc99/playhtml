@@ -1,7 +1,7 @@
 // ABOUTME: Styles for the internet movement visualization page.
 // ABOUTME: Full-viewport layout with canvas positioning and RISO-inspired background.
 
-@import "./base.scss";
+@use "./base.scss";
 
 body {
   margin: 0;
