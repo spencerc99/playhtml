@@ -200,7 +200,8 @@ const PortraitPage = () => {
     () => ({
       trailOpacity: 0.7,
       randomizeColors: true,
-      domainFilter: "",
+      filters: [],
+      pidFilter: "",
       eventFilter: { move: true, click: true, hold: true, cursor_change: true },
       trailStyle: "chaotic" as const,
       chaosIntensity: 1.0,

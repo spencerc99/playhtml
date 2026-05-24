@@ -132,6 +132,8 @@ export interface ScrollAnimation {
   participantId: string;
   sessionId: string;
   pageUrl: string;
+  pageTitle?: string;
+  faviconUrl?: string;
   color: string;
   scrollEvents: Array<{
     scrollX: number;

@@ -242,6 +242,86 @@ export function eventMatchesPath(eventUrl: string, pathFilter: string): boolean 
   return path.startsWith(needle);
 }
 
+/** A single URL-scope filter chip. `domain` is an exact-host match (after
+ * www-stripping), `path` is a prefix match on the URL path. Either field
+ * may be empty: a chip with only `domain` matches any path on that host,
+ * a chip with only `path` matches that path on any host. */
+export interface FilterChip {
+  domain: string;
+  path: string;
+}
+
+/** True when the event's URL matches any chip in the list (OR across chips,
+ * AND inside a chip). An empty list matches everything — that's the
+ * "no filter applied" state. */
+export function eventMatchesAnyFilter(
+  eventUrl: string,
+  filters: readonly FilterChip[] | undefined,
+): boolean {
+  if (!filters || filters.length === 0) return true;
+  const eventDomain = extractDomain(eventUrl || "");
+  for (const f of filters) {
+    if (f.domain && eventDomain !== f.domain) continue;
+    if (!eventMatchesPath(eventUrl, f.path)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Parse a free-form filter string into a `FilterChip`. Accepts full URLs,
+ * hostname/path combos, bare paths, or bare hostnames. The "has a dot
+ * before the first slash" heuristic decides whether the leading segment is
+ * a hostname or part of the path. Strips protocol, `www.`, query, hash.
+ *
+ *   "https://google.com/maps?q=x" → { domain: "google.com", path: "/maps" }
+ *   "google.com/maps"             → { domain: "google.com", path: "/maps" }
+ *   "google.com"                  → { domain: "google.com", path: "" }
+ *   "/maps"                       → { domain: "",           path: "/maps" }
+ *   "maps"                        → { domain: "",           path: "/maps" }
+ *   ""                            → { domain: "",           path: "" }
+ */
+export function parseFilterChip(raw: string): FilterChip {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return { domain: "", path: "" };
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      const domain = u.hostname.replace(/^www\./, "");
+      const path = u.pathname && u.pathname !== "/" ? u.pathname : "";
+      return { domain, path };
+    } catch {
+      /* fall through to manual split */
+    }
+  }
+
+  const cleaned = trimmed.replace(/[?#].*$/, "");
+  const slashIdx = cleaned.indexOf("/");
+  const head = slashIdx === -1 ? cleaned : cleaned.slice(0, slashIdx);
+  const tail = slashIdx === -1 ? "" : cleaned.slice(slashIdx);
+
+  if (head.includes(".")) {
+    return { domain: head.replace(/^www\./, ""), path: tail };
+  }
+
+  if (!cleaned) return { domain: "", path: "" };
+  const path = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return { domain: "", path };
+}
+
+/** Render a chip back to its canonical short-form string. Used by the
+ * metadata pill, share-URL serializer, and the chip UI itself so they all
+ * agree on what a chip "looks like." */
+export function formatFilterChip(chip: FilterChip): string {
+  if (!chip.domain && !chip.path) return "";
+  if (!chip.domain) {
+    return chip.path.startsWith("/") ? chip.path : `/${chip.path}`;
+  }
+  if (!chip.path) return chip.domain;
+  const path = chip.path.startsWith("/") ? chip.path : `/${chip.path}`;
+  return `${chip.domain}${path}`;
+}
+
 // Constants used across event processing
 export const TRAIL_TIME_THRESHOLD = 300000; // 5 minutes - gap that breaks a trail into separate trails
 export const SCROLL_SESSION_THRESHOLD = 900000; // 15 minutes - gap that breaks scroll sessions

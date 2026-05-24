@@ -76,7 +76,8 @@ const EVENT_LIMIT = 150;
 const TRAIL_SETTINGS = {
   trailOpacity: 0.5,
   randomizeColors: true,
-  domainFilter: "",
+  filters: [],
+  pidFilter: "",
   eventFilter: { move: true, click: true, hold: false, cursor_change: false },
   trailStyle: "chaotic" as const,
   chaosIntensity: 0.6,
