@@ -4,8 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import type { PlayerIdentity } from "../types";
 import { CursorSvg } from "./icons";
-import { syncParticipantColor } from "../storage/sync";
-import { getParticipantId } from "../storage/participant";
+import { savePlayerColor } from "../storage/playerColor";
 import "./ProfilePage.scss";
 import { hslToHex } from "../utils/color";
 
@@ -20,28 +19,6 @@ function randomPrimaryColor(): string {
   return hslToHex(hue, 70, 60);
 }
 
-const INLINE_COLOR_OPTIONS = [
-  "#ef4444",
-  "#f97316",
-  "#f59e0b",
-  "#84cc16",
-  "#14b8a6",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-];
-
-function normalizeHexColor(value: string): string | null {
-  const match = value.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (!match) return null;
-
-  const hex = match[1].toLowerCase();
-  if (hex.length === 3) {
-    return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
-  }
-  return `#${hex}`;
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -51,9 +28,6 @@ function formatBytes(bytes: number): string {
 export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props) {
   const savedColor = playerIdentity.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
   const [color, setColor] = useState(savedColor);
-  const [hexInputValue, setHexInputValue] = useState(
-    normalizeHexColor(savedColor) ?? "",
-  );
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [storageStats, setStorageStats] = useState<{
@@ -61,7 +35,7 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
     estimatedSizeBytes: number;
   } | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
-  const useInlineColorPicker = Boolean(import.meta.env.FIREFOX);
+  const opensNativePickerInPopup = !import.meta.env.FIREFOX;
 
   const hasColorChanged = color !== savedColor;
 
@@ -81,37 +55,23 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
 
   const commitColor = (nextColor: string) => {
     setColor(nextColor);
-    setHexInputValue(normalizeHexColor(nextColor) ?? "");
   };
 
-  const handleHexColorChange = (value: string) => {
-    setHexInputValue(value);
-    const nextColor = normalizeHexColor(value);
-    if (nextColor) setColor(nextColor);
+  const handleOpenNativeColorPicker = async () => {
+    await browser.windows.create({
+      url: browser.runtime.getURL("color-picker.html"),
+      type: "popup",
+      width: 360,
+      height: 260,
+    });
+    window.close();
   };
 
   const handleSaveColor = async () => {
     setSaving(true);
     try {
-      const { playerIdentity: stored } = await browser.storage.local.get(["playerIdentity"]);
-      if (stored) {
-        if (!stored.playerStyle) stored.playerStyle = { colorPalette: [color] };
-        else {
-          const palette = Array.isArray(stored.playerStyle.colorPalette)
-            ? stored.playerStyle.colorPalette
-            : [];
-          palette[0] = color;
-          stored.playerStyle.colorPalette = palette;
-        }
-        await browser.storage.local.set({ playerIdentity: stored });
-        onIdentityUpdated(stored);
-
-        // Sync to server
-        try {
-          const pid = await getParticipantId();
-          await syncParticipantColor(pid, color);
-        } catch {}
-      }
+      const updated = await savePlayerColor(color);
+      if (updated) onIdentityUpdated(updated);
     } catch {} finally {
       setSaving(false);
     }
@@ -142,14 +102,7 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
         <section className="profile-section">
           <label className="profile-section__label">Cursor color</label>
           <div className="profile-section__color-row">
-            {useInlineColorPicker ? (
-              <div
-                className="profile-section__cursor-preview profile-section__cursor-preview--static"
-                aria-hidden="true"
-              >
-                <CursorSvg size={36} color={color} />
-              </div>
-            ) : (
+            {opensNativePickerInPopup ? (
               <>
                 <input
                   ref={colorInputRef}
@@ -168,6 +121,13 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
                   <CursorSvg size={36} color={color} />
                 </button>
               </>
+            ) : (
+              <div
+                className="profile-section__cursor-preview profile-section__cursor-preview--static"
+                aria-hidden="true"
+              >
+                <CursorSvg size={36} color={color} />
+              </div>
             )}
             <button
               type="button"
@@ -178,40 +138,16 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
             >
               ↻
             </button>
-            {useInlineColorPicker && (
-              <div
-                className="profile-section__inline-picker"
-                role="group"
-                aria-label="Cursor color choices"
+            {!opensNativePickerInPopup && (
+              <button
+                type="button"
+                aria-label="Open native cursor color picker"
+                title="Open native color picker"
+                onClick={handleOpenNativeColorPicker}
+                className="profile-section__picker-window-btn"
               >
-                <div className="profile-section__swatches">
-                  {INLINE_COLOR_OPTIONS.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      aria-label={`Use ${option} as cursor color`}
-                      aria-pressed={color === option}
-                      onClick={() => commitColor(option)}
-                      className={
-                        "profile-section__swatch" +
-                        (color === option
-                          ? " profile-section__swatch--active"
-                          : "")
-                      }
-                      style={{ backgroundColor: option }}
-                    />
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  value={hexInputValue}
-                  onChange={(e) => handleHexColorChange(e.target.value)}
-                  placeholder="#4a9a8a"
-                  aria-label="Custom cursor color hex value"
-                  spellCheck={false}
-                  className="profile-section__hex-input"
-                />
-              </div>
+                Choose
+              </button>
             )}
             {hasColorChanged && (
               <button
