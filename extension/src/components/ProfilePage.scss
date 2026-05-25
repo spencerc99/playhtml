@@ -96,58 +96,17 @@
     }
   }
 
-  &__inline-picker {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1 1 190px;
-    min-width: 0;
-  }
-
-  &__swatches {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    flex-wrap: wrap;
-  }
-
-  &__swatch {
-    width: 22px;
-    height: 22px;
-    border: 1px solid $border;
-    border-radius: 999px;
-    cursor: pointer;
-    padding: 0;
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.7);
-
-    &:hover {
-      border-color: $border-strong;
-    }
-  }
-
-  &__swatch--active {
-    border-color: $text;
-    box-shadow:
-      inset 0 0 0 2px rgba(255, 255, 255, 0.85),
-      0 0 0 2px rgba(17, 24, 39, 0.14);
-  }
-
-  &__hex-input {
-    width: 76px;
-    min-width: 0;
-    padding: 6px 7px;
-    border: 1px solid $border;
-    border-radius: 6px;
-    font-family: $font-mono;
-    font-size: 11px;
-    color: $text;
-    background: $surface;
-  }
-
   &__reroll-btn {
     @include btn-secondary;
     padding: 8px 10px;
     font-size: 14px;
+    border-radius: 6px;
+  }
+
+  &__picker-window-btn {
+    @include btn-secondary;
+    padding: 8px 10px;
+    font-size: 12px;
     border-radius: 6px;
   }
 
