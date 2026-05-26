@@ -13,6 +13,7 @@ export const { syncedStore } = require("@syncedstore/core");
 const YProviderModule = require("y-partyserver/provider");
 const WebSocket = require("ws");
 const YProvider = YProviderModule.default ?? YProviderModule;
+export { WebSocket };
 
 export const defaultHost = "playhtml-staging.spencerc99.workers.dev";
 
@@ -59,6 +60,30 @@ export function connectRoom(host, room, doc, params = {}) {
     disableBc: true,
     params,
   });
+}
+
+export function getPartyWebSocketUrl(host, room) {
+  const normalizedHost = host.replace(/^(http|https|ws|wss):\/\//, "");
+  const protocol =
+    normalizedHost.startsWith("localhost:") ||
+    normalizedHost.startsWith("127.0.0.1:")
+      ? "ws"
+      : "wss";
+  return `${protocol}://${normalizedHost}/parties/main/${encodeURIComponent(
+    room
+  )}`;
+}
+
+export function getPartyHttpUrl(host, room) {
+  const normalizedHost = host.replace(/^(http|https|ws|wss):\/\//, "");
+  const protocol =
+    normalizedHost.startsWith("localhost:") ||
+    normalizedHost.startsWith("127.0.0.1:")
+      ? "http"
+      : "https";
+  return `${protocol}://${normalizedHost}/parties/main/${encodeURIComponent(
+    room
+  )}`;
 }
 
 export function waitForSync(provider, label, timeoutMs = 20_000) {
