@@ -1,3 +1,5 @@
+// ABOUTME: Provides authenticated room inspection and maintenance endpoints.
+// ABOUTME: Coordinates live Y.Doc admin edits with Supabase persistence safeguards.
 import { syncedStore } from "@syncedstore/core";
 import { Buffer } from "node:buffer";
 import { env } from "cloudflare:workers";
@@ -119,6 +121,10 @@ export class AdminHandler {
       }
     }
     return null;
+  }
+
+  private checkPersistenceWriteAvailable(): Response | null {
+    return this.context.getPersistenceUnavailableResponse();
   }
 
   private async handleAdminInspect(request: Request): Promise<Response> {
@@ -389,6 +395,8 @@ export class AdminHandler {
   private async handleAdminForceSaveLive(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       const liveYDoc = this.context.document;
@@ -447,6 +455,7 @@ export class AdminHandler {
       const result = await this.context.restoreFromSnapshot(data.document, {
         bumpEpoch: false,
       });
+      this.context.markPersistenceAvailable();
 
       return new Response(
         JSON.stringify({
@@ -477,6 +486,8 @@ export class AdminHandler {
   private async handleAdminSaveEditedData(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       const body = (await request.json()) as any;
@@ -606,6 +617,8 @@ export class AdminHandler {
   private async handleAdminCleanupOrphans(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       const body = (await request.json()) as {
@@ -767,6 +780,8 @@ export class AdminHandler {
   private async handleAdminHardReset(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     const roomId = this.context.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
@@ -836,6 +851,8 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     const roomId = this.context.name;
     console.log(`[Restore Raw] Starting for room: ${roomId}`);

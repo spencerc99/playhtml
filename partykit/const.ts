@@ -49,6 +49,9 @@ export const DEFAULT_MAX_REQUEST_BYTES = (() => {
 export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
 })();
+export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
+  return 5000;
+})();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

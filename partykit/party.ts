@@ -27,6 +27,7 @@ import {
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
+  DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
   ORIGIN_S2C,
@@ -66,6 +67,13 @@ import {
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
 import { isResetEpochStale, parseClientResetEpoch } from "./resetEpochPolicy";
+import {
+  createPersistenceUnavailableResponse,
+  formatPersistenceFailureLog,
+  getErrorMessage,
+  withTimeout,
+  type PersistenceMode,
+} from "./persistenceMode";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
@@ -136,6 +144,7 @@ export class PartyServer extends YServer {
   private cachedSharedRefs: SharedRefEntry[] | null = null;
   private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
     null;
+  private persistenceMode: PersistenceMode = { kind: "available" };
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -291,6 +300,50 @@ export class PartyServer extends YServer {
     });
 
     return { violation: decision.violation };
+  }
+
+  private getSupabaseLoadTimeoutMs(): number {
+    return readPositiveNumberEnv(
+      "SUPABASE_LOAD_TIMEOUT_MS",
+      DEFAULT_SUPABASE_LOAD_TIMEOUT_MS
+    );
+  }
+
+  isPersistenceAvailable(): boolean {
+    return this.persistenceMode.kind === "available";
+  }
+
+  markPersistenceAvailable(): void {
+    if (this.persistenceMode.kind === "transient") {
+      console.log(
+        `[PartyServer] Supabase persistence restored for room=${this.name}; leaving transient mode.`
+      );
+    }
+    this.persistenceMode = { kind: "available" };
+  }
+
+  getPersistenceUnavailableResponse(): Response | null {
+    if (this.persistenceMode.kind !== "transient") return null;
+    return createPersistenceUnavailableResponse({
+      ...this.persistenceMode,
+      roomName: this.name,
+    });
+  }
+
+  private enterTransientPersistenceMode(error: unknown): void {
+    const timeoutMs = this.getSupabaseLoadTimeoutMs();
+    this.persistenceMode = {
+      kind: "transient",
+      reason: getErrorMessage(error),
+      failedAt: Date.now(),
+    };
+    console.error(
+      formatPersistenceFailureLog({
+        roomName: this.name,
+        timeoutMs,
+        error,
+      })
+    );
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
@@ -700,6 +753,7 @@ export class PartyServer extends YServer {
 
   private async scheduleEmptyRoomCompaction(): Promise<void> {
     if (this.isSkippingSave) return;
+    if (!this.isPersistenceAvailable()) return;
     if (this.getOpenConnectionCount() !== 0) return;
 
     const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
@@ -1138,28 +1192,52 @@ export class PartyServer extends YServer {
 
   override async onLoad(): Promise<void> {
     // Load the document from Supabase on first connection
-    const { data, error } = await supabase
+    const timeoutMs = this.getSupabaseLoadTimeoutMs();
+    const query = supabase
       .from("documents")
       .select("document")
       .eq("name", this.name)
       .maybeSingle();
+    const result = await withTimeout(Promise.resolve(query), {
+      timeoutMs,
+      errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
+    }).catch((error) => {
+      this.enterTransientPersistenceMode(error);
+      return null;
+    });
 
-    if (error) {
-      throw new Error(error.message);
+    if (result === null) {
+      return;
     }
 
-    if (data) {
+    if (result.error) {
+      this.enterTransientPersistenceMode(new Error(result.error.message));
+      return;
+    }
+
+    this.markPersistenceAvailable();
+
+    if (result.data) {
       this.lastKnownDocumentBytes =
-        typeof data.document === "string" ? data.document.length : 0;
+        typeof result.data.document === "string"
+          ? result.data.document.length
+          : 0;
       Y.applyUpdate(
         this.document,
-        new Uint8Array(Buffer.from(data.document, "base64"))
+        new Uint8Array(Buffer.from(result.data.document, "base64"))
       );
     }
   }
 
   override async onSave(): Promise<void> {
     const doc = this.document;
+
+    if (!this.isPersistenceAvailable()) {
+      console.warn(
+        `[PartyServer] Autosave skipped for room ${this.name}: Supabase persistence unavailable, room is in transient mode.`
+      );
+      return;
+    }
 
     // Skip autosave if we are performing a reset operation
     if (this.isSkippingSave) {
@@ -1232,7 +1310,7 @@ export class PartyServer extends YServer {
 
     if (error) {
       console.error(
-        `[PartyServer] Autosave failed for room ${this.name}:`,
+        `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
         error
       );
     } else {
@@ -1270,6 +1348,8 @@ export class PartyServer extends YServer {
     documentSize: number;
     now: number;
   }): Promise<boolean> {
+    if (!this.isPersistenceAvailable()) return false;
+
     const thresholdBytes = this.getEmergencyCompactCheckBytes();
     const nextCheckAt = await this.getEmergencyCompactCheckAfter();
 
@@ -1420,6 +1500,16 @@ export class PartyServer extends YServer {
       }
 
       if (isApplySubtreesImmediateRequest(body)) {
+        if (!this.isPersistenceAvailable()) {
+          console.warn(
+            `[Bridge] Ignoring apply-subtrees for transient room ${this.name}: Supabase persistence unavailable.`
+          );
+          const response: ApplySubtreesResponse = { ok: true };
+          return new Response(JSON.stringify(response), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+
         // Applies provided subtrees immediately and marks origin to suppress echo
         const { subtrees, sender, originKind } = body;
 
@@ -1772,6 +1862,7 @@ export class PartyServer extends YServer {
     }
 
     if (this.isSkippingSave) return;
+    if (!this.isPersistenceAvailable()) return;
     if (this.getOpenConnectionCount() !== 0) return;
 
     const run = async () => {
@@ -1874,6 +1965,13 @@ export class PartyServer extends YServer {
 
   // Flush batched bridge updates to subscribers and source rooms
   private async flushBridgeUpdates(yDoc: Y.Doc): Promise<void> {
+    if (!this.isPersistenceAvailable()) {
+      console.warn(
+        `[PartyServer] Bridge flush skipped for room ${this.name}: Supabase persistence unavailable, room is in transient mode.`
+      );
+      return;
+    }
+
     const currentEpoch = await this.getResetEpoch();
 
     // Push to subscribers (source -> consumer direction)
