@@ -61,7 +61,7 @@ bunx wrangler deploy --config partykit/wrangler.jsonc --env staging
 
 Config:
 
-- `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
+- `PARTYKIT_HOST`: Worker host. Defaults to `api-staging.playhtml.fun`.
 - `SMOKE_ENV_FILE`: optional `.dev.vars` or `.env` file to load before the script reads `ADMIN_TOKEN`.
 - `ADMIN_TOKEN`: required for `test:partykit:compaction`.
 - `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.

@@ -14,7 +14,7 @@ const YProviderModule = require("y-partyserver/provider");
 const WebSocket = require("ws");
 const YProvider = YProviderModule.default ?? YProviderModule;
 
-export const defaultHost = "playhtml-staging.spencerc99.workers.dev";
+export const defaultHost = "api-staging.playhtml.fun";
 
 export function getHost() {
   return process.env.PARTYKIT_HOST ?? defaultHost;
