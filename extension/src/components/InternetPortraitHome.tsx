@@ -11,6 +11,7 @@ import { PortraitCard } from "./PortraitCard";
 import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
+import { PostcardStack } from "../announcements/PostcardStack";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -181,6 +182,7 @@ export function InternetPortraitHome({
 
   return (
     <div className="portrait-home">
+      <PostcardStack />
       <header className="portrait-home__header">
         <div className="portrait-home__header-row">
           <h1 className="portrait-home__wordmark">we were online</h1>

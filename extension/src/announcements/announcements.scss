@@ -1,0 +1,106 @@
+// ABOUTME: Styles for announcement postcards (popup) and toasts (content scripts).
+// ABOUTME: Warm linen aged-paper postcard, plain warm-tone toast distinct from the postcard.
+
+.announcement-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px 4px;
+}
+
+.announcement-postcard {
+  position: relative;
+  background: #f5f0e8;
+  border: 1px solid rgba(90, 78, 65, 0.18);
+  border-radius: 4px;
+  padding: 10px 12px 12px;
+  box-shadow:
+    1px 2px 0 rgba(90, 78, 65, 0.08),
+    3px 6px 14px rgba(0, 0, 0, 0.07);
+  transition: transform 200ms ease, opacity 200ms ease;
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  color: #3d3833;
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 252, 246, 0.4) 0%,
+    rgba(245, 240, 232, 0) 30%
+  );
+
+  &.is-exiting {
+    opacity: 0;
+    transform: translateY(-8px) rotate(0deg) !important;
+  }
+
+  &__chrome {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10.5px;
+    color: #8a8279;
+  }
+
+  &__from {
+    letter-spacing: 0.02em;
+  }
+
+  &__envelope {
+    font-size: 11px;
+    margin-right: 1px;
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #b8b0a6;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    transition: color 120ms ease;
+    &:hover {
+      color: #3d3833;
+    }
+  }
+
+  &__rule {
+    height: 1px;
+    margin: 6px 0 8px;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.25) 0 3px,
+      transparent 3px 6px
+    );
+  }
+
+  &__title {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #3d3833;
+    font-family: "Lora", "Atkinson Hyperlegible", serif;
+  }
+
+  &__body {
+    margin: 0 0 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #3d3833;
+  }
+
+  &__cta {
+    display: inline-block;
+    background: rgba(196, 114, 78, 0.12);
+    border: 1px solid rgba(196, 114, 78, 0.35);
+    color: #c4724e;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 120ms ease, color 120ms ease;
+    &:hover {
+      background: rgba(196, 114, 78, 0.2);
+      color: #b35a35;
+    }
+  }
+}

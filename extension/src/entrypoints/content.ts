@@ -1014,6 +1014,16 @@ export default defineContentScript({
             console.error("[we-were-online] initCustomSite failed:", err);
           }
         }
+
+        // Surface any pending announcements as a toast (no-op if all seen / no match)
+        try {
+          const { maybeInjectAnnouncementToast } = await import(
+            "../announcements/inject-toast"
+          );
+          await maybeInjectAnnouncementToast();
+        } catch (err) {
+          console.error("[we-were-online] announcement toast failed:", err);
+        }
       }
 
       private listenForPresenceCount() {
