@@ -17,10 +17,13 @@ export class PresenceCountPill {
   private cleanups: (() => void)[] = [];
   private lastFingerprint = "";
   private isHidden = false;
+  private chatOpen = false;
+  private chatUnread = false;
 
   constructor(
     private presence: PresenceAPI,
     private lobbyPresence: PresenceAPI,
+    private chatToggle?: () => void,
   ) {}
 
   init(): void {
@@ -184,6 +187,91 @@ export class PresenceCountPill {
     } else {
       this.jumpBtn = null;
     }
+
+    // Chat segment
+    if (this.chatToggle) {
+      const sep = document.createElement("span");
+      Object.assign(sep.style, { opacity: "0.35", margin: "0 1px" });
+      sep.textContent = "\u00b7";
+      this.element.appendChild(sep);
+      this.element.appendChild(this.createChatSegment());
+    }
+
+    // Pill border accent when chat is open
+    this.element.style.borderColor = this.chatOpen
+      ? "rgba(196, 114, 78, 0.4)"
+      : "rgba(90, 78, 65, 0.15)";
+  }
+
+  private createChatSegment(): HTMLElement {
+    const seg = document.createElement("span");
+    Object.assign(seg.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "3px",
+      cursor: "pointer",
+      padding: "1px 5px",
+      borderRadius: "8px",
+      transition: "background 120ms ease, color 120ms ease",
+      pointerEvents: "auto",
+    });
+    if (this.chatOpen) {
+      seg.style.background = "rgba(196, 114, 78, 0.15)";
+      seg.style.color = "#c4724e";
+    }
+
+    const icon = document.createElement("span");
+    icon.textContent = "\u25a4"; // small square with horizontal lines
+    icon.style.fontSize = "11px";
+    seg.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.textContent = "chat";
+    seg.appendChild(label);
+
+    if (this.chatUnread) {
+      const dot = document.createElement("span");
+      Object.assign(dot.style, {
+        width: "5px",
+        height: "5px",
+        borderRadius: "50%",
+        background: "#c4724e",
+        display: "inline-block",
+        marginLeft: "2px",
+      });
+      seg.appendChild(dot);
+    }
+
+    seg.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.chatToggle?.();
+    });
+    return seg;
+  }
+
+  setChatOpen(open: boolean): void {
+    if (open === this.chatOpen) return;
+    this.chatOpen = open;
+    this.rerender();
+  }
+
+  setChatUnread(unread: boolean): void {
+    if (unread === this.chatUnread) return;
+    this.chatUnread = unread;
+    this.rerender();
+  }
+
+  private rerender(): void {
+    const pagePresences = this.presence.getPresences();
+    const lobbyPresences = this.lobbyPresence.getPresences();
+    const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
+    const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
+    const lobbyOtherKeys = this.uniqueOtherKeys(lobbyPresences, myKey);
+    const pageOthers = pageOtherKeys.size;
+    const lobbyOthers = lobbyOtherKeys.size;
+    const elsewhere = Math.max(0, lobbyOthers - pageOthers);
+    this.lastFingerprint = "";
+    this.render(pageOthers, elsewhere, pagePresences, pageOtherKeys, myKey);
   }
 
   private createDot(color: string): HTMLElement {
