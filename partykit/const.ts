@@ -44,12 +44,12 @@ export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
   return 1000;
 })();
 export const DEFAULT_MAX_MESSAGE_BYTES = (() => {
-  return 1024 * 1024 * 16;
+  return 1024 * 1024 * 32;
 })();
 export const DEFAULT_MAX_REQUEST_BYTES = (() => {
   return 1024 * 1024 * 16;
 })();
-export const DEFAULT_MAX_DOCUMENT_BYTES = (() => {
+export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
 })();
 export const ORIGIN_S2C = "__bridge_s2c__";

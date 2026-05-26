@@ -15,7 +15,7 @@ const limits: ServerLimits = {
   messageRateWindowMs: 1_000,
   maxMessageBytes: 10,
   maxRequestBytes: 20,
-  maxDocumentBytes: 30,
+  documentWarningBytes: 30,
 };
 
 describe("getMessageSizeBytes", () => {

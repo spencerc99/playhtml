@@ -23,7 +23,7 @@ import {
   DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
-  DEFAULT_MAX_DOCUMENT_BYTES,
+  DEFAULT_DOCUMENT_WARNING_BYTES,
   DEFAULT_MAX_MESSAGE_BYTES,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
@@ -271,9 +271,9 @@ export class PartyServer extends YServer {
         "MAX_REQUEST_BYTES",
         DEFAULT_MAX_REQUEST_BYTES
       ),
-      maxDocumentBytes: readPositiveNumberEnv(
-        "MAX_DOCUMENT_BYTES",
-        DEFAULT_MAX_DOCUMENT_BYTES
+      documentWarningBytes: readPositiveNumberEnv(
+        "DOCUMENT_WARNING_BYTES",
+        DEFAULT_DOCUMENT_WARNING_BYTES
       ),
     };
   }
@@ -1223,7 +1223,7 @@ export class PartyServer extends YServer {
       console.warn(
         `[PartyServer] Large document warning for room ${this.name}: ` +
           `documentBytes=${documentSize}, ` +
-          `warningThresholdBytes=${serverLimits.maxDocumentBytes}. ` +
+          `warningThresholdBytes=${serverLimits.documentWarningBytes}. ` +
           "Autosave will continue."
       );
     }

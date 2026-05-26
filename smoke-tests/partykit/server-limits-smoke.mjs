@@ -21,7 +21,7 @@ const oversizedRequestRoom = `codex-server-limits-request-${stamp}`;
 const rateRoom = `codex-server-limits-rate-${stamp}`;
 const maxMessageBytes = getNumberEnv(
   "PARTYKIT_SMOKE_MAX_MESSAGE_BYTES",
-  1024 * 1024 * 16
+  1024 * 1024 * 32
 );
 const maxRequestBytes = getNumberEnv(
   "PARTYKIT_SMOKE_MAX_REQUEST_BYTES",

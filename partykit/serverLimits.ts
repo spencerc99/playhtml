@@ -5,7 +5,7 @@ export type ServerLimits = {
   messageRateWindowMs: number;
   maxMessageBytes: number;
   maxRequestBytes: number;
-  maxDocumentBytes: number;
+  documentWarningBytes: number;
 };
 
 export type MessageLimitState = {
@@ -96,5 +96,5 @@ export function shouldWarnForDocumentSize(
   documentSizeBytes: number,
   limits: ServerLimits
 ): boolean {
-  return documentSizeBytes > limits.maxDocumentBytes;
+  return documentSizeBytes > limits.documentWarningBytes;
 }
