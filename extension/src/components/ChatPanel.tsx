@@ -80,20 +80,20 @@ export function ChatPanel({
   return (
     <div className="chat-panel" role="dialog" aria-label={`chat for ${articleTitle}`}>
       <div className="chat-titlebar">
-        <span className="chat-title-text">chat · {articleTitle}</span>
+        <span className="chat-title-text">chatting on {articleTitle}</span>
         <button
           type="button"
           className="chat-close"
-          aria-label="close chat"
+          aria-label="minimize chat"
+          title="minimize"
           onClick={onClose}
         >
-          ×
+          –
         </button>
       </div>
       <div className="chat-name-strip">
         <span className="you-dot" style={{ background: myColor }} />
         <span className="you-label">
-          you're{" "}
           {handle === "Anonymous" ? (
             <strong>{handle}</strong>
           ) : (

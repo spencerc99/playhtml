@@ -51,8 +51,10 @@ const CHAT_PANEL_CSS = `
 .chat-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
 .chat-close {
   background: none; border: none; cursor: pointer;
-  color: #8a8279; font-size: 14px; line-height: 1; padding: 0 2px;
+  color: #8a8279; font-size: 16px; line-height: 1; padding: 0 4px;
+  font-weight: 700;
 }
+.chat-close:hover { color: #3d3833; }
 .chat-name-strip {
   padding: 3px 8px;
   border-bottom: 1px solid rgba(90, 78, 65, 0.06);
@@ -118,6 +120,26 @@ const CHAT_PANEL_CSS = `
 .chat-counter { font-size: 10px; color: #b8b0a6; }
 `;
 
+// Human-readable label for the current Wikipedia page, used as the chat
+// room title. Handles articles, main page, and namespace pages like
+// Special:RecentChanges or Talk:Octopus.
+export function wikipediaPageLabel(): string {
+  const path = location.pathname;
+  // Main page: en.wikipedia.org/, /wiki/Main_Page, /wiki/, /wiki/Wikipedia:Main_Page
+  if (path === "/" || path === "/wiki/" || /\/wiki\/(Main_Page|Wikipedia:Main_Page)$/.test(path)) {
+    return "Wikipedia home";
+  }
+  const match = path.match(/\/wiki\/(.+)$/);
+  if (match) {
+    const raw = decodeURIComponent(match[1]).replace(/_/g, " ");
+    // Namespace pages like "Special:RecentChanges" or "Talk:Octopus" — keep the prefix
+    return raw;
+  }
+  // Fallback to <title> with trailing " - Wikipedia" stripped
+  const title = document.title.replace(/ - Wikipedia$/, "").trim();
+  return title.length > 0 ? title : "Wikipedia";
+}
+
 // Matches /wiki/ArticleName but not /wiki/Special: /wiki/Talk: etc.
 export function isWikiArticleUrl(url: string): boolean {
   try {
@@ -169,13 +191,62 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     cleanups.push(() => lobby.destroy());
   }
 
+  // === Tab-focus dimming for remote cursors ===
+  // Broadcast our own focused state so peers can dim our cursor when our tab
+  // isn't active. Receive peers' focused state and feed it to a getCursorStyle
+  // closure that dims unfocused cursors.
+  const unfocusedPeers = new Set<string>();
+
+  function broadcastFocused() {
+    const focused = document.hasFocus() && document.visibilityState === "visible";
+    deps.presence.setMyPresence("focused", focused);
+  }
+
+  if (deps.cursorClient) {
+    const cursorClient = deps.cursorClient;
+    cursorClient.configure({
+      getCursorStyle: (presence: any) => {
+        const pid = presence?.playerIdentity?.publicKey;
+        if (pid && unfocusedPeers.has(pid)) {
+          return { opacity: "0.3", filter: "grayscale(0.7)" };
+        }
+        return {};
+      },
+    });
+
+    const unsubFocused = deps.presence.onPresenceChange("focused", (presences) => {
+      const myPid = deps.presence.getMyIdentity().publicKey;
+      unfocusedPeers.clear();
+      presences.forEach((view, pid) => {
+        if (pid === myPid) return;
+        const raw = (view as Record<string, unknown>).focused;
+        // Treat missing/undefined as focused (be lenient — peer may not broadcast)
+        if (raw === false) unfocusedPeers.add(pid);
+      });
+      // Re-apply styles so peers that came back into focus get their dim cleared
+      // and peers that just blurred get dimmed.
+      cursorClient.refreshCursorStyles?.();
+    });
+    cleanups.push(unsubFocused);
+
+    broadcastFocused();
+    window.addEventListener("focus", broadcastFocused);
+    window.addEventListener("blur", broadcastFocused);
+    document.addEventListener("visibilitychange", broadcastFocused);
+    cleanups.push(() => {
+      window.removeEventListener("focus", broadcastFocused);
+      window.removeEventListener("blur", broadcastFocused);
+      document.removeEventListener("visibilitychange", broadcastFocused);
+    });
+  }
+
   // === Chat: per-article live chat (manager first, pill wired to it) ===
   const { ChatManager } = await import("../features/ChatManager");
   const { ChatEchoRenderer } = await import("../features/chat-echo-renderer");
   const { injectShadowReact } = await import("../entrypoints/content/inject-ui");
   const { ChatPanel } = await import("../components/ChatPanel");
 
-  const articleTitle = document.title.replace(/ - Wikipedia$/, "");
+  const articleTitle = wikipediaPageLabel();
   const chatManager = new ChatManager(deps.presence, articleTitle);
   await chatManager.init();
 
