@@ -50,7 +50,7 @@ export const DEFAULT_MAX_REQUEST_BYTES = (() => {
   return 1024 * 1024 * 16;
 })();
 export const DEFAULT_MAX_DOCUMENT_BYTES = (() => {
-  return 1024 * 1024 * 64;
+  return 1024 * 1024 * 40;
 })();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";

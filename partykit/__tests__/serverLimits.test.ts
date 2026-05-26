@@ -6,7 +6,7 @@ import {
   checkMessageLimits,
   getMessageSizeBytes,
   shouldAcceptRequestBody,
-  shouldPersistDocument,
+  shouldWarnForDocumentSize,
   type ServerLimits,
 } from "../serverLimits";
 
@@ -144,9 +144,9 @@ describe("shouldAcceptRequestBody", () => {
   });
 });
 
-describe("shouldPersistDocument", () => {
-  it("rejects autosave snapshots above the configured document limit", () => {
-    expect(shouldPersistDocument(30, limits)).toBe(true);
-    expect(shouldPersistDocument(31, limits)).toBe(false);
+describe("shouldWarnForDocumentSize", () => {
+  it("warns when autosave snapshots exceed the configured document threshold", () => {
+    expect(shouldWarnForDocumentSize(30, limits)).toBe(false);
+    expect(shouldWarnForDocumentSize(31, limits)).toBe(true);
   });
 });

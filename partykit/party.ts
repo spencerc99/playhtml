@@ -50,7 +50,7 @@ import {
   checkMessageLimits,
   getMessageSizeBytes,
   shouldAcceptRequestBody,
-  shouldPersistDocument,
+  shouldWarnForDocumentSize,
   type MessageLimitState,
   type ServerLimits,
 } from "./serverLimits";
@@ -130,6 +130,7 @@ export class PartyServer extends YServer {
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
   private lastKnownDocumentBytes = 0;
+  private hasWarnedDocumentSize = false;
 
   // In-memory caches for hot-path data that rarely changes.
   // Invalidated on writes via the set* methods.
@@ -1214,14 +1215,17 @@ export class PartyServer extends YServer {
     const activeConnectionCount = this.getOpenConnectionCount();
 
     const serverLimits = this.getServerLimits();
-    if (!shouldPersistDocument(documentSize, serverLimits)) {
+    if (
+      !this.hasWarnedDocumentSize &&
+      shouldWarnForDocumentSize(documentSize, serverLimits)
+    ) {
+      this.hasWarnedDocumentSize = true;
       console.warn(
-        `[PartyServer] Autosave rejected for room ${this.name}: ` +
+        `[PartyServer] Large document warning for room ${this.name}: ` +
           `documentBytes=${documentSize}, ` +
-          `maxDocumentBytes=${serverLimits.maxDocumentBytes}`
+          `warningThresholdBytes=${serverLimits.maxDocumentBytes}. ` +
+          "Autosave will continue."
       );
-      this.closeConnections("Document Too Large");
-      return;
     }
 
     // Log structured information about the save

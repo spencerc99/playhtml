@@ -1,4 +1,4 @@
-// ABOUTME: Defines PartyServer abuse-limit decisions for inbound messages and stored room data.
+// ABOUTME: Defines PartyServer abuse-limit decisions for inbound messages and room data warnings.
 // ABOUTME: Keeps rate, payload, and document-size checks separate from Durable Object plumbing.
 export type ServerLimits = {
   maxMessagesPerWindow: number;
@@ -23,11 +23,6 @@ export type LimitViolation =
       kind: "message-size";
       closeCode: 1009;
       reason: "Message Too Large";
-    }
-  | {
-      kind: "document-size";
-      closeCode: 1009;
-      reason: "Document Too Large";
     };
 
 export function getMessageSizeBytes(message: unknown): number {
@@ -97,9 +92,9 @@ export function shouldAcceptRequestBody(
   return bodySizeBytes <= limits.maxRequestBytes;
 }
 
-export function shouldPersistDocument(
+export function shouldWarnForDocumentSize(
   documentSizeBytes: number,
   limits: ServerLimits
 ): boolean {
-  return documentSizeBytes <= limits.maxDocumentBytes;
+  return documentSizeBytes > limits.maxDocumentBytes;
 }
