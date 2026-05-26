@@ -19,6 +19,11 @@ interface ChatPanelProps {
 const MAX_MESSAGE_LENGTH = 400;
 const SOFT_COUNTER_AT = 380;
 
+function wikipediaUrlForTitle(title: string): string {
+  // Wikipedia article URLs use underscores for spaces; the rest is path-encoded.
+  return `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+}
+
 export function ChatPanel({
   messages,
   handle,
@@ -88,7 +93,19 @@ export function ChatPanel({
       <div className="chat-name-strip">
         <span className="you-dot" style={{ background: myColor }} />
         <span className="you-label">
-          you're <strong>{handle}</strong>
+          you're{" "}
+          {handle === "Anonymous" ? (
+            <strong>{handle}</strong>
+          ) : (
+            <a
+              className="chat-handle-link"
+              href={wikipediaUrlForTitle(handle)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {handle}
+            </a>
+          )}
         </span>
         <button type="button" className="chat-reroll" onClick={onReroll}>
           reroll

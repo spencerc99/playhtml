@@ -61,6 +61,17 @@ const CHAT_PANEL_CSS = `
   display: flex; align-items: center; gap: 5px;
 }
 .chat-name-strip .you-label strong { color: #3d3833; font-weight: 600; }
+.chat-name-strip .chat-handle-link {
+  color: #3d3833;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(91, 141, 184, 0.5);
+  text-underline-offset: 2px;
+}
+.chat-name-strip .chat-handle-link:hover {
+  text-decoration-color: #5b8db8;
+  color: #5b8db8;
+}
 .chat-name-strip .chat-reroll {
   margin-left: auto;
   background: none; border: none; cursor: pointer;
