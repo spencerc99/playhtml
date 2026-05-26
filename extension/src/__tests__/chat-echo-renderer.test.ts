@@ -1,5 +1,5 @@
 // ABOUTME: Tests for chat-echo-renderer — bubble lifecycle, dedupe per pid, 3s expiry.
-// ABOUTME: Bubbles are inside a closed shadow root; we query the shadow root directly.
+// ABOUTME: Bubbles live inside the renderer's shadow root; tests query via the host element.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ChatEchoRenderer } from "../features/chat-echo-renderer";
