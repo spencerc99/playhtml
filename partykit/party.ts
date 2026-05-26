@@ -24,7 +24,6 @@ import {
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_DOCUMENT_WARNING_BYTES,
-  DEFAULT_MAX_MESSAGE_BYTES,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
@@ -47,8 +46,7 @@ import {
   isApplySubtreesImmediateRequest,
 } from "./request";
 import {
-  checkMessageLimits,
-  getMessageSizeBytes,
+  checkMessageRate,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type MessageLimitState,
@@ -263,10 +261,6 @@ export class PartyServer extends YServer {
         "MESSAGE_RATE_WINDOW_MS",
         DEFAULT_MESSAGE_RATE_WINDOW_MS
       ),
-      maxMessageBytes: readPositiveNumberEnv(
-        "MAX_MESSAGE_BYTES",
-        DEFAULT_MAX_MESSAGE_BYTES
-      ),
       maxRequestBytes: readPositiveNumberEnv(
         "MAX_REQUEST_BYTES",
         DEFAULT_MAX_REQUEST_BYTES
@@ -278,16 +272,11 @@ export class PartyServer extends YServer {
     };
   }
 
-  private checkConnectionMessageLimits(
-    connection: Party.Connection,
-    message: Party.WSMessage
-  ) {
+  private checkConnectionMessageRate(connection: Party.Connection) {
     const limitConnection =
       connection as Party.Connection<PartyServerConnectionState>;
-    const messageSizeBytes = getMessageSizeBytes(message);
-    const decision = checkMessageLimits({
+    const decision = checkMessageRate({
       limits: this.getServerLimits(),
-      messageSizeBytes,
       now: Date.now(),
       state: limitConnection.state?.[MESSAGE_LIMIT_STATE_KEY],
     });
@@ -301,7 +290,7 @@ export class PartyServer extends YServer {
       };
     });
 
-    return { messageSizeBytes, violation: decision.violation };
+    return { violation: decision.violation };
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
@@ -1076,12 +1065,11 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     message: Party.WSMessage
   ): Promise<void> {
-    const limitResult = this.checkConnectionMessageLimits(connection, message);
+    const limitResult = this.checkConnectionMessageRate(connection);
     if (limitResult.violation) {
       console.warn(
         `[PartyServer] Closing connection for ${limitResult.violation.kind}: ` +
           `connectionId=${connection.id}, ` +
-          `messageBytes=${limitResult.messageSizeBytes}, ` +
           `documentBytes=${this.lastKnownDocumentBytes}`
       );
       connection.close(

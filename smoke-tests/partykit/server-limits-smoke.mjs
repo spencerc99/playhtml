@@ -16,13 +16,8 @@ import {
 const host = getHost();
 const stamp = Date.now();
 const normalRoom = `codex-server-limits-normal-${stamp}`;
-const oversizedRoom = `codex-server-limits-oversized-${stamp}`;
 const oversizedRequestRoom = `codex-server-limits-request-${stamp}`;
 const rateRoom = `codex-server-limits-rate-${stamp}`;
-const maxMessageBytes = getNumberEnv(
-  "PARTYKIT_SMOKE_MAX_MESSAGE_BYTES",
-  1024 * 1024 * 32
-);
 const maxRequestBytes = getNumberEnv(
   "PARTYKIT_SMOKE_MAX_REQUEST_BYTES",
   1024 * 1024 * 16
@@ -256,19 +251,6 @@ async function runNormalTrafficCase() {
   }
 }
 
-async function runOversizedMessageCase() {
-  const ws = openRawRoom(oversizedRoom);
-  await waitForOpen(ws, "oversized raw client");
-
-  const closePromise = waitForClose(ws, "oversized raw client");
-  ws.send(Buffer.alloc(maxMessageBytes + 1));
-  const closeEvent = await closePromise;
-  assertClose(closeEvent, 1009, "Message Too Large", "oversized raw client");
-  console.log(
-    `oversized raw client: closed code=${closeEvent.code} reason=${closeEvent.reason}`
-  );
-}
-
 async function runOversizedRequestCase() {
   const response = await fetch(getPartyHttpUrl(host, oversizedRequestRoom), {
     method: "POST",
@@ -309,12 +291,10 @@ async function runRateLimitCase() {
 
 console.log(`host=${host}`);
 console.log(`normalRoom=${normalRoom}`);
-console.log(`maxMessageBytes=${maxMessageBytes}`);
 console.log(`maxRequestBytes=${maxRequestBytes}`);
 console.log(`messageRateLimit=${messageRateLimit}`);
 console.log(`normalTrafficMessages=${normalTrafficMessages}`);
 await runNormalTrafficCase();
-await runOversizedMessageCase();
 await runOversizedRequestCase();
 await runRateLimitCase();
 console.log("server limits smoke passed");

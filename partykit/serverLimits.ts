@@ -3,7 +3,6 @@
 export type ServerLimits = {
   maxMessagesPerWindow: number;
   messageRateWindowMs: number;
-  maxMessageBytes: number;
   maxRequestBytes: number;
   documentWarningBytes: number;
 };
@@ -13,42 +12,18 @@ export type MessageLimitState = {
   messageCount: number;
 };
 
-export type LimitViolation =
-  | {
-      kind: "message-rate";
-      closeCode: 1008;
-      reason: "Message Rate Limit Exceeded";
-    }
-  | {
-      kind: "message-size";
-      closeCode: 1009;
-      reason: "Message Too Large";
-    };
+export type LimitViolation = {
+  kind: "message-rate";
+  closeCode: 1008;
+  reason: "Message Rate Limit Exceeded";
+};
 
-export function getMessageSizeBytes(message: unknown): number {
-  if (typeof message === "string") {
-    return new TextEncoder().encode(message).byteLength;
-  }
-
-  if (message instanceof ArrayBuffer) {
-    return message.byteLength;
-  }
-
-  if (ArrayBuffer.isView(message)) {
-    return message.byteLength;
-  }
-
-  return 0;
-}
-
-export function checkMessageLimits({
+export function checkMessageRate({
   limits,
-  messageSizeBytes,
   now,
   state,
 }: {
   limits: ServerLimits;
-  messageSizeBytes: number;
   now: number;
   state: MessageLimitState | undefined;
 }): { state: MessageLimitState; violation: LimitViolation | null } {
@@ -59,17 +34,6 @@ export function checkMessageLimits({
           messageCount: state.messageCount + 1,
         }
       : { windowStartedAt: now, messageCount: 1 };
-
-  if (messageSizeBytes > limits.maxMessageBytes) {
-    return {
-      state: nextState,
-      violation: {
-        kind: "message-size",
-        closeCode: 1009,
-        reason: "Message Too Large",
-      },
-    };
-  }
 
   if (nextState.messageCount > limits.maxMessagesPerWindow) {
     return {

@@ -37,7 +37,7 @@ alarms, and need staging secrets.
 # Verifies bridge observers reattach after Durable Object hibernation.
 bun smoke:partykit:hibernation
 
-# Verifies normal traffic survives while oversized and burst clients are closed.
+# Verifies normal traffic survives while oversized requests and burst clients are closed.
 bun smoke:partykit:limits
 
 # Verifies empty-room compaction, reset rejection, and fresh reconnect.
@@ -65,7 +65,6 @@ bunx wrangler deploy --config partykit/wrangler.jsonc --env staging
 Config:
 
 - `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
-- `PARTYKIT_SMOKE_MAX_MESSAGE_BYTES`: expected server message-size limit for the limits smoke. Defaults to `33554432`.
 - `PARTYKIT_SMOKE_MAX_REQUEST_BYTES`: expected server request-body limit for the limits smoke. Defaults to `16777216`.
 - `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `1000`.
 - `PARTYKIT_SMOKE_NORMAL_MESSAGES`: normal Yjs updates sent quickly before the abusive raw-client cases. Defaults to `420`.
