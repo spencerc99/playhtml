@@ -13,6 +13,100 @@ export interface WikiPresenceFields {
 
 export type WikiPresenceView = PresenceView & WikiPresenceFields;
 
+const CHAT_PANEL_CSS = `
+:host { all: initial; }
+.chat-panel {
+  width: 240px;
+  max-height: 280px;
+  background: #faf7f2;
+  border: 1px solid rgba(90, 78, 65, 0.2);
+  border-radius: 6px;
+  box-shadow: 2px 4px 14px rgba(0,0,0,0.1);
+  overflow: hidden;
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  font-size: 12px;
+  color: #3d3833;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.chat-panel::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  bottom: -6px;
+  width: 10px; height: 10px;
+  background: #faf7f2;
+  border-right: 1px solid rgba(90, 78, 65, 0.2);
+  border-bottom: 1px solid rgba(90, 78, 65, 0.2);
+  transform: rotate(45deg);
+}
+.chat-titlebar {
+  background: rgba(196, 114, 78, 0.08);
+  border-bottom: 1px solid rgba(90, 78, 65, 0.1);
+  padding: 5px 8px;
+  font-size: 11px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.chat-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.chat-close {
+  background: none; border: none; cursor: pointer;
+  color: #8a8279; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.chat-name-strip {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(90, 78, 65, 0.06);
+  font-size: 11px;
+  color: #8a8279;
+  display: flex; align-items: center; gap: 5px;
+}
+.chat-name-strip .you-label strong { color: #3d3833; font-weight: 600; }
+.chat-name-strip .chat-reroll {
+  margin-left: auto;
+  background: none; border: none; cursor: pointer;
+  color: #5b8db8; font-size: 11px; padding: 0; font-family: inherit;
+}
+.you-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.chat-body {
+  padding: 6px 8px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  min-height: 60px;
+  max-height: 180px;
+}
+.chat-msg { margin-bottom: 3px; word-wrap: break-word; }
+.chat-msg-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+.chat-msg-who { color: #5a4e41; font-weight: 600; }
+.chat-msg-body { color: #3d3833; }
+.chat-error {
+  padding: 3px 8px;
+  background: rgba(196, 114, 78, 0.08);
+  color: #c4724e;
+  font-size: 11px;
+  border-top: 1px solid rgba(196, 114, 78, 0.2);
+}
+.chat-input-row {
+  border-top: 1px solid rgba(90, 78, 65, 0.1);
+  padding: 4px 8px;
+  background: #f5f0e8;
+  display: flex; align-items: center; gap: 5px;
+}
+.chat-input-row.has-error { background: rgba(196, 114, 78, 0.05); }
+.chat-input {
+  flex: 1 1 auto;
+  border: none; background: transparent; outline: none;
+  font-family: inherit; font-size: 12px; color: #3d3833;
+  resize: none;
+  min-height: 18px;
+  max-height: 60px;
+  line-height: 1.4;
+}
+.chat-input::placeholder { color: #b8b0a6; }
+.chat-counter { font-size: 10px; color: #b8b0a6; }
+`;
+
 // Matches /wiki/ArticleName but not /wiki/Special: /wiki/Talk: etc.
 export function isWikiArticleUrl(url: string): boolean {
   try {
@@ -64,11 +158,90 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     cleanups.push(() => lobby.destroy());
   }
 
-  // Ambient presence count + jump-to-someone
+  // === Chat: per-article live chat (manager first, pill wired to it) ===
+  const { ChatManager } = await import("../features/ChatManager");
+  const { ChatEchoRenderer } = await import("../features/chat-echo-renderer");
+  const { injectShadowReact } = await import("../entrypoints/content/inject-ui");
+  const { ChatPanel } = await import("../components/ChatPanel");
+
+  const articleTitle = document.title.replace(/ - Wikipedia$/, "");
+  const chatManager = new ChatManager(deps.presence, articleTitle);
+  await chatManager.init();
+
+  // Ambient presence count + jump-to-someone + chat toggle
   const { PresenceCountPill } = await import("../features/PresenceCountPill");
-  const presencePill = new PresenceCountPill(deps.presence, lobbyPresence);
+  const presencePill = new PresenceCountPill(
+    deps.presence,
+    lobbyPresence,
+    () => chatManager.toggle(),
+  );
   presencePill.init();
   cleanups.push(() => presencePill.destroy());
+
+  // Mount the chat panel only while open; tear down when closed.
+  let panelUI: { render: (props: any) => void; destroy: () => void } | null = null;
+
+  function buildPanelProps() {
+    const s = chatManager.getState();
+    return {
+      messages: s.messages,
+      handle: s.handle,
+      myColor: s.myColor,
+      articleTitle: s.articleTitle,
+      sendError: s.sendError,
+      onSend: (text: string) => { chatManager.send(text); },
+      onClose: () => { chatManager.close(); },
+      onReroll: () => { void chatManager.reroll(); },
+      onClearError: () => { chatManager.clearError(); },
+    };
+  }
+
+  function syncPanel() {
+    const state = chatManager.getState();
+    if (state.isOpen && !panelUI) {
+      panelUI = injectShadowReact(ChatPanel as any, buildPanelProps(), {
+        hostId: "wewere-chat-panel-host",
+        hostStyle: "position:fixed;bottom:48px;right:16px;z-index:2147483639;",
+        css: CHAT_PANEL_CSS,
+      });
+    } else if (state.isOpen && panelUI) {
+      panelUI.render(buildPanelProps());
+    } else if (!state.isOpen && panelUI) {
+      panelUI.destroy();
+      panelUI = null;
+    }
+  }
+
+  const unsubChat = chatManager.subscribe(() => {
+    const state = chatManager.getState();
+    presencePill.setChatOpen(state.isOpen);
+    presencePill.setChatUnread(state.unread);
+    syncPanel();
+  });
+  cleanups.push(unsubChat);
+  cleanups.push(() => {
+    panelUI?.destroy();
+    panelUI = null;
+    chatManager.destroy();
+  });
+
+  // Cursor-anchored echo bubble for each message
+  if (deps.cursorClient) {
+    const echoRenderer = new ChatEchoRenderer(deps.cursorClient);
+    const unsubEcho = deps.presence.onPresenceChange("chat", (presences) => {
+      presences.forEach((view, pid) => {
+        const raw = (view as Record<string, unknown>).chat;
+        if (!raw || typeof raw !== "object") return;
+        const m = raw as Record<string, unknown>;
+        if (typeof m.text !== "string" || typeof m.id !== "string") return;
+        const color =
+          (view as any).playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#c4724e";
+        echoRenderer.setEcho(pid, m.text, color);
+      });
+    });
+    cleanups.push(unsubEcho);
+    cleanups.push(() => echoRenderer.destroy());
+  }
 
   // Broadcast navigatingTo on Wikipedia article link clicks.
   // Only delay navigation when someone is following — solo users get instant clicks.
