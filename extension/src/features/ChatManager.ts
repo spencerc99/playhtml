@@ -1,0 +1,188 @@
+// ABOUTME: Orchestrator for Wikipedia article chat — state store, presence wiring, send/throttle.
+// ABOUTME: React panel and echo renderer are mounted separately in wikipedia.ts using this manager.
+
+import type { PresenceAPI, PresenceView } from "@playhtml/common";
+import { containsProfanity } from "@movement/profanity";
+import { getOrCreateHandle, rerollHandle } from "./chat-handle";
+
+const CHAT_CHANNEL = "chat";
+const MAX_MESSAGE_LENGTH = 400;
+const SEND_THROTTLE_MS = 500;
+const RING_BUFFER_SIZE = 50;
+
+export type ChatMessageBroadcast = {
+  id: string;
+  text: string;
+  ts: number;
+  name: string;
+};
+
+export type ChatMessageView = ChatMessageBroadcast & {
+  pid: string;
+  color: string;
+  isMe: boolean;
+};
+
+export type ChatManagerState = {
+  messages: ChatMessageView[];
+  handle: string;
+  articleTitle: string;
+  isOpen: boolean;
+  unread: boolean;
+  sendError: string | null;
+  myColor: string;
+};
+
+type Listener = () => void;
+
+function isChatMessage(v: unknown): v is ChatMessageBroadcast {
+  if (!v || typeof v !== "object") return false;
+  const m = v as Record<string, unknown>;
+  return (
+    typeof m.id === "string" &&
+    typeof m.text === "string" &&
+    typeof m.ts === "number" &&
+    typeof m.name === "string"
+  );
+}
+
+export class ChatManager {
+  private state: ChatManagerState;
+  private listeners = new Set<Listener>();
+  private unsubPresence: (() => void) | null = null;
+  private lastSendAt = 0;
+  private seenIds = new Set<string>();
+
+  constructor(
+    private presence: PresenceAPI,
+    articleTitle: string,
+  ) {
+    const myIdentity = presence.getMyIdentity();
+    const myColor = myIdentity.playerStyle?.colorPalette?.[0] ?? "#8a8279";
+    this.state = {
+      messages: [],
+      handle: "Anonymous",
+      articleTitle,
+      isOpen: false,
+      unread: false,
+      sendError: null,
+      myColor,
+    };
+  }
+
+  async init(): Promise<void> {
+    const handle = await getOrCreateHandle();
+    this.setState({ handle });
+    this.unsubPresence = this.presence.onPresenceChange(CHAT_CHANNEL, (presences) => {
+      this.onPresences(presences);
+    });
+  }
+
+  destroy(): void {
+    this.unsubPresence?.();
+    this.unsubPresence = null;
+    this.listeners.clear();
+  }
+
+  getState(): ChatManagerState {
+    return this.state;
+  }
+
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  send(text: string): boolean {
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return false;
+    const capped = trimmed.slice(0, MAX_MESSAGE_LENGTH);
+    if (containsProfanity(capped)) {
+      this.setState({ sendError: "this won't send — mind the language" });
+      return false;
+    }
+    const now = Date.now();
+    if (now - this.lastSendAt < SEND_THROTTLE_MS) return false;
+    this.lastSendAt = now;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${now}-${Math.random().toString(36).slice(2)}`;
+    const msg: ChatMessageBroadcast = {
+      id,
+      text: capped,
+      ts: now,
+      name: this.state.handle,
+    };
+    this.presence.setMyPresence(CHAT_CHANNEL, msg);
+    const myPid = this.presence.getMyIdentity().publicKey;
+    this.appendMessage({
+      ...msg,
+      pid: myPid,
+      color: this.state.myColor,
+      isMe: true,
+    });
+    if (this.state.sendError !== null) this.setState({ sendError: null });
+    return true;
+  }
+
+  clearError(): void {
+    if (this.state.sendError !== null) this.setState({ sendError: null });
+  }
+
+  toggle(): void {
+    if (this.state.isOpen) {
+      this.setState({ isOpen: false });
+    } else {
+      this.setState({ isOpen: true, unread: false });
+    }
+  }
+
+  close(): void {
+    if (this.state.isOpen) this.setState({ isOpen: false });
+  }
+
+  async reroll(): Promise<void> {
+    const fresh = await rerollHandle();
+    this.setState({ handle: fresh });
+  }
+
+  private onPresences(presences: Map<string, PresenceView>): void {
+    const myPid = this.presence.getMyIdentity().publicKey;
+    let unreadFromBatch = false;
+    presences.forEach((view, pid) => {
+      const raw = (view as Record<string, unknown>)[CHAT_CHANNEL];
+      if (!isChatMessage(raw)) return;
+      if (this.seenIds.has(raw.id)) return;
+      const isMe = pid === myPid;
+      if (isMe) {
+        this.seenIds.add(raw.id);
+        return;
+      }
+      const color = view.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#8a8279";
+      this.appendMessage({ ...raw, pid, color, isMe: false });
+      if (!this.state.isOpen) unreadFromBatch = true;
+    });
+    if (unreadFromBatch && !this.state.unread) {
+      this.setState({ unread: true });
+    }
+  }
+
+  private appendMessage(msg: ChatMessageView): void {
+    if (this.seenIds.has(msg.id)) return;
+    this.seenIds.add(msg.id);
+    const next = [...this.state.messages, msg];
+    while (next.length > RING_BUFFER_SIZE) {
+      const evicted = next.shift();
+      if (evicted) this.seenIds.delete(evicted.id);
+    }
+    this.setState({ messages: next });
+  }
+
+  private setState(patch: Partial<ChatManagerState>): void {
+    this.state = { ...this.state, ...patch };
+    this.listeners.forEach((l) => l());
+  }
+}
