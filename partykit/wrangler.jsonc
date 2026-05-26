@@ -6,6 +6,12 @@
   "compatibility_date": "2024-09-23",
   "workers_dev": true,
   "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "api.playhtml.fun",
+      "custom_domain": true
+    }
+  ],
   "observability": {
     "logs": {
       "enabled": true,
@@ -34,6 +40,12 @@
       "name": "playhtml-staging",
       "workers_dev": true,
       "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "api-staging.playhtml.fun",
+          "custom_domain": true
+        }
+      ],
       "observability": {
         "logs": {
           "enabled": true,
