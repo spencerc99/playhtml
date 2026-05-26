@@ -116,14 +116,17 @@ export class ChatManager {
       ts: now,
       name: this.state.handle,
     };
-    this.presence.setMyPresence(CHAT_CHANNEL, msg);
     const myPid = this.presence.getMyIdentity().publicKey;
+    // Append locally BEFORE broadcasting: setMyPresence synchronously fires
+    // awareness listeners which would otherwise mark our own id as "seen"
+    // before our optimistic append runs, causing it to be deduped away.
     this.appendMessage({
       ...msg,
       pid: myPid,
       color: this.state.myColor,
       isMe: true,
     });
+    this.presence.setMyPresence(CHAT_CHANNEL, msg);
     if (this.state.sendError !== null) this.setState({ sendError: null });
     return true;
   }

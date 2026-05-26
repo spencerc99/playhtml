@@ -41,7 +41,21 @@ function makeFakePresence(): {
   } as any;
   const api: PresenceAPI = {
     setMyPresence: (channel, data) => {
-      if (channel === "chat") lastSent = data;
+      if (channel === "chat") {
+        lastSent = data;
+        // Mimic Y.js awareness: setLocalStateField fires listeners synchronously.
+        // This is what caused the dedupe-before-optimistic-append bug.
+        const ownView: PresenceView = {
+          playerIdentity: {
+            publicKey: "self",
+            playerStyle: { colorPalette: ["#c4724e"] },
+          } as any,
+          cursor: null,
+          isMe: true,
+          chat: data,
+        } as PresenceView;
+        chatChangeCb?.(new Map([["self", ownView]]));
+      }
     },
     getPresences: () => new Map(),
     onPresenceChange: (channel, cb) => {
