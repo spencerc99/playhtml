@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { withSharedState, usePlayContext } from "@playhtml/react";
-import words from "profane-words";
+import { containsProfanity } from "@movement/profanity";
 import styles from "./AuraGuestbook.module.scss";
 
 interface GuestbookEntry {
@@ -21,13 +21,6 @@ const LOCALSTORAGE_KEY = "wewere-guestbook-submitted";
 const TEXTURE_CLASSES = ["textureA", "textureB", "textureC"] as const;
 function getTextureClass(index: number): string {
   return TEXTURE_CLASSES[index % TEXTURE_CLASSES.length];
-}
-
-function containsProfanity(text: string): boolean {
-  return words.some((word) => {
-    const regex = new RegExp(`\\b${word}\\b`, "gi");
-    return regex.test(text);
-  });
 }
 
 // Aging via desaturation + dimming instead of opacity
