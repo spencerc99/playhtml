@@ -65,8 +65,11 @@ export default defineBackground(() => {
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
-      // First time installation - setup default identity
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      // First time installation - setup default identity and perform initial backup
+      initializePlayerIdentity().then(() => {
+        syncIdentityToServer()
+        performBackup().catch(e => console.error('Failed initial backup:', e))
+      })
       // Open setup page in a new tab
       const url = browser.runtime.getURL('options.html')
       browser.tabs.create({ url }).catch((e) => {
@@ -78,12 +81,19 @@ export default defineBackground(() => {
     }
   })
 
+  // Set up weekly auto-backup alarm
+  browser.alarms.create("autoBackup", { periodInMinutes: 60 * 24 * 7 });
+
   // Set up 5-minute milestone check alarm (backstop for non-navigation
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create("checkMilestones", { periodInMinutes: 5 });
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === "autoBackup") {
+      await performBackup();
+      return;
+    }
     if (alarm.name !== "checkMilestones") return;
     await runMilestoneCheck();
   });
@@ -199,6 +209,40 @@ export default defineBackground(() => {
       evt.meta.cursor_color = cursorColor
     }
     return events
+  }
+
+  // Auto-backup helper function
+  async function performBackup(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const events = await store.getAllEvents()
+      const identity = await getPlayerIdentity()
+      const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), events, identity })
+      const compressed = await gzipString(payload)
+      const filename = `we-were-online/backup-${new Date().toISOString().split('T')[0]}.json.gz`
+      
+      // Create blob and object URL for download
+      const blob = new Blob([compressed], { type: 'application/gzip' })
+      const url = URL.createObjectURL(blob)
+      
+      await browser.downloads.download({
+        url,
+        filename,
+        saveAs: false,
+        conflictAction: 'overwrite',
+      })
+      
+      // Clean up object URL after a short delay to allow download to start
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      
+      const now = Date.now()
+      await browser.storage.local.set({ lastBackupTs: now })
+      
+      if (VERBOSE) console.log('[Background] Backup completed at', new Date(now).toISOString())
+      return { success: true }
+    } catch (e) {
+      console.error('[Background] performBackup error:', e)
+      return { success: false, error: String(e) }
+    }
   }
 
   // Cross-site messaging coordination
@@ -525,6 +569,19 @@ export default defineBackground(() => {
           console.error('[Background] IMPORT_EVENTS error:', e)
           reply({ success: false, error: String(e) })
         }
+      })()
+      return true
+    }
+
+    if (message.type === 'BACKUP_EVENTS') {
+      performBackup().then(reply)
+      return true
+    }
+
+    if (message.type === 'GET_LAST_BACKUP_TIME') {
+      ;(async () => {
+        const { lastBackupTs } = await browser.storage.local.get(['lastBackupTs'])
+        reply({ lastBackupTs: lastBackupTs || null })
       })()
       return true
     }
