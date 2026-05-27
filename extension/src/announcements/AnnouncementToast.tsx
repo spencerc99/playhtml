@@ -44,9 +44,9 @@ export function AnnouncementToast({ announcement, onShown, onDismiss, onCtaClick
   }
 
   function handleClick() {
-    if (announcement.cta) {
-      onCtaClick(announcement.id, announcement.cta.href);
-    }
+    // Toast fires only on pages matching relevantUrl, so the feature is
+    // already reachable here — no need to send people elsewhere via CTA.
+    // (CTA still appears on the popup postcard for users who land there first.)
     dismiss();
   }
 
@@ -64,7 +64,10 @@ export function AnnouncementToast({ announcement, onShown, onDismiss, onCtaClick
       role="alert"
     >
       <div className="announcement-toast__chrome">
-        <span className="announcement-toast__title">{announcement.title}</span>
+        <span className="announcement-toast__title">
+          <span className="announcement-toast__new-badge">NEW</span>
+          {announcement.title}
+        </span>
         <button
           type="button"
           className="announcement-toast__close"
@@ -75,9 +78,6 @@ export function AnnouncementToast({ announcement, onShown, onDismiss, onCtaClick
         </button>
       </div>
       <p className="announcement-toast__body">{announcement.body}</p>
-      {announcement.cta ? (
-        <span className="announcement-toast__cta">{announcement.cta.label}</span>
-      ) : null}
     </div>
   );
 }

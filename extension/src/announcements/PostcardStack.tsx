@@ -7,8 +7,6 @@ import { getPostcardCandidates, setState } from "./announcement-storage";
 import type { Announcement } from "./announcements";
 import "./announcements.scss";
 
-const TILT_PATTERN = [-1.6, 1.4, -0.9, 1.1];
-
 export function PostcardStack() {
   const [items, setItems] = useState<Announcement[]>([]);
 
@@ -36,11 +34,10 @@ export function PostcardStack() {
 
   return (
     <div className="announcement-stack">
-      {items.map((a, i) => (
+      {items.map((a) => (
         <AnnouncementPostcard
           key={a.id}
           announcement={a}
-          tiltDeg={TILT_PATTERN[i % TILT_PATTERN.length]}
           onDismiss={onDismiss}
           onCtaClick={onCtaClick}
         />

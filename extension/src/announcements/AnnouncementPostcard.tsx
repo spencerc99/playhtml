@@ -1,66 +1,96 @@
-// ABOUTME: Postcard-styled announcement card shown in the extension popup home.
-// ABOUTME: Slight hand-tilt, envelope chrome, title + body + optional CTA, dismissible.
+// ABOUTME: Letter-styled announcement notification shown in the extension popup home.
+// ABOUTME: Collapsed by default (dot + subject); click to expand into body + CTA + dismiss.
 
 import { useState } from "react";
 import type { Announcement } from "./announcements";
 
 interface Props {
   announcement: Announcement;
-  tiltDeg: number; // -2..+2 for visual variety in a stack
   onDismiss: (id: string) => void;
   onCtaClick: (id: string, href: string) => void;
 }
 
-export function AnnouncementPostcard({ announcement, tiltDeg, onDismiss, onCtaClick }: Props) {
+// Format the shippedAt timestamp like "MAY 2026" for the cancellation watermark.
+function formatPostmark(ts: number): string {
+  const d = new Date(ts);
+  const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const year = d.getFullYear();
+  return `${month} ${year}`;
+}
+
+export function AnnouncementPostcard({ announcement, onDismiss, onCtaClick }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const [exiting, setExiting] = useState(false);
 
-  function handleDismiss() {
+  function handleDismiss(e?: React.MouseEvent) {
+    e?.stopPropagation();
     setExiting(true);
     setTimeout(() => onDismiss(announcement.id), 200);
+  }
+
+  function handleCardClick() {
+    if (!expanded) setExpanded(true);
   }
 
   function handleCta(e: React.MouseEvent) {
     if (!announcement.cta) return;
     e.preventDefault();
+    e.stopPropagation();
     onCtaClick(announcement.id, announcement.cta.href);
     setExiting(true);
     setTimeout(() => onDismiss(announcement.id), 200);
   }
 
+  const postmark = formatPostmark(announcement.shippedAt);
+
   return (
     <article
-      className={`announcement-postcard ${exiting ? "is-exiting" : ""}`}
-      style={{ transform: `rotate(${tiltDeg}deg)` }}
+      className={`announcement-postcard ${exiting ? "is-exiting" : ""} ${
+        expanded ? "is-expanded" : "is-collapsed"
+      }`}
+      onClick={handleCardClick}
+      role="button"
+      aria-expanded={expanded}
+      aria-label={expanded ? undefined : `open: ${announcement.title}`}
     >
-      <header className="announcement-postcard__chrome">
-        <span className="announcement-postcard__from">
-          <span className="announcement-postcard__envelope" aria-hidden>
-            ✉
-          </span>{" "}
-          from spencer
+      <div className="announcement-postcard__cancel" aria-hidden>
+        <span className="announcement-postcard__cancel-mark">wwo</span>
+        <span className="announcement-postcard__cancel-arc" />
+        <span className="announcement-postcard__cancel-date">{postmark}</span>
+      </div>
+
+      <div className="announcement-postcard__row">
+        <span className="announcement-postcard__dot-slot" aria-hidden>
+          <span className="announcement-postcard__dot" />
         </span>
-        <button
-          type="button"
-          className="announcement-postcard__close"
-          aria-label="dismiss"
-          onClick={handleDismiss}
-        >
-          ×
-        </button>
-      </header>
-      <div className="announcement-postcard__rule" />
-      <h3 className="announcement-postcard__title">{announcement.title}</h3>
-      <p className="announcement-postcard__body">{announcement.body}</p>
-      {announcement.cta ? (
-        <a
-          className="announcement-postcard__cta"
-          href={announcement.cta.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={handleCta}
-        >
-          {announcement.cta.label}
-        </a>
+        <h3 className="announcement-postcard__title">{announcement.title}</h3>
+        {expanded ? (
+          <button
+            type="button"
+            className="announcement-postcard__close"
+            aria-label="dismiss"
+            onClick={handleDismiss}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+
+      {expanded ? (
+        <div className="announcement-postcard__body-wrap">
+          <p className="announcement-postcard__body">{announcement.body}</p>
+          {announcement.cta ? (
+            <a
+              className="announcement-postcard__cta"
+              href={announcement.cta.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleCta}
+            >
+              {announcement.cta.label}
+            </a>
+          ) : null}
+        </div>
       ) : null}
     </article>
   );

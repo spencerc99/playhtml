@@ -1,54 +1,134 @@
 // ABOUTME: Styles for announcement postcards (popup) and toasts (content scripts).
-// ABOUTME: Warm linen aged-paper postcard, plain warm-tone toast distinct from the postcard.
+// ABOUTME: Letter-notification — pulsing dot, subject-only collapsed row, wwo cancellation watermark.
 
 .announcement-stack {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px 12px 4px;
+  gap: 10px;
+  padding: 12px 12px 0;
+  // Load Source Serif 4 italic for the "wwo" cancellation mark. This affects
+  // the popup document head; safe here because the popup is our own page.
+  @import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@1,8..60,200..400&display=swap");
 }
 
 .announcement-postcard {
   position: relative;
   background: #f5f0e8;
-  border: 1px solid rgba(90, 78, 65, 0.18);
-  border-radius: 4px;
-  padding: 10px 12px 12px;
-  box-shadow:
-    1px 2px 0 rgba(90, 78, 65, 0.08),
-    3px 6px 14px rgba(0, 0, 0, 0.07);
-  transition: transform 200ms ease, opacity 200ms ease;
+  border: 1px solid rgba(90, 78, 65, 0.22);
+  border-radius: 3px;
+  padding: 8px 88px 9px 10px; // 88px right padding reserves room for cancellation mark
+  cursor: pointer;
   font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   color: #3d3833;
+  box-shadow:
+    0 1px 0 rgba(90, 78, 65, 0.06),
+    0 3px 8px rgba(0, 0, 0, 0.05);
   background-image: linear-gradient(
     180deg,
-    rgba(255, 252, 246, 0.4) 0%,
-    rgba(245, 240, 232, 0) 30%
+    rgba(255, 253, 247, 0.6) 0%,
+    rgba(245, 240, 232, 0) 25%
   );
+  transition:
+    background-color 200ms ease,
+    transform 200ms ease,
+    opacity 200ms ease;
+
+  &:hover {
+    background-color: #f0eadb;
+  }
 
   &.is-exiting {
     opacity: 0;
-    transform: translateY(-8px) rotate(0deg) !important;
+    transform: translateY(-8px);
   }
 
-  &__chrome {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 10.5px;
-    color: #8a8279;
+  &.is-expanded {
+    cursor: default;
   }
 
-  &__from {
+  &__cancel {
+    position: absolute;
+    right: 10px;
+    top: 6px;
+    width: 72px;
+    text-align: center;
+    pointer-events: none;
+    line-height: 1;
+    transform: rotate(-5deg);
+    transform-origin: center;
+    color: rgba(90, 78, 65, 0.3);
+  }
+
+  &__cancel-mark {
+    display: block;
+    font-family: "Source Serif 4", Georgia, serif;
+    font-style: italic;
+    font-weight: 200;
+    font-size: 14px;
     letter-spacing: 0.02em;
   }
 
-  &__envelope {
-    font-size: 11px;
-    margin-right: 1px;
+  &__cancel-arc {
+    display: block;
+    margin: 2px auto 0;
+    width: 36px;
+    height: 4px;
+    border-top: 1px solid rgba(90, 78, 65, 0.22);
+    border-radius: 50%;
+    transform: scaleY(0.6);
+  }
+
+  &__cancel-date {
+    display: block;
+    margin-top: 2px;
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 7px;
+    letter-spacing: 0.12em;
+    color: rgba(90, 78, 65, 0.32);
+    white-space: nowrap;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 16px;
+  }
+
+  &__dot-slot {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #d8835d 0%, #c4724e 55%, #9a4f30 100%);
+    box-shadow: 0 1px 1.5px rgba(154, 79, 48, 0.35);
+    animation: announcement-dot-pulse 2.4s ease-in-out infinite;
+  }
+
+  &__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-family: "Lora", "Atkinson Hyperlegible", serif;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #3d3833;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   &__close {
+    flex: 0 0 auto;
     background: none;
     border: none;
     cursor: pointer;
@@ -62,45 +142,54 @@
     }
   }
 
-  &__rule {
-    height: 1px;
-    margin: 6px 0 8px;
-    background: repeating-linear-gradient(
-      90deg,
-      rgba(90, 78, 65, 0.25) 0 3px,
-      transparent 3px 6px
-    );
-  }
-
-  &__title {
-    margin: 0 0 4px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #3d3833;
-    font-family: "Lora", "Atkinson Hyperlegible", serif;
+  &__body-wrap {
+    margin-top: 6px;
+    padding-left: 22px; // align under the title (dot slot + gap)
+    animation: announcement-body-in 180ms ease;
   }
 
   &__body {
-    margin: 0 0 10px;
-    font-size: 12px;
+    margin: 0 0 8px;
+    font-size: 11.5px;
     line-height: 1.45;
     color: #3d3833;
   }
 
   &__cta {
     display: inline-block;
-    background: rgba(196, 114, 78, 0.12);
-    border: 1px solid rgba(196, 114, 78, 0.35);
     color: #c4724e;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 600;
-    text-decoration: none;
-    transition: background 120ms ease, color 120ms ease;
+    text-decoration: underline;
+    text-decoration-color: rgba(196, 114, 78, 0.4);
+    text-underline-offset: 2px;
     &:hover {
-      background: rgba(196, 114, 78, 0.2);
-      color: #b35a35;
+      text-decoration-color: #c4724e;
     }
+  }
+}
+
+@keyframes announcement-dot-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 1px 1.5px rgba(154, 79, 48, 0.35),
+      0 0 0 0 rgba(196, 114, 78, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 1px 1.5px rgba(154, 79, 48, 0.35),
+      0 0 0 5px rgba(196, 114, 78, 0);
+  }
+}
+
+@keyframes announcement-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

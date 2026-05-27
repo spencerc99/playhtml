@@ -42,6 +42,25 @@ const TOAST_CSS = `
   color: #3d3833;
   font-family: "Lora", "Atkinson Hyperlegible", serif;
   line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.announcement-toast__new-badge {
+  display: inline-block;
+  font-family: "Martian Mono", ui-monospace, monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  background: #c4724e;
+  color: #faf7f2;
+  padding: 1.5px 5px 1px;
+  border-radius: 2px;
+  animation: toast-new-pulse 1.4s ease-in-out infinite;
+}
+@keyframes toast-new-pulse {
+  0%, 100% { background: #c4724e; box-shadow: 0 0 0 0 rgba(196, 114, 78, 0.5); }
+  50%      { background: #d8835d; box-shadow: 0 0 0 4px rgba(196, 114, 78, 0); }
 }
 .announcement-toast__close {
   background: none;
