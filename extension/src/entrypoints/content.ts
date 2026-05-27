@@ -19,6 +19,7 @@ import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
+import { shouldStartExtensionPresence } from "./content/presencePolicy";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -982,11 +983,19 @@ export default defineContentScript({
           return;
         }
 
-        // Initialize PlayHTML — cursors only enabled on supported sites (e.g. Wikipedia)
+        // Initialize PlayHTML only for sites with explicit extension cursor support.
         const { initCustomSite, shouldEnableCursors } = await import(
           "../custom-sites"
         );
         const enableCursors = shouldEnableCursors();
+        if (
+          !shouldStartExtensionPresence({
+            nativePlayhtmlDetected: false,
+            cursorsEnabled: enableCursors,
+          })
+        ) {
+          return;
+        }
 
         const { playhtml } = await import("playhtml");
         await playhtml.init({

@@ -47,6 +47,7 @@ import {
 } from "./request";
 import {
   checkMessageRate,
+  isDurableObjectOverloadError,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type MessageLimitState,
@@ -1965,9 +1966,22 @@ export class PartyServer extends YServer {
 export default {
   // Set up your fetch handler to use configured Servers
   async fetch(request: Request, env: Env): Promise<Response> {
-    return (
-      (await routePartykitRequest(request, env)) ||
-      new Response("Not Found", { status: 404 })
-    );
+    try {
+      return (
+        (await routePartykitRequest(request, env)) ||
+        new Response("Not Found", { status: 404 })
+      );
+    } catch (error) {
+      if (isDurableObjectOverloadError(error)) {
+        return new Response("Service Busy", {
+          status: 503,
+          headers: {
+            "Retry-After": "5",
+          },
+        });
+      }
+
+      throw error;
+    }
   },
 } satisfies ExportedHandler<Env>;

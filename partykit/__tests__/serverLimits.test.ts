@@ -4,6 +4,7 @@ import { describe, expect, it } from "bun:test";
 import { DEFAULT_MESSAGE_RATE_LIMIT } from "../const";
 import {
   checkMessageRate,
+  isDurableObjectOverloadError,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type ServerLimits,
@@ -123,5 +124,22 @@ describe("shouldWarnForDocumentSize", () => {
   it("warns when autosave snapshots exceed the configured document threshold", () => {
     expect(shouldWarnForDocumentSize(30, limits)).toBe(false);
     expect(shouldWarnForDocumentSize(31, limits)).toBe(true);
+  });
+});
+
+describe("isDurableObjectOverloadError", () => {
+  it("matches Cloudflare queued-request overload errors", () => {
+    expect(
+      isDurableObjectOverloadError(
+        new Error("Durable Object is overloaded. Requests queued for too long."),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated route errors", () => {
+    expect(isDurableObjectOverloadError(new Error("boom"))).toBe(false);
+    expect(isDurableObjectOverloadError("Durable Object is overloaded")).toBe(
+      false,
+    );
   });
 });
