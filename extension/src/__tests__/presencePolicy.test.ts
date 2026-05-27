@@ -51,5 +51,13 @@ describe("shouldEnableCursors", () => {
 
   it("enables cursors for Wikipedia", () => {
     expect(shouldEnableCursorsForHostname("en.wikipedia.org")).toBe(true);
+    expect(shouldEnableCursorsForHostname("wikipedia.org")).toBe(true);
+  });
+
+  it("does not enable cursors for Wikipedia lookalike domains", () => {
+    expect(shouldEnableCursorsForHostname("fakewikipedia.org")).toBe(false);
+    expect(shouldEnableCursorsForHostname("wikipedia.org.example.com")).toBe(
+      false,
+    );
   });
 });

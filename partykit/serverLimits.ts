@@ -19,7 +19,11 @@ export type LimitViolation = {
 };
 
 const DURABLE_OBJECT_OVERLOAD_MESSAGE =
-  "Durable Object is overloaded. Requests queued for too long.";
+  "Durable Object is overloaded.";
+
+type DurableObjectError = Error & {
+  overloaded?: unknown;
+};
 
 export function checkMessageRate({
   limits,
@@ -69,6 +73,7 @@ export function shouldWarnForDocumentSize(
 export function isDurableObjectOverloadError(error: unknown): boolean {
   return (
     error instanceof Error &&
-    error.message.includes(DURABLE_OBJECT_OVERLOAD_MESSAGE)
+    ((error as DurableObjectError).overloaded === true ||
+      error.message.startsWith(DURABLE_OBJECT_OVERLOAD_MESSAGE))
   );
 }

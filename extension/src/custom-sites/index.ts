@@ -17,7 +17,7 @@ export function shouldEnableCursors(): boolean {
 }
 
 export function shouldEnableCursorsForHostname(hostname: string): boolean {
-  return hostname.endsWith("wikipedia.org");
+  return hostname === "wikipedia.org" || hostname.endsWith(".wikipedia.org");
 }
 
 export async function initCustomSite(deps: CustomSiteDeps): Promise<(() => void) | null> {

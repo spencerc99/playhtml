@@ -128,6 +128,14 @@ describe("shouldWarnForDocumentSize", () => {
 });
 
 describe("isDurableObjectOverloadError", () => {
+  it("matches errors with Cloudflare's overload marker", () => {
+    const error = Object.assign(new Error("worker overloaded"), {
+      overloaded: true,
+    });
+
+    expect(isDurableObjectOverloadError(error)).toBe(true);
+  });
+
   it("matches Cloudflare queued-request overload errors", () => {
     expect(
       isDurableObjectOverloadError(
@@ -136,8 +144,25 @@ describe("isDurableObjectOverloadError", () => {
     ).toBe(true);
   });
 
+  it("matches other documented Durable Object overload messages", () => {
+    const messages = [
+      "Durable Object is overloaded. Too many requests queued.",
+      "Durable Object is overloaded. Too much data queued.",
+      "Durable Object is overloaded. Too many requests for the same object within a 10 second window.",
+    ];
+
+    for (const message of messages) {
+      expect(isDurableObjectOverloadError(new Error(message))).toBe(true);
+    }
+  });
+
   it("does not match unrelated route errors", () => {
     expect(isDurableObjectOverloadError(new Error("boom"))).toBe(false);
+    expect(
+      isDurableObjectOverloadError(
+        Object.assign(new Error("boom"), { overloaded: false }),
+      ),
+    ).toBe(false);
     expect(isDurableObjectOverloadError("Durable Object is overloaded")).toBe(
       false,
     );
