@@ -1032,6 +1032,7 @@ export default defineContentScript({
     let extensionInstance: PlayHTMLExtension | null = null;
     let collectorManager: CollectorManager | null = null;
     let overlayUI: InjectedReactUI | null = null;
+    let milestoneToastUI: InjectedReactUI | null = null;
     let overlayVisible = false;
 
     const toggleHistoricalOverlay = async () => {
@@ -1198,6 +1199,8 @@ export default defineContentScript({
     });
 
     const showMilestoneToast = (milestone: MilestoneToastData): void => {
+      milestoneToastUI?.destroy();
+
       let ui: InjectedReactUI | null = null;
 
       const handleCta = (action: MilestoneToastData["ctaAction"]) => {
@@ -1213,6 +1216,9 @@ export default defineContentScript({
 
       const handleDismiss = () => {
         ui?.destroy();
+        if (milestoneToastUI === ui) {
+          milestoneToastUI = null;
+        }
         ui = null;
       };
 
@@ -1231,6 +1237,7 @@ export default defineContentScript({
           fontUrl: MILESTONE_TOAST_FONT_URL,
         },
       );
+      milestoneToastUI = ui;
     };
 
     // Listen for messages from popup/devtools
