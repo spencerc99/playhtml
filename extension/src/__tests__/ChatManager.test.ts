@@ -28,7 +28,9 @@ function setupStorage(value: string | null = null): Record<string, unknown> {
   return data;
 }
 
-function makeFakePresence(): {
+function makeFakePresence(
+  initialPresences: Map<string, PresenceView> = new Map(),
+): {
   api: PresenceAPI;
   emit: (presences: Map<string, PresenceView>) => void;
   getLastSent: () => unknown;
@@ -59,7 +61,11 @@ function makeFakePresence(): {
     },
     getPresences: () => new Map(),
     onPresenceChange: (channel, cb) => {
-      if (channel === "chat") chatChangeCb = cb;
+      if (channel === "chat") {
+        chatChangeCb = cb;
+        // Mirror the real API: replay the current snapshot on subscribe.
+        cb(initialPresences);
+      }
       return () => {};
     },
     getMyIdentity: () => myIdentity,
@@ -177,6 +183,42 @@ describe("ChatManager", () => {
     fake.emit(new Map([["peer-pk", peerView("peer-pk", "#4a9a8a", msg)]]));
     fake.emit(new Map([["peer-pk", peerView("peer-pk", "#4a9a8a", msg)]]));
     expect(mgr.getState().messages.filter((m) => m.id === "m1")).toHaveLength(1);
+    mgr.destroy();
+  });
+
+  it("ignores the subscribe-time replay snapshot (live-session only)", async () => {
+    // A late joiner subscribes and the presence API replays the current
+    // snapshot — peers' latest messages. We must NOT seed the panel from it
+    // (presence can't represent coherent history). Panel stays empty until a
+    // fresh message arrives.
+    const preExisting = new Map<string, PresenceView>([
+      ["peer-a", peerView("peer-a", "#4a9a8a", { id: "old-a", text: "earlier", ts: 1, name: "A" })],
+      ["peer-b", peerView("peer-b", "#d4b85c", { id: "old-b", text: "also earlier", ts: 2, name: "B" })],
+    ]);
+    const fake = makeFakePresence(preExisting);
+    const mgr = new ChatManager(fake.api, "Octopus");
+    await mgr.init();
+    // Nothing from the replay should be in the panel.
+    expect(mgr.getState().messages).toHaveLength(0);
+    expect(mgr.getState().unread).toBe(false);
+
+    // A genuinely new message after we joined DOES appear.
+    fake.emit(
+      new Map([
+        ["peer-a", peerView("peer-a", "#4a9a8a", { id: "new-a", text: "live now", ts: 3, name: "A" })],
+      ]),
+    );
+    expect(mgr.getState().messages).toHaveLength(1);
+    expect(mgr.getState().messages[0].text).toBe("live now");
+
+    // And a peer re-broadcasting one of the pre-existing (already-seen) ids
+    // is NOT re-appended.
+    fake.emit(
+      new Map([
+        ["peer-a", peerView("peer-a", "#4a9a8a", { id: "old-a", text: "earlier", ts: 1, name: "A" })],
+      ]),
+    );
+    expect(mgr.getState().messages).toHaveLength(1);
     mgr.destroy();
   });
 

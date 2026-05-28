@@ -52,6 +52,12 @@ export class ChatManager {
   private unsubPresence: (() => void) | null = null;
   private lastSendAt = 0;
   private seenIds = new Set<string>();
+  // onPresenceChange replays the current snapshot on subscribe. We intentionally
+  // do NOT seed the panel from it: presence holds only each peer's latest
+  // message, so a replay would reconstruct an incoherent partial transcript
+  // (missing any earlier messages a peer overwrote). Chat stays live-session
+  // only — we mark replayed ids as seen so they don't double-append later.
+  private seededInitialSnapshot = false;
 
   constructor(
     private presence: PresenceAPI,
@@ -153,6 +159,18 @@ export class ChatManager {
   }
 
   private onPresences(presences: Map<string, PresenceView>): void {
+    // First call is the subscribe-time replay. Mark every message currently in
+    // presence as seen but do NOT append — chat is live-session only and the
+    // replay can't represent coherent history (see seededInitialSnapshot note).
+    if (!this.seededInitialSnapshot) {
+      this.seededInitialSnapshot = true;
+      presences.forEach((view) => {
+        const raw = (view as Record<string, unknown>)[CHAT_CHANNEL];
+        if (isChatMessage(raw)) this.seenIds.add(raw.id);
+      });
+      return;
+    }
+
     const myPid = this.presence.getMyIdentity().publicKey;
     let unreadFromBatch = false;
     presences.forEach((view, pid) => {
