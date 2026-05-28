@@ -1,6 +1,5 @@
 // ABOUTME: WXT build configuration for the browser extension.
 // ABOUTME: Defines manifest metadata, output settings, and Vite aliases.
-
 import { defineConfig } from "wxt";
 import path from "path";
 
@@ -49,6 +48,10 @@ export default defineConfig({
       alias: {
         "@extension": path.resolve(__dirname, "src"),
         "@movement": path.resolve(__dirname, "website/shared"),
+        "@playhtml/extension-types": path.resolve(
+          __dirname,
+          "../packages/extension-types/src/index.ts",
+        ),
       },
     },
   }),
