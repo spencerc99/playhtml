@@ -1,0 +1,181 @@
+name: Extension Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "extension/package.json"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run (build + validate, do not submit, do not tag)"
+        type: boolean
+        default: true
+      skip-chrome:
+        description: "Skip Chrome submission"
+        type: boolean
+        default: false
+      skip-firefox:
+        description: "Skip Firefox submission"
+        type: boolean
+        default: false
+
+concurrency: ${{ github.workflow }}
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    name: Should this run trigger a release?
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Decide
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Triggered manually."
+            VERSION=$(node -p "require('./extension/package.json').version")
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # For push events: only release if the head commit is the prep
+          # workflow's release commit. This avoids accidental releases from
+          # unrelated edits to extension/package.json (e.g. dependency bumps).
+          FIRST_LINE=$(echo "$HEAD_MSG" | head -n 1)
+          case "$FIRST_LINE" in
+            "extension: release v"*)
+              VERSION=$(node -p "require('./extension/package.json').version")
+              EXPECTED="extension: release v$VERSION"
+              if [ "$FIRST_LINE" = "$EXPECTED" ]; then
+                echo "Release commit detected for v$VERSION."
+                echo "should_release=true" >> "$GITHUB_OUTPUT"
+                echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              else
+                echo "Release commit message ($FIRST_LINE) doesn't match package.json version ($VERSION). Skipping."
+                echo "should_release=false" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            *)
+              echo "Head commit is not a release commit. Skipping."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+  submit:
+    name: Build and submit to stores
+    needs: guard
+    if: needs.guard.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
+      SKIP_CHROME: ${{ inputs.skip-chrome && 'true' || 'false' }}
+      SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
+      VERSION: ${{ needs.guard.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: bun run build-packages
+
+      - name: Build Chrome zip
+        if: env.SKIP_CHROME != 'true'
+        run: WXT_OUT_DIR=publish bun run -C extension wxt zip
+
+      - name: Build Firefox zip
+        if: env.SKIP_FIREFOX != 'true'
+        run: WXT_OUT_DIR=publish bun run -C extension wxt zip -b firefox
+
+      - name: Resolve zip paths
+        id: zips
+        working-directory: extension
+        run: |
+          CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
+          FIREFOX_ZIP=$(ls publish/*-"$VERSION"-firefox.zip 2>/dev/null | head -1 || true)
+          SOURCES_ZIP=$(ls publish/*-"$VERSION"-sources.zip 2>/dev/null | head -1 || true)
+          echo "chrome=$CHROME_ZIP" >> "$GITHUB_OUTPUT"
+          echo "firefox=$FIREFOX_ZIP" >> "$GITHUB_OUTPUT"
+          echo "sources=$SOURCES_ZIP" >> "$GITHUB_OUTPUT"
+          echo "Built artifacts:"
+          ls -la publish/
+
+      - name: Submit to stores
+        working-directory: extension
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
+          FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
+          FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
+          CHROME_ZIP: ${{ steps.zips.outputs.chrome }}
+          FIREFOX_ZIP: ${{ steps.zips.outputs.firefox }}
+          SOURCES_ZIP: ${{ steps.zips.outputs.sources }}
+        run: |
+          ARGS=()
+          if [ "$SKIP_CHROME" != "true" ] && [ -n "$CHROME_ZIP" ]; then
+            ARGS+=(--chrome-zip "$CHROME_ZIP")
+          fi
+          if [ "$SKIP_FIREFOX" != "true" ] && [ -n "$FIREFOX_ZIP" ]; then
+            ARGS+=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            bun run wxt submit --dry-run "${ARGS[@]}"
+          else
+            bun run wxt submit "${ARGS[@]}"
+          fi
+
+      - name: Tag release
+        if: env.DRY_RUN != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          TAG="@playhtml/extension@$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Tagged $TAG"
+          fi
+
+      - name: Upload zips as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-${{ env.VERSION }}
+          path: extension/publish/*.zip
+          retention-days: 30
+          if-no-files-found: warn

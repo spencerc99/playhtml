@@ -1,0 +1,187 @@
+name: Extension Release Prep
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "extension/**"
+      - "packages/**"
+      - ".github/workflows/extension-release-prep.yml"
+
+concurrency: ${{ github.workflow }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prep:
+    name: Open or update release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check for pending changes
+        id: pending
+        run: |
+          BODY=$(awk '/<!--/{c=1} c{if(/-->/)c=0; next} 1' extension/PENDING.md \
+            | sed '/^# Unreleased[[:space:]]*$/d' \
+            | sed '/^[[:space:]]*$/d')
+          if [ -z "$BODY" ]; then
+            echo "No pending changes — exiting."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Pending changes detected:"
+            echo "$BODY"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<PENDING_EOF"
+              echo "$BODY"
+              echo "PENDING_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git
+        if: steps.pending.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute target version
+        if: steps.pending.outputs.has_changes == 'true'
+        id: version
+        env:
+          RELEASE_BRANCH: extension-release
+        run: |
+          MAIN_VERSION=$(node -p "require('./extension/package.json').version")
+
+          REMOTE_VERSION=""
+          if git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$RELEASE_BRANCH":"refs/remotes/origin/$RELEASE_BRANCH"
+            REMOTE_VERSION=$(git show "origin/$RELEASE_BRANCH:extension/package.json" 2>/dev/null \
+              | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))" \
+              || true)
+          fi
+
+          AUTO_VERSION=$(node -p "
+            const [a,b,c] = '$MAIN_VERSION'.split('.').map(Number);
+            [a, b, c + 1].join('.');
+          ")
+
+          if [ -n "$REMOTE_VERSION" ] && node -e "
+            const [ra,rb,rc] = '$REMOTE_VERSION'.split('.').map(Number);
+            const [aa,ab,ac] = '$AUTO_VERSION'.split('.').map(Number);
+            process.exit((ra > aa || (ra === aa && rb > ab) || (ra === aa && rb === ab && rc >= ac)) ? 0 : 1);
+          "; then
+            VERSION="$REMOTE_VERSION"
+            echo "Using manual override from release branch: $VERSION"
+          else
+            VERSION="$AUTO_VERSION"
+            echo "Using auto-computed patch bump: $VERSION (main is $MAIN_VERSION)"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build release branch
+        if: steps.pending.outputs.has_changes == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BODY: ${{ steps.pending.outputs.body }}
+          RELEASE_BRANCH: extension-release
+        run: |
+          git checkout -B "$RELEASE_BRANCH"
+
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('extension/package.json', 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync('extension/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          DATE=$(date -u +%Y-%m-%d)
+          {
+            echo "# @playhtml/extension"
+            echo ""
+            echo "## $VERSION ($DATE)"
+            echo ""
+            echo "$BODY"
+            echo ""
+            tail -n +2 extension/CHANGELOG.md
+          } > extension/CHANGELOG.md.new
+          mv extension/CHANGELOG.md.new extension/CHANGELOG.md
+
+          cat > extension/PENDING.md <<'TEMPLATE_EOF'
+          # Unreleased
+
+          <!--
+          Add a bullet here in any PR that touches extension/**. The release-prep workflow
+          watches this file: when there are bullets, it opens (or updates) a release PR
+          that bumps the version, moves these bullets into CHANGELOG.md, and clears this
+          file back to just the header. Merge that PR to ship.
+
+          Format suggestion: "- short user-facing description (#PR)"
+          -->
+          TEMPLATE_EOF
+
+          git add extension/package.json extension/CHANGELOG.md extension/PENDING.md
+          git commit -m "extension: release v$VERSION"
+          git push --force origin "$RELEASE_BRANCH"
+
+      - name: Open or update PR
+        if: steps.pending.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BODY: ${{ steps.pending.outputs.body }}
+          RELEASE_BRANCH: extension-release
+        run: |
+          TITLE="Release: @playhtml/extension v$VERSION"
+          PR_BODY=$(cat <<EOF
+          Auto-generated release PR for the extension. Merging this:
+
+          - Bumps \`extension/package.json\` to **$VERSION**
+          - Moves bullets from \`PENDING.md\` into \`CHANGELOG.md\`
+          - Triggers the Extension Release workflow on merge → builds Chrome + Firefox zips, submits to both stores, tags \`@playhtml/extension@$VERSION\`
+
+          ## Changes in this release
+
+          $BODY
+
+          ---
+
+          To bump minor or major instead of patch: edit \`extension/package.json\` on this branch directly. The prep workflow will preserve your override.
+
+          To skip a release: empty out \`extension/PENDING.md\` on \`main\`. This PR will close itself on the next prep run.
+          EOF
+          )
+
+          EXISTING=$(gh pr list --head "$RELEASE_BRANCH" --base main --state open --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing PR #$EXISTING"
+            gh pr edit "$EXISTING" --title "$TITLE" --body "$PR_BODY"
+          else
+            echo "Creating new release PR"
+            gh pr create --base main --head "$RELEASE_BRANCH" --title "$TITLE" --body "$PR_BODY"
+          fi
+
+      - name: Close stale release PR
+        if: steps.pending.outputs.has_changes == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: extension-release
+        run: |
+          EXISTING=$(gh pr list --head "$RELEASE_BRANCH" --base main --state open --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING" ]; then
+            echo "PENDING.md is empty but release PR #$EXISTING is still open — closing it."
+            gh pr close "$EXISTING" --comment "Closing because \`extension/PENDING.md\` no longer has unreleased changes."
+          fi

@@ -15,6 +15,60 @@ Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)
 - `cd worker && wrangler deploy`: Deploy to Cloudflare
 
+## Releases
+
+The extension ships independently of the core packages, mirroring the
+changesets release-PR flow but on a separate cadence.
+
+**Day-to-day:** when a PR touches `extension/**`, add a bullet to
+`extension/PENDING.md` describing the user-facing change. That's it.
+
+**What the bot does:**
+
+- `.github/workflows/extension-release-prep.yml` runs on every push to `main`.
+  When `PENDING.md` has any bullets, it (re)builds the `extension-release`
+  branch with: bumped `package.json` (patch by default), prepended `CHANGELOG.md`
+  entry, cleared `PENDING.md`. Opens or updates a PR titled
+  `Release: @playhtml/extension v{version}`. Force-pushes the release branch
+  on every prep cycle so the PR always reflects current `main`.
+- Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
+  which builds Chrome + Firefox zips, runs `wxt submit` for both stores, and
+  pushes a `@playhtml/extension@x.y.z` tag.
+
+**To bump minor or major instead of patch:** edit `extension/package.json`
+on the release branch directly (in the GitHub PR UI is fine). The prep
+workflow preserves any manual override that's higher than the auto-computed
+patch bump.
+
+**To skip a release entirely:** empty out `PENDING.md` on `main`. The next
+prep run will close the open release PR.
+
+**Manual trigger / testing:** the release workflow also supports
+`workflow_dispatch` with a `dry-run` toggle (defaults to true). Use it to
+validate credentials and build without submitting.
+
+**Required GitHub Actions secrets** (set once at repo level):
+
+Chrome Web Store:
+- `CHROME_EXTENSION_ID`
+- `CHROME_CLIENT_ID` — OAuth Desktop-app client (NOT Web app — Web clients use
+  the deprecated OOB flow which Google penalizes with ~7-day token expiry)
+- `CHROME_CLIENT_SECRET`
+- `CHROME_REFRESH_TOKEN` — generated once via OAuth Playground, scope
+  `https://www.googleapis.com/auth/chromewebstore`. Long-lived but can be
+  invalidated by Google account password change, 6-month inactivity, or
+  security events. Regenerate locally with `bun run submit:refresh-chrome-token`
+  and update the secret if CI fails with an OAuth error.
+
+Firefox AMO:
+- `FIREFOX_EXTENSION_ID`
+- `FIREFOX_JWT_ISSUER` — from addons.mozilla.org → Developer Hub → Manage API Keys
+- `FIREFOX_JWT_SECRET`
+
+**Manual fallback:** The local `./release.sh` continues to work as an escape
+hatch (uses `.env.submit` instead of GitHub secrets, requires a manual
+`extension/package.json` bump first).
+
 ## Website & experiments (`extension/website/`)
 
 The `extension/website/` Vite app serves both the marketing/landing pages
