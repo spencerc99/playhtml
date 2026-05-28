@@ -242,6 +242,31 @@ describe("ChatManager", () => {
     mgr.destroy();
   });
 
+  it("openOrFocus opens when closed and bumps focusNonce", async () => {
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Octopus");
+    await mgr.init();
+    expect(mgr.getState().isOpen).toBe(false);
+    const before = mgr.getState().focusNonce;
+    mgr.openOrFocus();
+    expect(mgr.getState().isOpen).toBe(true);
+    expect(mgr.getState().focusNonce).toBe(before + 1);
+    mgr.destroy();
+  });
+
+  it("openOrFocus does NOT close an open panel — only bumps focusNonce", async () => {
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Octopus");
+    await mgr.init();
+    mgr.toggle(); // open
+    expect(mgr.getState().isOpen).toBe(true);
+    const before = mgr.getState().focusNonce;
+    mgr.openOrFocus();
+    expect(mgr.getState().isOpen).toBe(true); // stays open
+    expect(mgr.getState().focusNonce).toBe(before + 1);
+    mgr.destroy();
+  });
+
   it("ring-buffer caps total messages at 50", async () => {
     const fake = makeFakePresence();
     const mgr = new ChatManager(fake.api, "Octopus");

@@ -11,6 +11,7 @@ interface ChatPanelProps {
   myColor: string;
   articleTitle: string;
   sendError: string | null;
+  focusNonce: number;
   onSend: (text: string) => void;
   onClose: () => void;
   onReroll: () => void;
@@ -26,6 +27,7 @@ export function ChatPanel({
   myColor,
   articleTitle,
   sendError,
+  focusNonce,
   onSend,
   onClose,
   onReroll,
@@ -39,6 +41,12 @@ export function ChatPanel({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Focus the input whenever the manager bumps the nonce (e.g. "/" pressed
+  // while the panel is open but the input isn't focused).
+  useEffect(() => {
+    if (focusNonce > 0) inputRef.current?.focus();
+  }, [focusNonce]);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;

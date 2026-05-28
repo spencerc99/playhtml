@@ -335,6 +335,7 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       myColor: s.myColor,
       articleTitle: s.articleTitle,
       sendError: s.sendError,
+      focusNonce: s.focusNonce,
       onSend: (text: string) => { chatManager.send(text); },
       onClose: () => { chatManager.close(); },
       onReroll: () => { void chatManager.reroll(); },
@@ -371,9 +372,9 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     chatManager.destroy();
   });
 
-  // "/" toggles the chat — unless the user is typing somewhere (including our
-  // own chat input, where "/" should type a slash). When the panel is open and
-  // focused, the panel's own Esc handler closes it; "/" inside the input types.
+  // "/" opens the chat (or focuses its input if already open) — never closes
+  // it. Closing is Esc or the minimize button. Ignored while typing anywhere,
+  // including our own chat input, where "/" should just type a slash.
   function onSlashKey(e: KeyboardEvent) {
     if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
     const target = e.target as HTMLElement | null;
@@ -382,7 +383,7 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     // the shadow host at the document level — guard against that too.
     if (target && target.id === "wewere-chat-panel-host") return;
     e.preventDefault();
-    chatManager.toggle();
+    chatManager.openOrFocus();
   }
   document.addEventListener("keydown", onSlashKey);
   cleanups.push(() => document.removeEventListener("keydown", onSlashKey));

@@ -31,6 +31,10 @@ export type ChatManagerState = {
   unread: boolean;
   sendError: string | null;
   myColor: string;
+  // Increments whenever the input should be (re)focused — e.g. pressing "/"
+  // while the panel is already open but the input isn't focused. The panel
+  // watches this and focuses its textarea on change.
+  focusNonce: number;
 };
 
 type Listener = () => void;
@@ -73,6 +77,7 @@ export class ChatManager {
       unread: false,
       sendError: null,
       myColor,
+      focusNonce: 0,
     };
   }
 
@@ -146,6 +151,16 @@ export class ChatManager {
       this.setState({ isOpen: false });
     } else {
       this.setState({ isOpen: true, unread: false });
+    }
+  }
+
+  // Pressing "/" should open the panel if closed, or just focus the input if
+  // it's already open — never close it (closing is Esc / the minimize button).
+  openOrFocus(): void {
+    if (this.state.isOpen) {
+      this.setState({ focusNonce: this.state.focusNonce + 1 });
+    } else {
+      this.setState({ isOpen: true, unread: false, focusNonce: this.state.focusNonce + 1 });
     }
   }
 
