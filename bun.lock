@@ -72,6 +72,7 @@
         "@playhtml/react": "workspace:*",
         "html2canvas": "^1.4.1",
         "playhtml": "workspace:*",
+        "profane-words": "^1.5.11",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "webextension-polyfill": "^0.12.0",
@@ -152,7 +153,7 @@
     },
     "packages/extension-types": {
       "name": "@playhtml/extension-types",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",

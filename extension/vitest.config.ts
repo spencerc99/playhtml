@@ -22,9 +22,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@extension": extensionSource,
+      "@movement": movementSharedDir,
       playhtml: playhtmlSource,
       "@playhtml/extension-types": extensionTypesSource,
-      "@movement": movementSharedDir,
     },
   },
   test: {
@@ -33,8 +33,8 @@ export default defineConfig({
     exclude: ["node_modules/**", "dist/**", ".output/**"],
     setupFiles: [setupFile],
     include: [
-      "src/__tests__/**/*.test.ts",
-      "src/__tests__/**/*.test.tsx",
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
       "website/shared/**/*.test.ts",
       "website/shared/**/*.test.tsx",
     ],
