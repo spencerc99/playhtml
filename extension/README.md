@@ -2,6 +2,8 @@
 
 A quiet portrait of your time on the internet. This Chrome extension collects traces of how you move, click, scroll, and type across the web, then renders them as living visualizations.
 
+It's also quietly social: see who else is reading the same page, watch their cursors, and — on Wikipedia — chat live with the people there under a random article-name of your choosing. See it in action: [demo on Instagram](https://www.instagram.com/p/DYpRnRAORbE/).
+
 ## Install (closed beta)
 
 1. Download and unzip the extension build
