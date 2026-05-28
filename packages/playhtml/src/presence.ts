@@ -199,8 +199,22 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     ): () => void {
       ensureIdentityWritten();
       const id = String(nextListenerId++);
-      listeners.set(id, { channel, callback, lastFingerprint: "" });
+      // Seed lastFingerprint with the current channel state so the listener
+      // isn't re-fired redundantly on the next awareness change if nothing
+      // actually changed for this channel.
+      const currentStates = getAwareness().getStates() as Map<
+        number,
+        Record<string, unknown>
+      >;
+      const initialFingerprint = channelFingerprint(currentStates, channel);
+      listeners.set(id, { channel, callback, lastFingerprint: initialFingerprint });
       attachAwarenessListener();
+
+      // Replay the current snapshot immediately so late subscribers receive
+      // existing peer state instead of waiting for the next change. Consumers
+      // assume "subscribe = current state + future changes"; without this, a
+      // peer who set their state before we subscribed stays invisible to us.
+      callback(buildPresences());
 
       return () => {
         listeners.delete(id);
