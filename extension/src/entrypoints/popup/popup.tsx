@@ -44,9 +44,12 @@ function PlayHTMLPopup() {
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null,
   );
+  const [lastBackupTs, setLastBackupTs] = useState<number | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
 
   useEffect(() => {
     loadPlayerData();
+    loadLastBackupTime();
     // Load dev override and onboarding flags
     (async () => {
       try {
@@ -159,6 +162,50 @@ function PlayHTMLPopup() {
       console.error("Failed to load inventory:", error);
     }
   };
+
+  const loadLastBackupTime = async () => {
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'GET_LAST_BACKUP_TIME',
+      });
+      setLastBackupTs(response?.lastBackupTs || null);
+    } catch (error) {
+      console.error("Failed to load last backup time:", error);
+    }
+  };
+
+  const performBackup = async () => {
+    try {
+      setIsBackingUp(true);
+      const response = await browser.runtime.sendMessage({
+        type: 'BACKUP_EVENTS',
+      });
+      if (response?.success) {
+        await loadLastBackupTime();
+      }
+    } catch (error) {
+      console.error("Failed to backup events:", error);
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const getBackupStatusText = () => {
+    if (!lastBackupTs) {
+      return "No backup yet";
+    }
+    const now = Date.now();
+    const diffMs = now - lastBackupTs;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+
+    if (diffDays > 0) return `${diffDays}d ago`;
+    if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMins > 0) return `${diffMins}m ago`;
+    return "Just now";
+  };
+
 
   const addInventoryItem = async (
     item: Omit<InventoryItem, "id" | "collectedAt">,
@@ -399,18 +446,77 @@ function PlayHTMLPopup() {
             showBagFeatures={true}
           />
         </main>
+
+        <footer style={{
+          borderTop: "1px solid #e5e7eb",
+          paddingTop: "12px",
+          marginTop: "16px",
+          fontSize: "12px",
+          color: "#6b7280",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+            <span>Last backup: {getBackupStatusText()}</span>
+            <button
+              onClick={performBackup}
+              disabled={isBackingUp}
+              style={{
+                background: isBackingUp ? "#d1d5db" : "var(--accent-teal, #4a9a8a)",
+                color: "white",
+                border: "none",
+                borderRadius: 4,
+                padding: "4px 8px",
+                fontSize: "11px",
+                cursor: isBackingUp ? "default" : "pointer",
+                opacity: isBackingUp ? 0.6 : 1,
+              }}
+            >
+              {isBackingUp ? "Backing up..." : "Back up now"}
+            </button>
+          </div>
+        </footer>
       </div>
     );
   }
 
   return (
-    <InternetPortraitHome
-      playerIdentity={playerIdentity}
-      onViewCollections={() => setCurrentView("collections")}
-      onViewHistory={toggleHistoricalOverlay}
-      onViewProfile={() => setCurrentView("profile")}
-      onViewBagSettings={bagEnabled ? () => setCurrentView("bag-settings") : undefined}
-    />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        <InternetPortraitHome
+          playerIdentity={playerIdentity}
+          onViewCollections={() => setCurrentView("collections")}
+          onViewHistory={toggleHistoricalOverlay}
+          onViewProfile={() => setCurrentView("profile")}
+          onViewBagSettings={bagEnabled ? () => setCurrentView("bag-settings") : undefined}
+        />
+      </div>
+      <footer style={{
+        borderTop: "1px solid #e5e7eb",
+        padding: "8px 16px",
+        fontSize: "11px",
+        color: "#9ca3af",
+        background: "#fafafa",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span>Last backup: {getBackupStatusText()}</span>
+          <button
+            onClick={performBackup}
+            disabled={isBackingUp}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--accent-teal, #4a9a8a)",
+              padding: 0,
+              fontSize: "11px",
+              cursor: isBackingUp ? "default" : "pointer",
+              opacity: isBackingUp ? 0.5 : 1,
+              textDecoration: "underline",
+            }}
+          >
+            {isBackingUp ? "Backing up..." : "back up now"}
+          </button>
+        </div>
+      </footer>
+    </div>
   );
 }
 
