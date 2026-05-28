@@ -74,11 +74,23 @@ const CHAT_PANEL_CSS = `
   text-decoration-color: #5b8db8;
   color: #5b8db8;
 }
-.chat-name-strip .chat-reroll {
+.chat-name-strip .chat-name-actions {
   margin-left: auto;
+  display: inline-flex; align-items: center; gap: 8px;
+  flex: 0 0 auto;
+}
+.chat-name-strip .chat-be-page {
   background: none; border: none; cursor: pointer;
   color: #5b8db8; font-size: 11px; padding: 0; font-family: inherit;
+  white-space: nowrap;
 }
+.chat-name-strip .chat-be-page:hover { color: #3d6f96; text-decoration: underline; }
+.chat-name-strip .chat-reroll-dice {
+  background: none; border: none; cursor: pointer; padding: 0;
+  color: #8a8279; display: inline-flex; align-items: center;
+  transition: color 120ms ease;
+}
+.chat-name-strip .chat-reroll-dice:hover { color: #5b8db8; }
 .you-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .chat-body {
   padding: 6px 8px;
@@ -192,6 +204,16 @@ export function wikipediaPageLabel(): string {
   // Fallback to <title> with trailing " - Wikipedia" stripped
   const title = document.title.replace(/ - Wikipedia$/, "").trim();
   return title.length > 0 ? title : "Wikipedia";
+}
+
+// The current page's article title, but only when it's a real article (so it
+// can be offered as a "be this page" handle). null on the main page, namespace
+// pages (Special:/Talk:/etc.), and anything that isn't an article.
+export function currentWikipediaArticleName(): string | null {
+  if (!isWikiArticleUrl(location.href)) return null;
+  const match = location.pathname.match(/\/wiki\/(.+)$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]).replace(/_/g, " ");
 }
 
 // True when a keyboard event target is a text input the user is typing into,
@@ -311,7 +333,11 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   const { ChatPanel } = await import("../components/ChatPanel");
 
   const articleTitle = wikipediaPageLabel();
-  const chatManager = new ChatManager(deps.presence, articleTitle);
+  const chatManager = new ChatManager(
+    deps.presence,
+    articleTitle,
+    currentWikipediaArticleName(),
+  );
   await chatManager.init();
 
   // Ambient presence count + jump-to-someone + chat toggle
@@ -334,11 +360,13 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       handle: s.handle,
       myColor: s.myColor,
       articleTitle: s.articleTitle,
+      currentArticleName: s.currentArticleName,
       sendError: s.sendError,
       focusNonce: s.focusNonce,
       onSend: (text: string) => { chatManager.send(text); },
       onClose: () => { chatManager.close(); },
       onReroll: () => { void chatManager.reroll(); },
+      onUsePage: () => { void chatManager.useCurrentPage(); },
       onClearError: () => { chatManager.clearError(); },
     };
   }

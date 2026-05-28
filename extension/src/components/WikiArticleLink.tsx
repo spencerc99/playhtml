@@ -11,6 +11,15 @@ import {
 
 const HOVER_OPEN_DELAY_MS = 350;
 const HOVER_CLOSE_DELAY_MS = 150;
+// Keep in sync with .wiki-hovercard width in wikipedia.ts CHAT_PANEL_CSS.
+const HOVERCARD_WIDTH = 240;
+const HOVERCARD_MAX_HEIGHT = 220;
+const VIEWPORT_MARGIN = 8;
+const ANCHOR_GAP = 6;
+
+type CardPos =
+  | { left: number; bottom: number; top?: undefined }
+  | { left: number; top: number; bottom?: undefined };
 
 interface Props {
   title: string;
@@ -22,7 +31,7 @@ export function WikiArticleLink({ title, className }: Props) {
     getCachedSummary(title),
   );
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null);
+  const [pos, setPos] = useState<CardPos | null>(null);
   const anchorRef = useRef<HTMLAnchorElement | null>(null);
   const openTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
@@ -34,21 +43,36 @@ export function WikiArticleLink({ title, className }: Props) {
     closeTimer.current = null;
   }, []);
 
+  const computePos = useCallback((): CardPos | null => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Horizontal: prefer the link's left edge, but clamp so the full card
+    // stays within the viewport (this is what was getting cut off on the
+    // right-anchored chat panel).
+    const maxLeft = vw - HOVERCARD_WIDTH - VIEWPORT_MARGIN;
+    const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft));
+
+    // Vertical: prefer above the link; flip below if there isn't room.
+    const spaceAbove = rect.top;
+    if (spaceAbove >= HOVERCARD_MAX_HEIGHT + ANCHOR_GAP) {
+      return { left, bottom: vh - rect.top + ANCHOR_GAP };
+    }
+    return { left, top: rect.bottom + ANCHOR_GAP };
+  }, []);
+
   const onEnter = useCallback(() => {
     clearTimers();
     openTimer.current = window.setTimeout(() => {
-      // Anchor the fixed-position card just above the link so it escapes the
-      // panel's scrolling/clipping body.
-      const rect = anchorRef.current?.getBoundingClientRect();
-      if (rect) {
-        setPos({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
-      }
+      setPos(computePos());
       setOpen(true);
       if (summary === undefined) {
         void fetchWikiSummary(title).then((s) => setSummary(s));
       }
     }, HOVER_OPEN_DELAY_MS);
-  }, [clearTimers, summary, title]);
+  }, [clearTimers, computePos, summary, title]);
 
   const onLeave = useCallback(() => {
     clearTimers();
@@ -70,7 +94,11 @@ export function WikiArticleLink({ title, className }: Props) {
         <span
           className="wiki-hovercard"
           role="tooltip"
-          style={{ left: `${pos.left}px`, bottom: `${pos.bottom}px` }}
+          style={
+            pos.bottom !== undefined
+              ? { left: `${pos.left}px`, bottom: `${pos.bottom}px` }
+              : { left: `${pos.left}px`, top: `${pos.top}px` }
+          }
         >
           {summary.thumbnail ? (
             <img

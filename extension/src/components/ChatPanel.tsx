@@ -10,11 +10,13 @@ interface ChatPanelProps {
   handle: string;
   myColor: string;
   articleTitle: string;
+  currentArticleName: string | null;
   sendError: string | null;
   focusNonce: number;
   onSend: (text: string) => void;
   onClose: () => void;
   onReroll: () => void;
+  onUsePage: () => void;
   onClearError: () => void;
 }
 
@@ -26,11 +28,13 @@ export function ChatPanel({
   handle,
   myColor,
   articleTitle,
+  currentArticleName,
   sendError,
   focusNonce,
   onSend,
   onClose,
   onReroll,
+  onUsePage,
   onClearError,
 }: ChatPanelProps) {
   const [value, setValue] = useState("");
@@ -106,9 +110,29 @@ export function ChatPanel({
             <WikiArticleLink className="chat-handle-link" title={handle} />
           )}
         </span>
-        <button type="button" className="chat-reroll" onClick={onReroll}>
-          reroll
-        </button>
+        <span className="chat-name-actions">
+          {currentArticleName && handle !== currentArticleName ? (
+            <button type="button" className="chat-be-page" onClick={onUsePage}>
+              be this page
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="chat-reroll-dice"
+            onClick={onReroll}
+            aria-label="reroll name"
+            title="reroll name"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <rect x="1.5" y="1.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.4" />
+              <circle cx="5" cy="5" r="1.1" fill="currentColor" />
+              <circle cx="11" cy="5" r="1.1" fill="currentColor" />
+              <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+              <circle cx="5" cy="11" r="1.1" fill="currentColor" />
+              <circle cx="11" cy="11" r="1.1" fill="currentColor" />
+            </svg>
+          </button>
+        </span>
       </div>
       <div className="chat-body" ref={bodyRef}>
         {messages.map((m) => (
