@@ -17,10 +17,10 @@ export const ANNOUNCEMENTS: Announcement[] = [
   {
     id: "wiki-chat-2026-05",
     shippedAt: Date.parse("2026-05-27T00:00:00Z"),
-    title: "New: chat on Wikipedia",
-    body: "A small chat panel now lives on every page. Talk to whoever else is reading the same article & find a favorite article for your name :) enjoy and let me know if you have any thoughts!",
+    title: "Chat on Wikipedia!",
+    body: "A small chat panel now lives on every page so you can talk to others there. Happy rabbitholing!",
     cta: {
-      label: "try it on today's featured →",
+      label: "try on today's featured article →",
       href: "https://en.wikipedia.org/wiki/Wikipedia:Today%27s_featured_article",
     },
     relevantUrl: /^https?:\/\/([a-z]+\.)?wikipedia\.org\//,
