@@ -24,7 +24,7 @@ we were online is an online multiplayer world—part game, artwork, and tool—t
 See it in action: https://www.instagram.com/p/DYpRnRAORbE/
 
 See other people (still in development):
-- On Wikipedia, see others on the same article, chat with them live, watch links grow patina, and follow other cursors down rabbit holes.
+- On Wikipedia, see others on the same article, chat with them live, watch links grow patina, and follow other cursors down rabbit holes. See it in action: https://www.instagram.com/p/DYpRnRAORbE/
 ```
 
 ---
@@ -43,6 +43,6 @@ Paste into the "Description" field with HTML enabled.
 
 <p><strong>See other people (still in development):</strong></p>
 <ul>
-  <li>On Wikipedia, see others on the same article, chat with them live, watch links grow patina, and follow other cursors down rabbit holes.</li>
+  <li>On Wikipedia, see others on the same article, chat with them live, watch links grow patina, and follow other cursors down rabbit holes. <a href="https://www.instagram.com/p/DYpRnRAORbE/">See it in action</a>.</li>
 </ul>
 ```
