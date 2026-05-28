@@ -91,6 +91,7 @@ export function ChatPanel({
       <div className="chat-name-strip">
         <span className="you-dot" style={{ background: myColor }} />
         <span className="you-label">
+          chatting as{" "}
           {handle === "Anonymous" ? (
             <strong>{handle}</strong>
           ) : (
