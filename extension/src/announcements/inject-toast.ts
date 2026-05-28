@@ -21,7 +21,6 @@ const TOAST_CSS = `
   color: #3d3833;
   font-size: 12px;
   z-index: 2147483640;
-  cursor: pointer;
   transform: translateY(0);
   opacity: 1;
   transition: transform 200ms ease, opacity 200ms ease;

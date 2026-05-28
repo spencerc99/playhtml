@@ -43,22 +43,13 @@ export function AnnouncementToast({ announcement, onShown, onDismiss, onCtaClick
     setTimeout(onDismiss, 200);
   }
 
-  function handleClick() {
-    // Toast fires only on pages matching relevantUrl, so the feature is
-    // already reachable here — no need to send people elsewhere via CTA.
-    // (CTA still appears on the popup postcard for users who land there first.)
-    dismiss();
-  }
-
-  function handleClose(e: React.MouseEvent) {
-    e.stopPropagation();
+  function handleClose() {
     dismiss();
   }
 
   return (
     <div
       className={`announcement-toast ${exiting ? "is-exiting" : ""}`}
-      onClick={handleClick}
       onMouseEnter={clearTimer}
       onMouseLeave={armTimer}
       role="alert"
