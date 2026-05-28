@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessageView } from "../features/ChatManager";
+import { WikiArticleLink } from "./WikiArticleLink";
 
 interface ChatPanelProps {
   messages: ChatMessageView[];
@@ -19,11 +20,6 @@ interface ChatPanelProps {
 const MAX_MESSAGE_LENGTH = 400;
 const SOFT_COUNTER_AT = 380;
 
-function wikipediaUrlForTitle(title: string): string {
-  // Wikipedia article URLs use underscores for spaces; the rest is path-encoded.
-  return `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
-}
-
 export function ChatPanel({
   messages,
   handle,
@@ -36,6 +32,7 @@ export function ChatPanel({
   onClearError,
 }: ChatPanelProps) {
   const [value, setValue] = useState("");
+  const [inputFocused, setInputFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -97,14 +94,7 @@ export function ChatPanel({
           {handle === "Anonymous" ? (
             <strong>{handle}</strong>
           ) : (
-            <a
-              className="chat-handle-link"
-              href={wikipediaUrlForTitle(handle)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {handle}
-            </a>
+            <WikiArticleLink className="chat-handle-link" title={handle} />
           )}
         </span>
         <button type="button" className="chat-reroll" onClick={onReroll}>
@@ -115,7 +105,7 @@ export function ChatPanel({
         {messages.map((m) => (
           <div className="chat-msg" key={m.id}>
             <span className="chat-msg-dot" style={{ background: m.color }} />
-            <span className="chat-msg-who">{m.name}</span>{" "}
+            <WikiArticleLink className="chat-msg-who" title={m.name} />{" "}
             <span className="chat-msg-body">{m.text}</span>
           </div>
         ))}
@@ -126,10 +116,12 @@ export function ChatPanel({
         <textarea
           ref={inputRef}
           className="chat-input"
-          placeholder="say something…"
+          placeholder={inputFocused ? "say something…" : "press / to chat"}
           value={value}
           onChange={onChange}
           onKeyDown={onKeyDown}
+          onFocus={() => setInputFocused(true)}
+          onBlur={() => setInputFocused(false)}
           rows={1}
         />
         {showCounter ? (

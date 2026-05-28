@@ -92,7 +92,61 @@ const CHAT_PANEL_CSS = `
 .chat-msg { margin-bottom: 3px; word-wrap: break-word; }
 .chat-msg-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
 .chat-msg-who { color: #5a4e41; font-weight: 600; }
+a.chat-msg-who {
+  text-decoration: underline;
+  text-decoration-color: rgba(90, 78, 65, 0.3);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+a.chat-msg-who:hover { color: #5b8db8; text-decoration-color: #5b8db8; }
 .chat-msg-body { color: #3d3833; }
+
+/* Wikipedia hovercard for article-name links */
+.wiki-link-wrap { position: relative; }
+.wiki-hovercard {
+  position: fixed;
+  z-index: 2147483646;
+  width: 240px;
+  max-height: 220px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #faf7f2;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  color: #3d3833;
+  pointer-events: none;
+}
+.wiki-hovercard__thumb {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  display: block;
+  border-bottom: 1px solid rgba(90, 78, 65, 0.12);
+}
+.wiki-hovercard__text { padding: 7px 9px 9px; display: flex; flex-direction: column; gap: 2px; }
+.wiki-hovercard__title {
+  font-family: "Lora", "Atkinson Hyperlegible", serif;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.wiki-hovercard__desc {
+  font-size: 10px;
+  color: #8a8279;
+  font-style: italic;
+}
+.wiki-hovercard__extract {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #3d3833;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .chat-error {
   padding: 3px 8px;
   background: rgba(196, 114, 78, 0.08);
@@ -138,6 +192,16 @@ export function wikipediaPageLabel(): string {
   // Fallback to <title> with trailing " - Wikipedia" stripped
   const title = document.title.replace(/ - Wikipedia$/, "").trim();
   return title.length > 0 ? title : "Wikipedia";
+}
+
+// True when a keyboard event target is a text input the user is typing into,
+// so we don't hijack keys like "/" out from under them.
+function isEditableTarget(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (el.isContentEditable) return true;
+  return false;
 }
 
 // Matches /wiki/ArticleName but not /wiki/Special: /wiki/Talk: etc.
@@ -306,6 +370,22 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     panelUI = null;
     chatManager.destroy();
   });
+
+  // "/" toggles the chat — unless the user is typing somewhere (including our
+  // own chat input, where "/" should type a slash). When the panel is open and
+  // focused, the panel's own Esc handler closes it; "/" inside the input types.
+  function onSlashKey(e: KeyboardEvent) {
+    if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    if (isEditableTarget(target)) return;
+    // Events originating inside our chat panel's shadow root are retargeted to
+    // the shadow host at the document level — guard against that too.
+    if (target && target.id === "wewere-chat-panel-host") return;
+    e.preventDefault();
+    chatManager.toggle();
+  }
+  document.addEventListener("keydown", onSlashKey);
+  cleanups.push(() => document.removeEventListener("keydown", onSlashKey));
 
   // Cursor-anchored echo bubble for each message
   if (deps.cursorClient) {
