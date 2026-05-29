@@ -105,7 +105,7 @@ async function checkDevServer(baseUrl: string) {
 }
 
 function buildUrl(baseUrl: string, cell: CaptureCell): string {
-  const u = new URL("/portrait/", baseUrl);
+  const u = new URL("/archive/", baseUrl);
   for (const [k, v] of Object.entries(cell.params)) {
     u.searchParams.set(k, String(v));
   }
