@@ -1,5 +1,10 @@
 # @playhtml/extension
 
+## 0.1.16 (2026-05-29)
+
+- Wikipedia chat: article-name hovercards now stay on-screen near the viewport edge instead of getting cut off. The reroll affordance is a dice icon, and on real article pages a pin-icon button lets you adopt the article you're reading as your name.
+
+
 ## 0.1.15 (2026-05-29)
 
 - Wikipedia chat: a small chat panel on every Wikipedia page lets you talk live with whoever else is reading the same article. Open it from the presence pill or by pressing `/`. You get a random Wikipedia-article name (rerollable); names link to their article and show a hovercard preview on hover. Messages are live-only and never stored.
