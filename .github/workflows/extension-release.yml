@@ -143,6 +143,9 @@ jobs:
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_PUBLISH_TARGET: ${{ secrets.CHROME_PUBLISH_TARGET }}
+          CHROME_DEPLOY_PERCENTAGE: ${{ secrets.CHROME_DEPLOY_PERCENTAGE }}
+          CHROME_REVIEW_EXEMPTION: ${{ secrets.CHROME_REVIEW_EXEMPTION }}
           FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
           FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
           FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
@@ -150,17 +153,29 @@ jobs:
           FIREFOX_ZIP: ${{ steps.zips.outputs.firefox }}
           SOURCES_ZIP: ${{ steps.zips.outputs.sources }}
         run: |
-          ARGS=()
-          if [ "$SKIP_CHROME" != "true" ] && [ -n "$CHROME_ZIP" ]; then
-            ARGS+=(--chrome-zip "$CHROME_ZIP")
+          if [ "$SKIP_CHROME" != "true" ]; then
+            if [ -z "$CHROME_ZIP" ]; then
+              echo "Chrome zip was not found."
+              exit 1
+            fi
+            node scripts/submitChrome.mjs
           fi
-          if [ "$SKIP_FIREFOX" != "true" ] && [ -n "$FIREFOX_ZIP" ]; then
-            ARGS+=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
-          fi
-          if [ "$DRY_RUN" = "true" ]; then
-            bunx wxt submit --dry-run "${ARGS[@]}"
-          else
-            bunx wxt submit "${ARGS[@]}"
+
+          if [ "$SKIP_FIREFOX" != "true" ]; then
+            if [ -z "$FIREFOX_ZIP" ]; then
+              echo "Firefox zip was not found."
+              exit 1
+            fi
+            if [ -z "$SOURCES_ZIP" ]; then
+              echo "Firefox sources zip was not found."
+              exit 1
+            fi
+            FIREFOX_ARGS=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
+            if [ "$DRY_RUN" = "true" ]; then
+              bunx wxt submit --dry-run "${FIREFOX_ARGS[@]}"
+            else
+              bunx wxt submit "${FIREFOX_ARGS[@]}"
+            fi
           fi
 
       - name: Tag release

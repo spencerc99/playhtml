@@ -32,8 +32,9 @@ changesets release-PR flow but on a separate cadence.
   `Release: @playhtml/extension v{version}`. Force-pushes the release branch
   on every prep cycle so the PR always reflects current `main`.
 - Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
-  which builds Chrome + Firefox zips, runs `wxt submit` for both stores, and
-  pushes a `@playhtml/extension@x.y.z` tag.
+  which builds Chrome + Firefox zips, submits Chrome through
+  `scripts/submitChrome.mjs`, submits Firefox through `wxt submit`, and pushes
+  a `@playhtml/extension@x.y.z` tag.
 
 **To bump minor or major instead of patch:** edit `extension/package.json`
 on the release branch directly (in the GitHub PR UI is fine). The prep
