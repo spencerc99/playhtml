@@ -2,7 +2,7 @@
 // ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
 import { useState, useEffect } from "react";
-import { AnimatedTrails } from "@movement/components/AnimatedTrails";
+import { LiveTrails } from "@movement/components/LiveTrails";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
@@ -80,7 +80,7 @@ const TRAIL_SETTINGS = {
   eventFilter: { move: true, click: true, hold: false, cursor_change: false },
   trailStyle: "chaotic" as const,
   chaosIntensity: 0.6,
-  trailAnimationMode: "stagger" as const,
+  trailAnimationMode: "natural" as const,
   maxConcurrentTrails: 5,
   overlapFactor: 1,
   minGapBetweenTrails: 0.1,
@@ -122,28 +122,13 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const { trailStates, timeBounds, cycleDuration } = useCursorTrails(
-    events,
-    viewportSize,
-    TRAIL_SETTINGS,
-  );
-
-  const timeRange = {
-    min: timeBounds.min,
-    max: timeBounds.max,
-    duration: cycleDuration,
-  };
+  const { trailStates } = useCursorTrails(events, viewportSize, TRAIL_SETTINGS);
 
   return (
     <div className={styles.page}>
       <div className={styles.trails}>
         {trailStates.length > 0 && (
-          <AnimatedTrails
-            trailStates={trailStates}
-            timeRange={timeRange}
-            showClickRipples={false}
-            settings={ANIMATION_SETTINGS}
-          />
+          <LiveTrails trailStates={trailStates} settings={ANIMATION_SETTINGS} />
         )}
         <RisoTexture />
       </div>
