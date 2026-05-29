@@ -112,8 +112,22 @@ export function ChatPanel({
         </span>
         <span className="chat-name-actions">
           {currentArticleName && handle !== currentArticleName ? (
-            <button type="button" className="chat-be-page" onClick={onUsePage}>
-              be this page
+            <button
+              type="button"
+              className="chat-be-page"
+              onClick={onUsePage}
+              aria-label="be this page"
+              title="be this page"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path
+                  d="M8 1.5c-2.6 0-4.5 2-4.5 4.5 0 3.1 4.5 8 4.5 8s4.5-4.9 4.5-8c0-2.5-1.9-4.5-4.5-4.5z"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linejoin="round"
+                />
+                <circle cx="8" cy="6" r="1.6" fill="currentColor" />
+              </svg>
             </button>
           ) : null}
           <button

@@ -80,11 +80,11 @@ const CHAT_PANEL_CSS = `
   flex: 0 0 auto;
 }
 .chat-name-strip .chat-be-page {
-  background: none; border: none; cursor: pointer;
-  color: #5b8db8; font-size: 11px; padding: 0; font-family: inherit;
-  white-space: nowrap;
+  background: none; border: none; cursor: pointer; padding: 0;
+  color: #8a8279; display: inline-flex; align-items: center;
+  transition: color 120ms ease;
 }
-.chat-name-strip .chat-be-page:hover { color: #3d6f96; text-decoration: underline; }
+.chat-name-strip .chat-be-page:hover { color: #5b8db8; }
 .chat-name-strip .chat-reroll-dice {
   background: none; border: none; cursor: pointer; padding: 0;
   color: #8a8279; display: inline-flex; align-items: center;
@@ -210,8 +210,14 @@ export function wikipediaPageLabel(): string {
 // can be offered as a "be this page" handle). null on the main page, namespace
 // pages (Special:/Talk:/etc.), and anything that isn't an article.
 export function currentWikipediaArticleName(): string | null {
+  const path = location.pathname;
+  // The main page is a "/wiki/" URL with no namespace colon, so isWikiArticleUrl
+  // treats it as an article — exclude it explicitly (matches wikipediaPageLabel).
+  if (path === "/" || path === "/wiki/" || /\/wiki\/(Main_Page|Wikipedia:Main_Page)$/.test(path)) {
+    return null;
+  }
   if (!isWikiArticleUrl(location.href)) return null;
-  const match = location.pathname.match(/\/wiki\/(.+)$/);
+  const match = path.match(/\/wiki\/(.+)$/);
   if (!match) return null;
   return decodeURIComponent(match[1]).replace(/_/g, " ");
 }
