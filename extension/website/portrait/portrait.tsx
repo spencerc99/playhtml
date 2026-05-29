@@ -88,6 +88,18 @@ const LivePortrait = () => {
   );
 };
 
+// Saved historical share-links used to live at /portrait. If a request carries
+// historical-only params, send it to the archive page which knows how to read them.
+(() => {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  const hasHistorical =
+    params.has("startMs") || params.has("endMs") || params.has("day");
+  if (hasHistorical) {
+    window.location.replace(`/archive${window.location.search}`);
+  }
+})();
+
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
 ).render(<LivePortrait />);
