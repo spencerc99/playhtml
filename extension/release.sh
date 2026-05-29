@@ -1,5 +1,5 @@
 #!/bin/bash
-# ABOUTME: Build both browser zips into ./publish and submit to Chrome + Firefox stores via `wxt submit`.
+# ABOUTME: Build both browser zips into ./publish and submit to Chrome + Firefox stores.
 # ABOUTME: Usage: ./release.sh [--dry-run] [--skip-firefox] [--skip-chrome]
 
 set -euo pipefail

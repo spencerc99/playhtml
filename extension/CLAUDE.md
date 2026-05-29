@@ -60,6 +60,9 @@ Chrome Web Store:
   invalidated by Google account password change, 6-month inactivity, or
   security events. Regenerate locally with `bun run submit:refresh-chrome-token`
   and update the secret if CI fails with an OAuth error.
+- `CHROME_SKIP_SUBMIT_REVIEW` — optional safety guard. Leave unset for release
+  automation; setting it to `true` makes CI fail instead of uploading a package
+  without submitting it for review.
 
 Firefox AMO:
 - `FIREFOX_EXTENSION_ID`

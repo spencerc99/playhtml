@@ -70,9 +70,9 @@ async function getAccessToken({ env, fetchImpl }) {
   const response = await fetchImpl(TOKEN_URL, {
     method: "POST",
     headers: {
-      "content-type": "application/json",
+      "content-type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
+    body: new URLSearchParams({
       client_id: requireEnv(env, "CHROME_CLIENT_ID"),
       client_secret: requireEnv(env, "CHROME_CLIENT_SECRET"),
       refresh_token: requireEnv(env, "CHROME_REFRESH_TOKEN"),
