@@ -2,9 +2,7 @@
 // ABOUTME: Fire-and-forget — broadcast failures are logged and never fail ingest.
 
 import type { CollectionEvent } from '@playhtml/extension-types';
-
-/** Single global hub instance. */
-const HUB_NAME = 'global';
+import { HUB_NAME } from './constants';
 
 export async function broadcastLiveEvents(
   namespace: DurableObjectNamespace,

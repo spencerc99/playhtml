@@ -6,8 +6,10 @@ import { VERBOSE } from '../config';
 import {
   getValidEventTypes,
   type CollectionEventType,
+  type CollectionEvent,
   type PageMetadataSnapshot,
 } from '@playhtml/extension-types';
+import { broadcastLiveEvents } from '../live/broadcast';
 
 // Rate limiting: max events per request
 const MAX_EVENTS_PER_REQUEST = 500;
@@ -172,7 +174,8 @@ async function persistPageMetadataHistory(
  */
 export async function handleIngest(
   request: Request,
-  env: Env
+  env: Env,
+  ctx: ExecutionContext
 ): Promise<Response> {
   try {
     const body = await request.json();
@@ -336,6 +339,14 @@ export async function handleIngest(
       console.log(`[Ingest] Inserted ${inserted} new events, ${duplicates} duplicates ignored`);
     }
     
+    // Fan out cursor events to the live stream. Fire-and-forget — must never
+    // affect the ingest result. The cast is sound for cursor events: the live
+    // consumers read cursor position from `data`, and tolerate the optional
+    // `meta` fields (url/vw/vh/tz) being absent.
+    ctx.waitUntil(
+      broadcastLiveEvents(env.LIVE_EVENTS_HUB, typedEvents as unknown as CollectionEvent[]),
+    );
+
     return new Response(
       JSON.stringify({ inserted, duplicates, page_metadata_inserted: pageMetadataInserted }),
       { 
