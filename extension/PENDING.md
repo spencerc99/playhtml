@@ -8,5 +8,3 @@ file back to just the header. Merge that PR to ship.
 
 Format suggestion: "- short user-facing description (#PR)"
 -->
-
-- Wikipedia chat: article-name hovercards now stay on-screen near the viewport edge instead of getting cut off. The reroll affordance is a dice icon, and on real article pages a pin-icon button lets you adopt the article you're reading as your name.
