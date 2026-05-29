@@ -1203,7 +1203,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           endMs={selectedTimeRange.endMs}
         />
       ) : (
-        settings.trailAnimationMode === "natural" &&
+        (live || settings.trailAnimationMode === "natural") &&
         showTrails &&
         timeRange.min > 0 &&
         timeRange.duration > 0 && (
@@ -1345,6 +1345,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
               windowSize={settings.maxConcurrentTrails * 2}
+              frozen={paused}
               settings={trailAnimationSettings}
             />
           ) : (

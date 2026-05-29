@@ -39,6 +39,7 @@ function hashKey(key: string): number {
 interface LiveTrailsProps {
   trailStates: TrailState[];
   windowSize?: number;
+  frozen?: boolean;
   settings: {
     strokeWidth: number;
     trailOpacity: number;
@@ -48,7 +49,7 @@ interface LiveTrailsProps {
 }
 
 export const LiveTrails: React.FC<LiveTrailsProps> = memo(
-  ({ trailStates, windowSize = 50, settings }) => {
+  ({ trailStates, windowSize = 50, frozen = false, settings }) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
@@ -65,6 +66,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       animationSpeedRef.current = settings.animationSpeed;
     }, [settings.strokeWidth, settings.trailOpacity, settings.animationSpeed]);
 
+    const frozenRef = useRef(frozen);
+    useEffect(() => {
+      frozenRef.current = frozen;
+    }, [frozen]);
+
     const trailStatesRef = useRef(trailStates);
     useEffect(() => {
       trailStatesRef.current = trailStates;
@@ -78,6 +84,17 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const originRef = useRef<{ wallMs: number; dataOriginMs: number } | null>(
       null,
     );
+
+    // Each trail's startOffsetMs is frozen the first time we see it, keyed by
+    // its stable identity. useCursorTrails recomputes timeBounds.min on every
+    // batch, so the per-frame ts.startOffsetMs drifts as the upstream cap
+    // evicts oldest events; pinning keeps each trail's timing basis permanent.
+    const pinnedOffsets = useRef<Map<string, number>>(new Map());
+
+    // Accumulated wall-clock time spent paused, subtracted from the elapsed
+    // clock so the animation doesn't leap forward when resumed.
+    const pausedAccumMsRef = useRef(0);
+    const pauseStartedAtRef = useRef<number | null>(null);
 
     useEffect(() => {
       const clearScheduled = () => {
@@ -104,6 +121,20 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       };
 
       const tick = (perfNow: number) => {
+        // When paused, hold the last drawn frame and accumulate the paused
+        // wall-clock duration so the clock doesn't leap on resume.
+        if (frozenRef.current) {
+          if (pauseStartedAtRef.current === null) {
+            pauseStartedAtRef.current = perfNow;
+          }
+          scheduleNext();
+          return;
+        }
+        if (pauseStartedAtRef.current !== null) {
+          pausedAccumMsRef.current += perfNow - pauseStartedAtRef.current;
+          pauseStartedAtRef.current = null;
+        }
+
         const states = trailStatesRef.current;
         if (states.length === 0) {
           scheduleNext();
@@ -124,11 +155,25 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         const origin = originRef.current;
         const speed = animationSpeedRef.current;
 
-        const globalElapsed = (perfNow - origin.wallMs) * speed;
+        const globalElapsed =
+          (perfNow - origin.wallMs - pausedAccumMsRef.current) * speed;
         const dataNow = origin.dataOriginMs + globalElapsed;
 
+        // Freeze each trail's offset on first sight; use the pinned value for
+        // all timing so a surviving trail's animation never jumps when
+        // timeBounds.min drifts upward on eviction.
+        const offsetFor = (ts: TrailState): number => {
+          const key = trailKey(ts);
+          let off = pinnedOffsets.current.get(key);
+          if (off === undefined) {
+            off = ts.startOffsetMs;
+            pinnedOffsets.current.set(key, off);
+          }
+          return off;
+        };
+
         const timings: LiveTrailTiming[] = states.map((ts) => ({
-          startMs: origin.dataOriginMs + ts.startOffsetMs,
+          startMs: origin.dataOriginMs + offsetFor(ts),
           durationMs: ts.durationMs,
         }));
         const { drawing, finished } = computeLiveTrailWindow(
@@ -155,7 +200,17 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const ts = states[idx];
           const handle = trailHandles.current.get(trailKey(ts));
           if (!handle || !ts) continue;
-          const result = handle.update(globalElapsed, trailOpacity, strokeWidth, 1);
+          // computeTrailFrame subtracts the live ts.startOffsetMs internally;
+          // adding it back atop the pinned basis makes the primitive see
+          // (globalElapsed - pinnedOffset), which is drift-free.
+          const pinnedElapsed =
+            globalElapsed - offsetFor(ts) + ts.startOffsetMs;
+          const result = handle.update(
+            pinnedElapsed,
+            trailOpacity,
+            strokeWidth,
+            1,
+          );
           const cursorHandle = cursorHandles.current.get(trailKey(ts));
           if (cursorHandle && result) {
             const cpIdx = Math.min(
@@ -175,7 +230,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         const finishedEntries: FinishedTrailOrderEntry[] = finished
           .map((idx) => ({
             originalIndex: idx,
-            finishedAtMs: states[idx].startOffsetMs + states[idx].durationMs,
+            finishedAtMs: offsetFor(states[idx]) + states[idx].durationMs,
           }))
           .sort((a, b) => a.finishedAtMs - b.finishedAtMs);
 
@@ -185,11 +240,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const key = trailKey(ts);
           const handle = trailHandles.current.get(key);
           if (!handle || !ts) continue;
+          // computeTrailFade subtracts the live ts.startOffsetMs internally, so
+          // pass the same pinned-basis adjustment as drawing trails.
+          const pinnedElapsed =
+            globalElapsed - offsetFor(ts) + ts.startOffsetMs;
           const fade = computeTrailFade(
             ts,
             pos,
             finishedEntries,
-            globalElapsed,
+            pinnedElapsed,
             windowSize,
             finishedEntries.length,
           );
@@ -198,6 +257,9 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             cursorHandles.current.get(key)?.hide();
             continue;
           }
+          // The finished draw always yields exactly durationMs of elapsed in
+          // computeTrailFrame (ts.startOffsetMs + durationMs - ts.startOffsetMs),
+          // so it renders the completed frame regardless of drift.
           handle.update(
             ts.startOffsetMs + ts.durationMs,
             trailOpacity,
