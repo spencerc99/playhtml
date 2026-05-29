@@ -1,7 +1,14 @@
 // ABOUTME: Layered guestbook where each entry is a glowing card stacked like flyers on a pole.
 // ABOUTME: Click a card to expand; carousel navigation while expanded; compose via live preview card.
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  memo,
+} from "react";
 import { withSharedState, usePlayContext } from "@playhtml/react";
 import { containsProfanity } from "@movement/profanity";
 import styles from "./AuraGuestbook.module.scss";
@@ -16,6 +23,13 @@ interface GuestbookEntry {
 const MAX_MESSAGE_LENGTH = 400;
 const MAX_NAME_LENGTH = 20;
 const LOCALSTORAGE_KEY = "wewere-guestbook-submitted";
+// Cap how many cards paint in the fixed-size pile; buried cards are invisible
+// anyway. The expanded carousel still navigates the full entry list.
+const PILE_RENDER_LIMIT = 60;
+// Visitor dot sizing for the canvas band
+const ORB_BAND_HEIGHT = 64;
+const ORB_MIN_SIZE = 10;
+const ORB_MAX_SIZE = 18;
 
 // 3 paper texture variants assigned deterministically per card
 const TEXTURE_CLASSES = ["textureA", "textureB", "textureC"] as const;
@@ -72,207 +86,271 @@ function formatColloquialTime(timestamp: number): string {
   return `${timeStr} on a ${dayName}`;
 }
 
-// Colored glow shadow layers for an orb
+// Coarse, casual relative time for the dot hover tooltip.
+// For entries a day or more old, appends a time-of-day phrase.
+function formatVisitTooltip(timestamp: number): string {
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  let relative: string;
+  let withinDay: boolean;
+  if (diffMs < 5 * minute) {
+    relative = "just now";
+    withinDay = true;
+  } else if (diffMs < hour) {
+    relative = "a little while ago";
+    withinDay = true;
+  } else if (diffMs < day) {
+    relative = "earlier today";
+    withinDay = true;
+  } else if (diffMs < 2 * day) {
+    relative = "yesterday";
+    withinDay = false;
+  } else if (diffMs < 7 * day) {
+    relative = "this week";
+    withinDay = false;
+  } else if (diffMs < 14 * day) {
+    relative = "last week";
+    withinDay = false;
+  } else {
+    relative = "a while ago";
+    withinDay = false;
+  }
+
+  if (withinDay) return `visited ${relative}`;
+
+  const hourOfDay = new Date(timestamp).getHours();
+  let partOfDay: string;
+  if (hourOfDay >= 5 && hourOfDay <= 11) partOfDay = "in the morning";
+  else if (hourOfDay >= 12 && hourOfDay <= 16) partOfDay = "in the afternoon";
+  else if (hourOfDay >= 17 && hourOfDay <= 20) partOfDay = "in the evening";
+  else partOfDay = "at night";
+  return `visited ${relative} ${partOfDay}`;
+}
+
+// Apply an alpha to a color in any CSS format (hex, hsl, named). color-mix is
+// supported in all evergreen browsers and handles formats hex-append cannot.
+function withAlpha(color: string, alpha: number): string {
+  const pct = Math.round(alpha * 100);
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+}
+
+// Multi-layer colored glow for the expanded/compose cards (few painted at once)
 function getGlowShadow(color: string): string {
   return [
-    `0 0 8px ${color}66`,
-    `0 0 20px ${color}44`,
-    `0 0 40px ${color}22`,
+    `0 0 8px ${withAlpha(color, 0.4)}`,
+    `0 0 20px ${withAlpha(color, 0.27)}`,
+    `0 0 40px ${withAlpha(color, 0.13)}`,
   ].join(", ");
 }
 
-// Visitor dots scattered like irregular polka dots
-function VisitorOrbs({ entries }: { entries: GuestbookEntry[] }) {
-  const MAX_VISIBLE = 150;
+// Single-layer glow, cheap enough to paint on every pile card
+function getCardGlow(color: string): string {
+  return `0 0 12px ${withAlpha(color, 0.27)}`;
+}
+
+// Tight dot-colored glow for a card highlighted via its visitor dot, layered
+// over a small dark drop shadow for depth.
+function getHighlightGlow(color: string): string {
+  return `0 0 14px ${withAlpha(color, 0.55)}, 0 2px 6px rgba(0, 0, 0, 0.3)`;
+}
+
+interface DotLayout {
+  color: string;
+  x: number;
+  cy: number;
+  radius: number;
+}
+
+// Place dots left-to-right with deterministic jitter, stopping at the band edge.
+function layoutOrbs(colors: string[], width: number): DotLayout[] {
+  const midY = ORB_BAND_HEIGHT / 2;
+  const dots: DotLayout[] = [];
+  let x = ORB_MAX_SIZE / 2;
+  for (let i = 0; i < colors.length; i++) {
+    const color = colors[i];
+    const seed = i * 7919 + color.charCodeAt(1);
+    const size =
+      ORB_MIN_SIZE + seededRandom(seed + 1) * (ORB_MAX_SIZE - ORB_MIN_SIZE);
+    const radius = size / 2;
+    const offsetY = (seededRandom(seed) - 0.5) * 24; // -12 to +12px scatter
+    const gap = 2 + seededRandom(seed + 2) * 4; // 2-6px between dots
+    if (i > 0) x += radius + gap;
+    if (x + radius > width) break; // single band; canvas height is fixed
+    dots.push({ color, x, cy: midY + offsetY, radius });
+    x += radius;
+  }
+  return dots;
+}
+
+// Visitor dots — every unique visitor, drawn on one canvas so the glow scales
+// to thousands of dots without compositing a box-shadow per DOM node.
+// Hovering a dot reports its color up so the matching pile cards can lift.
+const VisitorOrbs = memo(function VisitorOrbs({
+  entries,
+  hoveredColor,
+  onHoverColor,
+  firstVisitByColor,
+}: {
+  entries: GuestbookEntry[];
+  hoveredColor: string | null;
+  onHoverColor: (color: string | null) => void;
+  firstVisitByColor: Map<string, number>;
+}) {
   const { cursors } = usePlayContext();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [tooltip, setTooltip] = useState<{ x: number; text: string } | null>(
+    null,
+  );
 
   const allColors = useMemo(() => {
+    const seen = new Set<string>();
     const colors: string[] = [];
-    if (cursors.color) colors.push(cursors.color);
+    if (cursors.color) {
+      seen.add(cursors.color);
+      colors.push(cursors.color);
+    }
     const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
     for (const entry of sorted) {
-      if (!colors.includes(entry.color)) {
+      if (!seen.has(entry.color)) {
+        seen.add(entry.color);
         colors.push(entry.color);
       }
     }
     return colors;
   }, [entries, cursors.color]);
 
-  const visible = allColors.slice(0, MAX_VISIBLE);
-  const overflow = allColors.length - MAX_VISIBLE;
+  const dots = useMemo(() => layoutOrbs(allColors, width), [allColors, width]);
+
+  // Track the available width so the dot band fills the container responsively
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entriesObserved) => {
+      setWidth(entriesObserved[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || width === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = ORB_BAND_HEIGHT * dpr;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, ORB_BAND_HEIGHT);
+
+    for (const { color, x, cy, radius } of dots) {
+      const isHovered = hoveredColor === color;
+      const drawRadius = isHovered ? radius * 1.35 : radius;
+
+      // Tight radial glow (alpha via globalAlpha so any color format works),
+      // then a solid core at full opacity. Hovered dots glow brighter + larger.
+      ctx.save();
+      ctx.globalAlpha = isHovered ? 0.5 : 0.28;
+      const glowR = drawRadius * 1.6;
+      const glow = ctx.createRadialGradient(x, cy, 0, x, cy, glowR);
+      glow.addColorStop(0, color);
+      // Fade to the SAME color at zero alpha (not "transparent", which is
+      // black-transparent and leaves a dark fringe under premultiplied alpha).
+      glow.addColorStop(1, withAlpha(color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, cy, glowR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, cy, drawRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [dots, width, hoveredColor]);
+
+  // Hit-test the pointer against dot positions; report the hovered color up.
+  // Last color reported up, so mousemove only updates state on transitions
+  // (the handler fires every pointer frame; unguarded setState would re-render
+  // the dot band on each one).
+  const lastHoveredRef = useRef<string | null>(null);
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      // Pick the nearest dot within its hit radius. Dots are packed tightly with
+      // a generous hit radius, so points can fall inside several — nearest-center
+      // resolves overlaps predictably (closest dot wins).
+      let found: DotLayout | null = null;
+      let bestDistSq = Infinity;
+      for (const d of dots) {
+        const dx = px - d.x;
+        const dy = py - d.cy;
+        const distSq = dx * dx + dy * dy;
+        const hit = Math.max(d.radius, 9);
+        if (distSq <= hit * hit && distSq < bestDistSq) {
+          bestDistSq = distSq;
+          found = d;
+        }
+      }
+      const foundColor = found ? found.color : null;
+      if (foundColor === lastHoveredRef.current) return;
+      lastHoveredRef.current = foundColor;
+      onHoverColor(foundColor);
+      if (found) {
+        const firstVisit = firstVisitByColor.get(found.color);
+        setTooltip({
+          x: found.x,
+          text:
+            firstVisit !== undefined
+              ? formatVisitTooltip(firstVisit)
+              : "a visitor",
+        });
+      } else {
+        setTooltip(null);
+      }
+    },
+    [dots, onHoverColor, firstVisitByColor],
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    lastHoveredRef.current = null;
+    onHoverColor(null);
+    setTooltip(null);
+  }, [onHoverColor]);
 
   return (
-    <div className={styles.visitorOrbs}>
-      {visible.map((color, i) => {
-        // Deterministic irregular placement
-        const seed = i * 7919 + color.charCodeAt(1);
-        const offsetY = (seededRandom(seed) - 0.5) * 24; // -12 to +12 px vertical scatter
-        const size = 10 + seededRandom(seed + 1) * 8; // 10-18px varied sizes
-        const marginLeft = -2 + (seededRandom(seed + 2) - 0.5) * 8; // -6 to +2 px, more gaps
-        return (
-          <div
-            key={`${color}-${i}`}
-            className={styles.visitorOrb}
-            style={{
-              backgroundColor: color,
-              boxShadow: getGlowShadow(color),
-              zIndex: visible.length - i,
-              width: size,
-              height: size,
-              marginLeft: i === 0 ? 0 : marginLeft,
-              transform: `translateY(${offsetY}px)`,
-            }}
-          />
-        );
-      })}
-      {overflow > 0 && (
-        <span className={styles.visitorOverflow}>+{overflow}</span>
-      )}
+    <div className={styles.visitorOrbs} ref={wrapRef}>
+      <div className={styles.visitorOrbBand} style={{ width }}>
+        <canvas
+          ref={canvasRef}
+          className={styles.visitorOrbCanvas}
+          style={{ width, height: ORB_BAND_HEIGHT }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+        />
+        {tooltip && (
+          <span
+            className={styles.visitorTooltip}
+            style={{ left: tooltip.x }}
+            role="tooltip"
+          >
+            {tooltip.text}
+          </span>
+        )}
+      </div>
     </div>
   );
-}
-
-// TODO: Remove before shipping — temporary mock data for visual testing
-const MOCK_ENTRIES: GuestbookEntry[] = [
-  {
-    name: "mika",
-    color: "#c4724e",
-    message: "this is so cool, love the vibes",
-    timestamp: Date.now() - 1000 * 60 * 30,
-  },
-  {
-    name: "jess",
-    color: "#4a9a8a",
-    message: "stumbled here from the reel, glad i did",
-    timestamp: Date.now() - 1000 * 60 * 60 * 3,
-  },
-  {
-    name: "someone",
-    color: "#d4b85c",
-    message: "the internet needs more places like this",
-    timestamp: Date.now() - 1000 * 60 * 60 * 12,
-  },
-  {
-    name: "river",
-    color: "#5b8db8",
-    message: "i can see other people here??",
-    timestamp: Date.now() - 1000 * 60 * 60 * 24,
-  },
-  {
-    name: "sol",
-    color: "#8a6bb8",
-    message: "leaving my mark",
-    timestamp: Date.now() - 1000 * 60 * 60 * 48,
-  },
-  {
-    name: "anon",
-    color: "#b85b5b",
-    message: "we were here together, even if just for a moment",
-    timestamp: Date.now() - 1000 * 60 * 60 * 72,
-  },
-  {
-    name: "kira",
-    color: "#6bb88a",
-    message: "reminds me of old geocities days",
-    timestamp: Date.now() - 1000 * 60 * 60 * 120,
-  },
-  {
-    name: "ghost",
-    color: "#8a8279",
-    message: "hello from the other side of the screen",
-    timestamp: Date.now() - 1000 * 60 * 60 * 200,
-  },
-  {
-    name: "mika",
-    color: "#c4724e",
-    message: "this is so cool, love the vibes",
-    timestamp: Date.now() - 1000 * 60 * 30,
-  },
-  {
-    name: "jess",
-    color: "#4a9a8a",
-    message: "stumbled here from the reel, glad i did",
-    timestamp: Date.now() - 1000 * 60 * 60 * 3,
-  },
-  {
-    name: "someone",
-    color: "#d4b85c",
-    message: "the internet needs more places like this",
-    timestamp: Date.now() - 1000 * 60 * 60 * 12,
-  },
-  {
-    name: "river",
-    color: "#5b8db8",
-    message: "i can see other people here??",
-    timestamp: Date.now() - 1000 * 60 * 60 * 24,
-  },
-  {
-    name: "sol",
-    color: "#8a6bb8",
-    message: "leaving my mark",
-    timestamp: Date.now() - 1000 * 60 * 60 * 48,
-  },
-  {
-    name: "anon",
-    color: "#b85b5b",
-    message: "we were here together, even if just for a moment",
-    timestamp: Date.now() - 1000 * 60 * 60 * 72,
-  },
-  {
-    name: "kira",
-    color: "#6bb88a",
-    message: "reminds me of old geocities days",
-    timestamp: Date.now() - 1000 * 60 * 60 * 120,
-  },
-  {
-    name: "ghost",
-    color: "#8a8279",
-    message: "hello from the other side of the screen",
-    timestamp: Date.now() - 1000 * 60 * 60 * 200,
-  },
-  {
-    name: "jess",
-    color: "#4a9a8a",
-    message: "stumbled here from the reel, glad i did",
-    timestamp: Date.now() - 1000 * 60 * 60 * 3,
-  },
-  {
-    name: "someone",
-    color: "#d4b85c",
-    message: "the internet needs more places like this",
-    timestamp: Date.now() - 1000 * 60 * 60 * 12,
-  },
-  {
-    name: "river",
-    color: "#5b8db8",
-    message: "i can see other people here??",
-    timestamp: Date.now() - 1000 * 60 * 60 * 24,
-  },
-  {
-    name: "sol",
-    color: "#8a6bb8",
-    message: "leaving my mark",
-    timestamp: Date.now() - 1000 * 60 * 60 * 48,
-  },
-  {
-    name: "anon",
-    color: "#b85b5b",
-    message: "we were here together, even if just for a moment",
-    timestamp: Date.now() - 1000 * 60 * 60 * 72,
-  },
-  {
-    name: "kira",
-    color: "#6bb88a",
-    message: "reminds me of old geocities days",
-    timestamp: Date.now() - 1000 * 60 * 60 * 120,
-  },
-  {
-    name: "ghost",
-    color: "#8a8279",
-    message: "hello from the other side of the screen",
-    timestamp: Date.now() - 1000 * 60 * 60 * 200,
-  },
-];
+});
 
 export const AuraGuestbook = withSharedState(
   { defaultData: [] as GuestbookEntry[] },
@@ -284,6 +362,7 @@ export const AuraGuestbook = withSharedState(
     const [name, setName] = useState("");
     const [error, setError] = useState("");
     const [hasSubmitted, setHasSubmitted] = useState(false);
+    const [hoveredColor, setHoveredColor] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const guestbookRef = useRef<HTMLDivElement>(null);
 
@@ -293,6 +372,41 @@ export const AuraGuestbook = withSharedState(
       () => [...entries].sort((a, b) => a.timestamp - b.timestamp),
       [entries],
     );
+
+    // The pile area is fixed-size; only the most recent cards are ever visible
+    // (older ones are fully buried). Render a window of the newest entries,
+    // keeping real indices so the expanded carousel still spans every entry.
+    const visiblePileCards = useMemo(() => {
+      const start = Math.max(0, sortedEntries.length - PILE_RENDER_LIMIT);
+      return sortedEntries.slice(start).map((entry, offset) => {
+        const index = start + offset;
+        const { rotation, spreadX, spreadY } = getCardTransform(
+          entry.timestamp,
+          index,
+          sortedEntries.length,
+        );
+        return {
+          entry,
+          index,
+          rotation,
+          spreadX,
+          spreadY,
+          textureClass: getTextureClass(index),
+        };
+      });
+    }, [sortedEntries]);
+
+    // Earliest timestamp per visitor color, for the dot hover tooltip
+    const firstVisitByColor = useMemo(() => {
+      const map = new Map<string, number>();
+      for (const entry of entries) {
+        const existing = map.get(entry.color);
+        if (existing === undefined || entry.timestamp < existing) {
+          map.set(entry.color, entry.timestamp);
+        }
+      }
+      return map;
+    }, [entries]);
 
     useEffect(() => {
       setHasSubmitted(localStorage.getItem(LOCALSTORAGE_KEY) === "true");
@@ -377,7 +491,12 @@ export const AuraGuestbook = withSharedState(
       <div className={styles.guestbook} ref={guestbookRef} id="guestbook-pile">
         {/* Visitor dots above heading */}
 
-        <VisitorOrbs entries={entries} />
+        <VisitorOrbs
+          entries={entries}
+          hoveredColor={hoveredColor}
+          onHoverColor={setHoveredColor}
+          firstVisitByColor={firstVisitByColor}
+        />
         {/* Stacked cards pile */}
         <div className={styles.pileContainer}>
           <div
@@ -385,35 +504,50 @@ export const AuraGuestbook = withSharedState(
               expandedIndex !== null ? styles.pileDimmed : ""
             }`}
           >
-            {sortedEntries.map((entry, i) => {
-              const { rotation, spreadX, spreadY } = getCardTransform(
-                entry.timestamp,
-                i,
-                sortedEntries.length,
-              );
-              const ageFilter = getAgeFilter(entry.timestamp);
-              const textureClass = getTextureClass(i);
-              return (
-                <button
-                  key={`${entry.timestamp}-${i}`}
-                  className={`${styles.card} ${styles[textureClass]}`}
-                  style={{
-                    backgroundColor: entry.color,
-                    filter: ageFilter,
-                    zIndex: i,
-                    left: `${spreadX}%`,
-                    top: `${spreadY}%`,
-                    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-                    boxShadow: getGlowShadow(entry.color),
-                  }}
-                  onClick={() => setExpandedIndex(i)}
-                  aria-label={`Message from ${entry.name}`}
-                >
-                  <span className={styles.cardName}>{entry.name}</span>
-                  <span className={styles.cardSnippet}>{entry.message}</span>
-                </button>
-              );
-            })}
+            {visiblePileCards.map(
+              ({
+                entry,
+                index,
+                rotation,
+                spreadX,
+                spreadY,
+                textureClass,
+              }) => {
+                const isHighlighted = hoveredColor === entry.color;
+                return (
+                  <button
+                    key={`${entry.timestamp}-${index}`}
+                    className={`${styles.card} ${styles[textureClass]} ${
+                      isHighlighted ? styles.cardHighlighted : ""
+                    }`}
+                    style={{
+                      backgroundColor: entry.color,
+                      // Computed inline (not memoized) so the age fade keeps
+                      // updating over time even without new entries.
+                      filter: isHighlighted
+                        ? "saturate(1.15) brightness(1.08)"
+                        : getAgeFilter(entry.timestamp),
+                      // Highlighted cards are lifted via .cardHighlighted's
+                      // z-index; this is just the in-pile stacking order.
+                      zIndex: index,
+                      left: `${spreadX}%`,
+                      top: `${spreadY}%`,
+                      transform: `translate(-50%, -50%) rotate(${rotation}deg)${
+                        isHighlighted ? " scale(1.12)" : ""
+                      }`,
+                      boxShadow: isHighlighted
+                        ? getHighlightGlow(entry.color)
+                        : getCardGlow(entry.color),
+                    }}
+                    onClick={() => setExpandedIndex(index)}
+                    aria-label={`Message from ${entry.name}`}
+                  >
+                    <span className={styles.cardName}>{entry.name}</span>
+                    <span className={styles.cardSnippet}>{entry.message}</span>
+                  </button>
+                );
+              },
+            )}
           </div>
 
           {/* Expanded card view */}
