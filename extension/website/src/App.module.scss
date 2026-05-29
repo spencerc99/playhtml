@@ -59,6 +59,23 @@ $accent-rust: #c4724e;
   text-transform: lowercase;
 }
 
+.portraitLink {
+  display: inline-block;
+  margin-top: 0.75rem;
+  font-family: $font-body;
+  font-size: 1rem;
+  color: $accent-teal;
+  text-decoration: none;
+  border-bottom: 1px solid rgba($accent-teal, 0.3);
+  padding-bottom: 1px;
+  transition: color 0.2s, border-color 0.2s;
+
+  &:hover {
+    color: darken($accent-teal, 8%);
+    border-color: $accent-teal;
+  }
+}
+
 // --- Decorative site cards in the hero (absolutely positioned) ---
 
 .siteCard {

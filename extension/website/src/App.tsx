@@ -4,8 +4,7 @@
 import { useState, useEffect } from "react";
 import { AnimatedTrails } from "@movement/components/AnimatedTrails";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
-import type { CollectionEvent } from "@movement/types";
-import { WORKER_URL } from "@movement/config";
+import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
 import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
@@ -106,18 +105,15 @@ const ANIMATION_SETTINGS = {
 };
 
 export default function App() {
-  const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [viewportSize, setViewportSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
 
-  useEffect(() => {
-    fetch(`${WORKER_URL}/events/recent?type=cursor&limit=${EVENT_LIMIT}`)
-      .then((r) => r.json())
-      .then((data: CollectionEvent[]) => setEvents(data))
-      .catch(() => {});
-  }, []);
+  // Live stream: starts from the server's recent-event replay, then accumulates
+  // new events over the session (capped at EVENT_LIMIT). The trail cycle grows
+  // with the event time span, unlike the old fixed one-shot snapshot.
+  const { events } = useLiveEvents({ maxEvents: EVENT_LIMIT });
 
   useEffect(() => {
     const onResize = () =>
@@ -158,6 +154,9 @@ export default function App() {
           <p className={styles.tagline}>
             turning the internet into a living, shared space
           </p>
+          <a className={styles.portraitLink} href="/portrait">
+            watch the live portrait →
+          </a>
           <div
             className={`${styles.siteCard} ${styles.siteCardTeal}`}
             can-spin="true"
