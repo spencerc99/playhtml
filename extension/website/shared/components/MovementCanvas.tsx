@@ -11,6 +11,7 @@ import React, {
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
+import { LiveTrails } from "./LiveTrails";
 import { SoundEngine } from "../sound/SoundEngine";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
@@ -354,6 +355,7 @@ interface MovementCanvasProps {
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
+  live?: boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -369,6 +371,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   activeVisualizations,
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
+  live = false,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -740,7 +743,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       eventFilter: settings.eventFilter,
       trailStyle: settings.trailStyle,
       chaosIntensity: settings.chaosIntensity,
-      trailAnimationMode: settings.trailAnimationMode,
+      trailAnimationMode: live ? "natural" : settings.trailAnimationMode,
       maxConcurrentTrails: settings.maxConcurrentTrails,
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
@@ -754,6 +757,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.trailStyle,
       settings.chaosIntensity,
       settings.trailAnimationMode,
+      live,
       settings.maxConcurrentTrails,
       settings.overlapFactor,
       settings.minGapBetweenTrails,
@@ -1335,18 +1339,26 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         </svg>
 
-        {showTrails && (
-          <AnimatedTrails
-            key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
-            trailStates={trailStates}
-            timeRange={timeRange}
-            showClickRipples={!showClicks}
-            windowSize={settings.maxConcurrentTrails * 2}
-            soundEngine={paused || !soundEnabled ? null : soundEngineReady}
-            settings={trailAnimationSettings}
-            frozen={paused}
-          />
-        )}
+        {showTrails &&
+          (live ? (
+            <LiveTrails
+              key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={trailStates}
+              windowSize={settings.maxConcurrentTrails * 2}
+              settings={trailAnimationSettings}
+            />
+          ) : (
+            <AnimatedTrails
+              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={trailStates}
+              timeRange={timeRange}
+              showClickRipples={!showClicks}
+              windowSize={settings.maxConcurrentTrails * 2}
+              soundEngine={paused || !soundEnabled ? null : soundEngineReady}
+              settings={trailAnimationSettings}
+              frozen={paused}
+            />
+          ))}
 
         {showClicks && !paused && (
           <AnimatedClicks

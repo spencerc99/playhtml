@@ -83,6 +83,7 @@ const LivePortrait = () => {
         onSetFilters={setFilters}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
+        live
       />
     </>
   );
