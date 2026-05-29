@@ -305,7 +305,7 @@ const ShareConfigSection: React.FC<{
       {(hasMore || saved.length > 0) && (
         <div style={{ marginTop: 6, textAlign: "right" }}>
           <a
-            href="/portrait/saved.html"
+            href="/archive/saved.html"
             target="_blank"
             rel="noreferrer"
             style={{
