@@ -1,3 +1,5 @@
+# ABOUTME: Builds and submits extension store releases from release PRs or manual dispatch.
+# ABOUTME: Guards push-triggered releases against unrelated extension package edits.
 name: Extension Release
 
 on:
@@ -53,28 +55,30 @@ jobs:
             exit 0
           fi
 
-          # For push events: only release if the head commit is the prep
-          # workflow's release commit. This avoids accidental releases from
-          # unrelated edits to extension/package.json (e.g. dependency bumps).
-          FIRST_LINE=$(echo "$HEAD_MSG" | head -n 1)
-          case "$FIRST_LINE" in
-            "extension: release v"*)
-              VERSION=$(node -p "require('./extension/package.json').version")
-              EXPECTED="extension: release v$VERSION"
-              if [ "$FIRST_LINE" = "$EXPECTED" ]; then
-                echo "Release commit detected for v$VERSION."
-                echo "should_release=true" >> "$GITHUB_OUTPUT"
-                echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-              else
-                echo "Release commit message ($FIRST_LINE) doesn't match package.json version ($VERSION). Skipping."
-                echo "should_release=false" >> "$GITHUB_OUTPUT"
-              fi
-              ;;
-            *)
-              echo "Head commit is not a release commit. Skipping."
-              echo "should_release=false" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
+          VERSION=$(node -p "require('./extension/package.json').version")
+          EXPECTED_COMMIT="extension: release v$VERSION"
+          EXPECTED_TITLE="Release: @playhtml/extension v$VERSION"
+
+          MATCHED_RELEASE_MESSAGE=""
+          while IFS= read -r LINE; do
+            case "$LINE" in
+              "$EXPECTED_COMMIT"|"$EXPECTED_TITLE"|"$EXPECTED_TITLE ("*)
+                MATCHED_RELEASE_MESSAGE="$LINE"
+                break
+                ;;
+            esac
+          done <<EOF
+          $HEAD_MSG
+          EOF
+
+          if [ -n "$MATCHED_RELEASE_MESSAGE" ]; then
+            echo "Release message detected for v$VERSION: $MATCHED_RELEASE_MESSAGE"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "Head commit message does not identify extension release v$VERSION. Skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
 
   submit:
     name: Build and submit to stores
@@ -111,11 +115,13 @@ jobs:
 
       - name: Build Chrome zip
         if: env.SKIP_CHROME != 'true'
-        run: WXT_OUT_DIR=publish bun run -C extension wxt zip
+        working-directory: extension
+        run: WXT_OUT_DIR=publish bun run zip
 
       - name: Build Firefox zip
         if: env.SKIP_FIREFOX != 'true'
-        run: WXT_OUT_DIR=publish bun run -C extension wxt zip -b firefox
+        working-directory: extension
+        run: WXT_OUT_DIR=publish bun run zip:firefox
 
       - name: Resolve zip paths
         id: zips
@@ -152,9 +158,9 @@ jobs:
             ARGS+=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
           fi
           if [ "$DRY_RUN" = "true" ]; then
-            bun run wxt submit --dry-run "${ARGS[@]}"
+            bunx wxt submit --dry-run "${ARGS[@]}"
           else
-            bun run wxt submit "${ARGS[@]}"
+            bunx wxt submit "${ARGS[@]}"
           fi
 
       - name: Tag release

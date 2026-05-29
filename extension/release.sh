@@ -49,8 +49,8 @@ PUBLISH_DIR="publish"
 
 echo "Building extension v${VERSION} into ${PUBLISH_DIR}/ ..."
 rm -rf "${PUBLISH_DIR}"
-WXT_OUT_DIR="${PUBLISH_DIR}" bun run wxt zip
-WXT_OUT_DIR="${PUBLISH_DIR}" bun run wxt zip -b firefox
+WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip
+WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip:firefox
 
 CHROME_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-chrome.zip | head -1)
 FIREFOX_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-firefox.zip | head -1)
@@ -70,9 +70,9 @@ fi
 
 echo "Submitting to stores..."
 if [ -n "$DRY_RUN" ]; then
-  bun run wxt submit "$DRY_RUN" "${SUBMIT_ARGS[@]}"
+  bunx wxt submit "$DRY_RUN" "${SUBMIT_ARGS[@]}"
 else
-  bun run wxt submit "${SUBMIT_ARGS[@]}"
+  bunx wxt submit "${SUBMIT_ARGS[@]}"
 fi
 
 echo ""
