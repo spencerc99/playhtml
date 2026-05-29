@@ -12,6 +12,10 @@ export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
 
+/** WebSocket endpoint for the live cursor-event stream. Derived from
+ * WORKER_URL by swapping the http(s) scheme for ws(s). */
+export const STREAM_URL = `${WORKER_URL.replace(/^http/, "ws")}/stream`;
+
 function parseBool(value: string | null): boolean | undefined {
   if (value === null) return undefined;
   const v = value.toLowerCase();
