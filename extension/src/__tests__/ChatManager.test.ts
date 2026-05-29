@@ -267,6 +267,25 @@ describe("ChatManager", () => {
     mgr.destroy();
   });
 
+  it("useCurrentPage adopts the current article as the handle", async () => {
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Octopus", "Octopus");
+    await mgr.init();
+    await mgr.useCurrentPage();
+    expect(mgr.getState().handle).toBe("Octopus");
+    mgr.destroy();
+  });
+
+  it("useCurrentPage is a no-op when not on an article (currentArticleName null)", async () => {
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Wikipedia home", null);
+    await mgr.init();
+    const before = mgr.getState().handle;
+    await mgr.useCurrentPage();
+    expect(mgr.getState().handle).toBe(before);
+    mgr.destroy();
+  });
+
   it("ring-buffer caps total messages at 50", async () => {
     const fake = makeFakePresence();
     const mgr = new ChatManager(fake.api, "Octopus");

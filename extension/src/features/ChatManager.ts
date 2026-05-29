@@ -3,7 +3,7 @@
 
 import type { PresenceAPI, PresenceView } from "@playhtml/common";
 import { containsProfanity } from "@movement/profanity";
-import { getOrCreateHandle, rerollHandle } from "./chat-handle";
+import { getOrCreateHandle, rerollHandle, setHandle } from "./chat-handle";
 
 const CHAT_CHANNEL = "chat";
 const MAX_MESSAGE_LENGTH = 400;
@@ -27,6 +27,9 @@ export type ChatManagerState = {
   messages: ChatMessageView[];
   handle: string;
   articleTitle: string;
+  // The current page's article title when it's a real article (so the user can
+  // adopt it as their handle via "be this page"); null on non-article pages.
+  currentArticleName: string | null;
   isOpen: boolean;
   unread: boolean;
   sendError: string | null;
@@ -66,6 +69,7 @@ export class ChatManager {
   constructor(
     private presence: PresenceAPI,
     articleTitle: string,
+    currentArticleName: string | null = null,
   ) {
     const myIdentity = presence.getMyIdentity();
     const myColor = myIdentity.playerStyle?.colorPalette?.[0] ?? "#8a8279";
@@ -73,6 +77,7 @@ export class ChatManager {
       messages: [],
       handle: "Anonymous",
       articleTitle,
+      currentArticleName,
       isOpen: false,
       unread: false,
       sendError: null,
@@ -171,6 +176,15 @@ export class ChatManager {
   async reroll(): Promise<void> {
     const fresh = await rerollHandle();
     this.setState({ handle: fresh });
+  }
+
+  // Adopt the current article as the handle ("be this page"). No-op when not
+  // on an article.
+  async useCurrentPage(): Promise<void> {
+    const name = this.state.currentArticleName;
+    if (!name) return;
+    const next = await setHandle(name);
+    this.setState({ handle: next });
   }
 
   private onPresences(presences: Map<string, PresenceView>): void {

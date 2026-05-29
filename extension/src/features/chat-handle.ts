@@ -55,3 +55,16 @@ export async function rerollHandle(): Promise<string> {
   await browser.storage.local.set({ [STORAGE_KEY]: fresh });
   return fresh;
 }
+
+// Adopt a specific article title as the handle (e.g. "be this page"). Falls
+// back to a reroll if the chosen title is empty or profane, so we never
+// persist an unusable name.
+export async function setHandle(title: string): Promise<string> {
+  const trimmed = title.trim();
+  if (trimmed.length === 0 || containsProfanity(trimmed)) {
+    return rerollHandle();
+  }
+  cached = trimmed;
+  await browser.storage.local.set({ [STORAGE_KEY]: trimmed });
+  return trimmed;
+}
