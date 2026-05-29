@@ -32,8 +32,9 @@ changesets release-PR flow but on a separate cadence.
   `Release: @playhtml/extension v{version}`. Force-pushes the release branch
   on every prep cycle so the PR always reflects current `main`.
 - Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
-  which builds Chrome + Firefox zips, runs `wxt submit` for both stores, and
-  pushes a `@playhtml/extension@x.y.z` tag.
+  which builds Chrome + Firefox zips, submits Chrome through
+  `scripts/submitChrome.mjs`, submits Firefox through `wxt submit`, and pushes
+  a `@playhtml/extension@x.y.z` tag.
 
 **To bump minor or major instead of patch:** edit `extension/package.json`
 on the release branch directly (in the GitHub PR UI is fine). The prep
@@ -59,6 +60,9 @@ Chrome Web Store:
   invalidated by Google account password change, 6-month inactivity, or
   security events. Regenerate locally with `bun run submit:refresh-chrome-token`
   and update the secret if CI fails with an OAuth error.
+- `CHROME_SKIP_SUBMIT_REVIEW` — optional safety guard. Leave unset for release
+  automation; setting it to `true` makes CI fail instead of uploading a package
+  without submitting it for review.
 
 Firefox AMO:
 - `FIREFOX_EXTENSION_ID`

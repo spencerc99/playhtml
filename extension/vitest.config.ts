@@ -35,6 +35,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
+      "scripts/**/*.test.mjs",
       "website/shared/**/*.test.ts",
       "website/shared/**/*.test.tsx",
     ],

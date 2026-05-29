@@ -1,5 +1,5 @@
 #!/bin/bash
-# ABOUTME: Build both browser zips into ./publish and submit to Chrome + Firefox stores via `wxt submit`.
+# ABOUTME: Build both browser zips into ./publish and submit to Chrome + Firefox stores.
 # ABOUTME: Usage: ./release.sh [--dry-run] [--skip-firefox] [--skip-chrome]
 
 set -euo pipefail
@@ -49,8 +49,8 @@ PUBLISH_DIR="publish"
 
 echo "Building extension v${VERSION} into ${PUBLISH_DIR}/ ..."
 rm -rf "${PUBLISH_DIR}"
-WXT_OUT_DIR="${PUBLISH_DIR}" bun run wxt zip
-WXT_OUT_DIR="${PUBLISH_DIR}" bun run wxt zip -b firefox
+WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip
+WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip:firefox
 
 CHROME_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-chrome.zip | head -1)
 FIREFOX_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-firefox.zip | head -1)
@@ -60,19 +60,23 @@ echo "  chrome:  ${CHROME_ZIP}"
 echo "  firefox: ${FIREFOX_ZIP}"
 echo "  sources: ${SOURCES_ZIP}"
 
-SUBMIT_ARGS=()
+echo "Submitting to stores..."
 if [ "$SKIP_CHROME" -eq 0 ]; then
-  SUBMIT_ARGS+=(--chrome-zip "${CHROME_ZIP}")
-fi
-if [ "$SKIP_FIREFOX" -eq 0 ]; then
-  SUBMIT_ARGS+=(--firefox-zip "${FIREFOX_ZIP}" --firefox-sources-zip "${SOURCES_ZIP}")
+  if [ -n "$DRY_RUN" ]; then
+    DRY_RUN=true CHROME_ZIP="${CHROME_ZIP}" node scripts/submitChrome.mjs
+  else
+    CHROME_ZIP="${CHROME_ZIP}" node scripts/submitChrome.mjs
+  fi
 fi
 
-echo "Submitting to stores..."
-if [ -n "$DRY_RUN" ]; then
-  bun run wxt submit "$DRY_RUN" "${SUBMIT_ARGS[@]}"
-else
-  bun run wxt submit "${SUBMIT_ARGS[@]}"
+FIREFOX_ARGS=()
+if [ "$SKIP_FIREFOX" -eq 0 ]; then
+  FIREFOX_ARGS+=(--firefox-zip "${FIREFOX_ZIP}" --firefox-sources-zip "${SOURCES_ZIP}")
+  if [ -n "$DRY_RUN" ]; then
+    bunx wxt submit "$DRY_RUN" "${FIREFOX_ARGS[@]}"
+  else
+    bunx wxt submit "${FIREFOX_ARGS[@]}"
+  fi
 fi
 
 echo ""
