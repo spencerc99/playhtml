@@ -173,20 +173,6 @@ export default function App() {
             install the extension to try it out!
           </div>
           <DownloadGate />
-          <div className={styles.scrollHint} aria-hidden="true">
-            <svg
-              width="24"
-              height="14"
-              viewBox="0 0 24 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 2l10 10L22 2" />
-            </svg>
-          </div>
         </section>
 
         <section className={styles.section}>

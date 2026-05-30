@@ -126,22 +126,6 @@ $accent-rust: #c4724e;
   }
 }
 
-.scrollHint {
-  margin-top: 32px;
-  color: $text-muted;
-  animation: scrollBounce 2s ease-in-out infinite;
-}
-
-@keyframes scrollBounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(6px);
-  }
-}
-
 // Gradient fade from trails into readable content area
 .section {
   position: relative;
