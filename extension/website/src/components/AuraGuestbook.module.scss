@@ -35,9 +35,8 @@
 
 .visitorTooltip {
   position: absolute;
-  bottom: 100%;
-  transform: translateX(-50%);
-  margin-bottom: 4px;
+  // Anchored to the hovered dot's top (left/top set inline); lift fully above it.
+  transform: translate(-50%, calc(-100% - 4px));
   padding: 3px 8px;
   background: $text;
   color: $bg;
