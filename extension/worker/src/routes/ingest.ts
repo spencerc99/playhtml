@@ -344,7 +344,12 @@ export async function handleIngest(
     // consumers read cursor position from `data`, and tolerate the optional
     // `meta` fields (url/vw/vh/tz) being absent.
     ctx.waitUntil(
-      broadcastLiveEvents(env.LIVE_EVENTS_HUB, typedEvents as unknown as CollectionEvent[]),
+      broadcastLiveEvents(
+        env.LIVE_EVENTS_HUB,
+        env,
+        typedEvents as unknown as CollectionEvent[],
+        Date.now(),
+      ),
     );
 
     return new Response(
