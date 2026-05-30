@@ -74,7 +74,10 @@ const EVENT_LIMIT = 150;
 
 const TRAIL_SETTINGS = {
   trailOpacity: 0.5,
-  randomizeColors: true,
+  // Live trails use each participant's own cursor color (stable across the
+  // continuous re-derivation the stream triggers). Randomized colors would
+  // reshuffle every batch since they're assigned by array-order index.
+  randomizeColors: false,
   filters: [],
   pidFilter: "",
   eventFilter: { move: true, click: true, hold: false, cursor_change: false },
