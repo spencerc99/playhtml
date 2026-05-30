@@ -8,7 +8,6 @@ import {
   TrailPath,
   TrailCursor,
   COMPLETED_OPACITY,
-  EVICTION_FADE_MS,
   type ImperativeTrailHandle,
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
@@ -26,8 +25,9 @@ const MAX_DRAW_MS = 8000;
 const STAGGER_STEP_MS = 350;
 const MAX_STAGGER_MS = 4000;
 
-// How much further each rank beyond the keep-window fades a finished trail.
-const EVICTION_RANK_STEP_MS = 625;
+// Beyond the keep window, this many older trails fade out (by rank) before
+// being removed from the owned set. Bounds the on-screen + DOM trail count.
+const EVICTION_TAIL = 12;
 
 /** Coarse identity used only to detect whether we've already snapshotted a
  * trail. Because LiveTrails freezes the trail's geometry on first sight, an
@@ -178,14 +178,24 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         animationRef.current = requestAnimationFrame(tick);
       };
 
+      // Wrap each frame so a stray exception can never permanently kill the
+      // animation loop — scheduleNext() always runs.
       const tick = (perfNow: number) => {
+        try {
+          runFrame(perfNow);
+        } catch (err) {
+          console.warn("[LiveTrails] frame error:", err);
+        }
+        scheduleNext();
+      };
+
+      const runFrame = (perfNow: number) => {
         // When paused, hold the last drawn frame and accumulate the paused
         // wall-clock duration so the draw clock doesn't leap on resume.
         if (frozenRef.current) {
           if (pauseStartedAtRef.current === null) {
             pauseStartedAtRef.current = perfNow;
           }
-          scheduleNext();
           return;
         }
         if (pauseStartedAtRef.current !== null) {
@@ -195,7 +205,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
         const owned = snapshotsRef.current;
         if (owned.length === 0) {
-          scheduleNext();
           return;
         }
 
@@ -205,11 +214,18 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         const strokeWidth = strokeWidthRef.current;
         const size = windowSizeRef.current;
 
-        // Keep the most-recently-arrived `size` snapshots fully visible; older
-        // ones fade by arrival order.
-        const orders = owned.map((s) => s.order).sort((a, b) => a - b);
-        const keepFromOrder =
-          orders.length > size ? orders[orders.length - size] : -Infinity;
+        // Rank snapshots oldest→newest. The newest `size` are fully visible;
+        // the next EVICTION_TAIL fade out by how deep past the window they are;
+        // anything older is hard-evicted. This count-based cap bounds the owned
+        // set (and the SVG node count) regardless of arrival rate — a rank-only
+        // fade let trails pile up unbounded.
+        const byOrder = [...owned].sort((a, b) => a.order - b.order);
+        const rankByKey = new Map<string, number>();
+        // rank 0 = newest; larger = older.
+        for (let i = 0; i < byOrder.length; i++) {
+          rankByKey.set(byOrder[i].key, byOrder.length - 1 - i);
+        }
+        const evictThreshold = size + EVICTION_TAIL;
 
         const evictedKeys: string[] = [];
 
@@ -217,6 +233,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const { key, trail: ts } = snap;
           const handle = trailHandles.current.get(key);
           const cursorHandle = cursorHandles.current.get(key);
+          const rank = rankByKey.get(key) ?? 0;
+
+          // Past the fade tail — drop it from the owned set entirely.
+          if (rank >= evictThreshold) {
+            handle?.hide();
+            cursorHandle?.hide();
+            evictedKeys.push(key);
+            continue;
+          }
           if (!handle) continue;
 
           // Negative until a staggered trail's start arrives — keep it hidden
@@ -231,15 +256,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const progress = Math.min(1, drawElapsed / drawDuration);
           const isFinished = progress >= 1;
 
-          // Eviction fade for trails older than the keep window.
+          // Fade trails in the eviction tail (older than the keep window) by
+          // how far into the tail they are.
           let evictionFade = 1;
-          if (snap.order < keepFromOrder) {
-            const overflowRank = keepFromOrder - snap.order;
-            const fadeProgress = Math.min(
-              1,
-              (overflowRank * EVICTION_RANK_STEP_MS) / EVICTION_FADE_MS,
-            );
-            evictionFade = Math.max(0, 1 - fadeProgress);
+          if (rank >= size) {
+            const tailDepth = rank - size; // 0 .. EVICTION_TAIL-1
+            evictionFade = Math.max(0, 1 - (tailDepth + 1) / EVICTION_TAIL);
           }
 
           if (evictionFade <= 0) {
@@ -265,7 +287,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             groupFade,
           );
 
-          if (cursorHandle && result && !isFinished) {
+          if (cursorHandle && result && result.cursorPosition && !isFinished) {
             const cpIdx = Math.min(
               Math.floor((ts.trail.points.length - 1) * result.trailProgress),
               ts.trail.points.length - 1,
@@ -289,8 +311,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const drop = new Set(evictedKeys);
           setSnapshots((prev) => prev.filter((s) => !drop.has(s.key)));
         }
-
-        scheduleNext();
       };
 
       const onVisibility = () => scheduleNext();
