@@ -156,7 +156,7 @@
   outline-offset: -2px;
   z-index: 1000 !important;
   // Promote only the few lifted cards to their own layer for a smooth lift,
-  // rather than permanently promoting all 60 pile cards.
+  // rather than permanently promoting every pile card.
   will-change: transform;
 }
 

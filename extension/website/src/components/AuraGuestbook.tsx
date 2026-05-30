@@ -29,7 +29,7 @@ const PILE_RENDER_LIMIT = 120;
 // Visitor dot sizing for the canvas band
 const ORB_MIN_SIZE = 10;
 const ORB_MAX_SIZE = 18;
-// Vertical space per row of dots (leaves room for the +/-12px scatter + glow).
+// Vertical space per row of dots (leaves room for the +/-8px scatter + glow).
 const ORB_ROW_HEIGHT = 32;
 const ORB_BAND_PADDING_Y = 8;
 
