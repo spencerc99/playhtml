@@ -173,9 +173,9 @@ jobs:
             fi
             FIREFOX_ARGS=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
             if [ "$DRY_RUN" = "true" ]; then
-              bunx wxt submit --dry-run "${FIREFOX_ARGS[@]}"
+              scripts/submitFirefox.sh --dry-run "${FIREFOX_ARGS[@]}"
             else
-              bunx wxt submit "${FIREFOX_ARGS[@]}"
+              scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
             fi
           fi
 
