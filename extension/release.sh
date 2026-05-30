@@ -73,9 +73,9 @@ FIREFOX_ARGS=()
 if [ "$SKIP_FIREFOX" -eq 0 ]; then
   FIREFOX_ARGS+=(--firefox-zip "${FIREFOX_ZIP}" --firefox-sources-zip "${SOURCES_ZIP}")
   if [ -n "$DRY_RUN" ]; then
-    bunx wxt submit "$DRY_RUN" "${FIREFOX_ARGS[@]}"
+    scripts/submitFirefox.sh "$DRY_RUN" "${FIREFOX_ARGS[@]}"
   else
-    bunx wxt submit "${FIREFOX_ARGS[@]}"
+    scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
   fi
 fi
 
