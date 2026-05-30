@@ -25,11 +25,13 @@ const MAX_NAME_LENGTH = 20;
 const LOCALSTORAGE_KEY = "wewere-guestbook-submitted";
 // Cap how many cards paint in the fixed-size pile; buried cards are invisible
 // anyway. The expanded carousel still navigates the full entry list.
-const PILE_RENDER_LIMIT = 60;
+const PILE_RENDER_LIMIT = 120;
 // Visitor dot sizing for the canvas band
-const ORB_BAND_HEIGHT = 64;
 const ORB_MIN_SIZE = 10;
 const ORB_MAX_SIZE = 18;
+// Vertical space per row of dots (leaves room for the +/-8px scatter + glow).
+const ORB_ROW_HEIGHT = 32;
+const ORB_BAND_PADDING_Y = 8;
 
 // 3 paper texture variants assigned deterministically per card
 const TEXTURE_CLASSES = ["textureA", "textureB", "textureC"] as const;
@@ -59,9 +61,10 @@ function seededRandom(seed: number): number {
 function getCardTransform(timestamp: number, index: number, total: number) {
   const seed = timestamp + index * 7919;
   const rotation = (seededRandom(seed) - 0.5) * 20; // -10 to +10 deg
-  // Spread range grows with card count: few cards stay tight, many cards fill the area
-  const maxSpreadX = Math.min(40, 5 + total * 3); // 8% to 40% from center
-  const maxSpreadY = Math.min(38, 6 + total * 3); // 9% to 38% from center
+  // Spread range grows with card count: few cards stay tight, many cards fill
+  // the board edge-to-edge so a large pile reads dense rather than clumped.
+  const maxSpreadX = Math.min(48, 5 + total * 3); // up to 48% from center
+  const maxSpreadY = Math.min(44, 6 + total * 3); // up to 44% from center
   const jitterX = (seededRandom(seed + 3) - 0.5) * 2; // -1 to +1
   const jitterY = (seededRandom(seed + 2) - 0.5) * 2; // -1 to +1
   const spreadX = 50 + jitterX * maxSpreadX; // centered at 50%
@@ -165,10 +168,15 @@ interface DotLayout {
   radius: number;
 }
 
-// Place dots left-to-right with deterministic jitter, stopping at the band edge.
-function layoutOrbs(colors: string[], width: number): DotLayout[] {
-  const midY = ORB_BAND_HEIGHT / 2;
+// Place dots left-to-right with deterministic jitter, wrapping to new rows so
+// every dot is shown. Returns the dots plus the total band height they need.
+function layoutOrbs(
+  colors: string[],
+  width: number,
+): { dots: DotLayout[]; height: number } {
   const dots: DotLayout[] = [];
+  if (width === 0) return { dots, height: ORB_ROW_HEIGHT + ORB_BAND_PADDING_Y * 2 };
+  let row = 0;
   let x = ORB_MAX_SIZE / 2;
   for (let i = 0; i < colors.length; i++) {
     const color = colors[i];
@@ -176,14 +184,21 @@ function layoutOrbs(colors: string[], width: number): DotLayout[] {
     const size =
       ORB_MIN_SIZE + seededRandom(seed + 1) * (ORB_MAX_SIZE - ORB_MIN_SIZE);
     const radius = size / 2;
-    const offsetY = (seededRandom(seed) - 0.5) * 24; // -12 to +12px scatter
+    const offsetY = (seededRandom(seed) - 0.5) * 16; // -8 to +8px scatter within row
     const gap = 2 + seededRandom(seed + 2) * 4; // 2-6px between dots
     if (i > 0) x += radius + gap;
-    if (x + radius > width) break; // single band; canvas height is fixed
-    dots.push({ color, x, cy: midY + offsetY, radius });
+    // Wrap to the next row when this dot would exceed the width.
+    if (x + radius > width && i > 0) {
+      row++;
+      x = ORB_MAX_SIZE / 2;
+    }
+    const rowCenterY = ORB_BAND_PADDING_Y + row * ORB_ROW_HEIGHT + ORB_ROW_HEIGHT / 2;
+    dots.push({ color, x, cy: rowCenterY + offsetY, radius });
     x += radius;
   }
-  return dots;
+  const rowCount = row + 1;
+  const height = ORB_BAND_PADDING_Y * 2 + rowCount * ORB_ROW_HEIGHT;
+  return { dots, height };
 }
 
 // Visitor dots — every unique visitor, drawn on one canvas so the glow scales
@@ -204,9 +219,11 @@ const VisitorOrbs = memo(function VisitorOrbs({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const [tooltip, setTooltip] = useState<{ x: number; text: string } | null>(
-    null,
-  );
+  const [tooltip, setTooltip] = useState<{
+    x: number;
+    y: number;
+    text: string;
+  } | null>(null);
 
   const allColors = useMemo(() => {
     const seen = new Set<string>();
@@ -225,7 +242,10 @@ const VisitorOrbs = memo(function VisitorOrbs({
     return colors;
   }, [entries, cursors.color]);
 
-  const dots = useMemo(() => layoutOrbs(allColors, width), [allColors, width]);
+  const { dots, height: bandHeight } = useMemo(
+    () => layoutOrbs(allColors, width),
+    [allColors, width],
+  );
 
   // Track the available width so the dot band fills the container responsively
   useEffect(() => {
@@ -243,11 +263,11 @@ const VisitorOrbs = memo(function VisitorOrbs({
     if (!canvas || width === 0) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
-    canvas.height = ORB_BAND_HEIGHT * dpr;
+    canvas.height = bandHeight * dpr;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, width, ORB_BAND_HEIGHT);
+    ctx.clearRect(0, 0, width, bandHeight);
 
     for (const { color, x, cy, radius } of dots) {
       const isHovered = hoveredColor === color;
@@ -274,7 +294,7 @@ const VisitorOrbs = memo(function VisitorOrbs({
       ctx.arc(x, cy, drawRadius, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [dots, width, hoveredColor]);
+  }, [dots, width, bandHeight, hoveredColor]);
 
   // Hit-test the pointer against dot positions; report the hovered color up.
   // Last color reported up, so mousemove only updates state on transitions
@@ -310,6 +330,7 @@ const VisitorOrbs = memo(function VisitorOrbs({
         const firstVisit = firstVisitByColor.get(found.color);
         setTooltip({
           x: found.x,
+          y: found.cy - found.radius,
           text:
             firstVisit !== undefined
               ? formatVisitTooltip(firstVisit)
@@ -330,18 +351,18 @@ const VisitorOrbs = memo(function VisitorOrbs({
 
   return (
     <div className={styles.visitorOrbs} ref={wrapRef}>
-      <div className={styles.visitorOrbBand} style={{ width }}>
+      <div className={styles.visitorOrbBand} style={{ width, height: bandHeight }}>
         <canvas
           ref={canvasRef}
           className={styles.visitorOrbCanvas}
-          style={{ width, height: ORB_BAND_HEIGHT }}
+          style={{ width, height: bandHeight }}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         />
         {tooltip && (
           <span
             className={styles.visitorTooltip}
-            style={{ left: tooltip.x }}
+            style={{ left: tooltip.x, top: tooltip.y }}
             role="tooltip"
           >
             {tooltip.text}

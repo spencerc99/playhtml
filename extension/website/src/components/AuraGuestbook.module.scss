@@ -35,9 +35,8 @@
 
 .visitorTooltip {
   position: absolute;
-  bottom: 100%;
-  transform: translateX(-50%);
-  margin-bottom: 4px;
+  // Anchored to the hovered dot's top (left/top set inline); lift fully above it.
+  transform: translate(-50%, calc(-100% - 4px));
   padding: 3px 8px;
   background: $text;
   color: $bg;
@@ -157,7 +156,7 @@
   outline-offset: -2px;
   z-index: 1000 !important;
   // Promote only the few lifted cards to their own layer for a smooth lift,
-  // rather than permanently promoting all 60 pile cards.
+  // rather than permanently promoting every pile card.
   will-change: transform;
 }
 
