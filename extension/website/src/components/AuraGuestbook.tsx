@@ -25,7 +25,7 @@ const MAX_NAME_LENGTH = 20;
 const LOCALSTORAGE_KEY = "wewere-guestbook-submitted";
 // Cap how many cards paint in the fixed-size pile; buried cards are invisible
 // anyway. The expanded carousel still navigates the full entry list.
-const PILE_RENDER_LIMIT = 60;
+const PILE_RENDER_LIMIT = 120;
 // Visitor dot sizing for the canvas band
 const ORB_BAND_HEIGHT = 64;
 const ORB_MIN_SIZE = 10;
@@ -59,9 +59,10 @@ function seededRandom(seed: number): number {
 function getCardTransform(timestamp: number, index: number, total: number) {
   const seed = timestamp + index * 7919;
   const rotation = (seededRandom(seed) - 0.5) * 20; // -10 to +10 deg
-  // Spread range grows with card count: few cards stay tight, many cards fill the area
-  const maxSpreadX = Math.min(40, 5 + total * 3); // 8% to 40% from center
-  const maxSpreadY = Math.min(38, 6 + total * 3); // 9% to 38% from center
+  // Spread range grows with card count: few cards stay tight, many cards fill
+  // the board edge-to-edge so a large pile reads dense rather than clumped.
+  const maxSpreadX = Math.min(48, 5 + total * 3); // up to 48% from center
+  const maxSpreadY = Math.min(44, 6 + total * 3); // up to 44% from center
   const jitterX = (seededRandom(seed + 3) - 0.5) * 2; // -1 to +1
   const jitterY = (seededRandom(seed + 2) - 0.5) * 2; // -1 to +1
   const spreadX = 50 + jitterX * maxSpreadX; // centered at 50%
