@@ -34,10 +34,18 @@ export function useLiveEvents(
   const maxRef = useRef(maxEvents);
   maxRef.current = maxEvents;
 
-  // Event ids already accumulated, so a reconnect's buffer replay (the server
-  // re-sends its whole ring buffer on every connect) doesn't append events we
-  // already have — which would draw the same trail twice, "retracing" it.
+  // Ids of events we've already accepted, so the server's buffer replay (it
+  // re-sends its whole ring buffer on EVERY connect, including reconnects)
+  // never re-adds an event we already showed — which would make an aged-out
+  // trail disappear and then reappear. This must remember far more ids than the
+  // display holds: a reconnect can replay events that already scrolled off the
+  // visible window, so the seen-set is bounded by its own FIFO (evict oldest),
+  // NOT rebuilt from the current event array.
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const seenOrderRef = useRef<string[]>([]);
+  // Comfortably larger than both the display cap and the server ring buffer, so
+  // any id the server could replay is still remembered.
+  const SEEN_LIMIT = 2000;
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -59,20 +67,27 @@ export function useLiveEvents(
           const frame = JSON.parse(msg.data as string) as StreamFrame;
           if (!Array.isArray(frame.events) || frame.events.length === 0) return;
           const seen = seenIdsRef.current;
+          const order = seenOrderRef.current;
           const incoming = frame.events.filter((e) => {
             if (!e.id || seen.has(e.id)) return false;
             seen.add(e.id);
+            order.push(e.id);
             return true;
           });
+          // Bound the seen-set by its own FIFO, evicting the OLDEST ids — never
+          // by the display array. Evicted ids are old enough that the server's
+          // ring buffer no longer holds them, so they can't be replayed.
+          if (order.length > SEEN_LIMIT) {
+            const removeCount = order.length - SEEN_LIMIT;
+            for (let i = 0; i < removeCount; i++) seen.delete(order[i]);
+            order.splice(0, removeCount);
+          }
           if (incoming.length === 0) return;
           setEvents((prev) => {
             const next = [...prev, ...incoming];
-            if (next.length <= maxRef.current) return next;
-            const trimmed = next.slice(next.length - maxRef.current);
-            // Keep the id set bounded to what we still hold so it can't grow
-            // without limit over a long session.
-            seenIdsRef.current = new Set(trimmed.map((e) => e.id));
-            return trimmed;
+            return next.length > maxRef.current
+              ? next.slice(next.length - maxRef.current)
+              : next;
           });
         } catch {
           // ignore malformed frames
