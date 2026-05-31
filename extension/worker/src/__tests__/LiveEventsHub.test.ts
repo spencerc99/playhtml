@@ -74,9 +74,10 @@ describe('LiveEventsHub', () => {
         body: JSON.stringify({ events }),
       }),
     );
-    expect(hub.bufferSizeForTest()).toBe(200);
-    expect(hub.bufferForTest()[0].id).toBe('e50');
-    expect(hub.bufferForTest()[199].id).toBe('e249');
+    // BUFFER_SIZE = 60: the most recent 60 of 250 are retained.
+    expect(hub.bufferSizeForTest()).toBe(60);
+    expect(hub.bufferForTest()[0].id).toBe('e190');
+    expect(hub.bufferForTest()[59].id).toBe('e249');
   });
 
   it('replays the buffer to a newly connected socket', async () => {

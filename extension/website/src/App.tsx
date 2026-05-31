@@ -70,7 +70,7 @@ function RisoTexture() {
   );
 }
 
-const EVENT_LIMIT = 150;
+const EVENT_LIMIT = 80;
 
 const TRAIL_SETTINGS = {
   trailOpacity: 0.5,

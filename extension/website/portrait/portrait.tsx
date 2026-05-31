@@ -16,7 +16,7 @@ import type { FilterChip } from "../shared/utils/eventUtils";
 const noOpFetch = () => {};
 
 const LivePortrait = () => {
-  const { events } = useLiveEvents({ maxEvents: 500 });
+  const { events } = useLiveEvents({ maxEvents: 150 });
 
   const [filters, setFilters] = useState<FilterChip[]>(() => {
     const fromUrl = parseFiltersFromUrl();

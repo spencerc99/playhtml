@@ -4,7 +4,11 @@
 import type { Env } from '../lib/supabase';
 import type { CollectionEvent } from '@playhtml/extension-types';
 
-const BUFFER_SIZE = 200;
+// Recent cursor events replayed to a client on connect. Kept small so the live
+// portrait shows roughly the last minute or two of activity ("now"), not a long
+// rolling history — a larger buffer made one person's many page-visits all
+// appear at once.
+const BUFFER_SIZE = 60;
 
 interface BroadcastBody {
   events: CollectionEvent[];
