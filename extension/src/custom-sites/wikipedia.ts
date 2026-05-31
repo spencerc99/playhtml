@@ -8,7 +8,13 @@ import { FollowManager } from "../features/FollowManager";
 export interface WikiPresenceFields {
   navigatingTo?: { url: string; title: string } | null;
   following?: string | null;
-  page?: { url: string; title: string; color: string; pid?: string } | null;
+  page?: {
+    url: string;
+    title: string;
+    color: string;
+    pid?: string;
+    lastSeenAt?: number;
+  } | null;
 }
 
 export type WikiPresenceView = PresenceView & WikiPresenceFields;
@@ -273,14 +279,26 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   let lobbyPresence = deps.presence; // fallback to page presence if lobby unavailable
   if (typeof deps.createPresenceRoom === "function") {
     const lobby = deps.createPresenceRoom("lobby");
-    lobby.presence.setMyPresence("page", {
-      url: location.href,
-      title: document.title.replace(/ - Wikipedia$/, ""),
-      color: deps.playerColor,
-      pid: lobby.presence.getMyIdentity().publicKey,
-    });
+    const publishLobbyPage = () => {
+      lobby.presence.setMyPresence("page", {
+        url: location.href,
+        title: document.title.replace(/ - Wikipedia$/, ""),
+        color: deps.playerColor,
+        pid: lobby.presence.getMyIdentity().publicKey,
+        lastSeenAt: Date.now(),
+      });
+    };
+    publishLobbyPage();
+    const lobbyHeartbeat = window.setInterval(publishLobbyPage, 10_000);
+    window.addEventListener("focus", publishLobbyPage);
+    document.addEventListener("visibilitychange", publishLobbyPage);
     lobbyPresence = lobby.presence;
-    cleanups.push(() => lobby.destroy());
+    cleanups.push(() => {
+      window.clearInterval(lobbyHeartbeat);
+      window.removeEventListener("focus", publishLobbyPage);
+      document.removeEventListener("visibilitychange", publishLobbyPage);
+      lobby.destroy();
+    });
   }
 
   // === Tab-focus dimming for remote cursors ===
