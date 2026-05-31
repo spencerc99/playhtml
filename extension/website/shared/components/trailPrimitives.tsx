@@ -25,15 +25,29 @@ export const COMPLETION_FADE_MS = 3000;
 export const TAIL_LENGTH = 1000;
 
 // Compute visible points and path data for a trail at a given elapsed time.
-export function computeTrailFrame(trailState: TrailState, elapsedTimeMs: number) {
+export function computeTrailFrame(
+  trailState: TrailState,
+  elapsedTimeMs: number,
+  // When provided, the trail's progress (0..1) is used directly instead of
+  // deriving it from `elapsedTimeMs - startOffsetMs`. The live animator passes
+  // this so the frame never depends on `startOffsetMs` matching across the
+  // render boundary (the handle's closure can briefly hold a different
+  // trailState than the caller used to compute elapsed — a stale `startOffsetMs`
+  // would otherwise make this momentarily return null and flicker the trail).
+  progressOverride?: number,
+) {
   const { trail, startOffsetMs, durationMs, variedPoints } = trailState;
 
   if (trail.points.length < 2 || variedPoints.length < 2) return null;
 
-  const trailElapsedMs = elapsedTimeMs - startOffsetMs;
-  if (trailElapsedMs < 0) return null;
-
-  const trailProgress = Math.min(1, trailElapsedMs / durationMs);
+  let trailProgress: number;
+  if (progressOverride !== undefined) {
+    trailProgress = Math.min(1, Math.max(0, progressOverride));
+  } else {
+    const trailElapsedMs = elapsedTimeMs - startOffsetMs;
+    if (trailElapsedMs < 0) return null;
+    trailProgress = Math.min(1, trailElapsedMs / durationMs);
+  }
   const isFinished = trailProgress >= 1;
 
   const totalVariedPoints = variedPoints.length;
@@ -93,6 +107,9 @@ export interface ImperativeTrailHandle {
     trailOpacity: number,
     strokeWidth: number,
     evictionFade: number,
+    // Live animator passes 0..1 directly so the frame doesn't depend on this
+    // handle's `trailState.startOffsetMs` matching the caller's.
+    progressOverride?: number,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
   getGroup(): SVGGElement | null;
   hide(): void;
@@ -145,7 +162,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
         getGroup() {
           return groupRef.current;
         },
-        update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade) {
+        update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, progressOverride) {
           const group = groupRef.current;
           if (!group) return null;
 
@@ -155,10 +172,12 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
           }
 
           const isPastEnd =
-            elapsedTimeMs - trailState.startOffsetMs >= trailState.durationMs;
+            progressOverride !== undefined
+              ? progressOverride >= 1
+              : elapsedTimeMs - trailState.startOffsetMs >= trailState.durationMs;
           let frame = isPastEnd ? finishedFrameRef.current : null;
           if (!frame) {
-            frame = computeTrailFrame(trailState, elapsedTimeMs);
+            frame = computeTrailFrame(trailState, elapsedTimeMs, progressOverride);
             if (isPastEnd) {
               finishedFrameRef.current = frame;
             }

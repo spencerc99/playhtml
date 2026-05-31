@@ -284,16 +284,20 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const baseOpacity = isFinished ? COMPLETED_OPACITY : 1;
           const groupFade = baseOpacity * evictionFade;
 
-          // Drive computeTrailFrame by our arrival progress: passing
-          // (progress*durationMs + startOffsetMs) makes the primitive compute
-          // exactly progress*durationMs of trail elapsed (startOffsetMs cancels).
-          const frameElapsed = progress * ts.durationMs + ts.startOffsetMs;
+          // Drive the frame by progress directly (the override) so it never
+          // depends on the handle's `startOffsetMs` matching ours — the handle's
+          // closure can briefly hold a different snapshot during a geometry
+          // refresh. `elapsedTimeMs` is passed for the unused legacy path only.
           const result = handle.update(
-            frameElapsed,
+            0,
             trailOpacity,
             strokeWidth,
             groupFade,
+            progress,
           );
+          // Defensive: a transient null (e.g. mid-refresh, before the handle's
+          // SVG group is committed) should NOT blank a trail that ought to be
+          // visible — keep its last drawn frame and try again next tick.
 
           if (cursorHandle && result && result.cursorPosition && !isFinished) {
             const cpIdx = Math.min(
