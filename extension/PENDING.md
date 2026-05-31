@@ -8,3 +8,5 @@ file back to just the header. Merge that PR to ship.
 
 Format suggestion: "- short user-facing description (#PR)"
 -->
+
+- Make the Wikipedia jump portal ignore stale page presence so it only sends you to currently active readers.
