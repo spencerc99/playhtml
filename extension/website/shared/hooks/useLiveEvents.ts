@@ -34,6 +34,11 @@ export function useLiveEvents(
   const maxRef = useRef(maxEvents);
   maxRef.current = maxEvents;
 
+  // Event ids already accumulated, so a reconnect's buffer replay (the server
+  // re-sends its whole ring buffer on every connect) doesn't append events we
+  // already have — which would draw the same trail twice, "retracing" it.
+  const seenIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     let ws: WebSocket | null = null;
     let closed = false;
@@ -53,11 +58,21 @@ export function useLiveEvents(
         try {
           const frame = JSON.parse(msg.data as string) as StreamFrame;
           if (!Array.isArray(frame.events) || frame.events.length === 0) return;
+          const seen = seenIdsRef.current;
+          const incoming = frame.events.filter((e) => {
+            if (!e.id || seen.has(e.id)) return false;
+            seen.add(e.id);
+            return true;
+          });
+          if (incoming.length === 0) return;
           setEvents((prev) => {
-            const next = [...prev, ...frame.events];
-            return next.length > maxRef.current
-              ? next.slice(next.length - maxRef.current)
-              : next;
+            const next = [...prev, ...incoming];
+            if (next.length <= maxRef.current) return next;
+            const trimmed = next.slice(next.length - maxRef.current);
+            // Keep the id set bounded to what we still hold so it can't grow
+            // without limit over a long session.
+            seenIdsRef.current = new Set(trimmed.map((e) => e.id));
+            return trimmed;
           });
         } catch {
           // ignore malformed frames
