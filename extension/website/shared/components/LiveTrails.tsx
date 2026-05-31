@@ -29,14 +29,12 @@ const MAX_STAGGER_MS = 4000;
 // being removed from the owned set. Bounds the on-screen + DOM trail count.
 const EVICTION_TAIL = 12;
 
-/** Coarse identity used only to detect whether we've already snapshotted a
- * trail. Because LiveTrails freezes the trail's geometry on first sight, an
- * imperfect key (a re-derived trail occasionally captured twice) is harmless —
- * it never causes the flashing that a render-key change would. Start time +
- * first point is stable enough that the common case is one snapshot per trail. */
+/** Stable identity for a trail: participant + url + segment start, assigned by
+ * useCursorTrails. An evolving trail (same person continuing to move) keeps one
+ * identity as the event window slides, so it's snapshotted once and updated in
+ * place rather than re-captured as overlapping copies. */
 function trailKey(ts: TrailState): string {
-  const p0 = ts.trail.points[0];
-  return `${ts.trail.startTime}:${p0?.x ?? 0}:${p0?.y ?? 0}`;
+  return ts.trail.id;
 }
 
 /** Tiny deterministic hash of a string to a small int, for per-trail variation. */
@@ -126,18 +124,22 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const pausedAccumMsRef = useRef(0);
     const pauseStartedAtRef = useRef<number | null>(null);
 
-    // Capture newly-arrived trails into the owned snapshot set. Existing keys
-    // are ignored — their frozen snapshot is kept, so upstream re-derivation
-    // (which shifts trail boundaries as the event window slides) can never
-    // change or unmount a trail that's already on screen.
+    // Reconcile the owned snapshot set with the latest derivation. A trail's
+    // identity (trail.id = pid|url|segmentStart) is stable across re-derivations,
+    // so: a new id is captured (with arrival stagger + a fresh order); a known
+    // id has its geometry refreshed in place — the SAME person continuing to
+    // move grows ONE trail rather than spawning overlapping copies — while its
+    // seenAt/order (its lifecycle) stay fixed.
     useEffect(() => {
       if (trailStates.length === 0) return;
+      const latestByKey = new Map<string, TrailState>();
+      for (const ts of trailStates) latestByKey.set(trailKey(ts), ts);
+
       const fresh: Snapshot[] = [];
       let batchIndex = 0;
       const now =
         typeof performance !== "undefined" ? performance.now() : 0;
-      for (const ts of trailStates) {
-        const key = trailKey(ts);
+      for (const [key, ts] of latestByKey) {
         if (seenKeysRef.current.has(key)) continue;
         seenKeysRef.current.add(key);
         const stagger = Math.min(MAX_STAGGER_MS, batchIndex * STAGGER_STEP_MS);
@@ -149,9 +151,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         });
         batchIndex++;
       }
-      if (fresh.length > 0) {
-        setSnapshots((prev) => [...prev, ...fresh]);
-      }
+
+      setSnapshots((prev) => {
+        // Refresh geometry of existing snapshots whose trail grew.
+        const refreshed = prev.map((s) => {
+          const latest = latestByKey.get(s.key);
+          return latest && latest !== s.trail ? { ...s, trail: latest } : s;
+        });
+        return fresh.length > 0 ? [...refreshed, ...fresh] : refreshed;
+      });
     }, [trailStates]);
 
     useEffect(() => {

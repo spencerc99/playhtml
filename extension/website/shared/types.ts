@@ -33,6 +33,10 @@ export interface Trail {
   color: string;
   opacity: number;
   angle?: number;
+  /** Stable identity for this trail across re-derivations: participant + url +
+   * the segment's start. Lets the live animator track an evolving trail as one
+   * trail instead of re-snapshotting it as the event window slides. */
+  id: string;
   startTime: number;
   endTime: number;
   clicks: Array<{

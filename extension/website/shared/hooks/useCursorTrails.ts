@@ -160,7 +160,7 @@ export function useCursorTrails(
     });
 
     let trailColorIndex = 0;
-    eventsByParticipantAndUrl.forEach((groupEvents) => {
+    eventsByParticipantAndUrl.forEach((groupEvents, groupKey) => {
       groupEvents.sort((a, b) => a.ts - b.ts);
 
       const pid = groupEvents[0].meta.pid;
@@ -259,6 +259,7 @@ export function useCursorTrails(
               points: [...currentTrail],
               color: getTrailColor(startTime),
               opacity: 1,
+              id: `${groupKey}|${startTime}`,
               startTime,
               endTime,
               clicks: [...currentClicks],
@@ -316,6 +317,7 @@ export function useCursorTrails(
           points: currentTrail,
           color: getTrailColor(startTime),
           opacity: 1,
+          id: `${groupKey}|${startTime}`,
           startTime,
           endTime,
           clicks: [...currentClicks],
