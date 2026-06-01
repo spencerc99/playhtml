@@ -151,7 +151,7 @@ jobs:
 
           - Bumps \`extension/package.json\` to **$VERSION**
           - Moves bullets from \`PENDING.md\` into \`CHANGELOG.md\`
-          - Triggers the Extension Release workflow on merge → builds Chrome + Firefox zips, submits to both stores, tags \`@playhtml/extension@$VERSION\`
+          - Triggers the Extension Release workflow on merge → builds Chrome + Firefox zips, submits to Chrome, Edge, and Firefox, tags \`@playhtml/extension@$VERSION\`
 
           ## Changes in this release
 

@@ -18,6 +18,10 @@ on:
         description: "Skip Chrome submission"
         type: boolean
         default: false
+      skip-edge:
+        description: "Skip Edge submission"
+        type: boolean
+        default: false
       skip-firefox:
         description: "Skip Firefox submission"
         type: boolean
@@ -88,6 +92,7 @@ jobs:
     env:
       DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
       SKIP_CHROME: ${{ inputs.skip-chrome && 'true' || 'false' }}
+      SKIP_EDGE: ${{ inputs.skip-edge && 'true' || 'false' }}
       SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
       VERSION: ${{ needs.guard.outputs.version }}
     steps:
@@ -114,7 +119,7 @@ jobs:
         run: bun run build-packages
 
       - name: Build Chrome zip
-        if: env.SKIP_CHROME != 'true'
+        if: env.SKIP_CHROME != 'true' || env.SKIP_EDGE != 'true'
         working-directory: extension
         run: |
           WXT_OUT_DIR=publish bun run zip
@@ -149,6 +154,10 @@ jobs:
           CHROME_DEPLOY_PERCENTAGE: ${{ secrets.CHROME_DEPLOY_PERCENTAGE }}
           CHROME_REVIEW_EXEMPTION: ${{ secrets.CHROME_REVIEW_EXEMPTION }}
           CHROME_SKIP_SUBMIT_REVIEW: ${{ secrets.CHROME_SKIP_SUBMIT_REVIEW }}
+          EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+          EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+          EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+          EDGE_CERTIFICATION_NOTES: ${{ secrets.EDGE_CERTIFICATION_NOTES }}
           FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
           FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
           FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
@@ -162,6 +171,14 @@ jobs:
               exit 1
             fi
             node scripts/submitChrome.mjs
+          fi
+
+          if [ "$SKIP_EDGE" != "true" ]; then
+            if [ -z "$CHROME_ZIP" ]; then
+              echo "Chrome zip was not found for Edge submission."
+              exit 1
+            fi
+            EDGE_ZIP="$CHROME_ZIP" node scripts/submitEdge.mjs
           fi
 
           if [ "$SKIP_FIREFOX" != "true" ]; then
