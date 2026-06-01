@@ -706,10 +706,6 @@ export class PartyServer extends YServer {
     const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
     await this.setEmptyRoomCompactAfter(compactAfter);
     await this.scheduleNextAlarm();
-
-    console.log(
-      `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
-    );
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -1206,11 +1202,6 @@ export class PartyServer extends YServer {
       );
     }
 
-    // Log structured information about the save
-    console.log(
-      `[PartyServer] Autosave: room=${this.name}, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(2)} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
-    );
-
     // Save the document to the database
     const { data: _data, error } = await supabase.from("documents").upsert(
       {
@@ -1225,15 +1216,10 @@ export class PartyServer extends YServer {
         `[PartyServer] Autosave failed for room ${this.name}:`,
         error
       );
-    } else {
-      console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
     }
 
     if (!error) {
       if (this.consumeCompactionAutosave(documentBase64)) {
-        console.log(
-          `[PartyServer] Compaction autosave completed: room=${this.name}`
-        );
         return;
       }
     }
@@ -1300,9 +1286,6 @@ export class PartyServer extends YServer {
       })
     ) {
       await this.setEmergencyCompactCheckAfter(recheckAfter);
-      console.log(
-        `[PartyServer] Emergency compaction skipped: room=${this.name}, ${documentSize} -> ${compactedDocument.afterSize} bytes, nextCheckAt=${recheckAfter}`
-      );
       return false;
     }
 
@@ -1492,15 +1475,10 @@ export class PartyServer extends YServer {
             headers: { "content-type": "application/json" },
           });
         }
-        const beforeSize = encodeDocToBase64(yDoc).length;
         const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
         yDoc.transact(
           () => this.assignPlaySubtrees(yDoc, subtreesToApply),
           ORIGIN
-        );
-        const afterSize = encodeDocToBase64(yDoc).length;
-        console.log(
-          `[Bridge] Applied subtrees from ${sender} (${originKind}). Size: ${beforeSize} -> ${afterSize}`
         );
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
@@ -1778,9 +1756,6 @@ export class PartyServer extends YServer {
         )
       ) {
         await this.clearEmptyRoomCompactAfter();
-        console.log(
-          `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes`
-        );
         return;
       }
 
