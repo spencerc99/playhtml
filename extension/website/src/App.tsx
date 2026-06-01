@@ -18,8 +18,12 @@ const ALIVE_INTERNET_ESSAY_URL =
 const BENCHES_ESSAY_URL =
   "https://news.spencer.place/p/the-internet-has-no-benches";
 
-const HELP_MAILTO =
-  "mailto:hi@spencer.place?subject=help%20build%20we%20were%20online";
+const DISCORD_INVITE = "https://discord.gg/SKbsSf4ptU";
+// Email assembled at click-time so scrapers don't see a literal mailto: in the
+// HTML. Spencer was getting a lot of bot mail off the plain mailto link.
+const HELP_EMAIL_USER = "hi";
+const HELP_EMAIL_DOMAIN = "spencer.place";
+const HELP_EMAIL_SUBJECT = "help build we were online";
 
 function RisoTexture() {
   return (
@@ -334,9 +338,35 @@ export default function App() {
             I'm looking for people who want to help build this together.
             Designers, artists, writers, all internet hopefuls welcome.
           </p>
-          <a href={HELP_MAILTO} className={styles.helpBuildCta}>
-            say hi → hi@spencer.place
-          </a>
+          <div className={styles.helpBuildActions}>
+            <a
+              href={DISCORD_INVITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${styles.helpBuildCta} ${styles.helpBuildCtaPrimary}`}
+            >
+              join the playhtml discord
+            </a>
+            <button
+              type="button"
+              className={styles.helpBuildEmailLink}
+              onClick={(e) => {
+                const addr = `${HELP_EMAIL_USER}@${HELP_EMAIL_DOMAIN}`;
+                const href = `mailto:${addr}?subject=${encodeURIComponent(HELP_EMAIL_SUBJECT)}`;
+                window.location.href = href;
+                e.currentTarget.blur();
+              }}
+              aria-label="email spencer"
+            >
+              or email directly →{" "}
+              <span className={styles.helpBuildEmailAddr}>
+                {HELP_EMAIL_USER}
+                <span aria-hidden="true"> [at] </span>
+                <span className={styles.srOnly}>@</span>
+                {HELP_EMAIL_DOMAIN}
+              </span>
+            </button>
+          </div>
         </section>
 
         <section className={styles.section}>
