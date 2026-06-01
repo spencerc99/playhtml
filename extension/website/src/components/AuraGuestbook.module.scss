@@ -18,10 +18,43 @@
 // --- Visitor dots — every visitor, drawn on one canvas ---
 
 .visitorOrbs {
+  // Break out of the section's max-width and side padding so the band runs
+  // edge-to-edge like the corkboard below.
+  width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 0 12px;
+}
+
+// The band has a fixed height; the inner canvas draws wider than the viewport
+// so the user can scroll horizontally to see all visitors.
+.visitorOrbViewport {
+  position: relative;
   width: 100%;
-  padding: 4px 16px 12px;
-  display: flex;
-  justify-content: center;
+  height: 220px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  // Fade the left and right edges to suggest content extends past the viewport.
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+
+  @media (max-width: 768px) {
+    height: 180px;
+  }
 }
 
 .visitorOrbBand {
@@ -97,11 +130,18 @@
   border-radius: 6px;
   padding: 16px;
 
-  @media (max-width: 480px) {
+  @media (max-width: 768px) {
     width: 100vw;
     border-radius: 0;
     padding: 16px 0;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    // Subtle gradient at the right edge hints there's more to see
+    background:
+      linear-gradient(to right, transparent 92%, rgba(0, 0, 0, 0.12) 100%),
+      url("/corkboard-2.png") left center / auto 100% repeat-x;
   }
 }
 
@@ -111,6 +151,13 @@
   height: 360px;
   transition: opacity 0.3s ease;
   overflow: visible;
+
+  @media (max-width: 768px) {
+    // Force a wider pile than the viewport so cards spread out
+    // and the user can scroll horizontally to discover more.
+    width: 900px;
+    height: 420px;
+  }
 }
 
 .pileDimmed {
@@ -198,6 +245,16 @@
   gap: 12px;
   z-index: 200;
   animation: fadeIn 0.3s ease forwards;
+
+  @media (max-width: 768px) {
+    // On mobile the pile container scrolls; pin the expanded card to the
+    // viewport instead of the scrolled pile so it's always centered.
+    position: fixed;
+    inset: 0;
+    background: rgba($bg, 0.85);
+    backdrop-filter: blur(6px);
+    padding: 24px;
+  }
 }
 
 @keyframes fadeIn {
@@ -469,4 +526,17 @@
   text-align: center;
   margin-top: 8px;
   opacity: 0.6;
+}
+
+.arrowHintDesktop {
+  @media (max-width: 768px) {
+    display: none;
+  }
+}
+
+.arrowHintMobile {
+  display: none;
+  @media (max-width: 768px) {
+    display: inline;
+  }
 }

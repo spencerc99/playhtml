@@ -29,9 +29,11 @@ const PILE_RENDER_LIMIT = 120;
 // Visitor dot sizing for the canvas band
 const ORB_MIN_SIZE = 10;
 const ORB_MAX_SIZE = 18;
-// Vertical space per row of dots (leaves room for the +/-8px scatter + glow).
-const ORB_ROW_HEIGHT = 32;
-const ORB_BAND_PADDING_Y = 8;
+// Nominal row spacing; actual dot Y is heavily jittered so rows blur together.
+const ORB_ROW_HEIGHT = 28;
+const ORB_BAND_PADDING_Y = 18;
+// How far a dot can drift vertically from its row center, as a fraction of row height.
+const ORB_ROW_JITTER = 0.85;
 
 // 3 paper texture variants assigned deterministically per card
 const TEXTURE_CLASSES = ["textureA", "textureB", "textureC"] as const;
@@ -170,35 +172,72 @@ interface DotLayout {
 
 // Place dots left-to-right with deterministic jitter, wrapping to new rows so
 // every dot is shown. Returns the dots plus the total band height they need.
+// Pack dots into a fixed-height horizontal band. Each "column" of dots stacks
+// vertically within `height`, with heavy jitter so the column grid dissolves.
+// Returns dots plus the total layout width — the parent makes that scrollable.
 function layoutOrbs(
   colors: string[],
-  width: number,
-): { dots: DotLayout[]; height: number } {
+  height: number,
+): { dots: DotLayout[]; width: number } {
   const dots: DotLayout[] = [];
-  if (width === 0) return { dots, height: ORB_ROW_HEIGHT + ORB_BAND_PADDING_Y * 2 };
+  if (height === 0) return { dots, width: 0 };
+  // How many dots stack vertically per column. Picked so the column-row height
+  // is similar to ORB_ROW_HEIGHT regardless of band height.
+  const innerHeight = Math.max(1, height - ORB_BAND_PADDING_Y * 2);
+  const rowsPerCol = Math.max(2, Math.floor(innerHeight / ORB_ROW_HEIGHT));
+  const colRowHeight = innerHeight / rowsPerCol;
+  const maxJitter = colRowHeight * ORB_ROW_JITTER;
+
+  let col = 0;
   let row = 0;
-  let x = ORB_MAX_SIZE / 2;
+  let x = ORB_MAX_SIZE;
+  let colMaxRadius = 0;
+
   for (let i = 0; i < colors.length; i++) {
     const color = colors[i];
     const seed = i * 7919 + color.charCodeAt(1);
     const size =
       ORB_MIN_SIZE + seededRandom(seed + 1) * (ORB_MAX_SIZE - ORB_MIN_SIZE);
     const radius = size / 2;
-    const offsetY = (seededRandom(seed) - 0.5) * 16; // -8 to +8px scatter within row
-    const gap = 2 + seededRandom(seed + 2) * 4; // 2-6px between dots
-    if (i > 0) x += radius + gap;
-    // Wrap to the next row when this dot would exceed the width.
-    if (x + radius > width && i > 0) {
-      row++;
-      x = ORB_MAX_SIZE / 2;
+
+    const rowCenterY =
+      ORB_BAND_PADDING_Y + row * colRowHeight + colRowHeight / 2;
+    const offsetY = (seededRandom(seed) - 0.5) * 2 * maxJitter;
+
+    // Horizontal jitter within the column so dots in the same column don't
+    // align vertically.
+    const colJitterX = (seededRandom(seed + 4) - 0.5) * (ORB_MAX_SIZE * 0.6);
+    dots.push({
+      color,
+      x: x + colJitterX,
+      cy: rowCenterY + offsetY,
+      radius,
+    });
+    colMaxRadius = Math.max(colMaxRadius, radius);
+
+    row++;
+    if (row >= rowsPerCol) {
+      // Advance to next column: base gap + occasional wide gap so columns
+      // don't read as evenly spaced.
+      const baseGap = 4 + seededRandom(col * 31.1 + 7) * 8;
+      const wideGap =
+        seededRandom(col * 17.3 + 3) < 0.12
+          ? 10 + seededRandom(col * 19.7) * 16
+          : 0;
+      x += colMaxRadius + baseGap + wideGap + ORB_MAX_SIZE / 2;
+      col++;
+      row = 0;
+      colMaxRadius = 0;
+      // Stagger each column's vertical start so column-tops don't form a line.
+      // Implemented by shifting the first row's center via row variable being
+      // 0 + an x-only offset is enough since jitter handles the rest.
     }
-    const rowCenterY = ORB_BAND_PADDING_Y + row * ORB_ROW_HEIGHT + ORB_ROW_HEIGHT / 2;
-    dots.push({ color, x, cy: rowCenterY + offsetY, radius });
-    x += radius;
   }
-  const rowCount = row + 1;
-  const height = ORB_BAND_PADDING_Y * 2 + rowCount * ORB_ROW_HEIGHT;
-  return { dots, height };
+
+  // Compute total width from the rightmost dot.
+  let width = ORB_MAX_SIZE;
+  for (const d of dots) width = Math.max(width, d.x + d.radius + ORB_MAX_SIZE);
+  return { dots, width };
 }
 
 // Visitor dots — every unique visitor, drawn on one canvas so the glow scales
@@ -218,7 +257,8 @@ const VisitorOrbs = memo(function VisitorOrbs({
   const { cursors } = usePlayContext();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [bandHeight, setBandHeight] = useState(0);
   const [tooltip, setTooltip] = useState<{
     x: number;
     y: number;
@@ -239,20 +279,34 @@ const VisitorOrbs = memo(function VisitorOrbs({
         colors.push(entry.color);
       }
     }
+    // Dev preview: append synthetic visitor colors so the dot band can be
+    // inspected with realistic density. Enable with ?mockDots=300 in the URL.
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const mockCount = parseInt(params.get("mockDots") ?? "", 10);
+      if (Number.isFinite(mockCount) && mockCount > 0) {
+        for (let i = 0; i < mockCount; i++) {
+          const hue = Math.floor(seededRandom(i + 1) * 360);
+          const sat = 55 + Math.floor(seededRandom(i + 2) * 35);
+          const light = 50 + Math.floor(seededRandom(i + 3) * 20);
+          colors.push(`hsl(${hue}, ${sat}%, ${light}%)`);
+        }
+      }
+    }
     return colors;
   }, [entries, cursors.color]);
 
-  const { dots, height: bandHeight } = useMemo(
-    () => layoutOrbs(allColors, width),
-    [allColors, width],
+  const { dots, width: bandWidth } = useMemo(
+    () => layoutOrbs(allColors, bandHeight),
+    [allColors, bandHeight],
   );
 
-  // Track the available width so the dot band fills the container responsively
+  // Track the viewport's height so layout matches the visible band.
   useEffect(() => {
-    const el = wrapRef.current;
+    const el = viewportRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entriesObserved) => {
-      setWidth(entriesObserved[0].contentRect.width);
+      setBandHeight(entriesObserved[0].contentRect.height);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -260,14 +314,14 @@ const VisitorOrbs = memo(function VisitorOrbs({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || width === 0) return;
+    if (!canvas || bandHeight === 0 || bandWidth === 0) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
+    canvas.width = bandWidth * dpr;
     canvas.height = bandHeight * dpr;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, width, bandHeight);
+    ctx.clearRect(0, 0, bandWidth, bandHeight);
 
     for (const { color, x, cy, radius } of dots) {
       const isHovered = hoveredColor === color;
@@ -294,7 +348,7 @@ const VisitorOrbs = memo(function VisitorOrbs({
       ctx.arc(x, cy, drawRadius, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [dots, width, bandHeight, hoveredColor]);
+  }, [dots, bandWidth, bandHeight, hoveredColor]);
 
   // Hit-test the pointer against dot positions; report the hovered color up.
   // Last color reported up, so mousemove only updates state on transitions
@@ -349,25 +403,87 @@ const VisitorOrbs = memo(function VisitorOrbs({
     setTooltip(null);
   }, [onHoverColor]);
 
+  // Gentle horizontal auto-scroll on touch devices so visitors see the band
+  // has more content than the visible viewport. Pauses on user interaction and
+  // resumes a few seconds after they stop.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+    if (!isTouch) return;
+    const maxScroll = viewport.scrollWidth - viewport.clientWidth;
+    if (maxScroll <= 4) return;
+
+    let rafId = 0;
+    let direction = 1;
+    let paused = false;
+    let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+    const PIXELS_PER_SECOND = 16;
+    let lastTime = performance.now();
+
+    const tick = (now: number) => {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      if (!paused) {
+        const next = viewport.scrollLeft + direction * PIXELS_PER_SECOND * dt;
+        if (next >= maxScroll) {
+          viewport.scrollLeft = maxScroll;
+          direction = -1;
+        } else if (next <= 0) {
+          viewport.scrollLeft = 0;
+          direction = 1;
+        } else {
+          viewport.scrollLeft = next;
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    const pauseFor = (ms: number) => {
+      paused = true;
+      if (resumeTimer) clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => {
+        paused = false;
+        lastTime = performance.now();
+      }, ms);
+    };
+    const onUserScroll = () => pauseFor(4000);
+    viewport.addEventListener("touchstart", onUserScroll, { passive: true });
+    viewport.addEventListener("wheel", onUserScroll, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (resumeTimer) clearTimeout(resumeTimer);
+      viewport.removeEventListener("touchstart", onUserScroll);
+      viewport.removeEventListener("wheel", onUserScroll);
+    };
+  }, [bandHeight, bandWidth]);
+
   return (
     <div className={styles.visitorOrbs} ref={wrapRef}>
-      <div className={styles.visitorOrbBand} style={{ width, height: bandHeight }}>
-        <canvas
-          ref={canvasRef}
-          className={styles.visitorOrbCanvas}
-          style={{ width, height: bandHeight }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-        />
-        {tooltip && (
-          <span
-            className={styles.visitorTooltip}
-            style={{ left: tooltip.x, top: tooltip.y }}
-            role="tooltip"
-          >
-            {tooltip.text}
-          </span>
-        )}
+      <div className={styles.visitorOrbViewport} ref={viewportRef}>
+        <div
+          className={styles.visitorOrbBand}
+          style={{ width: bandWidth, height: bandHeight }}
+        >
+          <canvas
+            ref={canvasRef}
+            className={styles.visitorOrbCanvas}
+            style={{ width: bandWidth, height: bandHeight }}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+          />
+          {tooltip && (
+            <span
+              className={styles.visitorTooltip}
+              style={{ left: tooltip.x, top: tooltip.y }}
+              role="tooltip"
+            >
+              {tooltip.text}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -655,7 +771,14 @@ export const AuraGuestbook = withSharedState(
           )}
         </div>
 
-        <p className={styles.arrowHint}>use arrow keys to browse</p>
+        <p className={styles.arrowHint}>
+          <span className={styles.arrowHintDesktop}>
+            use arrow keys to browse
+          </span>
+          <span className={styles.arrowHintMobile}>
+            scroll sideways to see more
+          </span>
+        </p>
 
         {/* Compose — live preview card with inline editing */}
         {!hasSubmitted && (
