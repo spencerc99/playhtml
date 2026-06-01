@@ -60,6 +60,8 @@ echo "  chrome:  ${CHROME_ZIP}"
 echo "  firefox: ${FIREFOX_ZIP}"
 echo "  sources: ${SOURCES_ZIP}"
 
+node scripts/validateExtensionBuild.mjs "${PUBLISH_DIR}/chrome-mv3"
+
 echo "Submitting to stores..."
 if [ "$SKIP_CHROME" -eq 0 ]; then
   if [ -n "$DRY_RUN" ]; then

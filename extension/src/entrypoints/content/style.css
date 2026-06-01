@@ -1,5 +1,5 @@
-/* ABOUTME: Content script stylesheet — injected via manifest into every page.
-/* ABOUTME: Only contains styles for elements that must affect the host page directly (e.g. element picker outlines). */
+/* ABOUTME: Content script stylesheet injected via manifest into every page. */
+/* ABOUTME: Only contains styles that must affect host page elements directly. */
 /* All extension-owned UI (toasts, overlays) uses Shadow DOM with inline styles — see content.ts. */
 
 .playhtml-extension-element-picker {

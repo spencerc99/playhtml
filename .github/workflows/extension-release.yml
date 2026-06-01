@@ -116,7 +116,9 @@ jobs:
       - name: Build Chrome zip
         if: env.SKIP_CHROME != 'true'
         working-directory: extension
-        run: WXT_OUT_DIR=publish bun run zip
+        run: |
+          WXT_OUT_DIR=publish bun run zip
+          node scripts/validateExtensionBuild.mjs publish/chrome-mv3
 
       - name: Build Firefox zip
         if: env.SKIP_FIREFOX != 'true'
