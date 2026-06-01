@@ -70,7 +70,10 @@ function RisoTexture() {
   );
 }
 
-const EVENT_LIMIT = 80;
+// Deep enough that trails stay on screen for minutes (don't age off the window
+// while you're watching). A live trail leaves only when its events finally fall
+// out of this rolling buffer.
+const EVENT_LIMIT = 500;
 
 const TRAIL_SETTINGS = {
   trailOpacity: 0.5,

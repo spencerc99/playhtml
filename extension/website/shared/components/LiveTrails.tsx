@@ -1,5 +1,6 @@
-// ABOUTME: Draw-on-arrival cursor-trail animator for the live stream surfaces.
-// ABOUTME: Snapshots each trail on first sight and owns its lifecycle, immune to upstream re-derivation churn.
+// ABOUTME: Live cursor-trail animator. Renders the current trail set directly
+// ABOUTME: (id-keyed, React owns add/remove/grow); the rAF loop draws each trail
+// ABOUTME: by its own progress since first seen. No snapshot/eviction state.
 
 import React, { useEffect, useRef, useState, memo } from "react";
 import { TrailState } from "../types";
@@ -14,28 +15,17 @@ import {
 
 const HIDDEN_TAB_TICK_MS = 100;
 
-// A trail draws over its own real duration (endTime - startTime), clamped so
-// a momentary flick is still perceptible and a long idle span doesn't take
-// minutes. Median real duration is ~3s; the tail runs to a minute-plus.
+// A trail draws over its own real duration (endTime - startTime), clamped so a
+// flick is still perceptible and a long idle span doesn't take minutes.
 const MIN_DRAW_MS = 800;
 const MAX_DRAW_MS = 8000;
 
-// Trails captured in the same tick (one WebSocket batch) are staggered so they
-// trickle in rather than all bursting at once.
-const STAGGER_STEP_MS = 350;
-const MAX_STAGGER_MS = 4000;
-
-// Beyond the keep window, this many older trails fade out (by rank) before
-// being removed from the owned set. Bounds the on-screen + DOM trail count.
-const EVICTION_TAIL = 12;
-
-/** Stable identity for a trail: participant + url + segment start, assigned by
- * useCursorTrails. An evolving trail (same person continuing to move) keeps one
- * identity as the event window slides, so it's snapshotted once and updated in
- * place rather than re-captured as overlapping copies. */
-function trailKey(ts: TrailState): string {
-  return ts.trail.id;
-}
+// When a trail leaves the live event window (its events aged off the cap, or a
+// transient re-derivation gap), keep drawing it locally and fade it out over
+// this long instead of popping it. This decouples a trail's on-screen lifetime
+// from the raw event window — the websocket stream churns events faster than
+// trails should visibly come and go.
+const KEEP_AFTER_DEPART_MS = 1500;
 
 /** Tiny deterministic hash of a string to a small int, for per-trail variation. */
 function hashKey(key: string): number {
@@ -47,23 +37,20 @@ function hashKey(key: string): number {
 }
 
 /** Per-trail draw duration: its real span, clamped to a perceptible range. */
-function drawDurationFor(ts: { durationMs: number }, speed: number): number {
-  const scaled = ts.durationMs / (speed || 1);
-  return Math.min(MAX_DRAW_MS, Math.max(MIN_DRAW_MS, scaled));
+function drawDurationFor(durationMs: number, speed: number): number {
+  return Math.min(MAX_DRAW_MS, Math.max(MIN_DRAW_MS, durationMs / (speed || 1)));
 }
 
-/** A trail LiveTrails has captured and now owns. The frozen `trail` snapshot
- * is never replaced by later re-derivations of the same logical trail. */
-interface Snapshot {
-  key: string;
+/** A trail LiveTrails is keeping on screen. `departedAt` is null while the trail
+ * is still in the live window; once it leaves, it's the wall-clock time the fade
+ * started. */
+interface KeptTrail {
   trail: TrailState;
-  seenAtMs: number;
-  order: number;
+  departedAt: number | null;
 }
 
 interface LiveTrailsProps {
   trailStates: TrailState[];
-  windowSize?: number;
   frozen?: boolean;
   settings: {
     strokeWidth: number;
@@ -74,7 +61,7 @@ interface LiveTrailsProps {
 }
 
 export const LiveTrails: React.FC<LiveTrailsProps> = memo(
-  ({ trailStates, windowSize = 50, frozen = false, settings }) => {
+  ({ trailStates, frozen = false, settings }) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
@@ -82,6 +69,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
 
+    // Settings via refs so the loop reads latest without restarting.
     const strokeWidthRef = useRef(settings.strokeWidth);
     const trailOpacityRef = useRef(settings.trailOpacity);
     const animationSpeedRef = useRef(settings.animationSpeed);
@@ -96,71 +84,69 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       frozenRef.current = frozen;
     }, [frozen]);
 
-    const windowSizeRef = useRef(windowSize);
+    // Trails LiveTrails keeps on screen — the current live trails plus recently
+    // departed ones still fading out. Owned here (not just `trailStates`) so a
+    // trail's lifetime is decoupled from the churning event window. Each entry
+    // tracks `departedAt` (null while still live). Updated ONLY in the effect
+    // below (never during render) so the rendered keys are always unique.
+    const [kept, setKept] = useState<KeptTrail[]>(() =>
+      trailStates.map((trail) => ({ trail, departedAt: null })),
+    );
+    const keptRef = useRef<KeptTrail[]>(kept);
     useEffect(() => {
-      windowSizeRef.current = windowSize;
-    }, [windowSize]);
+      keptRef.current = kept;
+    }, [kept]);
 
-    // Snapshots are the trails LiveTrails owns and renders. They are added when
-    // a new trail key first appears in `trailStates` and removed when eviction
-    // fully fades them. React state so the render reflects the owned set; a ref
-    // mirror lets the rAF loop read it without restarting.
-    const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-    const snapshotsRef = useRef<Snapshot[]>(snapshots);
+    // Reconcile `kept` with the latest live trails. Runs on every trailStates
+    // change (live data changes frequently, so this also drives depart expiry).
     useEffect(() => {
-      snapshotsRef.current = snapshots;
-    }, [snapshots]);
+      const now = performance.now();
+      const liveById = new Map(trailStates.map((t) => [t.trail.id, t]));
 
-    const seenKeysRef = useRef<Set<string>>(new Set());
-    const orderCounterRef = useRef(0);
+      setKept((prev) => {
+        const next: KeptTrail[] = [];
+        const handled = new Set<string>();
 
+        for (const entry of prev) {
+          const id = entry.trail.trail.id;
+          handled.add(id);
+          const live = liveById.get(id);
+          if (live) {
+            // Still live — refresh geometry, clear any departed mark.
+            next.push({ trail: live, departedAt: null });
+          } else if (entry.departedAt === null) {
+            // Just left — start its fade.
+            next.push({ trail: entry.trail, departedAt: now });
+          } else if (now - entry.departedAt < KEEP_AFTER_DEPART_MS) {
+            // Still fading — keep.
+            next.push(entry);
+          }
+          // else: fully faded — drop.
+        }
+        // Brand-new live trails not already in `kept`.
+        for (const t of trailStates) {
+          if (!handled.has(t.trail.id)) {
+            next.push({ trail: t, departedAt: null });
+          }
+        }
+        return next;
+      });
+    }, [trailStates]);
+
+    // Per-trail imperative handles, keyed by stable trail id.
     const trailHandles = useRef<Map<string, ImperativeTrailHandle>>(new Map());
     const cursorHandles = useRef<Map<string, ImperativeTrailCursorHandle>>(
       new Map(),
     );
 
-    // Accumulated wall-clock time spent paused, subtracted from the draw clock
-    // so trails don't leap forward when resumed.
+    // Wall-clock time each trail (by id) was first seen — the basis for its draw
+    // progress. Set once, pruned when the trail leaves the window.
+    const firstSeenRef = useRef<Map<string, number>>(new Map());
+
+    // Accumulated paused wall-clock, subtracted from the clock so trails don't
+    // leap when resumed.
     const pausedAccumMsRef = useRef(0);
     const pauseStartedAtRef = useRef<number | null>(null);
-
-    // Reconcile the owned snapshot set with the latest derivation. A trail's
-    // identity (trail.id = pid|url|segmentStart) is stable across re-derivations,
-    // so: a new id is captured (with arrival stagger + a fresh order); a known
-    // id has its geometry refreshed in place — the SAME person continuing to
-    // move grows ONE trail rather than spawning overlapping copies — while its
-    // seenAt/order (its lifecycle) stay fixed.
-    useEffect(() => {
-      if (trailStates.length === 0) return;
-      const latestByKey = new Map<string, TrailState>();
-      for (const ts of trailStates) latestByKey.set(trailKey(ts), ts);
-
-      const fresh: Snapshot[] = [];
-      let batchIndex = 0;
-      const now =
-        typeof performance !== "undefined" ? performance.now() : 0;
-      for (const [key, ts] of latestByKey) {
-        if (seenKeysRef.current.has(key)) continue;
-        seenKeysRef.current.add(key);
-        const stagger = Math.min(MAX_STAGGER_MS, batchIndex * STAGGER_STEP_MS);
-        fresh.push({
-          key,
-          trail: ts,
-          seenAtMs: now + stagger,
-          order: orderCounterRef.current++,
-        });
-        batchIndex++;
-      }
-
-      setSnapshots((prev) => {
-        // Refresh geometry of existing snapshots whose trail grew.
-        const refreshed = prev.map((s) => {
-          const latest = latestByKey.get(s.key);
-          return latest && latest !== s.trail ? { ...s, trail: latest } : s;
-        });
-        return fresh.length > 0 ? [...refreshed, ...fresh] : refreshed;
-      });
-    }, [trailStates]);
 
     useEffect(() => {
       const clearScheduled = () => {
@@ -186,8 +172,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         animationRef.current = requestAnimationFrame(tick);
       };
 
-      // Wrap each frame so a stray exception can never permanently kill the
-      // animation loop — scheduleNext() always runs.
       const tick = (perfNow: number) => {
         try {
           runFrame(perfNow);
@@ -198,8 +182,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       };
 
       const runFrame = (perfNow: number) => {
-        // When paused, hold the last drawn frame and accumulate the paused
-        // wall-clock duration so the draw clock doesn't leap on resume.
         if (frozenRef.current) {
           if (pauseStartedAtRef.current === null) {
             pauseStartedAtRef.current = perfNow;
@@ -211,83 +193,47 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           pauseStartedAtRef.current = null;
         }
 
-        const owned = snapshotsRef.current;
-        if (owned.length === 0) {
-          return;
-        }
-
+        const entries = keptRef.current;
         const clockMs = perfNow - pausedAccumMsRef.current;
         const speed = animationSpeedRef.current;
         const trailOpacity = trailOpacityRef.current;
         const strokeWidth = strokeWidthRef.current;
-        const size = windowSizeRef.current;
+        const firstSeen = firstSeenRef.current;
 
-        // Rank snapshots oldest→newest. The newest `size` are fully visible;
-        // the next EVICTION_TAIL fade out by how deep past the window they are;
-        // anything older is hard-evicted. This count-based cap bounds the owned
-        // set (and the SVG node count) regardless of arrival rate — a rank-only
-        // fade let trails pile up unbounded.
-        const byOrder = [...owned].sort((a, b) => a.order - b.order);
-        const rankByKey = new Map<string, number>();
-        // rank 0 = newest; larger = older.
-        for (let i = 0; i < byOrder.length; i++) {
-          rankByKey.set(byOrder[i].key, byOrder.length - 1 - i);
-        }
-        const evictThreshold = size + EVICTION_TAIL;
+        const present = new Set<string>();
 
-        const evictedKeys: string[] = [];
-
-        for (const snap of owned) {
-          const { key, trail: ts } = snap;
+        for (const entry of entries) {
+          const ts = entry.trail;
+          const key = ts.trail.id;
+          present.add(key);
           const handle = trailHandles.current.get(key);
-          const cursorHandle = cursorHandles.current.get(key);
-          const rank = rankByKey.get(key) ?? 0;
-
-          // Past the fade tail — drop it from the owned set entirely.
-          if (rank >= evictThreshold) {
-            handle?.hide();
-            cursorHandle?.hide();
-            evictedKeys.push(key);
-            continue;
-          }
           if (!handle) continue;
 
-          // Negative until a staggered trail's start arrives — keep it hidden
-          // until then so it eases in rather than popping mid-draw.
-          const drawElapsed = clockMs - snap.seenAtMs;
-          if (drawElapsed < 0) {
-            handle.hide();
-            cursorHandle?.hide();
-            continue;
+          // First time we draw this trail: anchor its draw clock to now.
+          let seenAt = firstSeen.get(key);
+          if (seenAt === undefined) {
+            seenAt = clockMs;
+            firstSeen.set(key, seenAt);
           }
-          const drawDuration = drawDurationFor(ts, speed);
-          const progress = Math.min(1, drawElapsed / drawDuration);
+
+          const drawDuration = drawDurationFor(ts.durationMs, speed);
+          const progress = Math.min(1, (clockMs - seenAt) / drawDuration);
           const isFinished = progress >= 1;
 
-          // Fade trails in the eviction tail (older than the keep window) by
-          // how far into the tail they are.
-          let evictionFade = 1;
-          if (rank >= size) {
-            const tailDepth = rank - size; // 0 .. EVICTION_TAIL-1
-            evictionFade = Math.max(0, 1 - (tailDepth + 1) / EVICTION_TAIL);
+          // Departed trails fade from their current opacity to 0 over the keep
+          // window, then the reconcile effect drops them.
+          let departFade = 1;
+          if (entry.departedAt !== null) {
+            departFade = Math.max(
+              0,
+              1 - (perfNow - entry.departedAt) / KEEP_AFTER_DEPART_MS,
+            );
           }
 
-          if (evictionFade <= 0) {
-            handle.hide();
-            cursorHandle?.hide();
-            evictedKeys.push(key);
-            continue;
-          }
+          // Finished trails dim to COMPLETED_OPACITY and persist while live.
+          // Drawing trails are full opacity. Depart fade multiplies on top.
+          const groupFade = (isFinished ? COMPLETED_OPACITY : 1) * departFade;
 
-          // Drawing trails render at full opacity; finished trails dim to
-          // COMPLETED_OPACITY and persist. Eviction fade multiplies on top.
-          const baseOpacity = isFinished ? COMPLETED_OPACITY : 1;
-          const groupFade = baseOpacity * evictionFade;
-
-          // Drive the frame by progress directly (the override) so it never
-          // depends on the handle's `startOffsetMs` matching ours — the handle's
-          // closure can briefly hold a different snapshot during a geometry
-          // refresh. `elapsedTimeMs` is passed for the unused legacy path only.
           const result = handle.update(
             0,
             trailOpacity,
@@ -295,11 +241,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             groupFade,
             progress,
           );
-          // Defensive: a transient null (e.g. mid-refresh, before the handle's
-          // SVG group is committed) should NOT blank a trail that ought to be
-          // visible — keep its last drawn frame and try again next tick.
 
-          if (cursorHandle && result && result.cursorPosition && !isFinished) {
+          const cursorHandle = cursorHandles.current.get(key);
+          if (
+            cursorHandle &&
+            result &&
+            result.cursorPosition &&
+            !isFinished &&
+            entry.departedAt === null
+          ) {
             const cpIdx = Math.min(
               Math.floor((ts.trail.points.length - 1) * result.trailProgress),
               ts.trail.points.length - 1,
@@ -316,12 +266,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           }
         }
 
-        // Remove fully-evicted snapshots from the owned set (and forget their
-        // keys so an identical trail could re-appear later).
-        if (evictedKeys.length > 0) {
-          for (const key of evictedKeys) seenKeysRef.current.delete(key);
-          const drop = new Set(evictedKeys);
-          setSnapshots((prev) => prev.filter((s) => !drop.has(s.key)));
+        // Prune firstSeen for trails that left the window so the map can't grow.
+        if (firstSeen.size > present.size) {
+          for (const key of firstSeen.keys()) {
+            if (!present.has(key)) firstSeen.delete(key);
+          }
         }
       };
 
@@ -346,30 +295,38 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
       >
         <g ref={pathLayerRef}>
-          {snapshots.map((snap) => (
-            <TrailPath
-              key={`live-path-${snap.key}`}
+          {kept.map((entry) => {
+            const ts = entry.trail;
+            const key = ts.trail.id;
+            return (
+              <TrailPath
+                key={`live-path-${key}`}
+                ref={(handle) => {
+                  if (handle) trailHandles.current.set(key, handle);
+                  else trailHandles.current.delete(key);
+                }}
+                trailState={ts}
+                fixedMonoStrokeWidth={1 + (hashKey(key) % 5)}
+                renderer={renderer}
+              />
+            );
+          })}
+        </g>
+        {kept.map((entry) => {
+          const ts = entry.trail;
+          const key = ts.trail.id;
+          return (
+            <TrailCursor
+              key={`live-cursor-${key}`}
               ref={(handle) => {
-                if (handle) trailHandles.current.set(snap.key, handle);
-                else trailHandles.current.delete(snap.key);
+                if (handle) cursorHandles.current.set(key, handle);
+                else cursorHandles.current.delete(key);
               }}
-              trailState={snap.trail}
-              fixedMonoStrokeWidth={1 + (hashKey(snap.key) % 5)}
+              trailState={ts}
               renderer={renderer}
             />
-          ))}
-        </g>
-        {snapshots.map((snap) => (
-          <TrailCursor
-            key={`live-cursor-${snap.key}`}
-            ref={(handle) => {
-              if (handle) cursorHandles.current.set(snap.key, handle);
-              else cursorHandles.current.delete(snap.key);
-            }}
-            trailState={snap.trail}
-            renderer={renderer}
-          />
-        ))}
+          );
+        })}
       </svg>
     );
   },
