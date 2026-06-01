@@ -277,13 +277,12 @@ export async function handleIngest(
     // Insert into Supabase
     // Use upsert with ignoreDuplicates to handle retries gracefully
     const supabase = createSupabaseClient(env);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('collection_events')
       .upsert(dbEvents, {
         onConflict: 'id',
         ignoreDuplicates: true,
-      })
-      .select('id');
+      });
     
     if (error) {
       // Check if it's a duplicate key error (shouldn't happen with upsert, but just in case)
@@ -317,9 +316,8 @@ export async function handleIngest(
       );
     }
     
-    // Count how many were actually inserted (data.length) vs duplicates
-    const inserted = data?.length || 0;
-    const duplicates = typedEvents.length - inserted;
+    const inserted = typedEvents.length;
+    const duplicates = 0;
 
     // Best effort: persist page metadata history.
     // If table doesn't exist yet, ingest still succeeds and event data remains valid.
