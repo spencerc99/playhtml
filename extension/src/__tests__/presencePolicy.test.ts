@@ -2,7 +2,12 @@
 // ABOUTME: Guards high-traffic sites from extension-owned rooms unless explicitly supported.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { initCustomSite, shouldEnableCursorsForHostname } from "../custom-sites";
+import {
+  getCustomSiteSettingsForHostname,
+  initCustomSite,
+  resolveCustomSiteSettingsForHostname,
+  shouldEnableCursorsForHostname,
+} from "../custom-sites";
 import { initWikipedia } from "../custom-sites/wikipedia";
 import { shouldStartExtensionPresence } from "../entrypoints/content/presencePolicy";
 
@@ -77,6 +82,34 @@ describe("shouldEnableCursors", () => {
     expect(shouldEnableCursorsForHostname("wikipedia.org.example.com")).toBe(
       false,
     );
+  });
+});
+
+describe("custom site settings", () => {
+  it("uses default supported-site settings for Wikipedia", () => {
+    expect(getCustomSiteSettingsForHostname("en.wikipedia.org")).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: false },
+    });
+  });
+
+  it("does not return settings for unsupported high-traffic sites", () => {
+    expect(getCustomSiteSettingsForHostname("www.youtube.com")).toBeNull();
+  });
+
+  it("allows explicit site settings to override room options", () => {
+    const settings = resolveCustomSiteSettingsForHostname("videos.example", [
+      {
+        matches: (hostname) => hostname === "videos.example",
+        init: async () => null,
+        settings: { defaultRoomOptions: { includeSearch: true } },
+      },
+    ]);
+
+    expect(settings).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
   });
 });
 

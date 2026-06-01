@@ -984,10 +984,11 @@ export default defineContentScript({
         }
 
         // Initialize PlayHTML only for sites with explicit extension cursor support.
-        const { initCustomSite, shouldEnableCursors } = await import(
+        const { getCustomSiteSettings, initCustomSite } = await import(
           "../custom-sites"
         );
-        const enableCursors = shouldEnableCursors();
+        const customSiteSettings = getCustomSiteSettings();
+        const enableCursors = customSiteSettings?.cursorsEnabled ?? false;
         if (
           !shouldStartExtensionPresence({
             nativePlayhtmlDetected: false,
@@ -999,7 +1000,7 @@ export default defineContentScript({
 
         const { playhtml } = await import("playhtml");
         await playhtml.init({
-          defaultRoomOptions: { includeSearch: false },
+          defaultRoomOptions: customSiteSettings?.defaultRoomOptions,
           cursors: {
             enabled: enableCursors,
             playerIdentity: this.playerIdentity,
