@@ -11,6 +11,8 @@ const PORTAL_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
   <circle cx="7" cy="7" r="1" fill="currentColor" opacity="0.6"/>
 </svg>`;
 
+const LOBBY_PAGE_TTL_MS = 30_000;
+
 export class PresenceCountPill {
   private element: HTMLElement | null = null;
   private jumpBtn: HTMLElement | null = null;
@@ -33,11 +35,10 @@ export class PresenceCountPill {
 
       const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
       const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
-      const lobbyOtherKeys = this.uniqueOtherKeys(lobbyPresences, myKey);
+      const lobbyOtherPageKeys = this.uniqueOtherPageKeys(lobbyPresences, myKey);
 
       const pageOthers = pageOtherKeys.size;
-      const lobbyOthers = lobbyOtherKeys.size;
-      const elsewhere = Math.max(0, lobbyOthers - pageOthers);
+      const elsewhere = lobbyOtherPageKeys.size;
       const fingerprint = `${pageOthers}:${elsewhere}`;
 
       if (fingerprint !== this.lastFingerprint) {
@@ -98,6 +99,40 @@ export class PresenceCountPill {
       if (p.isMe) return;
       const key = this.pidOf(p);
       if (key && myKey && key === myKey) return;
+      keys.add(key ?? `conn:${connectionId}`);
+    });
+    return keys;
+  }
+
+  private isFreshLobbyPage(
+    page: WikiPresenceView["page"],
+  ): page is NonNullable<WikiPresenceView["page"]> {
+    if (!page?.url || typeof page.lastSeenAt !== "number") return false;
+    return Date.now() - page.lastSeenAt <= LOBBY_PAGE_TTL_MS;
+  }
+
+  private isCurrentPageUrl(url: string): boolean {
+    try {
+      const candidate = new URL(url, location.href);
+      const current = new URL(location.href);
+      return (
+        candidate.origin === current.origin &&
+        candidate.pathname === current.pathname &&
+        candidate.search === current.search
+      );
+    } catch {
+      return url === location.href;
+    }
+  }
+
+  private uniqueOtherPageKeys(presences: Map<string, any>, myKey: string | null): Set<string> {
+    const keys = new Set<string>();
+    presences.forEach((p, connectionId) => {
+      if (p.isMe) return;
+      const key = this.pidOf(p);
+      if (key && myKey && key === myKey) return;
+      const page = (p as WikiPresenceView).page;
+      if (!this.isFreshLobbyPage(page) || this.isCurrentPageUrl(page.url)) return;
       keys.add(key ?? `conn:${connectionId}`);
     });
     return keys;
@@ -266,10 +301,9 @@ export class PresenceCountPill {
     const lobbyPresences = this.lobbyPresence.getPresences();
     const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
     const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
-    const lobbyOtherKeys = this.uniqueOtherKeys(lobbyPresences, myKey);
+    const lobbyOtherPageKeys = this.uniqueOtherPageKeys(lobbyPresences, myKey);
     const pageOthers = pageOtherKeys.size;
-    const lobbyOthers = lobbyOtherKeys.size;
-    const elsewhere = Math.max(0, lobbyOthers - pageOthers);
+    const elsewhere = lobbyOtherPageKeys.size;
     this.lastFingerprint = "";
     this.render(pageOthers, elsewhere, pagePresences, pageOtherKeys, myKey);
   }
@@ -323,12 +357,11 @@ export class PresenceCountPill {
       const key = this.pidOf(p);
       // Same human in another tab — skip so we don't teleport to our own pages.
       if (key && myKey && key === myKey) return;
+      const page = (p as WikiPresenceView).page;
+      if (!this.isFreshLobbyPage(page) || this.isCurrentPageUrl(page.url)) return;
       if (key && seenKeys.has(key)) return;
       if (key) seenKeys.add(key);
-      const page = (p as WikiPresenceView).page;
-      if (page?.url && page.url !== location.href) {
-        otherPages.push({ url: page.url, title: page.title });
-      }
+      otherPages.push({ url: page.url, title: page.title });
     });
 
     if (otherPages.length === 0) {

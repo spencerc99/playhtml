@@ -1,7 +1,7 @@
 // ABOUTME: A Wikipedia article link that shows a hovercard preview on hover.
 // ABOUTME: Builds its own card from the page/summary REST API (Wikipedia's native popup can't reach our shadow DOM).
 
-import { useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   fetchWikiSummary,
   getCachedSummary,
@@ -42,6 +42,13 @@ export function WikiArticleLink({ title, className }: Props) {
     openTimer.current = null;
     closeTimer.current = null;
   }, []);
+
+  useEffect(() => {
+    clearTimers();
+    setSummary(getCachedSummary(title));
+    setOpen(false);
+    setPos(null);
+  }, [clearTimers, title]);
 
   const computePos = useCallback((): CardPos | null => {
     const rect = anchorRef.current?.getBoundingClientRect();
