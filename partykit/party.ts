@@ -47,6 +47,7 @@ import {
 } from "./request";
 import {
   checkMessageRate,
+  isDurableObjectOverloadError,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type MessageLimitState,
@@ -979,9 +980,6 @@ export class PartyServer extends YServer {
 
     const url = new URL(ctx.request.url);
     const connectionId = connection.id;
-    console.log(
-      `[PartyServer] onConnect: connectionId=${connectionId}, room=${this.name}`
-    );
 
     const clientResetEpoch = parseClientResetEpoch(
       url.searchParams.get("clientResetEpoch")
@@ -997,10 +995,6 @@ export class PartyServer extends YServer {
       );
       serverResetEpoch = null;
     }
-
-    console.log(
-      `[PartyServer] Epoch check: client=${clientResetEpoch}, server=${serverResetEpoch}, connectionId=${connectionId}`
-    );
 
     if (
       serverResetEpoch !== null &&
@@ -1020,10 +1014,6 @@ export class PartyServer extends YServer {
     }
 
     this.setConnectionAcceptedResetEpoch(connection, serverResetEpoch);
-
-    console.log(
-      `[PartyServer] Proceeding with normal Y.js connection setup for connectionId=${connectionId}`
-    );
 
     await this.clearEmptyRoomCompactAfter();
 
@@ -1235,8 +1225,6 @@ export class PartyServer extends YServer {
         `[PartyServer] Autosave failed for room ${this.name}:`,
         error
       );
-    } else {
-      console.log(`[PartyServer] Autosave succeeded for room ${this.name}`);
     }
 
     if (!error) {
@@ -1502,15 +1490,10 @@ export class PartyServer extends YServer {
             headers: { "content-type": "application/json" },
           });
         }
-        const beforeSize = encodeDocToBase64(yDoc).length;
         const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
         yDoc.transact(
           () => this.assignPlaySubtrees(yDoc, subtreesToApply),
           ORIGIN
-        );
-        const afterSize = encodeDocToBase64(yDoc).length;
-        console.log(
-          `[Bridge] Applied subtrees from ${sender} (${originKind}). Size: ${beforeSize} -> ${afterSize}`
         );
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
@@ -1965,9 +1948,22 @@ export class PartyServer extends YServer {
 export default {
   // Set up your fetch handler to use configured Servers
   async fetch(request: Request, env: Env): Promise<Response> {
-    return (
-      (await routePartykitRequest(request, env)) ||
-      new Response("Not Found", { status: 404 })
-    );
+    try {
+      return (
+        (await routePartykitRequest(request, env)) ||
+        new Response("Not Found", { status: 404 })
+      );
+    } catch (error) {
+      if (isDurableObjectOverloadError(error)) {
+        return new Response("Service Busy", {
+          status: 503,
+          headers: {
+            "Retry-After": "5",
+          },
+        });
+      }
+
+      throw error;
+    }
   },
 } satisfies ExportedHandler<Env>;
