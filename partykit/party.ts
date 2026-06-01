@@ -706,6 +706,10 @@ export class PartyServer extends YServer {
     const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
     await this.setEmptyRoomCompactAfter(compactAfter);
     await this.scheduleNextAlarm();
+
+    console.log(
+      `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
+    );
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -1220,6 +1224,9 @@ export class PartyServer extends YServer {
 
     if (!error) {
       if (this.consumeCompactionAutosave(documentBase64)) {
+        console.log(
+          `[PartyServer] Compaction autosave completed: room=${this.name}`
+        );
         return;
       }
     }
@@ -1286,6 +1293,9 @@ export class PartyServer extends YServer {
       })
     ) {
       await this.setEmergencyCompactCheckAfter(recheckAfter);
+      console.log(
+        `[PartyServer] Emergency compaction skipped: room=${this.name}, ${documentSize} -> ${compactedDocument.afterSize} bytes, nextCheckAt=${recheckAfter}`
+      );
       return false;
     }
 
@@ -1756,6 +1766,9 @@ export class PartyServer extends YServer {
         )
       ) {
         await this.clearEmptyRoomCompactAfter();
+        console.log(
+          `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes`
+        );
         return;
       }
 
