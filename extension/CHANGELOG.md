@@ -1,5 +1,11 @@
 # @playhtml/extension
 
+## 0.1.17 (2026-06-01)
+
+- Make the Wikipedia jump portal ignore stale page presence so it only sends you to currently active readers.
+- Keep Wikipedia chat handle article previews in sync after rerolling or changing your name.
+
+
 ## 0.1.16 (2026-05-29)
 
 - Wikipedia chat: article-name hovercards now stay on-screen near the viewport edge instead of getting cut off. The reroll affordance is a dice icon, and on real article pages a pin-icon button lets you adopt the article you're reading as your name.
