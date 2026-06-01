@@ -23,7 +23,7 @@ export function shouldEnableCursorsForHostname(hostname: string): boolean {
 export async function initCustomSite(deps: CustomSiteDeps): Promise<(() => void) | null> {
   const hostname = location.hostname;
 
-  if (hostname.endsWith("wikipedia.org")) {
+  if (shouldEnableCursorsForHostname(hostname)) {
     const { initWikipedia } = await import("./wikipedia");
     return initWikipedia(deps);
   }

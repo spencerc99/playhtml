@@ -999,6 +999,7 @@ export default defineContentScript({
 
         const { playhtml } = await import("playhtml");
         await playhtml.init({
+          defaultRoomOptions: { includeSearch: false },
           cursors: {
             enabled: enableCursors,
             playerIdentity: this.playerIdentity,

@@ -980,9 +980,6 @@ export class PartyServer extends YServer {
 
     const url = new URL(ctx.request.url);
     const connectionId = connection.id;
-    console.log(
-      `[PartyServer] onConnect: connectionId=${connectionId}, room=${this.name}`
-    );
 
     const clientResetEpoch = parseClientResetEpoch(
       url.searchParams.get("clientResetEpoch")
@@ -998,10 +995,6 @@ export class PartyServer extends YServer {
       );
       serverResetEpoch = null;
     }
-
-    console.log(
-      `[PartyServer] Epoch check: client=${clientResetEpoch}, server=${serverResetEpoch}, connectionId=${connectionId}`
-    );
 
     if (
       serverResetEpoch !== null &&
@@ -1021,10 +1014,6 @@ export class PartyServer extends YServer {
     }
 
     this.setConnectionAcceptedResetEpoch(connection, serverResetEpoch);
-
-    console.log(
-      `[PartyServer] Proceeding with normal Y.js connection setup for connectionId=${connectionId}`
-    );
 
     await this.clearEmptyRoomCompactAfter();
 

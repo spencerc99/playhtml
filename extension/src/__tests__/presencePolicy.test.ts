@@ -1,9 +1,27 @@
 // ABOUTME: Verifies when the extension is allowed to create PlayHTML presence rooms.
 // ABOUTME: Guards high-traffic sites from extension-owned rooms unless explicitly supported.
 
-import { describe, expect, it } from "vitest";
-import { shouldEnableCursorsForHostname } from "../custom-sites";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { initCustomSite, shouldEnableCursorsForHostname } from "../custom-sites";
+import { initWikipedia } from "../custom-sites/wikipedia";
 import { shouldStartExtensionPresence } from "../entrypoints/content/presencePolicy";
+
+vi.mock("../custom-sites/wikipedia", () => ({
+  initWikipedia: vi.fn(() => null),
+}));
+
+const customSiteDeps = {
+  createPageData: vi.fn(),
+  createPresenceRoom: vi.fn(),
+  presence: {} as any,
+  cursorClient: {},
+  playerColor: "#4a9a8a",
+};
+
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("shouldStartExtensionPresence", () => {
   it("does not start an extension-owned room when native PlayHTML exists", () => {
@@ -59,5 +77,23 @@ describe("shouldEnableCursors", () => {
     expect(shouldEnableCursorsForHostname("wikipedia.org.example.com")).toBe(
       false,
     );
+  });
+});
+
+describe("initCustomSite", () => {
+  it("initializes Wikipedia site modules for supported Wikipedia hosts", async () => {
+    vi.stubGlobal("location", { hostname: "en.wikipedia.org" });
+
+    await initCustomSite(customSiteDeps);
+
+    expect(initWikipedia).toHaveBeenCalledWith(customSiteDeps);
+  });
+
+  it("does not initialize site modules for Wikipedia lookalike domains", async () => {
+    vi.stubGlobal("location", { hostname: "fakewikipedia.org" });
+
+    await expect(initCustomSite(customSiteDeps)).resolves.toBeNull();
+
+    expect(initWikipedia).not.toHaveBeenCalled();
   });
 });
