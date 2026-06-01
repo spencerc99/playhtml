@@ -2,6 +2,7 @@
 // ABOUTME: Each site module initializes domain-specific collaborative features.
 
 import type { PageDataChannel, PresenceAPI, PresenceRoom } from "@playhtml/common";
+import type { InitOptions } from "../../../packages/playhtml/src/index";
 
 export interface CustomSiteDeps {
   createPageData: <T>(name: string, defaultValue: T) => PageDataChannel<T>;
@@ -11,18 +12,14 @@ export interface CustomSiteDeps {
   playerColor: string;
 }
 
-interface DefaultRoomOptions {
-  includeSearch: boolean;
-}
-
 export interface CustomSiteSettings {
   cursorsEnabled: boolean;
-  defaultRoomOptions: DefaultRoomOptions;
+  defaultRoomOptions: NonNullable<InitOptions["defaultRoomOptions"]>;
 }
 
 interface CustomSiteSettingsOverride {
   cursorsEnabled?: boolean;
-  defaultRoomOptions?: Partial<DefaultRoomOptions>;
+  defaultRoomOptions?: Partial<CustomSiteSettings["defaultRoomOptions"]>;
 }
 
 export interface CustomSitePolicy {
