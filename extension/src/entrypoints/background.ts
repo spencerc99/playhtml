@@ -23,7 +23,7 @@ const store = new LocalEventStore()
 
 async function flushPendingUploads(): Promise<void> {
   try {
-    const pending = await store.getPendingEvents(100)
+    const pending = await store.getPendingEvents(500)
     if (pending.length === 0) return
 
     const types = Array.from(new Set(pending.map((e) => e.type)))
