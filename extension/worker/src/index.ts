@@ -8,6 +8,7 @@ import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
+import { handlePageMeta } from './routes/pageMeta';
 import type { Env } from './lib/supabase';
 
 /**
@@ -53,6 +54,10 @@ export default {
 
     if (path === '/subscribe' && request.method === 'POST') {
       return handleSubscribe(request, env);
+    }
+
+    if (path === '/page-meta' && request.method === 'GET') {
+      return handlePageMeta(request, env);
     }
 
     // Match PUT /participants/:pid

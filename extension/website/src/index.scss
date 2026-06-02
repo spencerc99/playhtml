@@ -11,6 +11,20 @@ html, body, #root {
   width: 100%;
 }
 
+// Absolute-mode presence cursors are positioned in document space (as absolute
+// children of body) and can land past the content column on narrow screens.
+// `overflow-x: clip` + `position: relative` makes body the containing block and
+// clips those cursors, so off-content cursors are simply not shown rather than
+// widening the page. `clip` (not `hidden`) is required here: `hidden` on body
+// leaves the root <html> still reporting the overflow and showing a scrollbar.
+html, body {
+  overflow-x: clip;
+}
+
+body {
+  position: relative;
+}
+
 body {
   background: $bg;
   color: $text;

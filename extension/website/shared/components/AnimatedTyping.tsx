@@ -2,13 +2,20 @@
 // ABOUTME: Handles typing animation, sequence replay, and blinking caret
 import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import { TypingState, TypingAction, ActiveTyping } from "../types";
+import { useDebugHover } from "./DebugHover";
+import { redactWithLegibility } from "@extension/utils/keyboardRedaction";
 
 interface TypingSettings {
   animationSpeed: number;
   textboxOpacity: number;
   keyboardShowCaret: boolean;
   keyboardAnimationSpeed: number;
-  keyboardDisplayMode: "full" | "abstract";
+  keyboardLegibilityPct: number;
+  /** Hard cap on actively-typing sessions on screen at the same time. When a
+   * new session would push the active set past this number, it's deferred
+   * until an existing one finishes. Completed sessions still linger via the
+   * COMPLETED_TYPING_VISIBLE_COUNT tail. */
+  maxConcurrentTyping: number;
 }
 
 interface AnimatedTypingProps {
@@ -264,10 +271,48 @@ const TypingBox = memo(
   ({
     typing,
     settings,
+    track,
   }: {
     typing: ActiveTyping;
     settings: TypingSettings;
+    track?: TypingTrack;
   }) => {
+    const debug = useDebugHover();
+    const showDebug = () => {
+      if (!debug.enabled || !track) return;
+      const ev = track.state.animation.event;
+      const url = ev?.meta?.url ?? "";
+      const pid = ev?.meta?.pid ?? "";
+      const ts = ev?.ts;
+      debug.show({
+        kind: "Typing event",
+        id: typing.id,
+        color: typing.color,
+        title: url || track.state.animation.event?.domain || "Typing input",
+        fields: [
+          { label: "chars", value: String(track.finalText.length) },
+          { label: "actions", value: String(track.actions.length) },
+          {
+            label: "duration",
+            value: `${Math.round(track.state.durationMs)} ms`,
+          },
+          {
+            label: "start",
+            value: ts ? new Date(ts).toLocaleString() : "—",
+          },
+          { label: "pid", value: pid ? `${pid.slice(0, 7)}…${pid.slice(-4)}` : "—" },
+          {
+            label: "pos",
+            value: `${Math.round(track.state.animation.x)}, ${Math.round(track.state.animation.y)}`,
+          },
+        ],
+      });
+    };
+    const hideDebug = () => {
+      if (!debug.enabled) return;
+      debug.hide(typing.id);
+    };
+
     const {
       x,
       y,
@@ -321,12 +366,16 @@ const TypingBox = memo(
 
     return (
       <div
+        onMouseEnter={debug.enabled ? showDebug : undefined}
+        onMouseMove={debug.enabled ? showDebug : undefined}
+        onMouseLeave={debug.enabled ? hideDebug : undefined}
         style={{
           position: "absolute",
           left: `${x + positionOffset.x}px`,
           top: `${y + positionOffset.y}px`,
           transform: "translate(-50%, -50%)",
-          pointerEvents: "none",
+          pointerEvents: debug.enabled ? "auto" : "none",
+          cursor: debug.enabled ? "help" : "default",
         }}
       >
         {/* Classic web input box with captured or default styling */}
@@ -355,30 +404,7 @@ const TypingBox = memo(
         >
           {/* Text content */}
           <span style={{ position: "relative", zIndex: 1 }}>
-            {settings.keyboardDisplayMode === "abstract" ? (
-              // Abstract mode: redacted bars that preserve length/structure without revealing text
-              currentText.split("\n").map((line, i) => (
-                <span key={i} style={{ display: "block", lineHeight: "1.5" }}>
-                  {line.length > 0 ? (
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: `${Math.max(8, line.length * fontSize * 0.55)}px`,
-                        height: `${fontSize * 0.75}px`,
-                        backgroundColor: textColor,
-                        opacity: 0.25,
-                        borderRadius: "2px",
-                        verticalAlign: "middle",
-                      }}
-                    />
-                  ) : (
-                    <br />
-                  )}
-                </span>
-              ))
-            ) : (
-              currentText
-            )}
+            {redactWithLegibility(currentText, settings.keyboardLegibilityPct, 0)}
             {settings.keyboardShowCaret && showCaret && (
               <span
                 style={{
@@ -403,7 +429,7 @@ const TypingBox = memo(
       prev.typing.showCaret === next.typing.showCaret &&
       prev.settings.textboxOpacity === next.settings.textboxOpacity &&
       prev.settings.keyboardShowCaret === next.settings.keyboardShowCaret &&
-      prev.settings.keyboardDisplayMode === next.settings.keyboardDisplayMode
+      prev.settings.keyboardLegibilityPct === next.settings.keyboardLegibilityPct
     );
   },
 );
@@ -416,6 +442,26 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
     const prevElapsedRef = useRef(0);
     const nextStartOrderIndexRef = useRef(0);
     const activeTrackIndicesRef = useRef<number[]>([]);
+    // When a track is admitted after sitting in the deferred queue (waiting
+    // for the concurrency cap to free up), we shift its replay clock so
+    // playback starts from "now" rather than racing to catch up to the
+    // originally-scheduled start. Without this, a track held for 8s would
+    // render 8s of typing in one frame, looking like a sudden race-through.
+    //
+    // Stores the time shift (delta) to add to a track's scheduled start
+    // and finish times. On-time admissions store 0 (or are absent).
+    const trackTimeShiftRef = useRef<Map<number, number>>(new Map());
+    // FIFO of tracks that were admitted and then naturally evicted (i.e.
+    // they actually typed on screen and finished). Replaces the static
+    // `getRecentCompletedTypingTracks(schedule, loopedElapsed)` query
+    // because that query is keyed on `finishedAtMs ≤ loopedElapsed`, which
+    // includes tracks that were SKIPPED at admission time (cap was full
+    // when their turn came AND their finishedAtMs passed before a slot
+    // freed). Those skipped tracks would appear in the tail with their
+    // finalText rendered — looking like "filled boxes appearing from
+    // nowhere as others fade." Only tracks that actually played get to
+    // join the tail.
+    const recentlyCompletedRef = useRef<number[]>([]);
 
     // Settings as refs (same pattern as AnimatedTrails)
     const settingsRef = useRef(settings);
@@ -436,6 +482,8 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
     useEffect(() => {
       nextStartOrderIndexRef.current = 0;
       activeTrackIndicesRef.current = [];
+      trackTimeShiftRef.current.clear();
+      recentlyCompletedRef.current = [];
       prevElapsedRef.current = 0;
     }, [schedule]);
 
@@ -447,9 +495,15 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
 
       let startTime: number | null = null;
 
+      // On cycle wrap, clear everything so the next cycle starts from a
+      // clean slate. The hold phase (see HOLD_MS below) precedes the wrap,
+      // so viewers see the full final composition for a beat before the
+      // reset rather than a mid-flow disruption.
       const resetPlaybackTrackers = () => {
         nextStartOrderIndexRef.current = 0;
         activeTrackIndicesRef.current = [];
+        trackTimeShiftRef.current.clear();
+        recentlyCompletedRef.current = [];
       };
 
       const clearScheduledFrame = () => {
@@ -487,38 +541,108 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
         }
         prevElapsedRef.current = loopedElapsed;
 
+        // Evict tracks whose (shifted) finish time has passed. Compact in
+        // place rather than allocating a new array per frame. Evicted
+        // tracks join the recently-completed FIFO (capped at
+        // COMPLETED_TYPING_VISIBLE_COUNT) so they linger as static text
+        // on screen.
+        const visibleTrackIndexes = new Set<number>();
+        const activeTrackIndices = activeTrackIndicesRef.current;
+        const timeShifts = trackTimeShiftRef.current;
+        const recentlyCompleted = recentlyCompletedRef.current;
+        let activeWriteIndex = 0;
+
+        for (let i = 0; i < activeTrackIndices.length; i++) {
+          const trackIndex = activeTrackIndices[i];
+          const track = schedule.tracks[trackIndex];
+          const shift = timeShifts.get(trackIndex) ?? 0;
+          const effectiveFinish = track.finishedAtMs + shift;
+          if (effectiveFinish > loopedElapsed) {
+            activeTrackIndices[activeWriteIndex] = trackIndex;
+            activeWriteIndex++;
+            visibleTrackIndexes.add(trackIndex);
+          } else {
+            // Track finished — drop the shift entry so the map doesn't
+            // grow unbounded across cycle wraps. Push it to the FIFO so
+            // the tail shows it. De-dup defensively (a long session
+            // shouldn't double-enter).
+            timeShifts.delete(trackIndex);
+            const existing = recentlyCompleted.indexOf(trackIndex);
+            if (existing !== -1) recentlyCompleted.splice(existing, 1);
+            recentlyCompleted.push(trackIndex);
+            if (recentlyCompleted.length > COMPLETED_TYPING_VISIBLE_COUNT) {
+              recentlyCompleted.shift();
+            }
+          }
+        }
+        activeTrackIndices.length = activeWriteIndex;
+
+        // Second: admit new tracks whose start time has arrived, up to the
+        // concurrency cap. Two distinct exit paths:
+        //   - Track's lifetime already ended (cap was full when its turn
+        //     came): skip it and advance the cursor. It'll still show up in
+        //     the completed-tail buffer if it finished recently.
+        //   - Cap is full AND the candidate would still be active: stop
+        //     advancing so we re-evaluate next frame after eviction.
+        //
+        // When a track admits late (deferred because the cap was full), we
+        // record the time shift so its replay clock starts from "now"
+        // rather than racing through pent-up elapsed time. The shift also
+        // extends its effective finish time so the full session still
+        // gets to play out.
+        const cap = Math.max(1, settingsRef.current.maxConcurrentTyping);
+        // Hard cap on how late a track can admit. Without this, when the
+        // concurrency cap stays saturated for a long time (typical with
+        // many sessions and tight spacing), the deferred backlog drains
+        // out one-by-one with ever-larger shifts — effectively pushing
+        // admissions deep into the hold phase and making the hold not
+        // feel like a hold. 8 seconds is generous enough that brief
+        // cap-saturation bursts still re-admit, but tracks deferred by
+        // tens of seconds get skipped so the cycle can actually end.
+        const MAX_ADMISSION_LATENESS_MS = 8000;
         while (
           nextStartOrderIndexRef.current < schedule.startOrder.length &&
           schedule.startOrder[nextStartOrderIndexRef.current].startOffsetMs <=
             loopedElapsed
         ) {
           const track = schedule.startOrder[nextStartOrderIndexRef.current];
-          if (track.finishedAtMs > loopedElapsed) {
-            activeTrackIndicesRef.current.push(track.index);
+          if (track.finishedAtMs <= loopedElapsed) {
+            // Missed its window entirely. Skip and move on.
+            nextStartOrderIndexRef.current++;
+            continue;
           }
+          const candidateShift = loopedElapsed - track.startOffsetMs;
+          if (candidateShift > MAX_ADMISSION_LATENESS_MS) {
+            // Track deferred too long — let it fall off the schedule
+            // entirely rather than admitting it well past its scheduled
+            // window. This is what keeps the hold phase actually quiet.
+            nextStartOrderIndexRef.current++;
+            continue;
+          }
+          if (activeTrackIndices.length >= cap) {
+            // Cap full and this track is still live — hold for next frame.
+            break;
+          }
+          // Only store a shift when the admission is meaningfully late —
+          // sub-frame deltas don't need bookkeeping.
+          if (candidateShift > 1) {
+            timeShifts.set(track.index, candidateShift);
+          }
+          activeTrackIndices.push(track.index);
+          visibleTrackIndexes.add(track.index);
           nextStartOrderIndexRef.current++;
         }
 
-        const visibleTrackIndexes = new Set<number>();
-        const activeTrackIndices = activeTrackIndicesRef.current;
-        let activeWriteIndex = 0;
-
-        for (let i = 0; i < activeTrackIndices.length; i++) {
-          const trackIndex = activeTrackIndices[i];
-          const track = schedule.tracks[trackIndex];
-          if (track.finishedAtMs > loopedElapsed) {
-            activeTrackIndices[activeWriteIndex] = trackIndex;
-            activeWriteIndex++;
-            visibleTrackIndexes.add(trackIndex);
-          }
-        }
-        activeTrackIndices.length = activeWriteIndex;
-
-        for (const track of getRecentCompletedTypingTracks(
-          schedule,
-          loopedElapsed,
-        )) {
-          visibleTrackIndexes.add(track.index);
+        // Pull recently-completed tracks (from the FIFO populated during
+        // eviction above) into the visible set. Critical: this is NOT a
+        // static finishedAtMs ≤ loopedElapsed query — that would include
+        // sessions that got SKIPPED by the admission loop (cap was full
+        // when their turn came AND their finishedAtMs passed before a
+        // slot freed), making them appear as fully-typed boxes that never
+        // actually rendered any typing. Only tracks that genuinely played
+        // and finished enter the FIFO.
+        for (const trackIndex of recentlyCompleted) {
+          visibleTrackIndexes.add(trackIndex);
         }
 
         const visibleTracks = Array.from(visibleTrackIndexes)
@@ -527,7 +651,11 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
 
         const newActiveTypings = visibleTracks.map((track) => {
           const state = track.state;
-          const typingElapsed = loopedElapsed - track.startOffsetMs;
+          // Use the shifted start time so a deferred-then-admitted track
+          // plays out smoothly from admission rather than racing through
+          // pent-up elapsed time.
+          const shift = timeShifts.get(track.index) ?? 0;
+          const typingElapsed = loopedElapsed - track.startOffsetMs - shift;
           const isTyping = typingElapsed <=
             state.durationMs / settingsRef.current.keyboardAnimationSpeed;
           const timeToReplay = isTyping
@@ -569,13 +697,23 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
       return clearScheduledFrame;
     }, [schedule, timeRange.duration, typingStates.length]);
 
+    const tracksById = useMemo(() => {
+      const m = new Map<string, TypingTrack>();
+      for (const t of schedule.tracks) m.set(t.id, t);
+      return m;
+    }, [schedule]);
+
     return (
+      // pointer-events stays "none" on the wrapper; individual TypingBox
+      // wrappers opt in to pointer events when debug mode is on. Keeps
+      // the canvas non-interactive in normal use.
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
         {activeTypings.map((typing) => (
           <TypingBox
             key={typing.id}
             typing={typing}
             settings={settingsRef.current}
+            track={tracksById.get(typing.id)}
           />
         ))}
       </div>

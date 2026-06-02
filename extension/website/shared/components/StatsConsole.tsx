@@ -166,16 +166,32 @@ function relativeTime(ts: number): string {
   });
 }
 
-/** Renders a compact span string like "14 days" or "Mar 1 → Mar 15". */
+/** Compact start→end date range for the dataset's actual time bounds.
+ *
+ *   Same day: "May 11 9:14 AM → 5:42 PM"
+ *   Multi-day: "Apr 27 → May 11"
+ *   Hover/title carries the exact unrounded timestamps.
+ *
+ * We previously rendered just a duration ("14 days") which left the user
+ * guessing which 14 days. The absolute range is much more informative for
+ * picking out art-piece moments. */
 function formatTimeSpan(minTs: number, maxTs: number): string {
   if (!minTs || !maxTs || maxTs <= minTs) return "—";
-  const days = (maxTs - minTs) / 86_400_000;
-  if (days < 1) {
-    const hrs = (maxTs - minTs) / 3_600_000;
-    return `${hrs.toFixed(1)} hr`;
+  const start = new Date(minTs);
+  const end = new Date(maxTs);
+  const sameDay = start.toDateString() === end.toDateString();
+  const dateFmt: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+  };
+  if (sameDay) {
+    const timeFmt: Intl.DateTimeFormatOptions = {
+      hour: "numeric",
+      minute: "2-digit",
+    };
+    return `${start.toLocaleDateString(undefined, dateFmt)} ${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleTimeString(undefined, timeFmt)}`;
   }
-  if (days < 14) return `${days.toFixed(1)} days`;
-  return `${Math.round(days)} days`;
+  return `${start.toLocaleDateString(undefined, dateFmt)} → ${end.toLocaleDateString(undefined, dateFmt)}`;
 }
 
 /** Top-level event-type labels — these mirror the registry but stay

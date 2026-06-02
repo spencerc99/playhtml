@@ -15,6 +15,7 @@ import {
   getCursorScaleFactor,
 } from "../cursors";
 import { RippleEffect } from "./ClickRipple";
+import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
 import { getTrailRenderer, type TrailRenderer } from "../styles/trailRenderers";
@@ -936,6 +937,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       };
     }, [trailStates, timeRange.duration, frozen]);
 
+    const debug = useDebugHover();
+
     return (
       <svg
         ref={svgRef}
@@ -975,6 +978,63 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               }}
             />
           ))}
+        {debug.enabled && (
+          <g style={{ pointerEvents: "stroke" }}>
+            {trailStates.map((ts, idx) => {
+              const points = ts.variedPoints;
+              if (!points || points.length < 2) return null;
+              const pathData = buildStraightPathSegment(
+                points,
+                0,
+                points.length - 1,
+              );
+              const trail = ts.trail;
+              const id = `debug-trail-${idx}`;
+              const onEnter = () => {
+                debug.show({
+                  kind: "Cursor trail",
+                  id,
+                  color: trail.color,
+                  title: `Trail #${idx}`,
+                  fields: [
+                    { label: "points", value: String(trail.points.length) },
+                    { label: "clicks", value: String(trail.clicks.length) },
+                    {
+                      label: "duration",
+                      value: `${Math.round(ts.durationMs)} ms`,
+                    },
+                    {
+                      label: "start",
+                      value: trail.startTime
+                        ? new Date(trail.startTime).toLocaleString()
+                        : "—",
+                    },
+                    {
+                      label: "span",
+                      value: `${Math.round((trail.endTime - trail.startTime) / 1000)}s`,
+                    },
+                  ],
+                });
+              };
+              const onLeave = () => debug.hide(id);
+              return (
+                <path
+                  key={id}
+                  d={pathData}
+                  fill="none"
+                  stroke="rgba(0,0,0,0.001)"
+                  strokeWidth={18}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ cursor: "help" }}
+                  onMouseEnter={onEnter}
+                  onMouseMove={onEnter}
+                  onMouseLeave={onLeave}
+                />
+              );
+            })}
+          </g>
+        )}
         <g ref={pathLayerRef}>
           {trailStates.map((ts, idx) => (
             <TrailPath

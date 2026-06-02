@@ -12,6 +12,8 @@
       "@@/*": ["./*"],
       "~~": ["."],
       "~~/*": ["./*"],
+      "@extension": ["./src"],
+      "@extension/*": ["./src/*"],
       "@movement/*": ["./website/shared/*"]
     }
   },

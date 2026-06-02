@@ -18,6 +18,13 @@ export type LimitViolation = {
   reason: "Message Rate Limit Exceeded";
 };
 
+const DURABLE_OBJECT_OVERLOAD_MESSAGE =
+  "Durable Object is overloaded.";
+
+type DurableObjectError = Error & {
+  overloaded?: unknown;
+};
+
 export function checkMessageRate({
   limits,
   now,
@@ -61,4 +68,12 @@ export function shouldWarnForDocumentSize(
   limits: ServerLimits
 ): boolean {
   return documentSizeBytes > limits.documentWarningBytes;
+}
+
+export function isDurableObjectOverloadError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    ((error as DurableObjectError).overloaded === true ||
+      error.message.startsWith(DURABLE_OBJECT_OVERLOAD_MESSAGE))
+  );
 }

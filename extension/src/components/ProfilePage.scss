@@ -58,6 +58,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
 
   &__color-input--hidden {
@@ -86,10 +87,26 @@
     }
   }
 
+  &__cursor-preview--static {
+    cursor: default;
+
+    &:hover {
+      border-color: $border;
+      background: $surface;
+    }
+  }
+
   &__reroll-btn {
     @include btn-secondary;
     padding: 8px 10px;
     font-size: 14px;
+    border-radius: 6px;
+  }
+
+  &__picker-window-btn {
+    @include btn-secondary;
+    padding: 8px 10px;
+    font-size: 12px;
     border-radius: 6px;
   }
 

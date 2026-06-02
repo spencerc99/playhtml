@@ -11,14 +11,13 @@ import {
 } from "../types";
 import {
   RISO_COLORS,
-  extractDomain,
-  eventMatchesPath,
+  eventMatchesAnyFilter,
+  type FilterChip,
 } from "../utils/eventUtils";
 
 // Settings interface for navigation timeline
 export interface NavigationTimelineSettings {
-  domainFilter: string;
-  pathFilter: string;
+  filters: readonly FilterChip[];
   pidFilter: string;
   maxSessions: number;
   minSessionEvents: number;
@@ -102,18 +101,14 @@ export function useNavigationTimeline(
       return null;
     }
 
-    // Apply domain + path + pid filter
+    // Apply URL-scope chips + pid filter.
+    const hasFilters = (settings.filters?.length ?? 0) > 0;
     const filteredEvents =
-      settings.domainFilter || settings.pathFilter || settings.pidFilter
+      hasFilters || settings.pidFilter
         ? navigationEvents.filter((event) => {
             if (settings.pidFilter && event.meta?.pid !== settings.pidFilter)
               return false;
-            const url = event.meta.url || "";
-            if (settings.domainFilter) {
-              const eventDomain = extractDomain(url);
-              if (eventDomain !== settings.domainFilter) return false;
-            }
-            return eventMatchesPath(url, settings.pathFilter);
+            return eventMatchesAnyFilter(event.meta.url || "", settings.filters);
           })
         : navigationEvents;
 
@@ -348,8 +343,7 @@ export function useNavigationTimeline(
     };
   }, [
     navigationEvents,
-    settings.domainFilter,
-    settings.pathFilter,
+    settings.filters,
     settings.pidFilter,
     settings.maxSessions,
     settings.minSessionEvents,

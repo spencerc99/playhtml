@@ -21,7 +21,7 @@ import {
   type ScheduledClick,
 } from "@movement/components/AnimatedClicks";
 import { AnimatedTyping } from "@movement/components/AnimatedTyping";
-import { AnimatedScrollViewports } from "@movement/AnimatedScrollViewports";
+import { AnimatedScrollViewports } from "@movement/components/AnimatedScrollViewports";
 
 // Import hooks
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
@@ -313,12 +313,19 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     soundEngineRef.current?.setCanvasWidth(viewportSize.width);
   }, [viewportSize.width]);
 
-  // Process cursor events
+  // Process cursor events. HistoricalOverlay is single-domain by design
+  // (it's launched from a specific page) — wrap that as a single-chip
+  // filter list to match the shared hook's contract.
+  const filters = useMemo(
+    () => (domain ? [{ domain, path: "" }] : []),
+    [domain],
+  );
   const cursorSettings = useMemo(
     () => ({
       trailOpacity: settings.trailOpacity,
       randomizeColors: settings.randomizeColors,
-      domainFilter: domain,
+      filters,
+      pidFilter: "",
       eventFilter: {
         move: true,
         click: true,
@@ -333,7 +340,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
       minGapBetweenTrails: 0.2,
       documentSpace: settings.documentSpace,
     }),
-    [settings, domain],
+    [settings, filters],
   );
 
   const {
@@ -401,35 +408,37 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   // Process keyboard events
   const keyboardSettings = useMemo(
     () => ({
-      domainFilter: domain,
+      filters,
+      pidFilter: "",
       keyboardOverlapFactor: 0.9,
       keyboardMinFontSize: 12,
       keyboardMaxFontSize: 18,
       keyboardPositionRandomness: 0.3,
       keyboardRandomizeOrder: false,
+      maxConcurrentTyping: 15,
+      keyboardSizeCap: 0.5,
     }),
-    [domain],
+    [filters],
   );
 
   const { typingStates } = useKeyboardTyping(
     events as unknown as MovementCollectionEvent[],
     viewportSize,
     keyboardSettings,
-    timeRange.duration,
-    timeRange.min,
   );
 
   // Process viewport events
   const viewportSettings = useMemo(
     () => ({
-      domainFilter: domain,
+      filters,
+      pidFilter: "",
       viewportEventFilter: {
         scroll: true,
         resize: true,
         zoom: true,
       },
     }),
-    [domain],
+    [filters],
   );
 
   const { animations: scrollAnimations } = useViewportScroll(
@@ -946,7 +955,8 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                 textboxOpacity: 0.2,
                 keyboardShowCaret: true,
                 keyboardAnimationSpeed: 0.5,
-                keyboardDisplayMode: "full" as const,
+                keyboardLegibilityPct: 100,
+                maxConcurrentTyping: 15,
               }}
             />
           )}

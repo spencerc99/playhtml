@@ -147,16 +147,41 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     const awareness = getAwareness();
     const states = awareness.getStates();
     const myClientId = awareness.clientID;
+    const mySelfStableId = getSelfStableId();
     let selfSeen = false;
 
+    // Multiple tabs of the same user share a publicKey (stableId) but have
+    // distinct clientIDs. When collapsing into one entry per stableId:
+    //  - For self: always prefer the local clientID's state so the consumer
+    //    sees what THIS tab broadcast, not a non-deterministic other tab.
+    //  - For remote peers: prefer the highest clientID, a stable tiebreaker
+    //    that avoids flapping based on Map iteration order.
+    const winningClientIdByStableId = new Map<string, number>();
     states.forEach((state: Record<string, unknown>, clientId: number) => {
-      const isMe = clientId === myClientId;
-      if (isMe) selfSeen = true;
-
       const stableId = getStableIdForAwareness(state, clientId);
-      const view = buildViewFromState(state, isMe);
-      presences.set(stableId, view);
+      const isSelf = stableId === mySelfStableId;
+      const existing = winningClientIdByStableId.get(stableId);
+      if (existing === undefined) {
+        winningClientIdByStableId.set(stableId, clientId);
+        return;
+      }
+      // Self always wins via the local clientID
+      if (isSelf && clientId === myClientId) {
+        winningClientIdByStableId.set(stableId, clientId);
+        return;
+      }
+      if (isSelf && existing === myClientId) return;
+      // Remote: highest clientID wins
+      if (clientId > existing) winningClientIdByStableId.set(stableId, clientId);
     });
+
+    for (const [stableId, clientId] of winningClientIdByStableId) {
+      const state = states.get(clientId);
+      if (!state) continue;
+      const isMe = stableId === mySelfStableId;
+      if (isMe) selfSeen = true;
+      presences.set(stableId, buildViewFromState(state, isMe));
+    }
 
     // Ensure self is always present even if awareness hasn't synced
     if (!selfSeen) {
@@ -164,7 +189,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       const view = buildViewFromState(localState, true);
       // Use identity for playerIdentity since cursor state may not be set
       view.playerIdentity = deps.getPlayerIdentity();
-      presences.set(getSelfStableId(), view);
+      presences.set(mySelfStableId, view);
     }
 
     return presences;
@@ -199,8 +224,22 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     ): () => void {
       ensureIdentityWritten();
       const id = String(nextListenerId++);
-      listeners.set(id, { channel, callback, lastFingerprint: "" });
+      // Seed lastFingerprint with the current channel state so the listener
+      // isn't re-fired redundantly on the next awareness change if nothing
+      // actually changed for this channel.
+      const currentStates = getAwareness().getStates() as Map<
+        number,
+        Record<string, unknown>
+      >;
+      const initialFingerprint = channelFingerprint(currentStates, channel);
+      listeners.set(id, { channel, callback, lastFingerprint: initialFingerprint });
       attachAwarenessListener();
+
+      // Replay the current snapshot immediately so late subscribers receive
+      // existing peer state instead of waiting for the next change. Consumers
+      // assume "subscribe = current state + future changes"; without this, a
+      // peer who set their state before we subscribed stays invisible to us.
+      callback(buildPresences());
 
       return () => {
         listeners.delete(id);

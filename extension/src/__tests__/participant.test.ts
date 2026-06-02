@@ -34,6 +34,7 @@ describe("participant storage fallbacks", () => {
 
   it("uses a stable in-memory sid when browser.storage.session is unavailable", async () => {
     installCryptoWithoutRandomUuid();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.doMock("webextension-polyfill", () => ({
       default: {
         storage: {
@@ -50,10 +51,15 @@ describe("participant storage fallbacks", () => {
 
     expect(first.startsWith("sid_")).toBe(true);
     expect(first).toBe(second);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "[Participant] browser.storage.session unavailable; using in-memory session id",
+    );
   });
 
   it("falls back to generated participant id without crypto.randomUUID", async () => {
     installCryptoWithoutRandomUuid();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.doMock("webextension-polyfill", () => ({
       default: {
         storage: {
@@ -69,5 +75,7 @@ describe("participant storage fallbacks", () => {
 
     expect(pid.startsWith("pk_temp_")).toBe(true);
     expect(pid.length).toBeGreaterThan("pk_temp_".length + 8);
+    expect(error).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith("Failed to get participant ID:", expect.any(Error));
   });
 });

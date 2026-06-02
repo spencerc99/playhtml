@@ -11,16 +11,21 @@ const PORTAL_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
   <circle cx="7" cy="7" r="1" fill="currentColor" opacity="0.6"/>
 </svg>`;
 
+const LOBBY_PAGE_TTL_MS = 30_000;
+
 export class PresenceCountPill {
   private element: HTMLElement | null = null;
   private jumpBtn: HTMLElement | null = null;
   private cleanups: (() => void)[] = [];
   private lastFingerprint = "";
   private isHidden = false;
+  private chatOpen = false;
+  private chatUnread = false;
 
   constructor(
     private presence: PresenceAPI,
     private lobbyPresence: PresenceAPI,
+    private chatToggle?: () => void,
   ) {}
 
   init(): void {
@@ -30,11 +35,10 @@ export class PresenceCountPill {
 
       const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
       const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
-      const lobbyOtherKeys = this.uniqueOtherKeys(lobbyPresences, myKey);
+      const lobbyOtherPageKeys = this.uniqueOtherPageKeys(lobbyPresences, myKey);
 
       const pageOthers = pageOtherKeys.size;
-      const lobbyOthers = lobbyOtherKeys.size;
-      const elsewhere = Math.max(0, lobbyOthers - pageOthers);
+      const elsewhere = lobbyOtherPageKeys.size;
       const fingerprint = `${pageOthers}:${elsewhere}`;
 
       if (fingerprint !== this.lastFingerprint) {
@@ -95,6 +99,40 @@ export class PresenceCountPill {
       if (p.isMe) return;
       const key = this.pidOf(p);
       if (key && myKey && key === myKey) return;
+      keys.add(key ?? `conn:${connectionId}`);
+    });
+    return keys;
+  }
+
+  private isFreshLobbyPage(
+    page: WikiPresenceView["page"],
+  ): page is NonNullable<WikiPresenceView["page"]> {
+    if (!page?.url || typeof page.lastSeenAt !== "number") return false;
+    return Date.now() - page.lastSeenAt <= LOBBY_PAGE_TTL_MS;
+  }
+
+  private isCurrentPageUrl(url: string): boolean {
+    try {
+      const candidate = new URL(url, location.href);
+      const current = new URL(location.href);
+      return (
+        candidate.origin === current.origin &&
+        candidate.pathname === current.pathname &&
+        candidate.search === current.search
+      );
+    } catch {
+      return url === location.href;
+    }
+  }
+
+  private uniqueOtherPageKeys(presences: Map<string, any>, myKey: string | null): Set<string> {
+    const keys = new Set<string>();
+    presences.forEach((p, connectionId) => {
+      if (p.isMe) return;
+      const key = this.pidOf(p);
+      if (key && myKey && key === myKey) return;
+      const page = (p as WikiPresenceView).page;
+      if (!this.isFreshLobbyPage(page) || this.isCurrentPageUrl(page.url)) return;
       keys.add(key ?? `conn:${connectionId}`);
     });
     return keys;
@@ -184,6 +222,90 @@ export class PresenceCountPill {
     } else {
       this.jumpBtn = null;
     }
+
+    // Chat segment
+    if (this.chatToggle) {
+      const sep = document.createElement("span");
+      Object.assign(sep.style, { opacity: "0.35", margin: "0 1px" });
+      sep.textContent = "\u00b7";
+      this.element.appendChild(sep);
+      this.element.appendChild(this.createChatSegment());
+    }
+
+    // Pill border accent when chat is open
+    this.element.style.borderColor = this.chatOpen
+      ? "rgba(196, 114, 78, 0.4)"
+      : "rgba(90, 78, 65, 0.15)";
+  }
+
+  private createChatSegment(): HTMLElement {
+    const seg = document.createElement("span");
+    Object.assign(seg.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "3px",
+      cursor: "pointer",
+      padding: "1px 5px",
+      borderRadius: "8px",
+      transition: "background 120ms ease, color 120ms ease",
+      pointerEvents: "auto",
+    });
+    if (this.chatOpen) {
+      seg.style.background = "rgba(196, 114, 78, 0.15)";
+      seg.style.color = "#c4724e";
+    }
+
+    const icon = document.createElement("span");
+    icon.textContent = "\u25a4"; // small square with horizontal lines
+    icon.style.fontSize = "11px";
+    seg.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.textContent = "chat";
+    seg.appendChild(label);
+
+    if (this.chatUnread) {
+      const dot = document.createElement("span");
+      Object.assign(dot.style, {
+        width: "5px",
+        height: "5px",
+        borderRadius: "50%",
+        background: "#c4724e",
+        display: "inline-block",
+        marginLeft: "2px",
+      });
+      seg.appendChild(dot);
+    }
+
+    seg.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.chatToggle?.();
+    });
+    return seg;
+  }
+
+  setChatOpen(open: boolean): void {
+    if (open === this.chatOpen) return;
+    this.chatOpen = open;
+    this.rerender();
+  }
+
+  setChatUnread(unread: boolean): void {
+    if (unread === this.chatUnread) return;
+    this.chatUnread = unread;
+    this.rerender();
+  }
+
+  private rerender(): void {
+    const pagePresences = this.presence.getPresences();
+    const lobbyPresences = this.lobbyPresence.getPresences();
+    const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
+    const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
+    const lobbyOtherPageKeys = this.uniqueOtherPageKeys(lobbyPresences, myKey);
+    const pageOthers = pageOtherKeys.size;
+    const elsewhere = lobbyOtherPageKeys.size;
+    this.lastFingerprint = "";
+    this.render(pageOthers, elsewhere, pagePresences, pageOtherKeys, myKey);
   }
 
   private createDot(color: string): HTMLElement {
@@ -235,12 +357,11 @@ export class PresenceCountPill {
       const key = this.pidOf(p);
       // Same human in another tab — skip so we don't teleport to our own pages.
       if (key && myKey && key === myKey) return;
+      const page = (p as WikiPresenceView).page;
+      if (!this.isFreshLobbyPage(page) || this.isCurrentPageUrl(page.url)) return;
       if (key && seenKeys.has(key)) return;
       if (key) seenKeys.add(key);
-      const page = (p as WikiPresenceView).page;
-      if (page?.url && page.url !== location.href) {
-        otherPages.push({ url: page.url, title: page.title });
-      }
+      otherPages.push({ url: page.url, title: page.title });
     });
 
     if (otherPages.length === 0) {

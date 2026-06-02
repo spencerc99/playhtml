@@ -55,4 +55,26 @@ describe("playhtml.presence", () => {
     expect(unsub).toBeTypeOf("function");
     unsub();
   });
+
+  it("onPresenceChange replays the current snapshot to a late subscriber", () => {
+    // A consumer that subscribes AFTER presence was already set must still
+    // receive the current state — not wait for the next change. This is the
+    // bug behind cursors that were already idle/unfocused before a peer
+    // loaded the page never getting dimmed.
+    playhtml.presence.setMyPresence("focus-replay", false);
+
+    let received: Map<string, unknown> | null = null;
+    const unsub = playhtml.presence.onPresenceChange("focus-replay", (presences) => {
+      received = presences as Map<string, unknown>;
+    });
+
+    expect(received).not.toBeNull();
+    const self = Array.from((received as unknown as Map<string, any>).values()).find(
+      (p) => p.isMe,
+    )!;
+    expect(self["focus-replay"]).toBe(false);
+
+    unsub();
+    playhtml.presence.setMyPresence("focus-replay", null);
+  });
 });
