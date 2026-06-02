@@ -33,8 +33,9 @@ changesets release-PR flow but on a separate cadence.
   on every prep cycle so the PR always reflects current `main`.
 - Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
   which builds Chrome + Firefox zips, submits Chrome through
-  `scripts/submitChrome.mjs`, submits Firefox through `wxt submit`, and pushes
-  a `@playhtml/extension@x.y.z` tag.
+  `scripts/submitChrome.mjs`, submits Edge through `scripts/submitEdge.mjs`,
+  submits Firefox through `wxt submit`, and pushes a
+  `@playhtml/extension@x.y.z` tag.
 
 **To bump minor or major instead of patch:** edit `extension/package.json`
 on the release branch directly (in the GitHub PR UI is fine). The prep
@@ -68,6 +69,12 @@ Firefox AMO:
 - `FIREFOX_EXTENSION_ID`
 - `FIREFOX_JWT_ISSUER` — from addons.mozilla.org → Developer Hub → Manage API Keys
 - `FIREFOX_JWT_SECRET`
+
+Microsoft Edge Add-ons:
+- `EDGE_PRODUCT_ID` — Partner Center product ID GUID
+- `EDGE_CLIENT_ID` — from Microsoft Edge → Publish API
+- `EDGE_API_KEY` — from Microsoft Edge → Publish API
+- `EDGE_CERTIFICATION_NOTES` — optional notes sent with the submission
 
 **Manual fallback:** The local `./release.sh` continues to work as an escape
 hatch (uses `.env.submit` instead of GitHub secrets, requires a manual

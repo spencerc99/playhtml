@@ -1,5 +1,6 @@
 // ABOUTME: Main content script injected into every web page.
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
+import "./content/style.css";
 import browser from "webextension-polyfill";
 import {
   MILESTONE_DURATION_MS,

@@ -1,6 +1,6 @@
 #!/bin/bash
-# ABOUTME: Build both browser zips into ./publish and submit to Chrome + Firefox stores.
-# ABOUTME: Usage: ./release.sh [--dry-run] [--skip-firefox] [--skip-chrome]
+# ABOUTME: Build browser zips into ./publish and submit to extension stores.
+# ABOUTME: Usage: ./release.sh [--dry-run] [--skip-chrome] [--skip-edge] [--skip-firefox]
 
 set -euo pipefail
 
@@ -10,11 +10,13 @@ cd "$SCRIPT_DIR"
 DRY_RUN=""
 SKIP_FIREFOX=0
 SKIP_CHROME=0
+SKIP_EDGE=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN="--dry-run" ;;
     --skip-firefox) SKIP_FIREFOX=1 ;;
     --skip-chrome) SKIP_CHROME=1 ;;
+    --skip-edge) SKIP_EDGE=1 ;;
     *) echo "Unknown arg: $arg"; exit 1 ;;
   esac
 done
@@ -24,8 +26,9 @@ if [ ! -f ".env.submit" ]; then
   exit 1
 fi
 
+set -a; . ./.env.submit; set +a
+
 if [ "$SKIP_CHROME" -eq 0 ]; then
-  set -a; . ./.env.submit; set +a
   TOKEN_PROBE=$(curl -s -X POST https://oauth2.googleapis.com/token \
     -d "client_id=${CHROME_CLIENT_ID}" \
     -d "client_secret=${CHROME_CLIENT_SECRET}" \
@@ -60,12 +63,22 @@ echo "  chrome:  ${CHROME_ZIP}"
 echo "  firefox: ${FIREFOX_ZIP}"
 echo "  sources: ${SOURCES_ZIP}"
 
+node scripts/validateExtensionBuild.mjs "${PUBLISH_DIR}/chrome-mv3"
+
 echo "Submitting to stores..."
 if [ "$SKIP_CHROME" -eq 0 ]; then
   if [ -n "$DRY_RUN" ]; then
     DRY_RUN=true CHROME_ZIP="${CHROME_ZIP}" node scripts/submitChrome.mjs
   else
     CHROME_ZIP="${CHROME_ZIP}" node scripts/submitChrome.mjs
+  fi
+fi
+
+if [ "$SKIP_EDGE" -eq 0 ]; then
+  if [ -n "$DRY_RUN" ]; then
+    DRY_RUN=true EDGE_ZIP="${CHROME_ZIP}" node scripts/submitEdge.mjs
+  else
+    EDGE_ZIP="${CHROME_ZIP}" node scripts/submitEdge.mjs
   fi
 fi
 

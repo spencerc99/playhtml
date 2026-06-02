@@ -31,6 +31,11 @@ jobs:
         with:
           node-version: 24
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Check for pending changes
         id: pending
         run: |
@@ -107,6 +112,7 @@ jobs:
             pkg.version = process.env.VERSION;
             fs.writeFileSync('extension/package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
+          bun install --lockfile-only
 
           DATE=$(date -u +%Y-%m-%d)
           {
@@ -133,7 +139,7 @@ jobs:
           -->
           TEMPLATE_EOF
 
-          git add extension/package.json extension/CHANGELOG.md extension/PENDING.md
+          git add extension/package.json extension/CHANGELOG.md extension/PENDING.md bun.lock
           git commit -m "extension: release v$VERSION"
           git push --force origin "$RELEASE_BRANCH"
 
@@ -150,8 +156,9 @@ jobs:
           Auto-generated release PR for the extension. Merging this:
 
           - Bumps \`extension/package.json\` to **$VERSION**
+          - Updates \`bun.lock\` for the extension package version
           - Moves bullets from \`PENDING.md\` into \`CHANGELOG.md\`
-          - Triggers the Extension Release workflow on merge → builds Chrome + Firefox zips, submits to both stores, tags \`@playhtml/extension@$VERSION\`
+          - Triggers the Extension Release workflow on merge → builds Chrome + Firefox zips, submits to Chrome, Edge, and Firefox, tags \`@playhtml/extension@$VERSION\`
 
           ## Changes in this release
 
