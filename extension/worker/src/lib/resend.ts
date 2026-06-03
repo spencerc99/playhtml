@@ -1,8 +1,15 @@
-// ABOUTME: Thin wrapper around the Resend SDK for adding subscribers and sending welcome emails.
+// ABOUTME: Thin wrapper around the Resend SDK for adding subscribers and sending signup emails.
 // ABOUTME: Surfaces a minimal interface so the route handler can be tested with a mock.
 
 import { Resend } from 'resend';
-import { renderWelcomeEmail, WELCOME_EMAIL_SUBJECT, WELCOME_EMAIL_TEXT } from '../emails/WelcomeEmail';
+import {
+  renderUpdatesEmail,
+  renderWelcomeEmail,
+  UPDATES_EMAIL_SUBJECT,
+  UPDATES_EMAIL_TEXT,
+  WELCOME_EMAIL_SUBJECT,
+  WELCOME_EMAIL_TEXT,
+} from '../emails/WelcomeEmail';
 
 export type SignupSource = 'website' | 'extension-setup';
 
@@ -17,9 +24,19 @@ export interface ResendClientConfig {
 export interface ResendClient {
   addContact(email: string, source: SignupSource): Promise<{ created: boolean }>;
   sendWelcomeEmail(email: string): Promise<void>;
+  sendUpdatesEmail(email: string): Promise<void>;
 }
 
 const FROM_ADDRESS = 'spencer <hi@spencer.place>';
+const REPLY_TO_ADDRESS = 'hi@spencer.place';
+
+interface SendEmailOptions {
+  email: string;
+  subject: string;
+  html: string;
+  text: string;
+  idempotencyKey: string;
+}
 
 function isNotFoundError(error: { name?: string; message?: string }): boolean {
   // Resend returns name 'not_found' when a contact lookup misses.
@@ -35,6 +52,29 @@ function isDuplicateContactError(error: { name?: string; message?: string }): bo
   // rather than failing the request. This races against contacts.get when
   // two requests for the same email arrive within ms of each other.
   return /already.*exist/i.test(error.message || '');
+}
+
+async function sendEmail(
+  resend: Resend,
+  { email, subject, html, text, idempotencyKey }: SendEmailOptions,
+): Promise<void> {
+  const { error } = await resend.emails.send(
+    {
+      from: FROM_ADDRESS,
+      to: email,
+      replyTo: REPLY_TO_ADDRESS,
+      subject,
+      html,
+      text,
+    },
+    // Idempotency key prevents duplicate sends if the worker retries
+    // within Resend's 24h dedup window.
+    { idempotencyKey },
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export function createResendClient(config: ResendClientConfig): ResendClient {
@@ -84,23 +124,24 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
 
     async sendWelcomeEmail(email) {
       const html = await renderWelcomeEmail();
-      const { error } = await resend.emails.send(
-        {
-          from: FROM_ADDRESS,
-          to: email,
-          replyTo: 'hi@spencer.place',
-          subject: WELCOME_EMAIL_SUBJECT,
-          html,
-          text: WELCOME_EMAIL_TEXT,
-        },
-        // Idempotency key prevents duplicate sends if the worker retries
-        // within Resend's 24h dedup window.
-        { idempotencyKey: `welcome-email/${email}` },
-      );
+      await sendEmail(resend, {
+        email,
+        subject: WELCOME_EMAIL_SUBJECT,
+        html,
+        text: WELCOME_EMAIL_TEXT,
+        idempotencyKey: `welcome-email/${email}`,
+      });
+    },
 
-      if (error) {
-        throw new Error(error.message);
-      }
+    async sendUpdatesEmail(email) {
+      const html = await renderUpdatesEmail();
+      await sendEmail(resend, {
+        email,
+        subject: UPDATES_EMAIL_SUBJECT,
+        html,
+        text: UPDATES_EMAIL_TEXT,
+        idempotencyKey: `updates-email/${email}`,
+      });
     },
   };
 }

@@ -1,5 +1,5 @@
-// ABOUTME: Handles POST /subscribe — adds an email to the Resend Audience and sends welcome on first signup.
-// ABOUTME: Public endpoint, validated and rate-limited; never logs or stores anything beyond email + source.
+// ABOUTME: Handles POST /subscribe by adding signup emails to Resend.
+// ABOUTME: Public endpoint, validated and rate-limited; sends email based on signup source.
 
 import { createResendClient, type SignupSource } from '../lib/resend';
 import type { Env } from '../lib/supabase';
@@ -75,6 +75,7 @@ export async function handleSubscribe(request: Request, env: Env): Promise<Respo
   if (!VALID_SOURCES.includes(source as SignupSource)) {
     return jsonResponse(400, { error: 'Invalid or missing source' });
   }
+  const signupSource = source as SignupSource;
 
   const resend = createResendClient({
     apiKey: env.RESEND_API_KEY,
@@ -83,25 +84,30 @@ export async function handleSubscribe(request: Request, env: Env): Promise<Respo
 
   let result: { created: boolean };
   try {
-    result = await resend.addContact(email, source as SignupSource);
+    result = await resend.addContact(email, signupSource);
   } catch (err) {
     console.error('[Subscribe] addContact failed:', err);
     return jsonResponse(503, { error: 'Email service temporarily unavailable' });
   }
 
-  if (result.created) {
+  if (signupSource === 'website') {
     try {
       await resend.sendWelcomeEmail(email);
     } catch (err) {
-      // Contact was created; welcome failed. Log but return success — the
-      // user is on the list, and we'd rather not double-charge them with
-      // a retry that creates duplicate entries.
       console.error('[Subscribe] sendWelcomeEmail failed:', err);
+      return jsonResponse(503, { error: 'Email service temporarily unavailable' });
+    }
+  } else {
+    try {
+      await resend.sendUpdatesEmail(email);
+    } catch (err) {
+      console.error('[Subscribe] sendUpdatesEmail failed:', err);
+      return jsonResponse(503, { error: 'Email service temporarily unavailable' });
     }
   }
 
   if (VERBOSE) {
-    console.log(`[Subscribe] ${email} (${source}) — created=${result.created}`);
+    console.log(`[Subscribe] ${email} (${signupSource}) — created=${result.created}`);
   }
 
   return jsonResponse(200, { ok: true, alreadySubscribed: !result.created });

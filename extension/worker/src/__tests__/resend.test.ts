@@ -158,9 +158,39 @@ describe('createResendClient', () => {
     expect(params.subject.length).toBeGreaterThan(0);
     expect(typeof params.html).toBe('string');
     expect(params.html).toContain('we were online');
+    expect(params.html).toContain('join the playhtml discord');
+    expect(params.html).toContain('https://discord.gg/SKbsSf4ptU');
     expect(typeof params.text).toBe('string');
     expect(params.text.length).toBeGreaterThan(0);
+    expect(params.text).toContain('join the playhtml discord');
+    expect(params.text).toContain('https://discord.gg/SKbsSf4ptU');
     expect(opts.idempotencyKey).toBe('welcome-email/a@b.com');
+  });
+
+  it('sendUpdatesEmail sends project content without download links', async () => {
+    mockEmailsSend.mockResolvedValueOnce({ data: { id: 'em_2' }, error: null });
+
+    const client = createResendClient({ apiKey: 'k' });
+    await client.sendUpdatesEmail('a@b.com');
+
+    expect(mockEmailsSend).toHaveBeenCalledTimes(1);
+    const [params, opts] = mockEmailsSend.mock.calls[0];
+    expect(params.from).toBe('spencer <hi@spencer.place>');
+    expect(params.to).toBe('a@b.com');
+    expect(params.replyTo).toBe('hi@spencer.place');
+    expect(params.subject).toContain('we were online');
+    expect(params.html).toContain('we were online');
+    expect(params.html).toContain('join the playhtml discord');
+    expect(params.html).not.toContain('Download on Chrome');
+    expect(params.html).not.toContain('Download on Firefox');
+    expect(params.html).not.toContain('chromewebstore.google.com');
+    expect(params.html).not.toContain('addons.mozilla.org');
+    expect(params.text).toContain('join the playhtml discord');
+    expect(params.text).not.toContain('Download on Chrome');
+    expect(params.text).not.toContain('Download on Firefox');
+    expect(params.text).not.toContain('chromewebstore.google.com');
+    expect(params.text).not.toContain('addons.mozilla.org');
+    expect(opts.idempotencyKey).toBe('updates-email/a@b.com');
   });
 
   it('sendWelcomeEmail throws when emails.send returns error', async () => {
@@ -171,5 +201,15 @@ describe('createResendClient', () => {
 
     const client = createResendClient({ apiKey: 'k' });
     await expect(client.sendWelcomeEmail('a@b.com')).rejects.toThrow('service down');
+  });
+
+  it('sendUpdatesEmail throws when emails.send returns error', async () => {
+    mockEmailsSend.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'application_error', message: 'service down' },
+    });
+
+    const client = createResendClient({ apiKey: 'k' });
+    await expect(client.sendUpdatesEmail('a@b.com')).rejects.toThrow('service down');
   });
 });
