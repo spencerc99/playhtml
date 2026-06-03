@@ -1,6 +1,7 @@
 // ABOUTME: Styles for the wewere.online homepage
 // ABOUTME: Scrollable layout with fixed trails background, hero section, essay, guestbook
 
+@use "sass:color";
 @use "./styles/variables" as *;
 
 $accent-teal: #4a9a8a;
@@ -195,7 +196,7 @@ $accent-rust: #c4724e;
     transition: color 0.2s, border-color 0.2s;
 
     &:hover {
-      color: darken($accent-teal, 8%);
+      color: color.adjust($accent-teal, $lightness: -8%);
       border-color: $accent-teal;
     }
   }
@@ -308,7 +309,7 @@ $accent-rust: #c4724e;
     transition: color 0.2s, border-color 0.2s;
 
     &:hover {
-      color: darken($accent-teal, 8%);
+      color: color.adjust($accent-teal, $lightness: -8%);
       border-color: $accent-teal;
     }
   }
@@ -433,7 +434,7 @@ $accent-rust: #c4724e;
     transition: color 0.2s, border-color 0.2s;
 
     &:hover {
-      color: darken($accent-teal, 8%);
+      color: color.adjust($accent-teal, $lightness: -8%);
       border-color: $accent-teal;
     }
   }
