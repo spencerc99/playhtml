@@ -58,7 +58,7 @@ async function sendEmail(
   resend: Resend,
   { email, subject, html, text, idempotencyKey }: SendEmailOptions,
 ): Promise<void> {
-  const { error } = await resend.emails.send(
+  const { data, error } = await resend.emails.send(
     {
       from: FROM_ADDRESS,
       to: email,
@@ -74,6 +74,9 @@ async function sendEmail(
 
   if (error) {
     throw new Error(error.message);
+  }
+  if (!data?.id) {
+    throw new Error('Resend did not return an email id');
   }
 }
 
@@ -102,7 +105,7 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
       // do it via a proper Resend Segment.
       void source;
 
-      const { error: createError } = await resend.contacts.create({
+      const { data: createdContact, error: createError } = await resend.contacts.create({
         email,
         unsubscribed: false,
         ...(config.segmentId
@@ -117,6 +120,9 @@ export function createResendClient(config: ResendClientConfig): ResendClient {
           return { created: false };
         }
         throw new Error(createError.message);
+      }
+      if (!createdContact?.id) {
+        throw new Error('Resend did not return a contact id');
       }
 
       return { created: true };

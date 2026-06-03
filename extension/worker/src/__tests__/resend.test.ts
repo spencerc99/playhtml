@@ -111,6 +111,22 @@ describe('createResendClient', () => {
     await expect(client.addContact('a@b.com', 'website')).rejects.toThrow('create failed');
   });
 
+  it('addContact throws when contacts.create returns no contact data', async () => {
+    mockContactsGet.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'not_found', message: 'Contact not found' },
+    });
+    mockContactsCreate.mockResolvedValueOnce({
+      data: null,
+      error: null,
+    });
+
+    const client = createResendClient({ apiKey: 'k' });
+    await expect(client.addContact('a@b.com', 'website')).rejects.toThrow(
+      'Resend did not return a contact id',
+    );
+  });
+
   it('addContact throws on a generic "not found" message that is not name=not_found', async () => {
     // Defensive: a "Segment not found" or "Audience not found" error from
     // get should NOT be treated as "this contact is new".
@@ -211,5 +227,14 @@ describe('createResendClient', () => {
 
     const client = createResendClient({ apiKey: 'k' });
     await expect(client.sendUpdatesEmail('a@b.com')).rejects.toThrow('service down');
+  });
+
+  it('sendWelcomeEmail throws when emails.send returns no email data', async () => {
+    mockEmailsSend.mockResolvedValueOnce({ data: null, error: null });
+
+    const client = createResendClient({ apiKey: 'k' });
+    await expect(client.sendWelcomeEmail('a@b.com')).rejects.toThrow(
+      'Resend did not return an email id',
+    );
   });
 });

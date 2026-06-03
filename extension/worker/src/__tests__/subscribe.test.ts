@@ -25,7 +25,6 @@ const ENV: Env = {
   SUPABASE_SECRET_KEY: 'k',
   ADMIN_KEY: 'a',
   RESEND_API_KEY: 'r',
-  LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
 };
 
 function makeRequest(body: unknown, ip = '1.2.3.4'): Request {
