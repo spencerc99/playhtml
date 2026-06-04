@@ -723,3 +723,149 @@ section {
     grid-template-columns: 1fr;
   }
 }
+
+.tool-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 1rem 0 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+
+  .tool-tab {
+    padding: 0.5rem 1rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+
+    &.active {
+      border-bottom-color: #4a9a8a;
+      color: #4a9a8a;
+    }
+  }
+}
+
+.moderation {
+  .moderation-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .moderation-paste {
+    width: 100%;
+    font-family: monospace;
+  }
+
+  .moderation-result {
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+  }
+
+  .moderation-copied {
+    margin-left: 0.5rem;
+    color: #4a9a8a;
+    font-size: 0.85rem;
+  }
+
+  .moderation-skipped {
+    color: #c4724e;
+    font-size: 0.8rem;
+  }
+
+  .moderation-listcontrols {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+  }
+
+  .moderation-filter,
+  .moderation-bulk {
+    display: flex;
+    gap: 0.25rem;
+
+    .filter-btn {
+      padding: 0.25rem 0.6rem;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      background: transparent;
+      cursor: pointer;
+      border-radius: 0.25rem;
+
+      &.active {
+        background: #4a9a8a;
+        color: #fff;
+        border-color: #4a9a8a;
+      }
+    }
+  }
+
+  .moderation-records {
+    list-style: none;
+    padding: 0;
+    max-height: 420px;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0.25rem;
+
+    li {
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+
+      &.flagged {
+        background: rgba(196, 114, 78, 0.12);
+        border-left: 3px solid #c4724e;
+      }
+    }
+
+    .mod-text {
+      margin-left: 0.4rem;
+      max-width: 40ch;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: inline-block;
+      vertical-align: bottom;
+    }
+
+    .mod-badge {
+      font-size: 0.75rem;
+      padding: 0.05rem 0.35rem;
+      border-radius: 0.25rem;
+      background: rgba(0, 0, 0, 0.06);
+    }
+
+    .mod-report {
+      background: rgba(196, 114, 78, 0.2);
+    }
+
+    .mod-key {
+      font-size: 0.7rem;
+      opacity: 0.6;
+    }
+
+    .mod-raw {
+      flex-basis: 100%;
+      font-size: 0.75rem;
+      background: rgba(0, 0, 0, 0.04);
+      padding: 0.4rem;
+      overflow: auto;
+    }
+  }
+
+  .moderation-actions {
+    margin-top: 0.5rem;
+  }
+
+  &.moderation-empty p {
+    color: #8a8279;
+    font-style: italic;
+  }
+}

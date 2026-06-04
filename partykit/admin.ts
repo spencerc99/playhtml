@@ -7,6 +7,7 @@ import * as Y from "yjs";
 import { supabase } from "./db";
 import { PartyServer } from "./party";
 import { docToJson, replaceDocState, encodeDocToBase64 } from "./docUtils";
+import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 
 function compareKeys(
   obj1: any,
@@ -84,6 +85,12 @@ export class AdminHandler {
         request.method === "POST"
       ) {
         return this.handleAdminSaveEditedData(request);
+      }
+      if (
+        path.includes("admin/moderation-remove") &&
+        request.method === "POST"
+      ) {
+        return this.handleModerationRemove(request);
       }
       if (path.includes("admin/cleanup-orphans") && request.method === "POST") {
         return this.handleAdminCleanupOrphans(request);
@@ -545,6 +552,64 @@ export class AdminHandler {
       return new Response(
         JSON.stringify({
           error: "Failed to save edited data",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  private async handleModerationRemove(request: Request): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
+
+    try {
+      const body = (await request.json()) as { targets?: RemoveTarget[] };
+      const targets = body?.targets;
+      if (!Array.isArray(targets) || targets.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Missing or empty targets array" }),
+          { status: 400, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      const liveYDoc = this.context.document;
+      const play = docToJson(liveYDoc);
+      if (!play) {
+        return new Response(
+          JSON.stringify({ error: "Room has no play data" }),
+          { status: 404, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      const result = removeRecordsByTargets(play, targets);
+
+      if (result.removed > 0) {
+        replaceDocState(liveYDoc, result.play);
+        const base64 = encodeDocToBase64(liveYDoc);
+        const { error } = await supabase
+          .from("documents")
+          .upsert({ name: this.context.name, document: base64 }, { onConflict: "name" });
+        if (error) throw new Error(error.message);
+      }
+
+      return new Response(
+        JSON.stringify({ removed: result.removed, skipped: result.skipped }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error: unknown) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to remove moderated records",
           message: error instanceof Error ? error.message : String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } }

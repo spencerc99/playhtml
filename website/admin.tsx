@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
+import { deriveRoomId } from "@playhtml/common";
+import { extractRecords, type ModerationRecord } from "@moderation";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -560,6 +562,23 @@ const AdminConsole: React.FC = () => {
   const [cleanupDryRunResult, setCleanupDryRunResult] = useState<any>(null);
   const [isCleanupRunning, setIsCleanupRunning] = useState(false);
 
+  // Moderation section state
+  const [modSelected, setModSelected] = useState<Set<string>>(new Set());
+  const [modPaste, setModPaste] = useState("");
+  const [modResult, setModResult] = useState<
+    { removed: number; skipped: { key: string; reason: string }[] } | null
+  >(null);
+  const [modExpanded, setModExpanded] = useState<Set<string>>(new Set());
+  const [activeToolTab, setActiveToolTab] = useStickyState<"moderate" | "tools">(
+    "playhtml-admin-tool-tab",
+    "moderate"
+  );
+  const [modFilter, setModFilter] = useStickyState<"flagged" | "all" | "unflagged">(
+    "playhtml-admin-mod-filter",
+    "all"
+  );
+  const [modCopied, setModCopied] = useState(false);
+
   // Utility functions
   const addLog = useCallback(
     (level: DebugLog["level"], message: string, data?: any) => {
@@ -649,20 +668,10 @@ const AdminConsole: React.FC = () => {
       }
 
       const url = new URL(urlToParse);
-      const host = url.host;
-      const pathname = url.pathname;
-
-      // Normalize pathname: strip file extension and ensure it starts with /
-      const normalizePath = (path: string): string => {
-        if (!path) return "/";
-        const cleaned = path.replace(/\.[^/.]+$/, "");
-        return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
-      };
-
-      const normalizedPath = normalizePath(pathname);
-      const roomId =
-        normalizedPath === "/" ? host : `${host}-${normalizedPath}`;
-      return encodeURIComponent(roomId);
+      // Use the library's canonical room ID derivation so the admin console
+      // matches the room names playhtml actually creates (including the path
+      // for root URLs, e.g. wewere.online-/ ).
+      return deriveRoomId(url.host, url.pathname);
     } catch (error) {
       // Silently fail if URL is incomplete - user might still be typing
       return null;
@@ -1495,6 +1504,114 @@ const AdminConsole: React.FC = () => {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to save edited data: ${msg}`, error);
       alert(`❌ Failed to save edited data: ${msg}`);
+    }
+  };
+
+  const moderationRecords: ModerationRecord[] = React.useMemo(() => {
+    const play = roomData?.ydoc?.play;
+    if (!play || typeof play !== "object") return [];
+    const recs = extractRecords(play as Record<string, unknown>);
+    // Show reported items first when any have report counts.
+    return [...recs].sort(
+      (a, b) => (b.reportCount ?? -1) - (a.reportCount ?? -1)
+    );
+  }, [roomData]);
+
+  const recordByKey = React.useMemo(
+    () => new Map(moderationRecords.map((r) => [r.key, r])),
+    [moderationRecords]
+  );
+
+  const visibleModerationRecords = React.useMemo(() => {
+    if (modFilter === "flagged") return moderationRecords.filter((r) => modSelected.has(r.key));
+    if (modFilter === "unflagged") return moderationRecords.filter((r) => !modSelected.has(r.key));
+    return moderationRecords;
+  }, [moderationRecords, modFilter, modSelected]);
+
+  const copyRecordsForModel = async () => {
+    const preamble =
+      "You are moderating user-generated content. Review each item below. " +
+      "Return ONLY a JSON array of the `key` values for items that should be " +
+      "removed (spam, abuse, hate, explicit content). If nothing should be " +
+      "removed, return [].\n\n";
+    const payload = moderationRecords.map((r) => ({
+      key: r.key,
+      id: r.id,
+      text: r.text,
+      reportCount: r.reportCount,
+    }));
+    await navigator.clipboard.writeText(
+      preamble + JSON.stringify(payload, null, 2)
+    );
+  };
+
+  const applyPastedKeys = () => {
+    // Tolerant: split on the punctuation that wraps keys in a JSON array,
+    // comma/newline list, or prose, then intersect with the actual record keys.
+    // Matching against recordByKey (rather than a structural regex) means keys
+    // whose element ids contain unusual characters are still resolved.
+    const tokens = modPaste
+      .split(/[\s,"'[\]]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const next = new Set<string>();
+    const unknown: string[] = [];
+    for (const token of tokens) {
+      if (recordByKey.has(token)) next.add(token);
+      // Only flag tokens that look like a key attempt (contain "#"), so prose
+      // words and stray punctuation don't get reported as misses.
+      else if (token.includes("#")) unknown.push(token);
+    }
+    setModSelected(next);
+    if (next.size > 0) setModFilter("flagged");
+    if (unknown.length > 0) {
+      alert(
+        `Checked ${next.size} rows. ${unknown.length} pasted key(s) matched no current record: ${unknown.join(", ")}`
+      );
+    }
+  };
+
+  const removeSelectedRecords = async () => {
+    if (!currentRoomId || !adminToken || modSelected.size === 0) return;
+    if (
+      !window.confirm(
+        `Remove ${modSelected.size} record(s) from the live document? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    const targets = [...modSelected]
+      .map((key) => recordByKey.get(key))
+      .filter((r): r is ModerationRecord => Boolean(r))
+      .map((r) => ({ key: r.key, contentHash: r.contentHash }));
+
+    try {
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/moderation-remove?token=${encodeURIComponent(
+        adminToken
+      )}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targets }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message || json.error || `HTTP ${response.status}`);
+      }
+      setModResult(json);
+      setModSelected(new Set());
+      addLog(
+        "info",
+        `Removed ${json.removed}, skipped ${json.skipped?.length ?? 0}`
+      );
+      await loadRoom(currentRoomId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Moderation removal failed: ${msg}`, error);
+      alert(`Moderation removal failed: ${msg}`);
     }
   };
 
@@ -2820,6 +2937,167 @@ const AdminConsole: React.FC = () => {
           )}
         </section>
 
+        <nav className="tool-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={activeToolTab === "moderate"}
+            className={activeToolTab === "moderate" ? "tool-tab active" : "tool-tab"}
+            onClick={() => setActiveToolTab("moderate")}
+          >
+            Moderate{moderationRecords.length > 0 ? ` (${moderationRecords.length})` : ""}
+          </button>
+          <button
+            role="tab"
+            aria-selected={activeToolTab === "tools"}
+            className={activeToolTab === "tools" ? "tool-tab active" : "tool-tab"}
+            onClick={() => setActiveToolTab("tools")}
+          >
+            Tools
+          </button>
+        </nav>
+
+        {activeToolTab === "moderate" &&
+          (moderationRecords.length > 0 ? (
+            <section className="moderation">
+              <h2>Moderate ({moderationRecords.length} records)</h2>
+              <div className="moderation-controls">
+                <button
+                  onClick={async () => {
+                    await copyRecordsForModel();
+                    setModCopied(true);
+                    window.setTimeout(() => setModCopied(false), 2000);
+                  }}
+                >
+                  Copy for model
+                </button>
+                {modCopied && (
+                  <span className="moderation-copied">
+                    Copied {moderationRecords.length} ✓
+                  </span>
+                )}
+              </div>
+              <textarea
+                className="moderation-paste"
+                value={modPaste}
+                onChange={(e) => setModPaste(e.target.value)}
+                placeholder="Paste the model's answer (keys to remove) here..."
+                rows={3}
+              />
+              <div className="moderation-controls">
+                <button onClick={applyPastedKeys}>Flag pasted keys</button>
+              </div>
+              {modResult && (
+                <div className="moderation-result">
+                  Removed {modResult.removed}; skipped {modResult.skipped.length}
+                  {modResult.skipped.map((s) => (
+                    <div key={s.key} className="moderation-skipped">
+                      {s.key}: {s.reason}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="moderation-listcontrols">
+                <div className="moderation-filter" role="group">
+                  {(["flagged", "all", "unflagged"] as const).map((f) => {
+                    const count =
+                      f === "flagged"
+                        ? modSelected.size
+                        : f === "unflagged"
+                        ? moderationRecords.length - modSelected.size
+                        : moderationRecords.length;
+                    const label = f.charAt(0).toUpperCase() + f.slice(1);
+                    return (
+                      <button
+                        key={f}
+                        className={modFilter === f ? "filter-btn active" : "filter-btn"}
+                        onClick={() => setModFilter(f)}
+                      >
+                        {label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="moderation-bulk">
+                  <button
+                    onClick={() => {
+                      const next = new Set(modSelected);
+                      visibleModerationRecords.forEach((r) => next.add(r.key));
+                      setModSelected(next);
+                    }}
+                  >
+                    Select all (filtered)
+                  </button>
+                  <button onClick={() => setModSelected(new Set())}>
+                    Clear selection
+                  </button>
+                </div>
+              </div>
+              <ul className="moderation-records">
+                {visibleModerationRecords.map((r) => (
+                  <li key={r.key} className={modSelected.has(r.key) ? "flagged" : ""}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={modSelected.has(r.key)}
+                        onChange={(e) => {
+                          const next = new Set(modSelected);
+                          if (e.target.checked) next.add(r.key);
+                          else next.delete(r.key);
+                          setModSelected(next);
+                        }}
+                      />
+                      <span className="mod-text">{r.text || "(no text)"}</span>
+                    </label>
+                    {r.reportCount != null && (
+                      <span className="mod-badge mod-report">
+                        reports: {r.reportCount}
+                      </span>
+                    )}
+                    {Object.entries(r.metadata).map(([k, v]) => (
+                      <span key={k} className="mod-badge">
+                        {k}: {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                      </span>
+                    ))}
+                    <code className="mod-key">{r.key}</code>
+                    <button
+                      onClick={() => {
+                        const next = new Set(modExpanded);
+                        if (next.has(r.key)) next.delete(r.key);
+                        else next.add(r.key);
+                        setModExpanded(next);
+                      }}
+                    >
+                      {modExpanded.has(r.key) ? "Hide" : "Raw"}
+                    </button>
+                    {modExpanded.has(r.key) && (
+                      <pre className="mod-raw">
+                        {JSON.stringify(r.fields, null, 2)}
+                      </pre>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="moderation-actions">
+                <button
+                  className="tool-btn destructive"
+                  onClick={removeSelectedRecords}
+                  disabled={modSelected.size === 0}
+                >
+                  Remove {modSelected.size} selected
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="moderation moderation-empty">
+              <p>
+                Load a room with text content to moderate. No moderatable
+                records found in the current room.
+              </p>
+            </section>
+          ))}
+
+        {activeToolTab === "tools" && (
+          <>
         <section className="debug-tools">
           <h2>Debug Tools</h2>
           <div className="tool-grid">
@@ -3089,6 +3367,8 @@ const AdminConsole: React.FC = () => {
               )}
             </div>
           </section>
+        )}
+          </>
         )}
 
         <DebugLogs logs={logs} onClearLogs={() => setLogs([])} />
