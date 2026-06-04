@@ -284,6 +284,7 @@ export function getSharedElementId(el: HTMLElement): string | undefined {
 // Re-export helpers from split files
 export * from "./objectUtils";
 export * from "./sharedElements";
+export * from "./moderation";
 
 // Export cursor types
 export * from "./cursor-types";
