@@ -1,6 +1,8 @@
 // ABOUTME: Shared utility functions for event processing across all event types
 // ABOUTME: Contains color palette, hashing, and domain extraction helpers
 
+import type { CollectionEvent } from "../types";
+
 // Trail color palette — 8 evenly-spaced HSL hues (45° apart) with warm
 // saturation and constrained lightness. Inspired by minute-faces' time-color
 // mapping: vivid, harmonious, and legible over both light and dark backgrounds.
@@ -320,6 +322,32 @@ export function formatFilterChip(chip: FilterChip): string {
   if (!chip.path) return chip.domain;
   const path = chip.path.startsWith("/") ? chip.path : `/${chip.path}`;
   return `${chip.domain}${path}`;
+}
+
+/** How recently a participant must have an event to count as "browsing now". */
+export const ACTIVE_PEOPLE_WINDOW_MS = 45_000;
+
+/**
+ * Count distinct people (participants) with an event within the recent window.
+ * Derived from the raw event stream, NOT the drawn trails — so the "N people
+ * browsing" readout reflects true activity even when the canvas only renders a
+ * capped subset of trails (maxGroups).
+ */
+export function countActivePeople(
+  events: CollectionEvent[],
+  windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
+): number {
+  if (events.length === 0) return 0;
+  // Window is relative to the newest event seen, not wall-clock, so it works
+  // the same on the replayed buffer and on a quiet stream.
+  let newestTs = 0;
+  for (const e of events) if (e.ts > newestTs) newestTs = e.ts;
+  const cutoff = newestTs - windowMs;
+  const pids = new Set<string>();
+  for (const e of events) {
+    if (e.ts >= cutoff && e.meta?.pid) pids.add(e.meta.pid);
+  }
+  return pids.size;
 }
 
 // Constants used across event processing

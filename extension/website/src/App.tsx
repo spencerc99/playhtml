@@ -1,10 +1,13 @@
 // ABOUTME: Homepage for wewere.online
 // ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { LiveTrails } from "@movement/components/LiveTrails";
+import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
+import { countActivePeople } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
+import { useAccumulatedEvents } from "@movement/hooks/useAccumulatedEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
 import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
@@ -91,6 +94,11 @@ const TRAIL_SETTINGS = {
   overlapFactor: 1,
   minGapBetweenTrails: 0.1,
   documentSpace: false,
+  // One trail per participant+url. Without this a group that splits into
+  // multiple >5min-gap segments emits several trails sharing the same id,
+  // producing duplicate React keys (React warns "two children with the same
+  // key") and the resulting intermittent disappearing/flickering trails.
+  singleSegmentPerGroup: true,
 };
 
 const ANIMATION_SETTINGS = {
@@ -119,7 +127,9 @@ export default function App() {
   // Live stream: starts from the server's recent-event replay, then accumulates
   // new events over the session (capped at EVENT_LIMIT). The trail cycle grows
   // with the event time span, unlike the old fixed one-shot snapshot.
-  const { events } = useLiveEvents({ maxEvents: EVENT_LIMIT });
+  const { events, connected } = useLiveEvents({
+    maxEvents: EVENT_LIMIT,
+  });
 
   useEffect(() => {
     const onResize = () =>
@@ -128,15 +138,52 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const { trailStates } = useCursorTrails(events, viewportSize, TRAIL_SETTINGS);
+  // Keep each live trail's full point history as the event window slides, so
+  // trails grow and persist instead of shrinking/shifting/vanishing when their
+  // earliest events age off the stream cap. A group's events are freed when its
+  // trail has fully faded out on screen (LiveTrails reports the id here).
+  const evictIdsRef = useRef<Set<string>>(new Set());
+  const handleTrailsRemoved = useCallback((ids: string[]) => {
+    for (const id of ids) evictIdsRef.current.add(id);
+  }, []);
+  const accumulatedEvents = useAccumulatedEvents(events, {
+    maxGroups: 60,
+    evictIdsRef,
+  });
+  const { trailStates } = useCursorTrails(
+    accumulatedEvents,
+    viewportSize,
+    TRAIL_SETTINGS,
+  );
+
+  // True count of people browsing right now — from the raw event stream, so it
+  // reflects real activity even though the canvas only draws a capped subset.
+  const peopleCount = useMemo(() => countActivePeople(events), [events]);
+
 
   return (
     <div className={styles.page}>
       <div className={styles.trails}>
         {trailStates.length > 0 && (
-          <LiveTrails trailStates={trailStates} settings={ANIMATION_SETTINGS} />
+          <LiveTrails
+            trailStates={trailStates}
+            onTrailsRemoved={handleTrailsRemoved}
+            settings={ANIMATION_SETTINGS}
+          />
         )}
         <RisoTexture />
+        {/* People-count pinned to the bottom of the first screen (the portrait
+            area) and scrolls away with the page — not fixed to the viewport. */}
+        <LiveIndicator
+          connected={connected}
+          peopleCount={peopleCount}
+          style={{
+            position: "absolute",
+            top: "calc(100vh - 36px)",
+            left: 16,
+            zIndex: 2,
+          }}
+        />
       </div>
 
       <div className={styles.content}>
@@ -145,7 +192,7 @@ export default function App() {
           <p className={styles.tagline}>
             turning the internet into a living, shared space
           </p>
-          <a className={styles.portraitLink} href="/portrait">
+          <a className={styles.portraitLink} href="/portrait/">
             watch the live portrait →
           </a>
           <div

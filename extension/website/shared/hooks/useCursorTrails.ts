@@ -44,6 +44,11 @@ export interface CursorTrailSettings {
   // When true, cursor positions are placed in document space using captured scroll offsets,
   // so movements across a long scrollable page are shown relative to the full document.
   documentSpace: boolean;
+  // When true, each participant+url group contributes only its most recent
+  // segment (the in-progress trail), so a group never yields two trails sharing
+  // the same id. Required for the live view, where trail id must be both unique
+  // and stable as the event window slides; the archive shows every segment.
+  singleSegmentPerGroup?: boolean;
 }
 
 // Trail schedule item for animation timing
@@ -250,8 +255,10 @@ export function useCursorTrails(
           event.ts - lastTimestamp > TRAIL_TIME_THRESHOLD ||
           spatialJumpTooLarge
         ) {
-          // Push completed trail if it has enough points
-          if (currentTrail.length >= 2) {
+          // Push completed trail if it has enough points. In single-segment
+          // mode we keep only the group's final segment, so earlier completed
+          // segments are dropped here (they would collide on the group id).
+          if (currentTrail.length >= 2 && !settings.singleSegmentPerGroup) {
             const startTime = currentTrail[0].ts;
             const endTime = currentTrail[currentTrail.length - 1].ts;
 
@@ -338,6 +345,7 @@ export function useCursorTrails(
     settings.pidFilter,
     settings.eventFilter,
     settings.documentSpace,
+    settings.singleSegmentPerGroup,
     viewportSize,
   ]);
 

@@ -16,7 +16,7 @@ import type { FilterChip } from "../shared/utils/eventUtils";
 const noOpFetch = () => {};
 
 const LivePortrait = () => {
-  const { events } = useLiveEvents({ maxEvents: 150 });
+  const { events, connected } = useLiveEvents({ maxEvents: 500 });
 
   const [filters, setFilters] = useState<FilterChip[]>(() => {
     const fromUrl = parseFiltersFromUrl();
@@ -84,6 +84,7 @@ const LivePortrait = () => {
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
         live
+        connected={connected}
       />
     </>
   );
@@ -97,7 +98,7 @@ const LivePortrait = () => {
   const hasHistorical =
     params.has("startMs") || params.has("endMs") || params.has("day");
   if (hasHistorical) {
-    window.location.replace(`/archive${window.location.search}`);
+    window.location.replace(`/archive/${window.location.search}`);
   }
 })();
 

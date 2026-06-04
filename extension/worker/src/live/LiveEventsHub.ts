@@ -4,11 +4,15 @@
 import type { Env } from '../lib/supabase';
 import type { CollectionEvent } from '@playhtml/extension-types';
 
-// Recent cursor events replayed to a client on connect. Kept small so the live
-// portrait shows roughly the last minute or two of activity ("now"), not a long
-// rolling history — a larger buffer made one person's many page-visits all
-// appear at once.
-const BUFFER_SIZE = 60;
+// The buffer is a TIME window, not a count: it holds (and replays on connect)
+// only events from roughly the last couple of minutes, so the live portrait is
+// a firehose of recent activity ("now") rather than a long rolling history.
+const MAX_AGE_MS = 2 * 60_000;
+
+// Hard cap on buffered events as a memory backstop for traffic spikes, applied
+// on top of the time window. At ~10 events per trail this is roughly one
+// canvas-worth (~60 trails); a viral burst is trimmed to the most recent.
+const MAX_BUFFER = 600;
 
 interface BroadcastBody {
   events: CollectionEvent[];
@@ -47,10 +51,19 @@ export class LiveEventsHub {
   private ingestBroadcast(events: CollectionEvent[]): void {
     if (events.length === 0) return;
     this.buffer.push(...events);
-    if (this.buffer.length > BUFFER_SIZE) {
-      this.buffer = this.buffer.slice(this.buffer.length - BUFFER_SIZE);
-    }
+    this.pruneBuffer();
     this.send({ events });
+  }
+
+  /** Drop events older than the time window, then enforce the memory backstop. */
+  private pruneBuffer(): void {
+    const cutoff = Date.now() - MAX_AGE_MS;
+    if (this.buffer.length > 0 && this.buffer[0].ts < cutoff) {
+      this.buffer = this.buffer.filter((e) => e.ts >= cutoff);
+    }
+    if (this.buffer.length > MAX_BUFFER) {
+      this.buffer = this.buffer.slice(this.buffer.length - MAX_BUFFER);
+    }
   }
 
   private handleWebSocket(): Response {
@@ -61,6 +74,9 @@ export class LiveEventsHub {
     server.accept();
     this.sockets.add(server);
 
+    // Drop anything that aged out since the last ingest so a freshly-connected
+    // client only ever receives recent activity.
+    this.pruneBuffer();
     if (this.buffer.length > 0) {
       try {
         server.send(JSON.stringify({ events: this.buffer } as StreamFrame));

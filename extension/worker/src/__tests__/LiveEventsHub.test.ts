@@ -50,11 +50,11 @@ beforeEach(() => {
 import { LiveEventsHub } from '../live/LiveEventsHub';
 import type { CollectionEvent } from '@playhtml/extension-types';
 
-function ev(id: string): CollectionEvent {
+function ev(id: string, ts: number = Date.now()): CollectionEvent {
   return {
     id,
     type: 'cursor',
-    ts: 1000,
+    ts,
     data: { x: 0.5, y: 0.5 },
     meta: { pid: 'pk_x', sid: 'sid_y' },
   } as CollectionEvent;
@@ -65,19 +65,21 @@ function makeHub(): LiveEventsHub {
 }
 
 describe('LiveEventsHub', () => {
-  it('buffers broadcast events and caps at BUFFER_SIZE', async () => {
+  it('keeps only events within the time window, dropping older ones', async () => {
     const hub = makeHub();
-    const events = Array.from({ length: 250 }, (_, i) => ev(`e${i}`));
+    const now = Date.now();
+    const events = [
+      ev('old', now - 6 * 60_000), // 6 min ago — well outside the time window
+      ev('recent1', now - 60_000), // 1 min ago — kept
+      ev('recent2', now), // now — kept
+    ];
     await hub.fetch(
       new Request('https://do/broadcast', {
         method: 'POST',
         body: JSON.stringify({ events }),
       }),
     );
-    // BUFFER_SIZE = 60: the most recent 60 of 250 are retained.
-    expect(hub.bufferSizeForTest()).toBe(60);
-    expect(hub.bufferForTest()[0].id).toBe('e190');
-    expect(hub.bufferForTest()[59].id).toBe('e249');
+    expect(hub.bufferForTest().map((e) => e.id)).toEqual(['recent1', 'recent2']);
   });
 
   it('replays the buffer to a newly connected socket', async () => {

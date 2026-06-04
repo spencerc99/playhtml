@@ -12,6 +12,7 @@ import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
+import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
@@ -24,6 +25,7 @@ import { ActivityStrip } from "./ActivityStrip";
 import { StatsConsole } from "./StatsConsole";
 import { DebugHoverProvider } from "./DebugHover";
 import { useCursorTrails } from "../hooks/useCursorTrails";
+import { useAccumulatedEvents } from "../hooks/useAccumulatedEvents";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
 import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
@@ -32,6 +34,7 @@ import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import {
   extractDomain,
   formatFilterChip,
+  countActivePeople,
   type FilterChip,
 } from "../utils/eventUtils";
 import { buildShareUrl } from "../utils/shareUrl";
@@ -356,6 +359,8 @@ interface MovementCanvasProps {
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
   live?: boolean;
+  /** Live-stream connection status, gates the people-count readout. */
+  connected?: boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -372,6 +377,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
   live = false,
+  connected = false,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -735,6 +741,20 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     return events.filter((e) => e.ts >= startMs && e.ts < endMs);
   }, [events, selectedTimeRange]);
 
+  // In live mode, accumulate each trail's full point history so trails don't
+  // shrink/shift/vanish as their earliest events age off the stream cap. The
+  // archive's event set is fixed, so it bypasses accumulation. A group's events
+  // are freed when its trail has fully faded out (LiveTrails reports the id).
+  const evictIdsRef = useRef<Set<string>>(new Set());
+  const handleTrailsRemoved = useCallback((ids: string[]) => {
+    for (const id of ids) evictIdsRef.current.add(id);
+  }, []);
+  const trailEvents = useAccumulatedEvents(filteredEvents, {
+    enabled: live,
+    maxGroups: 60,
+    evictIdsRef,
+  });
+
   const cursorSettings = useMemo(
     () => ({
       randomizeColors: settings.randomizeColors,
@@ -748,6 +768,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
       documentSpace: settings.documentSpace,
+      // Live mode collapses each participant+url to one trail so ids stay
+      // unique/stable as the event window slides (the archive shows every
+      // segment). Prevents duplicate React keys and disappearing trails.
+      singleSegmentPerGroup: live,
     }),
     [
       settings.randomizeColors,
@@ -770,7 +794,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-  } = useCursorTrails(filteredEvents, viewportSize, cursorSettings);
+  } = useCursorTrails(trailEvents, viewportSize, cursorSettings);
+
+  // True count of people browsing right now (live mode) — from the raw event
+  // stream, so it reflects real activity even though the canvas only draws a
+  // capped subset of trails.
+  const peopleCount = useMemo(() => countActivePeople(events), [events]);
 
   // The keyboard hook is invoked here (before timeRange) because its
   // cycleDuration feeds the canvas's shared animation cycle. Without this,
@@ -1215,6 +1244,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         )
       ))}
 
+      {/* Live people-count, bottom-left. Same plain look as the homepage. */}
+      {!cleanMode && live && (
+        <LiveIndicator
+          connected={connected}
+          peopleCount={peopleCount}
+          style={{ position: "absolute", bottom: 20, left: 20, zIndex: 100 }}
+        />
+      )}
+
       {/* Only surface the pause/resume control while paused — when the
        * canvas is animating, the button adds visual noise without
        * carrying useful info. Double-tap P always works regardless. */}
@@ -1344,8 +1382,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             <LiveTrails
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
-              windowSize={settings.maxConcurrentTrails * 2}
               frozen={paused}
+              onTrailsRemoved={handleTrailsRemoved}
               settings={trailAnimationSettings}
             />
           ) : (
