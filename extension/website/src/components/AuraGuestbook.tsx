@@ -11,7 +11,11 @@ import {
 } from "react";
 import { withSharedState, usePlayContext } from "@playhtml/react";
 import { containsProfanity } from "@movement/profanity";
-import { getPileDotColors, type GuestbookEntry } from "./auraGuestbookData";
+import {
+  getLoopedEntryIndex,
+  getPileDotColors,
+  type GuestbookEntry,
+} from "./auraGuestbookData";
 import styles from "./AuraGuestbook.module.scss";
 
 const MAX_MESSAGE_LENGTH = 400;
@@ -523,14 +527,14 @@ export const AuraGuestbook = withSharedState(
         if (expandedIndex === null) return;
         if (e.key === "ArrowRight" || e.key === "ArrowDown") {
           e.preventDefault();
-          if (expandedIndex < sortedEntries.length - 1) {
-            setExpandedIndex(expandedIndex + 1);
-          }
+          setExpandedIndex(
+            getLoopedEntryIndex(expandedIndex, sortedEntries.length, 1),
+          );
         } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
           e.preventDefault();
-          if (expandedIndex > 0) {
-            setExpandedIndex(expandedIndex - 1);
-          }
+          setExpandedIndex(
+            getLoopedEntryIndex(expandedIndex, sortedEntries.length, -1),
+          );
         } else if (e.key === "Escape") {
           setExpandedIndex(null);
         }

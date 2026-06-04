@@ -2,7 +2,7 @@
 // ABOUTME: Verifies hoverable dot colors stay backed by rendered cards.
 
 import { describe, expect, it } from "vitest";
-import { getPileDotColors } from "../auraGuestbookData";
+import { getLoopedEntryIndex, getPileDotColors } from "../auraGuestbookData";
 
 function entry(color: string, timestamp: number) {
   return {
@@ -40,5 +40,19 @@ describe("getPileDotColors", () => {
     ];
 
     expect(getPileDotColors(entries, 120)).toEqual(["#c4724e", "#4a9a8a"]);
+  });
+});
+
+describe("getLoopedEntryIndex", () => {
+  it("wraps forward from the last entry to the first", () => {
+    expect(getLoopedEntryIndex(2, 3, 1)).toBe(0);
+  });
+
+  it("wraps backward from the first entry to the last", () => {
+    expect(getLoopedEntryIndex(0, 3, -1)).toBe(2);
+  });
+
+  it("keeps the current index when there are no entries", () => {
+    expect(getLoopedEntryIndex(0, 0, 1)).toBe(0);
   });
 });

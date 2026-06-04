@@ -26,3 +26,12 @@ export function getPileDotColors(
 
   return colors;
 }
+
+export function getLoopedEntryIndex(
+  currentIndex: number,
+  entryCount: number,
+  direction: number,
+): number {
+  if (entryCount === 0) return currentIndex;
+  return (currentIndex + direction + entryCount) % entryCount;
+}
