@@ -99,6 +99,7 @@ const ANIMATION_SETTINGS = {
   animationSpeed: 1.0,
   clickMinRadius: 10,
   clickMaxRadius: 30,
+  clickCoreRadius: 3,
   clickMinDuration: 600,
   clickMaxDuration: 1200,
   clickExpansionDuration: 400,

@@ -11,14 +11,8 @@ import {
 } from "react";
 import { withSharedState, usePlayContext } from "@playhtml/react";
 import { containsProfanity } from "@movement/profanity";
+import { getPileDotColors, type GuestbookEntry } from "./auraGuestbookData";
 import styles from "./AuraGuestbook.module.scss";
-
-interface GuestbookEntry {
-  name: string;
-  color: string;
-  message: string;
-  timestamp: number;
-}
 
 const MAX_MESSAGE_LENGTH = 400;
 const MAX_NAME_LENGTH = 20;
@@ -240,21 +234,20 @@ function layoutOrbs(
   return { dots, width };
 }
 
-// Visitor dots — every unique visitor, drawn on one canvas so the glow scales
-// to thousands of dots without compositing a box-shadow per DOM node.
+// Visitor dots — every unique rendered pile color, drawn on one canvas so the
+// glow scales without compositing a box-shadow per DOM node.
 // Hovering a dot reports its color up so the matching pile cards can lift.
 const VisitorOrbs = memo(function VisitorOrbs({
-  entries,
+  dotColors,
   hoveredColor,
   onHoverColor,
   firstVisitByColor,
 }: {
-  entries: GuestbookEntry[];
+  dotColors: string[];
   hoveredColor: string | null;
   onHoverColor: (color: string | null) => void;
   firstVisitByColor: Map<string, number>;
 }) {
-  const { cursors } = usePlayContext();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -265,40 +258,9 @@ const VisitorOrbs = memo(function VisitorOrbs({
     text: string;
   } | null>(null);
 
-  const allColors = useMemo(() => {
-    const seen = new Set<string>();
-    const colors: string[] = [];
-    if (cursors.color) {
-      seen.add(cursors.color);
-      colors.push(cursors.color);
-    }
-    const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
-    for (const entry of sorted) {
-      if (!seen.has(entry.color)) {
-        seen.add(entry.color);
-        colors.push(entry.color);
-      }
-    }
-    // Dev preview: append synthetic visitor colors so the dot band can be
-    // inspected with realistic density. Enable with ?mockDots=300 in the URL.
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const mockCount = parseInt(params.get("mockDots") ?? "", 10);
-      if (Number.isFinite(mockCount) && mockCount > 0) {
-        for (let i = 0; i < mockCount; i++) {
-          const hue = Math.floor(seededRandom(i + 1) * 360);
-          const sat = 55 + Math.floor(seededRandom(i + 2) * 35);
-          const light = 50 + Math.floor(seededRandom(i + 3) * 20);
-          colors.push(`hsl(${hue}, ${sat}%, ${light}%)`);
-        }
-      }
-    }
-    return colors;
-  }, [entries, cursors.color]);
-
   const { dots, width: bandWidth } = useMemo(
-    () => layoutOrbs(allColors, bandHeight),
-    [allColors, bandHeight],
+    () => layoutOrbs(dotColors, bandHeight),
+    [dotColors, bandHeight],
   );
 
   // Track the viewport's height so layout matches the visible band.
@@ -532,6 +494,10 @@ export const AuraGuestbook = withSharedState(
         };
       });
     }, [sortedEntries]);
+    const pileDotColors = useMemo(
+      () => getPileDotColors(sortedEntries, PILE_RENDER_LIMIT),
+      [sortedEntries],
+    );
 
     // Earliest timestamp per visitor color, for the dot hover tooltip
     const firstVisitByColor = useMemo(() => {
@@ -629,7 +595,7 @@ export const AuraGuestbook = withSharedState(
         {/* Visitor dots above heading */}
 
         <VisitorOrbs
-          entries={entries}
+          dotColors={pileDotColors}
           hoveredColor={hoveredColor}
           onHoverColor={setHoveredColor}
           firstVisitByColor={firstVisitByColor}
