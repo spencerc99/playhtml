@@ -78,3 +78,42 @@ describe("recordsFromPlay", () => {
     expect(recs.length).toBe(0);
   });
 });
+
+import { extractRecords } from "../moderation";
+
+describe("extractRecords", () => {
+  it("prefers a named text field for display text", () => {
+    const recs = extractRecords(FRIDGE);
+    expect(recs[0].text).toBe("dream");
+  });
+
+  it("joins multiple named text fields in field order", () => {
+    const recs = extractRecords(GUESTBOOK);
+    expect(recs[0].text).toContain("Alice");
+    expect(recs[0].text).toContain("love it!");
+  });
+
+  it("classifies hex colors and numbers as metadata, not text", () => {
+    const recs = extractRecords(FRIDGE);
+    expect(recs[0].metadata).toMatchObject({ color: "#abc", x: 10, y: 20 });
+    expect(recs[0].text).not.toContain("#abc");
+  });
+
+  it("surfaces the record's own id when present", () => {
+    expect(extractRecords(FRIDGE)[0].id).toBe("1");
+  });
+
+  it("flags a reportCount field for highlighting", () => {
+    const recs = extractRecords({
+      "can-play": { w: [{ word: "x", reportCount: 4 }] },
+    });
+    expect(recs[0].reportCount).toBe(4);
+  });
+
+  it("falls back to the longest string when no named text field exists", () => {
+    const recs = extractRecords({
+      "can-play": { w: [{ a: "hi", b: "a much longer string value" }] },
+    });
+    expect(recs[0].text).toBe("a much longer string value");
+  });
+});

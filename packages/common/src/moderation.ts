@@ -82,3 +82,78 @@ export function recordsFromPlay(play: Record<string, unknown>): RawRecord[] {
   }
   return records;
 }
+
+export interface ModerationRecord extends RawRecord {
+  /** The record's own identifier field, if any (id | ts | timestamp). */
+  id?: string;
+  /** Display text: chosen text field(s) joined for review. */
+  text: string;
+  /** Non-text scalar fields, surfaced as badges in the UI. */
+  metadata: Record<string, unknown>;
+  /** Numeric report count if the record carries one. */
+  reportCount?: number;
+}
+
+const TEXT_FIELD_NAMES = [
+  "text",
+  "word",
+  "message",
+  "content",
+  "note",
+  "comment",
+  "name",
+];
+const ID_FIELD_NAMES = ["id", "ts", "timestamp"];
+const REPORT_FIELD_NAMES = ["reportCount", "reports", "votes"];
+const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
+
+function isContentString(value: unknown): value is string {
+  return typeof value === "string" && !HEX_COLOR.test(value) && value.trim() !== "";
+}
+
+export function extractRecords(play: Record<string, unknown>): ModerationRecord[] {
+  return recordsFromPlay(play).map((raw) => {
+    const fields = raw.fields;
+
+    const namedTextValues: string[] = [];
+    for (const name of TEXT_FIELD_NAMES) {
+      const v = fields[name];
+      if (isContentString(v)) namedTextValues.push(v);
+    }
+
+    let text: string;
+    if (namedTextValues.length > 0) {
+      text = namedTextValues.join(" — ");
+    } else {
+      const strings = Object.values(fields).filter(isContentString) as string[];
+      text = strings.sort((a, b) => b.length - a.length)[0] ?? "";
+    }
+
+    let id: string | undefined;
+    for (const name of ID_FIELD_NAMES) {
+      const v = fields[name];
+      if (typeof v === "string" || typeof v === "number") {
+        id = String(v);
+        break;
+      }
+    }
+
+    let reportCount: number | undefined;
+    for (const name of REPORT_FIELD_NAMES) {
+      const v = fields[name];
+      if (typeof v === "number") {
+        reportCount = v;
+        break;
+      }
+    }
+
+    const textFieldSet = new Set(TEXT_FIELD_NAMES);
+    const metadata: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (textFieldSet.has(k) && isContentString(v)) continue;
+      metadata[k] = v;
+    }
+
+    return { ...raw, id, text, metadata, reportCount };
+  });
+}
