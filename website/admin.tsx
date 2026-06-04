@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
+import { extractRecords, type ModerationRecord } from "@playhtml/common";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -559,6 +560,14 @@ const AdminConsole: React.FC = () => {
     useState<string>("newWords");
   const [cleanupDryRunResult, setCleanupDryRunResult] = useState<any>(null);
   const [isCleanupRunning, setIsCleanupRunning] = useState(false);
+
+  // Moderation section state
+  const [modSelected, setModSelected] = useState<Set<string>>(new Set());
+  const [modPaste, setModPaste] = useState("");
+  const [modResult, setModResult] = useState<
+    { removed: number; skipped: { key: string; reason: string }[] } | null
+  >(null);
+  const [modExpanded, setModExpanded] = useState<Set<string>>(new Set());
 
   // Utility functions
   const addLog = useCallback(
@@ -1495,6 +1504,101 @@ const AdminConsole: React.FC = () => {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to save edited data: ${msg}`, error);
       alert(`❌ Failed to save edited data: ${msg}`);
+    }
+  };
+
+  const moderationRecords: ModerationRecord[] = React.useMemo(() => {
+    const play = roomData?.ydoc?.play;
+    if (!play || typeof play !== "object") return [];
+    const recs = extractRecords(play as Record<string, unknown>);
+    // Show reported items first when any have report counts.
+    return [...recs].sort(
+      (a, b) => (b.reportCount ?? -1) - (a.reportCount ?? -1)
+    );
+  }, [roomData]);
+
+  const recordByKey = React.useMemo(
+    () => new Map(moderationRecords.map((r) => [r.key, r])),
+    [moderationRecords]
+  );
+
+  const copyRecordsForModel = async () => {
+    const preamble =
+      "You are moderating user-generated content. Review each item below. " +
+      "Return ONLY a JSON array of the `key` values for items that should be " +
+      "removed (spam, abuse, hate, explicit content). If nothing should be " +
+      "removed, return [].\n\n";
+    const payload = moderationRecords.map((r) => ({
+      key: r.key,
+      id: r.id,
+      text: r.text,
+      reportCount: r.reportCount,
+    }));
+    await navigator.clipboard.writeText(
+      preamble + JSON.stringify(payload, null, 2)
+    );
+    alert(`Copied ${payload.length} records for the model`);
+  };
+
+  const applyPastedKeys = () => {
+    // Tolerant: pull every token that looks like a record key (path#index) out
+    // of whatever the model returned -- JSON array, comma/newline list, or prose.
+    const matches = modPaste.match(/[\w.$-]+#\d+/g) ?? [];
+    const next = new Set<string>();
+    const unknown: string[] = [];
+    for (const k of matches) {
+      if (recordByKey.has(k)) next.add(k);
+      else unknown.push(k);
+    }
+    setModSelected(next);
+    if (unknown.length > 0) {
+      alert(
+        `Checked ${next.size} rows. ${unknown.length} pasted key(s) matched no current record: ${unknown.join(", ")}`
+      );
+    }
+  };
+
+  const removeSelectedRecords = async () => {
+    if (!currentRoomId || !adminToken || modSelected.size === 0) return;
+    if (
+      !window.confirm(
+        `Remove ${modSelected.size} record(s) from the live document? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    const targets = [...modSelected]
+      .map((key) => recordByKey.get(key))
+      .filter((r): r is ModerationRecord => Boolean(r))
+      .map((r) => ({ key: r.key, contentHash: r.contentHash }));
+
+    try {
+      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
+        currentRoomId
+      )}`;
+      const url = `${baseUrl}/admin/moderation-remove?token=${encodeURIComponent(
+        adminToken
+      )}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targets }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message || json.error || `HTTP ${response.status}`);
+      }
+      setModResult(json);
+      setModSelected(new Set());
+      addLog(
+        "info",
+        `Removed ${json.removed}, skipped ${json.skipped?.length ?? 0}`
+      );
+      await loadRoom(currentRoomId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addLog("error", `Moderation removal failed: ${msg}`, error);
+      alert(`Moderation removal failed: ${msg}`);
     }
   };
 
@@ -2819,6 +2923,87 @@ const AdminConsole: React.FC = () => {
             </div>
           )}
         </section>
+
+        {moderationRecords.length > 0 && (
+          <section className="moderation">
+            <h2>Moderate ({moderationRecords.length} records)</h2>
+            <div className="moderation-controls">
+              <button onClick={copyRecordsForModel}>Copy for model</button>
+              <button onClick={() => setModSelected(new Set())}>
+                Clear selection
+              </button>
+              <button
+                onClick={removeSelectedRecords}
+                disabled={modSelected.size === 0}
+              >
+                Remove {modSelected.size} selected
+              </button>
+            </div>
+            <textarea
+              className="moderation-paste"
+              value={modPaste}
+              onChange={(e) => setModPaste(e.target.value)}
+              placeholder="Paste the model's answer (keys to remove) here..."
+              rows={3}
+            />
+            <button onClick={applyPastedKeys}>Flag pasted keys</button>
+            {modResult && (
+              <div className="moderation-result">
+                Removed {modResult.removed}; skipped {modResult.skipped.length}
+                {modResult.skipped.map((s) => (
+                  <div key={s.key}>
+                    {s.key}: {s.reason}
+                  </div>
+                ))}
+              </div>
+            )}
+            <ul className="moderation-records">
+              {moderationRecords.map((r) => (
+                <li key={r.key}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={modSelected.has(r.key)}
+                      onChange={(e) => {
+                        const next = new Set(modSelected);
+                        if (e.target.checked) next.add(r.key);
+                        else next.delete(r.key);
+                        setModSelected(next);
+                      }}
+                    />
+                    <span className="mod-text">{r.text || "(no text)"}</span>
+                  </label>
+                  {r.reportCount != null && (
+                    <span className="mod-badge mod-report">
+                      reports: {r.reportCount}
+                    </span>
+                  )}
+                  {Object.entries(r.metadata).map(([k, v]) => (
+                    <span key={k} className="mod-badge">
+                      {k}: {String(v)}
+                    </span>
+                  ))}
+                  <code className="mod-key">{r.key}</code>
+                  <button
+                    onClick={() => {
+                      const next = new Set(modExpanded);
+                      if (next.has(r.key)) next.delete(r.key);
+                      else next.add(r.key);
+                      setModExpanded(next);
+                    }}
+                  >
+                    {modExpanded.has(r.key) ? "Hide" : "Raw"}
+                  </button>
+                  {modExpanded.has(r.key) && (
+                    <pre className="mod-raw">
+                      {JSON.stringify(r.fields, null, 2)}
+                    </pre>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="debug-tools">
           <h2>Debug Tools</h2>
