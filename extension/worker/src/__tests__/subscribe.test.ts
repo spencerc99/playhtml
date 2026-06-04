@@ -1,15 +1,19 @@
 // ABOUTME: Tests for the POST /subscribe route handler.
-// ABOUTME: Mocks the resend client and asserts validation, dedupe, and welcome-email behavior.
+// ABOUTME: Mocks the resend client and asserts validation, dedupe, and signup-email behavior.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockAddContact = vi.fn();
 const mockSendWelcome = vi.fn();
+const mockSendUpdates = vi.fn();
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+let allowConsoleError = false;
 
 vi.mock('../lib/resend', () => ({
   createResendClient: vi.fn(() => ({
     addContact: mockAddContact,
     sendWelcomeEmail: mockSendWelcome,
+    sendUpdatesEmail: mockSendUpdates,
   })),
 }));
 
@@ -35,7 +39,17 @@ describe('handleSubscribe', () => {
   beforeEach(() => {
     mockAddContact.mockReset();
     mockSendWelcome.mockReset();
+    mockSendUpdates.mockReset();
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    allowConsoleError = false;
     __resetRateLimitForTests();
+  });
+
+  afterEach(() => {
+    if (!allowConsoleError) {
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    }
+    consoleErrorSpy.mockRestore();
   });
 
   it('returns 400 for invalid email format', async () => {
@@ -74,8 +88,9 @@ describe('handleSubscribe', () => {
     expect(mockSendWelcome).toHaveBeenCalledWith('new@example.com');
   });
 
-  it('on existing contact: skips welcome, returns alreadySubscribed=true', async () => {
+  it('on existing contact: sends welcome, returns alreadySubscribed=true', async () => {
     mockAddContact.mockResolvedValueOnce({ created: false });
+    mockSendWelcome.mockResolvedValueOnce(undefined);
 
     const res = await handleSubscribe(
       makeRequest({ email: 'existing@example.com', source: 'website' }),
@@ -84,10 +99,27 @@ describe('handleSubscribe', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, alreadySubscribed: true });
-    expect(mockSendWelcome).not.toHaveBeenCalled();
+    expect(mockSendWelcome).toHaveBeenCalledWith('existing@example.com');
   });
 
-  it('contact created but welcome send fails: still returns 200', async () => {
+  it('on extension setup contact: adds contact and sends updates email', async () => {
+    mockAddContact.mockResolvedValueOnce({ created: true });
+    mockSendUpdates.mockResolvedValueOnce(undefined);
+
+    const res = await handleSubscribe(
+      makeRequest({ email: 'setup@example.com', source: 'extension-setup' }),
+      ENV,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, alreadySubscribed: false });
+    expect(mockAddContact).toHaveBeenCalledWith('setup@example.com', 'extension-setup');
+    expect(mockSendWelcome).not.toHaveBeenCalled();
+    expect(mockSendUpdates).toHaveBeenCalledWith('setup@example.com');
+  });
+
+  it('returns 503 when welcome send fails', async () => {
+    allowConsoleError = true;
     mockAddContact.mockResolvedValueOnce({ created: true });
     mockSendWelcome.mockRejectedValueOnce(new Error('resend down'));
 
@@ -96,11 +128,35 @@ describe('handleSubscribe', () => {
       ENV,
     );
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, alreadySubscribed: false });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'Email service temporarily unavailable' });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[Subscribe] sendWelcomeEmail failed:',
+      expect.any(Error),
+    );
+  });
+
+  it('returns 503 when updates send fails', async () => {
+    allowConsoleError = true;
+    mockAddContact.mockResolvedValueOnce({ created: true });
+    mockSendUpdates.mockRejectedValueOnce(new Error('resend down'));
+
+    const res = await handleSubscribe(
+      makeRequest({ email: 'a@b.com', source: 'extension-setup' }),
+      ENV,
+    );
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'Email service temporarily unavailable' });
+    expect(mockSendWelcome).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[Subscribe] sendUpdatesEmail failed:',
+      expect.any(Error),
+    );
   });
 
   it('on Resend addContact failure: returns 503', async () => {
+    allowConsoleError = true;
     mockAddContact.mockRejectedValueOnce(new Error('resend down'));
 
     const res = await handleSubscribe(
@@ -109,6 +165,10 @@ describe('handleSubscribe', () => {
     );
 
     expect(res.status).toBe(503);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[Subscribe] addContact failed:',
+      expect.any(Error),
+    );
   });
 
   it('rate-limits after 5 requests from same IP within a minute', async () => {
