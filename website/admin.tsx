@@ -2980,7 +2980,7 @@ const AdminConsole: React.FC = () => {
                   )}
                   {Object.entries(r.metadata).map(([k, v]) => (
                     <span key={k} className="mod-badge">
-                      {k}: {String(v)}
+                      {k}: {typeof v === "object" ? JSON.stringify(v) : String(v)}
                     </span>
                   ))}
                   <code className="mod-key">{r.key}</code>
