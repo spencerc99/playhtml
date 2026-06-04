@@ -569,6 +569,15 @@ const AdminConsole: React.FC = () => {
     { removed: number; skipped: { key: string; reason: string }[] } | null
   >(null);
   const [modExpanded, setModExpanded] = useState<Set<string>>(new Set());
+  const [activeToolTab, setActiveToolTab] = useStickyState<"moderate" | "tools">(
+    "playhtml-admin-tool-tab",
+    "moderate"
+  );
+  const [modFilter, setModFilter] = useStickyState<"flagged" | "all" | "unflagged">(
+    "playhtml-admin-mod-filter",
+    "all"
+  );
+  const [modCopied, setModCopied] = useState(false);
 
   // Utility functions
   const addLog = useCallback(
@@ -1513,6 +1522,12 @@ const AdminConsole: React.FC = () => {
     [moderationRecords]
   );
 
+  const visibleModerationRecords = React.useMemo(() => {
+    if (modFilter === "flagged") return moderationRecords.filter((r) => modSelected.has(r.key));
+    if (modFilter === "unflagged") return moderationRecords.filter((r) => !modSelected.has(r.key));
+    return moderationRecords;
+  }, [moderationRecords, modFilter, modSelected]);
+
   const copyRecordsForModel = async () => {
     const preamble =
       "You are moderating user-generated content. Review each item below. " +
@@ -1528,7 +1543,6 @@ const AdminConsole: React.FC = () => {
     await navigator.clipboard.writeText(
       preamble + JSON.stringify(payload, null, 2)
     );
-    alert(`Copied ${payload.length} records for the model`);
   };
 
   const applyPastedKeys = () => {
@@ -1542,6 +1556,7 @@ const AdminConsole: React.FC = () => {
       else unknown.push(k);
     }
     setModSelected(next);
+    if (next.size > 0) setModFilter("flagged");
     if (unknown.length > 0) {
       alert(
         `Checked ${next.size} rows. ${unknown.length} pasted key(s) matched no current record: ${unknown.join(", ")}`
@@ -2915,87 +2930,167 @@ const AdminConsole: React.FC = () => {
           )}
         </section>
 
-        {moderationRecords.length > 0 && (
-          <section className="moderation">
-            <h2>Moderate ({moderationRecords.length} records)</h2>
-            <div className="moderation-controls">
-              <button onClick={copyRecordsForModel}>Copy for model</button>
-              <button onClick={() => setModSelected(new Set())}>
-                Clear selection
-              </button>
-              <button
-                onClick={removeSelectedRecords}
-                disabled={modSelected.size === 0}
-              >
-                Remove {modSelected.size} selected
-              </button>
-            </div>
-            <textarea
-              className="moderation-paste"
-              value={modPaste}
-              onChange={(e) => setModPaste(e.target.value)}
-              placeholder="Paste the model's answer (keys to remove) here..."
-              rows={3}
-            />
-            <button onClick={applyPastedKeys}>Flag pasted keys</button>
-            {modResult && (
-              <div className="moderation-result">
-                Removed {modResult.removed}; skipped {modResult.skipped.length}
-                {modResult.skipped.map((s) => (
-                  <div key={s.key}>
-                    {s.key}: {s.reason}
-                  </div>
-                ))}
+        <nav className="tool-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={activeToolTab === "moderate"}
+            className={activeToolTab === "moderate" ? "tool-tab active" : "tool-tab"}
+            onClick={() => setActiveToolTab("moderate")}
+          >
+            Moderate{moderationRecords.length > 0 ? ` (${moderationRecords.length})` : ""}
+          </button>
+          <button
+            role="tab"
+            aria-selected={activeToolTab === "tools"}
+            className={activeToolTab === "tools" ? "tool-tab active" : "tool-tab"}
+            onClick={() => setActiveToolTab("tools")}
+          >
+            Tools
+          </button>
+        </nav>
+
+        {activeToolTab === "moderate" &&
+          (moderationRecords.length > 0 ? (
+            <section className="moderation">
+              <h2>Moderate ({moderationRecords.length} records)</h2>
+              <div className="moderation-controls">
+                <button
+                  onClick={async () => {
+                    await copyRecordsForModel();
+                    setModCopied(true);
+                    window.setTimeout(() => setModCopied(false), 2000);
+                  }}
+                >
+                  Copy for model
+                </button>
+                {modCopied && (
+                  <span className="moderation-copied">
+                    Copied {moderationRecords.length} ✓
+                  </span>
+                )}
               </div>
-            )}
-            <ul className="moderation-records">
-              {moderationRecords.map((r) => (
-                <li key={r.key}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={modSelected.has(r.key)}
-                      onChange={(e) => {
-                        const next = new Set(modSelected);
-                        if (e.target.checked) next.add(r.key);
-                        else next.delete(r.key);
-                        setModSelected(next);
-                      }}
-                    />
-                    <span className="mod-text">{r.text || "(no text)"}</span>
-                  </label>
-                  {r.reportCount != null && (
-                    <span className="mod-badge mod-report">
-                      reports: {r.reportCount}
-                    </span>
-                  )}
-                  {Object.entries(r.metadata).map(([k, v]) => (
-                    <span key={k} className="mod-badge">
-                      {k}: {typeof v === "object" ? JSON.stringify(v) : String(v)}
-                    </span>
+              <textarea
+                className="moderation-paste"
+                value={modPaste}
+                onChange={(e) => setModPaste(e.target.value)}
+                placeholder="Paste the model's answer (keys to remove) here..."
+                rows={3}
+              />
+              <div className="moderation-controls">
+                <button onClick={applyPastedKeys}>Flag pasted keys</button>
+              </div>
+              {modResult && (
+                <div className="moderation-result">
+                  Removed {modResult.removed}; skipped {modResult.skipped.length}
+                  {modResult.skipped.map((s) => (
+                    <div key={s.key} className="moderation-skipped">
+                      {s.key}: {s.reason}
+                    </div>
                   ))}
-                  <code className="mod-key">{r.key}</code>
+                </div>
+              )}
+              <div className="moderation-listcontrols">
+                <div className="moderation-filter" role="group">
+                  {(["flagged", "all", "unflagged"] as const).map((f) => {
+                    const count =
+                      f === "flagged"
+                        ? modSelected.size
+                        : f === "unflagged"
+                        ? moderationRecords.length - modSelected.size
+                        : moderationRecords.length;
+                    const label = f.charAt(0).toUpperCase() + f.slice(1);
+                    return (
+                      <button
+                        key={f}
+                        className={modFilter === f ? "filter-btn active" : "filter-btn"}
+                        onClick={() => setModFilter(f)}
+                      >
+                        {label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="moderation-bulk">
                   <button
                     onClick={() => {
-                      const next = new Set(modExpanded);
-                      if (next.has(r.key)) next.delete(r.key);
-                      else next.add(r.key);
-                      setModExpanded(next);
+                      const next = new Set(modSelected);
+                      visibleModerationRecords.forEach((r) => next.add(r.key));
+                      setModSelected(next);
                     }}
                   >
-                    {modExpanded.has(r.key) ? "Hide" : "Raw"}
+                    Select all (filtered)
                   </button>
-                  {modExpanded.has(r.key) && (
-                    <pre className="mod-raw">
-                      {JSON.stringify(r.fields, null, 2)}
-                    </pre>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+                  <button onClick={() => setModSelected(new Set())}>
+                    Clear selection
+                  </button>
+                </div>
+              </div>
+              <ul className="moderation-records">
+                {visibleModerationRecords.map((r) => (
+                  <li key={r.key} className={modSelected.has(r.key) ? "flagged" : ""}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={modSelected.has(r.key)}
+                        onChange={(e) => {
+                          const next = new Set(modSelected);
+                          if (e.target.checked) next.add(r.key);
+                          else next.delete(r.key);
+                          setModSelected(next);
+                        }}
+                      />
+                      <span className="mod-text">{r.text || "(no text)"}</span>
+                    </label>
+                    {r.reportCount != null && (
+                      <span className="mod-badge mod-report">
+                        reports: {r.reportCount}
+                      </span>
+                    )}
+                    {Object.entries(r.metadata).map(([k, v]) => (
+                      <span key={k} className="mod-badge">
+                        {k}: {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                      </span>
+                    ))}
+                    <code className="mod-key">{r.key}</code>
+                    <button
+                      onClick={() => {
+                        const next = new Set(modExpanded);
+                        if (next.has(r.key)) next.delete(r.key);
+                        else next.add(r.key);
+                        setModExpanded(next);
+                      }}
+                    >
+                      {modExpanded.has(r.key) ? "Hide" : "Raw"}
+                    </button>
+                    {modExpanded.has(r.key) && (
+                      <pre className="mod-raw">
+                        {JSON.stringify(r.fields, null, 2)}
+                      </pre>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="moderation-actions">
+                <button
+                  className="tool-btn destructive"
+                  onClick={removeSelectedRecords}
+                  disabled={modSelected.size === 0}
+                >
+                  Remove {modSelected.size} selected
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="moderation moderation-empty">
+              <p>
+                Load a room with text content to moderate. No moderatable
+                records found in the current room.
+              </p>
+            </section>
+          ))}
 
+        {activeToolTab === "tools" && (
+          <>
         <section className="debug-tools">
           <h2>Debug Tools</h2>
           <div className="tool-grid">
@@ -3265,6 +3360,8 @@ const AdminConsole: React.FC = () => {
               )}
             </div>
           </section>
+        )}
+          </>
         )}
 
         <DebugLogs logs={logs} onClearLogs={() => setLogs([])} />
