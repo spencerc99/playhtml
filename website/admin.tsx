@@ -1546,14 +1546,21 @@ const AdminConsole: React.FC = () => {
   };
 
   const applyPastedKeys = () => {
-    // Tolerant: pull every token that looks like a record key (path#index) out
-    // of whatever the model returned -- JSON array, comma/newline list, or prose.
-    const matches = modPaste.match(/[\w.$-]+#\d+/g) ?? [];
+    // Tolerant: split on the punctuation that wraps keys in a JSON array,
+    // comma/newline list, or prose, then intersect with the actual record keys.
+    // Matching against recordByKey (rather than a structural regex) means keys
+    // whose element ids contain unusual characters are still resolved.
+    const tokens = modPaste
+      .split(/[\s,"'[\]]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
     const next = new Set<string>();
     const unknown: string[] = [];
-    for (const k of matches) {
-      if (recordByKey.has(k)) next.add(k);
-      else unknown.push(k);
+    for (const token of tokens) {
+      if (recordByKey.has(token)) next.add(token);
+      // Only flag tokens that look like a key attempt (contain "#"), so prose
+      // words and stray punctuation don't get reported as misses.
+      else if (token.includes("#")) unknown.push(token);
     }
     setModSelected(next);
     if (next.size > 0) setModFilter("flagged");
