@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
-import { extractRecords, type ModerationRecord } from "@playhtml/common";
+import { extractRecords, type ModerationRecord } from "@moderation";
 
 // Types from the original admin.ts
 interface RoomData {

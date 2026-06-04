@@ -7,7 +7,7 @@ import * as Y from "yjs";
 import { supabase } from "./db";
 import { PartyServer } from "./party";
 import { docToJson, replaceDocState, encodeDocToBase64 } from "./docUtils";
-import { removeRecordsByTargets, type RemoveTarget } from "@playhtml/common";
+import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 
 function compareKeys(
   obj1: any,
