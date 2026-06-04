@@ -52,7 +52,10 @@ function isArrayOfObjects(value: unknown): value is Record<string, unknown>[] {
  * Walk a `play` JSON structure and emit one RawRecord per object found in any
  * array-of-objects. Recurses through wrapper objects (e.g. LiveChat's
  * { messages: [...] }) so nested arrays are found. Arrays of primitives and
- * scalar element data (e.g. { on: true }) yield no records.
+ * scalar element data (e.g. { on: true }) yield no records. An array is only
+ * treated as records when every element is a plain object; mixed arrays
+ * (objects interleaved with primitives) yield no records, since playhtml record
+ * arrays are homogeneous in practice.
  */
 export function recordsFromPlay(play: Record<string, unknown>): RawRecord[] {
   const records: RawRecord[] = [];
@@ -174,6 +177,20 @@ export interface RemoveResult {
   skipped: SkippedTarget[];
 }
 
+/** Resolve a dotted path (e.g. "can-play.chat1.messages") to its array, or null. */
+function resolveArray(
+  play: Record<string, unknown>,
+  path: string
+): unknown[] | null {
+  const parts = path.split(".");
+  let node: unknown = play;
+  for (const part of parts) {
+    if (!isPlainObject(node)) return null;
+    node = node[part];
+  }
+  return Array.isArray(node) ? node : null;
+}
+
 /**
  * Remove records from a copy of `play` by hashed target. A target is removed
  * only if its key resolves to an existing record whose current content hash
@@ -219,18 +236,4 @@ export function removeRecordsByTargets(
   }
 
   return { play: next, removed, skipped };
-}
-
-/** Resolve a dotted path (e.g. "can-play.chat1.messages") to its array, or null. */
-function resolveArray(
-  play: Record<string, unknown>,
-  path: string
-): unknown[] | null {
-  const parts = path.split(".");
-  let node: unknown = play;
-  for (const part of parts) {
-    if (!isPlainObject(node)) return null;
-    node = node[part];
-  }
-  return Array.isArray(node) ? node : null;
 }
