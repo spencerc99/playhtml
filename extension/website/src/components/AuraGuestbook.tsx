@@ -12,8 +12,9 @@ import {
 import { withSharedState, usePlayContext } from "@playhtml/react";
 import { containsProfanity } from "@movement/profanity";
 import {
+  getGuestbookDotColors,
   getLoopedEntryIndex,
-  getPileDotColors,
+  getRenderedPileCardIndexes,
   type GuestbookEntry,
 } from "./auraGuestbookData";
 import styles from "./AuraGuestbook.module.scss";
@@ -55,6 +56,15 @@ function getAgeFilter(timestamp: number): string {
 function seededRandom(seed: number): number {
   const x = Math.sin(seed * 127.1 + seed * 311.7) * 43758.5453;
   return x - Math.floor(x);
+}
+
+function getMockDotColors(count: number): string[] {
+  return Array.from({ length: count }, (_, index) => {
+    const hue = Math.floor(seededRandom(index + 11) * 360);
+    const saturation = Math.floor(60 + seededRandom(index + 23) * 25);
+    const lightness = Math.floor(45 + seededRandom(index + 37) * 18);
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  });
 }
 
 // Cards cluster near center first, spreading outward as the pile grows
@@ -238,8 +248,8 @@ function layoutOrbs(
   return { dots, width };
 }
 
-// Visitor dots — every unique rendered pile color, drawn on one canvas so the
-// glow scales without compositing a box-shadow per DOM node.
+// Visitor dots — every unique guestbook color, drawn on one canvas so the glow
+// scales without compositing a box-shadow per DOM node.
 // Hovering a dot reports its color up so the matching pile cards can lift.
 const VisitorOrbs = memo(function VisitorOrbs({
   dotColors,
@@ -476,13 +486,15 @@ export const AuraGuestbook = withSharedState(
       [entries],
     );
 
-    // The pile area is fixed-size; only the most recent cards are ever visible
-    // (older ones are fully buried). Render a window of the newest entries,
-    // keeping real indices so the expanded carousel still spans every entry.
-    const visiblePileCards = useMemo(() => {
-      const start = Math.max(0, sortedEntries.length - PILE_RENDER_LIMIT);
-      return sortedEntries.slice(start).map((entry, offset) => {
-        const index = start + offset;
+    // The pile area is fixed-size; only the most recent cards are visible while
+    // resting. A hovered dot can surface one buried card with the same color.
+    const renderedPileCards = useMemo(() => {
+      return getRenderedPileCardIndexes(
+        sortedEntries,
+        PILE_RENDER_LIMIT,
+        hoveredColor,
+      ).map((index) => {
+        const entry = sortedEntries[index];
         const { rotation, spreadX, spreadY } = getCardTransform(
           entry.timestamp,
           index,
@@ -497,10 +509,23 @@ export const AuraGuestbook = withSharedState(
           textureClass: getTextureClass(index),
         };
       });
-    }, [sortedEntries]);
-    const pileDotColors = useMemo(
-      () => getPileDotColors(sortedEntries, PILE_RENDER_LIMIT),
+    }, [sortedEntries, hoveredColor]);
+    const guestbookDotColors = useMemo(
+      () => getGuestbookDotColors(sortedEntries),
       [sortedEntries],
+    );
+    const mockDotColors = useMemo(() => {
+      const mockDotsParam = new URLSearchParams(window.location.search).get(
+        "mockDots",
+      );
+      if (mockDotsParam === null) return [];
+      const mockDotCount = Number(mockDotsParam);
+      if (!Number.isInteger(mockDotCount) || mockDotCount <= 0) return [];
+      return getMockDotColors(mockDotCount);
+    }, []);
+    const dotColors = useMemo(
+      () => [...guestbookDotColors, ...mockDotColors],
+      [guestbookDotColors, mockDotColors],
     );
 
     // Earliest timestamp per visitor color, for the dot hover tooltip
@@ -599,7 +624,7 @@ export const AuraGuestbook = withSharedState(
         {/* Visitor dots above heading */}
 
         <VisitorOrbs
-          dotColors={pileDotColors}
+          dotColors={dotColors}
           hoveredColor={hoveredColor}
           onHoverColor={setHoveredColor}
           firstVisitByColor={firstVisitByColor}
@@ -611,7 +636,7 @@ export const AuraGuestbook = withSharedState(
               expandedIndex !== null ? styles.pileDimmed : ""
             }`}
           >
-            {visiblePileCards.map(
+            {renderedPileCards.map(
               ({
                 entry,
                 index,
