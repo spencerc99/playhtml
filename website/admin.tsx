@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
+import { deriveRoomId } from "@playhtml/common";
 import { extractRecords, type ModerationRecord } from "@moderation";
 
 // Types from the original admin.ts
@@ -658,20 +659,10 @@ const AdminConsole: React.FC = () => {
       }
 
       const url = new URL(urlToParse);
-      const host = url.host;
-      const pathname = url.pathname;
-
-      // Normalize pathname: strip file extension and ensure it starts with /
-      const normalizePath = (path: string): string => {
-        if (!path) return "/";
-        const cleaned = path.replace(/\.[^/.]+$/, "");
-        return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
-      };
-
-      const normalizedPath = normalizePath(pathname);
-      const roomId =
-        normalizedPath === "/" ? host : `${host}-${normalizedPath}`;
-      return encodeURIComponent(roomId);
+      // Use the library's canonical room ID derivation so the admin console
+      // matches the room names playhtml actually creates (including the path
+      // for root URLs, e.g. wewere.online-/ ).
+      return deriveRoomId(url.host, url.pathname);
     } catch (error) {
       // Silently fail if URL is incomplete - user might still be typing
       return null;
