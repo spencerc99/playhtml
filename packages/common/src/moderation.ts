@@ -157,3 +157,80 @@ export function extractRecords(play: Record<string, unknown>): ModerationRecord[
     return { ...raw, id, text, metadata, reportCount };
   });
 }
+
+export interface RemoveTarget {
+  key: string;
+  contentHash: string;
+}
+
+export interface SkippedTarget {
+  key: string;
+  reason: "hash-mismatch" | "not-found";
+}
+
+export interface RemoveResult {
+  play: Record<string, unknown>;
+  removed: number;
+  skipped: SkippedTarget[];
+}
+
+/**
+ * Remove records from a copy of `play` by hashed target. A target is removed
+ * only if its key resolves to an existing record whose current content hash
+ * matches the supplied one (the stale-snapshot guard). Within each array,
+ * resolved indices are spliced in descending order so they don't shift
+ * mid-delete. The input is never mutated.
+ */
+export function removeRecordsByTargets(
+  play: Record<string, unknown>,
+  targets: RemoveTarget[]
+): RemoveResult {
+  const next = JSON.parse(JSON.stringify(play)) as Record<string, unknown>;
+  const current = recordsFromPlay(next);
+  const byKey = new Map(current.map((r) => [r.key, r]));
+
+  const skipped: SkippedTarget[] = [];
+  // Map of array path -> indices to delete (validated).
+  const deletionsByPath = new Map<string, number[]>();
+
+  for (const target of targets) {
+    const record = byKey.get(target.key);
+    if (!record) {
+      skipped.push({ key: target.key, reason: "not-found" });
+      continue;
+    }
+    if (record.contentHash !== target.contentHash) {
+      skipped.push({ key: target.key, reason: "hash-mismatch" });
+      continue;
+    }
+    const indices = deletionsByPath.get(record.path) ?? [];
+    indices.push(record.index);
+    deletionsByPath.set(record.path, indices);
+  }
+
+  let removed = 0;
+  for (const [path, indices] of deletionsByPath) {
+    const arr = resolveArray(next, path);
+    if (!arr) continue;
+    for (const index of [...indices].sort((a, b) => b - a)) {
+      arr.splice(index, 1);
+      removed++;
+    }
+  }
+
+  return { play: next, removed, skipped };
+}
+
+/** Resolve a dotted path (e.g. "can-play.chat1.messages") to its array, or null. */
+function resolveArray(
+  play: Record<string, unknown>,
+  path: string
+): unknown[] | null {
+  const parts = path.split(".");
+  let node: unknown = play;
+  for (const part of parts) {
+    if (!isPlainObject(node)) return null;
+    node = node[part];
+  }
+  return Array.isArray(node) ? node : null;
+}

@@ -117,3 +117,89 @@ describe("extractRecords", () => {
     expect(recs[0].text).toBe("a much longer string value");
   });
 });
+
+import { removeRecordsByTargets } from "../moderation";
+
+function makePlay() {
+  return {
+    "can-play": {
+      newWords: [
+        { id: "1", word: "keep" },
+        { id: "2", word: "remove-me" },
+        { id: "3", word: "also-keep" },
+      ],
+    },
+    "can-post": {
+      form1: [{ name: "Eve", message: "spam", timestamp: 9 }],
+    },
+  };
+}
+
+function hashFor(play: any, key: string): string {
+  const rec = recordsFromPlay(play).find((r) => r.key === key);
+  if (!rec) throw new Error(`no record for ${key}`);
+  return rec.contentHash;
+}
+
+describe("removeRecordsByTargets", () => {
+  it("removes a matching record and reports the count", () => {
+    const play = makePlay();
+    const key = "can-play.newWords#1";
+    const result = removeRecordsByTargets(play, [{ key, contentHash: hashFor(play, key) }]);
+    expect(result.removed).toBe(1);
+    expect(result.skipped).toEqual([]);
+    const words = (result.play["can-play"] as any).newWords.map((r: any) => r.word);
+    expect(words).toEqual(["keep", "also-keep"]);
+  });
+
+  it("removes across multiple arrays in one call", () => {
+    const play = makePlay();
+    const k1 = "can-play.newWords#0";
+    const k2 = "can-post.form1#0";
+    const result = removeRecordsByTargets(play, [
+      { key: k1, contentHash: hashFor(play, k1) },
+      { key: k2, contentHash: hashFor(play, k2) },
+    ]);
+    expect(result.removed).toBe(2);
+    expect((result.play["can-play"] as any).newWords.length).toBe(2);
+    expect((result.play["can-post"] as any).form1.length).toBe(0);
+  });
+
+  it("deletes higher indices correctly when removing multiple from one array", () => {
+    const play = makePlay();
+    const k0 = "can-play.newWords#0";
+    const k2 = "can-play.newWords#2";
+    const result = removeRecordsByTargets(play, [
+      { key: k0, contentHash: hashFor(play, k0) },
+      { key: k2, contentHash: hashFor(play, k2) },
+    ]);
+    expect(result.removed).toBe(2);
+    const words = (result.play["can-play"] as any).newWords.map((r: any) => r.word);
+    expect(words).toEqual(["remove-me"]);
+  });
+
+  it("skips a target whose hash no longer matches", () => {
+    const play = makePlay();
+    const key = "can-play.newWords#1";
+    const result = removeRecordsByTargets(play, [{ key, contentHash: "deadbeef" }]);
+    expect(result.removed).toBe(0);
+    expect(result.skipped).toEqual([{ key, reason: "hash-mismatch" }]);
+    expect((result.play["can-play"] as any).newWords.length).toBe(3);
+  });
+
+  it("skips a target whose key resolves to nothing", () => {
+    const play = makePlay();
+    const result = removeRecordsByTargets(play, [
+      { key: "can-play.newWords#99", contentHash: "abc" },
+    ]);
+    expect(result.removed).toBe(0);
+    expect(result.skipped).toEqual([{ key: "can-play.newWords#99", reason: "not-found" }]);
+  });
+
+  it("does not mutate the input play object", () => {
+    const play = makePlay();
+    const key = "can-play.newWords#1";
+    removeRecordsByTargets(play, [{ key, contentHash: hashFor(play, key) }]);
+    expect((play["can-play"] as any).newWords.length).toBe(3);
+  });
+});
