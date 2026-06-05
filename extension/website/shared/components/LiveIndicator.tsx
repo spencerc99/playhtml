@@ -1,7 +1,7 @@
 // ABOUTME: Small live readout of how many distinct people are currently being
 // ABOUTME: drawn in the portrait. Renders nothing until the stream connects.
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 
 interface LiveIndicatorProps {
   /** WebSocket open. */
@@ -18,12 +18,8 @@ export function LiveIndicator({
   peopleCount,
   style,
 }: LiveIndicatorProps) {
-  // Re-render on a timer so the count label stays current as people come and go.
-  const [, force] = useState(0);
-  useEffect(() => {
-    const t = window.setInterval(() => force((n) => n + 1), 1000);
-    return () => window.clearInterval(t);
-  }, []);
+  // `peopleCount` is recomputed upstream on every event batch, so this stays
+  // current without a self-timer — re-renders come from the parent prop change.
 
   // Render nothing until the stream is connected — no "connecting" placeholder.
   if (!connected) return null;

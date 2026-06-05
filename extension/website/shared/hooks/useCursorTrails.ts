@@ -266,7 +266,10 @@ export function useCursorTrails(
               points: [...currentTrail],
               color: getTrailColor(startTime),
               opacity: 1,
-              id: groupKey,
+              // Multi-segment (archive) mode: each segment needs a distinct id
+              // so two segments of the same group don't collide. (Live mode uses
+              // singleSegmentPerGroup and a bare groupKey for a stable id.)
+              id: `${groupKey}|${startTime}`,
               startTime,
               endTime,
               clicks: [...currentClicks],

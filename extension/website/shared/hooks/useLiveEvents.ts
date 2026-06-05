@@ -63,35 +63,49 @@ export function useLiveEvents(
       };
 
       ws.onmessage = (msg) => {
+        let frame: StreamFrame;
         try {
-          const frame = JSON.parse(msg.data as string) as StreamFrame;
-          if (!Array.isArray(frame.events) || frame.events.length === 0) return;
-          const seen = seenIdsRef.current;
-          const order = seenOrderRef.current;
-          const incoming = frame.events.filter((e) => {
-            if (!e.id || seen.has(e.id)) return false;
-            seen.add(e.id);
-            order.push(e.id);
-            return true;
-          });
-          // Bound the seen-set by its own FIFO, evicting the OLDEST ids — never
-          // by the display array. Evicted ids are old enough that the server's
-          // ring buffer no longer holds them, so they can't be replayed.
-          if (order.length > SEEN_LIMIT) {
-            const removeCount = order.length - SEEN_LIMIT;
-            for (let i = 0; i < removeCount; i++) seen.delete(order[i]);
-            order.splice(0, removeCount);
-          }
-          if (incoming.length === 0) return;
-          setEvents((prev) => {
-            const next = [...prev, ...incoming];
-            return next.length > maxRef.current
-              ? next.slice(next.length - maxRef.current)
-              : next;
-          });
-        } catch {
-          // ignore malformed frames
+          frame = JSON.parse(msg.data as string) as StreamFrame;
+        } catch (err) {
+          // A malformed frame is unexpected — surface it rather than silently
+          // showing "no activity" (which is indistinguishable from a quiet net).
+          console.warn("[useLiveEvents] dropped unparseable frame:", err);
+          return;
         }
+        if (!Array.isArray(frame.events)) {
+          console.warn("[useLiveEvents] frame missing events array:", frame);
+          return;
+        }
+        if (frame.events.length === 0) return; // empty batch — normal
+        const seen = seenIdsRef.current;
+        const order = seenOrderRef.current;
+        const incoming = frame.events.filter((e) => {
+          if (!e.id) {
+            // event.id is a required field upstream; a missing one means the
+            // ingest/enrichment pipeline produced a malformed event.
+            console.warn("[useLiveEvents] event without id (upstream bug):", e);
+            return false;
+          }
+          if (seen.has(e.id)) return false;
+          seen.add(e.id);
+          order.push(e.id);
+          return true;
+        });
+        // Bound the seen-set by its own FIFO, evicting the OLDEST ids — never
+        // by the display array. Evicted ids are old enough that the server's
+        // ring buffer no longer holds them, so they can't be replayed.
+        if (order.length > SEEN_LIMIT) {
+          const removeCount = order.length - SEEN_LIMIT;
+          for (let i = 0; i < removeCount; i++) seen.delete(order[i]);
+          order.splice(0, removeCount);
+        }
+        if (incoming.length === 0) return;
+        setEvents((prev) => {
+          const next = [...prev, ...incoming];
+          return next.length > maxRef.current
+            ? next.slice(next.length - maxRef.current)
+            : next;
+        });
       };
 
       ws.onclose = () => {

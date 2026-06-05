@@ -55,12 +55,13 @@ export class LiveEventsHub {
     this.send({ events });
   }
 
-  /** Drop events older than the time window, then enforce the memory backstop. */
+  /** Drop events older than the time window, then enforce the memory backstop.
+   * Always filters (no sorted-buffer assumption) — ingest order is only roughly
+   * chronological, so an old event can sit behind a newer one. At MAX_BUFFER the
+   * scan is trivially cheap. */
   private pruneBuffer(): void {
     const cutoff = Date.now() - MAX_AGE_MS;
-    if (this.buffer.length > 0 && this.buffer[0].ts < cutoff) {
-      this.buffer = this.buffer.filter((e) => e.ts >= cutoff);
-    }
+    this.buffer = this.buffer.filter((e) => e.ts >= cutoff);
     if (this.buffer.length > MAX_BUFFER) {
       this.buffer = this.buffer.slice(this.buffer.length - MAX_BUFFER);
     }

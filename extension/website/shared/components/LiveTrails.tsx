@@ -80,6 +80,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<number | undefined>(undefined);
+    const consecutiveErrorsRef = useRef(0);
 
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
 
@@ -265,8 +266,22 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       const tick = (perfNow: number) => {
         try {
           runFrame(perfNow);
+          consecutiveErrorsRef.current = 0;
         } catch (err) {
-          console.warn("[LiveTrails] frame error:", err);
+          const n = ++consecutiveErrorsRef.current;
+          // One bad frame shouldn't kill the loop, but a persistently throwing
+          // frame must not spam 60×/s forever. Log the first few + occasionally,
+          // then give up so the wedge is loud-once, not silent-but-spamming.
+          if (n <= 3 || n % 300 === 0) {
+            console.error(
+              `[LiveTrails] frame error (#${n}, kept=${keptRef.current.length}):`,
+              err,
+            );
+          }
+          if (n > 600) {
+            console.error("[LiveTrails] giving up rAF loop after persistent errors");
+            return; // stop rescheduling — the loop is wedged on broken state
+          }
         }
         scheduleNext();
       };

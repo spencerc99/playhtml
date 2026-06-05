@@ -82,6 +82,24 @@ describe('LiveEventsHub', () => {
     expect(hub.bufferForTest().map((e) => e.id)).toEqual(['recent1', 'recent2']);
   });
 
+  it('prunes old events even when they arrive out of ts order', async () => {
+    // Regression: a recent event first, an old one after — an early-exit that
+    // assumed the buffer was sorted would have kept the stale event.
+    const hub = makeHub();
+    const now = Date.now();
+    const events = [
+      ev('recent', now), // newest, but first in the batch
+      ev('stale', now - 6 * 60_000), // old, but arrives after the recent one
+    ];
+    await hub.fetch(
+      new Request('https://do/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ events }),
+      }),
+    );
+    expect(hub.bufferForTest().map((e) => e.id)).toEqual(['recent']);
+  });
+
   it('replays the buffer to a newly connected socket', async () => {
     const hub = makeHub();
     await hub.fetch(

@@ -1,7 +1,7 @@
 // ABOUTME: Accumulates live cursor events per participant+url so each trail keeps
 // ABOUTME: its full point history as the upstream event window slides and trims.
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { CollectionEvent } from "../types";
 
@@ -119,15 +119,18 @@ export function useAccumulatedEvents(
   const enabled = options.enabled ?? true;
   const groupsRef = useRef<AccumulatedGroups>(new Map());
 
-  return useMemo(() => {
+  const flat = useMemo(() => {
     if (!enabled) return events;
 
-    // Drain any pending evictions reported by the animator.
-    let evict: Set<string> | undefined;
-    if (evictIdsRef && evictIdsRef.current.size > 0) {
-      evict = evictIdsRef.current;
-      evictIdsRef.current = new Set();
-    }
+    // Apply any pending evictions reported by the animator. We READ the set here
+    // (and clear it in the effect below) rather than clearing it inside the memo:
+    // the memo must stay pure so a StrictMode double-invoke doesn't drop the
+    // evictions on the second pass. Re-applying the same ids is idempotent
+    // (deleting an already-deleted group is a no-op).
+    const evict =
+      evictIdsRef && evictIdsRef.current.size > 0
+        ? evictIdsRef.current
+        : undefined;
 
     groupsRef.current = accumulateEvents(
       groupsRef.current,
@@ -138,14 +141,24 @@ export function useAccumulatedEvents(
 
     // Flatten groups into a single ts-ordered array. Defensive cap keeps memory
     // bounded; if exceeded, drop oldest events globally.
-    let flat: CollectionEvent[] = [];
+    let result: CollectionEvent[] = [];
     for (const group of groupsRef.current.values()) {
-      flat = flat.concat(group.events);
+      result = result.concat(group.events);
     }
-    flat.sort((a, b) => a.ts - b.ts);
-    if (flat.length > MAX_ACCUMULATED) {
-      flat = flat.slice(flat.length - MAX_ACCUMULATED);
+    result.sort((a, b) => a.ts - b.ts);
+    if (result.length > MAX_ACCUMULATED) {
+      result = result.slice(result.length - MAX_ACCUMULATED);
     }
-    return flat;
+    return result;
   }, [events, maxGroups, enabled, evictIdsRef]);
+
+  // Clear the applied evictions after commit (not inside the memo, so a
+  // double-invoked memo can't drop them).
+  useEffect(() => {
+    if (evictIdsRef && evictIdsRef.current.size > 0) {
+      evictIdsRef.current = new Set();
+    }
+  });
+
+  return flat;
 }
