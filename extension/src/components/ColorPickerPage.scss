@@ -1,0 +1,90 @@
+// ABOUTME: Styles for the standalone cursor color picker extension window.
+// ABOUTME: Keeps native color selection compact and consistent with popup UI.
+
+@use "../styles/variables" as *;
+
+body {
+  margin: 0;
+  background: $bg;
+}
+
+.color-picker-page {
+  min-height: 100vh;
+  padding: 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: $font-body;
+  color: $text;
+
+  &__header {
+    display: flex;
+    align-items: center;
+  }
+
+  &__title {
+    @include heading;
+    margin: 0;
+    font-size: 18px;
+  }
+
+  &__body {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+  }
+
+  &__preview {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__label {
+    font-size: 12px;
+    font-weight: 600;
+    color: $text-muted;
+  }
+
+  &__input {
+    width: 96px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid $border-strong;
+    border-radius: 6px;
+    background: $surface;
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  &__cancel {
+    @include btn-secondary;
+  }
+
+  &__save {
+    @include btn-teal;
+  }
+}

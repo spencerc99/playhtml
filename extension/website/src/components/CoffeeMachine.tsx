@@ -1,8 +1,8 @@
 // ABOUTME: Interactive coffee machine + cortado for the essay marginalia.
 // ABOUTME: Shared state tracks phase and counts; play events trigger animations across clients.
 
-import { useEffect, useState, useCallback, useContext, useRef } from "react";
-import { withSharedState, PlayContext } from "@playhtml/react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { withSharedState, usePlayContext } from "@playhtml/react";
 import styles from "./CoffeeMachine.module.scss";
 
 type Phase = "idle" | "ready";
@@ -30,13 +30,13 @@ export const CoffeeMachine = withSharedState<CoffeeData, any, CoffeeMachineProps
       dispatchPlayEvent,
       registerPlayEventListener,
       removePlayEventListener,
-    } = useContext(PlayContext);
+    } = usePlayContext();
 
     // Local animation state layered on top of the shared phase
     const [animating, setAnimating] = useState<"brewing" | "drinking" | null>(
       null,
     );
-    const timerRef = useRef<ReturnType<typeof setTimeout>>();
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
       return () => {

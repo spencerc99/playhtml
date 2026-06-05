@@ -15,28 +15,71 @@
   margin-bottom: 16px;
 }
 
-// --- Visitor dots — irregular polka dots ---
+// --- Visitor dots — guestbook colors, drawn on one canvas ---
 
 .visitorOrbs {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  padding: 4px 16px 12px;
-  gap: 4px 2px;
+  // Break out of the section's max-width and side padding so the band runs
+  // edge-to-edge like the corkboard below.
+  width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 0 12px;
 }
 
-.visitorOrb {
-  border-radius: 50%;
-  flex-shrink: 0;
+// The band has a fixed height; the inner canvas draws wider than the viewport
+// so the user can scroll horizontally to see all visitors.
+.visitorOrbViewport {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  // Fade the left and right edges to suggest content extends past the viewport.
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+
+  @media (max-width: 768px) {
+    height: 180px;
+  }
 }
 
-.visitorOverflow {
+.visitorOrbBand {
+  position: relative;
+  margin: 0 auto;
+}
+
+.visitorOrbCanvas {
+  display: block;
+  cursor: pointer;
+}
+
+.visitorTooltip {
+  position: absolute;
+  // Anchored to the hovered dot's top (left/top set inline); lift fully above it.
+  transform: translate(-50%, calc(-100% - 4px));
+  padding: 3px 8px;
+  background: $text;
+  color: $bg;
   font-family: $font-body;
-  font-size: 0.625rem;
-  color: $text-muted;
-  margin-left: 6px;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 10;
 }
 
 // --- Paper texture overlays via pseudo-elements ---
@@ -88,11 +131,18 @@
   border-radius: 6px;
   padding: 16px;
 
-  @media (max-width: 480px) {
+  @media (max-width: 768px) {
     width: 100vw;
     border-radius: 0;
     padding: 16px 0;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    // Subtle gradient at the right edge hints there's more to see
+    background:
+      linear-gradient(to right, transparent 92%, rgba(0, 0, 0, 0.12) 100%),
+      url("/corkboard-2.png") left center / auto 100% repeat-x;
   }
 }
 
@@ -102,6 +152,13 @@
   height: 360px;
   transition: opacity 0.3s ease;
   overflow: visible;
+
+  @media (max-width: 768px) {
+    // Force a wider pile than the viewport so cards spread out
+    // and the user can scroll horizontally to discover more.
+    width: 900px;
+    height: 420px;
+  }
 }
 
 .pileDimmed {
@@ -126,8 +183,8 @@
   overflow: hidden;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.15);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.3s ease, filter 0.2s ease;
+  transition: transform 0.12s ease-out, box-shadow 0.12s ease-out,
+    filter 0.12s ease-out;
 
   &:hover {
     filter: brightness(1.12) saturate(1.15) !important;
@@ -137,6 +194,18 @@
   &:active {
     filter: brightness(0.95) !important;
   }
+}
+
+// Lifted to the front when its visitor dot is hovered.
+// !important on z-index guarantees it beats the inline per-card index even
+// though each card forms its own stacking context via transform.
+.cardHighlighted {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
+  z-index: 1000 !important;
+  // Promote only the few lifted cards to their own layer for a smooth lift,
+  // rather than permanently promoting every pile card.
+  will-change: transform;
 }
 
 .cardName {
@@ -177,6 +246,16 @@
   gap: 12px;
   z-index: 200;
   animation: fadeIn 0.3s ease forwards;
+
+  @media (max-width: 768px) {
+    // On mobile the pile container scrolls; pin the expanded card to the
+    // viewport instead of the scrolled pile so it's always centered.
+    position: fixed;
+    inset: 0;
+    background: rgba($bg, 0.85);
+    backdrop-filter: blur(6px);
+    padding: 24px;
+  }
 }
 
 @keyframes fadeIn {
@@ -448,4 +527,17 @@
   text-align: center;
   margin-top: 8px;
   opacity: 0.6;
+}
+
+.arrowHintDesktop {
+  @media (max-width: 768px) {
+    display: none;
+  }
+}
+
+.arrowHintMobile {
+  display: none;
+  @media (max-width: 768px) {
+    display: inline;
+  }
 }

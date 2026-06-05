@@ -1,3 +1,5 @@
+// ABOUTME: WXT build configuration for the browser extension.
+// ABOUTME: Defines manifest metadata, output settings, and Vite aliases.
 import { defineConfig } from "wxt";
 import path from "path";
 
@@ -6,7 +8,7 @@ export default defineConfig({
   manifest: {
     name: "we were online",
     description:
-      "A quiet portrait of your time on the internet. Collect traces of where you've been and share them anonymously.",
+      "A quiet portrait of your time online. See who else is here, chat on Wikipedia, and collect traces of where you've been.",
     permissions: ["storage", "tabs", "alarms", "idle", "unlimitedStorage"],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
@@ -44,7 +46,12 @@ export default defineConfig({
     },
     resolve: {
       alias: {
+        "@extension": path.resolve(__dirname, "src"),
         "@movement": path.resolve(__dirname, "website/shared"),
+        "@playhtml/extension-types": path.resolve(
+          __dirname,
+          "../packages/extension-types/src/index.ts",
+        ),
       },
     },
   }),

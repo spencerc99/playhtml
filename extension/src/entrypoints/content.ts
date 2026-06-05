@@ -1,5 +1,6 @@
 // ABOUTME: Main content script injected into every web page.
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
+import "./content/style.css";
 import browser from "webextension-polyfill";
 import {
   MILESTONE_DURATION_MS,
@@ -19,6 +20,7 @@ import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
+import { shouldStartExtensionPresence } from "./content/presencePolicy";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -982,14 +984,24 @@ export default defineContentScript({
           return;
         }
 
-        // Initialize PlayHTML — cursors only enabled on supported sites (e.g. Wikipedia)
-        const { initCustomSite, shouldEnableCursors } = await import(
+        // Initialize PlayHTML only for sites with explicit extension cursor support.
+        const { getCustomSiteSettings, initCustomSite } = await import(
           "../custom-sites"
         );
-        const enableCursors = shouldEnableCursors();
+        const customSiteSettings = getCustomSiteSettings();
+        const enableCursors = customSiteSettings?.cursorsEnabled ?? false;
+        if (
+          !shouldStartExtensionPresence({
+            nativePlayhtmlDetected: false,
+            cursorsEnabled: enableCursors,
+          })
+        ) {
+          return;
+        }
 
         const { playhtml } = await import("playhtml");
         await playhtml.init({
+          defaultRoomOptions: customSiteSettings?.defaultRoomOptions,
           cursors: {
             enabled: enableCursors,
             playerIdentity: this.playerIdentity,
@@ -1014,6 +1026,16 @@ export default defineContentScript({
             console.error("[we-were-online] initCustomSite failed:", err);
           }
         }
+
+        // Surface any pending announcements as a toast (no-op if all seen / no match)
+        try {
+          const { maybeInjectAnnouncementToast } = await import(
+            "../announcements/inject-toast"
+          );
+          await maybeInjectAnnouncementToast();
+        } catch (err) {
+          console.error("[we-were-online] announcement toast failed:", err);
+        }
       }
 
       private listenForPresenceCount() {
@@ -1032,6 +1054,7 @@ export default defineContentScript({
     let extensionInstance: PlayHTMLExtension | null = null;
     let collectorManager: CollectorManager | null = null;
     let overlayUI: InjectedReactUI | null = null;
+    let milestoneToastUI: InjectedReactUI | null = null;
     let overlayVisible = false;
 
     const toggleHistoricalOverlay = async () => {
@@ -1198,6 +1221,8 @@ export default defineContentScript({
     });
 
     const showMilestoneToast = (milestone: MilestoneToastData): void => {
+      milestoneToastUI?.destroy();
+
       let ui: InjectedReactUI | null = null;
 
       const handleCta = (action: MilestoneToastData["ctaAction"]) => {
@@ -1213,6 +1238,9 @@ export default defineContentScript({
 
       const handleDismiss = () => {
         ui?.destroy();
+        if (milestoneToastUI === ui) {
+          milestoneToastUI = null;
+        }
         ui = null;
       };
 
@@ -1231,6 +1259,7 @@ export default defineContentScript({
           fontUrl: MILESTONE_TOAST_FONT_URL,
         },
       );
+      milestoneToastUI = ui;
     };
 
     // Listen for messages from popup/devtools

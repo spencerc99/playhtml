@@ -1,0 +1,222 @@
+# ABOUTME: Builds and submits extension store releases from release PRs or manual dispatch.
+# ABOUTME: Guards push-triggered releases against unrelated extension package edits.
+name: Extension Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "extension/package.json"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run (build + validate, do not submit, do not tag)"
+        type: boolean
+        default: true
+      skip-chrome:
+        description: "Skip Chrome submission"
+        type: boolean
+        default: false
+      skip-edge:
+        description: "Skip Edge submission"
+        type: boolean
+        default: false
+      skip-firefox:
+        description: "Skip Firefox submission"
+        type: boolean
+        default: false
+
+concurrency: ${{ github.workflow }}
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    name: Should this run trigger a release?
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Decide
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Triggered manually."
+            VERSION=$(node -p "require('./extension/package.json').version")
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION=$(node -p "require('./extension/package.json').version")
+          EXPECTED_COMMIT="extension: release v$VERSION"
+          EXPECTED_TITLE="Release: @playhtml/extension v$VERSION"
+
+          MATCHED_RELEASE_MESSAGE=""
+          while IFS= read -r LINE; do
+            case "$LINE" in
+              "$EXPECTED_COMMIT"|"$EXPECTED_TITLE"|"$EXPECTED_TITLE ("*)
+                MATCHED_RELEASE_MESSAGE="$LINE"
+                break
+                ;;
+            esac
+          done <<EOF
+          $HEAD_MSG
+          EOF
+
+          if [ -n "$MATCHED_RELEASE_MESSAGE" ]; then
+            echo "Release message detected for v$VERSION: $MATCHED_RELEASE_MESSAGE"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "Head commit message does not identify extension release v$VERSION. Skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  submit:
+    name: Build and submit to stores
+    needs: guard
+    if: needs.guard.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
+      SKIP_CHROME: ${{ inputs.skip-chrome && 'true' || 'false' }}
+      SKIP_EDGE: ${{ inputs.skip-edge && 'true' || 'false' }}
+      SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
+      VERSION: ${{ needs.guard.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: bun run build-packages
+
+      - name: Build Chrome zip
+        if: env.SKIP_CHROME != 'true' || env.SKIP_EDGE != 'true'
+        working-directory: extension
+        run: |
+          WXT_OUT_DIR=publish bun run zip
+          node scripts/validateExtensionBuild.mjs publish/chrome-mv3
+
+      - name: Build Firefox zip
+        if: env.SKIP_FIREFOX != 'true'
+        working-directory: extension
+        run: WXT_OUT_DIR=publish bun run zip:firefox
+
+      - name: Resolve zip paths
+        id: zips
+        working-directory: extension
+        run: |
+          CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
+          FIREFOX_ZIP=$(ls publish/*-"$VERSION"-firefox.zip 2>/dev/null | head -1 || true)
+          SOURCES_ZIP=$(ls publish/*-"$VERSION"-sources.zip 2>/dev/null | head -1 || true)
+          echo "chrome=$CHROME_ZIP" >> "$GITHUB_OUTPUT"
+          echo "firefox=$FIREFOX_ZIP" >> "$GITHUB_OUTPUT"
+          echo "sources=$SOURCES_ZIP" >> "$GITHUB_OUTPUT"
+          echo "Built artifacts:"
+          ls -la publish/
+
+      - name: Submit to stores
+        working-directory: extension
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_PUBLISH_TARGET: ${{ secrets.CHROME_PUBLISH_TARGET }}
+          CHROME_DEPLOY_PERCENTAGE: ${{ secrets.CHROME_DEPLOY_PERCENTAGE }}
+          CHROME_REVIEW_EXEMPTION: ${{ secrets.CHROME_REVIEW_EXEMPTION }}
+          CHROME_SKIP_SUBMIT_REVIEW: ${{ secrets.CHROME_SKIP_SUBMIT_REVIEW }}
+          EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+          EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+          EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+          EDGE_CERTIFICATION_NOTES: ${{ secrets.EDGE_CERTIFICATION_NOTES }}
+          FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
+          FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
+          FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
+          CHROME_ZIP: ${{ steps.zips.outputs.chrome }}
+          FIREFOX_ZIP: ${{ steps.zips.outputs.firefox }}
+          SOURCES_ZIP: ${{ steps.zips.outputs.sources }}
+        run: |
+          if [ "$SKIP_CHROME" != "true" ]; then
+            if [ -z "$CHROME_ZIP" ]; then
+              echo "Chrome zip was not found."
+              exit 1
+            fi
+            node scripts/submitChrome.mjs
+          fi
+
+          if [ "$SKIP_EDGE" != "true" ]; then
+            if [ -z "$CHROME_ZIP" ]; then
+              echo "Chrome zip was not found for Edge submission."
+              exit 1
+            fi
+            EDGE_ZIP="$CHROME_ZIP" node scripts/submitEdge.mjs
+          fi
+
+          if [ "$SKIP_FIREFOX" != "true" ]; then
+            if [ -z "$FIREFOX_ZIP" ]; then
+              echo "Firefox zip was not found."
+              exit 1
+            fi
+            if [ -z "$SOURCES_ZIP" ]; then
+              echo "Firefox sources zip was not found."
+              exit 1
+            fi
+            FIREFOX_ARGS=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
+            if [ "$DRY_RUN" = "true" ]; then
+              scripts/submitFirefox.sh --dry-run "${FIREFOX_ARGS[@]}"
+            else
+              scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
+            fi
+          fi
+
+      - name: Tag release
+        if: env.DRY_RUN != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          TAG="@playhtml/extension@$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Tagged $TAG"
+          fi
+
+      - name: Upload zips as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-${{ env.VERSION }}
+          path: extension/publish/*.zip
+          retention-days: 30
+          if-no-files-found: warn

@@ -20,8 +20,12 @@ const ALIVE_INTERNET_ESSAY_URL =
 const BENCHES_ESSAY_URL =
   "https://news.spencer.place/p/the-internet-has-no-benches";
 
-const HELP_MAILTO =
-  "mailto:hi@spencer.place?subject=help%20build%20we%20were%20online";
+const DISCORD_INVITE = "https://discord.gg/SKbsSf4ptU";
+// Email assembled at click-time so scrapers don't see a literal mailto: in the
+// HTML. Spencer was getting a lot of bot mail off the plain mailto link.
+const HELP_EMAIL_USER = "hi";
+const HELP_EMAIL_DOMAIN = "spencer.place";
+const HELP_EMAIL_SUBJECT = "help build we were online";
 
 function RisoTexture() {
   return (
@@ -108,6 +112,7 @@ const ANIMATION_SETTINGS = {
   animationSpeed: 1.0,
   clickMinRadius: 10,
   clickMaxRadius: 30,
+  clickCoreRadius: 3,
   clickMinDuration: 600,
   clickMaxDuration: 1200,
   clickExpansionDuration: 400,
@@ -210,20 +215,6 @@ export default function App() {
             install the extension to try it out!
           </div>
           <DownloadGate />
-          <div className={styles.scrollHint} aria-hidden="true">
-            <svg
-              width="24"
-              height="14"
-              viewBox="0 0 24 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 2l10 10L22 2" />
-            </svg>
-          </div>
         </section>
 
         <section className={styles.section}>
@@ -385,9 +376,35 @@ export default function App() {
             I'm looking for people who want to help build this together.
             Designers, artists, writers, all internet hopefuls welcome.
           </p>
-          <a href={HELP_MAILTO} className={styles.helpBuildCta}>
-            say hi → hi@spencer.place
-          </a>
+          <div className={styles.helpBuildActions}>
+            <a
+              href={DISCORD_INVITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${styles.helpBuildCta} ${styles.helpBuildCtaPrimary}`}
+            >
+              join the playhtml discord
+            </a>
+            <button
+              type="button"
+              className={styles.helpBuildEmailLink}
+              onClick={(e) => {
+                const addr = `${HELP_EMAIL_USER}@${HELP_EMAIL_DOMAIN}`;
+                const href = `mailto:${addr}?subject=${encodeURIComponent(HELP_EMAIL_SUBJECT)}`;
+                window.location.href = href;
+                e.currentTarget.blur();
+              }}
+              aria-label="email spencer"
+            >
+              or email directly →{" "}
+              <span className={styles.helpBuildEmailAddr}>
+                {HELP_EMAIL_USER}
+                <span aria-hidden="true"> [at] </span>
+                <span className={styles.srOnly}>@</span>
+                {HELP_EMAIL_DOMAIN}
+              </span>
+            </button>
+          </div>
         </section>
 
         <section className={styles.section}>
