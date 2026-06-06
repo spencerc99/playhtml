@@ -7,10 +7,10 @@ import {
 } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import {
-  resolveSessionId,
-  sessionRoom,
-  findSession,
+  resolveSession,
+  roomForSession,
   type SubtitleSegment,
+  type WorkshopSession,
 } from "./sessions";
 import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
@@ -38,8 +38,12 @@ interface SharedURL {
   timestamp: number;
 }
 
-const SESSION_ID = resolveSessionId(window.location.search);
-const SESSION = findSession(SESSION_ID);
+// Resolve the session from ?session=<id>. An absent or unknown session sends
+// the visitor back to the home list rather than silently joining some room.
+const SESSION = resolveSession(window.location.search);
+if (!SESSION) {
+  window.location.replace("./index.html");
+}
 const IS_ARCHIVED = SESSION?.archived ?? false;
 
 // Element id for the shared roster store. Set as an explicit `id` on the
@@ -356,11 +360,11 @@ export const GroupActivityDisplay = withSharedState(
   },
 );
 
-function Main() {
+function Main({ session }: { session: WorkshopSession }) {
   return (
     <PlayProvider
       initOptions={{
-        room: sessionRoom(SESSION_ID),
+        room: roomForSession(session),
         cursors: { enabled: true, coordinateMode: "relative" },
       }}
     >
@@ -392,9 +396,16 @@ function SessionSubtitle({ segments }: { segments: SubtitleSegment[] }) {
   );
 }
 
-ReactDOM.render(<Main />, document.getElementById("react"));
+// Only mount when a valid session resolved; otherwise the redirect above is
+// already navigating away.
+if (SESSION) {
+  ReactDOM.render(<Main session={SESSION} />, document.getElementById("react"));
 
-const subtitleRoot = document.getElementById("session-subtitle");
-if (subtitleRoot && SESSION) {
-  ReactDOM.render(<SessionSubtitle segments={SESSION.subtitle} />, subtitleRoot);
+  const subtitleRoot = document.getElementById("session-subtitle");
+  if (subtitleRoot) {
+    ReactDOM.render(
+      <SessionSubtitle segments={SESSION.subtitle} />,
+      subtitleRoot,
+    );
+  }
 }

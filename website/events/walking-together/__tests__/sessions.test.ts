@@ -1,13 +1,15 @@
-// ABOUTME: Tests session config helpers — resolution from URL and room derivation.
-// ABOUTME: Verifies fallback to the latest active session when ?session is absent.
+// ABOUTME: Tests session config helpers — URL resolution, room derivation, overrides.
+// ABOUTME: Verifies unknown/absent sessions resolve to null (page redirects to home).
 
 import { describe, it, expect } from "vitest";
 import {
   SESSIONS,
   sessionRoom,
+  roomForSession,
   defaultSession,
   findSession,
-  resolveSessionId,
+  parseSessionId,
+  resolveSession,
 } from "../sessions";
 
 describe("sessions", () => {
@@ -28,10 +30,29 @@ describe("sessions", () => {
     expect(findSession("does-not-exist")).toBeUndefined();
   });
 
-  it("resolveSessionId reads ?session and falls back when absent/unknown", () => {
+  it("parseSessionId returns the raw param or null", () => {
+    expect(parseSessionId("?session=foo")).toBe("foo");
+    expect(parseSessionId("")).toBeNull();
+    expect(parseSessionId("?other=1")).toBeNull();
+  });
+
+  it("resolveSession returns the session for a known id", () => {
     const known = SESSIONS[0].id;
-    expect(resolveSessionId(`?session=${known}`)).toBe(known);
-    expect(resolveSessionId("")).toBe(defaultSession().id);
-    expect(resolveSessionId("?session=bogus")).toBe(defaultSession().id);
+    expect(resolveSession(`?session=${known}`)?.id).toBe(known);
+  });
+
+  it("resolveSession returns null when absent or unknown (page redirects home)", () => {
+    expect(resolveSession("")).toBeNull();
+    expect(resolveSession("?session=bogus")).toBeNull();
+  });
+
+  it("roomForSession uses the explicit override when set, else derives", () => {
+    const rhizome = findSession("2025-04-30-rhizome")!;
+    expect(rhizome.room).toBe("/events/walking-together/");
+    expect(roomForSession(rhizome)).toBe("/events/walking-together/");
+
+    const byod = findSession("2026-06-06-byod")!;
+    expect(byod.room).toBeUndefined();
+    expect(roomForSession(byod)).toBe("walking-together-2026-06-06-byod");
   });
 });
