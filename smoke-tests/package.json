@@ -12,6 +12,7 @@
     "test:partykit:compaction": "node partykit/empty-room-compaction-smoke.mjs",
     "test:partykit:emergency": "node partykit/emergency-compaction-smoke.mjs",
     "test:partykit:transient": "node partykit/supabase-transient-smoke.mjs",
+    "test:partykit:soak": "node partykit/multi-client-soak-smoke.mjs",
     "install-browsers": "playwright install chromium --with-deps"
   },
   "devDependencies": {
