@@ -1,7 +1,10 @@
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
-import { PlayProvider, withSharedState } from "@playhtml/react";
+import { PlayProvider, withSharedState, usePlayerIdentity } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
+import { resolveSessionId, sessionRoom, findSession } from "./sessions";
+import { isAdmin } from "./admin";
+import { PortraitOverlay } from "./PortraitOverlay";
 import "./walking-together.scss";
 
 interface CursorParty {
@@ -25,9 +28,20 @@ interface SharedURL {
   timestamp: number;
 }
 
-function shuffleArray<T>(array: T[]): T[] {
-  return array.sort(() => Math.random() - 0.5);
+interface RosterEntry {
+  pid: string;
+  name: string;
+  color: string;
 }
+
+const SESSION_ID = resolveSessionId(window.location.search);
+const SESSION = findSession(SESSION_ID);
+const IS_ARCHIVED = SESSION?.archived ?? false;
+
+// Shared roster store id. Both the Roster writer and the AdminPanel reader
+// target this same id so they share one Y.Map (the WordControls pattern in
+// website/fridge.tsx: config-level `id` makes a durable named singleton).
+const ROSTER_ID = "walking-together-roster";
 
 const CURSOR_INSTRUCTIONS = [
   "Make a circle together",
@@ -50,52 +64,36 @@ function isValidUrl(url: string) {
 }
 
 export function UserSetup() {
-  const [name, setName] = useStickyState<string | null>(
-    "username",
-    null,
-    (newName) => {
-      window.cursors?.setName(newName);
-    }
-  );
+  const { color: identityColor } = usePlayerIdentity();
 
-  const [color, setInternalColor] = useState(
-    JSON.parse(localStorage.getItem("color") || "null") || window.cursors?.color
+  const [name, setName] = useStickyState<string | null>("username", null, (newName) => {
+    window.cursors?.setName(newName ?? "");
+  });
+
+  // Color is seeded from playhtml identity (which the extension may inject) but
+  // remains overridable via the picker.
+  const [color, setInternalColor] = useState<string>(
+    JSON.parse(localStorage.getItem("color") || "null") || identityColor || "#000000"
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
     window.cursors?.setColor(newColor);
   };
 
-  const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
-
-  // Check for cursors availability
+  // When the extension injects a color after mount, reflect it (unless the user
+  // has already overridden via localStorage).
   React.useEffect(() => {
-    const checkCursors = () => {
-      if (window.cursors) {
-        setCursorsLoaded(true);
-      }
-    };
-
-    checkCursors();
-    // Check every second for 10 seconds
-    const interval = setInterval(checkCursors, 1000);
-    const timeout = setTimeout(() => clearInterval(interval), 10000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [name, color]);
-
-  if (!cursorsLoaded) {
-    return <div>Loading cursor party...</div>;
-  }
+    const stored = JSON.parse(localStorage.getItem("color") || "null");
+    if (!stored && identityColor && identityColor !== color) {
+      setInternalColor(identityColor);
+    }
+  }, [identityColor]);
 
   return (
     <div className="user-setup">
       <input
         type="text"
-        value={name}
+        value={name ?? ""}
         onChange={(e) => setName(e.target.value)}
         placeholder="Enter your name"
       />
@@ -132,6 +130,27 @@ export function UserSetup() {
     </div>
   );
 }
+
+/** Records the local participant into the shared session roster (keyed by PID).
+ * Only extension users have a PID; everyone else simply isn't in the roster. */
+const Roster = withSharedState(
+  { id: ROSTER_ID, defaultData: { entries: [] as RosterEntry[] } },
+  ({ data, setData }) => {
+    const { pid, name, color } = usePlayerIdentity();
+
+    React.useEffect(() => {
+      if (!pid) return;
+      const existing = data.entries.find((e) => e.pid === pid);
+      const nextName = name ?? "Anonymous";
+      const nextColor = color ?? "#000000";
+      if (existing && existing.name === nextName && existing.color === nextColor) return;
+      const others = data.entries.filter((e) => e.pid !== pid);
+      setData({ entries: [...others, { pid, name: nextName, color: nextColor }] });
+    }, [pid, name, color, data.entries]);
+
+    return null;
+  }
+);
 
 export const URLChat = withSharedState(
   {
@@ -208,15 +227,17 @@ export const URLChat = withSharedState(
             </div>
           ))}
         </div>
-        <form onSubmit={handleSubmit}>
-          <input
-            type="url"
-            value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
-            placeholder="Share a URL"
-          />
-          <button type="submit">Share</button>
-        </form>
+        {!IS_ARCHIVED && (
+          <form onSubmit={handleSubmit}>
+            <input
+              type="url"
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              placeholder="Share a URL"
+            />
+            <button type="submit">Share</button>
+          </form>
+        )}
       </div>
     );
   }
@@ -231,6 +252,7 @@ export const GroupActivityDisplay = withSharedState(
   },
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
+    const { name, color } = usePlayerIdentity();
 
     React.useEffect(() => {
       const interval = setInterval(() => {
@@ -239,12 +261,15 @@ export const GroupActivityDisplay = withSharedState(
         const remaining = 30 - elapsed;
 
         if (remaining <= 0) {
-          // Update to next instruction
-          setData({
-            currentInstructionIndex:
-              (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-            lastChangeTime: now,
-          });
+          // Archived sessions don't advance the activity — the timer just
+          // resets visually so the page still feels alive.
+          if (!IS_ARCHIVED) {
+            setData({
+              currentInstructionIndex:
+                (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+              lastChangeTime: now,
+            });
+          }
           setTimeLeft(30);
         } else {
           setTimeLeft(remaining);
@@ -266,10 +291,6 @@ export const GroupActivityDisplay = withSharedState(
       setTimeLeft(30);
     };
 
-    const isAdmin =
-      window.cursors?.name === "Kristoffer" ||
-      window.cursors?.name === "spencer";
-
     return (
       <div className="group-activity" id="group-activity">
         <h3>Current Activity:</h3>
@@ -288,7 +309,7 @@ export const GroupActivityDisplay = withSharedState(
             {minutes}:{seconds.toString().padStart(2, "0")}
           </p>
         </div>
-        {isAdmin && (
+        {!IS_ARCHIVED && isAdmin(name, color) && (
           <button
             onClick={handleSkip}
             style={{
@@ -309,13 +330,41 @@ export const GroupActivityDisplay = withSharedState(
   }
 );
 
+/** Admin-only panel: reads the roster and opens the portrait overlay. */
+const AdminPanel = withSharedState(
+  { id: ROSTER_ID, defaultData: { entries: [] as RosterEntry[] } },
+  ({ data }) => {
+    const { name, color } = usePlayerIdentity();
+    const [showPortrait, setShowPortrait] = useState(false);
+
+    if (!isAdmin(name, color)) return null;
+
+    const pids = data.entries.map((e) => e.pid);
+
+    return (
+      <div className="admin-panel">
+        <button onClick={() => setShowPortrait(true)} disabled={pids.length === 0}>
+          Show portrait ({pids.length})
+        </button>
+        {showPortrait && (
+          <PortraitOverlay pids={pids} onClose={() => setShowPortrait(false)} />
+        )}
+      </div>
+    );
+  }
+);
+
 function Main() {
   return (
-    <PlayProvider>
+    <PlayProvider
+      initOptions={{ room: sessionRoom(SESSION_ID), cursors: { enabled: true } }}
+    >
       <div className="walking-together">
         <UserSetup />
+        <Roster />
         <URLChat />
         <GroupActivityDisplay />
+        <AdminPanel />
       </div>
     </PlayProvider>
   );
