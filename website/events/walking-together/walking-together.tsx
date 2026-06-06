@@ -6,7 +6,12 @@ import {
   usePlayerIdentity,
 } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
-import { resolveSessionId, sessionRoom, findSession } from "./sessions";
+import {
+  resolveSessionId,
+  sessionRoom,
+  findSession,
+  type SubtitleSegment,
+} from "./sessions";
 import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
 import "./walking-together.scss";
@@ -68,8 +73,8 @@ function isValidUrl(url: string) {
 }
 
 export function UserSetup() {
-  const { color: identityColor } = usePlayerIdentity();
-
+  // Cursor color is owned by the extension (injected via playhtml identity).
+  // The name stays a manual input.
   const [name, setName] = useStickyState<string | null>(
     "username",
     null,
@@ -77,27 +82,6 @@ export function UserSetup() {
       if (window.cursors) window.cursors.name = newName ?? "";
     },
   );
-
-  // Color is seeded from playhtml identity (which the extension may inject) but
-  // remains overridable via the picker.
-  const [color, setInternalColor] = useState<string>(
-    JSON.parse(localStorage.getItem("color") || "null") ||
-      identityColor ||
-      "#000000",
-  );
-  const setColor = (newColor: string) => {
-    setInternalColor(newColor);
-    if (window.cursors && newColor) window.cursors.color = newColor;
-  };
-
-  // When the extension injects a color after mount, reflect it (unless the user
-  // has already overridden via localStorage).
-  React.useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem("color") || "null");
-    if (!stored && identityColor && identityColor !== color) {
-      setInternalColor(identityColor);
-    }
-  }, [identityColor]);
 
   return (
     <div className="user-setup">
@@ -107,36 +91,6 @@ export function UserSetup() {
         onChange={(e) => setName(e.target.value)}
         placeholder="Enter your name"
       />
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {/* show a live cursor */}
-        <img
-          style={{
-            width: "24px",
-            height: "24px",
-          }}
-          src={`data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='${encodeURIComponent(
-            color,
-          )}' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='${encodeURIComponent(
-            color,
-          )}' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' fill='${encodeURIComponent(
-            color,
-          )}' width='2' height='8'/%3E%3Cpolygon fill='${encodeURIComponent(
-            color,
-          )}' points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E`}
-        />
-        <input
-          type="color"
-          value={color}
-          onChange={(e) => setColor(e.target.value)}
-          title="Choose your cursor color"
-        />
-      </div>
     </div>
   );
 }
@@ -416,4 +370,27 @@ function Main() {
   );
 }
 
+/** Renders a session's configurable credits line. Plain segments are text;
+ * object segments render as links. */
+function SessionSubtitle({ segments }: { segments: SubtitleSegment[] }) {
+  return (
+    <>
+      {segments.map((seg, i) =>
+        typeof seg === "string" ? (
+          <React.Fragment key={i}>{seg}</React.Fragment>
+        ) : (
+          <a key={i} href={seg.href}>
+            {seg.text}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
 ReactDOM.render(<Main />, document.getElementById("react"));
+
+const subtitleRoot = document.getElementById("session-subtitle");
+if (subtitleRoot && SESSION) {
+  ReactDOM.render(<SessionSubtitle segments={SESSION.subtitle} />, subtitleRoot);
+}

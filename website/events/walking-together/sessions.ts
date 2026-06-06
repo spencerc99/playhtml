@@ -1,6 +1,10 @@
 // ABOUTME: Static config of walking-together workshop sessions and helpers.
 // ABOUTME: Each session is an isolated playhtml room keyed by a ?session=<id> param.
 
+/** A run of subtitle text, optionally linked. Sessions compose these into the
+ * credits line under the title. Plain string segments render as text. */
+export type SubtitleSegment = string | { text: string; href: string };
+
 export interface WorkshopSession {
   /** Becomes ?session=<id> on the room. */
   id: string;
@@ -10,6 +14,8 @@ export interface WorkshopSession {
   date: string;
   /** When true, the session page is read-only. */
   archived: boolean;
+  /** Credits line shown under the title on the session page. */
+  subtitle: SubtitleSegment[];
 }
 
 export const SESSIONS: WorkshopSession[] = [
@@ -18,12 +24,25 @@ export const SESSIONS: WorkshopSession[] = [
     label: "walking together (Rhizome)",
     date: "2025-04-30",
     archived: true,
+    subtitle: [
+      "with ",
+      { text: "kristoffer tjalve", href: "https://naiveweekly.com" },
+      " & ",
+      { text: "spencer chang", href: "https://spencer.place" },
+      ", with ",
+      { text: "rhizome", href: "https://rhizome.org/" },
+    ],
   },
   {
     id: "2026-06-06-byod",
     label: "walking together (BYOD)",
     date: "2026-06-06",
     archived: false,
+    subtitle: [
+      "with ",
+      { text: "spencer chang", href: "https://spencer.place" },
+      ", at ITP",
+    ],
   },
 ];
 
