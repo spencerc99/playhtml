@@ -163,3 +163,27 @@ export function usePresenceRoom(name: string): PresenceRoom | null {
 
   return room;
 }
+
+/**
+ * Read the local player's identity — cursor color, participant id (PID), and
+ * name — from the playhtml context. Values update reactively: the cursor
+ * client emits a `color` event when identity changes (including when the
+ * "we were online" extension injects its identity via the
+ * `playhtml:configure-identity` event), which re-renders consumers, at which
+ * point the freshly-read `getMyPlayerIdentity()` reflects the new PID.
+ *
+ * `pid` is undefined until cursors have synced. Requires a `PlayProvider`
+ * with `cursors: { enabled: true }`.
+ */
+export function usePlayerIdentity(): {
+  color: string;
+  pid: string | undefined;
+  name: string | undefined;
+} {
+  const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
+  return {
+    color: cursors.color,
+    pid: getMyPlayerIdentity()?.publicKey,
+    name: cursors.name,
+  };
+}
