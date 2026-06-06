@@ -1767,13 +1767,24 @@ export class CursorClientAwareness {
     // Update player identity if provided (must have publicKey and primary color)
     if (options.playerIdentity !== undefined) {
       assertValidPlayerIdentity(options.playerIdentity);
+      const prevColor = getPrimaryColor(this.playerIdentity);
+      const prevName = this.playerIdentity?.name;
       this.playerIdentity = options.playerIdentity;
       this.savePlayerIdentityToStorage();
       // Re-broadcast awareness with new identity and update local cursor style
-      document.documentElement.style.cursor = getCursorStyleForUser(
-        getPrimaryColor(this.playerIdentity),
-      );
+      const nextColor = getPrimaryColor(this.playerIdentity);
+      document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
       this.updateCursorAwareness();
+      // Emit color/name events so subscribers (e.g. the React context behind
+      // usePlayerIdentity) react to identity injected through configure() —
+      // mirroring what the window.cursors color/name setters already do.
+      if (nextColor !== prevColor) {
+        this.emitGlobalEvent("color", nextColor);
+      }
+      const nextName = this.playerIdentity?.name;
+      if (nextName !== prevName) {
+        this.emitGlobalEvent("name", nextName);
+      }
     }
   }
 
