@@ -210,13 +210,27 @@ input {
   right: 1em;
   z-index: 20;
 
-  button {
-    font-family: $mono-font;
-    font-size: 11px;
-    opacity: 0.7;
+  // Discreet icon-only trigger — no button chrome, faint until hovered, so it
+  // doesn't read as an obvious control while screen sharing.
+  .portrait-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: none;
+    border: none;
+    color: #888;
+    opacity: 0.25;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+      background: none;
+      opacity: 0.8;
+    }
 
     &:disabled {
-      opacity: 0.3;
+      opacity: 0.12;
       cursor: not-allowed;
     }
   }

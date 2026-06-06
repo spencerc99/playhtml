@@ -183,11 +183,29 @@ const RosterAdmin = withSharedState(
       <div className="admin-panel" id={ROSTER_ID}>
         {admin && (
           <>
+            {/* Deliberately unlabeled icon button — discreet during screen
+             * shares. Hover title still shows the participant count. */}
             <button
+              className="portrait-trigger"
               onClick={() => setShowPortrait(true)}
               disabled={pids.length === 0}
+              title={`Show portrait (${pids.length})`}
+              aria-label={`Show portrait (${pids.length})`}
             >
-              Show portrait ({pids.length})
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="4" y="3" width="16" height="18" rx="1" />
+                <circle cx="12" cy="10" r="3" />
+                <path d="M7 18c1.2-2.4 3-3.5 5-3.5s3.8 1.1 5 3.5" />
+              </svg>
             </button>
             {showPortrait && (
               <PortraitOverlay
