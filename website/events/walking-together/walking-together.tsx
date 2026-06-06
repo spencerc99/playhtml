@@ -1,6 +1,10 @@
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
-import { PlayProvider, withSharedState, usePlayerIdentity } from "@playhtml/react";
+import {
+  PlayProvider,
+  withSharedState,
+  usePlayerIdentity,
+} from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import { resolveSessionId, sessionRoom, findSession } from "./sessions";
 import { isAdmin } from "./admin";
@@ -38,9 +42,9 @@ const SESSION_ID = resolveSessionId(window.location.search);
 const SESSION = findSession(SESSION_ID);
 const IS_ARCHIVED = SESSION?.archived ?? false;
 
-// Shared roster store id. Both the Roster writer and the AdminPanel reader
-// target this same id so they share one Y.Map (the WordControls pattern in
-// website/fridge.tsx: config-level `id` makes a durable named singleton).
+// Element id for the shared roster store. Set as an explicit `id` on the
+// RosterAdmin element so the core library uses a stable id instead of hashing
+// outerHTML (which varies per render and would break cross-client sync).
 const ROSTER_ID = "walking-together-roster";
 
 const CURSOR_INSTRUCTIONS = [
@@ -66,14 +70,20 @@ function isValidUrl(url: string) {
 export function UserSetup() {
   const { color: identityColor } = usePlayerIdentity();
 
-  const [name, setName] = useStickyState<string | null>("username", null, (newName) => {
-    if (window.cursors) window.cursors.name = newName ?? "";
-  });
+  const [name, setName] = useStickyState<string | null>(
+    "username",
+    null,
+    (newName) => {
+      if (window.cursors) window.cursors.name = newName ?? "";
+    },
+  );
 
   // Color is seeded from playhtml identity (which the extension may inject) but
   // remains overridable via the picker.
   const [color, setInternalColor] = useState<string>(
-    JSON.parse(localStorage.getItem("color") || "null") || identityColor || "#000000"
+    JSON.parse(localStorage.getItem("color") || "null") ||
+      identityColor ||
+      "#000000",
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
@@ -111,13 +121,13 @@ export function UserSetup() {
             height: "24px",
           }}
           src={`data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' fill='${encodeURIComponent(
-            color
+            color,
           )}' width='2' height='8'/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E`}
         />
         <input
@@ -154,9 +164,16 @@ const RosterAdmin = withSharedState(
       const existing = data.entries.find((e) => e.pid === pid);
       const nextName = name ?? "Anonymous";
       const nextColor = color ?? "#000000";
-      if (existing && existing.name === nextName && existing.color === nextColor) return;
+      if (
+        existing &&
+        existing.name === nextName &&
+        existing.color === nextColor
+      )
+        return;
       const others = data.entries.filter((e) => e.pid !== pid);
-      setData({ entries: [...others, { pid, name: nextName, color: nextColor }] });
+      setData({
+        entries: [...others, { pid, name: nextName, color: nextColor }],
+      });
     }, [pid, name, color, data.entries]);
 
     const admin = isAdmin(name, color);
@@ -173,13 +190,16 @@ const RosterAdmin = withSharedState(
               Show portrait ({pids.length})
             </button>
             {showPortrait && (
-              <PortraitOverlay pids={pids} onClose={() => setShowPortrait(false)} />
+              <PortraitOverlay
+                pids={pids}
+                onClose={() => setShowPortrait(false)}
+              />
             )}
           </>
         )}
       </div>
     );
-  }
+  },
 );
 
 export const URLChat = withSharedState(
@@ -270,7 +290,7 @@ export const URLChat = withSharedState(
         )}
       </div>
     );
-  }
+  },
 );
 
 export const GroupActivityDisplay = withSharedState(
@@ -357,13 +377,16 @@ export const GroupActivityDisplay = withSharedState(
         )}
       </div>
     );
-  }
+  },
 );
 
 function Main() {
   return (
     <PlayProvider
-      initOptions={{ room: sessionRoom(SESSION_ID), cursors: { enabled: true } }}
+      initOptions={{
+        room: sessionRoom(SESSION_ID),
+        cursors: { enabled: true, coordinateMode: "relative" },
+      }}
     >
       <div className="walking-together">
         <UserSetup />
