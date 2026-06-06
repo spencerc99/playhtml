@@ -7,12 +7,12 @@ import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
 import "./walking-together.scss";
 
+// playhtml exposes `window.cursors` with `name`/`color` as settable
+// properties (getters + setters), not setName/setColor methods. Assigning an
+// empty string to `color` throws — we only ever assign a real picker value.
 interface CursorParty {
   color: string;
-  count: number;
-  name: string;
-  setColor(color: string): void;
-  setName(name: string): void;
+  name: string | undefined;
 }
 
 declare global {
@@ -67,7 +67,7 @@ export function UserSetup() {
   const { color: identityColor } = usePlayerIdentity();
 
   const [name, setName] = useStickyState<string | null>("username", null, (newName) => {
-    window.cursors?.setName(newName ?? "");
+    if (window.cursors) window.cursors.name = newName ?? "";
   });
 
   // Color is seeded from playhtml identity (which the extension may inject) but
@@ -77,7 +77,7 @@ export function UserSetup() {
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    window.cursors?.setColor(newColor);
+    if (window.cursors && newColor) window.cursors.color = newColor;
   };
 
   // When the extension injects a color after mount, reflect it (unless the user
@@ -131,12 +131,23 @@ export function UserSetup() {
   );
 }
 
-/** Records the local participant into the shared session roster (keyed by PID).
- * Only extension users have a PID; everyone else simply isn't in the roster. */
-const Roster = withSharedState(
-  { id: ROSTER_ID, defaultData: { entries: [] as RosterEntry[] } },
+/** Owns the shared session roster and the admin portrait trigger in one store.
+ *
+ * Roster reads and writes live in a single withSharedState component (one
+ * element id) so they share one Y.Map — two separate components can't share a
+ * store, since the element id derives from the rendered child and can't be
+ * duplicated across DOM nodes. The component:
+ *  - upserts the local participant { pid, name, color } when a PID is present
+ *    (extension users only; others simply aren't in the roster), and
+ *  - renders the admin "Show portrait" control to the admin only.
+ *
+ * The rendered element carries an explicit id so the core library uses a
+ * stable element id rather than hashing outerHTML (which differs per render). */
+const RosterAdmin = withSharedState(
+  { defaultData: { entries: [] as RosterEntry[] } },
   ({ data, setData }) => {
     const { pid, name, color } = usePlayerIdentity();
+    const [showPortrait, setShowPortrait] = useState(false);
 
     React.useEffect(() => {
       if (!pid) return;
@@ -148,7 +159,26 @@ const Roster = withSharedState(
       setData({ entries: [...others, { pid, name: nextName, color: nextColor }] });
     }, [pid, name, color, data.entries]);
 
-    return null;
+    const admin = isAdmin(name, color);
+    const pids = data.entries.map((e) => e.pid);
+
+    return (
+      <div className="admin-panel" id={ROSTER_ID}>
+        {admin && (
+          <>
+            <button
+              onClick={() => setShowPortrait(true)}
+              disabled={pids.length === 0}
+            >
+              Show portrait ({pids.length})
+            </button>
+            {showPortrait && (
+              <PortraitOverlay pids={pids} onClose={() => setShowPortrait(false)} />
+            )}
+          </>
+        )}
+      </div>
+    );
   }
 );
 
@@ -330,30 +360,6 @@ export const GroupActivityDisplay = withSharedState(
   }
 );
 
-/** Admin-only panel: reads the roster and opens the portrait overlay. */
-const AdminPanel = withSharedState(
-  { id: ROSTER_ID, defaultData: { entries: [] as RosterEntry[] } },
-  ({ data }) => {
-    const { name, color } = usePlayerIdentity();
-    const [showPortrait, setShowPortrait] = useState(false);
-
-    if (!isAdmin(name, color)) return null;
-
-    const pids = data.entries.map((e) => e.pid);
-
-    return (
-      <div className="admin-panel">
-        <button onClick={() => setShowPortrait(true)} disabled={pids.length === 0}>
-          Show portrait ({pids.length})
-        </button>
-        {showPortrait && (
-          <PortraitOverlay pids={pids} onClose={() => setShowPortrait(false)} />
-        )}
-      </div>
-    );
-  }
-);
-
 function Main() {
   return (
     <PlayProvider
@@ -361,10 +367,9 @@ function Main() {
     >
       <div className="walking-together">
         <UserSetup />
-        <Roster />
         <URLChat />
         <GroupActivityDisplay />
-        <AdminPanel />
+        <RosterAdmin />
       </div>
     </PlayProvider>
   );

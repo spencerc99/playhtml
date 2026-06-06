@@ -166,3 +166,78 @@ button {
 input {
   border: 1px solid #ccc;
 }
+
+.session-index {
+  font-family: $mono-font;
+  margin-top: 1em;
+
+  ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75em;
+    padding: 0.4em 0;
+
+    &.archived {
+      opacity: 0.55;
+    }
+  }
+
+  .session-date {
+    color: #666;
+    font-size: 0.8em;
+  }
+
+  .session-tag {
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+
+    &.join {
+      color: #1a7f5a;
+    }
+  }
+}
+
+.admin-panel {
+  position: fixed;
+  bottom: 1em;
+  right: 1em;
+  z-index: 20;
+
+  button {
+    font-family: $mono-font;
+    font-size: 11px;
+    opacity: 0.7;
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.portrait-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #faf9f6;
+
+  .portrait-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 1001;
+    font-size: 20px;
+    line-height: 1;
+    padding: 2px 10px;
+    background: #fff;
+    border: 1px solid #ccc;
+    cursor: pointer;
+  }
+}
