@@ -218,31 +218,36 @@ const Roster = withSharedState({ defaultData: { entries: [] } }, ({ data, setDat
 });
 ```
 
-Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, because the data is a CRDT, **two readers writing concurrently both land** (the merge appends rather than overwrites) — so the loop never converges to a stable value the guard can catch. A single buggy element like this grew one production room to 1.2 million CRDT operations / 23 MB and took the room offline.
+Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, because the data is a CRDT, **two readers writing concurrently both land** — and with the **replacement form** (`setData({ entries: [...] })`) over an **array**, concurrent writes append rather than overwrite, so the loop never converges to a stable value the guard can catch. A single buggy element like this grew one production room to 1.2 million CRDT operations / 23 MB and took the room offline.
 
-The fix has two parts:
-
-1. **Don't depend on the data you write.** Read the latest value through a ref so the effect only fires on the inputs that should actually trigger a write (here, the local user's own identity), not on every change to the shared list.
-2. **Make the write idempotent — key by a unique id, last-write-wins.** Rebuild from a `Map` keyed by id so re-running the write can never duplicate, and so it self-heals any duplicates a concurrent merge introduced.
+**The strongest fix is the data model: store collections that must stay unique as a keyed map, and upsert in place with the mutator form.**
 
 ```tsx
-const Roster = withSharedState({ defaultData: { entries: [] } }, ({ data, setData }) => {
+// entries is keyed by id, not an array
+const Roster = withSharedState({ defaultData: { entries: {} } }, ({ data, setData }) => {
   const me = useMe(); // { id, name } — the only thing that should trigger a write
-  const entriesRef = useRef(data.entries);
-  entriesRef.current = data.entries;
+  const ref = useRef(data.entries);
+  ref.current = data.entries;
 
   useEffect(() => {
-    const byId = new Map(entriesRef.current.map((e) => [e.id, e]));
-    const existing = byId.get(me.id);
-    if (existing && existing.name === me.name && byId.size === entriesRef.current.length) {
-      return; // already correct and duplicate-free — skip the write entirely
-    }
-    byId.set(me.id, me);
-    setData({ entries: [...byId.values()] });
+    const existing = ref.current[me.id];
+    if (existing && existing.name === me.name) return; // already correct
+    // Keyed mutator write — assigning entries[id] overwrites in place. Writing
+    // the same id N times can never duplicate, and concurrent writes from two
+    // clients merge cleanly (maps are last-write-wins per key). Idempotent by
+    // construction — the loop, even if it fired, could not grow the doc.
+    setData((draft) => { draft.entries[me.id] = me; });
   }, [me.id, me.name]); // depends on local identity, NOT on data.entries
   return <div />;
 });
 ```
+
+Two reinforcing rules at work here:
+
+1. **Prefer a keyed map + mutator-form upsert over an array + replacement-form rewrite.** The keyed write is idempotent and merge-safe; the array rewrite is neither. This alone defuses the runaway.
+2. **Still don't depend on the data you write.** Read it through a ref so the effect fires only on the inputs that should trigger a write (the local user's identity), not on every change to the shared collection. Belt-and-suspenders on top of the keyed model.
+
+If you genuinely need an array (order matters and there's no natural key), then you must both (a) read via a ref as above and (b) make the write converge — dedupe by id into a `Map` and write the deduped result — but a keyed map is almost always the better shape.
 
 The same rule applies to vanilla `updateElement`: never call `setData` from inside `updateElement` (which runs on every data change) without a guard that provably converges. When in doubt, write only from explicit user events, not from reactive callbacks.
 

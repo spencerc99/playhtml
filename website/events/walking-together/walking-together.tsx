@@ -14,7 +14,12 @@ import {
 } from "./sessions";
 import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
-import { upsertRoster, rosterIsCurrent, type RosterEntry } from "./roster";
+import {
+  rosterPids,
+  rosterEntryIsCurrent,
+  type Roster,
+  type RosterEntry,
+} from "./roster";
 import "./walking-together.scss";
 
 // playhtml exposes `window.cursors` with `name`/`color` as settable
@@ -108,38 +113,37 @@ export function UserSetup() {
  * The rendered element carries an explicit id so the core library uses a
  * stable element id rather than hashing outerHTML (which differs per render). */
 const RosterAdmin = withSharedState(
-  { defaultData: { entries: [] as RosterEntry[] } },
+  { defaultData: { entries: {} as Roster } },
   ({ data, setData }) => {
     const { pid, name, color } = usePlayerIdentity();
     const [showPortrait, setShowPortrait] = useState(false);
 
-    // Always read the latest entries through a ref so the upsert effect does
-    // NOT depend on `data.entries`. Depending on the entries array re-runs the
-    // effect on every roster change from any client, which — combined with
-    // Yjs appending concurrent writes — snowballs into the same pid being
-    // written thousands of times. Keying the effect on the local identity
-    // alone means it only fires when *my* pid/name/color changes.
-    const entriesRef = React.useRef(data.entries);
-    entriesRef.current = data.entries;
+    // Read the latest roster through a ref so the upsert effect keys ONLY on
+    // the local identity (pid/name/color), not on `data.entries`. Depending on
+    // the shared roster would re-run this on every change from any client.
+    const rosterRef = React.useRef(data.entries);
+    rosterRef.current = data.entries;
 
     React.useEffect(() => {
       if (!pid) return;
-      const entries = entriesRef.current;
       const mine: RosterEntry = {
         pid,
         name: name ?? "Anonymous",
         color: color ?? "#000000",
       };
-      // Skip when our entry is already present, matching, and dupe-free —
-      // avoids a redundant write (and the re-render it triggers).
-      if (rosterIsCurrent(entries, mine)) return;
-      setData({ entries: upsertRoster(entries, mine) });
+      // Skip a redundant write when our entry already matches.
+      if (rosterEntryIsCurrent(rosterRef.current, mine)) return;
+      // Keyed mutator write: assigning entries[pid] overwrites in place, so
+      // this is idempotent and merge-safe — re-running it (or two clients
+      // racing) can never duplicate. This is the structural fix; the ref guard
+      // above is belt-and-suspenders to avoid needless writes.
+      setData((draft) => {
+        draft.entries[pid] = mine;
+      });
     }, [pid, name, color, setData]);
 
     const admin = isAdmin(name, color);
-    // Defensive de-dupe for display in case the stored roster still holds
-    // legacy duplicates (e.g. from before this fix, pre-reset).
-    const pids = [...new Set(data.entries.map((e) => e.pid))];
+    const pids = rosterPids(data.entries);
 
     return (
       <div className="admin-panel" id={ROSTER_ID}>
