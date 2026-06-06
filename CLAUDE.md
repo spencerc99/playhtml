@@ -167,6 +167,9 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 - `setData()` for persistent, synced state changes
 - `setLocalData()` for temporary, local-only state
 - `setMyAwareness()` for user presence/cursor data
+- **NEVER write shared data (`setData`) from a callback that re-runs when that data changes** (e.g. a React `useEffect` depending on `data.x` that also calls `setData`, or `setData` inside `updateElement`). It loops forever, and because the data is a CRDT, concurrent writes append instead of overwrite — so it never converges. This crashed a production room (1.2M ops / 23 MB). Write from explicit user events; if you must write from a reactive callback, read the data through a ref (don't depend on it) and make the write idempotent (key by unique id, last-write-wins). Full guidance: the `building-playhtml-elements` skill in `claude-plugin/skills/` and https://playhtml.fun/docs/data/data-essentials/ (rule 7).
+
+When building or modifying playhtml elements, follow the `building-playhtml-elements` skill in `claude-plugin/skills/building-playhtml-elements/SKILL.md` — it captures the full set of footguns (config-before-init, missing ids, write loops, array-mutation rules).
 
 ### Event Handling
 

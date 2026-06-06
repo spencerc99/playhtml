@@ -78,6 +78,33 @@ setData({ ...data, count: data.count + 1 });
 setData((draft) => { draft.items.push(newItem); });
 ```
 
+## NEVER write shared data from code that re-runs when that data changes
+
+The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect — one such bug grew a production room to 1.2M ops / 23 MB and crashed the room.
+
+```tsx
+// DANGER — infinite write loop
+useEffect(() => {
+  setData({ entries: [...data.entries, me] }); // writes entries…
+}, [data.entries]);                            // …re-runs because entries changed
+```
+
+Fix — two parts, both required:
+1. **Don't depend on the data you write.** Read it through a ref; key the effect on the inputs that should actually trigger a write (e.g. the local user's identity), NOT on the shared array.
+2. **Make the write idempotent** — key by unique id via a `Map` (last-write-wins) so re-running can't duplicate and self-heals concurrent dupes.
+
+```tsx
+const entriesRef = useRef(data.entries); entriesRef.current = data.entries;
+useEffect(() => {
+  const byId = new Map(entriesRef.current.map((e) => [e.id, e]));
+  if (byId.get(me.id)?.name === me.name && byId.size === entriesRef.current.length) return;
+  byId.set(me.id, me);
+  setData({ entries: [...byId.values()] });
+}, [me.id, me.name]); // local identity only
+```
+
+Rule of thumb: **write shared data from explicit user events, not from reactive callbacks.** If you must write from a callback, prove it converges. Full explanation: https://playhtml.fun/docs/data/data-essentials/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes
+
 ## Built-in Capabilities
 
 Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
@@ -100,5 +127,6 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 5. **Value form loses fields**: `setData({ x: 5 })` erases `y`. Always spread: `setData({ ...data, x: 5 })` or use mutator form.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/awareness.
+   - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `updateElement`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.

@@ -24,7 +24,7 @@ playhtml has four primitives for moving state between readers. Pick by **lifetim
 Two rules that catch most mistakes:
 
 - **If a new reader opening the page should see the state, it's persistent data.** If they shouldn't, it's presence or an event.
-- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync — see [rule 7 below](#7-use-localstorage-for-per-user-preferences).
+- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync — see [rule 8 below](#8-use-localstorage-for-per-user-preferences).
 
 ## Updating data: mutator vs replacement
 
@@ -80,7 +80,7 @@ The throwing errors read "array assignment is not implemented / supported". If y
 
 ## Shaping your data
 
-How you lay out the object you pass to `defaultData` has a real effect on performance, sync bandwidth, and how painful the code is to refactor later. Seven rules, in order of frequency.
+How you lay out the object you pass to `defaultData` has a real effect on performance, sync bandwidth, and how painful the code is to refactor later. Eight rules, in order of frequency.
 
 ### 1. Keep shapes flat
 
@@ -202,7 +202,51 @@ element.addEventListener("mouseenter", () => element.classList.add("hover"));
 
 If you _do_ want collaborative hover, use [`can-hover`](/docs/capabilities/) — that's literally its reason to exist, and it uses presence (not persistent data) under the hood.
 
-### 7. Use `localStorage` for per-user preferences
+### 7. Never write shared data from code that re-runs when that data changes
+
+This is the most dangerous mistake on this page, because it doesn't fail on your machine — it fails in production once a few readers connect, and it can grow the shared document until the sync server falls over.
+
+The trap: a React effect (or any reactive subscription) that **both depends on the shared data and writes to it**.
+
+```tsx
+// DANGER — infinite write loop
+const Roster = withSharedState({ defaultData: { entries: [] } }, ({ data, setData }) => {
+  useEffect(() => {
+    setData({ entries: [...data.entries, me] }); // writing entries…
+  }, [data.entries]);                             // …re-runs because entries changed
+  return <div />;
+});
+```
+
+Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, because the data is a CRDT, **two readers writing concurrently both land** (the merge appends rather than overwrites) — so the loop never converges to a stable value the guard can catch. A single buggy element like this grew one production room to 1.2 million CRDT operations / 23 MB and took the room offline.
+
+The fix has two parts:
+
+1. **Don't depend on the data you write.** Read the latest value through a ref so the effect only fires on the inputs that should actually trigger a write (here, the local user's own identity), not on every change to the shared list.
+2. **Make the write idempotent — key by a unique id, last-write-wins.** Rebuild from a `Map` keyed by id so re-running the write can never duplicate, and so it self-heals any duplicates a concurrent merge introduced.
+
+```tsx
+const Roster = withSharedState({ defaultData: { entries: [] } }, ({ data, setData }) => {
+  const me = useMe(); // { id, name } — the only thing that should trigger a write
+  const entriesRef = useRef(data.entries);
+  entriesRef.current = data.entries;
+
+  useEffect(() => {
+    const byId = new Map(entriesRef.current.map((e) => [e.id, e]));
+    const existing = byId.get(me.id);
+    if (existing && existing.name === me.name && byId.size === entriesRef.current.length) {
+      return; // already correct and duplicate-free — skip the write entirely
+    }
+    byId.set(me.id, me);
+    setData({ entries: [...byId.values()] });
+  }, [me.id, me.name]); // depends on local identity, NOT on data.entries
+  return <div />;
+});
+```
+
+The same rule applies to vanilla `updateElement`: never call `setData` from inside `updateElement` (which runs on every data change) without a guard that provably converges. When in doubt, write only from explicit user events, not from reactive callbacks.
+
+### 8. Use `localStorage` for per-user preferences
 
 Some state is personal: "has this user already reacted", collapsed sections, display-name choice, notification settings. That data should _not_ sync.
 
@@ -238,6 +282,8 @@ Three mistakes that show up often enough to call out explicitly.
 ```
 
 **Unbounded arrays with no cleanup** — any `push` without a matching size check will eventually bite you.
+
+**Self-triggering writes** — writing shared data from a reactive callback that depends on that same data. The most damaging anti-pattern here: it survives local testing and only blows up under concurrency in production. See [rule 7](#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes).
 
 ## Cleaning up
 
@@ -311,6 +357,7 @@ When reviewing a new element's data shape:
 - Is this actually shared, or should it be local?
 - Could it be derived from other data instead of stored?
 - Will the arrays grow unbounded?
+- Does any effect/callback write shared data **and** depend on that data? (write loop — see rule 7)
 - Am I about to update on a high-frequency DOM event?
 - Is there a built-in `can-*` capability that already does this?
 - Should this live in presence / events instead of persistent data?
