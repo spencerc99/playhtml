@@ -14,6 +14,7 @@ import {
 } from "./sessions";
 import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
+import { upsertRoster, rosterIsCurrent, type RosterEntry } from "./roster";
 import "./walking-together.scss";
 
 // playhtml exposes `window.cursors` with `name`/`color` as settable
@@ -35,12 +36,6 @@ interface SharedURL {
   userName: string;
   userColor: string;
   timestamp: number;
-}
-
-interface RosterEntry {
-  pid: string;
-  name: string;
-  color: string;
 }
 
 const SESSION_ID = resolveSessionId(window.location.search);
@@ -101,8 +96,9 @@ export function UserSetup() {
  * element id) so they share one Y.Map — two separate components can't share a
  * store, since the element id derives from the rendered child and can't be
  * duplicated across DOM nodes. The component:
- *  - upserts the local participant { pid, name, color } when a PID is present
- *    (extension users only; others simply aren't in the roster), and
+ *  - upserts the local participant { pid, name, color } when a PID is present,
+ *    keeping the roster keyed by unique pid (extension users only; others
+ *    simply aren't in the roster), and
  *  - renders the admin "Show portrait" control to the admin only.
  *
  * The rendered element carries an explicit id so the core library uses a
@@ -113,25 +109,33 @@ const RosterAdmin = withSharedState(
     const { pid, name, color } = usePlayerIdentity();
     const [showPortrait, setShowPortrait] = useState(false);
 
+    // Always read the latest entries through a ref so the upsert effect does
+    // NOT depend on `data.entries`. Depending on the entries array re-runs the
+    // effect on every roster change from any client, which — combined with
+    // Yjs appending concurrent writes — snowballs into the same pid being
+    // written thousands of times. Keying the effect on the local identity
+    // alone means it only fires when *my* pid/name/color changes.
+    const entriesRef = React.useRef(data.entries);
+    entriesRef.current = data.entries;
+
     React.useEffect(() => {
       if (!pid) return;
-      const existing = data.entries.find((e) => e.pid === pid);
-      const nextName = name ?? "Anonymous";
-      const nextColor = color ?? "#000000";
-      if (
-        existing &&
-        existing.name === nextName &&
-        existing.color === nextColor
-      )
-        return;
-      const others = data.entries.filter((e) => e.pid !== pid);
-      setData({
-        entries: [...others, { pid, name: nextName, color: nextColor }],
-      });
-    }, [pid, name, color, data.entries]);
+      const entries = entriesRef.current;
+      const mine: RosterEntry = {
+        pid,
+        name: name ?? "Anonymous",
+        color: color ?? "#000000",
+      };
+      // Skip when our entry is already present, matching, and dupe-free —
+      // avoids a redundant write (and the re-render it triggers).
+      if (rosterIsCurrent(entries, mine)) return;
+      setData({ entries: upsertRoster(entries, mine) });
+    }, [pid, name, color, setData]);
 
     const admin = isAdmin(name, color);
-    const pids = data.entries.map((e) => e.pid);
+    // Defensive de-dupe for display in case the stored roster still holds
+    // legacy duplicates (e.g. from before this fix, pre-reset).
+    const pids = [...new Set(data.entries.map((e) => e.pid))];
 
     return (
       <div className="admin-panel" id={ROSTER_ID}>
