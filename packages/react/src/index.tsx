@@ -494,6 +494,7 @@ export {
   usePresence,
   usePageData,
   usePresenceRoom,
+  usePlayerIdentity,
 } from "./hooks";
 export {
   CanMoveElement,
