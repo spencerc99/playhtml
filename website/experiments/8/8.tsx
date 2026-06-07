@@ -1,10 +1,24 @@
 // ABOUTME: Experiment 8 - Collaborative grid paper typing interface
 // ABOUTME: Every grid cell is filled with typed letters, colored by user
 import "./8.scss";
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
 import { OnlineNowIndicator } from "../../components/DataModes";
+import {
+  BOTTOM_BAR_HEIGHT_PX,
+  GRID_CELL_SIZE_PX,
+  getBottomScrollClearancePx,
+  getGridCellCount,
+  getGridRowHeightPx,
+  getGridWidthPx,
+  getRemoteTypingCursors,
+  getScrollEndY,
+  getTypingCursorPosition,
+  isScrollAtEnd,
+  shouldPublishTypingAwareness,
+  type TypingCursorAwareness,
+} from "./layout";
 
 interface CellData {
   letter: string;
@@ -17,15 +31,20 @@ const Main = withSharedState(
     defaultData: {
       letters: [] as CellData[],
     },
+    myDefaultAwareness: undefined as undefined | TypingCursorAwareness,
   },
-  ({ data, setData, awareness }) => {
+  ({ data, setData, awareness, myAwareness, setMyAwareness }) => {
     const { cursors } = usePlayContext();
     const myColor = cursors.color;
     const gridRef = useRef<HTMLDivElement>(null);
+    const bottomBarRef = useRef<HTMLDivElement>(null);
+    const shouldFollowScrollEndRef = useRef(true);
     const [gridDimensions, setGridDimensions] = useState({
       cols: 60,
       rows: 40,
     });
+    const [bottomBarHeightPx, setBottomBarHeightPx] =
+      useState(BOTTOM_BAR_HEIGHT_PX);
 
     // Calculate grid dimensions based on window size
     useEffect(() => {
@@ -48,14 +67,83 @@ const Main = withSharedState(
       return () => window.removeEventListener("resize", calculateDimensions);
     }, []);
 
+    useEffect(() => {
+      const bottomBar = bottomBarRef.current;
+      if (!bottomBar) return;
+
+      const updateBottomBarHeight = () => {
+        const nextHeight = Math.ceil(bottomBar.getBoundingClientRect().height);
+        setBottomBarHeightPx((currentHeight) =>
+          currentHeight === nextHeight ? currentHeight : nextHeight
+        );
+      };
+
+      updateBottomBarHeight();
+
+      const resizeObserver = new ResizeObserver(updateBottomBarHeight);
+      resizeObserver.observe(bottomBar);
+      window.addEventListener("resize", updateBottomBarHeight);
+
+      return () => {
+        resizeObserver.disconnect();
+        window.removeEventListener("resize", updateBottomBarHeight);
+      };
+    }, []);
+
+    useEffect(() => {
+      const updateScrollEndState = () => {
+        shouldFollowScrollEndRef.current = isScrollAtEnd({
+          scrollY: window.scrollY,
+          scrollHeight: document.documentElement.scrollHeight,
+          viewportHeight: window.innerHeight,
+        });
+      };
+
+      updateScrollEndState();
+      window.addEventListener("scroll", updateScrollEndState, { passive: true });
+      window.addEventListener("resize", updateScrollEndState);
+
+      return () => {
+        window.removeEventListener("scroll", updateScrollEndState);
+        window.removeEventListener("resize", updateScrollEndState);
+      };
+    }, []);
+
     // Minimum cells to fill the page
     const minCells = gridDimensions.cols * gridDimensions.rows;
 
-    // Total cells needed: 1 empty at top-left + all letters
-    const totalCells = Math.max(minCells, data.letters.length + 1);
+    const totalCells = getGridCellCount({
+      letterCount: data.letters.length,
+      minimumCellCount: minCells,
+      columnCount: gridDimensions.cols,
+    });
 
-    // Cursor is always at position 0 (top-left)
-    const cursorPosition = 0;
+    const cursorPosition = getTypingCursorPosition(data.letters.length);
+
+    useLayoutEffect(() => {
+      if (!shouldFollowScrollEndRef.current) return;
+
+      window.scrollTo(
+        0,
+        getScrollEndY({
+          scrollHeight: document.documentElement.scrollHeight,
+          viewportHeight: window.innerHeight,
+        })
+      );
+    }, [totalCells, bottomBarHeightPx]);
+
+    useEffect(() => {
+      const nextAwareness = { color: myColor, cursorPos: cursorPosition };
+
+      if (
+        shouldPublishTypingAwareness({
+          current: myAwareness,
+          next: nextAwareness,
+        })
+      ) {
+        setMyAwareness(nextAwareness);
+      }
+    }, [myColor, cursorPosition, myAwareness, setMyAwareness]);
 
     // Handle keyboard input
     useEffect(() => {
@@ -74,6 +162,12 @@ const Main = withSharedState(
           e.preventDefault();
           const char = e.key;
 
+          shouldFollowScrollEndRef.current = isScrollAtEnd({
+            scrollY: window.scrollY,
+            scrollHeight: document.documentElement.scrollHeight,
+            viewportHeight: window.innerHeight,
+          });
+
           setData((draft) => {
             draft.letters.push({
               letter: char,
@@ -88,10 +182,10 @@ const Main = withSharedState(
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [myColor, setData]);
 
-    // Get other users' cursor positions
-    const otherCursors = Object.entries(awareness || {})
-      .filter(([clientId]) => clientId !== "local")
-      .map(([, data]) => data as { color: string; cursorPos: number });
+    const otherCursors = getRemoteTypingCursors({
+      awareness: awareness || [],
+      myAwareness,
+    });
 
     // Get all active players from cursor awareness
     const activePlayers = cursors.allColors.map((color, index) => ({
@@ -127,23 +221,36 @@ const Main = withSharedState(
     }, [nameInput, editingName, cursors.name]);
 
     return (
-      <div id="experiment-8">
+      <div
+        id="experiment-8"
+        style={
+          {
+            "--bottom-scroll-clearance": `${getBottomScrollClearancePx({
+              bottomBarHeightPx,
+            })}px`,
+          } as React.CSSProperties
+        }
+      >
         <div
           ref={gridRef}
           className="grid-container"
           style={{
-            gridTemplateColumns: `repeat(${gridDimensions.cols}, 32px)`,
+            gridTemplateColumns: `repeat(${gridDimensions.cols}, ${GRID_CELL_SIZE_PX}px)`,
+            gridAutoRows: `${getGridRowHeightPx({
+              cellSizePx: GRID_CELL_SIZE_PX,
+            })}px`,
+            width: `${getGridWidthPx({
+              columnCount: gridDimensions.cols,
+              cellSizePx: GRID_CELL_SIZE_PX,
+            })}px`,
           }}
         >
           {Array.from({ length: totalCells }, (_, index) => {
-            // Index 0 is always empty, letters start at index 1
-            const letterIndex = index - 1;
-            const letter = letterIndex >= 0 ? data.letters[letterIndex] : null;
+            const letter = data.letters[index] || null;
             const isMyCursor = index === cursorPosition;
             const otherUserCursor = otherCursors.find(
               (c) => c.cursorPos === index
             );
-            const isEmpty = index === 0;
 
             return (
               <div
@@ -160,13 +267,13 @@ const Main = withSharedState(
                     : undefined,
                 }}
               >
-                {isEmpty ? "\u00A0" : letter?.letter || "\u00A0"}
+                {letter?.letter || "\u00A0"}
               </div>
             );
           })}
         </div>
 
-        <div className="bottom-bar">
+        <div ref={bottomBarRef} className="bottom-bar">
           <div className="active-players">
             {activePlayers.map((player, index) => (
               <div
