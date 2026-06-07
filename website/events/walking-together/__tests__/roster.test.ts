@@ -55,4 +55,10 @@ describe("roster (keyed map)", () => {
     expect(rosterPids(undefined)).toEqual([]);
     expect(rosterEntries(undefined)).toEqual([]);
   });
+
+  it("rosterEntryIsCurrent is false (not a throw) when the roster is undefined", () => {
+    // A room persisted before the `participants` field existed loads with
+    // participants === undefined; the current-check must be null-safe.
+    expect(rosterEntryIsCurrent(undefined, e("pk_a"))).toBe(false);
+  });
 });

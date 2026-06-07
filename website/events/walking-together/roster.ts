@@ -52,10 +52,10 @@ export function rosterEntries(
  * they would trigger).
  */
 export function rosterEntryIsCurrent(
-  roster: Roster,
+  roster: Roster | undefined,
   entry: RosterEntry,
 ): boolean {
-  const existing = roster[entry.pid];
+  const existing = roster?.[entry.pid];
   return (
     !!existing && existing.name === entry.name && existing.color === entry.color
   );
