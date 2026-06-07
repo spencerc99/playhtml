@@ -26,6 +26,9 @@ const PAGES: { path: string; skip?: string }[] = [
   { path: "/events/gray-area/" },
   { path: "/events/if-then/" },
   { path: "/events/walking-together/" },
+  // The session experience (list links here with ?session=<id>). Smoke-test
+  // the active session so a broken session page is caught.
+  { path: "/events/walking-together/session.html?session=2026-06-06-byod" },
   { path: "/docs/" },
 ];
 

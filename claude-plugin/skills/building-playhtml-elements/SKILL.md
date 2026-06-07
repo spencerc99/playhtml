@@ -89,19 +89,18 @@ useEffect(() => {
 }, [data.entries]);                            // …re-runs because entries changed
 ```
 
-Fix — two parts, both required:
-1. **Don't depend on the data you write.** Read it through a ref; key the effect on the inputs that should actually trigger a write (e.g. the local user's identity), NOT on the shared array.
-2. **Make the write idempotent** — key by unique id via a `Map` (last-write-wins) so re-running can't duplicate and self-heals concurrent dupes.
+Strongest fix — **model unique collections as a keyed map and upsert in place with the mutator form.** A keyed write is idempotent (same id overwrites, never appends) and merge-safe (maps are last-write-wins per key), so even if the effect loops it cannot grow the doc:
 
 ```tsx
-const entriesRef = useRef(data.entries); entriesRef.current = data.entries;
+// entries is keyed by id, not an array
+const ref = useRef(data.entries); ref.current = data.entries;
 useEffect(() => {
-  const byId = new Map(entriesRef.current.map((e) => [e.id, e]));
-  if (byId.get(me.id)?.name === me.name && byId.size === entriesRef.current.length) return;
-  byId.set(me.id, me);
-  setData({ entries: [...byId.values()] });
-}, [me.id, me.name]); // local identity only
+  if (ref.current[me.id]?.name === me.name) return;       // already correct
+  setData((draft) => { draft.entries[me.id] = me; });      // keyed, idempotent, merge-safe
+}, [me.id, me.name]); // local identity only — NOT data.entries
 ```
+
+Two reinforcing rules: (1) prefer keyed-map + mutator upsert over array + replacement rewrite; (2) read the data through a ref so the effect depends on local identity, not the shared collection. If you truly need an array, you must both read via ref AND dedupe-by-id into a Map before writing — but a keyed map is almost always the right shape.
 
 Rule of thumb: **write shared data from explicit user events, not from reactive callbacks.** If you must write from a callback, prove it converges. Full explanation: https://playhtml.fun/docs/data/data-essentials/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes
 

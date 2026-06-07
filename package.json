@@ -39,6 +39,7 @@
     "smoke:partykit:compaction": "cd smoke-tests && bun run test:partykit:compaction",
     "smoke:partykit:emergency": "cd smoke-tests && bun run test:partykit:emergency",
     "smoke:partykit:transient": "cd smoke-tests && bun run test:partykit:transient",
+    "smoke:partykit:soak": "cd smoke-tests && bun run test:partykit:soak",
     "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
   },
   "overrides": {
