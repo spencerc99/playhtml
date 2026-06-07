@@ -113,16 +113,21 @@ export function UserSetup() {
  * The rendered element carries an explicit id so the core library uses a
  * stable element id rather than hashing outerHTML (which differs per render). */
 const RosterAdmin = withSharedState(
-  { defaultData: { entries: {} as Roster } },
+  // The roster lives under `participants` as a keyed map. This is a fresh field
+  // (NOT the original `entries`, which some rooms persisted as an array under
+  // the first roster implementation). A fresh always-a-map field avoids the
+  // array→map type conflict entirely: keyed writes are always clean, no
+  // in-place migration needed. Any legacy `entries` array is simply abandoned.
+  { defaultData: { participants: {} as Roster } },
   ({ data, setData }) => {
     const { pid, name, color } = usePlayerIdentity();
     const [showPortrait, setShowPortrait] = useState(false);
 
     // Read the latest roster through a ref so the upsert effect keys ONLY on
-    // the local identity (pid/name/color), not on `data.entries`. Depending on
-    // the shared roster would re-run this on every change from any client.
-    const rosterRef = React.useRef(data.entries);
-    rosterRef.current = data.entries;
+    // the local identity (pid/name/color), not on the shared map. Depending on
+    // the shared map would re-run this on every change from any client.
+    const rosterRef = React.useRef(data.participants);
+    rosterRef.current = data.participants;
 
     React.useEffect(() => {
       if (!pid) return;
@@ -133,17 +138,20 @@ const RosterAdmin = withSharedState(
       };
       // Skip a redundant write when our entry already matches.
       if (rosterEntryIsCurrent(rosterRef.current, mine)) return;
-      // Keyed mutator write: assigning entries[pid] overwrites in place, so
-      // this is idempotent and merge-safe — re-running it (or two clients
-      // racing) can never duplicate. This is the structural fix; the ref guard
-      // above is belt-and-suspenders to avoid needless writes.
+      // Keyed mutator write: assigning participants[pid] overwrites in place,
+      // so this is idempotent and merge-safe — re-running it (or two clients
+      // racing) can never duplicate.
       setData((draft) => {
-        draft.entries[pid] = mine;
+        // A room persisted before this field existed (e.g. the legacy roster
+        // used `entries`) has no `participants` — defaultData only seeds brand
+        // new elements. Initialize it before keying in.
+        if (!draft.participants) draft.participants = {};
+        draft.participants[pid] = mine;
       });
     }, [pid, name, color, setData]);
 
     const admin = isAdmin(name, color);
-    const pids = rosterPids(data.entries);
+    const pids = rosterPids(data.participants);
 
     return (
       <div className="admin-panel" id={ROSTER_ID}>

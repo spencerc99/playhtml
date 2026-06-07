@@ -104,6 +104,17 @@ Two reinforcing rules: (1) prefer keyed-map + mutator upsert over array + replac
 
 Rule of thumb: **write shared data from explicit user events, not from reactive callbacks.** If you must write from a callback, prove it converges. Full explanation: https://playhtml.fun/docs/data/data-essentials/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes
 
+## Changing the SHAPE of already-live persisted data → migrate or clear (and flag it)
+
+`defaultData` only seeds **brand-new** elements. A room that already has persisted data loads it **as-is** — so if you change the data's shape (array→map, rename a field, add a required field) for something already deployed, existing rooms hydrate the OLD shape into your NEW code. That mismatch crashes the page: e.g. a keyed write `data.entries[pid] = …` against a room whose `entries` is still a legacy `Y.Array` throws and blanks the page; reads of a field that doesn't exist yet are `undefined` and throw.
+
+**If you are changing the shape of data that is already live, STOP and flag it to the user, then pick one (in order of preference):**
+1. **Write to a NEW field name**, abandon the old one. No migration, writes are always clean. (Best.)
+2. **Handle both shapes defensively** at read AND write — null-safe reads, initialize-if-absent, in-place migrate. Fragile; test against real legacy data.
+3. **Clear the room's persisted data** (delete the `documents` row).
+
+Only applies to **already-live / persisted** data — brand-new features have no old data. And note: **the load/soak tests will NOT catch this** — they bypass page code and start from empty rooms. A shape change must be verified by loading the real page against a room pre-seeded with the old shape.
+
 ## Built-in Capabilities
 
 Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
