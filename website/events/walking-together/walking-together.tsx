@@ -66,6 +66,14 @@ const CURSOR_INSTRUCTIONS = [
   "Imagine your cursor as a falling rain drop",
 ];
 
+/** How long each group activity runs before advancing, in seconds. */
+const ACTIVITY_DURATION_S = 30;
+
+/** Whole seconds elapsed since a shared timestamp (ms). */
+function elapsedSince(timestampMs: number): number {
+  return Math.floor((Date.now() - timestampMs) / 1000);
+}
+
 // URL validation helper
 function isValidUrl(url: string) {
   try {
@@ -293,33 +301,60 @@ export const GroupActivityDisplay = withSharedState(
     },
   },
   ({ data, setData }) => {
-    const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
     const { name, color } = usePlayerIdentity();
+    const admin = isAdmin(name, color);
+
+    // The countdown animates LOCALLY for everyone, derived from the shared
+    // `lastChangeTime` — no per-tick writes. The shared state is the source of
+    // truth (a new joiner reads it and animates from the same baseline). Only
+    // ONE client (the admin) performs the advance write when the timer hits
+    // zero, so clients can't race each other into skipping multiple activities.
+    const [timeLeft, setTimeLeft] = React.useState(() =>
+      Math.max(0, ACTIVITY_DURATION_S - elapsedSince(data.lastChangeTime)),
+    );
+
+    // Keep the latest shared state and identity in refs so the ticking effect
+    // does NOT re-subscribe on every data change (which would stutter/restart
+    // the countdown). It is set up once and reads current values per tick.
+    const stateRef = React.useRef({ data, admin });
+    stateRef.current = { data, admin };
+    // The lastChangeTime we last advanced from. Prevents the admin from firing
+    // the advance write repeatedly in the ~CRDT-round-trip window before the
+    // new lastChangeTime propagates back into `data`.
+    const advancedFromRef = React.useRef<number | null>(null);
 
     React.useEffect(() => {
-      const interval = setInterval(() => {
-        const now = Date.now();
-        const elapsed = Math.floor((now - data.lastChangeTime) / 1000);
-        const remaining = 30 - elapsed;
+      const tick = () => {
+        const { data: d, admin: isAdminNow } = stateRef.current;
+        const remaining = ACTIVITY_DURATION_S - elapsedSince(d.lastChangeTime);
 
-        if (remaining <= 0) {
-          // Archived sessions don't advance the activity — the timer just
-          // resets visually so the page still feels alive.
-          if (!IS_ARCHIVED) {
-            setData({
-              currentInstructionIndex:
-                (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-              lastChangeTime: now,
-            });
-          }
-          setTimeLeft(30);
-        } else {
+        if (remaining > 0) {
           setTimeLeft(remaining);
+          return;
         }
-      }, 1000);
 
+        // Timer expired. Show 0 locally for everyone; only the admin advances
+        // the shared activity (archived sessions never advance).
+        setTimeLeft(0);
+        if (
+          isAdminNow &&
+          !IS_ARCHIVED &&
+          advancedFromRef.current !== d.lastChangeTime
+        ) {
+          advancedFromRef.current = d.lastChangeTime;
+          setData({
+            currentInstructionIndex:
+              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+            lastChangeTime: Date.now(),
+          });
+        }
+      };
+      tick();
+      const interval = setInterval(tick, 250);
       return () => clearInterval(interval);
-    }, [data.lastChangeTime, data.currentInstructionIndex, setData]);
+      // Set up once — refs supply the latest values each tick.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [setData]);
 
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
@@ -330,7 +365,6 @@ export const GroupActivityDisplay = withSharedState(
           (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
         lastChangeTime: Date.now(),
       });
-      setTimeLeft(30);
     };
 
     return (
