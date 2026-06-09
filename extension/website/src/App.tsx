@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { LiveIndicator } from "@movement/components/LiveIndicator";
+import { WordmarkClock } from "@movement/components/WordmarkClock";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { countActivePeople } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
@@ -186,6 +187,15 @@ export default function App() {
             position: "absolute",
             top: "calc(100vh - 36px)",
             left: 16,
+            zIndex: 2,
+          }}
+        />
+        {/* Live current date + time in the wordmark style, bottom-right. */}
+        <WordmarkClock
+          style={{
+            position: "absolute",
+            top: "calc(100vh - 40px)",
+            right: 16,
             zIndex: 2,
           }}
         />

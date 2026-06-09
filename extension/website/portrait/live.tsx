@@ -5,6 +5,7 @@ import "../shared/portrait-styles.scss";
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { MovementCanvas } from "../shared/components/MovementCanvas";
+import { WordmarkClock } from "../shared/components/WordmarkClock";
 import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../shared/components/registry";
 import { parseFiltersFromUrl, parseVizFromUrl } from "../shared/config";
 import { useLiveEvents } from "../shared/hooks/useLiveEvents";
@@ -85,6 +86,15 @@ const LivePortrait = () => {
         onSetActiveVisualizations={setActiveVisualizations}
         live
         connected={connected}
+      />
+      <WordmarkClock
+        style={{
+          position: "absolute",
+          bottom: 16,
+          right: 20,
+          zIndex: 200,
+          fontSize: "20px",
+        }}
       />
     </>
   );
