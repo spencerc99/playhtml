@@ -40,4 +40,5 @@ export interface Env {
   ADMIN_KEY: string;            // Required for admin endpoints (stats, export)
   RESEND_API_KEY: string;       // Resend API key for sending welcome emails
   RESEND_SEGMENT_ID?: string;   // Optional: assign new contacts to this Resend segment
+  LIVE_EVENTS_HUB: DurableObjectNamespace; // Live cursor-event stream hub
 }

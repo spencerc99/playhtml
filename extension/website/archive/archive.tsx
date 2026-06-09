@@ -1,5 +1,5 @@
-// ABOUTME: Entry point for the Internet Movement visualization page
-// ABOUTME: Fetches events from the server API and passes them to MovementCanvas for rendering
+// ABOUTME: Historical browsing-portrait page (the archive view) at wewere.online/archive
+// ABOUTME: Fetches events from /events/recent and passes them to MovementCanvas for rendering
 import "../shared/portrait-styles.scss";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";

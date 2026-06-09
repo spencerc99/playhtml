@@ -1,6 +1,8 @@
 // ABOUTME: Shared utility functions for event processing across all event types
 // ABOUTME: Contains color palette, hashing, and domain extraction helpers
 
+import type { CollectionEvent } from "../types";
+
 // Trail color palette — 8 evenly-spaced HSL hues (45° apart) with warm
 // saturation and constrained lightness. Inspired by minute-faces' time-color
 // mapping: vivid, harmonious, and legible over both light and dark backgrounds.
@@ -320,6 +322,60 @@ export function formatFilterChip(chip: FilterChip): string {
   if (!chip.path) return chip.domain;
   const path = chip.path.startsWith("/") ? chip.path : `/${chip.path}`;
   return `${chip.domain}${path}`;
+}
+
+/** How recently a participant must have an event to count as "browsing now".
+ * Wide enough to cover the server's ~2-min replay buffer (so the count isn't 0
+ * right after connecting), while still meaning "recent". */
+export const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
+
+export interface ActiveLocations {
+  people: number;
+  timezones: number;
+  continents: number;
+}
+
+/**
+ * Summarize recently-active people and their geographic spread from `meta.tz`
+ * (an IANA zone like "Australia/Adelaide"). `people` reflects true activity from
+ * the raw event stream, NOT the drawn trails, so the readout stays honest even
+ * when the canvas only renders a capped subset of trails (maxGroups).
+ *
+ * The window is anchored to the VIEWER's wall clock (now), not the newest event
+ * timestamp: event `ts` is each client's own `Date.now()`, so a single client
+ * with a fast clock would otherwise shift the window into the future and drop
+ * the real count toward zero. Future-dated events are treated as "now".
+ */
+export function summarizeActiveLocations(
+  events: CollectionEvent[],
+  windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
+  now: number = Date.now(),
+): ActiveLocations {
+  const cutoff = now - windowMs;
+  const pids = new Set<string>();
+  const timezones = new Set<string>();
+  const continents = new Set<string>();
+  for (const e of events) {
+    // Count an event whose ts is within [cutoff, now]; clamp the future so a
+    // skewed-fast client still counts (its events read as "now", not dropped).
+    if (!e.meta?.pid || Math.min(e.ts, now) < cutoff) continue;
+    pids.add(e.meta.pid);
+    const tz = e.meta.tz;
+    if (tz) {
+      timezones.add(tz);
+      // IANA zones are "Continent/City"; the prefix is the broad region.
+      // Skip the non-geographic zones (UTC, GMT, Etc/*) so they don't inflate
+      // the continent count.
+      const region = tz.split("/")[0];
+      if (region && region !== "Etc" && region !== "UTC" && region !== "GMT")
+        continents.add(region);
+    }
+  }
+  return {
+    people: pids.size,
+    timezones: timezones.size,
+    continents: continents.size,
+  };
 }
 
 // Constants used across event processing

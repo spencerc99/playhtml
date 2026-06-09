@@ -11,6 +11,8 @@ import React, {
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
+import { LiveTrails } from "./LiveTrails";
+import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
@@ -23,6 +25,7 @@ import { ActivityStrip } from "./ActivityStrip";
 import { StatsConsole } from "./StatsConsole";
 import { DebugHoverProvider } from "./DebugHover";
 import { useCursorTrails } from "../hooks/useCursorTrails";
+import { useAccumulatedEvents } from "../hooks/useAccumulatedEvents";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
 import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
@@ -31,6 +34,7 @@ import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import {
   extractDomain,
   formatFilterChip,
+  summarizeActiveLocations,
   type FilterChip,
 } from "../utils/eventUtils";
 import { buildShareUrl } from "../utils/shareUrl";
@@ -354,6 +358,9 @@ interface MovementCanvasProps {
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
+  live?: boolean;
+  /** Live-stream connection status, gates the people-count readout. */
+  connected?: boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -369,6 +376,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   activeVisualizations,
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
+  live = false,
+  connected = false,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -417,7 +426,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // Sync filter chip list from prop (parent controls refetching). The
   // parent only re-fetches the events array when the worker-side domain
-  // changes; that derivation lives one layer up in portrait.tsx.
+  // changes; that derivation lives one layer up in archive.tsx.
   useEffect(() => {
     if (filtersProp === undefined) return;
     const cur: FilterChip[] = Array.isArray(settings.filters)
@@ -732,6 +741,20 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     return events.filter((e) => e.ts >= startMs && e.ts < endMs);
   }, [events, selectedTimeRange]);
 
+  // In live mode, accumulate each trail's full point history so trails don't
+  // shrink/shift/vanish as their earliest events age off the stream cap. The
+  // archive's event set is fixed, so it bypasses accumulation. A group's events
+  // are freed when its trail has fully faded out (LiveTrails reports the id).
+  const evictIdsRef = useRef<Set<string>>(new Set());
+  const handleTrailsRemoved = useCallback((ids: string[]) => {
+    for (const id of ids) evictIdsRef.current.add(id);
+  }, []);
+  const trailEvents = useAccumulatedEvents(filteredEvents, {
+    enabled: live,
+    maxGroups: 60,
+    evictIdsRef,
+  });
+
   const cursorSettings = useMemo(
     () => ({
       randomizeColors: settings.randomizeColors,
@@ -740,11 +763,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       eventFilter: settings.eventFilter,
       trailStyle: settings.trailStyle,
       chaosIntensity: settings.chaosIntensity,
-      trailAnimationMode: settings.trailAnimationMode,
+      trailAnimationMode: live ? "natural" : settings.trailAnimationMode,
       maxConcurrentTrails: settings.maxConcurrentTrails,
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
       documentSpace: settings.documentSpace,
+      // Live mode collapses each participant+url to one trail so ids stay
+      // unique/stable as the event window slides (the archive shows every
+      // segment). Prevents duplicate React keys and disappearing trails.
+      singleSegmentPerGroup: live,
     }),
     [
       settings.randomizeColors,
@@ -754,6 +781,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.trailStyle,
       settings.chaosIntensity,
       settings.trailAnimationMode,
+      live,
       settings.maxConcurrentTrails,
       settings.overlapFactor,
       settings.minGapBetweenTrails,
@@ -766,7 +794,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-  } = useCursorTrails(filteredEvents, viewportSize, cursorSettings);
+  } = useCursorTrails(trailEvents, viewportSize, cursorSettings);
+
+  // Recent activity (live mode) from the raw event stream, not the capped drawn
+  // trails: how many people + the geographic spread of their timezones.
+  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
 
   // The keyboard hook is invoked here (before timeRange) because its
   // cycleDuration feeds the canvas's shared animation cycle. Without this,
@@ -1199,6 +1231,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           endMs={selectedTimeRange.endMs}
         />
       ) : (
+        // The live page shows current "now" via the WordmarkClock instead — this
+        // readout sweeps/loops the buffer's time span, which only makes sense for
+        // the archive (scrubbing through historical time).
+        !live &&
         settings.trailAnimationMode === "natural" &&
         showTrails &&
         timeRange.min > 0 &&
@@ -1210,6 +1246,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )
       ))}
+
+      {/* Live people-count, bottom-left. Same plain look as the homepage. */}
+      {!cleanMode && live && (
+        <LiveIndicator
+          connected={connected}
+          peopleCount={activity.people}
+          timezones={activity.timezones}
+          continents={activity.continents}
+          style={{ position: "absolute", bottom: 20, left: 20, zIndex: 100 }}
+        />
+      )}
 
       {/* Only surface the pause/resume control while paused — when the
        * canvas is animating, the button adds visual noise without
@@ -1335,18 +1382,27 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         </svg>
 
-        {showTrails && (
-          <AnimatedTrails
-            key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
-            trailStates={trailStates}
-            timeRange={timeRange}
-            showClickRipples={!showClicks}
-            windowSize={settings.maxConcurrentTrails * 2}
-            soundEngine={paused || !soundEnabled ? null : soundEngineReady}
-            settings={trailAnimationSettings}
-            frozen={paused}
-          />
-        )}
+        {showTrails &&
+          (live ? (
+            <LiveTrails
+              key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={trailStates}
+              frozen={paused}
+              onTrailsRemoved={handleTrailsRemoved}
+              settings={trailAnimationSettings}
+            />
+          ) : (
+            <AnimatedTrails
+              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={trailStates}
+              timeRange={timeRange}
+              showClickRipples={!showClicks}
+              windowSize={settings.maxConcurrentTrails * 2}
+              soundEngine={paused || !soundEnabled ? null : soundEngineReady}
+              settings={trailAnimationSettings}
+              frozen={paused}
+            />
+          ))}
 
         {showClicks && !paused && (
           <AnimatedClicks

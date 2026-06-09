@@ -20,8 +20,15 @@ export function buildStraightPathSegment(
 ): string {
   if (points.length === 0 || startIndex > endIndex) return "";
 
-  let path = `M ${points[startIndex].x} ${points[startIndex].y}`;
-  for (let i = startIndex + 1; i <= endIndex; i++) {
+  // Clamp to valid bounds — callers occasionally pass indices derived from a
+  // separate progress basis that can run past the array (e.g. a snapshotted
+  // trail whose point count differs from the progress assumption).
+  const lo = Math.max(0, startIndex);
+  const hi = Math.min(endIndex, points.length - 1);
+  if (lo > hi) return "";
+
+  let path = `M ${points[lo].x} ${points[lo].y}`;
+  for (let i = lo + 1; i <= hi; i++) {
     path += ` L ${points[i].x} ${points[i].y}`;
   }
 

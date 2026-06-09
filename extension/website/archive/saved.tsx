@@ -184,7 +184,7 @@ const SavedConfigsPage: React.FC = () => {
       >
         <div>
           <a
-            href="/portrait/"
+            href="/archive/"
             style={{
               display: "inline-block",
               marginBottom: 8,
@@ -193,7 +193,7 @@ const SavedConfigsPage: React.FC = () => {
               textDecoration: "none",
             }}
           >
-            ← back to portrait
+            ← back to archive
           </a>
           <h1
             style={{

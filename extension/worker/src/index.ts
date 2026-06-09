@@ -9,14 +9,18 @@ import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
 import { handlePageMeta } from './routes/pageMeta';
+import { handleStream } from './routes/stream';
+import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
+
+export { LiveEventsHub } from './live/LiveEventsHub';
 
 /**
  * Cloudflare Worker entry point
  * Routes requests to appropriate handlers
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     
@@ -33,14 +37,21 @@ export default {
     
     // Route requests
     if (path === '/events' && request.method === 'POST') {
-      return handleIngest(request, env);
+      return handleIngest(request, env, ctx);
     }
-    
+
+    if (path === '/stream' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleStream(request, env);
+    }
+
     if (path === '/events/recent' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleRecent(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleDailyCounts(request, env);
     }
     
@@ -57,6 +68,7 @@ export default {
     }
 
     if (path === '/page-meta' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handlePageMeta(request, env);
     }
 

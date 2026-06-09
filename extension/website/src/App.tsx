@@ -1,11 +1,14 @@
 // ABOUTME: Homepage for wewere.online
 // ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
-import { useState, useEffect } from "react";
-import { AnimatedTrails } from "@movement/components/AnimatedTrails";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { LiveTrails } from "@movement/components/LiveTrails";
+import { LiveIndicator } from "@movement/components/LiveIndicator";
+import { WordmarkClock } from "@movement/components/WordmarkClock";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
-import type { CollectionEvent } from "@movement/types";
-import { WORKER_URL } from "@movement/config";
+import { summarizeActiveLocations } from "@movement/utils/eventUtils";
+import { useLiveEvents } from "@movement/hooks/useLiveEvents";
+import { useAccumulatedEvents } from "@movement/hooks/useAccumulatedEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
 import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
@@ -75,21 +78,32 @@ function RisoTexture() {
   );
 }
 
-const EVENT_LIMIT = 150;
+// Deep enough that trails stay on screen for minutes (don't age off the window
+// while you're watching). A live trail leaves only when its events finally fall
+// out of this rolling buffer.
+const EVENT_LIMIT = 500;
 
 const TRAIL_SETTINGS = {
   trailOpacity: 0.5,
-  randomizeColors: true,
+  // Live trails use each participant's own cursor color (stable across the
+  // continuous re-derivation the stream triggers). Randomized colors would
+  // reshuffle every batch since they're assigned by array-order index.
+  randomizeColors: false,
   filters: [],
   pidFilter: "",
   eventFilter: { move: true, click: true, hold: false, cursor_change: false },
   trailStyle: "chaotic" as const,
   chaosIntensity: 0.6,
-  trailAnimationMode: "stagger" as const,
+  trailAnimationMode: "natural" as const,
   maxConcurrentTrails: 5,
   overlapFactor: 1,
   minGapBetweenTrails: 0.1,
   documentSpace: false,
+  // One trail per participant+url. Without this a group that splits into
+  // multiple >5min-gap segments emits several trails sharing the same id,
+  // producing duplicate React keys (React warns "two children with the same
+  // key") and the resulting intermittent disappearing/flickering trails.
+  singleSegmentPerGroup: true,
 };
 
 const ANIMATION_SETTINGS = {
@@ -111,18 +125,17 @@ const ANIMATION_SETTINGS = {
 };
 
 export default function App() {
-  const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [viewportSize, setViewportSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
 
-  useEffect(() => {
-    fetch(`${WORKER_URL}/events/recent?type=cursor&limit=${EVENT_LIMIT}`)
-      .then((r) => r.json())
-      .then((data: CollectionEvent[]) => setEvents(data))
-      .catch(() => {});
-  }, []);
+  // Live stream: starts from the server's recent-event replay, then accumulates
+  // new events over the session (capped at EVENT_LIMIT). The trail cycle grows
+  // with the event time span, unlike the old fixed one-shot snapshot.
+  const { events, connected } = useLiveEvents({
+    maxEvents: EVENT_LIMIT,
+  });
 
   useEffect(() => {
     const onResize = () =>
@@ -131,30 +144,63 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const { trailStates, timeBounds, cycleDuration } = useCursorTrails(
-    events,
+  // Keep each live trail's full point history as the event window slides, so
+  // trails grow and persist instead of shrinking/shifting/vanishing when their
+  // earliest events age off the stream cap. A group's events are freed when its
+  // trail has fully faded out on screen (LiveTrails reports the id here).
+  const evictIdsRef = useRef<Set<string>>(new Set());
+  const handleTrailsRemoved = useCallback((ids: string[]) => {
+    for (const id of ids) evictIdsRef.current.add(id);
+  }, []);
+  const accumulatedEvents = useAccumulatedEvents(events, {
+    maxGroups: 60,
+    evictIdsRef,
+  });
+  const { trailStates } = useCursorTrails(
+    accumulatedEvents,
     viewportSize,
     TRAIL_SETTINGS,
   );
 
-  const timeRange = {
-    min: timeBounds.min,
-    max: timeBounds.max,
-    duration: cycleDuration,
-  };
+  // Recent activity, from the raw event stream (not the capped drawn trails):
+  // how many people, and the geographic spread of their timezones.
+  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
+
 
   return (
     <div className={styles.page}>
       <div className={styles.trails}>
         {trailStates.length > 0 && (
-          <AnimatedTrails
+          <LiveTrails
             trailStates={trailStates}
-            timeRange={timeRange}
-            showClickRipples={false}
+            onTrailsRemoved={handleTrailsRemoved}
             settings={ANIMATION_SETTINGS}
           />
         )}
         <RisoTexture />
+        {/* People-count pinned to the bottom of the first screen (the portrait
+            area) and scrolls away with the page — not fixed to the viewport. */}
+        <LiveIndicator
+          connected={connected}
+          peopleCount={activity.people}
+          timezones={activity.timezones}
+          continents={activity.continents}
+          style={{
+            position: "absolute",
+            top: "calc(100vh - 36px)",
+            left: 16,
+            zIndex: 2,
+          }}
+        />
+        {/* Live current date + time in the wordmark style, bottom-right. */}
+        <WordmarkClock
+          style={{
+            position: "absolute",
+            top: "calc(100vh - 40px)",
+            right: 16,
+            zIndex: 2,
+          }}
+        />
       </div>
 
       <div className={styles.content}>

@@ -85,7 +85,11 @@ hatch (uses `.env.submit` instead of GitHub secrets, requires a manual
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
-- `extension/website/portrait/` — main cursor-trail portrait (was `movement`)
+- `extension/website/portrait/` — live cursor-trail portrait, fed by the
+  worker's `/stream` WebSocket (no history/calendar surface)
+- `extension/website/archive/` — historical cursor-trail portrait with
+  calendar/day-picker, fed by `/events/recent`; includes the saved-config
+  manager (`saved.html`)
 - `extension/website/rabbithole/`, `conversations/`, `keypresses/`,
   `sounds/`, `components-preview/` — individual experiments
 
