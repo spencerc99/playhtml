@@ -1,3 +1,5 @@
+// ABOUTME: Styles the experiment 8 grid paper typing interface.
+// ABOUTME: Reserves scroll space so fixed controls do not cover typed cells.
 $cell-size: 32px;
 
 body {
@@ -13,7 +15,7 @@ body {
   width: 100vw;
   min-height: 100vh;
   position: relative;
-  padding-bottom: 60px; // Make room for bottom bar
+  padding-bottom: var(--bottom-scroll-clearance, 128px);
 }
 
 .grid-container {
@@ -36,6 +38,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: calc($cell-size - 2px);
+  line-height: 1;
   font-weight: 700;
   transition: all 0.1s ease;
   user-select: none;
