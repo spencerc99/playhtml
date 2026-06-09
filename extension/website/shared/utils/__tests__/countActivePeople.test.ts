@@ -15,28 +15,48 @@ function ev(pid: string, ts: number): CollectionEvent {
   } as CollectionEvent;
 }
 
+const NOW = 1_000_000;
+const WINDOW = 45_000;
+
 describe("countActivePeople", () => {
-  it("counts distinct pids", () => {
-    const now = 1_000_000;
+  it("counts distinct pids within the window", () => {
     expect(
-      countActivePeople([ev("a", now), ev("b", now), ev("a", now)]),
+      countActivePeople(
+        [ev("a", NOW), ev("b", NOW), ev("a", NOW)],
+        WINDOW,
+        NOW,
+      ),
     ).toBe(2);
   });
 
   it("ignores people whose last event is outside the window", () => {
-    const now = 1_000_000;
     const events = [
-      ev("recent", now),
-      ev("stale", now - 60_000), // > 45s window relative to newest
+      ev("recent", NOW - 1_000), // 1s ago — kept
+      ev("stale", NOW - 60_000), // 60s ago, window is 45s — dropped
     ];
-    expect(countActivePeople(events, 45_000)).toBe(1);
+    expect(countActivePeople(events, WINDOW, NOW)).toBe(1);
   });
 
-  it("is relative to the newest event, not wall-clock", () => {
-    // All events are 'old' in absolute terms but clustered together.
-    const base = 0;
-    const events = [ev("a", base), ev("b", base + 1000)];
-    expect(countActivePeople(events, 45_000)).toBe(2);
+  it("is anchored to `now`, NOT the newest event (skew-proof)", () => {
+    // Regression: a single client with a fast clock sends a future-dated event.
+    // The window must stay anchored to `now`, so the future event doesn't shift
+    // the window forward and drop everyone else to zero.
+    const events = [
+      ev("realA", NOW - 5_000),
+      ev("realB", NOW - 10_000),
+      ev("skewedFast", NOW + 90_000), // 90s in the future
+    ];
+    // All three count: realA/realB are recent; the future one is clamped to now.
+    expect(countActivePeople(events, WINDOW, NOW)).toBe(3);
+  });
+
+  it("a future-dated event does not hide everyone else", () => {
+    // The exact production bug: one +76s event made the count read 1.
+    const events = [
+      ...Array.from({ length: 20 }, (_, i) => ev(`p${i}`, NOW - 10_000)),
+      ev("skewed", NOW + 76_000),
+    ];
+    expect(countActivePeople(events, WINDOW, NOW)).toBe(21);
   });
 
   it("returns 0 for no events", () => {
@@ -44,8 +64,7 @@ describe("countActivePeople", () => {
   });
 
   it("is not capped by trail-render limits — counts all active pids", () => {
-    const now = 1_000_000;
-    const events = Array.from({ length: 100 }, (_, i) => ev(`p${i}`, now));
-    expect(countActivePeople(events)).toBe(100);
+    const events = Array.from({ length: 100 }, (_, i) => ev(`p${i}`, NOW));
+    expect(countActivePeople(events, WINDOW, NOW)).toBe(100);
   });
 });

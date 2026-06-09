@@ -324,28 +324,34 @@ export function formatFilterChip(chip: FilterChip): string {
   return `${chip.domain}${path}`;
 }
 
-/** How recently a participant must have an event to count as "browsing now". */
-export const ACTIVE_PEOPLE_WINDOW_MS = 45_000;
+/** How recently a participant must have an event to count as "browsing now".
+ * Wide enough to cover the server's ~2-min replay buffer (so the count isn't 0
+ * right after connecting), while still meaning "recent". */
+export const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 
 /**
  * Count distinct people (participants) with an event within the recent window.
  * Derived from the raw event stream, NOT the drawn trails — so the "N people
  * browsing" readout reflects true activity even when the canvas only renders a
  * capped subset of trails (maxGroups).
+ *
+ * The window is anchored to the VIEWER's wall clock (now), not the newest event
+ * timestamp: event `ts` is each client's own `Date.now()`, so a single client
+ * with a fast clock would otherwise shift the window into the future and drop
+ * the real count toward zero. Future-dated events are treated as "now".
  */
 export function countActivePeople(
   events: CollectionEvent[],
   windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
+  now: number = Date.now(),
 ): number {
   if (events.length === 0) return 0;
-  // Window is relative to the newest event seen, not wall-clock, so it works
-  // the same on the replayed buffer and on a quiet stream.
-  let newestTs = 0;
-  for (const e of events) if (e.ts > newestTs) newestTs = e.ts;
-  const cutoff = newestTs - windowMs;
+  const cutoff = now - windowMs;
   const pids = new Set<string>();
   for (const e of events) {
-    if (e.ts >= cutoff && e.meta?.pid) pids.add(e.meta.pid);
+    // Count an event whose ts is within [cutoff, now]; clamp the future so a
+    // skewed-fast client still counts (its events read as "now", not dropped).
+    if (e.meta?.pid && Math.min(e.ts, now) >= cutoff) pids.add(e.meta.pid);
   }
   return pids.size;
 }

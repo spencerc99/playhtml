@@ -1232,7 +1232,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           endMs={selectedTimeRange.endMs}
         />
       ) : (
-        (live || settings.trailAnimationMode === "natural") &&
+        // The live page shows current "now" via the WordmarkClock instead — this
+        // readout sweeps/loops the buffer's time span, which only makes sense for
+        // the archive (scrubbing through historical time).
+        !live &&
+        settings.trailAnimationMode === "natural" &&
         showTrails &&
         timeRange.min > 0 &&
         timeRange.duration > 0 && (
