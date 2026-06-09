@@ -107,7 +107,9 @@ export class PresenceCountPill {
   private isFreshLobbyPage(
     page: WikiPresenceView["page"],
   ): page is NonNullable<WikiPresenceView["page"]> {
-    if (!page?.url || typeof page.lastSeenAt !== "number") return false;
+    if (!page?.url) return false;
+    if (page.visible !== true) return false;
+    if (typeof page.lastSeenAt !== "number") return false;
     return Date.now() - page.lastSeenAt <= LOBBY_PAGE_TTL_MS;
   }
 

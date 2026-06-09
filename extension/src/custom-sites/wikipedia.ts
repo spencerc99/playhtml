@@ -14,6 +14,7 @@ export interface WikiPresenceFields {
     color: string;
     pid?: string;
     lastSeenAt?: number;
+    visible?: boolean;
   } | null;
 }
 
@@ -280,22 +281,32 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   if (typeof deps.createPresenceRoom === "function") {
     const lobby = deps.createPresenceRoom("lobby");
     const publishLobbyPage = () => {
+      if (document.visibilityState !== "visible") {
+        lobby.presence.setMyPresence("page", null);
+        return;
+      }
       lobby.presence.setMyPresence("page", {
         url: location.href,
         title: document.title.replace(/ - Wikipedia$/, ""),
         color: deps.playerColor,
         pid: lobby.presence.getMyIdentity().publicKey,
+        visible: true,
         lastSeenAt: Date.now(),
       });
+    };
+    const clearLobbyPage = () => {
+      lobby.presence.setMyPresence("page", null);
     };
     publishLobbyPage();
     const lobbyHeartbeat = window.setInterval(publishLobbyPage, 10_000);
     window.addEventListener("focus", publishLobbyPage);
+    window.addEventListener("pagehide", clearLobbyPage);
     document.addEventListener("visibilitychange", publishLobbyPage);
     lobbyPresence = lobby.presence;
     cleanups.push(() => {
       window.clearInterval(lobbyHeartbeat);
       window.removeEventListener("focus", publishLobbyPage);
+      window.removeEventListener("pagehide", clearLobbyPage);
       document.removeEventListener("visibilitychange", publishLobbyPage);
       lobby.destroy();
     });
