@@ -282,7 +282,12 @@ export function Collections({ onBack }: CollectionsProps) {
         type: "CLEAR_ALL_EVENTS",
       });
       if (response?.success) {
-        setStorageStats(null);
+        setStorageStats({
+          totalEvents: 0,
+          estimatedSizeBytes: 0,
+          oldestEvent: 0,
+          countsByType: {},
+        });
       } else {
         alert("Failed to clear data. Please try again.");
       }
@@ -799,6 +804,16 @@ export function Collections({ onBack }: CollectionsProps) {
         </div>
 
         <div className="collections__transfer">
+          {storageStats && (
+            <div className="collections__database-size">
+              <span className="collections__database-size-label">
+                Local database
+              </span>
+              <span className="collections__database-size-value">
+                {formatSize(storageStats.estimatedSizeBytes)}
+              </span>
+            </div>
+          )}
           <div className="collections__transfer-buttons">
             <button
               className="collections__transfer-btn"
