@@ -332,10 +332,19 @@ import { TagType } from "@playhtml/common";
 A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: emoji textarea">
-  {/* TODO-DEMO: Big textarea with an onInput handler that strips non-emoji characters; can-mirror syncs the sanitized value. */}
-  <p class="ph-demo-slot__placeholder">
-    A wide emoji-only textarea. Type anything; only emojis stick. Everyone composes the message together.
-  </p>
+  <div class="ph-canmirror-vignette ph-canmirror-vignette--emoji" data-can-mirror-vignette="emoji">
+    <textarea
+      can-mirror
+      id="emoji-pad"
+      class="ph-canmirror-vignette__textarea"
+      rows="4"
+      placeholder="emojis only..."
+      aria-label="Emoji-only shared textarea"
+    ></textarea>
+    <p class="ph-canmirror-vignette__hint">
+      Type anything. Only emojis stick, and the filtered value mirrors to everyone.
+    </p>
+  </div>
 </div>
 
 ```html
@@ -355,11 +364,17 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 Click "+" to append a new `<li>`. The child addition itself mirrors — new readers see the whole list, not just the latest.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
-  {/* TODO-DEMO: <ul can-mirror> with an "add item" button that appends <li> nodes with timestamps. Reset clears the list. */}
-  <p class="ph-demo-slot__placeholder">
-    A shared guestbook list. Append your signature; the full list mirrors to everyone else.
-  </p>
+  <div class="ph-canmirror-vignette ph-canmirror-vignette--guestbook" data-can-mirror-vignette="guestbook">
+    <ul can-mirror id="guestbook" class="ph-canmirror-vignette__list" aria-label="Shared guestbook entries">
+      <li>first</li>
+    </ul>
+    <button type="button" id="guestbook-add" class="ph-canmirror-vignette__button">
+      add entry
+    </button>
+  </div>
 </div>
+
+<script type="module" src="/docs/can-mirror-vignettes.js"></script>
 
 ```html
 <ul can-mirror id="guestbook">
