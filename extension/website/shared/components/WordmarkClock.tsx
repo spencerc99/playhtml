@@ -1,17 +1,22 @@
-// ABOUTME: Live current date + time rendered in the "we were online" wordmark
-// ABOUTME: style (Source Serif italic). Ticks every second.
+// ABOUTME: Live current date + time in UTC, rendered in the "we were online"
+// ABOUTME: wordmark style (Source Serif italic). UTC is the one clock every
+// ABOUTME: contributor shares, so it anchors the collective portrait regardless
+// ABOUTME: of the viewer's timezone. Ticks every second.
 
 import React, { useEffect, useState } from "react";
 
 const dateFmt = new Intl.DateTimeFormat(undefined, {
+  timeZone: "UTC",
   weekday: "long",
   month: "long",
   day: "numeric",
 });
 const timeFmt = new Intl.DateTimeFormat(undefined, {
+  timeZone: "UTC",
   hour: "numeric",
   minute: "2-digit",
   second: "2-digit",
+  hour12: false,
 });
 
 export function WordmarkClock({ style }: { style?: React.CSSProperties }) {
@@ -36,7 +41,7 @@ export function WordmarkClock({ style }: { style?: React.CSSProperties }) {
         ...style,
       }}
     >
-      {dateFmt.format(now)} · {timeFmt.format(now)}
+      {dateFmt.format(now)} · {timeFmt.format(now)} UTC
     </span>
   );
 }
