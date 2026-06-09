@@ -147,7 +147,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // Reconcile `kept` with the latest live trails. Runs on every trailStates
     // change (live data changes frequently, so this also drives depart expiry).
     useEffect(() => {
-      const now = performance.now();
+      const now = drawClock();
       const liveById = new Map(trailStates.map((t) => [t.trail.id, t]));
 
       const draws = drawRef.current;
@@ -195,7 +195,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // canvas with no new events would otherwise never remove anything.
     useEffect(() => {
       const id = window.setInterval(() => {
-        const now = performance.now();
+        // While frozen, the draw clock is paused and the canvas isn't
+        // repainting — so don't advance depart/removal either, or trails would
+        // silently pop off-screen during a pause.
+        if (frozenRef.current) return;
+        const now = drawClock();
         const draws = drawRef.current;
         setKept((prev) => {
           let changed = false;
@@ -238,6 +242,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // leap when resumed.
     const pausedAccumMsRef = useRef(0);
     const pauseStartedAtRef = useRef<number | null>(null);
+
+    // The draw clock: wall-clock minus time spent paused. Depart timestamps and
+    // fades MUST use this (not raw performance.now()) so a depart-fade that's in
+    // progress when the canvas pauses doesn't keep accruing during the pause.
+    const drawClock = () => performance.now() - pausedAccumMsRef.current;
 
     useEffect(() => {
       const clearScheduled = () => {
@@ -364,7 +373,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           if (entry.departedAt !== null) {
             departFade = Math.max(
               0,
-              1 - (perfNow - entry.departedAt) / KEEP_AFTER_DEPART_MS,
+              1 - (clockMs - entry.departedAt) / KEEP_AFTER_DEPART_MS,
             );
           }
 

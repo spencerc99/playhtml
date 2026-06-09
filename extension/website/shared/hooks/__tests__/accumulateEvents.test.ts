@@ -92,4 +92,21 @@ describe("accumulateEvents", () => {
     expect(acc.has("p2|u2")).toBe(true);
     expect(acc.has("p3|u3")).toBe(true);
   });
+
+  it("evicts whole oldest groups (never truncates a trail) past the total-event budget", () => {
+    // Two groups, each large enough that together they exceed MAX_ACCUMULATED
+    // (8000). The stalest whole group must be dropped — and the surviving group
+    // must keep its FULL history (no mid-trail slice).
+    const big = (pid: string, url: string, baseTs: number) =>
+      Array.from({ length: 5000 }, (_, i) =>
+        ev(`${pid}-${i}`, pid, url, baseTs + i),
+      );
+    const acc = accumulateEvents(new Map(), [
+      ...big("p1", "u1", 0), // stale (earlier ts)
+      ...big("p2", "u2", 1_000_000), // recent
+    ]);
+    // p1 (stalest) evicted wholesale; p2 retains all 5000 of its points.
+    expect(acc.has("p1|u1")).toBe(false);
+    expect(acc.get("p2|u2")!.events.length).toBe(5000);
+  });
 });

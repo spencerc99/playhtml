@@ -82,6 +82,22 @@ export function accumulateEvents(
     }
   }
 
+  // Total-event backstop: if accumulation still exceeds the budget, evict whole
+  // oldest-active groups (never truncate a trail mid-history, which would shrink
+  // and re-anchor it). Keeps groupsRef and the flattened output consistent.
+  let total = 0;
+  for (const group of next.values()) total += group.events.length;
+  if (total > MAX_ACCUMULATED && next.size > 1) {
+    const byRecency = Array.from(next.entries()).sort(
+      (a, b) => b[1].lastTs - a[1].lastTs,
+    );
+    // Drop from the stalest end until under budget, but always keep one group.
+    for (let i = byRecency.length - 1; i > 0 && total > MAX_ACCUMULATED; i--) {
+      total -= byRecency[i][1].events.length;
+      next.delete(byRecency[i][0]);
+    }
+  }
+
   return next;
 }
 
@@ -139,16 +155,14 @@ export function useAccumulatedEvents(
       maxGroups,
     );
 
-    // Flatten groups into a single ts-ordered array. Defensive cap keeps memory
-    // bounded; if exceeded, drop oldest events globally.
+    // Flatten groups into a single ts-ordered array. The total-event budget is
+    // enforced inside accumulateEvents by evicting whole oldest groups, so no
+    // mid-trail truncation happens here.
     let result: CollectionEvent[] = [];
     for (const group of groupsRef.current.values()) {
       result = result.concat(group.events);
     }
     result.sort((a, b) => a.ts - b.ts);
-    if (result.length > MAX_ACCUMULATED) {
-      result = result.slice(result.length - MAX_ACCUMULATED);
-    }
     return result;
   }, [events, maxGroups, enabled, evictIdsRef]);
 
