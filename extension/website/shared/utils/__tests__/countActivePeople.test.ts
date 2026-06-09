@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   countActivePeople,
   summarizeActiveLocations,
+  ACTIVE_PEOPLE_WINDOW_MS,
 } from "../eventUtils";
 import type { CollectionEvent } from "../../types";
 
@@ -69,6 +70,13 @@ describe("countActivePeople", () => {
   it("is not capped by trail-render limits — counts all active pids", () => {
     const events = Array.from({ length: 100 }, (_, i) => ev(`p${i}`, NOW));
     expect(countActivePeople(events, WINDOW, NOW)).toBe(100);
+  });
+
+  it("uses the production default window when windowMs is omitted", () => {
+    // Guards ACTIVE_PEOPLE_WINDOW_MS so an accidental change to it is caught.
+    const justInside = ev("inside", NOW - (ACTIVE_PEOPLE_WINDOW_MS - 1_000));
+    const justOutside = ev("outside", NOW - (ACTIVE_PEOPLE_WINDOW_MS + 1_000));
+    expect(countActivePeople([justInside, justOutside], undefined, NOW)).toBe(1);
   });
 });
 

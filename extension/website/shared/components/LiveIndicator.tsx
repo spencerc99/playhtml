@@ -1,12 +1,12 @@
-// ABOUTME: Small live readout of how many distinct people are currently being
-// ABOUTME: drawn in the portrait. Renders nothing until the stream connects.
+// ABOUTME: Small live readout of how many distinct people are currently active
+// ABOUTME: in the event stream. Renders nothing until the stream connects.
 
 import React from "react";
 
 interface LiveIndicatorProps {
   /** WebSocket open. */
   connected: boolean;
-  /** Distinct people (participants) currently drawn in the portrait. */
+  /** Distinct people (participants) currently active in the event stream. */
   peopleCount: number;
   /** Distinct timezones among active people (optional — appends a stat). */
   timezones?: number;

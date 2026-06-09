@@ -331,29 +331,15 @@ export const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 
 /**
  * Count distinct people (participants) with an event within the recent window.
- * Derived from the raw event stream, NOT the drawn trails — so the "N people
- * browsing" readout reflects true activity even when the canvas only renders a
- * capped subset of trails (maxGroups).
- *
- * The window is anchored to the VIEWER's wall clock (now), not the newest event
- * timestamp: event `ts` is each client's own `Date.now()`, so a single client
- * with a fast clock would otherwise shift the window into the future and drop
- * the real count toward zero. Future-dated events are treated as "now".
+ * Thin wrapper over `summarizeActiveLocations` — see that function for the
+ * window/clock-skew semantics.
  */
 export function countActivePeople(
   events: CollectionEvent[],
   windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
   now: number = Date.now(),
 ): number {
-  if (events.length === 0) return 0;
-  const cutoff = now - windowMs;
-  const pids = new Set<string>();
-  for (const e of events) {
-    // Count an event whose ts is within [cutoff, now]; clamp the future so a
-    // skewed-fast client still counts (its events read as "now", not dropped).
-    if (e.meta?.pid && Math.min(e.ts, now) >= cutoff) pids.add(e.meta.pid);
-  }
-  return pids.size;
+  return summarizeActiveLocations(events, windowMs, now).people;
 }
 
 export interface ActiveLocations {
@@ -363,9 +349,15 @@ export interface ActiveLocations {
 }
 
 /**
- * Summarize the geographic spread of recently-active people from `meta.tz`
- * (an IANA zone like "Australia/Adelaide"). Same recency window as
- * `countActivePeople` so the numbers read as one coherent stat.
+ * Summarize recently-active people and their geographic spread from `meta.tz`
+ * (an IANA zone like "Australia/Adelaide"). `people` reflects true activity from
+ * the raw event stream, NOT the drawn trails, so the readout stays honest even
+ * when the canvas only renders a capped subset of trails (maxGroups).
+ *
+ * The window is anchored to the VIEWER's wall clock (now), not the newest event
+ * timestamp: event `ts` is each client's own `Date.now()`, so a single client
+ * with a fast clock would otherwise shift the window into the future and drop
+ * the real count toward zero. Future-dated events are treated as "now".
  */
 export function summarizeActiveLocations(
   events: CollectionEvent[],
@@ -377,6 +369,8 @@ export function summarizeActiveLocations(
   const timezones = new Set<string>();
   const continents = new Set<string>();
   for (const e of events) {
+    // Count an event whose ts is within [cutoff, now]; clamp the future so a
+    // skewed-fast client still counts (its events read as "now", not dropped).
     if (!e.meta?.pid || Math.min(e.ts, now) < cutoff) continue;
     pids.add(e.meta.pid);
     const tz = e.meta.tz;
