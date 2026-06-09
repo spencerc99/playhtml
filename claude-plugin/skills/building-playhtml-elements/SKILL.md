@@ -78,6 +78,43 @@ setData({ ...data, count: data.count + 1 });
 setData((draft) => { draft.items.push(newItem); });
 ```
 
+## NEVER write shared data from code that re-runs when that data changes
+
+The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect — one such bug grew a production room to 1.2M ops / 23 MB and crashed the room.
+
+```tsx
+// DANGER — infinite write loop
+useEffect(() => {
+  setData({ entries: [...data.entries, me] }); // writes entries…
+}, [data.entries]);                            // …re-runs because entries changed
+```
+
+Strongest fix — **model unique collections as a keyed map and upsert in place with the mutator form.** A keyed write is idempotent (same id overwrites, never appends) and merge-safe (maps are last-write-wins per key), so even if the effect loops it cannot grow the doc:
+
+```tsx
+// entries is keyed by id, not an array
+const ref = useRef(data.entries); ref.current = data.entries;
+useEffect(() => {
+  if (ref.current[me.id]?.name === me.name) return;       // already correct
+  setData((draft) => { draft.entries[me.id] = me; });      // keyed, idempotent, merge-safe
+}, [me.id, me.name]); // local identity only — NOT data.entries
+```
+
+Two reinforcing rules: (1) prefer keyed-map + mutator upsert over array + replacement rewrite; (2) read the data through a ref so the effect depends on local identity, not the shared collection. If you truly need an array, you must both read via ref AND dedupe-by-id into a Map before writing — but a keyed map is almost always the right shape.
+
+Rule of thumb: **write shared data from explicit user events, not from reactive callbacks.** If you must write from a callback, prove it converges. Full explanation: https://playhtml.fun/docs/data/data-essentials/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes
+
+## Changing the SHAPE of already-live persisted data → migrate or clear (and flag it)
+
+`defaultData` only seeds **brand-new** elements. A room that already has persisted data loads it **as-is** — so if you change the data's shape (array→map, rename a field, add a required field) for something already deployed, existing rooms hydrate the OLD shape into your NEW code. That mismatch crashes the page: e.g. a keyed write `data.entries[pid] = …` against a room whose `entries` is still a legacy `Y.Array` throws and blanks the page; reads of a field that doesn't exist yet are `undefined` and throw.
+
+**If you are changing the shape of data that is already live, STOP and flag it to the user, then pick one (in order of preference):**
+1. **Write to a NEW field name**, abandon the old one. No migration, writes are always clean. (Best.)
+2. **Handle both shapes defensively** at read AND write — null-safe reads, initialize-if-absent, in-place migrate. Fragile; test against real legacy data.
+3. **Clear the room's persisted data** (delete the `documents` row).
+
+Only applies to **already-live / persisted** data — brand-new features have no old data. And note: **the load/soak tests will NOT catch this** — they bypass page code and start from empty rooms. A shape change must be verified by loading the real page against a room pre-seeded with the old shape.
+
 ## Built-in Capabilities
 
 Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
@@ -100,5 +137,6 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 5. **Value form loses fields**: `setData({ x: 5 })` erases `y`. Always spread: `setData({ ...data, x: 5 })` or use mutator form.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/awareness.
+   - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `updateElement`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.

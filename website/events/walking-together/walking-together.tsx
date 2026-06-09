@@ -1,15 +1,33 @@
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
-import { PlayProvider, withSharedState } from "@playhtml/react";
+import {
+  PlayProvider,
+  withSharedState,
+  usePlayerIdentity,
+} from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
+import {
+  resolveSession,
+  roomForSession,
+  type SubtitleSegment,
+  type WorkshopSession,
+} from "./sessions";
+import { isAdmin } from "./admin";
+import { PortraitOverlay } from "./PortraitOverlay";
+import {
+  rosterPids,
+  rosterEntryIsCurrent,
+  type Roster,
+  type RosterEntry,
+} from "./roster";
 import "./walking-together.scss";
 
+// playhtml exposes `window.cursors` with `name`/`color` as settable
+// properties (getters + setters), not setName/setColor methods. Assigning an
+// empty string to `color` throws — we only ever assign a real picker value.
 interface CursorParty {
   color: string;
-  count: number;
-  name: string;
-  setColor(color: string): void;
-  setName(name: string): void;
+  name: string | undefined;
 }
 
 declare global {
@@ -25,9 +43,18 @@ interface SharedURL {
   timestamp: number;
 }
 
-function shuffleArray<T>(array: T[]): T[] {
-  return array.sort(() => Math.random() - 0.5);
+// Resolve the session from ?session=<id>. An absent or unknown session sends
+// the visitor back to the home list rather than silently joining some room.
+const SESSION = resolveSession(window.location.search);
+if (!SESSION) {
+  window.location.replace("./index.html");
 }
+const IS_ARCHIVED = SESSION?.archived ?? false;
+
+// Element id for the shared roster store. Set as an explicit `id` on the
+// RosterAdmin element so the core library uses a stable id instead of hashing
+// outerHTML (which varies per render and would break cross-client sync).
+const ROSTER_ID = "walking-together-roster";
 
 const CURSOR_INSTRUCTIONS = [
   "Make a circle together",
@@ -50,88 +77,122 @@ function isValidUrl(url: string) {
 }
 
 export function UserSetup() {
+  // Cursor color is owned by the extension (injected via playhtml identity).
+  // The name stays a manual input.
   const [name, setName] = useStickyState<string | null>(
     "username",
     null,
     (newName) => {
-      window.cursors?.setName(newName);
-    }
+      if (window.cursors) window.cursors.name = newName ?? "";
+    },
   );
-
-  const [color, setInternalColor] = useState(
-    JSON.parse(localStorage.getItem("color") || "null") || window.cursors?.color
-  );
-  const setColor = (newColor: string) => {
-    setInternalColor(newColor);
-    window.cursors?.setColor(newColor);
-  };
-
-  const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
-
-  // Check for cursors availability
-  React.useEffect(() => {
-    const checkCursors = () => {
-      if (window.cursors) {
-        setCursorsLoaded(true);
-      }
-    };
-
-    checkCursors();
-    // Check every second for 10 seconds
-    const interval = setInterval(checkCursors, 1000);
-    const timeout = setTimeout(() => clearInterval(interval), 10000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [name, color]);
-
-  if (!cursorsLoaded) {
-    return <div>Loading cursor party...</div>;
-  }
 
   return (
     <div className="user-setup">
       <input
         type="text"
-        value={name}
+        value={name ?? ""}
         onChange={(e) => setName(e.target.value)}
         placeholder="Enter your name"
       />
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {/* show a live cursor */}
-        <img
-          style={{
-            width: "24px",
-            height: "24px",
-          }}
-          src={`data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='${encodeURIComponent(
-            color
-          )}' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
-          )}' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' fill='${encodeURIComponent(
-            color
-          )}' width='2' height='8'/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
-          )}' points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E`}
-        />
-        <input
-          type="color"
-          value={color}
-          onChange={(e) => setColor(e.target.value)}
-          title="Choose your cursor color"
-        />
-      </div>
     </div>
   );
 }
+
+/** Owns the shared session roster and the admin portrait trigger in one store.
+ *
+ * Roster reads and writes live in a single withSharedState component (one
+ * element id) so they share one Y.Map — two separate components can't share a
+ * store, since the element id derives from the rendered child and can't be
+ * duplicated across DOM nodes. The component:
+ *  - upserts the local participant { pid, name, color } when a PID is present,
+ *    keeping the roster keyed by unique pid (extension users only; others
+ *    simply aren't in the roster), and
+ *  - renders the admin "Show portrait" control to the admin only.
+ *
+ * The rendered element carries an explicit id so the core library uses a
+ * stable element id rather than hashing outerHTML (which differs per render). */
+const RosterAdmin = withSharedState(
+  // The roster lives under `participants` as a keyed map. This is a fresh field
+  // (NOT the original `entries`, which some rooms persisted as an array under
+  // the first roster implementation). A fresh always-a-map field avoids the
+  // array→map type conflict entirely: keyed writes are always clean, no
+  // in-place migration needed. Any legacy `entries` array is simply abandoned.
+  { defaultData: { participants: {} as Roster } },
+  ({ data, setData }) => {
+    const { pid, name, color } = usePlayerIdentity();
+    const [showPortrait, setShowPortrait] = useState(false);
+
+    // Read the latest roster through a ref so the upsert effect keys ONLY on
+    // the local identity (pid/name/color), not on the shared map. Depending on
+    // the shared map would re-run this on every change from any client.
+    const rosterRef = React.useRef(data.participants);
+    rosterRef.current = data.participants;
+
+    React.useEffect(() => {
+      if (!pid) return;
+      const mine: RosterEntry = {
+        pid,
+        name: name ?? "Anonymous",
+        color: color ?? "#000000",
+      };
+      // Skip a redundant write when our entry already matches.
+      if (rosterEntryIsCurrent(rosterRef.current, mine)) return;
+      // Keyed mutator write: assigning participants[pid] overwrites in place,
+      // so this is idempotent and merge-safe — re-running it (or two clients
+      // racing) can never duplicate.
+      setData((draft) => {
+        // A room persisted before this field existed (e.g. the legacy roster
+        // used `entries`) has no `participants` — defaultData only seeds brand
+        // new elements. Initialize it before keying in.
+        if (!draft.participants) draft.participants = {};
+        draft.participants[pid] = mine;
+      });
+    }, [pid, name, color, setData]);
+
+    const admin = isAdmin(name, color);
+    const pids = rosterPids(data.participants);
+
+    return (
+      <div className="admin-panel" id={ROSTER_ID}>
+        {admin && (
+          <>
+            {/* Deliberately unlabeled icon button — discreet during screen
+             * shares. Hover title still shows the participant count. */}
+            <button
+              className="portrait-trigger"
+              onClick={() => setShowPortrait(true)}
+              disabled={pids.length === 0}
+              title={`Show portrait (${pids.length})`}
+              aria-label={`Show portrait (${pids.length})`}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="4" y="3" width="16" height="18" rx="1" />
+                <circle cx="12" cy="10" r="3" />
+                <path d="M7 18c1.2-2.4 3-3.5 5-3.5s3.8 1.1 5 3.5" />
+              </svg>
+            </button>
+            {showPortrait && (
+              <PortraitOverlay
+                pids={pids}
+                onClose={() => setShowPortrait(false)}
+              />
+            )}
+          </>
+        )}
+      </div>
+    );
+  },
+);
 
 export const URLChat = withSharedState(
   {
@@ -208,18 +269,20 @@ export const URLChat = withSharedState(
             </div>
           ))}
         </div>
-        <form onSubmit={handleSubmit}>
-          <input
-            type="url"
-            value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
-            placeholder="Share a URL"
-          />
-          <button type="submit">Share</button>
-        </form>
+        {!IS_ARCHIVED && (
+          <form onSubmit={handleSubmit}>
+            <input
+              type="url"
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              placeholder="Share a URL"
+            />
+            <button type="submit">Share</button>
+          </form>
+        )}
       </div>
     );
-  }
+  },
 );
 
 export const GroupActivityDisplay = withSharedState(
@@ -231,6 +294,7 @@ export const GroupActivityDisplay = withSharedState(
   },
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
+    const { name, color } = usePlayerIdentity();
 
     React.useEffect(() => {
       const interval = setInterval(() => {
@@ -239,12 +303,15 @@ export const GroupActivityDisplay = withSharedState(
         const remaining = 30 - elapsed;
 
         if (remaining <= 0) {
-          // Update to next instruction
-          setData({
-            currentInstructionIndex:
-              (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-            lastChangeTime: now,
-          });
+          // Archived sessions don't advance the activity — the timer just
+          // resets visually so the page still feels alive.
+          if (!IS_ARCHIVED) {
+            setData({
+              currentInstructionIndex:
+                (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+              lastChangeTime: now,
+            });
+          }
           setTimeLeft(30);
         } else {
           setTimeLeft(remaining);
@@ -266,10 +333,6 @@ export const GroupActivityDisplay = withSharedState(
       setTimeLeft(30);
     };
 
-    const isAdmin =
-      window.cursors?.name === "Kristoffer" ||
-      window.cursors?.name === "spencer";
-
     return (
       <div className="group-activity" id="group-activity">
         <h3>Current Activity:</h3>
@@ -288,7 +351,7 @@ export const GroupActivityDisplay = withSharedState(
             {minutes}:{seconds.toString().padStart(2, "0")}
           </p>
         </div>
-        {isAdmin && (
+        {!IS_ARCHIVED && isAdmin(name, color) && (
           <button
             onClick={handleSkip}
             style={{
@@ -306,19 +369,55 @@ export const GroupActivityDisplay = withSharedState(
         )}
       </div>
     );
-  }
+  },
 );
 
-function Main() {
+function Main({ session }: { session: WorkshopSession }) {
   return (
-    <PlayProvider>
+    <PlayProvider
+      initOptions={{
+        room: roomForSession(session),
+        cursors: { enabled: true, coordinateMode: "relative" },
+      }}
+    >
       <div className="walking-together">
         <UserSetup />
         <URLChat />
         <GroupActivityDisplay />
+        <RosterAdmin />
       </div>
     </PlayProvider>
   );
 }
 
-ReactDOM.render(<Main />, document.getElementById("react"));
+/** Renders a session's configurable credits line. Plain segments are text;
+ * object segments render as links. */
+function SessionSubtitle({ segments }: { segments: SubtitleSegment[] }) {
+  return (
+    <>
+      {segments.map((seg, i) =>
+        typeof seg === "string" ? (
+          <React.Fragment key={i}>{seg}</React.Fragment>
+        ) : (
+          <a key={i} href={seg.href}>
+            {seg.text}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
+// Only mount when a valid session resolved; otherwise the redirect above is
+// already navigating away.
+if (SESSION) {
+  ReactDOM.render(<Main session={SESSION} />, document.getElementById("react"));
+
+  const subtitleRoot = document.getElementById("session-subtitle");
+  if (subtitleRoot) {
+    ReactDOM.render(
+      <SessionSubtitle segments={SESSION.subtitle} />,
+      subtitleRoot,
+    );
+  }
+}

@@ -52,9 +52,24 @@ SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
   --var SUPABASE_LOAD_TIMEOUT_MS:100
 PARTYKIT_HOST=localhost:1999 bun smoke:partykit:transient
 
+# Simulates many participants upserting a keyed roster; asserts the room
+# document stays bounded and no client is dropped (regression guard for the
+# write-loop / doc-bloat incident). Tunables: PARTYKIT_SOAK_CLIENTS,
+# PARTYKIT_SOAK_UPSERTS_PER_CLIENT, PARTYKIT_SOAK_MAX_STRUCT_ITEMS.
+SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:soak
+
 # Runs the standard PartyKit checks.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit
 ```
+
+The soak test is the regression guard for the runaway-write incident
+(a self-triggering effect over an array roster grew a room to ~1.2M Yjs ops /
+23MB and crashed the Durable Object). It connects N clients, has each
+repeatedly re-upsert its own keyed entry (what a re-rendering effect does), and
+fails if the roster doesn't converge to N unique entries, if the document grows
+past the struct-item ceiling, or if any client is disconnected (a 503/overloaded
+DO drops sockets). Run it against staging after any change to the roster data
+model or the server's persistence/limit logic.
 
 The emergency smoke expects the deployed Worker to use a low threshold, so it
 can exercise the reset path without sending a production-sized document. One
