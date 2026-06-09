@@ -2,16 +2,19 @@
 // ABOUTME: stream, independent of how many trails the canvas actually draws.
 
 import { describe, it, expect } from "vitest";
-import { countActivePeople } from "../eventUtils";
+import {
+  countActivePeople,
+  summarizeActiveLocations,
+} from "../eventUtils";
 import type { CollectionEvent } from "../../types";
 
-function ev(pid: string, ts: number): CollectionEvent {
+function ev(pid: string, ts: number, tz = "UTC"): CollectionEvent {
   return {
     id: `${pid}-${ts}`,
     type: "cursor",
     ts,
     data: { x: 0.5, y: 0.5 },
-    meta: { pid, sid: "s", url: "u", vw: 1, vh: 1, tz: "UTC" },
+    meta: { pid, sid: "s", url: "u", vw: 1, vh: 1, tz },
   } as CollectionEvent;
 }
 
@@ -66,5 +69,40 @@ describe("countActivePeople", () => {
   it("is not capped by trail-render limits — counts all active pids", () => {
     const events = Array.from({ length: 100 }, (_, i) => ev(`p${i}`, NOW));
     expect(countActivePeople(events, WINDOW, NOW)).toBe(100);
+  });
+});
+
+describe("summarizeActiveLocations", () => {
+  it("counts distinct people, timezones, and continents in the window", () => {
+    const events = [
+      ev("a", NOW, "America/New_York"),
+      ev("b", NOW, "Europe/London"),
+      ev("c", NOW, "Australia/Sydney"),
+      ev("d", NOW, "America/Chicago"), // same continent as a, different tz
+    ];
+    expect(summarizeActiveLocations(events, WINDOW, NOW)).toEqual({
+      people: 4,
+      timezones: 4,
+      continents: 3, // America, Europe, Australia
+    });
+  });
+
+  it("only counts people within the recency window", () => {
+    const events = [
+      ev("recent", NOW - 1_000, "Asia/Tokyo"),
+      ev("stale", NOW - 60_000, "Europe/Paris"), // outside 45s window
+    ];
+    expect(summarizeActiveLocations(events, WINDOW, NOW)).toEqual({
+      people: 1,
+      timezones: 1,
+      continents: 1,
+    });
+  });
+
+  it("ignores Etc/UTC as a continent", () => {
+    const events = [ev("a", NOW, "UTC"), ev("b", NOW, "Etc/GMT")];
+    const r = summarizeActiveLocations(events, WINDOW, NOW);
+    expect(r.people).toBe(2);
+    expect(r.continents).toBe(0);
   });
 });

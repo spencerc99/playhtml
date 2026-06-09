@@ -34,7 +34,7 @@ import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import {
   extractDomain,
   formatFilterChip,
-  countActivePeople,
+  summarizeActiveLocations,
   type FilterChip,
 } from "../utils/eventUtils";
 import { buildShareUrl } from "../utils/shareUrl";
@@ -796,10 +796,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     cycleDuration: cursorCycleDuration,
   } = useCursorTrails(trailEvents, viewportSize, cursorSettings);
 
-  // True count of people browsing right now (live mode) — from the raw event
-  // stream, so it reflects real activity even though the canvas only draws a
-  // capped subset of trails.
-  const peopleCount = useMemo(() => countActivePeople(events), [events]);
+  // Recent activity (live mode) from the raw event stream, not the capped drawn
+  // trails: how many people + the geographic spread of their timezones.
+  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
 
   // The keyboard hook is invoked here (before timeRange) because its
   // cycleDuration feeds the canvas's shared animation cycle. Without this,
@@ -1252,7 +1251,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       {!cleanMode && live && (
         <LiveIndicator
           connected={connected}
-          peopleCount={peopleCount}
+          peopleCount={activity.people}
+          timezones={activity.timezones}
+          continents={activity.continents}
           style={{ position: "absolute", bottom: 20, left: 20, zIndex: 100 }}
         />
       )}

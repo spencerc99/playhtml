@@ -8,14 +8,22 @@ interface LiveIndicatorProps {
   connected: boolean;
   /** Distinct people (participants) currently drawn in the portrait. */
   peopleCount: number;
+  /** Distinct timezones among active people (optional — appends a stat). */
+  timezones?: number;
+  /** Distinct continents among active people (optional — appends a stat). */
+  continents?: number;
   style?: React.CSSProperties;
 }
 
 const TEAL = "#4a9a8a";
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 export function LiveIndicator({
   connected,
   peopleCount,
+  timezones,
+  continents,
   style,
 }: LiveIndicatorProps) {
   // `peopleCount` is recomputed upstream on every event batch, so this stays
@@ -32,6 +40,12 @@ export function LiveIndicator({
   } else {
     label = `${peopleCount} people browsing`;
   }
+
+  // Append the geographic spread when there's something to show.
+  const parts = [label];
+  if (timezones && timezones > 1) parts.push(plural(timezones, "timezone"));
+  if (continents && continents > 1) parts.push(plural(continents, "continent"));
+  label = parts.join(" · ");
 
   return (
     <span

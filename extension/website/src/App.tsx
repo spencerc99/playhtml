@@ -6,7 +6,7 @@ import { LiveTrails } from "@movement/components/LiveTrails";
 import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { WordmarkClock } from "@movement/components/WordmarkClock";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
-import { countActivePeople } from "@movement/utils/eventUtils";
+import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { useAccumulatedEvents } from "@movement/hooks/useAccumulatedEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
@@ -162,9 +162,9 @@ export default function App() {
     TRAIL_SETTINGS,
   );
 
-  // True count of people browsing right now — from the raw event stream, so it
-  // reflects real activity even though the canvas only draws a capped subset.
-  const peopleCount = useMemo(() => countActivePeople(events), [events]);
+  // Recent activity, from the raw event stream (not the capped drawn trails):
+  // how many people, and the geographic spread of their timezones.
+  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
 
 
   return (
@@ -182,7 +182,9 @@ export default function App() {
             area) and scrolls away with the page — not fixed to the viewport. */}
         <LiveIndicator
           connected={connected}
-          peopleCount={peopleCount}
+          peopleCount={activity.people}
+          timezones={activity.timezones}
+          continents={activity.continents}
           style={{
             position: "absolute",
             top: "calc(100vh - 36px)",

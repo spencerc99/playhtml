@@ -356,6 +356,44 @@ export function countActivePeople(
   return pids.size;
 }
 
+export interface ActiveLocations {
+  people: number;
+  timezones: number;
+  continents: number;
+}
+
+/**
+ * Summarize the geographic spread of recently-active people from `meta.tz`
+ * (an IANA zone like "Australia/Adelaide"). Same recency window as
+ * `countActivePeople` so the numbers read as one coherent stat.
+ */
+export function summarizeActiveLocations(
+  events: CollectionEvent[],
+  windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
+  now: number = Date.now(),
+): ActiveLocations {
+  const cutoff = now - windowMs;
+  const pids = new Set<string>();
+  const timezones = new Set<string>();
+  const continents = new Set<string>();
+  for (const e of events) {
+    if (!e.meta?.pid || Math.min(e.ts, now) < cutoff) continue;
+    pids.add(e.meta.pid);
+    const tz = e.meta.tz;
+    if (tz) {
+      timezones.add(tz);
+      // IANA zones are "Continent/City"; the prefix is the broad region.
+      const region = tz.split("/")[0];
+      if (region && region !== "Etc" && region !== "UTC") continents.add(region);
+    }
+  }
+  return {
+    people: pids.size,
+    timezones: timezones.size,
+    continents: continents.size,
+  };
+}
+
 // Constants used across event processing
 export const TRAIL_TIME_THRESHOLD = 300000; // 5 minutes - gap that breaks a trail into separate trails
 export const SCROLL_SESSION_THRESHOLD = 900000; // 15 minutes - gap that breaks scroll sessions
