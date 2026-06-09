@@ -426,7 +426,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // Sync filter chip list from prop (parent controls refetching). The
   // parent only re-fetches the events array when the worker-side domain
-  // changes; that derivation lives one layer up in portrait.tsx.
+  // changes; that derivation lives one layer up in archive.tsx.
   useEffect(() => {
     if (filtersProp === undefined) return;
     const cur: FilterChip[] = Array.isArray(settings.filters)

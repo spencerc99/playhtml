@@ -102,16 +102,21 @@ const LivePortrait = () => {
 
 // Saved historical share-links used to live at /portrait. If a request carries
 // historical-only params, send it to the archive page which knows how to read them.
-(() => {
-  if (typeof window === "undefined") return;
+const redirectingToArchive = (() => {
+  if (typeof window === "undefined") return false;
   const params = new URLSearchParams(window.location.search);
   const hasHistorical =
     params.has("startMs") || params.has("endMs") || params.has("day");
   if (hasHistorical) {
     window.location.replace(`/archive/${window.location.search}`);
+    return true;
   }
+  return false;
 })();
 
-ReactDOM.createRoot(
-  document.getElementById("reactContent") as HTMLElement,
+// Don't mount the live portrait (and open a /stream WebSocket) when we're about
+// to navigate away to the archive.
+if (!redirectingToArchive)
+  ReactDOM.createRoot(
+    document.getElementById("reactContent") as HTMLElement,
 ).render(<LivePortrait />);

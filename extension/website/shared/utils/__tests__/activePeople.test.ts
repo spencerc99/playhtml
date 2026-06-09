@@ -3,7 +3,6 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  countActivePeople,
   summarizeActiveLocations,
   ACTIVE_PEOPLE_WINDOW_MS,
 } from "../eventUtils";
@@ -22,14 +21,17 @@ function ev(pid: string, ts: number, tz = "UTC"): CollectionEvent {
 const NOW = 1_000_000;
 const WINDOW = 45_000;
 
-describe("countActivePeople", () => {
+// The active-people count is `summarizeActiveLocations(...).people`.
+const countPeople = (
+  events: CollectionEvent[],
+  windowMs?: number,
+  now?: number,
+) => summarizeActiveLocations(events, windowMs, now).people;
+
+describe("active-people count", () => {
   it("counts distinct pids within the window", () => {
     expect(
-      countActivePeople(
-        [ev("a", NOW), ev("b", NOW), ev("a", NOW)],
-        WINDOW,
-        NOW,
-      ),
+      countPeople([ev("a", NOW), ev("b", NOW), ev("a", NOW)], WINDOW, NOW),
     ).toBe(2);
   });
 
@@ -38,7 +40,7 @@ describe("countActivePeople", () => {
       ev("recent", NOW - 1_000), // 1s ago — kept
       ev("stale", NOW - 60_000), // 60s ago, window is 45s — dropped
     ];
-    expect(countActivePeople(events, WINDOW, NOW)).toBe(1);
+    expect(countPeople(events, WINDOW, NOW)).toBe(1);
   });
 
   it("is anchored to `now`, NOT the newest event (skew-proof)", () => {
@@ -51,7 +53,7 @@ describe("countActivePeople", () => {
       ev("skewedFast", NOW + 90_000), // 90s in the future
     ];
     // All three count: realA/realB are recent; the future one is clamped to now.
-    expect(countActivePeople(events, WINDOW, NOW)).toBe(3);
+    expect(countPeople(events, WINDOW, NOW)).toBe(3);
   });
 
   it("a future-dated event does not hide everyone else", () => {
@@ -60,23 +62,23 @@ describe("countActivePeople", () => {
       ...Array.from({ length: 20 }, (_, i) => ev(`p${i}`, NOW - 10_000)),
       ev("skewed", NOW + 76_000),
     ];
-    expect(countActivePeople(events, WINDOW, NOW)).toBe(21);
+    expect(countPeople(events, WINDOW, NOW)).toBe(21);
   });
 
   it("returns 0 for no events", () => {
-    expect(countActivePeople([])).toBe(0);
+    expect(countPeople([])).toBe(0);
   });
 
   it("is not capped by trail-render limits — counts all active pids", () => {
     const events = Array.from({ length: 100 }, (_, i) => ev(`p${i}`, NOW));
-    expect(countActivePeople(events, WINDOW, NOW)).toBe(100);
+    expect(countPeople(events, WINDOW, NOW)).toBe(100);
   });
 
   it("uses the production default window when windowMs is omitted", () => {
     // Guards ACTIVE_PEOPLE_WINDOW_MS so an accidental change to it is caught.
     const justInside = ev("inside", NOW - (ACTIVE_PEOPLE_WINDOW_MS - 1_000));
     const justOutside = ev("outside", NOW - (ACTIVE_PEOPLE_WINDOW_MS + 1_000));
-    expect(countActivePeople([justInside, justOutside], undefined, NOW)).toBe(1);
+    expect(countPeople([justInside, justOutside], undefined, NOW)).toBe(1);
   });
 });
 
@@ -107,10 +109,14 @@ describe("summarizeActiveLocations", () => {
     });
   });
 
-  it("ignores Etc/UTC as a continent", () => {
-    const events = [ev("a", NOW, "UTC"), ev("b", NOW, "Etc/GMT")];
+  it("ignores non-geographic zones (UTC, Etc/*, GMT) as continents", () => {
+    const events = [
+      ev("a", NOW, "UTC"),
+      ev("b", NOW, "Etc/GMT"),
+      ev("c", NOW, "GMT"),
+    ];
     const r = summarizeActiveLocations(events, WINDOW, NOW);
-    expect(r.people).toBe(2);
+    expect(r.people).toBe(3);
     expect(r.continents).toBe(0);
   });
 });

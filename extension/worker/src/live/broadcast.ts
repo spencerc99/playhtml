@@ -52,6 +52,11 @@ async function resolveCursorColors(
         colorCache.set(pid, { color, at: nowMs });
         result.set(pid, color);
       }
+      // Sweep expired entries so the cache can't grow without bound over the
+      // isolate's lifetime as new participants appear.
+      for (const [pid, entry] of colorCache) {
+        if (nowMs - entry.at >= COLOR_TTL_MS) colorCache.delete(pid);
+      }
     } catch (err) {
       console.warn('[broadcast] cursor color lookup failed:', err);
     }

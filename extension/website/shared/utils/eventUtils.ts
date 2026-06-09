@@ -329,19 +329,6 @@ export function formatFilterChip(chip: FilterChip): string {
  * right after connecting), while still meaning "recent". */
 export const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 
-/**
- * Count distinct people (participants) with an event within the recent window.
- * Thin wrapper over `summarizeActiveLocations` — see that function for the
- * window/clock-skew semantics.
- */
-export function countActivePeople(
-  events: CollectionEvent[],
-  windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
-  now: number = Date.now(),
-): number {
-  return summarizeActiveLocations(events, windowMs, now).people;
-}
-
 export interface ActiveLocations {
   people: number;
   timezones: number;
@@ -377,8 +364,11 @@ export function summarizeActiveLocations(
     if (tz) {
       timezones.add(tz);
       // IANA zones are "Continent/City"; the prefix is the broad region.
+      // Skip the non-geographic zones (UTC, GMT, Etc/*) so they don't inflate
+      // the continent count.
       const region = tz.split("/")[0];
-      if (region && region !== "Etc" && region !== "UTC") continents.add(region);
+      if (region && region !== "Etc" && region !== "UTC" && region !== "GMT")
+        continents.add(region);
     }
   }
   return {

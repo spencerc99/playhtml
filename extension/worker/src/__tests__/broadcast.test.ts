@@ -103,8 +103,16 @@ describe('broadcastLiveEvents', () => {
       throw new Error('DO unreachable');
     });
     const ns = fakeNamespace(stubFetch);
+    // The rejection is logged via console.warn — capture it so the test output
+    // stays pristine and assert it surfaced.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(
       broadcastLiveEvents(ns, ENV, [ev('a', 'cursor', uniquePid())], 1000),
     ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      '[broadcast] live event forward failed:',
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 });
