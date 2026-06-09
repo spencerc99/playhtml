@@ -2,7 +2,10 @@
 // ABOUTME: Includes a jump-to-someone button powered by a domain-wide lobby.
 
 import type { PresenceAPI } from "@playhtml/common";
-import type { WikiPresenceView } from "../custom-sites/wikipedia";
+import {
+  isWikipediaPortalArticleUrl,
+  type WikiPresenceView,
+} from "../custom-sites/wikipedia";
 
 // Concentric ellipses suggesting a portal
 const PORTAL_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -109,6 +112,7 @@ export class PresenceCountPill {
   ): page is NonNullable<WikiPresenceView["page"]> {
     if (!page?.url) return false;
     if (page.visible !== true) return false;
+    if (!isWikipediaPortalArticleUrl(page.url)) return false;
     if (typeof page.lastSeenAt !== "number") return false;
     return Date.now() - page.lastSeenAt <= LOBBY_PAGE_TTL_MS;
   }

@@ -65,6 +65,7 @@ describe("PresenceCountPill", () => {
             page: {
               url: "https://en.wikipedia.org/wiki/Stale",
               title: "Stale",
+              visible: true,
               lastSeenAt: Date.now() - 60_000,
             },
           },
@@ -123,6 +124,47 @@ describe("PresenceCountPill", () => {
     pill.destroy();
   });
 
+  it("does not show the jump portal for Wikipedia media views", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-30T12:00:00Z"));
+    setLocation("https://en.wikipedia.org/wiki/Current");
+
+    const pagePresence = presenceApi(
+      "me",
+      new Map([
+        ["me", { isMe: true, playerIdentity: identity("me") }],
+      ]),
+    );
+    const lobbyPresence = presenceApi(
+      "me",
+      new Map([
+        ["me", { isMe: true, playerIdentity: identity("me") }],
+        [
+          "peer",
+          {
+            isMe: false,
+            playerIdentity: identity("peer"),
+            page: {
+              url: "https://en.wikipedia.org/wiki/Octopus#/media/File:Octopus.jpg",
+              title: "Octopus",
+              visible: true,
+              lastSeenAt: Date.now(),
+            },
+          },
+        ],
+      ]),
+    );
+
+    const pill = new PresenceCountPill(pagePresence, lobbyPresence);
+    pill.init();
+
+    expect(
+      document.querySelector('button[title="jump to someone"]'),
+    ).toBeNull();
+
+    pill.destroy();
+  });
+
   it("jumps to a fresh lobby page instead of a stale one", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-30T12:00:00Z"));
@@ -147,6 +189,7 @@ describe("PresenceCountPill", () => {
             page: {
               url: "https://en.wikipedia.org/wiki/Stale",
               title: "Stale",
+              visible: true,
               lastSeenAt: Date.now() - 60_000,
             },
           },

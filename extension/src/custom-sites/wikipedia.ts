@@ -249,6 +249,16 @@ export function isWikiArticleUrl(url: string): boolean {
   }
 }
 
+export function isWikipediaPortalArticleUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, location.origin);
+    if (parsed.hash.startsWith("#/media/")) return false;
+  } catch {
+    return false;
+  }
+  return isWikiArticleUrl(url);
+}
+
 export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   const cleanups: (() => void)[] = [];
 
@@ -281,7 +291,10 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   if (typeof deps.createPresenceRoom === "function") {
     const lobby = deps.createPresenceRoom("lobby");
     const publishLobbyPage = () => {
-      if (document.visibilityState !== "visible") {
+      if (
+        document.visibilityState !== "visible" ||
+        !isWikipediaPortalArticleUrl(location.href)
+      ) {
         lobby.presence.setMyPresence("page", null);
         return;
       }
