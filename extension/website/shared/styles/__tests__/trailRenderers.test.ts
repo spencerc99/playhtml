@@ -1,6 +1,8 @@
 // ABOUTME: Tests trail renderer DOM mutation caching.
 // ABOUTME: Guards hot-path SVG attribute updates against redundant writes.
 
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from "vitest";
 import { colorRenderer } from "../trailRenderers";
 
