@@ -209,9 +209,6 @@ export default function App() {
           <p className={styles.tagline}>
             turning the internet into a living, shared space
           </p>
-          <a className={styles.portraitLink} href="/portrait/">
-            watch the live portrait →
-          </a>
           <div
             className={`${styles.siteCard} ${styles.siteCardTeal}`}
             can-spin="true"
