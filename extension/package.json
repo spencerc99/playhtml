@@ -22,6 +22,7 @@
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",
     "html2canvas": "^1.4.1",
+    "perfect-freehand": "^1.2.3",
     "playhtml": "workspace:*",
     "profane-words": "^1.5.11",
     "react": "^19.0.0",

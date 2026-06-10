@@ -1,6 +1,8 @@
 // ABOUTME: Pure helpers for planning and drawing animated cursor trail frames.
 // ABOUTME: Keeps hot animation-loop calculations testable and allocation-light.
 
+import { getStroke } from "perfect-freehand";
+
 export interface FinishedTrailOrderEntry {
   originalIndex: number;
   finishedAtMs: number;
@@ -37,6 +39,62 @@ export function buildStraightPathSegment(
   }
 
   return path;
+}
+
+// Tuned for replayed cursor movement: velocity-based thinning gives the line
+// an inky, hand-drawn weight, while low streamline keeps the live head close
+// to the cursor icon instead of lagging behind it.
+const FREEHAND_OPTIONS = {
+  thinning: 0.5,
+  smoothing: 0.5,
+  streamline: 0.25,
+  simulatePressure: true,
+};
+
+// Converts a perfect-freehand outline polygon into a closed SVG path,
+// smoothing between outline points with quadratic midpoint curves.
+function getSvgPathFromStroke(outline: number[][]): string {
+  if (outline.length < 3) return "";
+
+  let path = `M ${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)} Q`;
+  for (let i = 0; i < outline.length; i++) {
+    const [x0, y0] = outline[i];
+    const [x1, y1] = outline[(i + 1) % outline.length];
+    path += ` ${x0.toFixed(2)} ${y0.toFixed(2)} ${((x0 + x1) / 2).toFixed(2)} ${((y0 + y1) / 2).toFixed(2)}`;
+  }
+
+  return path + " Z";
+}
+
+// Builds a filled freehand-stroke outline for a window of trail points. The
+// stroke width is baked into the geometry, so the result must be rendered
+// with fill rather than stroke. While the trail is still drawing
+// (isComplete: false) the head is left untapered so it tracks the cursor.
+export function buildFreehandPathSegment(
+  points: Array<{ x: number; y: number }>,
+  startIndex: number,
+  endIndex: number,
+  size: number,
+  isComplete: boolean,
+  interpolatedHead?: { x: number; y: number },
+): string {
+  if (points.length === 0 || startIndex > endIndex) return "";
+
+  const inputPoints: Array<{ x: number; y: number }> = [];
+  for (let i = startIndex; i <= endIndex; i++) {
+    inputPoints.push(points[i]);
+  }
+  if (interpolatedHead) {
+    inputPoints.push(interpolatedHead);
+  }
+
+  const outline = getStroke(inputPoints, {
+    ...FREEHAND_OPTIONS,
+    size,
+    last: isComplete,
+  });
+
+  return getSvgPathFromStroke(outline);
 }
 
 export function getFinishedTrailRenderRange(

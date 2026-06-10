@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  buildFreehandPathSegment,
   buildStraightPathSegment,
   getFinishedTrailRenderRange,
 } from "../trailAnimation";
@@ -21,6 +22,45 @@ describe("buildStraightPathSegment", () => {
     );
 
     expect(path).toBe("M 0 0 L 10 0 L 20 10 L 25 15");
+  });
+});
+
+describe("buildFreehandPathSegment", () => {
+  const points = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 20, y: 10 },
+    { x: 30, y: 25 },
+  ];
+
+  it("builds a closed filled outline around the point window", () => {
+    const path = buildFreehandPathSegment(points, 0, 3, 4, true);
+
+    expect(path.startsWith("M ")).toBe(true);
+    expect(path.endsWith(" Z")).toBe(true);
+    expect(path).toContain("Q");
+  });
+
+  it("includes the interpolated head in the outline", () => {
+    const withoutHead = buildFreehandPathSegment(points, 0, 2, 4, false);
+    const withHead = buildFreehandPathSegment(points, 0, 2, 4, false, {
+      x: 25,
+      y: 15,
+    });
+
+    expect(withHead).not.toBe(withoutHead);
+  });
+
+  it("bakes the stroke size into the geometry", () => {
+    const thin = buildFreehandPathSegment(points, 0, 3, 2, true);
+    const thick = buildFreehandPathSegment(points, 0, 3, 8, true);
+
+    expect(thick).not.toBe(thin);
+  });
+
+  it("returns an empty path for an empty window", () => {
+    expect(buildFreehandPathSegment(points, 2, 1, 4, true)).toBe("");
+    expect(buildFreehandPathSegment([], 0, 0, 4, true)).toBe("");
   });
 });
 
