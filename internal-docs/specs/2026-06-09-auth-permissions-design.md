@@ -414,22 +414,26 @@ encrypted subtrees (big).
 
 ---
 
-## 9. Open questions for Spencer
+## 9. Decisions (resolved 2026-06-10, implemented in this branch)
 
-1. **pid discontinuity for anonymous users** (§3 migration note) — accept the one-time break,
-   or carry `legacyPid`? Recommend: accept.
-2. **`.well-known/playhtml.json`** as the config authority — happy with "control the domain =
-   control the rules"? Alternative is a hosted dashboard/registry (accounts, more infra).
-   Recommend: well-known file; a registry can layer on later for apex-domain-less users.
-3. **Optimistic overlay vs. wait-for-server on gated writes** — overlay adds client complexity
-   (a local shadow that reverts); waiting adds ~RTT of perceived lag for authorized users.
-   Recommend: ship Phase 3 with wait-for-server (simpler, gated writes are rare), add the
-   overlay if it feels sluggish.
-4. **Should `verified` require the handshake even on sites with no rules?** (i.e. always
-   challenge when an identity exists) — costs one signature per connection everywhere.
-   Recommend: no; challenge only when rules exist or the page calls
-   `playhtml.identity.verify()` explicitly.
-5. Naming: `permissions`/`can()`/`me` vs. leaning into the keys-and-locks metaphor from the
-   marketing mockup (`keys`, `locks`, `holdsKey()`). The metaphor is charming and very
-   playhtml; the plain names are clearer in code. Recommend: plain names in API, metaphor in
-   docs/marketing.
+All five open questions were resolved per the recommendations:
+
+1. **pid discontinuity for anonymous users**: accepted as a one-time break. No `legacyPid`.
+2. **Config authority**: `.well-known/playhtml.json` (control the domain = control the rules).
+3. **Gated writes**: wait-for-server (no optimistic overlay). Revisit if it feels sluggish.
+4. **Handshake trigger**: server challenges only when enforceable rules exist; pages can
+   opt in explicitly via `playhtml.verify()` (client sends `auth_request`).
+5. **Naming**: plain names (`permissions`, `can()`, `me`); keys-and-locks metaphor reserved
+   for docs/marketing.
+
+Implementation notes that refined the design:
+
+- Entry-level rules (`create`/`update`/`delete`) require the gated element's data to be a
+  keyed map of object entries at the top level. The server stamps `createdBy` with the
+  verified pid on creates and pins it on updates so ownership can't be forged or rewritten.
+- The client routes a write through `gated_write` whenever the server-published rules match
+  the element; entry-only rules don't gate element-level `can("write")` client-side (the
+  server makes the per-entry decision).
+- Session tokens are stored per room in sessionStorage and resumed via `auth_resume`; an
+  invalid token gets `auth_error reason=invalid_token` followed by a fresh challenge.
+- Public docs: `apps/docs/src/content/docs/advanced/permissions.md`.

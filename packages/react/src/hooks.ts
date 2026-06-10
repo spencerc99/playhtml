@@ -11,7 +11,13 @@ import {
   PresenceRoom,
   PresenceView,
 } from "@playhtml/common";
-import type { CursorZoneOptions } from "playhtml";
+import type { PermissionAction } from "@playhtml/common";
+import type { CursorZoneOptions, MeState } from "playhtml";
+
+// Stable protocol event names (duplicated from playhtml so this module only
+// has type-level imports from it — keeps vi.mock("playhtml") setups working).
+const IDENTITY_CHANGE_EVENT = "playhtml:identitychange";
+const PERMISSIONS_CHANGE_EVENT = "playhtml:permissionschange";
 
 function warnPreInit(call: string): void {
   console.warn(`[@playhtml/react] ${call} called before init — ignored.`);
@@ -172,6 +178,11 @@ export function usePresenceRoom(name: string): PresenceRoom | null {
  * `playhtml:configure-identity` event), which re-renders consumers, at which
  * point the freshly-read `getMyPlayerIdentity()` reflects the new PID.
  *
+ * `verified` and `roles` come from playhtml's auth/permissions system and
+ * update on the `playhtml:identitychange` / `playhtml:permissionschange`
+ * events (key handshake completion, extension identity injection, server
+ * permissions arriving).
+ *
  * `pid` is undefined until cursors have synced. Requires a `PlayProvider`
  * with `cursors: { enabled: true }`.
  */
@@ -179,11 +190,68 @@ export function usePlayerIdentity(): {
   color: string;
   pid: string | undefined;
   name: string | undefined;
+  verified: boolean;
+  roles: string[];
 } {
   const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
+  const me = useMeState();
   return {
     color: cursors.color,
-    pid: getMyPlayerIdentity()?.publicKey,
+    pid: getMyPlayerIdentity()?.publicKey ?? me?.pid,
     name: cursors.name,
+    verified: me?.verified ?? false,
+    roles: me?.roles ?? [],
   };
+}
+
+/** Subscribes to playhtml.me across identity/permissions change events. */
+function useMeState(): MeState | null {
+  const [me, setMe] = useState<MeState | null>(() => readMe());
+
+  useEffect(() => {
+    const update = () => setMe(readMe());
+    update();
+    document.addEventListener(IDENTITY_CHANGE_EVENT, update);
+    document.addEventListener(PERMISSIONS_CHANGE_EVENT, update);
+    return () => {
+      document.removeEventListener(IDENTITY_CHANGE_EVENT, update);
+      document.removeEventListener(PERMISSIONS_CHANGE_EVENT, update);
+    };
+  }, []);
+
+  return me;
+}
+
+function readMe(): MeState | null {
+  try {
+    return playhtml.me ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Synchronous permission check that re-evaluates when identity, verification,
+ * or server permissions change. Pass an element id ("#guestbook" or
+ * "guestbook"); for creator-scoped collection entries, pass the entry's
+ * recorded creator pid via `options.creator`.
+ *
+ * This is UX gating (show/hide affordances) — the server independently
+ * enforces rules published in the domain's `/.well-known/playhtml.json`.
+ */
+export function useCan(
+  action: PermissionAction,
+  target: string,
+  options?: { creator?: string },
+): boolean {
+  const me = useMeState();
+  const creator = options?.creator;
+  return useMemo(() => {
+    try {
+      return playhtml.can(action, target, { creator });
+    } catch {
+      return true;
+    }
+    // me is the reactive dependency: it changes whenever permission inputs do.
+  }, [action, target, creator, me]);
 }

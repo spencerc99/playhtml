@@ -8,3 +8,5 @@ file back to just the header. Merge that PR to ship.
 
 Format suggestion: "- short user-facing description (#PR)"
 -->
+
+- Sign playhtml auth challenges with your identity key so playhtml sites can verify it's really you (permission-gated elements, ownership). The key never leaves the extension; only structured, origin-bound challenges are signed.

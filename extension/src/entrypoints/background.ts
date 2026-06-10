@@ -178,6 +178,53 @@ export default defineBackground(() => {
     return `hsl(${hue}, ${s}%, ${l}%)`;
   }
 
+  // Signs a playhtml auth challenge with the identity's private key. The page
+  // can never touch the key — it only gets a signature, and only over a
+  // structured "playhtml-auth-v1" payload whose origin field must match the
+  // requesting tab's actual origin (verified here, not trusted from the
+  // payload). The worst a malicious page can obtain is a signature valid only
+  // for a playhtml session on its own origin.
+  const PLAYHTML_AUTH_PROTOCOL = 'playhtml-auth-v1'
+
+  async function signPlayhtmlChallenge(
+    payload: unknown,
+    senderTabUrl: string | undefined
+  ): Promise<string> {
+    if (typeof payload !== 'string') throw new Error('invalid payload')
+
+    // Canonical payload shape: protocol|nonce|roomId|origin|ts
+    const parts = payload.split('|')
+    if (parts.length !== 5 || parts[0] !== PLAYHTML_AUTH_PROTOCOL) {
+      throw new Error('not a playhtml auth challenge')
+    }
+
+    if (!senderTabUrl) throw new Error('unknown sender origin')
+    const senderOrigin = new URL(senderTabUrl).origin
+    if (parts[3] !== senderOrigin) {
+      throw new Error('origin mismatch')
+    }
+
+    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
+    if (!playerIdentity?.privateKey) throw new Error('no identity key')
+
+    const privateKey = await crypto.subtle.importKey(
+      'jwk',
+      playerIdentity.privateKey as JsonWebKey,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['sign']
+    )
+    const signature = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      privateKey,
+      new TextEncoder().encode(payload)
+    )
+    const bytes = new Uint8Array(signature)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
+  }
+
   // Sync participant identity (cursor color) to server on startup
   async function syncIdentityToServer() {
     try {
@@ -211,6 +258,13 @@ export default defineBackground(() => {
 
     if (message.type === 'UPDATE_SITE_DISCOVERY') {
       updateSiteDiscovery(message.domain).then(reply)
+      return true
+    }
+
+    if (message.type === 'SIGN_PLAYHTML_CHALLENGE') {
+      signPlayhtmlChallenge(message.payload, sender?.tab?.url)
+        .then((signature) => reply({ signature }))
+        .catch((e: Error) => reply({ error: e.message }))
       return true
     }
 

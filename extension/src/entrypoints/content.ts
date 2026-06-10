@@ -63,6 +63,7 @@ export default defineContentScript({
           // Initialize extension features
           this.setupElementPicker();
           this.setupPresenceDetection();
+          this.setupSignChallengeBridge();
 
           // Check if this is a new site discovery
           await this.checkSiteDiscovery();
@@ -74,6 +75,38 @@ export default defineContentScript({
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
         }
+      }
+
+      // Bridge between the page's playhtml auth handshake and the background
+      // script's private key. The page dispatches playhtml:sign-challenge;
+      // we forward to the background — which validates the payload shape and
+      // origin binding independently (never trusting the page) — and dispatch
+      // the signature (or error) back across the world boundary.
+      private setupSignChallengeBridge() {
+        document.addEventListener("playhtml:sign-challenge", async (e) => {
+          const detail = (e as CustomEvent).detail as
+            | { requestId?: string; payload?: string }
+            | undefined;
+          if (!detail?.requestId || typeof detail.payload !== "string") return;
+
+          let response: { signature?: string; error?: string };
+          try {
+            response = await browser.runtime.sendMessage({
+              type: "SIGN_PLAYHTML_CHALLENGE",
+              payload: detail.payload,
+            });
+          } catch (error) {
+            response = {
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+
+          document.dispatchEvent(
+            new CustomEvent("playhtml:sign-response", {
+              detail: { requestId: detail.requestId, ...response },
+            }),
+          );
+        });
       }
 
       private detectExistingPlayHTML() {

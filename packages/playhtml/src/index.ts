@@ -48,6 +48,26 @@ import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
 import { createPageDataChannel, PAGE_TAG } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import { ensureLocalIdentity } from "./auth/identity";
+import {
+  configurePermissions,
+  can,
+  getMe,
+  setIdentity,
+  isLocallyGated,
+  isServerGated,
+  dispatchPermissionDenied,
+  __resetPermissionsForTests,
+  type PermissionsConfig,
+  type MeState,
+} from "./auth/permissions";
+import {
+  bindHandshake,
+  unbindHandshake,
+  handleAuthMessage,
+  requestVerification,
+  sendGatedWrite,
+} from "./auth/handshake";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -424,6 +444,14 @@ export interface InitOptions<T = unknown> {
    * Cursor tracking and proximity detection configuration
    */
   cursors?: CursorOptions;
+
+  /**
+   * Permission roles and rules for gating element writes. Client-side this is
+   * UX gating (affordances, local write blocks); pair it with a
+   * `/.well-known/playhtml.json` on your domain to make the same rules
+   * server-enforced. See the permissions docs for details.
+   */
+  permissions?: PermissionsConfig;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -442,6 +470,11 @@ function onMessage(data: string) {
   try {
     message = JSON.parse(data);
   } catch (err) {
+    return;
+  }
+
+  // Auth handshake / permissions / gated-write protocol messages
+  if (handleAuthMessage(message)) {
     return;
   }
 
@@ -606,6 +639,24 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
+/**
+ * Binds the auth handshake to the current main provider/room. Must be called
+ * after (re)building yprovider — verification is per connection.
+ */
+function bindHandshakeToCurrentProvider(): void {
+  bindHandshake({
+    send: (message) => {
+      try {
+        yprovider.sendMessage(message);
+      } catch {}
+    },
+    getPid: () =>
+      cursorClient?.getMyPlayerIdentity()?.publicKey ??
+      generatePersistentPlayerIdentity().publicKey,
+    roomId: __currentRoomId,
+  });
+}
+
 /** Disconnect and destroy the cursor client + cursor provider. */
 function teardownCursors(): void {
   try { cursorClient?.destroy?.(); } catch {}
@@ -744,6 +795,7 @@ async function runHandleNavigation(): Promise<void> {
       onMessage,
     });
     __currentRoomId = newMainRoom;
+    bindHandshakeToCurrentProvider();
   }
 
   if (cursorRoomChanged && cursorOptionsCache) {
@@ -833,6 +885,7 @@ async function initPlayHTMLOnce({
   onError,
   developmentMode = false,
   cursors = {},
+  permissions,
 }: InitOptions = {}) {
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
@@ -840,6 +893,19 @@ async function initPlayHTMLOnce({
   cursorOptionsCache = cursors;
   cachedOnError = onError;
   isDevelopmentMode = developmentMode;
+
+  if (permissions) {
+    configurePermissions(permissions);
+  }
+
+  // Ensure the local keypair exists and the persisted identity carries its
+  // real public key before any provider/cursor identity is built. Bounded so
+  // a hung IndexedDB (rare, but possible in exotic privacy modes) can never
+  // stall init — identity just stays unverifiable for the session.
+  await Promise.race([
+    ensureLocalIdentity(),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -879,6 +945,11 @@ async function initPlayHTMLOnce({
     onError,
   });
 
+  bindHandshakeToCurrentProvider();
+  setIdentity(
+    cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+  );
+
   if (cursors.enabled) {
     // Listen for identity injection from the browser extension. The extension
     // runs in Chrome's isolated world and can't call cursorClient.configure()
@@ -896,13 +967,19 @@ async function initPlayHTMLOnce({
       if (!incoming || !cursorClient) return;
 
       const current = cursorClient.getMyPlayerIdentity();
-      const merged = {
+      const merged: PlayerIdentity = {
         ...current,
         publicKey: incoming.publicKey,
         playerStyle: incoming.playerStyle,
+        source: "extension" as const,
       };
 
       cursorClient.configure({ playerIdentity: merged });
+      setIdentity(merged);
+      // The verified state (if any) belonged to the previous pid — re-run the
+      // handshake under the extension identity. No-op for the server unless
+      // the room has enforceable rules.
+      requestVerification();
       console.log("[playhtml] Merged extension identity via CustomEvent");
     }) as EventListener;
     document.addEventListener(
@@ -1109,6 +1186,33 @@ function createPlayElementData<T extends TagType, TData = any>(
       const elementIdFromAttr = getIdForElement(element);
       if (isSharedReadOnly(element, elementIdFromAttr)) {
         return;
+      }
+      // Permission gating — synchronous cache lookups; elements with no
+      // matching rules skip all of this (isLocallyGated is a cheap check).
+      if (isLocallyGated(element, elementId)) {
+        if (!can("write", element)) {
+          dispatchPermissionDenied(element, {
+            action: "write",
+            elementId,
+            reason: "missing required role",
+          });
+          return;
+        }
+        if (isServerGated(elementId)) {
+          // Server-mediated write path (wait-for-server): materialize the
+          // full snapshot, send it, and let the authoritative value come
+          // back via normal Yjs sync. Never write gated keys locally.
+          let snapshot: unknown;
+          if (typeof newData === "function") {
+            const draft = clonePlain(dataProxy);
+            (newData as (d: unknown) => void)(draft);
+            snapshot = draft;
+          } else {
+            snapshot = clonePlain(newData);
+          }
+          sendGatedWrite({ element, tag, elementId, data: snapshot });
+          return;
+        }
       }
       if (typeof newData === "function") {
         // Mutator form support: onChange can accept function(draft)
@@ -1381,6 +1485,12 @@ export interface PlayHTMLComponents {
   presence: PresenceAPI;
   createPageData: typeof createPageData;
   createPresenceRoom: typeof createPresenceRoom;
+  /** The local player: stable pid, verification state, resolved roles. */
+  me: MeState;
+  /** Synchronous permission check against resolved rules (UX gating). */
+  can: typeof can;
+  /** Explicitly (re)run the key handshake for this connection. */
+  verify: () => void;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -1442,6 +1552,8 @@ export async function resetPlayHTML(): Promise<void> {
     }
     elementHandlers.clear();
 
+    unbindHandshake();
+    __resetPermissionsForTests();
     teardownCursors();
     teardownMainProvider();
 
@@ -1520,6 +1632,11 @@ export const playhtml: PlayHTMLComponents = {
   },
   createPageData,
   createPresenceRoom,
+  get me() {
+    return getMe();
+  },
+  can,
+  verify: requestVerification,
   listSharedElements: devListSharedElements,
 };
 
@@ -1969,4 +2086,12 @@ export type {
   PlayerIdentity,
   Cursor,
   CursorPresence,
+  PermissionAction,
+  PermissionRule,
 } from "@playhtml/common";
+export type { PermissionsConfig, MeState, RoleCondition } from "./auth/permissions";
+export {
+  IDENTITY_CHANGE_EVENT,
+  PERMISSIONS_CHANGE_EVENT,
+  PERMISSION_DENIED_EVENT,
+} from "./auth/permissions";

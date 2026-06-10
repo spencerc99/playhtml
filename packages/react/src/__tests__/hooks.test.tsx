@@ -199,7 +199,13 @@ describe("usePlayerIdentity", () => {
       pid: "pk_abc",
       name: "ada",
     });
-    expect(get()).toEqual({ color: "#123456", pid: "pk_abc", name: "ada" });
+    expect(get()).toEqual({
+      color: "#123456",
+      pid: "pk_abc",
+      name: "ada",
+      verified: false,
+      roles: [],
+    });
   });
 
   it("reports undefined pid when identity is absent", () => {
@@ -208,7 +214,13 @@ describe("usePlayerIdentity", () => {
       pid: undefined,
       name: undefined,
     });
-    expect(get()).toEqual({ color: "", pid: undefined, name: undefined });
+    expect(get()).toEqual({
+      color: "",
+      pid: undefined,
+      name: undefined,
+      verified: false,
+      roles: [],
+    });
   });
 
   it("reflects an updated identity (e.g. after extension injection)", () => {
