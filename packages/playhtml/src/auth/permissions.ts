@@ -3,7 +3,9 @@
 
 import type {
   PermissionAction,
+  PermissionActionSpec,
   PermissionRule,
+  ElementRulesMap,
   EnforceableRoles,
   PermissionsStatusMessage,
   PlayerIdentity,
@@ -11,6 +13,10 @@ import type {
 } from "@playhtml/common";
 import {
   PERMISSION_ACTIONS,
+  looksLikeCssSelector,
+  matchesRulePattern,
+  normalizeElementRules,
+  parsePermissionsSpec,
   requiredRolesForAction,
   satisfiesRole,
 } from "@playhtml/common";
@@ -33,6 +39,14 @@ export type RoleCondition = (context: {
 
 export interface PermissionsConfig {
   roles?: Record<string, string[] | RoleCondition>;
+  /**
+   * The ergonomic form: element id pattern (or CSS selector, client-only) ->
+   * permissions spec, using the same mini-language as the `permissions`
+   * attribute. Raw "pk_…" keys work anywhere a role name does.
+   * Example: { "#site-title": "write:admin" }
+   */
+  elements?: ElementRulesMap;
+  /** Low-level rule list; `elements` is normalized into this form. */
   rules?: PermissionRule[];
 }
 
@@ -42,12 +56,14 @@ export interface MeState {
   source: PlayerIdentity["source"];
   verified: boolean;
   roles: string[];
-  /** True when the server confirmed domain-bound enforcement for this room. */
-  enforced: boolean;
+  /** True when `entry.createdBy` is this player's pid. */
+  owns: (entry: unknown) => boolean;
 }
 
 interface PermissionsState {
   config: PermissionsConfig;
+  /** Client rules normalized from config.elements + config.rules. */
+  clientRules: PermissionRule[];
   serverStatus: PermissionsStatusMessage | null;
   identity: PlayerIdentity | null;
   verified: boolean;
@@ -56,6 +72,7 @@ interface PermissionsState {
 
 const state: PermissionsState = {
   config: {},
+  clientRules: [],
   serverStatus: null,
   identity: null,
   verified: false,
@@ -64,6 +81,10 @@ const state: PermissionsState = {
 
 export function configurePermissions(config: PermissionsConfig): void {
   state.config = config;
+  state.clientRules = [
+    ...normalizeElementRules(config.elements ?? {}),
+    ...(config.rules ?? []),
+  ];
   resolveRoles();
 }
 
@@ -71,10 +92,37 @@ export function setServerPermissionsStatus(
   status: PermissionsStatusMessage | null,
 ): void {
   state.serverStatus = status;
+  if (status?.enforced) warnOnClientServerDrift(status);
   resolveRoles();
   document.dispatchEvent(
     new CustomEvent(PERMISSIONS_CHANGE_EVENT, { detail: getMe() }),
   );
+}
+
+/**
+ * Dev-aid: when the room has server enforcement, client rules that the server
+ * doesn't know about are UX-only — either intentionally (CSS selectors,
+ * condition roles) or because the init config drifted from the well-known
+ * file. Surface both so the gap is never silent.
+ */
+function warnOnClientServerDrift(status: PermissionsStatusMessage): void {
+  const serverPatterns = new Set(status.rules.map((rule) => rule.match));
+  for (const rule of state.clientRules) {
+    if (serverPatterns.has(rule.match)) continue;
+    if (looksLikeCssSelector(rule.match)) {
+      console.warn(
+        `[playhtml] Permission rule "${rule.match}" uses a CSS selector — it ` +
+          `gates UX only and cannot be enforced by the server. Use an element ` +
+          `id (or trailing-* glob) in .well-known/playhtml.json to enforce it.`,
+      );
+    } else {
+      console.warn(
+        `[playhtml] Permission rule "${rule.match}" is declared in init() but ` +
+          `not in this domain's .well-known/playhtml.json — it gates UX only. ` +
+          `Add it to the well-known file to enforce it (client config may have drifted).`,
+      );
+    }
+  }
 }
 
 export function setIdentity(identity: PlayerIdentity | null): void {
@@ -95,19 +143,30 @@ export function setVerified(verified: boolean): void {
 }
 
 export function getMe(): MeState {
+  const pid = state.identity?.publicKey;
   return {
-    pid: state.identity?.publicKey,
+    pid,
     name: state.identity?.name,
     source: state.identity?.source,
     verified: state.verified,
     roles: [...state.resolvedRoles],
-    enforced: state.serverStatus?.enforced ?? false,
+    owns: (entry: unknown) =>
+      pid !== undefined &&
+      typeof entry === "object" &&
+      entry !== null &&
+      (entry as { createdBy?: unknown }).createdBy === pid,
   };
+}
+
+/** True when the server confirmed domain-bound enforcement for this room. */
+export function isServerEnforced(): boolean {
+  return state.serverStatus?.enforced ?? false;
 }
 
 /** Test-only: returns permissions state to its initial empty shape. */
 export function __resetPermissionsForTests(): void {
   state.config = {};
+  state.clientRules = [];
   state.serverStatus = null;
   state.identity = null;
   state.verified = false;
@@ -163,26 +222,11 @@ function combinedKeyRoles(): EnforceableRoles {
 }
 
 /**
- * Parses an element's `permissions` attribute: comma-separated
- * `action:role` entries; multiple acceptable roles join with "|".
- * Example: `permissions="write:admin, delete:admin|creator"`.
+ * Parses an element's `permissions` attribute — the shared spec
+ * mini-language, e.g. `permissions="write:admin, delete:admin|creator"`.
  */
-export function parsePermissionsAttribute(
-  value: string,
-): Partial<Record<PermissionAction, RoleRef>> {
-  const parsed: Partial<Record<PermissionAction, RoleRef>> = {};
-  for (const entry of value.split(",")) {
-    const [action, roleSpec] = entry.split(":").map((s) => s.trim());
-    if (!action || !roleSpec) continue;
-    if (!(PERMISSION_ACTIONS as string[]).includes(action)) {
-      console.warn(`[playhtml] Unknown permission action "${action}" in attribute`);
-      continue;
-    }
-    const roleList = roleSpec.split("|").map((s) => s.trim()).filter(Boolean);
-    parsed[action as PermissionAction] =
-      roleList.length === 1 ? roleList[0] : roleList;
-  }
-  return parsed;
+export function parsePermissionsAttribute(value: string): PermissionActionSpec {
+  return parsePermissionsSpec(value);
 }
 
 function resolveTarget(
@@ -214,11 +258,11 @@ function requiredRolesForTarget(
     }
   }
 
-  for (const rule of state.config.rules ?? []) {
+  for (const rule of state.clientRules) {
     const matches = element
       ? safeMatches(element, rule.match) ||
-        (elementId !== null && idMatches(rule.match, elementId))
-      : elementId !== null && idMatches(rule.match, elementId);
+        (elementId !== null && matchesRulePattern(rule.match, elementId))
+      : elementId !== null && matchesRulePattern(rule.match, elementId);
     if (!matches) continue;
     const specific = rule[action];
     if (specific !== undefined) return specific;
@@ -237,12 +281,6 @@ function requiredRolesForTarget(
   return null;
 }
 
-function idMatches(pattern: string, elementId: string): boolean {
-  const p = pattern.startsWith("#") ? pattern.slice(1) : pattern;
-  if (p.endsWith("*")) return elementId.startsWith(p.slice(0, -1));
-  return p === elementId;
-}
-
 function safeMatches(element: HTMLElement, selector: string): boolean {
   try {
     return element.matches(selector);
@@ -251,28 +289,41 @@ function safeMatches(element: HTMLElement, selector: string): boolean {
   }
 }
 
+/** Options for can(): identify the targeted entry for "creator" rules. */
+export interface CanOptions {
+  /** The entry's recorded creator pid… */
+  creator?: string;
+  /** …or just pass the entry itself; its `createdBy` is read. */
+  entry?: unknown;
+}
+
 /**
  * Synchronous permission check against the resolved-role cache. This is UX
  * gating: it never blocks an attacker (the server does), but it's what UIs
  * and setData use to decide affordances and local writes.
  *
- * For "creator"-scoped collection rules, pass the entry's recorded creator
- * pid via options so the check can compare it to the current identity.
+ * For "creator"-scoped collection rules, pass the targeted entry (or its
+ * recorded creator pid) via options so the check can compare ownership.
  */
 export function can(
   action: PermissionAction,
   target: HTMLElement | string,
-  options: { creator?: string } = {},
+  options: CanOptions = {},
 ): boolean {
   const { element, elementId } = resolveTarget(target);
   const required = requiredRolesForTarget(action, element, elementId);
   if (required === null) return true;
 
   const pid = state.identity?.publicKey;
+  const creator =
+    options.creator ??
+    (typeof options.entry === "object" && options.entry !== null
+      ? ((options.entry as { createdBy?: unknown }).createdBy as string | undefined)
+      : undefined);
   const principal = {
     pid,
     verified: state.verified,
-    isCreator: options.creator !== undefined && options.creator === pid,
+    isCreator: creator !== undefined && creator === pid,
   };
 
   const requiredList = Array.isArray(required) ? required : [required];
@@ -307,8 +358,11 @@ export function isLocallyGated(
   elementId: string,
 ): boolean {
   if (element.hasAttribute("permissions")) return true;
-  for (const rule of state.config.rules ?? []) {
-    if (safeMatches(element, rule.match) || idMatches(rule.match, elementId)) {
+  for (const rule of state.clientRules) {
+    if (
+      safeMatches(element, rule.match) ||
+      matchesRulePattern(rule.match, elementId)
+    ) {
       return true;
     }
   }

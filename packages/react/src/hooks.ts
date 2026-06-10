@@ -232,26 +232,32 @@ function readMe(): MeState | null {
 
 /**
  * Synchronous permission check that re-evaluates when identity, verification,
- * or server permissions change. Pass an element id ("#guestbook" or
- * "guestbook"); for creator-scoped collection entries, pass the entry's
- * recorded creator pid via `options.creator`.
+ * or server permissions change. Pass an element id ("#guestbook"), an
+ * element, or a ref; for creator-scoped collection entries, pass the entry
+ * itself (`{ entry }` — its `createdBy` is read) or its creator pid.
  *
  * This is UX gating (show/hide affordances) — the server independently
  * enforces rules published in the domain's `/.well-known/playhtml.json`.
  */
 export function useCan(
   action: PermissionAction,
-  target: string,
-  options?: { creator?: string },
+  target: string | HTMLElement | RefObject<HTMLElement | null>,
+  options?: { creator?: string; entry?: unknown },
 ): boolean {
   const me = useMeState();
   const creator = options?.creator;
+  const entry = options?.entry;
   return useMemo(() => {
+    const resolved =
+      typeof target === "string" || target instanceof HTMLElement
+        ? target
+        : target.current;
+    if (!resolved) return true; // ref not mounted yet — default to ungated
     try {
-      return playhtml.can(action, target, { creator });
+      return playhtml.can(action, resolved, { creator, entry });
     } catch {
       return true;
     }
     // me is the reactive dependency: it changes whenever permission inputs do.
-  }, [action, target, creator, me]);
+  }, [action, target, creator, entry, me]);
 }

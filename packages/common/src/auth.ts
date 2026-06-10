@@ -134,8 +134,22 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
  * - "anyone": no requirement (the default when no rule matches)
  * - "verified": any connection that completed the key handshake
  * - "creator": the verified pid recorded on a keyed-collection entry at create time
+ *
+ * A raw public key ("pk_…") is also accepted anywhere a role name is — it
+ * matches exactly that pid, so single-owner sites need no role indirection.
  */
 export type RoleRef = string | string[];
+
+/** Action -> required role(s); the object form of a permissions spec. */
+export type PermissionActionSpec = Partial<Record<PermissionAction, RoleRef>>;
+
+/**
+ * Map of element id pattern (or, client-side only, CSS selector) to a
+ * permissions spec — either the string mini-language ("write:admin,
+ * delete:admin|creator") or the object form. The ergonomic way to declare
+ * rules; normalized to PermissionRule[] internally.
+ */
+export type ElementRulesMap = Record<string, string | PermissionActionSpec>;
 
 export interface PermissionRule {
   /**
@@ -165,6 +179,77 @@ export type EnforceableRoles = Record<string, string[]>;
 export interface WellKnownPermissionsConfig {
   roles?: EnforceableRoles;
   rules?: PermissionRule[];
+  /** Ergonomic alternative to `rules`: pattern -> spec map (normalized into rules). */
+  elements?: ElementRulesMap;
+}
+
+/**
+ * True when a match pattern can only be a CSS selector, never an element id
+ * pattern — these silently match nothing in server-enforced configs.
+ * (Heuristic: ids may legally contain dots/colons, so only obvious selector
+ * prefixes are flagged.)
+ */
+export function looksLikeCssSelector(pattern: string): boolean {
+  const p = pattern.trim();
+  return (
+    p.startsWith(".") || p.startsWith("[") || /[\s>+~]/.test(p)
+  );
+}
+
+/**
+ * Parses the permissions spec mini-language used by the `permissions` HTML
+ * attribute and as config shorthand: comma-separated `action:role` entries;
+ * multiple acceptable roles join with "|".
+ * Example: `"write:admin, delete:admin|creator"`.
+ */
+export function parsePermissionsSpec(value: string): PermissionActionSpec {
+  const parsed: PermissionActionSpec = {};
+  for (const entry of value.split(",")) {
+    const colonIndex = entry.indexOf(":");
+    if (colonIndex === -1) continue;
+    const action = entry.slice(0, colonIndex).trim();
+    const roleSpec = entry.slice(colonIndex + 1).trim();
+    if (!action || !roleSpec) continue;
+    if (!(PERMISSION_ACTIONS as string[]).includes(action)) {
+      console.warn(`[playhtml] Unknown permission action "${action}" in spec`);
+      continue;
+    }
+    const roleList = roleSpec
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    parsed[action as PermissionAction] =
+      roleList.length === 1 ? roleList[0] : roleList;
+  }
+  return parsed;
+}
+
+/** Inverse of parsePermissionsSpec; passes strings through unchanged. */
+export function serializePermissionsSpec(
+  spec: string | PermissionActionSpec,
+): string {
+  if (typeof spec === "string") return spec;
+  return Object.entries(spec)
+    .map(
+      ([action, roles]) =>
+        `${action}:${Array.isArray(roles) ? roles.join("|") : roles}`,
+    )
+    .join(", ");
+}
+
+/** Normalizes the ergonomic elements-map form into rule objects. */
+export function normalizeElementRules(
+  elements: ElementRulesMap,
+): PermissionRule[] {
+  const rules: PermissionRule[] = [];
+  for (const [match, spec] of Object.entries(elements)) {
+    if (!match) continue;
+    const actionSpec =
+      typeof spec === "string" ? parsePermissionsSpec(spec) : spec;
+    if (!actionSpec || Object.keys(actionSpec).length === 0) continue;
+    rules.push({ match, ...actionSpec });
+  }
+  return rules;
 }
 
 /** Strips a tolerated leading "#" from a rule match pattern. */
@@ -246,6 +331,13 @@ export function satisfiesRole(
     if (roleName === "anyone") return true;
     if (roleName === "verified" && principal.verified) return true;
     if (roleName === "creator" && principal.isCreator) return true;
+    // A raw public key in role position matches exactly that pid.
+    if (roleName.startsWith(PK_PREFIX)) {
+      if (principal.pid === roleName) {
+        if (!options.requireVerifiedForKeyRoles || principal.verified) return true;
+      }
+      continue;
+    }
     const members = roles[roleName];
     if (members && principal.pid && members.includes(principal.pid)) {
       if (!options.requireVerifiedForKeyRoles || principal.verified) return true;
@@ -300,6 +392,42 @@ export function sanitizeWellKnownConfig(
   }
 
   const rules: PermissionRule[] = [];
+  const pushRule = (rule: PermissionRule) => {
+    if (looksLikeCssSelector(rule.match)) {
+      console.warn(
+        `[playhtml] Dropping rule "${rule.match}": CSS selectors can't be ` +
+          `server-enforced — use an element id or trailing-* glob.`,
+      );
+      return;
+    }
+    if (rules.length < maxRules) rules.push(rule);
+  };
+
+  // Ergonomic map form: { "site-title": "write:admin", … }
+  if (typeof input.elements === "object" && input.elements !== null) {
+    for (const [match, spec] of Object.entries(input.elements)) {
+      if (!match) continue;
+      let actionSpec: PermissionActionSpec | null = null;
+      if (typeof spec === "string") {
+        actionSpec = parsePermissionsSpec(spec);
+      } else if (typeof spec === "object" && spec !== null) {
+        actionSpec = {};
+        for (const action of PERMISSION_ACTIONS) {
+          const value = (spec as Record<string, unknown>)[action];
+          if (typeof value === "string") actionSpec[action] = value;
+          else if (
+            Array.isArray(value) &&
+            value.every((v) => typeof v === "string")
+          ) {
+            actionSpec[action] = value as string[];
+          }
+        }
+      }
+      if (!actionSpec || Object.keys(actionSpec).length === 0) continue;
+      pushRule({ match, ...actionSpec });
+    }
+  }
+
   if (Array.isArray(input.rules)) {
     for (const entry of input.rules.slice(0, maxRules)) {
       if (typeof entry !== "object" || entry === null) continue;
@@ -317,7 +445,7 @@ export function sanitizeWellKnownConfig(
           rule[action] = value as string[];
         }
       }
-      rules.push(rule);
+      pushRule(rule);
     }
   }
 

@@ -17,6 +17,7 @@ import {
   buildAuthChallengePayload,
   exportPublicKeyHex,
   sanitizeWellKnownConfig,
+  satisfiesRole,
   signAuthPayload,
   matchesRulePattern,
   requiredRolesForAction,
@@ -218,6 +219,49 @@ describe("sanitizeWellKnownConfig", () => {
     expect(isVerifiablePublicKey(validPk)).toBe(true);
     expect(isVerifiablePublicKey("pk_zz")).toBe(false);
     expect(isVerifiablePublicKey("ab".repeat(65))).toBe(false);
+  });
+
+  it("accepts the ergonomic elements map with string specs", () => {
+    const config = sanitizeWellKnownConfig({
+      elements: {
+        "site-title": `write:${validPk}`,
+        "notes": { create: "verified", update: "creator" },
+      },
+    });
+    expect(config).not.toBeNull();
+    expect(config!.rules).toHaveLength(2);
+    expect(config!.rules![0]).toEqual({ match: "site-title", write: validPk });
+    expect(config!.rules![1].update).toBe("creator");
+  });
+
+  it("drops CSS-selector patterns (never matchable server-side)", () => {
+    const config = sanitizeWellKnownConfig({
+      elements: { "[data-note]": "write:admin", "real-id": "write:admin" },
+      rules: [{ match: ".note", write: "admin" }],
+    });
+    expect(config).not.toBeNull();
+    expect(config!.rules!.map((r) => r.match)).toEqual(["real-id"]);
+  });
+});
+
+describe("raw pk_… role refs", () => {
+  const ownerPk = "pk_" + "cd".repeat(65);
+
+  it("matches exactly that pid with no roles config", () => {
+    expect(
+      satisfiesRole(ownerPk, { pid: ownerPk, verified: true }, {}, {
+        requireVerifiedForKeyRoles: true,
+      })
+    ).toBe(true);
+    expect(
+      satisfiesRole(ownerPk, { pid: "pk_" + "ee".repeat(65), verified: true }, {})
+    ).toBe(false);
+    // server-side: an unverified claim of the pid doesn't count
+    expect(
+      satisfiesRole(ownerPk, { pid: ownerPk, verified: false }, {}, {
+        requireVerifiedForKeyRoles: true,
+      })
+    ).toBe(false);
   });
 });
 

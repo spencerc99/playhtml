@@ -5,7 +5,7 @@ sidebar:
   order: 6
 ---
 
-playhtml gives every visitor a **stable identity** — a `pk_…` public key (their *pid*) backed by a real keypair — and lets you gate element writes behind **roles and rules**. Identity works with zero setup; permissions are opt-in.
+playhtml gives every visitor a **stable identity** — a `pk_…` public key (their *pid*) backed by a real keypair — and lets you gate element writes behind **rules**. Identity works with zero setup; permissions take one static file.
 
 ## Identity
 
@@ -15,82 +15,110 @@ playhtml gives every visitor a **stable identity** — a `pk_…` public key (th
 Read the local player anywhere:
 
 ```js
-playhtml.me.pid       // "pk_04a1…" — stable id
-playhtml.me.verified  // completed the key handshake on this connection?
-playhtml.me.roles     // resolved role names, e.g. ["admin"]
+playhtml.me.pid        // "pk_04a1…" — stable id
+playhtml.me.verified   // completed the key handshake on this connection?
+playhtml.me.roles      // resolved role names, e.g. ["admin"]
+playhtml.me.owns(entry) // entry.createdBy === my pid?
+
+const unsubscribe = playhtml.onIdentityChange((me) => { … });
 ```
 
 React: `usePlayerIdentity()` returns `{ color, pid, name, verified, roles }` and updates reactively.
 
-## Declaring permissions
+## Declaring permissions: one file
+
+Put your rules at `https://your-domain/.well-known/playhtml.json`:
+
+```json
+{
+  "elements": {
+    "site-title": "write:pk_04a1…",
+    "guestbook": "create:verified, update:creator, delete:creator|pk_04a1…"
+  }
+}
+```
+
+That's the whole setup. It's just a static file — whoever controls the domain controls the rules, the same trust model as the site itself. The playhtml server reads it and:
+
+1. **Verifies identities.** On connect, the server issues a challenge; the client signs it with its key (the extension signs for extension identities). One signature per connection — no per-message crypto — and reconnects resume with a session token. Sync is never blocked.
+2. **Mediates gated writes.** Writes to rule-matched elements go through the server, which checks the verified pid and applies the data itself. Unauthorized direct writes to gated elements are reverted.
+3. **Enforces entry ownership.** For `create`/`update`/`delete` rules the element's data must be a **keyed map of object entries** (`{ [entryId]: { … } }` — the shape playhtml recommends anyway). The server stamps each new entry's `createdBy` with the verified pid and pins it on updates, so ownership can't be forged.
+
+The same rules arrive in the browser automatically, so `can()`, disabled buttons, and `permissiondenied` events all work **without any init config**.
+
+### The spec mini-language
+
+`action:role` pairs, comma-separated; alternatives join with `|`.
+
+- **Actions:** `write` (replace the element's data), and for keyed-map collections `create` / `update` / `delete` (per entry). Entry actions fall back to the `write` requirement when unspecified.
+- **Roles:** `anyone` (default), `verified` (proved key ownership), `creator` (the pid stamped on an entry at create time), any name you define under `roles`, or a **raw `pk_…` key** — so single-owner sites need no role definitions at all.
+- **Targets:** an element id (leading `#` optional) or a trailing-`*` glob (`note-*`). Scope a rule to one page with the rule-object form: `"rules": [{ "path": "/wall", "match": "site-title", "write": "admin" }]`.
+
+Named roles, when you want them:
+
+```json
+{
+  "roles": { "admin": ["pk_04a1…", "pk_9bb2…"] },
+  "elements": { "site-title": "write:admin" }
+}
+```
+
+### Other places to declare rules
+
+The same spec works per element in HTML, and in `init()` for client-side-only gating:
+
+```html
+<h1 id="site-title" can-move permissions="write:pk_04a1…">…</h1>
+```
 
 ```js
 playhtml.init({
   permissions: {
-    roles: {
-      // enforceable: explicit public keys
-      admin: ["pk_04a1…"],
-      // client-only UX gating: arbitrary conditions
-      regular: ({ name }) => name !== undefined,
+    roles: { regular: ({ name }) => name !== undefined },  // condition fn — client-only
+    elements: {
+      "#site-title":  "write:pk_04a1…",
+      "[data-note]":  "write:regular",   // CSS selectors — client-only
     },
-    rules: [
-      // only admins can move/edit the site title
-      { match: "site-title", write: "admin" },
-      // anyone verified can add a note; only its creator (or an admin) can change/remove it
-      { match: "notes", create: "verified", update: ["creator", "admin"], delete: ["creator", "admin"] },
-    ],
   },
 });
 ```
 
-Or per element: `<h1 id="site-title" can-move permissions="write:admin">`.
+Init-config rules and condition roles run **in the browser only** — they shape honest users' experience but can't stop someone driving the console. When a room has server enforcement, playhtml warns in the console about any client rule the server doesn't know (CSS selectors, drifted config) so the gap is never silent. `playhtml.permissionsEnforced` tells you which mode the room is in.
 
-**Built-in roles:** `anyone` (default), `verified` (proved key ownership), `creator` (the pid stamped on a collection entry when it was created).
+## Checking permissions
 
-**Rule matching:** an element id, a trailing-`*` glob (`note-*`), or — in client `rules` only — any CSS selector. Server-enforced rules match ids/globs only.
-
-Check permissions anywhere (synchronous, cheap):
+Synchronous and cheap, everywhere:
 
 ```js
-playhtml.can("write", "#site-title");                  // boolean
-playhtml.can("update", "#notes", { creator: entry.createdBy });
+playhtml.can("write", "#site-title");                 // boolean
+playhtml.can("update", "#guestbook", { entry });      // reads entry.createdBy
+await playhtml.verify();                              // re-run the handshake; resolves with outcome
 ```
 
+React — a hook, plus `can` scoped to the element inside `withSharedState`:
+
 ```jsx
-const canEdit = useCan("write", "#site-title");        // React, re-renders on changes
+const canEdit = useCan("write", "#site-title");       // also accepts an element or ref
+
+const Guestbook = withSharedState(
+  { defaultData: { }, permissions: "create:verified, update:creator" },
+  ({ data, setData, can }) => (
+    <div id="guestbook">
+      {Object.entries(data).map(([id, entry]) => (
+        <Note key={id} entry={entry} editable={can("update", { entry })} />
+      ))}
+      <button disabled={!can("create")} onClick={…}>add</button>
+    </div>
+  ),
+);
 ```
 
 When a write is denied, `setData` becomes a no-op and the element fires a `permissiondenied` CustomEvent (`detail: { action, elementId, reason }`) — listen to it to shake a lock icon or show a toast.
 
-## UX gating vs. real enforcement
-
-Everything above runs **in the browser**, so it shapes honest users' experience but cannot stop someone driving the API from the console. To make rules hold for real, publish them at:
-
-```
-https://your-domain/.well-known/playhtml.json
-```
-
-```json
-{
-  "roles": { "admin": ["pk_04a1…"] },
-  "rules": [
-    { "path": "/wall", "match": "site-title", "write": "admin" },
-    { "match": "notes", "create": "verified", "update": "creator", "delete": "creator" }
-  ]
-}
-```
-
-It's just a static file — whoever controls the domain controls the rules, the same trust model as the site itself. When it exists, the playhtml server:
-
-1. **Verifies identities.** On connect, the server issues a challenge; the client signs it with its key (the extension signs for extension identities). One signature per connection — there is no per-message crypto, and reconnects resume with a session token. Sync is never blocked while this happens.
-2. **Mediates gated writes.** Writes to rule-matched elements go through the server, which checks the verified pid against the rules and applies the data itself. Unauthorized direct writes to gated elements are reverted.
-3. **Enforces entry ownership.** For `create`/`update`/`delete` rules the element's data must be a **keyed map of object entries** (`{ [entryId]: { … } }` — the shape playhtml recommends anyway). The server stamps each new entry's `createdBy` with the verified pid and pins it on updates, so ownership can't be forged.
-
-`playhtml.me.enforced` tells you whether the current room has server enforcement; without the well-known file, rules remain client-side UX gating (which the docs and your security model should treat as decoration, not protection).
-
 ## Notes & limits
 
 - **Writes are gated; reads are not.** Everyone in a room can still read all of its data.
-- **`verified` ≠ trusted.** Anyone can mint a fresh key. Verification means *attributable* ("the same keyholder as before"), not *scarce* — use explicit key lists for privileged roles.
+- **`verified` ≠ trusted.** Anyone can mint a fresh key. Verification means *attributable* ("the same keyholder as before"), not *scarce* — use explicit keys or key-list roles for privileged access.
 - **Gated writes wait for the server** (one round trip) instead of applying optimistically; gate sparingly — non-gated elements are completely unaffected.
+- An entry-only rule (`update:creator`) doesn't restrict element-level `can("write")` client-side: `write` gates replacing the element's data, entry actions gate individual entries, and entry rules don't imply element rules. The server still checks every entry change.
 - Clearing browser storage discards an anonymous identity; there is no recovery. Extension identities survive (and can be backed up by the extension).

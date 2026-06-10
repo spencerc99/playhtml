@@ -134,6 +134,70 @@ describe("can()", () => {
   });
 });
 
+describe("ergonomic config forms", () => {
+  it("accepts the elements map with string specs", () => {
+    configurePermissions({
+      roles: { admin: [ADMIN_PK] },
+      elements: {
+        "#title": "write:admin",
+        "notes": "create:verified, update:creator|admin",
+      },
+    });
+    const title = makeElement("title");
+    const notes = makeElement("notes");
+
+    setIdentity(identity(OTHER_PK));
+    expect(can("write", title)).toBe(false);
+    expect(can("update", notes, { creator: ADMIN_PK })).toBe(false);
+    expect(can("update", notes, { creator: OTHER_PK })).toBe(true);
+
+    setIdentity(identity(ADMIN_PK));
+    expect(can("write", title)).toBe(true);
+    expect(can("update", notes, { creator: OTHER_PK })).toBe(true);
+  });
+
+  it("accepts raw pk_… keys anywhere a role works (no roles config needed)", () => {
+    configurePermissions({
+      elements: { "#title": `write:${ADMIN_PK}` },
+    });
+    const title = makeElement("title");
+    setIdentity(identity(OTHER_PK));
+    expect(can("write", title)).toBe(false);
+    setIdentity(identity(ADMIN_PK));
+    expect(can("write", title)).toBe(true);
+  });
+
+  it("reads creator from a passed entry object", () => {
+    configurePermissions({ elements: { notes: { update: "creator" } } });
+    const notes = makeElement("notes");
+    setIdentity(identity(OTHER_PK));
+    expect(can("update", notes, { entry: { createdBy: OTHER_PK } })).toBe(true);
+    expect(can("update", notes, { entry: { createdBy: ADMIN_PK } })).toBe(false);
+  });
+});
+
+describe("client/server drift warnings", () => {
+  it("warns about client rules the server can't enforce", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    configurePermissions({
+      elements: {
+        "[data-locked]": "write:admin", // CSS selector — never enforceable
+        "ghost-rule": "write:admin", // id rule missing from well-known
+      },
+    });
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: {},
+      rules: [{ match: "title", write: "admin" }],
+    });
+    const messages = warn.mock.calls.map((c) => String(c[0]));
+    expect(messages.some((m) => m.includes("[data-locked]"))).toBe(true);
+    expect(messages.some((m) => m.includes("ghost-rule"))).toBe(true);
+    warn.mockRestore();
+  });
+});
+
 describe("server gating + local gating detection", () => {
   it("isServerGated only when enforced server rules match", () => {
     expect(isServerGated("title")).toBe(false);
@@ -174,7 +238,9 @@ describe("me state + events", () => {
     expect(me.pid).toBe(ADMIN_PK);
     expect(me.roles).toContain("admin");
     expect(me.verified).toBe(false);
-    expect(me.enforced).toBe(false);
+    expect(me.owns({ createdBy: ADMIN_PK })).toBe(true);
+    expect(me.owns({ createdBy: OTHER_PK })).toBe(false);
+    expect(me.owns(undefined)).toBe(false);
 
     setVerified(true);
     expect(getMe().verified).toBe(true);

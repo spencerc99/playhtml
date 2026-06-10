@@ -56,8 +56,11 @@ import {
   setIdentity,
   isLocallyGated,
   isServerGated,
+  isServerEnforced,
   dispatchPermissionDenied,
   __resetPermissionsForTests,
+  IDENTITY_CHANGE_EVENT,
+  PERMISSIONS_CHANGE_EVENT,
   type PermissionsConfig,
   type MeState,
 } from "./auth/permissions";
@@ -979,7 +982,7 @@ async function initPlayHTMLOnce({
       // The verified state (if any) belonged to the previous pid — re-run the
       // handshake under the extension identity. No-op for the server unless
       // the room has enforceable rules.
-      requestVerification();
+      void requestVerification();
       console.log("[playhtml] Merged extension identity via CustomEvent");
     }) as EventListener;
     document.addEventListener(
@@ -1489,8 +1492,12 @@ export interface PlayHTMLComponents {
   me: MeState;
   /** Synchronous permission check against resolved rules (UX gating). */
   can: typeof can;
-  /** Explicitly (re)run the key handshake for this connection. */
-  verify: () => void;
+  /** True when this room's domain published enforceable rules (well-known file). */
+  permissionsEnforced: boolean;
+  /** Explicitly (re)run the key handshake; resolves with the outcome. */
+  verify: () => Promise<boolean>;
+  /** Subscribe to identity/verification/permissions changes; returns unsubscribe. */
+  onIdentityChange: (callback: (me: MeState) => void) => () => void;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -1636,7 +1643,19 @@ export const playhtml: PlayHTMLComponents = {
     return getMe();
   },
   can,
+  get permissionsEnforced() {
+    return isServerEnforced();
+  },
   verify: requestVerification,
+  onIdentityChange: (callback: (me: MeState) => void) => {
+    const handler = () => callback(getMe());
+    document.addEventListener(IDENTITY_CHANGE_EVENT, handler);
+    document.addEventListener(PERMISSIONS_CHANGE_EVENT, handler);
+    return () => {
+      document.removeEventListener(IDENTITY_CHANGE_EVENT, handler);
+      document.removeEventListener(PERMISSIONS_CHANGE_EVENT, handler);
+    };
+  },
   listSharedElements: devListSharedElements,
 };
 
@@ -2089,7 +2108,12 @@ export type {
   PermissionAction,
   PermissionRule,
 } from "@playhtml/common";
-export type { PermissionsConfig, MeState, RoleCondition } from "./auth/permissions";
+export type {
+  PermissionsConfig,
+  MeState,
+  RoleCondition,
+  CanOptions,
+} from "./auth/permissions";
 export {
   IDENTITY_CHANGE_EVENT,
   PERMISSIONS_CHANGE_EVENT,

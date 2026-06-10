@@ -35,6 +35,23 @@ let context: HandshakeContext | null = null;
 let resumeAttempted = false;
 const pendingGatedWrites = new Map<string, PendingGatedWrite>();
 
+const VERIFY_TIMEOUT_MS = 15_000;
+
+interface PendingVerification {
+  promise: Promise<boolean>;
+  resolve: (ok: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+let pendingVerification: PendingVerification | null = null;
+
+function settleVerification(ok: boolean): void {
+  if (!pendingVerification) return;
+  clearTimeout(pendingVerification.timer);
+  pendingVerification.resolve(ok);
+  pendingVerification = null;
+}
+
 /**
  * (Re)binds the handshake to the current provider/room. Called at init and on
  * navigation when the main provider is rebuilt — verification state is per
@@ -44,6 +61,7 @@ export function bindHandshake(next: HandshakeContext): void {
   context = next;
   resumeAttempted = false;
   pendingGatedWrites.clear();
+  settleVerification(false);
   setVerified(false);
   setServerPermissionsStatus(null);
 }
@@ -51,6 +69,7 @@ export function bindHandshake(next: HandshakeContext): void {
 export function unbindHandshake(): void {
   context = null;
   pendingGatedWrites.clear();
+  settleVerification(false);
   setVerified(false);
   setServerPermissionsStatus(null);
 }
@@ -82,11 +101,22 @@ function clearToken(roomId: string): void {
 /**
  * Asks the server to (re)issue a challenge — used after a late identity
  * change (e.g. extension injection after connect) and by playhtml.verify().
+ *
+ * Resolves true on `auth_ok`, false on a terminal `auth_error`, timeout
+ * (~15s, e.g. extension didn't answer the signing request), or rebind.
  */
-export function requestVerification(): void {
+export function requestVerification(): Promise<boolean> {
   resumeAttempted = false;
   setVerified(false);
-  context?.send(JSON.stringify({ type: "auth_request" }));
+  if (!context) return Promise.resolve(false);
+  if (!pendingVerification) {
+    let resolve!: (ok: boolean) => void;
+    const promise = new Promise<boolean>((r) => (resolve = r));
+    const timer = setTimeout(() => settleVerification(false), VERIFY_TIMEOUT_MS);
+    pendingVerification = { promise, resolve, timer };
+  }
+  context.send(JSON.stringify({ type: "auth_request" }));
+  return pendingVerification.promise;
 }
 
 async function handleChallenge(message: AuthChallengeMessage): Promise<void> {
@@ -130,18 +160,21 @@ function handleAuthOk(message: AuthOkMessage): void {
   if (!context) return;
   storeToken(context.roomId, message.token);
   setVerified(true);
+  settleVerification(true);
 }
 
 function handleAuthError(message: AuthErrorMessage): void {
   if (!context) return;
   if (message.reason === "invalid_token") {
     // Resume failed (expired/foreign token) — drop it; the server follows up
-    // with a fresh challenge which we'll answer with a signature.
+    // with a fresh challenge which we'll answer with a signature. Not
+    // terminal, so any pending verify() keeps waiting.
     clearToken(context.roomId);
     return;
   }
   console.warn("[playhtml] Auth handshake failed:", message.reason);
   setVerified(false);
+  settleVerification(false);
 }
 
 function handleGatedWriteResult(message: GatedWriteResultMessage): void {
