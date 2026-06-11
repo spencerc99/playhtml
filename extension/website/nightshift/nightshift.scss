@@ -1,0 +1,124 @@
+// ABOUTME: Styles for the night-shift skyline — dark city chrome over a fullscreen canvas.
+
+@use "../shared/base.scss";
+
+body {
+  background: #060a13;
+  overflow: hidden;
+  font-family: "Source Serif 4", Georgia, serif;
+  color: #e8e2d5;
+}
+
+.nightshift-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+.nightshift-wordmark {
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  z-index: 200;
+  pointer-events: none;
+
+  .title {
+    font-style: italic;
+    font-weight: 200;
+    font-size: 20px;
+    color: #e8e2d5;
+  }
+
+  .subtitle {
+    margin-top: 2px;
+    max-width: 460px;
+    font-size: 12.5px;
+    font-style: italic;
+    font-weight: 300;
+    line-height: 1.45;
+    color: rgba(232, 226, 213, 0.55);
+  }
+}
+
+.nightshift-stats {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+
+  .consolidation {
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(232, 226, 213, 0.45);
+  }
+}
+
+.nightshift-ticker {
+  position: absolute;
+  bottom: 18px;
+  left: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  font-family: "Martian Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+
+  .line {
+    color: rgba(232, 226, 213, 0.85);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(72vw, 640px);
+
+    .time {
+      color: rgba(232, 226, 213, 0.4);
+      margin-right: 8px;
+    }
+  }
+}
+
+.nightshift-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+  pointer-events: none;
+  font-style: italic;
+  font-weight: 200;
+  font-size: 18px;
+  color: rgba(232, 226, 213, 0.5);
+  text-align: center;
+  padding: 0 24px;
+}
+
+.nightshift-tooltip {
+  position: fixed;
+  z-index: 300;
+  pointer-events: none;
+  background: rgba(6, 10, 19, 0.92);
+  border: 1px solid rgba(232, 226, 213, 0.18);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: "Martian Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: rgba(232, 226, 213, 0.9);
+  max-width: 280px;
+
+  .owner {
+    color: rgba(232, 226, 213, 0.5);
+  }
+}
