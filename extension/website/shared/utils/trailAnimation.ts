@@ -41,14 +41,17 @@ export function buildStraightPathSegment(
   return path;
 }
 
-// Tuned for replayed cursor movement: velocity-based thinning gives the line
-// an inky, hand-drawn weight, while low streamline keeps the live head close
-// to the cursor icon instead of lagging behind it.
+// Tuned for replayed cursor movement: the body stays a uniform width
+// (velocity-based thinning swings too wildly on real cursor data), with
+// explicit tapers at the ends for the hand-drawn feel. Low streamline keeps
+// the live head close to the cursor icon instead of lagging behind it.
 const FREEHAND_OPTIONS = {
-  thinning: 0.5,
+  thinning: 0,
   smoothing: 0.5,
   streamline: 0.25,
-  simulatePressure: true,
+  simulatePressure: false,
+  start: { taper: 20 },
+  end: { taper: 20 },
 };
 
 // Converts a perfect-freehand outline polygon into a closed SVG path,
