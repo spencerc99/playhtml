@@ -1,7 +1,7 @@
 // ABOUTME: p5 instance-mode sketch — renders the swarm of browsing journeys as
 // ABOUTME: comets routed along submarine cables, near-monochrome with one signal colour.
 
-import { Journey } from "./data";
+import type { Journey } from "./data";
 import { GeoPoint, makeProjection, Projection } from "./geo";
 import { CABLES } from "./cables";
 
