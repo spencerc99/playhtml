@@ -127,6 +127,80 @@ $accent-rust: #c4724e;
   }
 }
 
+.scrollCue {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  width: 72px;
+  height: 48px;
+  color: #3a7d6f;
+  transform: translateX(-50%);
+  opacity: 0.82;
+  transition: opacity 0.15s, transform 0.15s;
+
+  &:hover {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
+  }
+
+  @media (max-width: 480px) {
+    bottom: 18px;
+    width: 64px;
+    height: 42px;
+  }
+}
+
+.scrollCueMark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.scrollCueTrail,
+.scrollCueArrow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.scrollCueTrail {
+  stroke: rgba($accent-teal, 0.42);
+  stroke-width: 2;
+  stroke-dasharray: 2 6;
+  animation: scroll-cue-trail 1.8s linear infinite;
+}
+
+.scrollCueArrow {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  animation: scroll-cue-arrow 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrollCueTrail,
+  .scrollCueArrow {
+    animation: none;
+  }
+}
+
+@keyframes scroll-cue-trail {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@keyframes scroll-cue-arrow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(6px);
+  }
+}
+
 // Gradient fade from trails into readable content area
 .section {
   position: relative;

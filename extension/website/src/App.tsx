@@ -178,9 +178,30 @@ export default function App() {
             install the extension to try it out!
           </div>
           <DownloadGate />
+          <a
+            className={styles.scrollCue}
+            href="#homepage-essay"
+            aria-label="Scroll to the essay"
+          >
+            <svg
+              className={styles.scrollCueMark}
+              viewBox="0 0 72 48"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                className={styles.scrollCueTrail}
+                d="M8 10 C 23 16, 16 30, 34 32 S 54 26, 55 38"
+              />
+              <path
+                className={styles.scrollCueArrow}
+                d="M45 30 L55 39 L65 30"
+              />
+            </svg>
+          </a>
         </section>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="homepage-essay">
           <div className={styles.essayBlock}>
             <p>
               It's controversial to have hope for the internet these days.{" "}
