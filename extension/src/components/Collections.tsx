@@ -804,16 +804,6 @@ export function Collections({ onBack }: CollectionsProps) {
         </div>
 
         <div className="collections__transfer">
-          {storageStats && (
-            <div className="collections__database-size">
-              <span className="collections__database-size-label">
-                Local database
-              </span>
-              <span className="collections__database-size-value">
-                {formatSize(storageStats.estimatedSizeBytes)}
-              </span>
-            </div>
-          )}
           <div className="collections__transfer-buttons">
             <button
               className="collections__transfer-btn"

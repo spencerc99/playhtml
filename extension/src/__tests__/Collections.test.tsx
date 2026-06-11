@@ -1,5 +1,5 @@
 // ABOUTME: Verifies the data collection settings screen surfaces local storage size.
-// ABOUTME: Covers popup copy around import/export controls for local event data.
+// ABOUTME: Covers popup stats copy for local event data.
 
 import React from "react";
 import { act } from "react";
@@ -43,10 +43,10 @@ describe("Collections", () => {
         return {
           success: true,
           stats: {
-            totalEvents: 0,
+            totalEvents: 3,
             estimatedSizeBytes: 1536,
-            oldestEvent: 0,
-            countsByType: {},
+            oldestEvent: Date.now(),
+            countsByType: { cursor: 2, keyboard: 1 },
           },
         };
       }
@@ -59,17 +59,19 @@ describe("Collections", () => {
     document.body.innerHTML = "";
   });
 
-  it("shows local database size above import and export controls", async () => {
+  it("shows local database size in the top stats card", async () => {
     const { container, root } = await renderCollections();
 
     try {
       const text = container.textContent ?? "";
-      const sizeIndex = text.indexOf("Local database");
+      const eventsIndex = text.indexOf("3events");
+      const sizeIndex = text.indexOf("1.5 KBstored");
       const exportIndex = text.indexOf("Export data");
 
+      expect(eventsIndex).toBeGreaterThanOrEqual(0);
       expect(sizeIndex).toBeGreaterThanOrEqual(0);
-      expect(text).toContain("1.5 KB");
       expect(exportIndex).toBeGreaterThan(sizeIndex);
+      expect(text).not.toContain("Local database");
     } finally {
       cleanupRoot(root, container);
     }

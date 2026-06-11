@@ -1,6 +1,6 @@
 // ABOUTME: Profile settings page showing identity info and cursor color picker
 // ABOUTME: Accessed by clicking the cursor icon in the popup header
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import type { PlayerIdentity } from "../types";
 import { CursorSvg } from "./icons";
@@ -19,39 +19,15 @@ function randomPrimaryColor(): string {
   return hslToHex(hue, 70, 60);
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props) {
   const savedColor = playerIdentity.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
   const [color, setColor] = useState(savedColor);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [storageStats, setStorageStats] = useState<{
-    totalEvents: number;
-    estimatedSizeBytes: number;
-  } | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const opensNativePickerInPopup = !import.meta.env.FIREFOX;
 
   const hasColorChanged = color !== savedColor;
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const response = await browser.runtime.sendMessage({ type: "GET_STORAGE_STATS" });
-        if (response?.success && response.stats) {
-          setStorageStats({
-            totalEvents: response.stats.totalEvents ?? 0,
-            estimatedSizeBytes: response.stats.estimatedSizeBytes ?? 0,
-          });
-        }
-      } catch {}
-    })();
-  }, []);
 
   const commitColor = (nextColor: string) => {
     setColor(nextColor);
@@ -189,22 +165,6 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
                   {siteCount === 1 ? "site discovered" : "sites discovered"}
                 </span>
               </div>
-            )}
-            {storageStats && (
-              <>
-                <div className="profile-section__stat">
-                  <span className="profile-section__stat-value">
-                    {storageStats.totalEvents.toLocaleString()}
-                  </span>
-                  <span className="profile-section__stat-label">events stored</span>
-                </div>
-                <div className="profile-section__stat">
-                  <span className="profile-section__stat-value">
-                    ~{formatBytes(storageStats.estimatedSizeBytes)}
-                  </span>
-                  <span className="profile-section__stat-label">local data</span>
-                </div>
-              </>
             )}
           </div>
         </section>
