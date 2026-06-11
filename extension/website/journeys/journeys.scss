@@ -1,0 +1,182 @@
+/* ABOUTME: Styles for the journeys visualization — austere near-monochrome,
+   one warm signal accent, the canvas does the talking. */
+
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap");
+
+$signal: #ffad4a;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #060608;
+  overflow: hidden;
+  color: #d8dbe2;
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+
+#journeys-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.canvas-host {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+
+  canvas {
+    display: block;
+  }
+}
+
+// ── Title block ────────────────────────────────────────────────────────────────
+.hud-title {
+  position: absolute;
+  top: 28px;
+  left: 32px;
+  z-index: 10;
+  max-width: 340px;
+  pointer-events: none;
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #eef0f5;
+
+    em {
+      font-style: normal;
+      color: $signal;
+    }
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: #6f7480;
+  }
+}
+
+// ── Bottom control bar ─────────────────────────────────────────────────────────
+.hud-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  padding: 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 10;
+  background: rgba(6, 6, 8, 0.82);
+  border-top: 1px solid #15171c;
+  backdrop-filter: blur(8px);
+  font-size: 0.72rem;
+  color: #6f7480;
+}
+
+.btn {
+  background: none;
+  border: 1px solid #23262e;
+  border-radius: 3px;
+  padding: 2px 9px;
+  color: #9aa0ac;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+
+  &:hover {
+    color: #eef0f5;
+    border-color: #3a3e48;
+    background: #11131a;
+  }
+}
+
+.speed {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.speed-btn {
+  background: none;
+  border: 1px solid #23262e;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-family: "Martian Mono", monospace;
+  font-size: 0.64rem;
+  color: #6f7480;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+
+  &:hover {
+    color: #c4c8d2;
+    border-color: #3a3e48;
+  }
+
+  &.active {
+    color: $signal;
+    border-color: rgba($signal, 0.5);
+    background: rgba($signal, 0.08);
+  }
+}
+
+.readout {
+  font-family: "Martian Mono", monospace;
+  font-size: 0.64rem;
+  color: #585d68;
+  letter-spacing: 0.02em;
+}
+
+.source-pill {
+  margin-left: auto;
+  font-family: "Martian Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #23262e;
+  color: #585d68;
+
+  &.live {
+    color: $signal;
+    border-color: rgba($signal, 0.4);
+  }
+
+  &.synthetic {
+    color: #6f7480;
+  }
+}
+
+// ── Loading ────────────────────────────────────────────────────────────────────
+.empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  font-family: "Martian Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: #4a4e58;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
