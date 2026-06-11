@@ -449,7 +449,10 @@ export function sanitizeWellKnownConfig(
     }
   }
 
-  if (rules.length === 0) return null;
+  // A config with roles but no rules is still useful: the server publishes
+  // the role lists (and verifies identities), letting pages gate UI by role
+  // even when no element writes are server-gated.
+  if (rules.length === 0 && Object.keys(roles).length === 0) return null;
   return { roles, rules };
 }
 

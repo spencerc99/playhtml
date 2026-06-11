@@ -115,6 +115,31 @@ const Guestbook = withSharedState(
 
 When a write is denied, `setData` becomes a no-op and the element fires a `permissiondenied` CustomEvent (`detail: { action, elementId, reason }`) — listen to it to shake a lock icon or show a toast.
 
+## Trying it locally
+
+Three live examples on this site exercise the whole system (their rules live in [`/.well-known/playhtml.json`](https://playhtml.fun/.well-known/playhtml.json)):
+
+- [`/permissions`](https://playhtml.fun/permissions) — **the locked room**: identity panel, an admin-gated title, creator-owned notes, and a live event log. The best place to watch the handshake and denials happen.
+- [`/garden`](https://playhtml.fun/garden) — **community garden**: claim a plot (one per pid), water only your own plant (`update:creator`).
+- [`/shop`](https://playhtml.fun/shop) — **the corner shop**: a single owner key gates the sign and marquee; the doorbell stays open to everyone.
+
+To run them with real enforcement locally:
+
+```bash
+bun dev          # vite — serves the pages AND /.well-known/playhtml.json
+bun dev-server   # local partykit — fetches the well-known file from vite
+```
+
+Then open two browsers on a page and put one browser's pid (`playhtml.me.pid`) into the `admin` role of `website/public/.well-known/playhtml.json`.
+
+The end-to-end protocol suite (handshake, gated writes, entry ownership, backstop, session resume) runs headlessly against a local server:
+
+```bash
+SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
+  bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 --var SUPABASE_LOAD_TIMEOUT_MS:200 &
+bun run smoke:partykit:auth
+```
+
 ## Notes & limits
 
 - **Writes are gated; reads are not.** Everyone in a room can still read all of its data.

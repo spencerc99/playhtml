@@ -128,7 +128,7 @@ const RosterAdmin = withSharedState(
   // in-place migration needed. Any legacy `entries` array is simply abandoned.
   { defaultData: { participants: {} as Roster } },
   ({ data, setData }) => {
-    const { pid, name, color } = usePlayerIdentity();
+    const { pid, name, color, roles } = usePlayerIdentity();
     const [showPortrait, setShowPortrait] = useState(false);
 
     // Read the latest roster through a ref so the upsert effect keys ONLY on
@@ -158,7 +158,7 @@ const RosterAdmin = withSharedState(
       });
     }, [pid, name, color, setData]);
 
-    const admin = isAdmin(name, color);
+    const admin = isAdmin(name, color, roles);
     const pids = rosterPids(data.participants);
 
     return (
@@ -301,8 +301,8 @@ export const GroupActivityDisplay = withSharedState(
     },
   },
   ({ data, setData }) => {
-    const { name, color } = usePlayerIdentity();
-    const admin = isAdmin(name, color);
+    const { name, color, roles } = usePlayerIdentity();
+    const admin = isAdmin(name, color, roles);
 
     // The countdown animates LOCALLY for everyone, derived from the shared
     // `lastChangeTime` — no per-tick writes. The shared state is the source of
@@ -385,7 +385,7 @@ export const GroupActivityDisplay = withSharedState(
             {minutes}:{seconds.toString().padStart(2, "0")}
           </p>
         </div>
-        {!IS_ARCHIVED && isAdmin(name, color) && (
+        {!IS_ARCHIVED && admin && (
           <button
             onClick={handleSkip}
             style={{

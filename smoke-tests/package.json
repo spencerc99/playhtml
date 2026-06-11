@@ -13,7 +13,8 @@
     "test:partykit:emergency": "node partykit/emergency-compaction-smoke.mjs",
     "test:partykit:transient": "node partykit/supabase-transient-smoke.mjs",
     "test:partykit:soak": "node partykit/multi-client-soak-smoke.mjs",
-    "install-browsers": "playwright install chromium --with-deps"
+    "install-browsers": "playwright install chromium --with-deps",
+    "test:partykit:auth": "node partykit/auth-permissions-smoke.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

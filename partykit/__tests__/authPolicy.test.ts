@@ -210,9 +210,16 @@ describe("sanitizeWellKnownConfig", () => {
     expect(config!.rules![1].update).toBe("creator");
   });
 
-  it("returns null when there are no usable rules", () => {
+  it("returns null when there are no usable rules or roles", () => {
     expect(sanitizeWellKnownConfig({ roles: {} })).toBeNull();
     expect(sanitizeWellKnownConfig("nope")).toBeNull();
+  });
+
+  it("keeps roles-only configs (UI role gating without gated elements)", () => {
+    const config = sanitizeWellKnownConfig({ roles: { admin: [validPk] } });
+    expect(config).not.toBeNull();
+    expect(config!.roles).toEqual({ admin: [validPk] });
+    expect(config!.rules).toEqual([]);
   });
 
   it("validates pk format strictly", () => {
