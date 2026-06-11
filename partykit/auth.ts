@@ -29,7 +29,67 @@ export const AUTH_STORAGE_KEYS = {
   sessions: "authSessions",
   gatedSnapshots: "gatedSnapshots",
   wellKnownPermissions: "wellKnownPermissions",
+  visits: "authVisits",
 } as const;
+
+// Visits power earned roles ({ "visits": N } in the well-known config): one
+// visit per distinct day a verified pid is seen in this room. Day buckets are
+// configurable (AUTH_VISIT_DAY_MS) so tests can compress time.
+export const DEFAULT_VISIT_DAY_MS = 24 * 60 * 60 * 1000;
+export const MAX_TRACKED_VISITORS = 5000;
+
+export interface VisitRecord {
+  /** Distinct day-buckets this pid has been seen. */
+  days: number;
+  /** The last day-bucket counted (floor(now / dayMs)). */
+  lastBucket: number;
+  firstSeen: number;
+  lastSeen: number;
+}
+
+export type VisitLog = Record<string, VisitRecord>;
+
+/**
+ * Counts a verified appearance of `pid`. Idempotent within a day bucket —
+ * reconnects and re-verifications on the same day never inflate the count.
+ * Returns the updated record (the log is mutated in place).
+ */
+export function recordVisit(
+  log: VisitLog,
+  pid: string,
+  now: number = Date.now(),
+  dayMs: number = DEFAULT_VISIT_DAY_MS,
+): VisitRecord {
+  const bucket = Math.floor(now / dayMs);
+  const existing = log[pid];
+  if (!existing) {
+    const record: VisitRecord = {
+      days: 1,
+      lastBucket: bucket,
+      firstSeen: now,
+      lastSeen: now,
+    };
+    log[pid] = record;
+    return record;
+  }
+  existing.lastSeen = now;
+  if (bucket > existing.lastBucket) {
+    existing.days += 1;
+    existing.lastBucket = bucket;
+  }
+  return existing;
+}
+
+/** Caps the visit log by dropping the least-recently-seen pids. */
+export function pruneVisitLog(
+  log: VisitLog,
+  max: number = MAX_TRACKED_VISITORS,
+): VisitLog {
+  const entries = Object.entries(log);
+  if (entries.length <= max) return log;
+  entries.sort((a, b) => b[1].lastSeen - a[1].lastSeen);
+  return Object.fromEntries(entries.slice(0, max));
+}
 
 /** Yjs transaction origin marking server-authoritative gated writes. */
 export const GATED_WRITE_ORIGIN = "__playhtml_gated__";
@@ -279,12 +339,14 @@ export function evaluateGatedWrite(args: {
   roomPath: string | undefined;
   elementId: string;
   pid: string | undefined;
+  /** Server-counted distinct visit days for this pid (earned roles). */
+  visitDays?: number;
   currentData: unknown;
   incomingData: unknown;
 }): GatedWriteVerdict {
-  const { rules, roles, roomPath, elementId, pid, currentData, incomingData } =
+  const { rules, roles, roomPath, elementId, pid, visitDays, currentData, incomingData } =
     args;
-  const principal = { pid, verified: pid !== undefined };
+  const principal = { pid, verified: pid !== undefined, visitDays };
   const check = (required: ReturnType<typeof requiredRolesForAction>) =>
     required === null ||
     satisfiesRole(required, principal, roles, {

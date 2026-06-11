@@ -78,6 +78,7 @@ import {
 import {
   AUTH_SESSION_TTL_MS,
   AUTH_STORAGE_KEYS,
+  DEFAULT_VISIT_DAY_MS,
   GATED_WRITE_ORIGIN,
   collectChangedElementIds,
   createChallenge,
@@ -88,11 +89,14 @@ import {
   isWellKnownCacheFresh,
   parseRoomName,
   pruneSessions,
+  pruneVisitLog,
+  recordVisit,
   verifyChallengeResponse,
   MAX_GATED_WRITE_BYTES,
   type AuthSessions,
   type GatedSnapshots,
   type PendingChallenge,
+  type VisitLog,
   type WellKnownCacheEntry,
 } from "./auth";
 import type {
@@ -108,12 +112,14 @@ const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
 const AUTH_CHALLENGE_STATE_KEY = "__playhtmlAuthChallenge";
 const AUTH_VERIFIED_PID_STATE_KEY = "__playhtmlVerifiedPid";
+const AUTH_VISIT_DAYS_STATE_KEY = "__playhtmlVisitDays";
 
 type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
   [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
   [AUTH_CHALLENGE_STATE_KEY]?: PendingChallenge | null;
   [AUTH_VERIFIED_PID_STATE_KEY]?: string | null;
+  [AUTH_VISIT_DAYS_STATE_KEY]?: number | null;
 };
 
 type CompactedDocument = {
@@ -2080,7 +2086,11 @@ export class PartyServer extends YServer {
 
   private setConnectionAuthState(
     connection: Party.Connection,
-    updates: { challenge?: PendingChallenge | null; verifiedPid?: string | null }
+    updates: {
+      challenge?: PendingChallenge | null;
+      verifiedPid?: string | null;
+      visitDays?: number | null;
+    }
   ): void {
     const authConnection =
       connection as Party.Connection<PartyServerConnectionState>;
@@ -2091,8 +2101,35 @@ export class PartyServer extends YServer {
       if ("challenge" in updates) next[AUTH_CHALLENGE_STATE_KEY] = updates.challenge;
       if ("verifiedPid" in updates)
         next[AUTH_VERIFIED_PID_STATE_KEY] = updates.verifiedPid;
+      if ("visitDays" in updates)
+        next[AUTH_VISIT_DAYS_STATE_KEY] = updates.visitDays;
       return next;
     });
+  }
+
+  private getConnectionVisitDays(connection: Party.Connection): number | undefined {
+    const state = (connection as Party.Connection<PartyServerConnectionState>)
+      .state;
+    const value = state?.[AUTH_VISIT_DAYS_STATE_KEY];
+    return typeof value === "number" ? value : undefined;
+  }
+
+  private getVisitDayMs(): number {
+    return readPositiveNumberEnv("AUTH_VISIT_DAY_MS", DEFAULT_VISIT_DAY_MS);
+  }
+
+  /**
+   * Counts a verified appearance toward earned roles ({ "visits": N }):
+   * one per distinct day per pid, persisted in DO storage.
+   */
+  private async recordVerifiedVisit(pid: string): Promise<number> {
+    const log =
+      ((await this.ctx.storage.get(AUTH_STORAGE_KEYS.visits)) as
+        | VisitLog
+        | undefined) ?? {};
+    const record = recordVisit(log, pid, Date.now(), this.getVisitDayMs());
+    await this.ctx.storage.put(AUTH_STORAGE_KEYS.visits, pruneVisitLog(log));
+    return record.days;
   }
 
   /** The cryptographically verified pid for a connection, or null. */
@@ -2145,13 +2182,21 @@ export class PartyServer extends YServer {
     sessions[token] = { pid: message.pid, expiresAt };
     await this.setAuthSessions(sessions);
 
+    const visitDays = await this.recordVerifiedVisit(message.pid);
     this.setConnectionAuthState(sender, {
       challenge: null,
       verifiedPid: message.pid,
+      visitDays,
     });
     this.sendCustomMessage(
       sender,
-      JSON.stringify({ type: "auth_ok", pid: message.pid, token, expiresAt })
+      JSON.stringify({
+        type: "auth_ok",
+        pid: message.pid,
+        token,
+        expiresAt,
+        stats: { visitDays },
+      })
     );
   }
 
@@ -2173,9 +2218,11 @@ export class PartyServer extends YServer {
       return;
     }
 
+    const visitDays = await this.recordVerifiedVisit(record.pid);
     this.setConnectionAuthState(sender, {
       challenge: null,
       verifiedPid: record.pid,
+      visitDays,
     });
     this.sendCustomMessage(
       sender,
@@ -2184,6 +2231,7 @@ export class PartyServer extends YServer {
         pid: record.pid,
         token: message.token,
         expiresAt: record.expiresAt,
+        stats: { visitDays },
       })
     );
   }
@@ -2255,6 +2303,7 @@ export class PartyServer extends YServer {
       roomPath,
       elementId: message.elementId,
       pid: pid ?? undefined,
+      visitDays: this.getConnectionVisitDays(sender),
       currentData: this.readElementData(message.tag, message.elementId),
       incomingData: message.data,
     });

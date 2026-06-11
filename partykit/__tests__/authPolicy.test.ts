@@ -8,6 +8,8 @@ import {
   isChallengeExpired,
   verifyChallengeResponse,
   pruneSessions,
+  pruneVisitLog,
+  recordVisit,
   evaluateGatedWrite,
   isElementGated,
   collectChangedElementIds,
@@ -248,6 +250,90 @@ describe("sanitizeWellKnownConfig", () => {
     });
     expect(config).not.toBeNull();
     expect(config!.rules!.map((r) => r.match)).toEqual(["real-id"]);
+  });
+});
+
+describe("earned roles (visit-counted)", () => {
+  const visitorPk = "pk_" + "dd".repeat(65);
+  const DAY = 1000;
+
+  it("counts one visit per day bucket, idempotent within a day", () => {
+    const log = {};
+    expect(recordVisit(log, visitorPk, 0, DAY).days).toBe(1);
+    expect(recordVisit(log, visitorPk, 500, DAY).days).toBe(1); // same day
+    expect(recordVisit(log, visitorPk, 1200, DAY).days).toBe(2); // next day
+    expect(recordVisit(log, visitorPk, 1300, DAY).days).toBe(2);
+    expect(recordVisit(log, visitorPk, 5000, DAY).days).toBe(3);
+  });
+
+  it("prunes the least-recently-seen pids past the cap", () => {
+    const log = {};
+    recordVisit(log, "pk_old", 100, DAY);
+    recordVisit(log, "pk_new", 5000, DAY);
+    const pruned = pruneVisitLog(log, 1);
+    expect(Object.keys(pruned)).toEqual(["pk_new"]);
+  });
+
+  it("satisfiesRole honors { visits: N } via principal.visitDays", () => {
+    const roles = { returning: { visits: 2 }, regular: { visits: 5 } };
+    expect(
+      satisfiesRole("returning", { pid: visitorPk, verified: true, visitDays: 2 }, roles)
+    ).toBe(true);
+    expect(
+      satisfiesRole("returning", { pid: visitorPk, verified: true, visitDays: 1 }, roles)
+    ).toBe(false);
+    // unverified principals never have server-attested visitDays
+    expect(
+      satisfiesRole("returning", { pid: visitorPk, verified: false }, roles)
+    ).toBe(false);
+    expect(
+      satisfiesRole("regular", { pid: visitorPk, verified: true, visitDays: 7 }, roles)
+    ).toBe(true);
+  });
+
+  it("sanitizer accepts { visits: N } role definitions and drops junk", () => {
+    const config = sanitizeWellKnownConfig({
+      roles: {
+        returning: { visits: 2 },
+        broken: { visits: "lots" },
+        zero: { visits: 0 },
+      },
+      elements: { guestbook: "create:returning" },
+    });
+    expect(config).not.toBeNull();
+    expect(config!.roles).toEqual({ returning: { visits: 2 } });
+  });
+
+  it("gates entry creation behind earned visits in evaluateGatedWrite", () => {
+    const rules = [
+      { match: "guestbook", create: "returning", update: "creator" },
+    ];
+    const roles = { returning: { visits: 2 } };
+
+    const firstDay = evaluateGatedWrite({
+      rules,
+      roles,
+      roomPath: undefined,
+      elementId: "guestbook",
+      pid: visitorPk,
+      visitDays: 1,
+      currentData: {},
+      incomingData: { e1: { text: "hi" } },
+    });
+    expect(firstDay.ok).toBe(false);
+
+    const secondDay = evaluateGatedWrite({
+      rules,
+      roles,
+      roomPath: undefined,
+      elementId: "guestbook",
+      pid: visitorPk,
+      visitDays: 2,
+      currentData: {},
+      incomingData: { e1: { text: "hi" } },
+    });
+    expect(secondDay.ok).toBe(true);
+    expect((secondDay as any).data.e1.createdBy).toBe(visitorPk);
   });
 });
 

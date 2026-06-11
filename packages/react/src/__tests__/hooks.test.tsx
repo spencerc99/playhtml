@@ -205,6 +205,7 @@ describe("usePlayerIdentity", () => {
       name: "ada",
       verified: false,
       roles: [],
+      visitDays: undefined,
     });
   });
 
@@ -220,6 +221,7 @@ describe("usePlayerIdentity", () => {
       name: undefined,
       verified: false,
       roles: [],
+      visitDays: undefined,
     });
   });
 

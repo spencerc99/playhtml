@@ -14,13 +14,16 @@
     "`bun dev-server` so the local partykit server can fetch and enforce it."
   ],
   "roles": {
-    "admin": ["pk_REPLACE_WITH_YOUR_PID_FROM_playhtml.me.pid"]
+    "admin": ["pk_REPLACE_WITH_YOUR_PID_FROM_playhtml.me.pid"],
+    "returning": { "visits": 2 },
+    "regular": { "visits": 5 }
   },
   "elements": {
     "locked-title": "write:admin",
     "playground-notes": "create:verified, update:creator, delete:creator|admin",
     "community-garden": "create:verified, update:creator, delete:creator|admin",
     "shop-sign": "write:admin",
-    "shop-marquee": "write:admin"
+    "shop-marquee": "write:admin",
+    "village-guestbook": "create:returning, update:creator, delete:creator|regular|admin"
   }
 }

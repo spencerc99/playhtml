@@ -168,8 +168,33 @@ export interface PermissionRule {
   delete?: RoleRef;
 }
 
-/** Role membership in enforceable configs is always an explicit pk list. */
-export type EnforceableRoles = Record<string, string[]>;
+/**
+ * A role that members EARN by showing up: held by any verified identity the
+ * server has seen in this room on at least `visits` distinct days. Visits are
+ * counted server-side (once per day per verified pid per room), so they can't
+ * be spoofed by clearing localStorage or hammering reconnects. This is how
+ * "stages of trust" accrue naturally — e.g. write access after a return
+ * visit, moderation after becoming a regular.
+ */
+export interface EarnedRoleCondition {
+  visits: number;
+}
+
+export type EnforceableRoleDefinition = string[] | EarnedRoleCondition;
+
+export function isEarnedRoleCondition(
+  definition: EnforceableRoleDefinition | undefined,
+): definition is EarnedRoleCondition {
+  return (
+    typeof definition === "object" &&
+    definition !== null &&
+    !Array.isArray(definition) &&
+    typeof (definition as EarnedRoleCondition).visits === "number"
+  );
+}
+
+/** Role definitions in enforceable configs: explicit pk lists or earned conditions. */
+export type EnforceableRoles = Record<string, EnforceableRoleDefinition>;
 
 /**
  * Shape of https://<domain>/.well-known/playhtml.json — the domain-bound
@@ -311,6 +336,11 @@ export interface PermissionPrincipal {
   verified: boolean;
   /** True when the actor is the recorded creator of the targeted entry. */
   isCreator?: boolean;
+  /**
+   * Distinct days the server has seen this verified pid in the room.
+   * Server-attested (reported in auth_ok); used by earned-role conditions.
+   */
+  visitDays?: number;
 }
 
 /**
@@ -338,8 +368,18 @@ export function satisfiesRole(
       }
       continue;
     }
-    const members = roles[roleName];
-    if (members && principal.pid && members.includes(principal.pid)) {
+    const definition = roles[roleName];
+    if (isEarnedRoleCondition(definition)) {
+      // Earned roles only exist through verified, server-counted visits.
+      if (
+        principal.visitDays !== undefined &&
+        principal.visitDays >= definition.visits
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (definition && principal.pid && definition.includes(principal.pid)) {
       if (!options.requireVerifiedForKeyRoles || principal.verified) return true;
     }
   }
@@ -382,12 +422,21 @@ export function sanitizeWellKnownConfig(
 
   const roles: EnforceableRoles = {};
   if (typeof input.roles === "object" && input.roles !== null) {
-    for (const [name, members] of Object.entries(input.roles)) {
-      if (!Array.isArray(members)) continue;
-      const pks = members
-        .filter((m): m is string => typeof m === "string" && isVerifiablePublicKey(m))
-        .slice(0, maxRoleMembers);
-      roles[name] = pks;
+    for (const [name, definition] of Object.entries(input.roles)) {
+      if (Array.isArray(definition)) {
+        roles[name] = definition
+          .filter(
+            (m): m is string => typeof m === "string" && isVerifiablePublicKey(m),
+          )
+          .slice(0, maxRoleMembers);
+      } else if (
+        typeof definition === "object" &&
+        definition !== null &&
+        typeof (definition as { visits?: unknown }).visits === "number" &&
+        (definition as { visits: number }).visits >= 1
+      ) {
+        roles[name] = { visits: Math.floor((definition as { visits: number }).visits) };
+      }
     }
   }
 
@@ -491,6 +540,11 @@ export interface AuthOkMessage {
   pid: string;
   token: string;
   expiresAt: number;
+  /** Server-attested attendance stats for this pid in this room. */
+  stats?: {
+    /** Distinct days this verified pid has been seen here (today counts). */
+    visitDays: number;
+  };
 }
 
 export interface AuthErrorMessage {

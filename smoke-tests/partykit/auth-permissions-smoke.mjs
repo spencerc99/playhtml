@@ -5,6 +5,11 @@
 //   SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
 //     bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 --var SUPABASE_LOAD_TIMEOUT_MS:200 &
 //   PARTYKIT_HOST=localhost:1999 node smoke-tests/partykit/auth-permissions-smoke.mjs
+//
+// To exercise earned roles (visit accrual), launch wrangler with a compressed
+// day bucket and tell the test about it:
+//   ... --var AUTH_VISIT_DAY_MS:1500
+//   SMOKE_VISIT_DAY_MS=1500 node smoke-tests/partykit/auth-permissions-smoke.mjs
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -99,12 +104,29 @@ function attachAuthClient(provider, identity, label) {
       }, timeoutMs);
       client.waiters.push({ matches, resolve: resolveWait, timer });
     });
+  // Like waitFor, but only matches messages arriving AFTER this call.
+  client.waitForNext = (type, predicate = () => true, timeoutMs = 10_000) =>
+    new Promise((resolveWait, reject) => {
+      const matches = (m) => m.type === type && predicate(m);
+      const timer = setTimeout(() => {
+        reject(new Error(`${label}: timed out waiting for next "${type}"`));
+      }, timeoutMs);
+      client.waiters.push({ matches, resolve: resolveWait, timer });
+    });
   client.send = (message) => provider.sendMessage(JSON.stringify(message));
   return client;
 }
 
-async function verifyClient(client, origin) {
-  const challenge = await client.waitFor("auth_challenge");
+async function verifyClient(client, origin, { fresh = false } = {}) {
+  let challenge;
+  if (fresh) {
+    // Re-verification: ask for a new challenge and answer only that one.
+    const next = client.waitForNext("auth_challenge");
+    client.send({ type: "auth_request" });
+    challenge = await next;
+  } else {
+    challenge = await client.waitFor("auth_challenge");
+  }
   const payload = buildAuthChallengePayload({
     nonce: challenge.nonce,
     roomId: challenge.roomId,
@@ -112,13 +134,17 @@ async function verifyClient(client, origin) {
     ts: challenge.ts,
   });
   const signature = await signAuthPayload(client.identity.privateKey, payload);
+  const okPromise = client.waitForNext(
+    "auth_ok",
+    (m) => m.pid === client.identity.pid
+  );
   client.send({
     type: "auth_response",
     pid: client.identity.pid,
     origin,
     signature,
   });
-  return client.waitFor("auth_ok", (m) => m.pid === client.identity.pid);
+  return okPromise;
 }
 
 async function gatedWrite(client, tag, elementId, data) {
@@ -144,10 +170,16 @@ async function main() {
 
   // --- 1. Serve the domain's .well-known/playhtml.json
   const wellKnown = {
-    roles: { admin: [admin.pid] },
+    roles: {
+      admin: [admin.pid],
+      returning: { visits: 2 },
+      regular: { visits: 3 },
+    },
     elements: {
       "site-title": "write:admin",
       "guestbook": "create:verified, update:creator, delete:creator|admin",
+      "village-guestbook":
+        "create:returning, update:creator, delete:creator|regular|admin",
     },
   };
   const server = createServer((req, res) => {
@@ -312,9 +344,76 @@ async function main() {
     );
 
     adminProvider.destroy();
-    visitorProvider.destroy();
     adminProvider2.destroy();
     badProvider.destroy();
+
+    // --- 11. earned roles: standing accrues from server-counted visits
+    const visitDayMs = Number(process.env.SMOKE_VISIT_DAY_MS || 0);
+    if (visitDayMs > 0) {
+      console.log("\n[9] earned roles (visit accrual)");
+      // The visitor verified once above — day 1. A returning-gated create
+      // must be rejected today.
+      const dayOne = await gatedWrite(visitorClient, "can-play", "village-guestbook", {
+        e1: { text: "first day hello" },
+      });
+      check("day-1 visitor can't sign (create:returning)", dayOne.ok === false, dayOne.reason);
+
+      // Next "day": re-verify to record a second visit.
+      await sleep(visitDayMs + 300);
+      const day2 = await verifyClient(visitorClient, origin, { fresh: true });
+      check("second visit counted", day2.stats?.visitDays === 2, JSON.stringify(day2.stats));
+
+      const dayTwo = await gatedWrite(visitorClient, "can-play", "village-guestbook", {
+        e1: { text: "back again!" },
+      });
+      check("day-2 visitor can sign", dayTwo.ok === true, dayTwo.reason);
+
+      // Day 3: the visitor becomes a regular and can sweep up others' entries.
+      await sleep(visitDayMs + 300);
+      const day3 = await verifyClient(visitorClient, origin, { fresh: true });
+      check("third visit counted", day3.stats?.visitDays === 3, JSON.stringify(day3.stats));
+
+      // A stranger earns signing rights (2 visits) and adds an entry.
+      const stranger = await makeIdentity();
+      const strangerDoc = new Y.Doc();
+      const strangerProvider = connectRoom(PARTYKIT_HOST, ROOM_ID, strangerDoc);
+      const strangerClient = attachAuthClient(strangerProvider, stranger, "stranger");
+      await waitForSync(strangerProvider, "stranger");
+      await verifyClient(strangerClient, origin);
+      await sleep(visitDayMs + 300);
+      await verifyClient(strangerClient, origin, { fresh: true }); // day 2 -> can sign
+      const strangerEntry = await gatedWrite(
+        strangerClient,
+        "can-play",
+        "village-guestbook",
+        {
+          e1: { text: "back again!", createdBy: visitor.pid },
+          s1: { text: "stranger was here" },
+        }
+      );
+      check("returning stranger can add their entry", strangerEntry.ok === true, strangerEntry.reason);
+
+      // The regular (visitor, 3 visits) sweeps up the stranger's entry.
+      const sweep = await gatedWrite(visitorClient, "can-play", "village-guestbook", {
+        e1: { text: "back again!", createdBy: visitor.pid },
+      });
+      check("regular can sweep up someone else's entry", sweep.ok === true, sweep.reason);
+
+      // But a mere returning visitor (stranger, 2 visits) can't sweep others'.
+      const failedSweep = await gatedWrite(strangerClient, "can-play", "village-guestbook", {});
+      check(
+        "returning visitor can't sweep others' entries",
+        failedSweep.ok === false,
+        failedSweep.reason
+      );
+      strangerProvider.destroy();
+    } else {
+      console.log(
+        "\n[9] earned roles SKIPPED — set SMOKE_VISIT_DAY_MS and launch wrangler with --var AUTH_VISIT_DAY_MS:<ms>"
+      );
+    }
+
+    visitorProvider.destroy();
   } finally {
     server.close();
   }

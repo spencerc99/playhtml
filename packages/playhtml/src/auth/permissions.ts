@@ -13,6 +13,7 @@ import type {
 } from "@playhtml/common";
 import {
   PERMISSION_ACTIONS,
+  isEarnedRoleCondition,
   looksLikeCssSelector,
   matchesRulePattern,
   normalizeElementRules,
@@ -56,6 +57,12 @@ export interface MeState {
   source: PlayerIdentity["source"];
   verified: boolean;
   roles: string[];
+  /**
+   * Distinct days the server has seen this verified identity in the room
+   * (server-attested; undefined until the handshake completes). Powers
+   * earned roles like `{ "visits": 2 }`.
+   */
+  visitDays: number | undefined;
   /** True when `entry.createdBy` is this player's pid. */
   owns: (entry: unknown) => boolean;
 }
@@ -67,6 +74,8 @@ interface PermissionsState {
   serverStatus: PermissionsStatusMessage | null;
   identity: PlayerIdentity | null;
   verified: boolean;
+  /** Server-attested distinct visit days (from auth_ok). */
+  visitDays: number | undefined;
   resolvedRoles: string[];
 }
 
@@ -76,6 +85,7 @@ const state: PermissionsState = {
   serverStatus: null,
   identity: null,
   verified: false,
+  visitDays: undefined,
   resolvedRoles: [],
 };
 
@@ -142,6 +152,16 @@ export function setVerified(verified: boolean): void {
   );
 }
 
+/** Records the server-attested visit count (arrives with auth_ok). */
+export function setVisitDays(visitDays: number): void {
+  if (state.visitDays === visitDays) return;
+  state.visitDays = visitDays;
+  resolveRoles();
+  document.dispatchEvent(
+    new CustomEvent(IDENTITY_CHANGE_EVENT, { detail: getMe() }),
+  );
+}
+
 export function getMe(): MeState {
   const pid = state.identity?.publicKey;
   return {
@@ -149,6 +169,7 @@ export function getMe(): MeState {
     name: state.identity?.name,
     source: state.identity?.source,
     verified: state.verified,
+    visitDays: state.visitDays,
     roles: [...state.resolvedRoles],
     owns: (entry: unknown) =>
       pid !== undefined &&
@@ -170,6 +191,7 @@ export function __resetPermissionsForTests(): void {
   state.serverStatus = null;
   state.identity = null;
   state.verified = false;
+  state.visitDays = undefined;
   state.resolvedRoles = [];
 }
 
@@ -202,21 +224,40 @@ function resolveRoles(): void {
     }
   }
 
-  for (const [name, members] of Object.entries(state.serverStatus?.roles ?? {})) {
-    if (pid && members.includes(pid)) roles.add(name);
+  for (const [name, definition] of Object.entries(
+    state.serverStatus?.roles ?? {},
+  )) {
+    if (isEarnedRoleCondition(definition)) {
+      if (state.visitDays !== undefined && state.visitDays >= definition.visits) {
+        roles.add(name);
+      }
+    } else if (pid && definition.includes(pid)) {
+      roles.add(name);
+    }
   }
 
   state.resolvedRoles = Array.from(roles);
 }
 
-/** Key-list roles resolvable client-side, merged from config + server status. */
+/** Roles resolvable client-side, merged from config + server status. */
 function combinedKeyRoles(): EnforceableRoles {
   const combined: EnforceableRoles = {};
   for (const [name, definition] of Object.entries(state.config.roles ?? {})) {
     if (Array.isArray(definition)) combined[name] = definition;
   }
-  for (const [name, members] of Object.entries(state.serverStatus?.roles ?? {})) {
-    combined[name] = [...(combined[name] ?? []), ...members];
+  for (const [name, definition] of Object.entries(
+    state.serverStatus?.roles ?? {},
+  )) {
+    if (isEarnedRoleCondition(definition)) {
+      // Earned conditions come only from the server (it counts the visits).
+      combined[name] = definition;
+    } else {
+      const existing = combined[name];
+      combined[name] = [
+        ...(Array.isArray(existing) ? existing : []),
+        ...definition,
+      ];
+    }
   }
   return combined;
 }
@@ -323,6 +364,7 @@ export function can(
   const principal = {
     pid,
     verified: state.verified,
+    visitDays: state.visitDays,
     isCreator: creator !== undefined && creator === pid,
   };
 

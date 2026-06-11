@@ -54,14 +54,23 @@ The same rules arrive in the browser automatically, so `can()`, disabled buttons
 - **Roles:** `anyone` (default), `verified` (proved key ownership), `creator` (the pid stamped on an entry at create time), any name you define under `roles`, or a **raw `pk_…` key** — so single-owner sites need no role definitions at all.
 - **Targets:** an element id (leading `#` optional) or a trailing-`*` glob (`note-*`). Scope a rule to one page with the rule-object form: `"rules": [{ "path": "/wall", "match": "site-title", "write": "admin" }]`.
 
-Named roles, when you want them:
+Named roles, when you want them — defined as explicit key lists **or earned by showing up**:
 
 ```json
 {
-  "roles": { "admin": ["pk_04a1…", "pk_9bb2…"] },
-  "elements": { "site-title": "write:admin" }
+  "roles": {
+    "admin": ["pk_04a1…", "pk_9bb2…"],
+    "returning": { "visits": 2 },
+    "regular": { "visits": 5 }
+  },
+  "elements": {
+    "site-title": "write:admin",
+    "guestbook": "create:returning, update:creator, delete:creator|regular|admin"
+  }
 }
 ```
+
+`{ "visits": N }` grants the role to any verified identity the server has seen in the room on at least N **distinct days** (counted server-side against the key, once per day — uninflatable by reconnecting or clearing storage). This is how standing accrues naturally: read on your first visit, write once you've returned, moderate once you're a regular. The server reports your count in `playhtml.me.visitDays` after the handshake.
 
 ### Other places to declare rules
 
@@ -117,9 +126,10 @@ When a write is denied, `setData` becomes a no-op and the element fires a `permi
 
 ## Trying it locally
 
-Three live examples on this site exercise the whole system (their rules live in [`/.well-known/playhtml.json`](https://playhtml.fun/.well-known/playhtml.json)):
+Four live examples on this site exercise the whole system (their rules live in [`/.well-known/playhtml.json`](https://playhtml.fun/.well-known/playhtml.json)):
 
 - [`/permissions`](https://playhtml.fun/permissions) — **the locked room**: identity panel, an admin-gated title, creator-owned notes, and a live event log. The best place to watch the handshake and denials happen.
+- [`/guestbook`](https://playhtml.fun/guestbook) — **the village guestbook**: the canonical earned-roles example. Visitors read, returning visitors (2 days) sign, regulars (5 days) sweep up after others, and the keeper's key can do anything — including changing the rules, which is just editing the well-known file.
 - [`/garden`](https://playhtml.fun/garden) — **community garden**: claim a plot (one per pid), water only your own plant (`update:creator`).
 - [`/shop`](https://playhtml.fun/shop) — **the corner shop**: a single owner key gates the sign and marquee; the doorbell stays open to everyone.
 
@@ -136,9 +146,12 @@ The end-to-end protocol suite (handshake, gated writes, entry ownership, backsto
 
 ```bash
 SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
-  bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 --var SUPABASE_LOAD_TIMEOUT_MS:200 &
-bun run smoke:partykit:auth
+  bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 \
+  --var SUPABASE_LOAD_TIMEOUT_MS:200 --var AUTH_VISIT_DAY_MS:1500 &
+SMOKE_VISIT_DAY_MS=1500 bun run smoke:partykit:auth
 ```
+
+(`AUTH_VISIT_DAY_MS` compresses the visit "day" so the earned-roles ladder can be exercised in seconds.)
 
 ## Notes & limits
 

@@ -192,6 +192,8 @@ export function usePlayerIdentity(): {
   name: string | undefined;
   verified: boolean;
   roles: string[];
+  /** Server-attested distinct days seen in this room (earned roles). */
+  visitDays: number | undefined;
 } {
   const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
   const me = useMeState();
@@ -201,6 +203,7 @@ export function usePlayerIdentity(): {
     name: cursors.name,
     verified: me?.verified ?? false,
     roles: me?.roles ?? [],
+    visitDays: me?.visitDays,
   };
 }
 

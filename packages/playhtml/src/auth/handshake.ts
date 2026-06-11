@@ -14,6 +14,7 @@ import { signChallengeForPid } from "./identity";
 import {
   setServerPermissionsStatus,
   setVerified,
+  setVisitDays,
   dispatchPermissionDenied,
 } from "./permissions";
 
@@ -159,6 +160,9 @@ async function handleChallenge(message: AuthChallengeMessage): Promise<void> {
 function handleAuthOk(message: AuthOkMessage): void {
   if (!context) return;
   storeToken(context.roomId, message.token);
+  if (typeof message.stats?.visitDays === "number") {
+    setVisitDays(message.stats.visitDays);
+  }
   setVerified(true);
   settleVerification(true);
 }

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="a village guestbook where trust accrues naturally — read on your first visit, sign when you return, sweep up once you're a regular"
+    />
+    <meta name="og:image" content="https://playhtml.fun/playhtml.png" />
+    <title>the village guestbook · playhtml</title>
+    <style>
+      body {
+        font-family: Georgia, serif;
+        background: #f5efe2;
+        color: #3a3022;
+        max-width: 680px;
+        margin: 2em auto;
+        padding: 0 1em;
+      }
+      h1 { font-size: 1.6em; font-style: italic; }
+      .hint { font-size: 0.88em; opacity: 0.75; }
+      #ladder {
+        display: flex;
+        gap: 0.4em;
+        flex-wrap: wrap;
+        margin: 1.2em 0;
+        font-size: 0.8em;
+        font-family: monospace;
+      }
+      .rung {
+        border: 1px solid #b5a585;
+        border-radius: 6px;
+        padding: 0.45em 0.7em;
+        background: #fffdf6;
+        opacity: 0.55;
+        flex: 1;
+        min-width: 130px;
+      }
+      .rung.held { opacity: 1; border-color: #3a3022; box-shadow: 2px 2px 0 #b5a585; }
+      .rung.next { opacity: 0.8; border-style: dashed; }
+      .rung b { display: block; }
+      #standing { font-family: monospace; font-size: 0.85em; margin: 0.8em 0; }
+      #village-guestbook { margin: 1.5em 0; }
+      .entry {
+        border-bottom: 1px dotted #b5a585;
+        padding: 0.7em 0.2em;
+        position: relative;
+      }
+      .entry .meta { font-size: 0.72em; font-family: monospace; opacity: 0.6; }
+      .entry .msg { margin: 0.2em 0; }
+      .entry .tools { position: absolute; right: 0; top: 0.6em; }
+      .entry .tools button {
+        font-size: 0.75em;
+        font-family: monospace;
+        cursor: pointer;
+        background: none;
+        border: 1px solid #b5a585;
+        border-radius: 4px;
+      }
+      #sign-box { display: flex; gap: 0.5em; margin: 1em 0; flex-wrap: wrap; }
+      #sign-box input { flex: 1; min-width: 120px; font-family: inherit; padding: 0.4em; }
+      #sign-box button { font-family: monospace; cursor: pointer; padding: 0.4em 1em; }
+      #sign-box button:disabled { opacity: 0.45; cursor: not-allowed; }
+      #sign-note { font-size: 0.8em; font-family: monospace; opacity: 0.75; }
+      .denied { animation: shake 0.35s; }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+      }
+      #keeper-note {
+        border: 1px dashed #b5a585;
+        border-radius: 8px;
+        padding: 0.8em;
+        font-size: 0.8em;
+        font-family: monospace;
+        margin-top: 2em;
+        opacity: 0.85;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>📖 the village guestbook</h1>
+    <p class="hint">
+      a guestbook where standing <em>accrues naturally</em>, the way it does in
+      a real place. nobody signs up for anything — the room simply remembers
+      who keeps coming back. the playhtml server counts your visits against
+      your key (one per day), so the ladder can't be climbed by clearing
+      cookies or refreshing furiously.
+    </p>
+
+    <div id="ladder">
+      <div class="rung" data-rung="visitor"><b>🌒 visitor</b>day one — read the book</div>
+      <div class="rung" data-rung="returning"><b>🌓 returning</b>2nd day — sign the book</div>
+      <div class="rung" data-rung="regular"><b>🌕 regular</b>5th day — sweep up after others</div>
+      <div class="rung" data-rung="keeper"><b>🗝️ keeper</b>holds the deed — anything, incl. the rules</div>
+    </div>
+    <p id="standing">checking your standing…</p>
+
+    <div id="village-guestbook"></div>
+
+    <div id="sign-box">
+      <input id="sign-name" placeholder="your name" maxlength="40" />
+      <input id="sign-message" placeholder="leave a few words…" maxlength="200" />
+      <button id="sign-btn">sign</button>
+    </div>
+    <p id="sign-note"></p>
+
+    <div id="keeper-note">
+      the keeper's powers (and everyone's) live in
+      <a href="/.well-known/playhtml.json" target="_blank">/.well-known/playhtml.json</a>
+      — the deed to this room. changing the rules <em>is</em> editing that
+      file: raise the bar to regulars-only signing, add a second keeper's key,
+      or lower the ladder entirely. the server re-reads it within minutes.
+    </div>
+
+    <script type="module" src="./guestbook.ts"></script>
+  </body>
+</html>
