@@ -103,6 +103,10 @@ export abstract class BaseCollector<T = unknown> {
   setRealTimeCallback(callback: (data: T) => void): void {
     this.onRealTimeCallback = callback;
   }
+
+  protected hasRealTimeCallback(): boolean {
+    return this.onRealTimeCallback !== undefined;
+  }
   
   /**
    * Emit an event to both buffers (archival) and real-time streams

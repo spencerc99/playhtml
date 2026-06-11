@@ -33,6 +33,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private cursorChangeTimer: number | null = null;
   private cursorChangeDebounce = 500; // ms - debounce rapid cursor style changes
   private pendingCursorStyle: string | undefined;
+  private lastCursorStyleTarget: HTMLElement | null = null;
 
   // Last sampled position (for movement threshold)
   private lastSampledX = 0;
@@ -78,24 +79,28 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         // Create a simple selector (tag + id/class if available)
         this.currentTarget = getElementSelector(target);
 
-        // Detect cursor style changes (debounced)
-        const computedStyle = window.getComputedStyle(target);
-        const cursorStyle = computedStyle.cursor || 'auto';
-        this.currentCursorStyle = cursorStyle;
+        if (target !== this.lastCursorStyleTarget) {
+          this.lastCursorStyleTarget = target;
 
-        if (this.lastCursorStyle === undefined) {
-          this.lastCursorStyle = cursorStyle;
-        } else if (this.lastCursorStyle !== cursorStyle) {
-          this.pendingCursorStyle = cursorStyle;
-          if (this.cursorChangeTimer === null) {
-            this.cursorChangeTimer = window.setTimeout(() => {
-              this.cursorChangeTimer = null;
-              // Only emit if cursor actually settled on a different style
-              if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
-                this.lastCursorStyle = this.pendingCursorStyle;
-                this.emitCursorChangeEvent();
-              }
-            }, this.cursorChangeDebounce);
+          // Detect cursor style changes (debounced)
+          const computedStyle = window.getComputedStyle(target);
+          const cursorStyle = computedStyle.cursor || 'auto';
+          this.currentCursorStyle = cursorStyle;
+
+          if (this.lastCursorStyle === undefined) {
+            this.lastCursorStyle = cursorStyle;
+          } else if (this.lastCursorStyle !== cursorStyle) {
+            this.pendingCursorStyle = cursorStyle;
+            if (this.cursorChangeTimer === null) {
+              this.cursorChangeTimer = window.setTimeout(() => {
+                this.cursorChangeTimer = null;
+                // Only emit if cursor actually settled on a different style
+                if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
+                  this.lastCursorStyle = this.pendingCursorStyle;
+                  this.emitCursorChangeEvent();
+                }
+              }, this.cursorChangeDebounce);
+            }
           }
         }
       }
@@ -174,8 +179,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
     document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
     
-    // Start animation frame loop for real-time updates
-    this.startRealTimeLoop();
+    if (this.hasRealTimeCallback()) {
+      this.startRealTimeLoop();
+    }
     if (VERBOSE) {
       console.log('[CursorCollector] Started successfully');
     }
@@ -300,6 +306,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     };
     
     // Emit to real-time stream (PartyKit)
+    if (!this.hasRealTimeCallback()) return;
     this.emitRealTime(data);
   }
   

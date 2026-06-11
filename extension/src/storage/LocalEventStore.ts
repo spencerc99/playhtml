@@ -932,8 +932,9 @@ export class LocalEventStore {
     agg: DomainStatsAggregate,
     events: CollectionEvent[],
   ): void {
-    const urlSet = new Set(agg.uniqueUrls);
-    const processedSet = new Set(agg.processedNavIds);
+    const hasNavigationEvents = events.some((evt) => evt.type === "navigation");
+    const urlSet = hasNavigationEvents ? new Set(agg.uniqueUrls) : null;
+    const processedSet = hasNavigationEvents ? new Set(agg.processedNavIds) : null;
     agg.storageSizeBytes ??= 0;
 
     for (const evt of events) {
@@ -945,11 +946,12 @@ export class LocalEventStore {
       if (evt.ts > agg.lastVisit) {
         agg.lastVisit = evt.ts;
       }
-      if (evt.meta?.url) {
+      if (urlSet && evt.meta?.url) {
         urlSet.add(evt.meta.url);
       }
 
       if (evt.type === "navigation") {
+        if (!processedSet) continue;
         if (processedSet.has(evt.id)) continue;
         processedSet.add(evt.id);
 
@@ -974,8 +976,12 @@ export class LocalEventStore {
       }
     }
 
-    agg.uniqueUrls = [...urlSet];
-    agg.processedNavIds = [...processedSet];
+    if (urlSet) {
+      agg.uniqueUrls = [...urlSet];
+    }
+    if (processedSet) {
+      agg.processedNavIds = [...processedSet];
+    }
   }
 
   /**
@@ -1057,7 +1063,8 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.openCursor();
+      const uploadedIndex = store.index("uploaded");
+      const request = uploadedIndex.openCursor(IDBKeyRange.only(false));
 
       const events: CollectionEvent[] = [];
 
@@ -1066,9 +1073,7 @@ export class LocalEventStore {
 
         if (cursor && events.length < limit) {
           const evt = cursor.value;
-          if (evt.uploaded !== true) {
-            events.push(evt as CollectionEvent);
-          }
+          events.push(evt as CollectionEvent);
           cursor.continue();
         } else {
           resolve(events);

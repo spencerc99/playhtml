@@ -73,6 +73,18 @@ describe("CursorCollector", () => {
   });
 
   describe("movement tracking", () => {
+    it("does not run the real-time loop without a real-time callback", () => {
+      collector.disable();
+      collector = new CursorCollector();
+      collector.setEmitCallback(emitCallback);
+      const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame");
+
+      collector.enable();
+
+      expect(requestAnimationFrameSpy).not.toHaveBeenCalled();
+      requestAnimationFrameSpy.mockRestore();
+    });
+
     it("emits move events when cursor moves beyond threshold", async () => {
       collector.enable();
 
@@ -140,6 +152,23 @@ describe("CursorCollector", () => {
 
       // Real-time callback should be called
       expect(realTimeCallback).toHaveBeenCalled();
+    });
+
+    it("reuses cursor style while the pointer stays on the same target", () => {
+      const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
+      const element = createTestElement("button", {
+        id: "steady-target",
+        cursor: "pointer",
+      });
+
+      collector.enable();
+
+      simulateMouseMove(100, 100, element);
+      simulateMouseMove(120, 120, element);
+      simulateMouseMove(140, 140, element);
+
+      expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
+      getComputedStyleSpy.mockRestore();
     });
   });
 

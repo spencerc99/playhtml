@@ -233,6 +233,7 @@ export class CollectorManager {
         collector.disable();
       }
     }
+    void this.eventBuffer.manualFlush();
   }
 
   /**

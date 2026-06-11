@@ -269,6 +269,16 @@ describe("Collector Integration", () => {
       expect(flushSpy).toHaveBeenCalled();
       flushSpy.mockRestore();
     });
+
+    it("flushes queued events when collectors stop", () => {
+      const eventBuffer = manager.getEventBuffer();
+      const flushSpy = vi.spyOn(eventBuffer, "manualFlush");
+
+      manager.stopAll();
+
+      expect(flushSpy).toHaveBeenCalled();
+      flushSpy.mockRestore();
+    });
   });
 
   describe("error handling", () => {
