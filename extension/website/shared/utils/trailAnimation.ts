@@ -43,16 +43,17 @@ export function buildStraightPathSegment(
 
 // Tuned for replayed cursor movement: the body stays a uniform width
 // (velocity-based thinning swings too wildly on real cursor data), with
-// explicit tapers at the ends for the hand-drawn feel. Low streamline keeps
-// the live head close to the cursor icon instead of lagging behind it.
+// explicit tapers at the ends for the hand-drawn feel. Near-zero streamline
+// keeps the live head glued to the cursor icon instead of lagging behind it.
 const FREEHAND_OPTIONS = {
   thinning: 0,
   smoothing: 0.5,
-  streamline: 0.25,
+  streamline: 0.05,
   simulatePressure: false,
-  start: { taper: 20 },
-  end: { taper: 20 },
 };
+
+// How many px of stroke length each end tapers over
+const END_TAPER = 20;
 
 // Converts a perfect-freehand outline polygon into a closed SVG path,
 // smoothing between outline points with quadratic midpoint curves.
@@ -72,7 +73,9 @@ function getSvgPathFromStroke(outline: number[][]): string {
 // Builds a filled freehand-stroke outline for a window of trail points. The
 // stroke width is baked into the geometry, so the result must be rendered
 // with fill rather than stroke. While the trail is still drawing
-// (isComplete: false) the head is left untapered so it tracks the cursor.
+// (isComplete: false) the head gets a blunt round cap instead of the end
+// taper — a taper would slide forward with the head and keep re-shaping
+// already-drawn ink every frame.
 export function buildFreehandPathSegment(
   points: Array<{ x: number; y: number }>,
   startIndex: number,
@@ -95,6 +98,8 @@ export function buildFreehandPathSegment(
     ...FREEHAND_OPTIONS,
     size,
     last: isComplete,
+    start: { taper: END_TAPER },
+    end: isComplete ? { taper: END_TAPER } : { taper: 0, cap: true },
   });
 
   return getSvgPathFromStroke(outline);
