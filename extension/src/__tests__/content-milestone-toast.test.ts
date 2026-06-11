@@ -110,21 +110,26 @@ describe("content milestone toasts", () => {
 
     const addListener = vi.mocked(browser.runtime.onMessage.addListener);
     const listener = addListener.mock.calls[0][0];
-    const sendResponse = vi.fn();
 
-    listener({ type: "SHOW_MILESTONE", milestone }, {}, sendResponse);
+    const firstResponse = await new Promise((resolve) => {
+      listener({ type: "SHOW_MILESTONE", milestone }, {}, resolve);
+    });
 
+    expect(firstResponse).toEqual({ success: true });
     expect(document.body.childElementCount).toBe(1);
 
-    listener(
-      {
-        type: "SHOW_MILESTONE",
-        milestone: { ...milestone, copy: "You crossed another milestone." },
-      },
-      {},
-      sendResponse,
-    );
+    const secondResponse = await new Promise((resolve) => {
+      listener(
+        {
+          type: "SHOW_MILESTONE",
+          milestone: { ...milestone, copy: "You crossed another milestone." },
+        },
+        {},
+        resolve,
+      );
+    });
 
+    expect(secondResponse).toEqual({ success: true });
     expect(document.body.childElementCount).toBe(1);
   });
 });
