@@ -85,6 +85,22 @@ describe("CursorCollector", () => {
       requestAnimationFrameSpy.mockRestore();
     });
 
+    it("does not schedule real-time mousemove work without a real-time callback", () => {
+      collector.disable();
+      collector = new CursorCollector();
+      collector.setEmitCallback(emitCallback);
+      const scheduleRealTimeSpy = vi.spyOn(
+        collector as unknown as { scheduleRealTimeUpdate: () => void },
+        "scheduleRealTimeUpdate",
+      );
+
+      collector.enable();
+      simulateMouseMove(100, 100);
+
+      expect(scheduleRealTimeSpy).not.toHaveBeenCalled();
+      scheduleRealTimeSpy.mockRestore();
+    });
+
     it("emits move events when cursor moves beyond threshold", async () => {
       collector.enable();
 

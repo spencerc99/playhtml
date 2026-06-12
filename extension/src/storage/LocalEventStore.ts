@@ -926,6 +926,7 @@ export class LocalEventStore {
 
     // Group events by domain for stats updates
     const eventsByDomain = new Map<string, CollectionEvent[]>();
+    const storedEvents: StoredCollectionEvent[] = [];
     for (const event of events) {
       const storedEvent = prepareStoredEvent(event);
       if (storedEvent.meta?.url) {
@@ -942,6 +943,7 @@ export class LocalEventStore {
         }
         eventsByDomain.get(storedEvent.domain)!.push(storedEvent);
       }
+      storedEvents.push(storedEvent);
     }
 
     // Write events to the main store
@@ -957,8 +959,8 @@ export class LocalEventStore {
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
 
-      for (const event of events) {
-        evtStore.put(prepareStoredEvent(event));
+      for (const event of storedEvents) {
+        evtStore.put(event);
       }
     });
 

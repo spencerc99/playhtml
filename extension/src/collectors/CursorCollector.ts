@@ -99,8 +99,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         }
       }
       
-      // Schedule real-time update
-      this.scheduleRealTimeUpdate();
+      if (this.hasRealTimeCallback()) {
+        this.scheduleRealTimeUpdate();
+      }
 
       // Schedule archival sample if movement is significant enough
       const dx = Math.abs(this.currentX - this.lastSampledX);

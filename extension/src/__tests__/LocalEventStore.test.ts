@@ -59,6 +59,10 @@ async function deleteEventDatabase(): Promise<void> {
   });
 }
 
+async function waitForBackgroundDatabaseWork(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 async function openVersion8Database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 8);
@@ -175,6 +179,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await waitForBackgroundDatabaseWork();
   closeStores();
   await deleteEventDatabase();
   restoreIndexedDBGlobals();
