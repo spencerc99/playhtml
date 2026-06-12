@@ -76,6 +76,10 @@ body {
 
   .line {
     color: rgba(232, 226, 213, 0.85);
+    // Keep lines legible where they pass over building-label pixels.
+    text-shadow:
+      0 0 6px #04060c,
+      0 0 3px #04060c;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

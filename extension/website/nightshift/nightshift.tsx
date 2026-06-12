@@ -44,7 +44,7 @@ const HOUSE_LINGER_MS = 10 * 60_000;
 const GROUND_MARGIN = 96;
 const LAYOUT_INTERVAL_MS = 2000;
 const TICKER_INTERVAL_MS = 1600;
-const MAX_TICKER_LINES = 7;
+const MAX_TICKER_LINES = 5;
 const MAX_LINES_PER_TICK = 4;
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
@@ -258,13 +258,22 @@ const NightShift = () => {
           a.slot = -1;
         }
       }
-      let cursor = 0;
-      for (const a of perBuilding.values()) {
+      // Scatter arrivals across the building instead of stacking the bottom
+      // floor: start from a pid-hashed slot and probe upward for a free one.
+      // Buildings at night have lights all over, not a full ground floor.
+      for (const [pid, a] of perBuilding) {
         if (a.slot >= 0) continue;
-        while (cursor < building.slots.length && used.has(cursor)) cursor++;
-        if (cursor >= building.slots.length) break; // building is full
-        a.slot = cursor;
-        used.add(cursor);
+        const len = building.slots.length;
+        if (used.size >= len) break; // building is full
+        const start = hashParticipantId(pid) % len;
+        for (let i = 0; i < len; i++) {
+          const candidate = (start + i) % len;
+          if (!used.has(candidate)) {
+            a.slot = candidate;
+            used.add(candidate);
+            break;
+          }
+        }
       }
     }
     assignRef.current = next;
@@ -612,12 +621,10 @@ const NightShift = () => {
           ctx.restore();
         } else {
           ctx.font = "9px 'Martian Mono', monospace";
-          ctx.fillText(
-            b.label.toUpperCase(),
-            b.x + b.w / 2,
-            b.baseY + 16,
-            b.w + 26,
-          );
+          // Stagger label rows (stable per building) so narrow neighbors
+          // don't overlap each other.
+          const labelY = b.baseY + (b.seed % 2 === 0 ? 16 : 30);
+          ctx.fillText(b.label.toUpperCase(), b.x + b.w / 2, labelY, b.w + 26);
         }
       }
 

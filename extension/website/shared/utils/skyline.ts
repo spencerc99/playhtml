@@ -194,7 +194,7 @@ export function layoutSkyline(opts: {
   for (const t of sortedTowers) {
     const share = t.cumEvents / totalCum;
     const cols = t.occupants > 12 ? 5 : t.occupants > 6 ? 4 : 3;
-    let floors = Math.round(3 + Math.sqrt(share) * 16);
+    let floors = Math.round(3 + Math.sqrt(share) * 20);
     // A crowd always gets room: grow past the share-derived height if needed.
     floors = Math.max(floors, Math.ceil(t.occupants / cols));
     floors = Math.min(Math.max(floors, 3), maxFloors);
