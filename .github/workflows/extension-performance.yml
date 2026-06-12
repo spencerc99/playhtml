@@ -1,0 +1,124 @@
+# ABOUTME: Runs report-only extension performance traces for pull requests.
+# ABOUTME: Compares base and head extension builds without blocking merges yet.
+
+name: Extension Performance Report
+
+on:
+  pull_request:
+    paths:
+      - "extension/**"
+      - "scripts/trace-extension-performance.mjs"
+      - "scripts/compare-extension-performance.mjs"
+      - "scripts/compare-extension-performance.test.mjs"
+      - ".github/workflows/extension-performance.yml"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Trace runs per build"
+        required: true
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Compare extension trace metrics
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 35
+    env:
+      TRACE_RUNS: ${{ github.event.inputs.runs || '1' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Playwright Chromium
+        run: |
+          bun install --frozen-lockfile
+          bunx playwright install --with-deps chromium
+          mkdir -p "$RUNNER_TEMP/extension-performance"
+
+      - name: Build head extension
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          else
+            git checkout --detach "${{ github.sha }}"
+          fi
+          bun install --frozen-lockfile
+          bun build-packages
+          bun run build-extension
+          rm -rf "$RUNNER_TEMP/head-extension"
+          cp -R extension/dist/chrome-mv3 "$RUNNER_TEMP/head-extension"
+
+      - name: Build base extension
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git checkout --detach "${{ github.event.pull_request.base.sha }}"
+          else
+            git checkout --detach HEAD^
+          fi
+          bun install --frozen-lockfile
+          bun build-packages
+          bun run build-extension
+          rm -rf "$RUNNER_TEMP/base-extension"
+          cp -R extension/dist/chrome-mv3 "$RUNNER_TEMP/base-extension"
+
+      - name: Restore head checkout
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          else
+            git checkout --detach "${{ github.sha }}"
+          fi
+          bun install --frozen-lockfile
+
+      - name: Run extension trace comparison
+        run: |
+          mkdir -p "$RUNNER_TEMP/extension-performance"
+          xvfb-run -a node scripts/trace-extension-performance.mjs \
+            --runs "$TRACE_RUNS" \
+            --timeout-ms 120000 \
+            --mouse-steps 36 \
+            --scroll-steps 10 \
+            --out-dir "$RUNNER_TEMP/extension-performance" \
+            --extension "base:$RUNNER_TEMP/base-extension" \
+            --extension "head:$RUNNER_TEMP/head-extension"
+
+      - name: Write performance report
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/extension-performance/summary.json" ]; then
+            node scripts/compare-extension-performance.mjs \
+              --summary "$RUNNER_TEMP/extension-performance/summary.json" \
+              --out-dir "$RUNNER_TEMP/extension-performance"
+            cat "$RUNNER_TEMP/extension-performance/report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "# Extension Performance Report" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Trace summary was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-performance-${{ github.run_id }}
+          path: ${{ runner.temp }}/extension-performance
+          retention-days: 14
