@@ -12,6 +12,15 @@ const DB_NAME = "collection_events_db";
 const DB_VERSION = 9;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
+const UPLOAD_STATE_PENDING = "pending";
+const UPLOAD_STATE_UPLOADED = "uploaded";
+
+type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
+
+interface StoredCollectionEvent extends CollectionEvent {
+  uploaded?: boolean;
+  uploadState?: UploadState;
+}
 
 // Aggregate key for cross-domain totals (all browsing activity combined)
 const GLOBAL_STATS_KEY = "__global__";
@@ -87,6 +96,19 @@ function pageStatsKey(domain: string, normalizedUrl: string): string {
   return `${domain}::${normalizedUrl}`;
 }
 
+function getUploadState(event: StoredCollectionEvent): UploadState {
+  return event.uploaded === true || event.uploadState === UPLOAD_STATE_UPLOADED
+    ? UPLOAD_STATE_UPLOADED
+    : UPLOAD_STATE_PENDING;
+}
+
+function prepareStoredEvent(event: CollectionEvent): StoredCollectionEvent {
+  const storedEvent = event as StoredCollectionEvent;
+  storedEvent.uploadState = getUploadState(storedEvent);
+  storedEvent.uploaded = storedEvent.uploadState === UPLOAD_STATE_UPLOADED;
+  return storedEvent;
+}
+
 export interface ScreenTimeResult {
   totalMs: number;
   sessions: ScreenTimeSession[];
@@ -109,6 +131,7 @@ function extractDomain(url: string | null): string {
 export class LocalEventStore {
   private db: IDBDatabase | null = null;
   private isInitialized = false;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
     this.init().catch(console.error);
@@ -119,11 +142,15 @@ export class LocalEventStore {
    */
   private async init(): Promise<void> {
     if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
 
-    return new Promise((resolve, reject) => {
+    this.initPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        this.initPromise = null;
+        reject(request.error);
+      };
       request.onblocked = () => {
         console.warn("[LocalEventStore] DB upgrade blocked by another connection");
       };
@@ -134,6 +161,7 @@ export class LocalEventStore {
         if (VERBOSE) {
           console.log("[LocalEventStore] Initialized successfully");
         }
+        this.initPromise = null;
         resolve();
         // Backfill session stats in the background (non-blocking)
         this.backfillSessionStats().catch((e) =>
@@ -240,8 +268,39 @@ export class LocalEventStore {
             console.log("[LocalEventStore] Created domain_stats store (keyPath: key)");
           }
         }
+
+        if (oldVersion < 9) {
+          if (store.indexNames.contains("uploaded")) {
+            store.deleteIndex("uploaded");
+          }
+          if (!store.indexNames.contains("uploadState")) {
+            store.createIndex("uploadState", "uploadState", { unique: false });
+          }
+
+          const tx = (event.target as IDBOpenDBRequest).transaction!;
+          const objStore = tx.objectStore(STORE_NAME);
+          const backfillReq = objStore.openCursor();
+          backfillReq.onsuccess = () => {
+            const cursor = backfillReq.result;
+            if (cursor) {
+              const evt = cursor.value as StoredCollectionEvent;
+              const nextState = getUploadState(evt);
+              if (
+                evt.uploadState !== nextState ||
+                evt.uploaded !== (nextState === UPLOAD_STATE_UPLOADED)
+              ) {
+                evt.uploadState = nextState;
+                evt.uploaded = nextState === UPLOAD_STATE_UPLOADED;
+                cursor.update(evt);
+              }
+              cursor.continue();
+            }
+          };
+        }
       };
     });
+
+    return this.initPromise;
   }
 
   /**
@@ -863,17 +922,20 @@ export class LocalEventStore {
     // Group events by domain for stats updates
     const eventsByDomain = new Map<string, CollectionEvent[]>();
     for (const event of events) {
-      if (event.meta?.url) {
-        if (!event.domain) {
-          event.domain = extractDomain(event.meta.url);
+      const storedEvent = prepareStoredEvent(event);
+      if (storedEvent.meta?.url) {
+        if (!storedEvent.domain) {
+          storedEvent.domain = extractDomain(storedEvent.meta.url);
         }
-        if (!event.normalizedUrl) {
-          event.normalizedUrl = normalizeUrl(event.meta.url);
+        if (!storedEvent.normalizedUrl) {
+          storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
         }
       }
-      if (event.domain) {
-        if (!eventsByDomain.has(event.domain)) eventsByDomain.set(event.domain, []);
-        eventsByDomain.get(event.domain)!.push(event);
+      if (storedEvent.domain) {
+        if (!eventsByDomain.has(storedEvent.domain)) {
+          eventsByDomain.set(storedEvent.domain, []);
+        }
+        eventsByDomain.get(storedEvent.domain)!.push(storedEvent);
       }
     }
 
@@ -891,7 +953,7 @@ export class LocalEventStore {
       transaction.onerror = () => reject(transaction.error);
 
       for (const event of events) {
-        evtStore.put(event);
+        evtStore.put(prepareStoredEvent(event));
       }
     });
 
@@ -1063,8 +1125,8 @@ export class LocalEventStore {
 
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const uploadedIndex = store.index("uploaded");
-      const request = uploadedIndex.openCursor(IDBKeyRange.only(false));
+      const uploadStateIndex = store.index("uploadState");
+      const request = uploadStateIndex.openCursor(IDBKeyRange.only(UPLOAD_STATE_PENDING));
 
       const events: CollectionEvent[] = [];
 
@@ -1072,7 +1134,7 @@ export class LocalEventStore {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor && events.length < limit) {
-          const evt = cursor.value;
+          const evt = cursor.value as StoredCollectionEvent;
           events.push(evt as CollectionEvent);
           cursor.continue();
         } else {
@@ -1110,6 +1172,7 @@ export class LocalEventStore {
           const evt = getRequest.result;
           if (evt) {
             evt.uploaded = true;
+            evt.uploadState = UPLOAD_STATE_UPLOADED;
             store.put(evt);
           }
           completed++;

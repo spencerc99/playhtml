@@ -187,6 +187,18 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     }
   }
   
+  protected drainPendingEvents(): void {
+    if (this.pendingClickData) {
+      const dataWithQuantity: CursorEventData = {
+        ...this.pendingClickData,
+        quantity: this.clickQuantity,
+      };
+      this.emitDiscreteEvent(dataWithQuantity);
+      this.pendingClickData = null;
+      this.clickQuantity = 0;
+    }
+  }
+
   stop(): void {
     if (this.mouseMoveHandler) {
       document.removeEventListener('mousemove', this.mouseMoveHandler);
@@ -223,17 +235,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     if (this.cursorChangeTimer !== null) {
       clearTimeout(this.cursorChangeTimer);
       this.cursorChangeTimer = null;
-    }
-    
-    // Emit any pending click before stopping
-    if (this.pendingClickData) {
-      const dataWithQuantity: CursorEventData = {
-        ...this.pendingClickData,
-        quantity: this.clickQuantity,
-      };
-      this.emitDiscreteEvent(dataWithQuantity);
-      this.pendingClickData = null;
-      this.clickQuantity = 0;
     }
   }
   

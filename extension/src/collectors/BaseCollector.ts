@@ -24,8 +24,9 @@ export abstract class BaseCollector<T = unknown> {
   protected sampleRate: number = 100; // ms between samples (default)
   
   // Callbacks for emitting events
-  private onEmitCallback?: (event: T) => void;
+  private onEmitCallback?: (event: T) => void | Promise<void>;
   private onRealTimeCallback?: (data: T) => void;
+  private pendingEventEmits = new Set<Promise<void>>();
   
   /**
    * Start collecting data
@@ -46,6 +47,11 @@ export abstract class BaseCollector<T = unknown> {
   protected sample(): T | null {
     return null;
   }
+
+  /**
+   * Emit any pending debounced data before this collector stops accepting emissions.
+   */
+  protected drainPendingEvents(): void {}
   
   /**
    * Enable this collector
@@ -62,6 +68,7 @@ export abstract class BaseCollector<T = unknown> {
    */
   disable(): void {
     if (this.enabled) {
+      this.drainPendingEvents();
       this.enabled = false;
       this.stop();
     }
@@ -93,7 +100,7 @@ export abstract class BaseCollector<T = unknown> {
   /**
    * Set the callback for buffered events (archival)
    */
-  setEmitCallback(callback: (event: T) => void): void {
+  setEmitCallback(callback: (event: T) => void | Promise<void>): void {
     this.onEmitCallback = callback;
   }
   
@@ -116,7 +123,17 @@ export abstract class BaseCollector<T = unknown> {
 
     // Emit to buffer for archival
     if (this.onEmitCallback) {
-      this.onEmitCallback(data);
+      const result = this.onEmitCallback(data);
+      if (result) {
+        const pending = Promise.resolve(result)
+          .catch((error) => {
+            console.error(`[BaseCollector] Emit callback failed for ${this.type}:`, error);
+          })
+          .finally(() => {
+            this.pendingEventEmits.delete(pending);
+          });
+        this.pendingEventEmits.add(pending);
+      }
     } else {
       console.warn(`[BaseCollector] No emit callback set for ${this.type}`);
     }
@@ -134,6 +151,10 @@ export abstract class BaseCollector<T = unknown> {
     if (this.onRealTimeCallback) {
       this.onRealTimeCallback(data);
     }
+  }
+
+  async waitForPendingEvents(): Promise<void> {
+    await Promise.all(Array.from(this.pendingEventEmits));
   }
   
   /**
