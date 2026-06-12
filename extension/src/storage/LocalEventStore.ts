@@ -103,10 +103,15 @@ function getUploadState(event: StoredCollectionEvent): UploadState {
 }
 
 function prepareStoredEvent(event: CollectionEvent): StoredCollectionEvent {
-  const storedEvent = event as StoredCollectionEvent;
+  const storedEvent: StoredCollectionEvent = { ...event };
   storedEvent.uploadState = getUploadState(storedEvent);
   storedEvent.uploaded = storedEvent.uploadState === UPLOAD_STATE_UPLOADED;
   return storedEvent;
+}
+
+function toCollectionEvent(event: StoredCollectionEvent): CollectionEvent {
+  const { uploaded, uploadState, ...collectionEvent } = event;
+  return collectionEvent;
 }
 
 export interface ScreenTimeResult {
@@ -436,7 +441,7 @@ export class LocalEventStore {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
+          const evt = cursor.value as StoredCollectionEvent;
 
           let include = true;
           if (options.type && evt.type !== options.type) include = false;
@@ -444,7 +449,7 @@ export class LocalEventStore {
           if (options.endTs && evt.ts > options.endTs) include = false;
 
           if (include) {
-            events.push(evt);
+            events.push(toCollectionEvent(evt));
           }
 
           if (options.limit && events.length >= options.limit) {
@@ -499,7 +504,7 @@ export class LocalEventStore {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
+          const evt = cursor.value as StoredCollectionEvent;
 
           let include = true;
           if (options.type && evt.type !== options.type) include = false;
@@ -507,7 +512,7 @@ export class LocalEventStore {
           if (options.endTs && evt.ts > options.endTs) include = false;
 
           if (include) {
-            events.push(evt);
+            events.push(toCollectionEvent(evt));
           }
 
           if (options.limit && events.length >= options.limit) {
@@ -554,7 +559,7 @@ export class LocalEventStore {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
+          const evt = cursor.value as StoredCollectionEvent;
           totalEvents++;
           eventsByType[evt.type] = (eventsByType[evt.type] || 0) + 1;
           firstVisit = Math.min(firstVisit, evt.ts);
@@ -802,7 +807,7 @@ export class LocalEventStore {
           if (options.type && evt.type !== options.type) include = false;
 
           if (include) {
-            events.push(evt);
+            events.push(toCollectionEvent(evt));
             if (options.limit && events.length >= options.limit) {
               events.sort((a, b) => a.ts - b.ts);
               resolve(events);
@@ -1135,7 +1140,7 @@ export class LocalEventStore {
 
         if (cursor && events.length < limit) {
           const evt = cursor.value as StoredCollectionEvent;
-          events.push(evt as CollectionEvent);
+          events.push(toCollectionEvent(evt));
           cursor.continue();
         } else {
           resolve(events);

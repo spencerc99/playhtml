@@ -1161,9 +1161,9 @@ export default defineContentScript({
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
 
-        // Flush pending debounced events before the page unloads
+        // Best-effort final flush; browsers may not wait for async unload work.
         window.addEventListener("beforeunload", () => {
-          collectorManager?.stopAll();
+          void collectorManager?.stopAll().catch(console.error);
         }, { once: true });
         if (VERBOSE) {
           console.log(

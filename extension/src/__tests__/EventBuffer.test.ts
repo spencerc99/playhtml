@@ -32,6 +32,13 @@ function testEvent(id: string): CollectionEvent {
   };
 }
 
+function clickEvent(id: string): CollectionEvent {
+  return {
+    ...testEvent(id),
+    data: { event: "click", x: 0.5, y: 0.5, quantity: 1 },
+  };
+}
+
 describe("EventBuffer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -75,6 +82,54 @@ describe("EventBuffer", () => {
       type: "STORE_EVENTS",
       events: [expect.objectContaining({ id: "queued", uploaded: false })],
     });
+    expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(2, {
+      type: "FLUSH_PENDING_UPLOADS",
+    });
+  });
+
+  it("stores cursor click events without waiting for the storage timer", async () => {
+    const buffer = new EventBuffer();
+
+    await buffer.addEvent(clickEvent("click"));
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "STORE_EVENTS",
+      events: [expect.objectContaining({ id: "click", uploaded: false })],
+    });
+  });
+
+  it("waits for an active storage write before asking the background to upload", async () => {
+    const buffer = new EventBuffer();
+    let resolveStoreMessage: (() => void) | undefined;
+
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        return new Promise((resolve) => {
+          resolveStoreMessage = () => resolve({});
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    for (let i = 0; i < 25; i++) {
+      await buffer.addEvent(testEvent(`event-${i}`));
+    }
+
+    const flushPromise = buffer.flushBatch();
+    await Promise.resolve();
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(1, {
+      type: "STORE_EVENTS",
+      events: expect.arrayContaining([
+        expect.objectContaining({ id: "event-0", uploaded: false }),
+        expect.objectContaining({ id: "event-24", uploaded: false }),
+      ]),
+    });
+
+    resolveStoreMessage?.();
+    await flushPromise;
+
     expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(2, {
       type: "FLUSH_PENDING_UPLOADS",
     });

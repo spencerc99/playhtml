@@ -286,7 +286,7 @@ describe("Collector Integration", () => {
       flushSpy.mockRestore();
     });
 
-    it("stores pending debounced cursor clicks when collectors stop", async () => {
+    it("stores cursor clicks when collectors stop", async () => {
       const cursorCollector = new CursorCollector();
       manager.registerCollector(cursorCollector);
       vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ success: true });

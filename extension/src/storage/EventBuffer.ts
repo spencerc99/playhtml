@@ -15,6 +15,15 @@ interface EventMetadataBase {
   tz: string;
 }
 
+function shouldStoreWithoutDelay(event: CollectionEvent): boolean {
+  return (
+    event.type === 'cursor' &&
+    typeof event.data === 'object' &&
+    event.data !== null &&
+    (event.data as { event?: unknown }).event === 'click'
+  );
+}
+
 /**
  * EventBuffer manages event creation and batching
  *
@@ -26,6 +35,7 @@ export class EventBuffer {
   private batchTimer: number | null = null;
   private storeTimer: number | null = null;
   private pendingEvents: CollectionEvent[] = [];
+  private storeFlushPromise: Promise<boolean> | null = null;
   private metadataBasePromise: Promise<EventMetadataBase> | null = null;
 
   /**
@@ -35,7 +45,10 @@ export class EventBuffer {
     const eventWithFlag = { ...event, uploaded: false };
 
     this.pendingEvents.push(eventWithFlag);
-    if (this.pendingEvents.length >= STORE_BATCH_MAX_EVENTS) {
+    if (
+      shouldStoreWithoutDelay(eventWithFlag) ||
+      this.pendingEvents.length >= STORE_BATCH_MAX_EVENTS
+    ) {
       void this.flushStoredEvents();
     } else {
       this.scheduleStoreFlush();
@@ -59,19 +72,35 @@ export class EventBuffer {
       this.storeTimer = null;
     }
 
+    if (this.storeFlushPromise) {
+      const stored = await this.storeFlushPromise;
+      if (!stored) return false;
+    }
+
     if (this.pendingEvents.length === 0) return true;
 
     const events = this.pendingEvents.splice(0, this.pendingEvents.length);
-    try {
-      await browser.runtime.sendMessage({
+    const flushPromise = browser.runtime
+      .sendMessage({
         type: 'STORE_EVENTS',
         events,
-      });
-      return true;
-    } catch (error) {
-      this.pendingEvents.unshift(...events);
-      console.error(error);
-      return false;
+      })
+      .then(
+        () => true,
+        (error) => {
+          this.pendingEvents.unshift(...events);
+          console.error(error);
+          return false;
+        },
+      );
+
+    this.storeFlushPromise = flushPromise;
+    try {
+      return await flushPromise;
+    } finally {
+      if (this.storeFlushPromise === flushPromise) {
+        this.storeFlushPromise = null;
+      }
     }
   }
 
