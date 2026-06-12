@@ -3,9 +3,15 @@
 
 import "./journeys.scss";
 import { loadJourneys } from "./data";
-import { startSketch, SketchState } from "./sketch";
+import { startSketch, SketchState, StyleName } from "./sketch";
 
 const root = document.getElementById("journeys-root")!;
+
+const STYLES: StyleName[] = ["channels", "currents", "ink"];
+function styleFromUrl(): StyleName {
+  const raw = new URLSearchParams(window.location.search).get("style");
+  return STYLES.includes(raw as StyleName) ? (raw as StyleName) : "currents";
+}
 
 const canvasHost = document.createElement("div");
 canvasHost.className = "canvas-host";
@@ -23,6 +29,7 @@ root.insertAdjacentHTML(
   </header>
   <div class="hud-bar">
     <button id="playToggle" class="btn" aria-label="play / pause">❚❚</button>
+    <button id="styleToggle" class="btn" aria-label="cycle style">currents</button>
     <span class="speed">
       <button class="speed-btn" data-speed="0.5">0.5×</button>
       <button class="speed-btn active" data-speed="1">1×</button>
@@ -40,6 +47,7 @@ const state: SketchState = {
   journeys: [],
   paused: false,
   speed: 1,
+  style: styleFromUrl(),
 };
 
 const clockReadout = document.getElementById("clockReadout")!;
@@ -61,6 +69,14 @@ const playToggle = document.getElementById("playToggle")!;
 playToggle.addEventListener("click", () => {
   state.paused = !state.paused;
   playToggle.textContent = state.paused ? "▶" : "❚❚";
+});
+
+const styleToggle = document.getElementById("styleToggle")!;
+styleToggle.textContent = state.style!;
+styleToggle.addEventListener("click", () => {
+  const next = STYLES[(STYLES.indexOf(state.style!) + 1) % STYLES.length];
+  state.style = next;
+  styleToggle.textContent = next;
 });
 
 document.querySelectorAll<HTMLButtonElement>(".speed-btn").forEach((btn) => {
