@@ -282,7 +282,12 @@ export function Collections({ onBack }: CollectionsProps) {
         type: "CLEAR_ALL_EVENTS",
       });
       if (response?.success) {
-        setStorageStats(null);
+        setStorageStats({
+          totalEvents: 0,
+          estimatedSizeBytes: 0,
+          oldestEvent: 0,
+          countsByType: {},
+        });
       } else {
         alert("Failed to clear data. Please try again.");
       }

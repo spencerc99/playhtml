@@ -105,4 +105,18 @@ describe("ProfilePage", () => {
       cleanupRoot(root, container);
     }
   });
+
+  it("does not fetch or show local storage stats", async () => {
+    const { container, root } = await renderProfilePage();
+
+    try {
+      expect(browser.runtime.sendMessage).not.toHaveBeenCalledWith({
+        type: "GET_STORAGE_STATS",
+      });
+      expect(container.textContent).not.toContain("events stored");
+      expect(container.textContent).not.toContain("local data");
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
 });

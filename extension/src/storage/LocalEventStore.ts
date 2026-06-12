@@ -9,7 +9,7 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 
@@ -64,6 +64,8 @@ export interface DomainStatsAggregate {
   pendingFocusUrl: string;
   /** Running event counts by type */
   eventsByType: Record<string, number>;
+  /** Estimated serialized byte size for events represented by this aggregate. */
+  storageSizeBytes: number;
   /** Earliest event timestamp */
   firstVisit: number;
   /** Latest event timestamp */
@@ -228,13 +230,14 @@ export class LocalEventStore {
         // v6: create domain_stats store (keyPath: "domain")
         // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
         // v8: force rebuild to populate page-level + global aggregates added after v7
-        if (oldVersion < 8) {
+        // v9: force rebuild to populate storageSizeBytes in aggregates
+        if (oldVersion < 9) {
           if (db.objectStoreNames.contains(STATS_STORE_NAME)) {
             db.deleteObjectStore(STATS_STORE_NAME);
           }
           db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
           if (VERBOSE) {
-            console.log("[LocalEventStore] Created domain_stats store (v8, keyPath: key)");
+            console.log("[LocalEventStore] Created domain_stats store (keyPath: key)");
           }
         }
       };
@@ -672,40 +675,24 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], "readonly");
-      const store = transaction.objectStore(STORE_NAME);
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const request = statsStore.get(GLOBAL_STATS_KEY);
 
-      // Single cursor pass: collect total count, timestamp bounds, per-type counts, and actual serialized size
-      // TODO: decide if we need per-type event counts and if so, we should store counts natively in database so we don't have to count them here
-      const countsByType: Record<string, number> = {};
-      let totalEvents = 0;
-      let oldestEvent = 0;
-      let newestEvent = 0;
-      let actualSizeBytes = 0;
-
-      const request = store.openCursor();
-
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-
-        if (cursor) {
-          const evt = cursor.value as CollectionEvent;
-          totalEvents++;
-          countsByType[evt.type] = (countsByType[evt.type] ?? 0) + 1;
-          if (oldestEvent === 0 || evt.ts < oldestEvent) oldestEvent = evt.ts;
-          if (evt.ts > newestEvent) newestEvent = evt.ts;
-          // Serialized size: string length ≈ bytes for mostly-ASCII event JSON (avoids TextEncoder per-event for perf)
-          actualSizeBytes += JSON.stringify(evt).length;
-          cursor.continue();
-        } else {
-          resolve({
-            totalEvents,
-            estimatedSizeBytes: actualSizeBytes,
-            oldestEvent,
-            newestEvent,
-            countsByType,
-          });
-        }
+      request.onsuccess = () => {
+        const aggregate = request.result as DomainStatsAggregate | undefined;
+        const countsByType = aggregate?.eventsByType ?? {};
+        const totalEvents = Object.values(countsByType).reduce(
+          (sum, count) => sum + count,
+          0,
+        );
+        resolve({
+          totalEvents,
+          estimatedSizeBytes: aggregate?.storageSizeBytes ?? 0,
+          oldestEvent: aggregate?.firstVisit ?? 0,
+          newestEvent: aggregate?.lastVisit ?? 0,
+          countsByType,
+        });
       };
 
       request.onerror = () => reject(request.error);
@@ -910,9 +897,9 @@ export class LocalEventStore {
 
     // Update domain aggregates in a separate transaction so a stats
     // failure never blocks event storage
-    if (eventsByDomain.size > 0) {
+    if (events.length > 0) {
       try {
-        await this.updateDomainStats(eventsByDomain);
+        await this.updateDomainStats(events, eventsByDomain);
       } catch (e) {
         console.error("[LocalEventStore] Failed to update domain stats:", e);
       }
@@ -929,6 +916,7 @@ export class LocalEventStore {
       pendingFocusTs: null,
       pendingFocusUrl: "",
       eventsByType: {},
+      storageSizeBytes: 0,
       firstVisit: 0,
       lastVisit: 0,
       uniqueUrls: [],
@@ -946,9 +934,11 @@ export class LocalEventStore {
   ): void {
     const urlSet = new Set(agg.uniqueUrls);
     const processedSet = new Set(agg.processedNavIds);
+    agg.storageSizeBytes ??= 0;
 
     for (const evt of events) {
       agg.eventsByType[evt.type] = (agg.eventsByType[evt.type] ?? 0) + 1;
+      agg.storageSizeBytes += JSON.stringify(evt).length;
       if (agg.firstVisit === 0 || evt.ts < agg.firstVisit) {
         agg.firstVisit = evt.ts;
       }
@@ -992,17 +982,16 @@ export class LocalEventStore {
    * Incrementally update both domain-level and page-level aggregates.
    */
   private async updateDomainStats(
+    events: CollectionEvent[],
     eventsByDomain: Map<string, CollectionEvent[]>,
   ): Promise<void> {
     // Collect all aggregate keys we need to read/write (global + domain + page)
     const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
 
     // Global aggregate: receives ALL events from every domain
-    keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events: [] });
+    keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events });
 
     for (const [dom, domainEvents] of eventsByDomain) {
-      keyToEvents.get(GLOBAL_STATS_KEY)!.events.push(...domainEvents);
-
       // Domain-level aggregate
       const dKey = domainStatsKey(dom);
       if (!keyToEvents.has(dKey)) {
