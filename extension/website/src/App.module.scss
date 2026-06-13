@@ -136,12 +136,7 @@ $accent-rust: #c4724e;
   color: #3a7d6f;
   transform: translateX(-50%);
   opacity: 0.82;
-  transition: opacity 0.15s, transform 0.15s;
-
-  &:hover {
-    opacity: 1;
-    transform: translateX(-50%) translateY(-2px);
-  }
+  pointer-events: none;
 
   @media (max-width: 480px) {
     bottom: 18px;

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "vitest run",
     "lint": "tsc && eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "capture": "tsx scripts/capture-matrix.ts"
@@ -31,9 +32,11 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "typescript": "^5.7.2",
     "glob": "^10.4.5",
+    "jsdom": "^26.1.0",
     "path": "^0.12.7",
     "playwright": "^1.49.0",
     "tsx": "^4.19.2",
-    "vite": "^6.2.2"
+    "vite": "^6.2.2",
+    "vitest": "^3.1.1"
   }
 }
