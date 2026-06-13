@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="" />
+
+    <title>html day san francisco 2026</title>
+  </head>
+  <body>
+    <!-- 
+     - FOG rolls in?
+     - sutro tower image / rendering?
+     - sourdough
+     - coffee 
+     - muni / cable cars..
+     - sf startup billboard that you throw stuff on? lol
+     
+    -->
+
+    <div class="event-header">
+      <div class="star"><span class="star-icon" style="">✺</span></div>
+      <h1>HTML Day <span style="color: #fb5b1f">San Francisco</span> 2026</h1>
+    </div>
+    <div class="event-info">
+      <label>Info</label>
+      <p>
+        HTML Day is a celebration of HTML, the language underlying websites.
+        Come write some HTML with us!
+      </p>
+      <label>Location</label>
+      <p>Golden Gate Park (precise location TBD)</p>
+      <label>When</label>
+      <p>June 13, 2026 1:00PM - 3:00PM</p>
+      <label>Hosts</label>
+      <p>
+        <a href="https://spencer.place/">Spencer Chang</a> &
+        <a href="https://leiac.me/">Leia Chang</a> as part of
+        <a href="https://html.energy">HTML Energy</a>
+      </p>
+      <label>What to bring</label>
+      <p>
+        your laptop or something else to write HTML on/with. beverages / snacks
+        if you'd like!
+      </p>
+
+      <label>Sign</label>
+      <!-- TODO: playhtml sign in thing stamp -->
+    </div>
+  </body>
+  <script type="module">
+    import { playhtml } from "../../../packages/playhtml/src/index.ts";
+
+    // Initialize with cursor tracking
+    playhtml.init({
+      cursors: {
+        enabled: true,
+        room: "page",
+      },
+    });
+  </script>
+  <style>
+    body {
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+      background: #f0f0f0;
+    }
+
+    .event-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .star-icon {
+      display: inline-block;
+      color: #fb5b1f;
+      filter: blur(3px);
+      margin-top: 3px;
+      font-size: 120px;
+      animation: spin 10s linear infinite;
+    }
+
+    /* spinning star animation */
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .event-info {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px 20px;
+      text-align: left;
+      line-height: 1.5;
+      font-size: 1.2rem;
+      color: #333;
+      background: #ffffff;
+      border-radius: 10px;
+    }
+
+    label {
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.25em;
+    }
+  </style>
+</html>
