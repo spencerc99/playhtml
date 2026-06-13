@@ -1,5 +1,15 @@
 # Change Log
 
+## 2.10.1
+
+### Patch Changes
+
+- 3414751: `cursorClient.configure({ playerIdentity })` now emits `color` and `name` events when the identity's color or name changes, mirroring the `window.cursors` setters. This makes identity injected through `configure()` — including the extension's `playhtml:configure-identity` bridge — reactively update subscribers (e.g. the React context behind `usePlayerIdentity()`), instead of silently changing only the internal state.
+- 0a155a3: Report duplicate playhtml element IDs during registration and surface duplicate ID groups in the development UI so developers can find shared-data collisions.
+- 7f6e3de: Fix `playhtml.presence.getPresences()` collapsing multi-tab awareness entries non-deterministically. When a user has the site open in multiple tabs, all tabs share one publicKey (stableId) but have distinct clientIDs. The previous implementation overwrote in iteration order, so a backgrounded tab's `active: false` could clobber the foreground tab's `active: true` in the consumer's view. Self now always reflects the local tab's state; remote peers with multiple tabs are collapsed deterministically (highest clientID wins).
+- 9f33c3c: `presence.onPresenceChange` now replays the current presence snapshot to the callback immediately on subscribe, instead of waiting for the next awareness change. Late subscribers previously missed state that peers had already broadcast — for example, a peer who set a presence field before you joined the room would stay invisible to your listener until they changed it again.
+- 251b41d: Expose `playhtml.syncedStore` as a read-only inspection view so browser scripts cannot mutate shared element data directly. Element updates still go through playhtml's normal `setData()` path, while administrative data edits remain handled by the admin console.
+
 ## 2.10.0
 
 ### Minor Changes

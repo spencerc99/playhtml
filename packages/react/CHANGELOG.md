@@ -1,5 +1,20 @@
 # Change Log
 
+## 0.12.0
+
+### Minor Changes
+
+- 3414751: Add `usePlayerIdentity()` hook, which returns the local player's `{ color, pid, name }` from the playhtml context. Values update reactively, including when an external source (such as the "we were online" extension) injects identity via the `playhtml:configure-identity` event. Requires `PlayProvider` with cursors enabled.
+
+### Patch Changes
+
+- Updated dependencies [3414751]
+- Updated dependencies [0a155a3]
+- Updated dependencies [7f6e3de]
+- Updated dependencies [9f33c3c]
+- Updated dependencies [251b41d]
+  - playhtml@2.10.1
+
 ## 0.11.0
 
 ### Minor Changes
