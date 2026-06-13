@@ -33,6 +33,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private cursorChangeTimer: number | null = null;
   private cursorChangeDebounce = 500; // ms - debounce rapid cursor style changes
   private pendingCursorStyle: string | undefined;
+  private lastCursorStyleTarget: HTMLElement | null = null;
 
   // Last sampled position (for movement threshold)
   private lastSampledX = 0;
@@ -50,12 +51,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private mouseDownScrollX: number = 0;
   private mouseDownScrollY: number = 0;
   private holdThreshold = 250; // ms to distinguish click vs hold
-  
-  // Click debouncing (similar to zoom/resize/navigation)
-  private clickDebounce = 2000; // ms - wait for rapid clicks to settle
-  private clickTimer: number | null = null;
-  private clickQuantity = 0; // Count clicks during debounce window
-  private pendingClickData: CursorEventData | null = null; // Store last click data
   
   start(): void {
     // Note: enable() already checks if enabled, so we don't need to check here
@@ -78,30 +73,35 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         // Create a simple selector (tag + id/class if available)
         this.currentTarget = getElementSelector(target);
 
-        // Detect cursor style changes (debounced)
-        const computedStyle = window.getComputedStyle(target);
-        const cursorStyle = computedStyle.cursor || 'auto';
-        this.currentCursorStyle = cursorStyle;
+        if (target !== this.lastCursorStyleTarget) {
+          this.lastCursorStyleTarget = target;
 
-        if (this.lastCursorStyle === undefined) {
-          this.lastCursorStyle = cursorStyle;
-        } else if (this.lastCursorStyle !== cursorStyle) {
-          this.pendingCursorStyle = cursorStyle;
-          if (this.cursorChangeTimer === null) {
-            this.cursorChangeTimer = window.setTimeout(() => {
-              this.cursorChangeTimer = null;
-              // Only emit if cursor actually settled on a different style
-              if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
-                this.lastCursorStyle = this.pendingCursorStyle;
-                this.emitCursorChangeEvent();
-              }
-            }, this.cursorChangeDebounce);
+          // Detect cursor style changes (debounced)
+          const computedStyle = window.getComputedStyle(target);
+          const cursorStyle = computedStyle.cursor || 'auto';
+          this.currentCursorStyle = cursorStyle;
+
+          if (this.lastCursorStyle === undefined) {
+            this.lastCursorStyle = cursorStyle;
+          } else if (this.lastCursorStyle !== cursorStyle) {
+            this.pendingCursorStyle = cursorStyle;
+            if (this.cursorChangeTimer === null) {
+              this.cursorChangeTimer = window.setTimeout(() => {
+                this.cursorChangeTimer = null;
+                // Only emit if cursor actually settled on a different style
+                if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
+                  this.lastCursorStyle = this.pendingCursorStyle;
+                  this.emitCursorChangeEvent();
+                }
+              }, this.cursorChangeDebounce);
+            }
           }
         }
       }
       
-      // Schedule real-time update
-      this.scheduleRealTimeUpdate();
+      if (this.hasRealTimeCallback()) {
+        this.scheduleRealTimeUpdate();
+      }
 
       // Schedule archival sample if movement is significant enough
       const dx = Math.abs(this.currentX - this.lastSampledX);
@@ -155,7 +155,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
           duration: duration,
         });
       } else {
-        // Click events are debounced to handle rapid clicking
         this.handleClick({
           ...normalized,
           scrollX: this.mouseDownScrollX,
@@ -174,8 +173,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
     document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
     
-    // Start animation frame loop for real-time updates
-    this.startRealTimeLoop();
+    if (this.hasRealTimeCallback()) {
+      this.startRealTimeLoop();
+    }
     if (VERBOSE) {
       console.log('[CursorCollector] Started successfully');
     }
@@ -207,27 +207,10 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.sampleTimer = null;
     }
 
-    // Clear click debounce timer
-    if (this.clickTimer !== null) {
-      clearTimeout(this.clickTimer);
-      this.clickTimer = null;
-    }
-
     // Clear cursor change debounce timer
     if (this.cursorChangeTimer !== null) {
       clearTimeout(this.cursorChangeTimer);
       this.cursorChangeTimer = null;
-    }
-    
-    // Emit any pending click before stopping
-    if (this.pendingClickData) {
-      const dataWithQuantity: CursorEventData = {
-        ...this.pendingClickData,
-        quantity: this.clickQuantity,
-      };
-      this.emitDiscreteEvent(dataWithQuantity);
-      this.pendingClickData = null;
-      this.clickQuantity = 0;
     }
   }
   
@@ -300,6 +283,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     };
     
     // Emit to real-time stream (PartyKit)
+    if (!this.hasRealTimeCallback()) return;
     this.emitRealTime(data);
   }
   
@@ -321,43 +305,11 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     this.emitRealTime(data);
   }
   
-  /**
-   * Handle click events with debouncing
-   * Similar to zoom/resize/navigation - debounces rapid clicks within 2s window
-   */
   private handleClick(clickData: CursorEventData): void {
-    // Increment quantity counter for this debounce window
-    this.clickQuantity++;
-    
-    // Store the latest click data (position, target, button)
-    this.pendingClickData = clickData;
-    
-    // Clear existing timer
-    if (this.clickTimer !== null) {
-      clearTimeout(this.clickTimer);
-    }
-    
-    // Set new timer
-    this.clickTimer = window.setTimeout(() => {
-      if (this.pendingClickData) {
-        // Emit click event with quantity
-        const dataWithQuantity: CursorEventData = {
-          ...this.pendingClickData,
-          quantity: this.clickQuantity,
-        };
-        
-        if (VERBOSE) {
-          console.log(`[CursorCollector] Emitting click event (${this.clickQuantity} clicks):`, dataWithQuantity);
-        }
-        
-        this.emitDiscreteEvent(dataWithQuantity);
-        
-        // Reset state
-        this.pendingClickData = null;
-        this.clickQuantity = 0;
-      }
-      this.clickTimer = null;
-    }, this.clickDebounce);
+    this.emitDiscreteEvent({
+      ...clickData,
+      quantity: 1,
+    });
   }
   
   /**

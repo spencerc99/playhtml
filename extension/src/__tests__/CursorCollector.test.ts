@@ -73,6 +73,34 @@ describe("CursorCollector", () => {
   });
 
   describe("movement tracking", () => {
+    it("does not run the real-time loop without a real-time callback", () => {
+      collector.disable();
+      collector = new CursorCollector();
+      collector.setEmitCallback(emitCallback);
+      const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame");
+
+      collector.enable();
+
+      expect(requestAnimationFrameSpy).not.toHaveBeenCalled();
+      requestAnimationFrameSpy.mockRestore();
+    });
+
+    it("does not schedule real-time mousemove work without a real-time callback", () => {
+      collector.disable();
+      collector = new CursorCollector();
+      collector.setEmitCallback(emitCallback);
+      const scheduleRealTimeSpy = vi.spyOn(
+        collector as unknown as { scheduleRealTimeUpdate: () => void },
+        "scheduleRealTimeUpdate",
+      );
+
+      collector.enable();
+      simulateMouseMove(100, 100);
+
+      expect(scheduleRealTimeSpy).not.toHaveBeenCalled();
+      scheduleRealTimeSpy.mockRestore();
+    });
+
     it("emits move events when cursor moves beyond threshold", async () => {
       collector.enable();
 
@@ -141,17 +169,31 @@ describe("CursorCollector", () => {
       // Real-time callback should be called
       expect(realTimeCallback).toHaveBeenCalled();
     });
+
+    it("reuses cursor style while the pointer stays on the same target", () => {
+      const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
+      const element = createTestElement("button", {
+        id: "steady-target",
+        cursor: "pointer",
+      });
+
+      collector.enable();
+
+      simulateMouseMove(100, 100, element);
+      simulateMouseMove(120, 120, element);
+      simulateMouseMove(140, 140, element);
+
+      expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
+      getComputedStyleSpy.mockRestore();
+    });
   });
 
   describe("click detection", () => {
-    it("emits click event for quick mousedown/mouseup (debounced)", async () => {
+    it("emits click event for quick mousedown/mouseup", async () => {
       collector.enable();
 
       const element = createTestElement("button", { id: "click-target" });
       await simulateClick(100, 100, 100, 0, element); // 100ms hold
-
-      // Click is debounced, so wait for debounce period (2s)
-      await advanceTime(2000);
 
       // Should emit click (not hold, since < 250ms)
       expect(emitCallback).toHaveBeenCalled();
@@ -177,7 +219,7 @@ describe("CursorCollector", () => {
       expect(call.quantity).toBeUndefined(); // Hold events don't have quantity
     });
     
-    it("debounces rapid clicks within 2 second window and tracks quantity", async () => {
+    it("emits rapid clicks as separate events", async () => {
       collector.enable();
 
       const element = createTestElement("button", { id: "rapid-click" });
@@ -192,20 +234,17 @@ describe("CursorCollector", () => {
       
       // Third click (within 2s window)
       await simulateClick(200, 200, 50, 0, element);
-      await advanceTime(2000); // Wait for debounce
 
-      // Should only emit once with quantity 3
       const clickCalls = emitCallback.mock.calls.filter(
         (call) => (call[0] as CursorEventData).event === "click"
       );
-      expect(clickCalls.length).toBe(1);
-      
-      const call = clickCalls[0][0] as CursorEventData;
-      expect(call.event).toBe("click");
-      expect(call.quantity).toBe(3);
-      // Should use the last click's position
-      expect(call.x).toBeCloseTo(200 / 1024, 4);
-      expect(call.y).toBeCloseTo(200 / 768, 4);
+      expect(clickCalls.length).toBe(3);
+
+      expect((clickCalls[0][0] as CursorEventData).quantity).toBe(1);
+      expect((clickCalls[1][0] as CursorEventData).quantity).toBe(1);
+      expect((clickCalls[2][0] as CursorEventData).quantity).toBe(1);
+      expect((clickCalls[2][0] as CursorEventData).x).toBeCloseTo(200 / 1024, 4);
+      expect((clickCalls[2][0] as CursorEventData).y).toBeCloseTo(200 / 768, 4);
     });
     
     it("emits separate click events if clicks are spaced out", async () => {
@@ -238,9 +277,6 @@ describe("CursorCollector", () => {
       simulateMouseDown(100, 100, 2);
       await advanceTime(100);
       simulateMouseUp(100, 100, 2);
-      
-      // Wait for debounce
-      await advanceTime(2000);
 
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as CursorEventData;
@@ -252,9 +288,6 @@ describe("CursorCollector", () => {
 
       // Click at (512, 384) in 1024x768 viewport = (0.5, 0.5)
       await simulateClick(512, 384, 100);
-      
-      // Wait for debounce
-      await advanceTime(2000);
 
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as CursorEventData;

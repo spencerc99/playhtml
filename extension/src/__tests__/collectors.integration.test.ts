@@ -7,7 +7,13 @@ import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { EventBuffer } from "../storage/EventBuffer";
-import { simulateMouseMove, simulateScroll, advanceTime } from "./test-utils";
+import {
+  advanceTime,
+  createTestElement,
+  simulateClick,
+  simulateMouseMove,
+  simulateScroll,
+} from "./test-utils";
 import browser from "webextension-polyfill";
 
 // Mock the storage module
@@ -268,6 +274,43 @@ describe("Collector Integration", () => {
 
       expect(flushSpy).toHaveBeenCalled();
       flushSpy.mockRestore();
+    });
+
+    it("flushes queued events when collectors stop", async () => {
+      const eventBuffer = manager.getEventBuffer();
+      const flushSpy = vi.spyOn(eventBuffer, "manualFlush");
+
+      await manager.stopAll();
+
+      expect(flushSpy).toHaveBeenCalled();
+      flushSpy.mockRestore();
+    });
+
+    it("stores cursor clicks when collectors stop", async () => {
+      const cursorCollector = new CursorCollector();
+      manager.registerCollector(cursorCollector);
+      vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ success: true });
+
+      await manager.enableCollector("cursor");
+
+      const target = createTestElement("button", { id: "stop-click-target" });
+      await simulateClick(100, 100, 50, 0, target);
+      await manager.stopAll();
+
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: "STORE_EVENTS",
+        events: [
+          expect.objectContaining({
+            type: "cursor",
+            data: expect.objectContaining({
+              event: "click",
+              quantity: 1,
+              t: "#stop-click-target",
+            }),
+            uploaded: false,
+          }),
+        ],
+      });
     });
   });
 

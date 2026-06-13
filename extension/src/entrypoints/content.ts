@@ -64,15 +64,28 @@ export default defineContentScript({
           this.setupElementPicker();
           this.setupPresenceDetection();
 
-          // Check if this is a new site discovery
-          await this.checkSiteDiscovery();
+          if (await this.areInternalDevFeaturesEnabled()) {
+            // Check if this is a new site discovery
+            await this.checkSiteDiscovery();
 
-          // Set up collection detection for can-collect elements
-          this.setupCollectionDetection();
+            // Set up collection detection for can-collect elements
+            this.setupCollectionDetection();
+          }
 
           this.isInitialized = true;
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
+        }
+      }
+
+      private async areInternalDevFeaturesEnabled(): Promise<boolean> {
+        try {
+          const result = await browser.storage.local.get([
+            "internalDevFeaturesEnabled",
+          ]);
+          return result.internalDevFeaturesEnabled === true;
+        } catch {
+          return false;
         }
       }
 
@@ -1148,9 +1161,9 @@ export default defineContentScript({
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
 
-        // Flush pending debounced events before the page unloads
+        // Best-effort final flush; browsers may not wait for async unload work.
         window.addEventListener("beforeunload", () => {
-          collectorManager?.stopAll();
+          void collectorManager?.stopAll().catch(console.error);
         }, { once: true });
         if (VERBOSE) {
           console.log(
