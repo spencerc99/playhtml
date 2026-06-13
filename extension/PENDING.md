@@ -8,7 +8,3 @@ file back to just the header. Merge that PR to ship.
 
 Format suggestion: "- short user-facing description (#PR)"
 -->
-- Reduced background CPU and storage work while collecting browsing activity.
-- Stopped hidden inventory development features from observing and writing on every page.
-- Preserved pending event uploads when upgrading existing local browsing databases.
-- Stored click events sooner to avoid losing them during fast page exits.
