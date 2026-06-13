@@ -9,11 +9,35 @@ export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
+/**
+ * The value a `view` function returns. This is a lit-html `TemplateResult`
+ * (from the `html` tagged template), but we type it as `unknown` here so the
+ * shared types package stays free of a lit-html dependency — the `playhtml`
+ * runtime is what imports lit-html's `render` and patches it into the element.
+ */
+export type ViewTemplate = unknown;
+
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
-  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * Imperative update path: receives the current state and mutates the DOM
+   * directly. Required unless `view` is provided. `view` and `updateElement`
+   * are mutually exclusive — providing both is a registration-time error.
+   */
+  updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * Declarative render path (rail 2): a pure function from state to a lit-html
+   * template. playhtml patches the returned template into the element whenever
+   * data, localData, or awareness changes (and on explicit `requestUpdate()`).
+   *
+   * Must be pure — do NOT call `setData`/`setLocalData` synchronously during
+   * render (it loops, and is a dev-mode error). Drive writes from `@event`
+   * handlers in the template instead. Mutually exclusive with `updateElement`,
+   * `onClick`, and `onDrag` (use `@click` etc. in the template).
+   */
+  view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
   ) => void;
@@ -54,6 +78,9 @@ export interface ElementData<T = any, U = any, V = any>
   onAwarenessChange: (data: V) => void;
   // Gets the current set of awareness data for the element.
   triggerAwarenessUpdate: () => void;
+  // When true, the handler emits dev-only warnings (e.g. writing during a
+  // view render, or returning a value from a setData mutator).
+  devMode?: boolean;
 }
 
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
@@ -79,8 +106,15 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
    */
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
-  setLocalData: (data: U) => void;
+  setLocalData: (data: U | ((draft: U) => void)) => void;
   setMyAwareness: (data: V) => void;
+  /**
+   * Re-runs the element's `view` and patches the result into the DOM, even
+   * when no state has changed. Use for views that render from state *plus* an
+   * external source — the wall clock (timers, "5 minutes ago" labels),
+   * animation frames, etc. No-op for elements without a `view`.
+   */
+  requestUpdate: () => void;
 }
 
 export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
@@ -94,8 +128,14 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
-  setLocalData: (data: U) => void;
+  setLocalData: (data: U | ((draft: U) => void)) => void;
   setMyAwareness: (data: V) => void;
+  /**
+   * Re-runs the element's `view` and patches the result into the DOM. See
+   * `ElementEventHandlerData.requestUpdate`. Available in `onMount` so a
+   * `requestAnimationFrame` loop can drive clock-based views.
+   */
+  requestUpdate: () => void;
 }
 
 interface EventData<T = any> {
