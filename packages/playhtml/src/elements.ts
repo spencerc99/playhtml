@@ -1,10 +1,12 @@
 /// <reference lib="dom"/>
+import { render } from "lit-html";
 import {
   ElementAwarenessEventHandlerData,
   ElementData,
   ElementEventHandlerData,
   ElementSetupData,
   ModifierKey,
+  ViewTemplate,
 } from "@playhtml/common";
 
 // @ts-ignore
@@ -32,11 +34,19 @@ export class ElementHandler<T = any, U = any, V = any> {
   resetShortcut?: ModifierKey;
   // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
   // internal state for expressing the delta.
-  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
+  updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
+  view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>
   ) => void;
   triggerAwarenessUpdate?: () => void;
+  devMode?: boolean;
+  // Set while a `view` render is in flight, so setData/setLocalData can detect
+  // (and reject) writes made synchronously during render — a re-render loop.
+  private isRendering = false;
+  // Allows the runtime to wire up capability descendants emitted by a view
+  // (e.g. mount points for `define`d capabilities) after each render.
+  onAfterRender?: (element: HTMLElement) => void;
 
   // event handlers
   onClick?: (
@@ -63,13 +73,17 @@ export class ElementHandler<T = any, U = any, V = any> {
       data,
       awareness: awarenessData,
       updateElement,
+      view,
       updateElementAwareness,
       onMount,
       debounceMs,
       triggerAwarenessUpdate,
+      devMode,
     } = elementData;
     // console.log("🔨 constructing ", element.id);
     this.element = element;
+    this.view = view;
+    this.devMode = devMode;
     this.defaultData =
       defaultData instanceof Function ? defaultData(element) : defaultData;
     this.localData =
@@ -110,6 +124,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     onChange,
     onAwarenessChange,
     updateElement,
+    view,
     updateElementAwareness,
     onClick,
     onDrag,
@@ -117,13 +132,15 @@ export class ElementHandler<T = any, U = any, V = any> {
     resetShortcut,
     debounceMs,
     triggerAwarenessUpdate,
+    devMode,
   }: ElementData<T>) {
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.updateElement = updateElement;
-    this.updateElementAwareness = updateElementAwareness;
+    this.view = view;
+    this.devMode = devMode;
 
     // Handle all the event handlers
     if (onClick && !this.onClick) {
@@ -218,8 +235,19 @@ export class ElementHandler<T = any, U = any, V = any> {
     return this._data;
   }
 
-  setLocalData(localData: U): void {
-    this.localData = localData;
+  setLocalData(localData: U | ((draft: U) => void)): void {
+    if (typeof localData === "function") {
+      (localData as (draft: U) => void)(this.localData);
+    } else {
+      this.localData = localData;
+    }
+    // In view mode, localData is part of the rendered state (e.g. per-user UI
+    // toggles), so a localData write should re-render. Imperative-mode
+    // (updateElement) handlers manage their own DOM and call setLocalData
+    // frequently during drags — re-rendering there would be wrong/expensive.
+    if (this.view) {
+      this.render();
+    }
   }
 
   /**
@@ -227,20 +255,45 @@ export class ElementHandler<T = any, U = any, V = any> {
    *
    * Updates the internal state with the given data and handles all the downstream effects. Should only be used by the sync code to ensure one-way
    * reactivity.
-   * (e.g. calling `updateElement` and `onChange`)
+   * (e.g. calling `updateElement`/`view` and `onChange`)
    */
   set __data(data: T) {
     this._data = data;
-    this.updateElement(this.getEventHandlerData());
+    this.render();
+  }
+
+  /**
+   * Renders the element from current state: runs `view` and patches the
+   * result into the DOM via lit-html, or falls back to imperative
+   * `updateElement`. Safe to call repeatedly — lit-html diffs.
+   */
+  render(): void {
+    if (this.view) {
+      this.isRendering = true;
+      try {
+        render(
+          this.view(this.getEventHandlerData()) as any,
+          this.element,
+        );
+      } finally {
+        this.isRendering = false;
+      }
+      this.onAfterRender?.(this.element);
+      return;
+    }
+    this.updateElement?.(this.getEventHandlerData());
   }
 
   updateAwareness(data: V[], byStableId: Map<string, V>) {
-    if (!this.updateElementAwareness) {
-      return;
-    }
     this.awareness = data;
     this.awarenessByStableId = byStableId;
-    this.updateElementAwareness(this.getAwarenessEventHandlerData());
+    if (this.updateElementAwareness) {
+      this.updateElementAwareness(this.getAwarenessEventHandlerData());
+    } else if (this.view) {
+      // Views render from awareness too (e.g. "3 people here"), so an
+      // awareness change re-renders even without updateElementAwareness.
+      this.render();
+    }
   }
 
   getEventHandlerData(): ElementEventHandlerData<T, U, V> {
@@ -253,6 +306,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setMyAwareness: (newData) => this.setMyAwareness(newData),
+      requestUpdate: () => this.render(),
     };
   }
 
@@ -272,6 +326,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setMyAwareness: (newData) => this.setMyAwareness(newData),
+      requestUpdate: () => this.render(),
     };
   }
 
@@ -299,6 +354,16 @@ export class ElementHandler<T = any, U = any, V = any> {
    *   recommended portable pattern is setData(draft => { ... }).
    */
   setData(data: T | ((draft: T) => void)): void {
+    if (this.isRendering) {
+      // Writing shared data from inside a view render is a re-render loop:
+      // the write triggers another render, which writes again. Reject it and
+      // point at the fix (drive writes from @event handlers in the template).
+      console.error(
+        `[playhtml] setData() was called during a view render for "${this.element.id}". ` +
+          `Views must be pure — drive writes from @event handlers (e.g. @click) instead. Ignoring this write.`,
+      );
+      return;
+    }
     // The onChange implementation in index.ts understands both forms.
     // Cast is safe because the callee inspects and branches by typeof.
     this.onChange(data as unknown as T);
