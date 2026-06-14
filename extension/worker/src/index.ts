@@ -11,6 +11,7 @@ import { handleSubscribe } from './routes/subscribe';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
+import { scheduleCollectionEventsArchive } from './archive/collectionEvents';
 import type { Env } from './lib/supabase';
 
 export { LiveEventsHub } from './live/LiveEventsHub';
@@ -87,5 +88,13 @@ export default {
     
     // 404 for unknown routes
     return new Response('Not Found', { status: 404 });
+  },
+
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    scheduleCollectionEventsArchive(env, ctx);
   },
 };

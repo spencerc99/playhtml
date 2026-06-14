@@ -8,6 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@playhtml/extension-types": ["../../packages/extension-types/src/index.ts"]
+    },
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/**/*"]

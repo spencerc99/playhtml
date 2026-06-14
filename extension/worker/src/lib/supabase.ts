@@ -41,4 +41,6 @@ export interface Env {
   RESEND_API_KEY: string;       // Resend API key for sending welcome emails
   RESEND_SEGMENT_ID?: string;   // Optional: assign new contacts to this Resend segment
   LIVE_EVENTS_HUB: DurableObjectNamespace; // Live cursor-event stream hub
+  COLLECTION_EVENTS_ARCHIVE_ENABLED?: string; // Explicit gate for collection_events archive planning
+  COLLECTION_EVENTS_ARCHIVE_RETENTION_DAYS?: string; // Hot retention window before archive planning
 }

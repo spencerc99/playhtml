@@ -4,6 +4,13 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 
+interface ExportRequestBody {
+  type?: string;
+  startDate?: string;
+  endDate?: string;
+  name?: string;
+}
+
 /**
  * POST /events/export
  * Export edition data to JSON format
@@ -29,7 +36,7 @@ export async function handleExport(
   }
   
   try {
-    const body = await request.json();
+    const body = await request.json() as ExportRequestBody;
     const { type, startDate, endDate, name } = body;
     
     if (!type || !startDate || !endDate) {

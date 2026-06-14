@@ -23,6 +23,8 @@ compatibility_date = "2024-01-01"
 #
 # Optional variables:
 # - RESEND_SEGMENT_ID - If set, new contacts are tagged with this Resend segment
+# - COLLECTION_EVENTS_ARCHIVE_ENABLED - Set to "true" only after archive manifest migration is applied
+# - COLLECTION_EVENTS_ARCHIVE_RETENTION_DAYS - Days to keep collection_events hot before archive planning; defaults to 60
 #
 # Security model:
 # - POST /events: Public (validated + rate limited)

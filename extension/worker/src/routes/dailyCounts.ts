@@ -25,7 +25,7 @@ export async function handleDailyCounts(
 
     const supabase = createSupabaseClient(env);
 
-    // Query the pre-computed daily_counts table (populated by trigger on insert)
+    // Query the pre-computed daily_counts table (populated by scheduled rollup)
     let query = supabase
       .from('daily_counts')
       .select('day, count');
