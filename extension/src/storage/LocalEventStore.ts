@@ -1205,10 +1205,6 @@ export class LocalEventStore {
     });
   }
 
-  /**
-   * Prune events older than cutoff timestamp
-   * Returns number of events deleted
-   */
   async clearAll(): Promise<void> {
     await this.ensureInitialized();
 
@@ -1232,63 +1228,59 @@ export class LocalEventStore {
   }
 
   async pruneOlderThan(cutoffTs: number): Promise<number> {
+    return this.pruneUploadedEventsOlderThan(cutoffTs);
+  }
+
+  /**
+   * Prune uploaded events older than cutoff timestamp.
+   * Pending events stay local until a successful upload marks them uploaded.
+   */
+  async pruneUploadedEventsOlderThan(cutoffTs: number): Promise<number> {
     await this.ensureInitialized();
 
-    const deleted = await new Promise<number>((resolve, reject) => {
+    return new Promise<number>((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction(
-        [STORE_NAME, STATS_STORE_NAME],
-        "readwrite",
-      );
+      let deleted = 0;
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
-      const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const tsIndex = store.index("ts");
-
-      // Clear domain_stats — will be rebuilt from remaining events
-      statsStore.clear();
-
-      const idsToDelete: string[] = [];
-      const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs));
+      const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs, true));
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
-          idsToDelete.push(evt.id);
-          cursor.continue();
-        } else {
-          for (const id of idsToDelete) {
-            store.delete(id);
+          const evt = cursor.value as StoredCollectionEvent;
+          if (getUploadState(evt) !== UPLOAD_STATE_UPLOADED) {
+            cursor.continue();
+            return;
           }
-          transaction.oncomplete = () => {
-            if (VERBOSE) {
-              console.log(
-                `[LocalEventStore] Pruned ${idsToDelete.length} events older than ${new Date(
-                  cutoffTs,
-                ).toISOString()}`,
-              );
-            }
-            resolve(idsToDelete.length);
+
+          const deleteRequest = cursor.delete();
+          deleteRequest.onsuccess = () => {
+            deleted++;
+            cursor.continue();
           };
+          deleteRequest.onerror = () => reject(deleteRequest.error);
         }
       };
 
       request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => {
+        if (VERBOSE && deleted > 0) {
+          console.log(
+            `[LocalEventStore] Pruned ${deleted} uploaded events older than ${new Date(
+              cutoffTs,
+            ).toISOString()}`,
+          );
+        }
+        resolve(deleted);
+      };
       transaction.onerror = () => reject(transaction.error);
     });
-
-    // Rebuild domain_stats from remaining events
-    if (deleted > 0) {
-      await this.backfillSessionStats().catch((e) =>
-        console.error("[LocalEventStore] Stats rebuild after prune failed:", e),
-      );
-    }
-
-    return deleted;
   }
 }

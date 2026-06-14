@@ -286,6 +286,57 @@ describe("LocalEventStore storage stats", () => {
 });
 
 describe("LocalEventStore pending uploads", () => {
+  it("prunes old uploaded events while retaining old pending and recent events", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...event("old-uploaded", "cursor"), ts: 1_000 },
+      { ...event("old-pending", "cursor"), ts: 2_000 },
+      { ...event("recent-uploaded", "cursor"), ts: 5_000 },
+    ]);
+    await store.markEventsAsUploaded(["old-uploaded", "recent-uploaded"]);
+
+    const deleted = await store.pruneUploadedEventsOlderThan(3_000);
+    const remainingEvents = await store.getAllEvents();
+    const pendingEvents = await store.getPendingEvents(10);
+
+    expect(deleted).toBe(1);
+    expect(remainingEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "old-pending",
+      "recent-uploaded",
+    ]);
+    expect(pendingEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "old-pending",
+    ]);
+  });
+
+  it("keeps aggregate session stats when old uploaded raw events are pruned", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus-event", "navigation"),
+        ts: 1_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("blur-event", "navigation"),
+        ts: 7_000,
+        data: { event: "blur" },
+      },
+    ]);
+    await store.markEventsAsUploaded(["focus-event", "blur-event"]);
+
+    const before = await store.getSessionStats("example.com");
+    const deleted = await store.pruneUploadedEventsOlderThan(10_000);
+    const after = await store.getSessionStats("example.com");
+    const remainingEvents = await store.getAllEvents();
+
+    expect(before?.totalTimeMs).toBe(6_000);
+    expect(deleted).toBe(2);
+    expect(remainingEvents).toEqual([]);
+    expect(after?.totalTimeMs).toBe(6_000);
+    expect(after?.sessionCount).toBe(1);
+  });
+
   it("filters all-event reads by multiple event types", async () => {
     const store = createStore();
     await store.addEvents([

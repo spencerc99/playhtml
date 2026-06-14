@@ -20,6 +20,14 @@ import {
 import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
 
 const store = new LocalEventStore()
+const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
+const LOCAL_RAW_EVENT_RETENTION_MS = LOCAL_RAW_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000
+const LOCAL_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
+const LOCAL_RETENTION_ALARM_PERIOD_MINUTES = 24 * 60
+const LOCAL_RETENTION_ALARM = 'pruneLocalEvents'
+const LOCAL_RETENTION_LAST_RUN_KEY = 'localRetentionLastRun'
+
+let localRetentionRunning = false
 
 async function flushPendingUploads(): Promise<void> {
   try {
@@ -45,6 +53,38 @@ async function flushPendingUploads(): Promise<void> {
     await store.markEventsAsUploaded(pending.map((e) => e.id))
   } catch (e) {
     console.error('[Background] flushPendingUploads error:', e)
+  }
+}
+
+async function runLocalRetention(options: { force?: boolean } = {}): Promise<void> {
+  if (localRetentionRunning) return
+
+  localRetentionRunning = true
+  try {
+    const now = Date.now()
+    if (!options.force) {
+      const result = await browser.storage.local.get(LOCAL_RETENTION_LAST_RUN_KEY)
+      const lastRun = result[LOCAL_RETENTION_LAST_RUN_KEY]
+      if (typeof lastRun === 'number' && now - lastRun < LOCAL_RETENTION_INTERVAL_MS) {
+        return
+      }
+    }
+
+    await flushPendingUploads()
+
+    const cutoffTs = now - LOCAL_RAW_EVENT_RETENTION_MS
+    const deleted = await store.pruneUploadedEventsOlderThan(cutoffTs)
+    await browser.storage.local.set({ [LOCAL_RETENTION_LAST_RUN_KEY]: Date.now() })
+
+    if (VERBOSE && deleted > 0) {
+      console.log(
+        `[Background] Pruned ${deleted} uploaded local events older than ${LOCAL_RAW_EVENT_RETENTION_DAYS} days`,
+      )
+    }
+  } catch (e) {
+    console.error('[Background] local retention error:', e)
+  } finally {
+    localRetentionRunning = false
   }
 }
 
@@ -82,11 +122,24 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create("checkMilestones", { periodInMinutes: 5 });
+  browser.alarms.create(LOCAL_RETENTION_ALARM, {
+    periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
+  });
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name !== "checkMilestones") return;
-    await runMilestoneCheck();
+    if (alarm.name === "checkMilestones") {
+      await runMilestoneCheck();
+      return;
+    }
+
+    if (alarm.name === LOCAL_RETENTION_ALARM) {
+      await runLocalRetention({ force: true });
+    }
   });
+
+  runLocalRetention().catch((e) => {
+    console.error('[Background] local retention startup error:', e)
+  })
 
   // Single-flight + 1s trailing debounce. Rapid navigation events coalesce
   // into one check, and we never run two checks concurrently (the function
