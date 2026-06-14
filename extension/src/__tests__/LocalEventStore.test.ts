@@ -63,7 +63,9 @@ async function waitForBackgroundDatabaseWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function openVersion8Database(): Promise<IDBDatabase> {
+async function openVersion8Database(
+  seedAggregate: Partial<DomainStatsAggregate> = aggregate(),
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 8);
     request.onupgradeneeded = () => {
@@ -75,7 +77,7 @@ async function openVersion8Database(): Promise<IDBDatabase> {
       eventStore.createIndex("domain", "domain", { unique: false });
       eventStore.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
       const statsStore = db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
-      statsStore.put(aggregate());
+      statsStore.put(seedAggregate);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -217,6 +219,44 @@ describe("LocalEventStore aggregates", () => {
   });
 });
 
+describe("LocalEventStore aggregate migrations", () => {
+  it("preserves version 8 stats aggregates when opening version 9", async () => {
+    const db = await openVersion8Database({
+      ...aggregate(),
+      totalTimeMs: 12_345,
+      sessionCount: 7,
+      storageSizeBytes: undefined,
+    });
+    db.close();
+
+    const store = createStore();
+    const stats = await store.getSessionStats("example.com");
+
+    expect(stats?.totalTimeMs).toBe(12_345);
+    expect(stats?.sessionCount).toBe(7);
+  });
+
+  it("lists domains from stats aggregates", async () => {
+    const store = createStore();
+    await store.addEvents([
+      event("navigation-1", "navigation"),
+      event("cursor-1", "cursor"),
+    ]);
+
+    const domains = await store.getAllDomains();
+
+    expect(domains).toEqual([
+      expect.objectContaining({
+        domain: "example.com",
+        eventCount: 2,
+        totalTimeMs: 0,
+        uniquePageCount: 1,
+        eventCounts: { navigation: 1, cursor: 1 },
+      }),
+    ]);
+  });
+});
+
 describe("LocalEventStore storage stats", () => {
   it("reads storage stats from the global aggregate", async () => {
     const store = createStoreWithGlobalStats({
@@ -246,6 +286,25 @@ describe("LocalEventStore storage stats", () => {
 });
 
 describe("LocalEventStore pending uploads", () => {
+  it("filters all-event reads by multiple event types", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...event("cursor-event", "cursor"), ts: 1_000 },
+      { ...event("keyboard-event", "keyboard"), ts: 2_000 },
+      { ...event("navigation-event", "navigation"), ts: 3_000 },
+    ]);
+
+    const events = await store.getAllEvents({
+      types: ["cursor", "navigation"],
+      limit: 10,
+    });
+
+    expect(events.map((storedEvent) => storedEvent.id)).toEqual([
+      "cursor-event",
+      "navigation-event",
+    ]);
+  });
+
   it("derives query indexes when storing content script events", async () => {
     const store = createStore();
     await store.addEvents([contentScriptEvent("cursor-indexed", "cursor")]);

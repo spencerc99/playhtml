@@ -27,6 +27,7 @@ const GLOBAL_STATS_KEY = "__global__";
 
 export interface QueryOptions {
   type?: CollectionEventType;
+  types?: CollectionEventType[];
   limit?: number;
   startTs?: number;
   endTs?: number;
@@ -263,8 +264,7 @@ export class LocalEventStore {
         // v6: create domain_stats store (keyPath: "domain")
         // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
         // v8: force rebuild to populate page-level + global aggregates added after v7
-        // v9: force rebuild to populate storageSizeBytes in aggregates
-        if (oldVersion < 9) {
+        if (oldVersion < 8) {
           if (db.objectStoreNames.contains(STATS_STORE_NAME)) {
             db.deleteObjectStore(STATS_STORE_NAME);
           }
@@ -272,6 +272,8 @@ export class LocalEventStore {
           if (VERBOSE) {
             console.log("[LocalEventStore] Created domain_stats store (keyPath: key)");
           }
+        } else if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
+          db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
         }
 
         if (oldVersion < 9) {
@@ -672,6 +674,10 @@ export class LocalEventStore {
       domain: string;
       eventCount: number;
       lastVisit: number;
+      firstVisit: number;
+      totalTimeMs: number;
+      uniquePageCount: number;
+      eventCounts: Record<string, number>;
     }>
   > {
     await this.ensureInitialized();
@@ -682,42 +688,47 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const domainIndex = store.index("domain");
-
-      const domainMap = new Map<string, { count: number; lastVisit: number }>();
-
-      // Walk the domain index — entries are grouped by key so this is efficient
-      const request = domainIndex.openCursor();
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const request = statsStore.openCursor();
+      const domains: Array<{
+        domain: string;
+        eventCount: number;
+        lastVisit: number;
+        firstVisit: number;
+        totalTimeMs: number;
+        uniquePageCount: number;
+        eventCounts: Record<string, number>;
+      }> = [];
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
-          const domain = evt.domain || extractDomain(evt.meta.url);
-
-          if (domain) {
-            const existing = domainMap.get(domain);
-            if (existing) {
-              existing.count++;
-              existing.lastVisit = Math.max(existing.lastVisit, evt.ts);
-            } else {
-              domainMap.set(domain, { count: 1, lastVisit: evt.ts });
-            }
+          const aggregate = cursor.value as DomainStatsAggregate;
+          if (
+            aggregate.key !== GLOBAL_STATS_KEY &&
+            aggregate.domain &&
+            !aggregate.key.includes("::")
+          ) {
+            const eventCounts = aggregate.eventsByType ?? {};
+            const eventCount = Object.values(eventCounts).reduce(
+              (sum, count) => sum + count,
+              0,
+            );
+            domains.push({
+              domain: aggregate.domain,
+              eventCount,
+              lastVisit: aggregate.lastVisit,
+              firstVisit: aggregate.firstVisit,
+              totalTimeMs: aggregate.totalTimeMs,
+              uniquePageCount: aggregate.uniqueUrls?.length ?? 0,
+              eventCounts,
+            });
           }
 
           cursor.continue();
         } else {
-          const domains = Array.from(domainMap.entries()).map(
-            ([domain, data]) => ({
-              domain,
-              eventCount: data.count,
-              lastVisit: data.lastVisit,
-            }),
-          );
-
           domains.sort((a, b) => b.lastVisit - a.lastVisit);
           resolve(domains);
         }
@@ -796,6 +807,7 @@ export class LocalEventStore {
       const request = tsIndex.openCursor(range, direction);
 
       const events: CollectionEvent[] = [];
+      const typeSet = options.types ? new Set(options.types) : null;
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
@@ -805,6 +817,7 @@ export class LocalEventStore {
           let include = true;
 
           if (options.type && evt.type !== options.type) include = false;
+          if (typeSet && !typeSet.has(evt.type)) include = false;
 
           if (include) {
             events.push(toCollectionEvent(evt));

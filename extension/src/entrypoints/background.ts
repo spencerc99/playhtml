@@ -295,6 +295,7 @@ export default defineBackground(() => {
       const domain = message.domain as string
       const rawUrl = message.url as string | undefined
       const normalizedUrl = rawUrl ? normalizeUrl(rawUrl) : undefined
+      const includePageSessions = message.includePageSessions === true
       ;(async () => {
         try {
           // Screen time and hour buckets are pre-computed in domain_stats (O(1)).
@@ -304,7 +305,9 @@ export default defineBackground(() => {
           const [agg, cursorEvents, pageAggs] = await Promise.all([
             store.getSessionStats(domain, normalizedUrl).catch(() => null),
             store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
-            store.getPageStats(domain).catch(() => [] as never[]),
+            includePageSessions
+              ? store.getPageStats(domain).catch(() => [] as never[])
+              : Promise.resolve([] as never[]),
           ])
 
           // Only return null stats when there is truly no data at all.
@@ -335,18 +338,21 @@ export default defineBackground(() => {
           // Build per-page breakdown from page-level aggregates for the stats
           // page's expanded domain view. Each page aggregate yields one entry
           // per session so computeTopPages() can sum and count correctly.
-          const sessions: Array<{ url: string; focusTs: number; blurTs: number; durationMs: number }> = []
-          for (const p of pageAggs) {
-            const url = p.key.slice(domain.length + 2) // strip "domain::" prefix → normalizedUrl
-            // Emit one synthetic session per recorded session so visit counts are accurate
-            const perSessionMs = p.sessionCount > 0 ? p.totalTimeMs / p.sessionCount : p.totalTimeMs
-            for (let i = 0; i < Math.max(1, p.sessionCount); i++) {
-              sessions.push({
-                url,
-                focusTs: p.firstVisit,
-                blurTs: p.lastVisit,
-                durationMs: perSessionMs,
-              })
+          let sessions: Array<{ url: string; focusTs: number; blurTs: number; durationMs: number }> | undefined
+          if (includePageSessions) {
+            sessions = []
+            for (const p of pageAggs) {
+              const url = p.key.slice(domain.length + 2) // strip "domain::" prefix → normalizedUrl
+              // Emit one synthetic session per recorded session so visit counts are accurate
+              const perSessionMs = p.sessionCount > 0 ? p.totalTimeMs / p.sessionCount : p.totalTimeMs
+              for (let i = 0; i < Math.max(1, p.sessionCount); i++) {
+                sessions.push({
+                  url,
+                  focusTs: p.firstVisit,
+                  blurTs: p.lastVisit,
+                  durationMs: perSessionMs,
+                })
+              }
             }
           }
 
@@ -367,7 +373,7 @@ export default defineBackground(() => {
               cursorDistancePx,
               eventCounts: agg?.eventsByType ?? {},
               dateRange,
-              sessions,
+              ...(sessions ? { sessions } : {}),
               // Only include uniquePageCount for domain-level stats (not page-level)
               uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
             },
