@@ -224,10 +224,9 @@ export default function App() {
             install the extension to try it out!
           </div>
           <DownloadGate />
-          <a
+          <span
             className={styles.scrollCue}
-            href="#homepage-essay"
-            aria-label="Scroll to the essay"
+            aria-hidden="true"
           >
             <svg
               className={styles.scrollCueMark}
@@ -244,7 +243,7 @@ export default function App() {
                 d="M45 30 L55 39 L65 30"
               />
             </svg>
-          </a>
+          </span>
         </section>
 
         <section className={styles.section} id="homepage-essay">
