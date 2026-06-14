@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
-import { playhtml, html, repeat } from "../index";
+import { playhtml, html, svg, repeat } from "../index";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -77,6 +77,29 @@ describe("rail 2: register + view", () => {
     el.querySelector("button")!.click();
     await tick();
     expect(el.querySelector(".panel")).not.toBeNull();
+  });
+
+  it("renders lit-html svg fragments (spinner case)", async () => {
+    const el = document.createElement("div");
+    el.id = "svg-view";
+    document.body.appendChild(el);
+
+    playhtml.register<{ slices: number[] }>("svg-view", {
+      defaultData: { slices: [0, 1, 2] },
+      view: ({ data }) => html`
+        <svg viewBox="0 0 100 100">
+          <g>
+            ${data.slices.map(
+              (i) => svg`<circle cx=${i * 10} cy="5" r="2" class="slice"></circle>`,
+            )}
+          </g>
+        </svg>
+      `,
+    });
+    await tick();
+
+    expect(el.querySelector("svg")).not.toBeNull();
+    expect(el.querySelectorAll("circle.slice").length).toBe(3);
   });
 
   it("requestUpdate re-renders without a data change (clock-driven views)", async () => {

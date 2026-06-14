@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="React examples ported to the vanilla playhtml view API"
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Carter+One&family=Play:wght@400;700&family=Rubik+Pixels&family=Yellowtail&display=swap"
+      rel="stylesheet"
+    />
+    <title>playhtml · view API playground</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div
+        style="position: fixed; top: 10px; right: 10px; padding: 10px; background: rgba(0, 0, 0, 0.8); color: white; border-radius: 8px; font-family: monospace; z-index: 999999;"
+      >
+        <div>👥 online: <span id="userCount">0</span></div>
+        <div style="font-size: 12px; opacity: 0.7; margin-top: 5px;">
+          /test/view-playground
+        </div>
+      </div>
+
+      <header class="vp-header">
+        <h1>view API playground</h1>
+        <p>
+          The big <code>@playhtml/react</code> examples from
+          <a href="/test/react-test">react-test</a>, re-implemented in vanilla
+          HTML + JS with the new <code>playhtml.register</code> /
+          <code>playhtml.define</code> + <code>view</code> API. Open in two
+          windows to see sync. Each element below is just an empty mount point —
+          all the markup is rendered by its <code>view</code> in
+          <code>view-playground.ts</code>.
+        </p>
+      </header>
+
+      <!-- Each section is an empty mount point; view-playground.ts registers it. -->
+
+      <section class="vp">
+        <h2>Counter <span>register + view + setData mutator</span></h2>
+        <div id="orb" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Shared lamp <span>view: state → style (the flagship)</span></h2>
+        <div id="lamp" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Shared slider <span>view + range input</span></h2>
+        <div id="slider" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Online indicator <span>view + element awareness</span></h2>
+        <div id="online" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Visitor count <span>view re-renders on awareness join/leave</span></h2>
+        <div id="visitors" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Shared timer <span>view + requestUpdate (clock-driven)</span></h2>
+        <div id="timer" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Random spinner <span>view + requestUpdate + lit-html SVG</span></h2>
+        <div id="spinner" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Poll <span>view + repeat + keyed per-user map writes</span></h2>
+        <div id="poll" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>Live reactions <span>view + events + requestUpdate fade</span></h2>
+        <div id="reactions" can-play></div>
+      </section>
+
+      <section class="vp">
+        <h2>
+          Live chat
+          <span>define + localData + view-rendered mount points (composition)</span>
+        </h2>
+        <div id="chats" can-play></div>
+      </section>
+    </div>
+
+    <footer>
+      <div>
+        an open-source library created and maintained by
+        <a href="https://spencer.place/">spencer</a>
+      </div>
+    </footer>
+
+    <script type="module" src="./view-playground.ts"></script>
+    <script type="module">
+      // Online count from cursor awareness (mirrors react-test.html).
+      setTimeout(() => {
+        if (window.playhtml?.cursorClient) {
+          const updateCount = () => {
+            const colors = window.cursors?.allColors || [];
+            document.getElementById("userCount").textContent = colors.length;
+          };
+          window.cursors?.on("allColors", updateCount);
+          updateCount();
+        }
+      }, 1000);
+    </script>
+
+    <style>
+      #app {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2rem 1rem 6rem;
+        font-family: "Play", system-ui, sans-serif;
+      }
+      .vp-header h1 {
+        font-family: "Carter One", cursive;
+      }
+      .vp-header p {
+        color: #444;
+        line-height: 1.5;
+      }
+      .vp {
+        border-top: 1px solid #e2e2e2;
+        padding: 1.5rem 0;
+      }
+      .vp > h2 {
+        font-size: 1.1rem;
+        margin: 0 0 1rem;
+        display: flex;
+        align-items: baseline;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+      }
+      .vp > h2 > span {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: #8a8a8a;
+        font-family: monospace;
+      }
+
+      /* Counter */
+      .orb {
+        font-size: 1rem;
+        padding: 1rem 1.4rem;
+        border-radius: 999px;
+        border: none;
+        color: white;
+        background: radial-gradient(circle at 30% 30%, #7dd3fc, #2563eb);
+        cursor: pointer;
+        transition: transform 0.15s ease;
+      }
+
+      /* Lamp */
+      .lamp {
+        width: 120px;
+        cursor: pointer;
+        transition: filter 0.3s ease;
+      }
+      .lamp.on {
+        filter: brightness(1.2) saturate(1.6)
+          drop-shadow(0 0 50px rgba(247, 220, 156, 0.85));
+      }
+
+      /* Awareness dots */
+      .online-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dot {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: inline-block;
+        box-shadow: 0 0 0 2px white, 0 0 4px rgba(0, 0, 0, 0.3);
+      }
+      .pill {
+        display: inline-block;
+        padding: 0.4rem 0.9rem;
+        border-radius: 999px;
+        background: #111;
+        color: white;
+        font-size: 0.9rem;
+      }
+
+      /* Timer */
+      .time {
+        font-variant-numeric: tabular-nums;
+        font-size: 1.6rem;
+        margin-right: 0.6rem;
+      }
+
+      /* Spinner */
+      .wheel {
+        width: 200px;
+        height: 200px;
+        display: block;
+      }
+
+      /* Poll */
+      .poll-row {
+        display: grid;
+        grid-template-columns: 2rem 1fr auto;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.4rem;
+      }
+      .poll-row .bar {
+        grid-column: 1 / -1;
+        height: 6px;
+        background: #eee;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .poll-row .fill {
+        height: 100%;
+        background: #6aa84f;
+        transition: width 0.3s ease;
+      }
+      .poll-row button.voted {
+        color: #6aa84f;
+      }
+
+      /* Live reactions */
+      .stage {
+        position: relative;
+        height: 140px;
+        width: 240px;
+        overflow: hidden;
+        border: 1px dashed #ddd;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+      }
+      .burst {
+        position: absolute;
+        font-size: 1.6rem;
+        pointer-events: none;
+      }
+
+      /* Chat */
+      .chat {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        overflow: hidden;
+      }
+      .chat-head {
+        padding: 0.5rem 0.8rem;
+        background: #f4f4f4;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+      }
+      .chat-body {
+        padding: 0.5rem 0.8rem;
+        max-height: 160px;
+        overflow-y: auto;
+      }
+      .chat form {
+        display: flex;
+        gap: 0.4rem;
+        padding: 0.5rem 0.8rem;
+      }
+      .chat input {
+        flex: 1;
+      }
+    </style>
+  </body>
+</html>
