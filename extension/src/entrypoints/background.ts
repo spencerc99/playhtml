@@ -71,6 +71,7 @@ async function runLocalRetention(options: { force?: boolean } = {}): Promise<voi
     }
 
     await flushPendingUploads()
+    await store.ensureHistoricalStats()
 
     const cutoffTs = now - LOCAL_RAW_EVENT_RETENTION_MS
     const deleted = await store.pruneUploadedEventsOlderThan(cutoffTs)
@@ -597,16 +598,9 @@ export default defineBackground(() => {
             reply({ success: false, error: 'No player identity found' })
             return
           }
-          // Check local bounds so we only fetch what we're missing
-          const stats = await store.getStorageStats().catch(() => null)
-          const localBounds = stats && stats.oldestEvent > 0 && stats.newestEvent > 0
-            ? { oldest: stats.oldestEvent, newest: stats.newestEvent }
-            : undefined
           console.log('[Background] RESTORE_FROM_SERVER starting, pid:', pid.slice(0, 20) + '...',
-            localBounds
-              ? `local range: ${new Date(localBounds.oldest).toISOString()} – ${new Date(localBounds.newest).toISOString()}`
-              : 'no local data')
-          const { events, countsByType } = await fetchEventsByPid(pid, { localBounds })
+            'fetching all server events')
+          const { events, countsByType } = await fetchEventsByPid(pid)
           console.log('[Background] Fetched', events.length, 'events, writing to IDB...')
           await store.addEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')

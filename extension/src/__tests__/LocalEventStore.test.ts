@@ -12,6 +12,7 @@ import type { CollectionEvent } from "../collectors/types";
 const DB_NAME = "collection_events_db";
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
+const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 
 const originalIndexedDB = globalThis.indexedDB;
 const originalIDBKeyRange = globalThis.IDBKeyRange;
@@ -84,6 +85,28 @@ async function openVersion8Database(
   });
 }
 
+async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = fakeIndexedDB.open(DB_NAME, 7);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const eventStore = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      eventStore.createIndex("ts", "ts", { unique: false });
+      eventStore.createIndex("type", "type", { unique: false });
+      eventStore.createIndex("uploaded", "uploaded", { unique: false });
+      eventStore.createIndex("domain", "domain", { unique: false });
+      eventStore.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
+      db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
+
+      for (const seedEvent of seedEvents) {
+        eventStore.put(seedEvent);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 async function putSeedEvent(db: IDBDatabase, seedEvent: CollectionEvent): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction([STORE_NAME], "readwrite");
@@ -93,36 +116,21 @@ async function putSeedEvent(db: IDBDatabase, seedEvent: CollectionEvent): Promis
   });
 }
 
+async function putStatsRows(db: IDBDatabase, rows: unknown[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction([STATS_STORE_NAME], "readwrite");
+    const statsStore = transaction.objectStore(STATS_STORE_NAME);
+    for (const row of rows) {
+      statsStore.put(row);
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 function createStore(): LocalEventStore {
   const store = new LocalEventStore();
   stores.push(store);
-  return store;
-}
-
-function createStoreWithGlobalStats(globalStats: unknown): LocalEventStore {
-  const store = Object.create(LocalEventStore.prototype) as LocalEventStore;
-  (store as any).isInitialized = true;
-  (store as any).db = {
-    transaction(storeNames: string[]) {
-      expect(storeNames).toEqual([STATS_STORE_NAME]);
-      return {
-        objectStore(name: string) {
-          expect(name).toBe(STATS_STORE_NAME);
-          return {
-            get(key: string) {
-              expect(key).toBe("__global__");
-              const request: any = {};
-              queueMicrotask(() => {
-                request.result = globalStats;
-                request.onsuccess?.();
-              });
-              return request;
-            },
-          };
-        },
-      };
-    },
-  };
   return store;
 }
 
@@ -236,6 +244,24 @@ describe("LocalEventStore aggregate migrations", () => {
     expect(stats?.sessionCount).toBe(7);
   });
 
+  it("reports local raw storage stats when preserved version 8 aggregates do not have size data", async () => {
+    const db = await openVersion8Database({
+      ...aggregate(),
+      storageSizeBytes: undefined,
+    });
+    await putSeedEvent(db, { ...event("cursor-1", "cursor"), ts: 2_000 });
+    db.close();
+
+    const store = createStore();
+    const stats = await store.getStorageStats();
+
+    expect(stats.totalEvents).toBe(1);
+    expect(stats.estimatedSizeBytes).toBeGreaterThan(0);
+    expect(stats.oldestEvent).toBe(2_000);
+    expect(stats.newestEvent).toBe(2_000);
+    expect(stats.countsByType).toEqual({ cursor: 1 });
+  });
+
   it("lists domains from stats aggregates", async () => {
     const store = createStore();
     await store.addEvents([
@@ -255,33 +281,100 @@ describe("LocalEventStore aggregate migrations", () => {
       }),
     ]);
   });
+
+  it("waits for aggregate backfill before listing domains after older upgrades", async () => {
+    const db = await openVersion7Database([
+      event("navigation-1", "navigation"),
+      event("cursor-1", "cursor"),
+    ]);
+    db.close();
+
+    const store = createStore();
+    const domains = await store.getAllDomains();
+
+    expect(domains).toEqual([
+      expect.objectContaining({
+        domain: "example.com",
+        eventCount: 2,
+        uniquePageCount: 1,
+        eventCounts: { navigation: 1, cursor: 1 },
+      }),
+    ]);
+  });
+
+  it("counts events queued during aggregate backfill exactly once", async () => {
+    const queuedEvent = { ...event("queued-cursor", "cursor"), ts: 2_000 };
+    const db = await openVersion7Database([
+      { ...event("old-cursor", "cursor"), ts: 1_000 },
+      queuedEvent,
+    ]);
+    db.close();
+
+    const store = createStore();
+    (store as any).queueEventsForStatsAfterBackfill([queuedEvent]);
+    await store.ensureHistoricalStats();
+    const stats = await store.getSessionStats("example.com");
+
+    expect(stats?.eventsByType.cursor).toBe(2);
+    expect(stats?.firstVisit).toBe(1_000);
+    expect(stats?.lastVisit).toBe(2_000);
+  });
+
+  it("rebuilds aggregates when a previous backfill did not complete", async () => {
+    const db = await openVersion7Database([
+      { ...event("old-cursor", "cursor"), ts: 1_000 },
+      { ...event("queued-cursor", "cursor"), ts: 2_000 },
+    ]);
+    db.close();
+
+    const store = createStore();
+    await store.ensureHistoricalStats();
+    await putStatsRows((store as any).db, [
+      {
+        ...aggregate(),
+        eventsByType: { cursor: 1 },
+        firstVisit: 1_000,
+        lastVisit: 1_000,
+      },
+      {
+        key: STATS_BACKFILL_STATE_KEY,
+        state: "running",
+      },
+    ]);
+    (store as any).statsBackfillComplete = false;
+
+    const domains = await store.getAllDomains();
+
+    expect(domains).toEqual([
+      expect.objectContaining({
+        domain: "example.com",
+        eventCount: 2,
+        eventCounts: { cursor: 2 },
+        firstVisit: 1_000,
+        lastVisit: 2_000,
+      }),
+    ]);
+  });
 });
 
 describe("LocalEventStore storage stats", () => {
-  it("reads storage stats from the global aggregate", async () => {
-    const store = createStoreWithGlobalStats({
-      key: "__global__",
-      domain: "",
-      totalTimeMs: 0,
-      hourBuckets: new Array(24).fill(0),
-      sessionCount: 0,
-      pendingFocusTs: null,
-      pendingFocusUrl: "",
-      eventsByType: { cursor: 2, keyboard: 1 },
-      storageSizeBytes: 4096,
-      firstVisit: 100,
-      lastVisit: 300,
-      uniqueUrls: [],
-      processedNavIds: [],
-    });
+  it("reads storage stats from retained local event rows", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...event("cursor-1", "cursor"), ts: 100 },
+      { ...event("cursor-2", "cursor"), ts: 200 },
+      { ...event("keyboard-1", "keyboard"), ts: 300 },
+    ]);
 
-    await expect(store.getStorageStats()).resolves.toEqual({
+    const stats = await store.getStorageStats();
+
+    expect(stats).toMatchObject({
       totalEvents: 3,
-      estimatedSizeBytes: 4096,
       oldestEvent: 100,
       newestEvent: 300,
       countsByType: { cursor: 2, keyboard: 1 },
     });
+    expect(stats.estimatedSizeBytes).toBeGreaterThan(0);
   });
 });
 
@@ -335,6 +428,25 @@ describe("LocalEventStore pending uploads", () => {
     expect(remainingEvents).toEqual([]);
     expect(after?.totalTimeMs).toBe(6_000);
     expect(after?.sessionCount).toBe(1);
+  });
+
+  it("reports storage bounds from retained raw events after pruning", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...event("old-uploaded", "cursor"), ts: 1_000 },
+      { ...event("old-pending", "cursor"), ts: 2_000 },
+      { ...event("recent-uploaded", "keyboard"), ts: 5_000 },
+    ]);
+    await store.markEventsAsUploaded(["old-uploaded", "recent-uploaded"]);
+
+    await store.pruneUploadedEventsOlderThan(3_000);
+
+    await expect(store.getStorageStats()).resolves.toMatchObject({
+      totalEvents: 2,
+      oldestEvent: 2_000,
+      newestEvent: 5_000,
+      countsByType: { cursor: 1, keyboard: 1 },
+    });
   });
 
   it("filters all-event reads by multiple event types", async () => {
