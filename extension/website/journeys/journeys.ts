@@ -24,8 +24,8 @@ root.insertAdjacentHTML(
   <header class="hud-title">
     <h1>we were online — <em>journeys</em></h1>
     <p>every page you open is a request crossing the planet. each comet is one
-       visit, routed along the real submarine cables it most likely rode, paced
-       by the speed of light in glass.</p>
+       visit, flowing from where you are to where the server lives, paced by the
+       speed of light in glass.</p>
   </header>
   <div class="hud-bar">
     <button id="playToggle" class="btn" aria-label="play / pause">❚❚</button>
@@ -39,7 +39,7 @@ root.insertAdjacentHTML(
     <span class="readout" id="clockReadout">loading…</span>
     <span class="source-pill" id="sourcePill"></span>
   </div>
-  <div class="empty" id="emptyState">tracing the cables…</div>
+  <div class="empty" id="emptyState">tracing the crossings…</div>
 `,
 );
 

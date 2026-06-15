@@ -1,9 +1,8 @@
 // ABOUTME: Loads navigation events (live worker, synthetic fallback) and turns each
-// ABOUTME: page focus into a routed Journey from the user's origin to the server.
+// ABOUTME: page focus into a Journey from the user's origin to the destination server.
 
 import { RECENT_EVENTS_URL } from "../shared/config";
 import { GeoPoint, domainToGeo, haversineKm, hashString, tzToGeo } from "./geo";
-import { routeJourney } from "./cables";
 
 const FIBER_KM_PER_MS = 200; // ~⅔ c — propagation speed of light in glass fiber.
 const MIN_LIVE_JOURNEYS = 12; // below this, fall back to the synthetic swarm.
@@ -17,8 +16,6 @@ export interface Journey {
   origin: GeoPoint;
   originKey: string; // stable key for de-duping origin glyphs
   dest: GeoPoint;
-  waypoints: GeoPoint[];
-  cableName: string | null;
   km: number;
   latencyMs: number; // one-way real propagation time
 }
@@ -64,11 +61,7 @@ function buildJourney(
   originKey: string,
 ): Journey | null {
   const { geo: dest } = domainToGeo(domain);
-  const { waypoints, cableName } = routeJourney(origin, dest);
-  let km = 0;
-  for (let i = 1; i < waypoints.length; i++) {
-    km += haversineKm(waypoints[i - 1], waypoints[i]);
-  }
+  const km = haversineKm(origin, dest);
   return {
     pid,
     domain,
@@ -77,8 +70,6 @@ function buildJourney(
     origin,
     originKey,
     dest,
-    waypoints,
-    cableName,
     km,
     latencyMs: km / FIBER_KM_PER_MS,
   };
