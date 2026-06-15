@@ -20,6 +20,7 @@ import {
 import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
 
 const store = new LocalEventStore()
+const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
 const LOCAL_RAW_EVENT_RETENTION_MS = LOCAL_RAW_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000
 const LOCAL_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
@@ -123,9 +124,11 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create("checkMilestones", { periodInMinutes: 5 });
-  browser.alarms.create(LOCAL_RETENTION_ALARM, {
-    periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
-  });
+  if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
+    browser.alarms.create(LOCAL_RETENTION_ALARM, {
+      periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
+    });
+  }
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === "checkMilestones") {
@@ -133,14 +136,16 @@ export default defineBackground(() => {
       return;
     }
 
-    if (alarm.name === LOCAL_RETENTION_ALARM) {
+    if (LOCAL_RAW_EVENT_RETENTION_ENABLED && alarm.name === LOCAL_RETENTION_ALARM) {
       await runLocalRetention({ force: true });
     }
   });
 
-  runLocalRetention().catch((e) => {
-    console.error('[Background] local retention startup error:', e)
-  })
+  if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
+    runLocalRetention().catch((e) => {
+      console.error('[Background] local retention startup error:', e)
+    })
+  }
 
   // Single-flight + 1s trailing debounce. Rapid navigation events coalesce
   // into one check, and we never run two checks concurrently (the function
