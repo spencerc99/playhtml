@@ -71,7 +71,8 @@ describe("background local retention", () => {
   it("does not schedule uploaded raw-event pruning on startup", async () => {
     const background = await import("../entrypoints/background");
 
-    background.default();
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
 
     expect(browserMock.alarms.create).toHaveBeenCalledWith("checkMilestones", {
       periodInMinutes: 5,
