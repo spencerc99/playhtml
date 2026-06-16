@@ -1,3 +1,5 @@
+// ABOUTME: Tests basic playhtml element setup and state behavior.
+// ABOUTME: Verifies handler lifecycle, SyncedStore writes, and element cleanup.
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { playhtml } from "../index";
 
@@ -85,6 +87,33 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["toggle-test"]).toEqual({
       on: false,
     });
+  });
+
+  it("removes handlers for unmounted elements so replacements can register", async () => {
+    const first = document.createElement("div");
+    first.id = "remount-test";
+    first.setAttribute("can-move", "");
+    document.body.appendChild(first);
+    await playhtml.setupPlayElementForTag(first, "can-move");
+
+    expect(
+      playhtml.elementHandlers!.get("can-move")!.get("remount-test")!.element,
+    ).toBe(first);
+
+    playhtml.removePlayElement(first);
+    expect(playhtml.elementHandlers!.get("can-move")!.has("remount-test")).toBe(
+      false,
+    );
+
+    const replacement = document.createElement("div");
+    replacement.id = "remount-test";
+    replacement.setAttribute("can-move", "");
+    document.body.appendChild(replacement);
+    await playhtml.setupPlayElementForTag(replacement, "can-move");
+
+    expect(
+      playhtml.elementHandlers!.get("can-move")!.get("remount-test")!.element,
+    ).toBe(replacement);
   });
 
   it("deleteElementData cleans up all data and handlers", async () => {
