@@ -20,6 +20,15 @@ import {
 import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
 
 const store = new LocalEventStore()
+const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
+const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
+const LOCAL_RAW_EVENT_RETENTION_MS = LOCAL_RAW_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000
+const LOCAL_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
+const LOCAL_RETENTION_ALARM_PERIOD_MINUTES = 24 * 60
+const LOCAL_RETENTION_ALARM = 'pruneLocalEvents'
+const LOCAL_RETENTION_LAST_RUN_KEY = 'localRetentionLastRun'
+
+let localRetentionRunning = false
 
 async function flushPendingUploads(): Promise<void> {
   try {
@@ -45,6 +54,39 @@ async function flushPendingUploads(): Promise<void> {
     await store.markEventsAsUploaded(pending.map((e) => e.id))
   } catch (e) {
     console.error('[Background] flushPendingUploads error:', e)
+  }
+}
+
+async function runLocalRetention(options: { force?: boolean } = {}): Promise<void> {
+  if (localRetentionRunning) return
+
+  localRetentionRunning = true
+  try {
+    const now = Date.now()
+    if (!options.force) {
+      const result = await browser.storage.local.get(LOCAL_RETENTION_LAST_RUN_KEY)
+      const lastRun = result[LOCAL_RETENTION_LAST_RUN_KEY]
+      if (typeof lastRun === 'number' && now - lastRun < LOCAL_RETENTION_INTERVAL_MS) {
+        return
+      }
+    }
+
+    await flushPendingUploads()
+    await store.ensureHistoricalStats()
+
+    const cutoffTs = now - LOCAL_RAW_EVENT_RETENTION_MS
+    const deleted = await store.pruneUploadedEventsOlderThan(cutoffTs)
+    await browser.storage.local.set({ [LOCAL_RETENTION_LAST_RUN_KEY]: Date.now() })
+
+    if (VERBOSE && deleted > 0) {
+      console.log(
+        `[Background] Pruned ${deleted} uploaded local events older than ${LOCAL_RAW_EVENT_RETENTION_DAYS} days`,
+      )
+    }
+  } catch (e) {
+    console.error('[Background] local retention error:', e)
+  } finally {
+    localRetentionRunning = false
   }
 }
 
@@ -82,11 +124,28 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create("checkMilestones", { periodInMinutes: 5 });
+  if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
+    browser.alarms.create(LOCAL_RETENTION_ALARM, {
+      periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
+    });
+  }
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name !== "checkMilestones") return;
-    await runMilestoneCheck();
+    if (alarm.name === "checkMilestones") {
+      await runMilestoneCheck();
+      return;
+    }
+
+    if (LOCAL_RAW_EVENT_RETENTION_ENABLED && alarm.name === LOCAL_RETENTION_ALARM) {
+      await runLocalRetention({ force: true });
+    }
   });
+
+  if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
+    runLocalRetention().catch((e) => {
+      console.error('[Background] local retention startup error:', e)
+    })
+  }
 
   // Single-flight + 1s trailing debounce. Rapid navigation events coalesce
   // into one check, and we never run two checks concurrently (the function
@@ -295,6 +354,7 @@ export default defineBackground(() => {
       const domain = message.domain as string
       const rawUrl = message.url as string | undefined
       const normalizedUrl = rawUrl ? normalizeUrl(rawUrl) : undefined
+      const includePageSessions = message.includePageSessions === true
       ;(async () => {
         try {
           // Screen time and hour buckets are pre-computed in domain_stats (O(1)).
@@ -304,7 +364,9 @@ export default defineBackground(() => {
           const [agg, cursorEvents, pageAggs] = await Promise.all([
             store.getSessionStats(domain, normalizedUrl).catch(() => null),
             store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
-            store.getPageStats(domain).catch(() => [] as never[]),
+            includePageSessions
+              ? store.getPageStats(domain).catch(() => [] as never[])
+              : Promise.resolve([] as never[]),
           ])
 
           // Only return null stats when there is truly no data at all.
@@ -335,18 +397,21 @@ export default defineBackground(() => {
           // Build per-page breakdown from page-level aggregates for the stats
           // page's expanded domain view. Each page aggregate yields one entry
           // per session so computeTopPages() can sum and count correctly.
-          const sessions: Array<{ url: string; focusTs: number; blurTs: number; durationMs: number }> = []
-          for (const p of pageAggs) {
-            const url = p.key.slice(domain.length + 2) // strip "domain::" prefix → normalizedUrl
-            // Emit one synthetic session per recorded session so visit counts are accurate
-            const perSessionMs = p.sessionCount > 0 ? p.totalTimeMs / p.sessionCount : p.totalTimeMs
-            for (let i = 0; i < Math.max(1, p.sessionCount); i++) {
-              sessions.push({
-                url,
-                focusTs: p.firstVisit,
-                blurTs: p.lastVisit,
-                durationMs: perSessionMs,
-              })
+          let sessions: Array<{ url: string; focusTs: number; blurTs: number; durationMs: number }> | undefined
+          if (includePageSessions) {
+            sessions = []
+            for (const p of pageAggs) {
+              const url = p.key.slice(domain.length + 2) // strip "domain::" prefix → normalizedUrl
+              // Emit one synthetic session per recorded session so visit counts are accurate
+              const perSessionMs = p.sessionCount > 0 ? p.totalTimeMs / p.sessionCount : p.totalTimeMs
+              for (let i = 0; i < Math.max(1, p.sessionCount); i++) {
+                sessions.push({
+                  url,
+                  focusTs: p.firstVisit,
+                  blurTs: p.lastVisit,
+                  durationMs: perSessionMs,
+                })
+              }
             }
           }
 
@@ -367,7 +432,7 @@ export default defineBackground(() => {
               cursorDistancePx,
               eventCounts: agg?.eventsByType ?? {},
               dateRange,
-              sessions,
+              ...(sessions ? { sessions } : {}),
               // Only include uniquePageCount for domain-level stats (not page-level)
               uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
             },
@@ -538,16 +603,9 @@ export default defineBackground(() => {
             reply({ success: false, error: 'No player identity found' })
             return
           }
-          // Check local bounds so we only fetch what we're missing
-          const stats = await store.getStorageStats().catch(() => null)
-          const localBounds = stats && stats.oldestEvent > 0 && stats.newestEvent > 0
-            ? { oldest: stats.oldestEvent, newest: stats.newestEvent }
-            : undefined
           console.log('[Background] RESTORE_FROM_SERVER starting, pid:', pid.slice(0, 20) + '...',
-            localBounds
-              ? `local range: ${new Date(localBounds.oldest).toISOString()} – ${new Date(localBounds.newest).toISOString()}`
-              : 'no local data')
-          const { events, countsByType } = await fetchEventsByPid(pid, { localBounds })
+            'fetching all server events')
+          const { events, countsByType } = await fetchEventsByPid(pid)
           console.log('[Background] Fetched', events.length, 'events, writing to IDB...')
           await store.addEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
