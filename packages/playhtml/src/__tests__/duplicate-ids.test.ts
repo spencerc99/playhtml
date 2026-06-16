@@ -17,6 +17,7 @@ describe("duplicate playhtml element IDs", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     await resetPlayHTML();
     document.body.innerHTML = "";
   });
@@ -73,6 +74,26 @@ describe("duplicate playhtml element IDs", () => {
       .get("can-move")!
       .get("duplicate-removal")!;
     expect(handler.element).toBe(first);
+  });
+
+  it("cancels shared hydration warnings when a data-source element is removed", async () => {
+    await playhtml.init({ developmentMode: true });
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "shared-consumer";
+    element.setAttribute("can-move", "");
+    element.setAttribute("data-source", "/source#shared-removal");
+    document.body.append(element);
+
+    await playhtml.setupPlayElementForTag(element, "can-move");
+    playhtml.removePlayElement(element);
+    vi.advanceTimersByTime(3000);
+
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("Shared reference can-move:shared-removal"),
+    );
   });
 
   it("groups duplicate DOM IDs by capability tag for dev tools", () => {

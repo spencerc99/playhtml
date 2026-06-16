@@ -1839,6 +1839,12 @@ function removePlayElement(element: Element | null) {
       (yVal as any).unobserveDeep(observer);
     }
     yObserverByKey.delete(key);
+    sharedUpdateSeen.delete(key);
+    const timerId = sharedHydrationTimers.get(key);
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+      sharedHydrationTimers.delete(key);
+    }
     tagElementHandler.delete(elementId);
   }
 }

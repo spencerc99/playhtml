@@ -122,7 +122,7 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect((element as any).onDrag).toBe(capabilityOnDrag);
   });
 
-  it("keeps element setup stable when synced data updates React state", () => {
+  it("does not remove the element when synced data updates React state", () => {
     const setupSpy = vi
       .spyOn(playhtml, "setupPlayElement")
       .mockImplementation(() => {});
@@ -160,14 +160,16 @@ describe("CanPlayElement with built-in capabilities", () => {
       });
     });
 
-    expect(setupSpy).toHaveBeenCalledTimes(1);
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
-  it("updates element handler props without re-registering the element", () => {
+  it("refreshes element handler props without removing the element", () => {
+    const observedOnDragCallbacks: Array<unknown> = [];
     const setupSpy = vi
       .spyOn(playhtml, "setupPlayElement")
-      .mockImplementation(() => {});
+      .mockImplementation((element) => {
+        observedOnDragCallbacks.push((element as any).onDrag);
+      });
     const removeSpy = vi
       .spyOn(playhtml, "removePlayElement")
       .mockImplementation(() => {});
@@ -204,7 +206,8 @@ describe("CanPlayElement with built-in capabilities", () => {
     );
 
     expect((element as any).onDrag).toBe(secondOnDrag);
-    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(setupSpy).toHaveBeenCalledTimes(2);
+    expect(observedOnDragCallbacks).toEqual([firstOnDrag, secondOnDrag]);
     expect(removeSpy).not.toHaveBeenCalled();
   });
 

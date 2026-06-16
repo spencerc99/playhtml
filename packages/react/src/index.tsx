@@ -192,16 +192,10 @@ export function CanPlayElement<T extends object, V = any>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElementAwareness;
-    }
-  });
 
-  useEffect(() => {
-    const mountedElement = ref.current;
-
-    if (mountedElement) {
       // Setup the element, which will handle data-source discovery if needed
       try {
-        playhtml.setupPlayElement(mountedElement, {
+        playhtml.setupPlayElement(ref.current, {
           ignoreIfAlreadySetup: true,
         });
       } catch (error) {
@@ -215,6 +209,11 @@ export function CanPlayElement<T extends object, V = any>({
         }
       }
     }
+  });
+
+  useEffect(() => {
+    const mountedElement = ref.current;
+
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
