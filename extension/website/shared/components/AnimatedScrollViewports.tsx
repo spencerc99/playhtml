@@ -799,23 +799,14 @@ const DynamicViewportRect = memo(
       timeline.minTime + animProgress * timeline.timeRange;
     const scrollRange = timeline.scrollRange;
 
-    // Calculate scroll position and check if actively scrolling
+    // Calculate scroll position
     let scrollY = 0;
-    let isActivelyScrolling = false;
     if (animation.scrollEvents.length > 0) {
       const scrollResult = getScrollPositionAtTime(
         animation.scrollEvents,
         currentAnimTime,
       );
       scrollY = scrollResult.scrollY;
-
-      // Check if scroll position is changing (compare to slightly earlier time)
-      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
-      const prevScroll = getScrollPositionAtTime(
-        animation.scrollEvents,
-        prevTime,
-      ).scrollY;
-      isActivelyScrolling = Math.abs(scrollY - prevScroll) > 0.001;
     }
 
     // Calculate resize and check if actively resizing
@@ -899,24 +890,10 @@ const DynamicViewportRect = memo(
     const backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
 
-    // Border style based on active animation type
-    let borderStrokeWidth = 2;
-    let borderDashArray = "none";
-    let borderColor = `rgb(180, 180, 180)`; // Default gray
-
-    if (isActivelyZooming) {
-      borderStrokeWidth = 4;
-      borderDashArray = "6 3"; // Dashed for zoom
-      borderColor = edgeTintColor;
-    } else if (isActivelyResizing) {
-      borderStrokeWidth = 4;
-      borderDashArray = "2 2"; // Dotted for resize
-      borderColor = edgeTintColor;
-    } else if (isActivelyScrolling) {
-      borderStrokeWidth = 3;
-      borderDashArray = "none"; // Solid for scroll
-      borderColor = edgeTintColor;
-    }
+    // Resize gets a dotted border without changing viewport brightness.
+    const borderStrokeWidth = 2;
+    const borderDashArray = isActivelyResizing ? "2 2" : "none";
+    const borderColor = `rgb(180, 180, 180)`;
 
     // Content pattern variation based on seed
     const bandSpacing = Math.max(1, 60 + localSeededRandom(15) * 80); // 60-140px spacing
@@ -1654,7 +1631,7 @@ const DynamicViewportRect = memo(
           />
         )}
 
-        {/* Border with activity-based styling */}
+        {/* Viewport border */}
         <rect
           x={visualX}
           y={visualY}
@@ -1685,9 +1662,7 @@ const DynamicViewportRect = memo(
               width={4}
               height={thumbHeight}
               fill={scrollbarThumbColor}
-              opacity={
-                isActivelyScrolling ? 0.9 : 0.6 + localSeededRandom(6) * 0.2
-              }
+              opacity={0.6 + localSeededRandom(6) * 0.2}
               rx={2}
             />
           </>
