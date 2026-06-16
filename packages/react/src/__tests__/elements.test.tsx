@@ -164,6 +164,50 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
+  it("updates element handler props without re-registering the element", () => {
+    const setupSpy = vi
+      .spyOn(playhtml, "setupPlayElement")
+      .mockImplementation(() => {});
+    const removeSpy = vi
+      .spyOn(playhtml, "removePlayElement")
+      .mockImplementation(() => {});
+    const firstOnDrag = vi.fn();
+    const secondOnDrag = vi.fn();
+
+    const { container, rerender } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanMove]}
+        defaultData={{ x: 0, y: 0 }}
+        defaultLocalData={{ startMouseX: 0, startMouseY: 0 }}
+        updateElement={() => {}}
+        onDrag={firstOnDrag}
+      >
+        {({ data }) => <div id="prop-update-child">{JSON.stringify(data)}</div>}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-move]") as HTMLElement;
+    expect((element as any).onDrag).toBe(firstOnDrag);
+
+    rerender(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanMove]}
+        defaultData={{ x: 0, y: 0 }}
+        defaultLocalData={{ startMouseX: 0, startMouseY: 0 }}
+        updateElement={() => {}}
+        onDrag={secondOnDrag}
+      >
+        {({ data }) => <div id="prop-update-child">{JSON.stringify(data)}</div>}
+      </CanPlayElement>,
+    );
+
+    expect((element as any).onDrag).toBe(secondOnDrag);
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(removeSpy).not.toHaveBeenCalled();
+  });
+
   it("CanMoveElement forwards bounds props as can-move-bounds* DOM attributes", () => {
     const { container } = render(
       <CanMoveElement

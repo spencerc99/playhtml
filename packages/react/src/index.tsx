@@ -192,7 +192,11 @@ export function CanPlayElement<T extends object, V = any>({
       ref.current.updateElement = updateElement;
       // @ts-ignore
       ref.current.updateElementAwareness = updateElementAwareness;
+    }
+  });
 
+  useEffect(() => {
+    if (ref.current) {
       // Setup the element, which will handle data-source discovery if needed
       try {
         playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
