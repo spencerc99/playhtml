@@ -213,7 +213,7 @@ export function CanPlayElement<T extends object, V = any>({
       if (!ref.current || !playhtml.elementHandlers) return;
       playhtml.removePlayElement(ref.current);
     };
-  }, [elementProps, ref.current]);
+  }, []);
   const renderedChildren = children({
     // @ts-ignore
     data,

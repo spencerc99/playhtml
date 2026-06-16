@@ -2,10 +2,11 @@
 // ABOUTME: Verifies that built-in capability updateElement functions are called alongside React state updates.
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import "@testing-library/dom";
 import { CanPlayElement } from "../index";
 import { CanMoveElement } from "../elements";
+import playhtml from "../playhtml-singleton";
 import { TagType } from "@playhtml/common";
 import type { ElementAwarenessEventHandlerData } from "@playhtml/common";
 
@@ -119,6 +120,48 @@ describe("CanPlayElement with built-in capabilities", () => {
 
     // onDrag should still be set on the element
     expect((element as any).onDrag).toBe(capabilityOnDrag);
+  });
+
+  it("keeps element setup stable when synced data updates React state", () => {
+    const setupSpy = vi
+      .spyOn(playhtml, "setupPlayElement")
+      .mockImplementation(() => {});
+    const removeSpy = vi
+      .spyOn(playhtml, "removePlayElement")
+      .mockImplementation(() => {});
+
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanMove]}
+        defaultData={{ x: 0, y: 0 }}
+        defaultLocalData={{ startMouseX: 0, startMouseY: 0 }}
+        updateElement={() => {}}
+      >
+        {({ data }) => <div id="stable-child">{JSON.stringify(data)}</div>}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-move]") as HTMLElement;
+    expect(element).toBeTruthy();
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      (element as any).updateElement({
+        data: { x: 10, y: 5 },
+        awareness: [],
+        awarenessByStableId: new Map(),
+        myAwareness: undefined,
+        element,
+        localData: { startMouseX: 0, startMouseY: 0 },
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setMyAwareness: vi.fn(),
+      });
+    });
+
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 
   it("CanMoveElement forwards bounds props as can-move-bounds* DOM attributes", () => {
