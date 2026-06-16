@@ -1822,21 +1822,24 @@ function removePlayElement(element: Element | null) {
   }
 
   for (const [tag, tagElementHandler] of elementHandlers) {
-    if (tagElementHandler.has(elementId)) {
-      const key = `${tag}:${elementId}`;
-      const yVal = getYjsValue(store.play[tag]?.[elementId]);
-      const observer = yObserverByKey.get(key);
-      if (
-        yVal &&
-        observer &&
-        typeof (yVal as any).unobserveDeep === "function"
-      ) {
-        // @ts-ignore
-        (yVal as any).unobserveDeep(observer);
-      }
-      yObserverByKey.delete(key);
-      tagElementHandler.delete(elementId);
+    const handler = tagElementHandler.get(elementId);
+    if (!handler || handler.element !== element) {
+      continue;
     }
+
+    const key = `${tag}:${elementId}`;
+    const yVal = getYjsValue(store.play[tag]?.[elementId]);
+    const observer = yObserverByKey.get(key);
+    if (
+      yVal &&
+      observer &&
+      typeof (yVal as any).unobserveDeep === "function"
+    ) {
+      // @ts-ignore
+      (yVal as any).unobserveDeep(observer);
+    }
+    yObserverByKey.delete(key);
+    tagElementHandler.delete(elementId);
   }
 }
 

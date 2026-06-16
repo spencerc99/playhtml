@@ -208,6 +208,37 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
+  it("removes the mounted element on unmount", () => {
+    const setupSpy = vi
+      .spyOn(playhtml, "setupPlayElement")
+      .mockImplementation(() => {});
+    const removeSpy = vi
+      .spyOn(playhtml, "removePlayElement")
+      .mockImplementation(() => {});
+
+    const { container, unmount } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanMove]}
+        defaultData={{ x: 0, y: 0 }}
+        defaultLocalData={{ startMouseX: 0, startMouseY: 0 }}
+        updateElement={() => {}}
+      >
+        {({ data }) => <div id="cleanup-child">{JSON.stringify(data)}</div>}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-move]") as HTMLElement;
+    expect(element).toBeTruthy();
+
+    unmount();
+
+    expect(setupSpy).toHaveBeenCalledWith(element, {
+      ignoreIfAlreadySetup: true,
+    });
+    expect(removeSpy).toHaveBeenCalledWith(element);
+  });
+
   it("CanMoveElement forwards bounds props as can-move-bounds* DOM attributes", () => {
     const { container } = render(
       <CanMoveElement

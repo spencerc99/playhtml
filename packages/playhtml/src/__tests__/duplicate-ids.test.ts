@@ -50,6 +50,31 @@ describe("duplicate playhtml element IDs", () => {
     );
   });
 
+  it("does not remove the registered element handler when an ignored duplicate is removed", async () => {
+    await playhtml.init({});
+
+    const first = document.createElement("div");
+    first.id = "duplicate-removal";
+    first.setAttribute("can-move", "");
+
+    const second = document.createElement("div");
+    second.id = "duplicate-removal";
+    second.setAttribute("can-move", "");
+
+    document.body.append(first, second);
+
+    await playhtml.setupPlayElementForTag(first, "can-move");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await playhtml.setupPlayElementForTag(second, "can-move");
+
+    playhtml.removePlayElement(second);
+
+    const handler = playhtml.elementHandlers
+      .get("can-move")!
+      .get("duplicate-removal")!;
+    expect(handler.element).toBe(first);
+  });
+
   it("groups duplicate DOM IDs by capability tag for dev tools", () => {
     const firstToggle = document.createElement("div");
     firstToggle.id = "shared-id";

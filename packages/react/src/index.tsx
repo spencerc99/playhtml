@@ -196,10 +196,14 @@ export function CanPlayElement<T extends object, V = any>({
   });
 
   useEffect(() => {
-    if (ref.current) {
+    const mountedElement = ref.current;
+
+    if (mountedElement) {
       // Setup the element, which will handle data-source discovery if needed
       try {
-        playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+        playhtml.setupPlayElement(mountedElement, {
+          ignoreIfAlreadySetup: true,
+        });
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
 
@@ -214,8 +218,8 @@ export function CanPlayElement<T extends object, V = any>({
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!ref.current || !playhtml.elementHandlers) return;
-      playhtml.removePlayElement(ref.current);
+      if (!mountedElement || !playhtml.elementHandlers) return;
+      playhtml.removePlayElement(mountedElement);
     };
   }, []);
   const renderedChildren = children({
