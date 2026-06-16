@@ -76,10 +76,20 @@
   &__stats {
     display: flex;
     gap: 0;
-    margin-bottom: 12px;
     border: 1px solid $border;
     border-radius: 8px;
     overflow: hidden;
+  }
+
+  &__storage-summary {
+    margin-bottom: 12px;
+  }
+
+  &__stats-detail {
+    margin-top: 4px;
+    font-size: 10px;
+    color: $text-muted;
+    font-family: $font-mono;
   }
 
   &__stat {
