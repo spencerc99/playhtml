@@ -17,6 +17,7 @@ describe("duplicate playhtml element IDs", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     await resetPlayHTML();
     document.body.innerHTML = "";
   });
@@ -47,6 +48,51 @@ describe("duplicate playhtml element IDs", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Duplicate element id "duplicate-card"'),
       { existingElement: first, duplicateElement: second },
+    );
+  });
+
+  it("does not remove the registered element handler when an ignored duplicate is removed", async () => {
+    await playhtml.init({});
+
+    const first = document.createElement("div");
+    first.id = "duplicate-removal";
+    first.setAttribute("can-move", "");
+
+    const second = document.createElement("div");
+    second.id = "duplicate-removal";
+    second.setAttribute("can-move", "");
+
+    document.body.append(first, second);
+
+    await playhtml.setupPlayElementForTag(first, "can-move");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await playhtml.setupPlayElementForTag(second, "can-move");
+
+    playhtml.removePlayElement(second);
+
+    const handler = playhtml.elementHandlers
+      .get("can-move")!
+      .get("duplicate-removal")!;
+    expect(handler.element).toBe(first);
+  });
+
+  it("cancels shared hydration warnings when a data-source element is removed", async () => {
+    await playhtml.init({ developmentMode: true });
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "shared-consumer";
+    element.setAttribute("can-move", "");
+    element.setAttribute("data-source", "/source#shared-removal");
+    document.body.append(element);
+
+    await playhtml.setupPlayElementForTag(element, "can-move");
+    playhtml.removePlayElement(element);
+    vi.advanceTimersByTime(3000);
+
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("Shared reference can-move:shared-removal"),
     );
   });
 

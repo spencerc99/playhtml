@@ -1816,11 +1816,36 @@ function removePlayElement(element: Element | null) {
     return;
   }
 
-  for (const tag of Object.keys(elementHandlers)) {
-    const tagElementHandler = elementHandlers.get(tag)!;
-    if (tagElementHandler.has(element.id)) {
-      tagElementHandler.delete(element.id);
+  const elementId = getIdForElement(element as HTMLElement);
+  if (!elementId) {
+    return;
+  }
+
+  for (const [tag, tagElementHandler] of elementHandlers) {
+    const handler = tagElementHandler.get(elementId);
+    if (!handler || handler.element !== element) {
+      continue;
     }
+
+    const key = `${tag}:${elementId}`;
+    const yVal = getYjsValue(store.play[tag]?.[elementId]);
+    const observer = yObserverByKey.get(key);
+    if (
+      yVal &&
+      observer &&
+      typeof (yVal as any).unobserveDeep === "function"
+    ) {
+      // @ts-ignore
+      (yVal as any).unobserveDeep(observer);
+    }
+    yObserverByKey.delete(key);
+    sharedUpdateSeen.delete(key);
+    const timerId = sharedHydrationTimers.get(key);
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+      sharedHydrationTimers.delete(key);
+    }
+    tagElementHandler.delete(elementId);
   }
 }
 
