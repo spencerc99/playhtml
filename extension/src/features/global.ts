@@ -1,12 +1,20 @@
-// ABOUTME: Initializes social experiments that run on every page (bottles, quarantine tape, …).
-// ABOUTME: Each experiment runs if its FLAG is on for everyone, OR the user has internal dev features enabled.
+// ABOUTME: Initializes inventory + social experiments that run on every page.
+// ABOUTME: Inventory is built first so deps.inventory exists when each experiment's init registers items.
 
 import browser from "webextension-polyfill";
 import { FLAGS } from "../flags";
 import { SOCIAL_EXPERIMENTS } from "./social/registry";
 import type { GlobalFeatureDeps } from "./social/types";
+import { InventoryManager } from "./inventory/InventoryManager";
+
+// TEMP STUB — replaced in the "satchel surface" task (Task 9) with the real import:
+//   import { initInventorySurface } from "./inventory";
+const initInventorySurface = (_deps: GlobalFeatureDeps): (() => void) => () => {};
 
 export type { GlobalFeatureDeps } from "./social/types";
+
+/** Deps the caller supplies — everything in GlobalFeatureDeps except `inventory`, which we build here. */
+type CallerDeps = Omit<GlobalFeatureDeps, "inventory">;
 
 /**
  * Dev override: when a developer has toggled internal dev features on
@@ -42,10 +50,14 @@ export async function anyGlobalFeatureActive(): Promise<boolean> {
 }
 
 export async function initGlobalFeatures(
-  deps: GlobalFeatureDeps,
+  caller: CallerDeps,
 ): Promise<() => void> {
   const cleanups: (() => void)[] = [];
   const devEnabled = await internalDevFeaturesEnabled();
+
+  const manager = new InventoryManager();
+  await manager.load();
+  const deps: GlobalFeatureDeps = { ...caller, inventory: manager.api };
 
   for (const exp of SOCIAL_EXPERIMENTS) {
     if (!isExperimentActive(exp, devEnabled)) continue;
@@ -55,6 +67,11 @@ export async function initGlobalFeatures(
     } catch (err) {
       console.error(`[we-were-online] social experiment "${exp.id}" failed:`, err);
     }
+  }
+
+  // Mount the satchel surface only if inventory is enabled and at least one item registered.
+  if (FLAGS.INVENTORY && manager.api.list().length > 0) {
+    cleanups.push(initInventorySurface(deps));
   }
 
   return () => {
