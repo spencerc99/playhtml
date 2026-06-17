@@ -659,6 +659,7 @@ export function Collections({ onBack }: CollectionsProps) {
   const eventTypeSummary = storageStats
     ? formatEventTypeCounts(storageStats.countsByType)
     : "";
+  const hasActiveCollection = Object.values(modes).some((mode) => mode !== "off");
 
   return (
     <div className="collections">
@@ -682,44 +683,6 @@ export function Collections({ onBack }: CollectionsProps) {
             <span>
               Try refreshing the page or navigating to a regular website.
             </span>
-          </div>
-        )}
-
-        {storageStats && (
-          <div className="collections__storage-summary">
-            <div className="collections__stats">
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {storageStats.localUsageBytes === null
-                    ? "unknown"
-                    : formatSize(storageStats.localUsageBytes)}
-                </span>
-                <span className="collections__stat-label">local storage</span>
-              </div>
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {storageStats.totalEvents.toLocaleString()}
-                </span>
-                <span className="collections__stat-label">events</span>
-              </div>
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {formatSize(storageStats.estimatedSizeBytes)}
-                </span>
-                <span className="collections__stat-label">event data</span>
-              </div>
-              {storageStats.oldestEvent > 0 && (
-                <div className="collections__stat">
-                  <span className="collections__stat-value">
-                    {formatAge(storageStats.oldestEvent)}
-                  </span>
-                  <span className="collections__stat-label">collecting</span>
-                </div>
-              )}
-            </div>
-            {eventTypeSummary && (
-              <div className="collections__stats-detail">{eventTypeSummary}</div>
-            )}
           </div>
         )}
 
@@ -824,6 +787,44 @@ export function Collections({ onBack }: CollectionsProps) {
             </>
           )}
         </div>
+
+        {storageStats && hasActiveCollection && (
+          <div className="collections__storage-summary">
+            <div className="collections__stats">
+              <div className="collections__stat">
+                <span className="collections__stat-value">
+                  {storageStats.localUsageBytes === null
+                    ? "unknown"
+                    : formatSize(storageStats.localUsageBytes)}
+                </span>
+                <span className="collections__stat-label">local storage</span>
+              </div>
+              <div className="collections__stat">
+                <span className="collections__stat-value">
+                  {storageStats.totalEvents.toLocaleString()}
+                </span>
+                <span className="collections__stat-label">events</span>
+              </div>
+              <div className="collections__stat">
+                <span className="collections__stat-value">
+                  {formatSize(storageStats.estimatedSizeBytes)}
+                </span>
+                <span className="collections__stat-label">event data</span>
+              </div>
+              {storageStats.oldestEvent > 0 && (
+                <div className="collections__stat">
+                  <span className="collections__stat-value">
+                    {formatAge(storageStats.oldestEvent)}
+                  </span>
+                  <span className="collections__stat-label">collecting</span>
+                </div>
+              )}
+            </div>
+            {eventTypeSummary && (
+              <div className="collections__stats-detail">{eventTypeSummary}</div>
+            )}
+          </div>
+        )}
 
         <div className="collections__transfer">
           <div className="collections__transfer-buttons">
