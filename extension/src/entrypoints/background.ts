@@ -30,6 +30,41 @@ const LOCAL_RETENTION_LAST_RUN_KEY = 'localRetentionLastRun'
 
 let localRetentionRunning = false
 
+async function getBrowserStorageUsageBytes(): Promise<number | null> {
+  const storageArea = browser.storage.local as typeof browser.storage.local & {
+    getBytesInUse?: (keys?: string | string[] | null) => Promise<number>
+  }
+
+  if (!storageArea.getBytesInUse) return null
+
+  try {
+    const bytes = await storageArea.getBytesInUse(null)
+    return typeof bytes === 'number' ? bytes : null
+  } catch {
+    return null
+  }
+}
+
+async function getExtensionLocalUsageBytes(): Promise<number | null> {
+  const [originUsageBytes, browserStorageUsageBytes] = await Promise.all([
+    typeof navigator !== 'undefined' && navigator.storage?.estimate
+      ? navigator.storage.estimate()
+          .then((estimate) =>
+            typeof estimate.usage === 'number' ? estimate.usage : null,
+          )
+          .catch(() => null)
+      : Promise.resolve(null),
+    getBrowserStorageUsageBytes(),
+  ])
+
+  const usageParts = [originUsageBytes, browserStorageUsageBytes].filter(
+    (bytes): bytes is number => typeof bytes === 'number',
+  )
+
+  if (usageParts.length === 0) return null
+  return usageParts.reduce((sum, bytes) => sum + bytes, 0)
+}
+
 async function flushPendingUploads(): Promise<void> {
   try {
     const pending = await store.getPendingEvents(500)
@@ -473,8 +508,16 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_STORAGE_STATS') {
-      store.getStorageStats()
-        .then((stats) => reply({ success: true, stats }))
+      Promise.all([store.getStorageStats(), getExtensionLocalUsageBytes()])
+        .then(([stats, localUsageBytes]) => {
+          reply({
+            success: true,
+            stats: {
+              ...stats,
+              localUsageBytes,
+            },
+          })
+        })
         .catch((e) => {
           console.error('[Background] GET_STORAGE_STATS error:', e)
           reply({ success: false })

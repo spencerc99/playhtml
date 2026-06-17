@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const browserMock = vi.hoisted(() => ({
   storage: {
-    local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
+      local: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+        getBytesInUse: vi.fn().mockResolvedValue(1024),
+      },
     session: {
       setAccessLevel: vi.fn().mockResolvedValue(undefined),
     },
@@ -38,6 +39,13 @@ const storeMock = vi.hoisted(() => ({
   markEventsAsUploaded: vi.fn().mockResolvedValue(undefined),
   ensureHistoricalStats: vi.fn().mockResolvedValue(undefined),
   pruneUploadedEventsOlderThan: vi.fn().mockResolvedValue(0),
+  getStorageStats: vi.fn().mockResolvedValue({
+    totalEvents: 2,
+    estimatedSizeBytes: 512,
+    oldestEvent: 1_000,
+    newestEvent: 2_000,
+    countsByType: { cursor: 1, keyboard: 1 },
+  }),
 }));
 
 vi.mock("webextension-polyfill", () => ({
@@ -61,6 +69,15 @@ describe("background local retention", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    Object.defineProperty(globalThis.navigator, "storage", {
+      value: {
+        estimate: vi.fn().mockResolvedValue({
+          usage: 4096,
+          quota: 100_000,
+        }),
+      },
+      configurable: true,
+    });
     vi.stubGlobal("defineBackground", (setup: () => void) => setup);
   });
 
@@ -87,5 +104,32 @@ describe("background local retention", () => {
     await alarmListener?.({ name: "pruneLocalEvents" });
 
     expect(storeMock.pruneUploadedEventsOlderThan).not.toHaveBeenCalled();
+  });
+
+  it("reports extension local storage usage with collection event stats", async () => {
+    const background = await import("../entrypoints/background");
+
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const messageListener =
+      browserMock.runtime.onMessage.addListener.mock.calls[0]?.[0];
+    const reply = vi.fn();
+
+    const keepAlive = messageListener?.({ type: "GET_STORAGE_STATS" }, {}, reply);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(keepAlive).toBe(true);
+    expect(reply).toHaveBeenCalledWith({
+      success: true,
+      stats: {
+        totalEvents: 2,
+        estimatedSizeBytes: 512,
+        localUsageBytes: 5120,
+        oldestEvent: 1_000,
+        newestEvent: 2_000,
+        countsByType: { cursor: 1, keyboard: 1 },
+      },
+    });
   });
 });

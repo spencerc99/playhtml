@@ -26,7 +26,9 @@ const DEV_MODE_KEY = "dev_mode";
 interface StorageStats {
   totalEvents: number;
   estimatedSizeBytes: number;
+  localUsageBytes: number | null;
   oldestEvent: number;
+  newestEvent?: number;
   countsByType: Record<string, number>;
 }
 
@@ -44,6 +46,14 @@ function formatAge(ts: number): string {
   if (weeks < 8) return `${weeks}w`;
   const months = Math.floor(days / 30);
   return `${months}mo`;
+}
+
+function formatEventTypeCounts(countsByType: Record<string, number>): string {
+  const orderedTypes = getValidEventTypes();
+  return orderedTypes
+    .filter((type) => (countsByType[type] ?? 0) > 0)
+    .map((type) => `${type} ${(countsByType[type] ?? 0).toLocaleString()}`)
+    .join(" · ");
 }
 
 // ── Shared collector list UI ──────────────────────────────────────────────────
@@ -282,12 +292,7 @@ export function Collections({ onBack }: CollectionsProps) {
         type: "CLEAR_ALL_EVENTS",
       });
       if (response?.success) {
-        setStorageStats({
-          totalEvents: 0,
-          estimatedSizeBytes: 0,
-          oldestEvent: 0,
-          countsByType: {},
-        });
+        await loadStorageStats();
       } else {
         alert("Failed to clear data. Please try again.");
       }
@@ -651,6 +656,11 @@ export function Collections({ onBack }: CollectionsProps) {
     return <div className="collections__loading">Loading collections...</div>;
   }
 
+  const eventTypeSummary = storageStats
+    ? formatEventTypeCounts(storageStats.countsByType)
+    : "";
+  const hasActiveCollection = Object.values(modes).some((mode) => mode !== "off");
+
   return (
     <div className="collections">
       <header className="collections__header">
@@ -673,31 +683,6 @@ export function Collections({ onBack }: CollectionsProps) {
             <span>
               Try refreshing the page or navigating to a regular website.
             </span>
-          </div>
-        )}
-
-        {storageStats && storageStats.totalEvents > 0 && (
-          <div className="collections__stats">
-            <div className="collections__stat">
-              <span className="collections__stat-value">
-                {storageStats.totalEvents.toLocaleString()}
-              </span>
-              <span className="collections__stat-label">events</span>
-            </div>
-            <div className="collections__stat">
-              <span className="collections__stat-value">
-                {formatSize(storageStats.estimatedSizeBytes)}
-              </span>
-              <span className="collections__stat-label">stored</span>
-            </div>
-            {storageStats.oldestEvent > 0 && (
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {formatAge(storageStats.oldestEvent)}
-                </span>
-                <span className="collections__stat-label">collecting</span>
-              </div>
-            )}
           </div>
         )}
 
@@ -802,6 +787,44 @@ export function Collections({ onBack }: CollectionsProps) {
             </>
           )}
         </div>
+
+        {storageStats && hasActiveCollection && (
+          <div className="collections__storage-summary">
+            <div className="collections__stats">
+              <div className="collections__stat">
+                <span className="collections__stat-value">
+                  {storageStats.localUsageBytes === null
+                    ? "unknown"
+                    : formatSize(storageStats.localUsageBytes)}
+                </span>
+                <span className="collections__stat-label">local storage</span>
+              </div>
+              <div className="collections__stat">
+                <span className="collections__stat-value">
+                  {storageStats.totalEvents.toLocaleString()}
+                </span>
+                <span className="collections__stat-label">events</span>
+              </div>
+              <div className="collections__stat">
+                <span className="collections__stat-value">
+                  {formatSize(storageStats.estimatedSizeBytes)}
+                </span>
+                <span className="collections__stat-label">event data</span>
+              </div>
+              {storageStats.oldestEvent > 0 && (
+                <div className="collections__stat">
+                  <span className="collections__stat-value">
+                    {formatAge(storageStats.oldestEvent)}
+                  </span>
+                  <span className="collections__stat-label">collecting</span>
+                </div>
+              )}
+            </div>
+            {eventTypeSummary && (
+              <div className="collections__stats-detail">{eventTypeSummary}</div>
+            )}
+          </div>
+        )}
 
         <div className="collections__transfer">
           <div className="collections__transfer-buttons">

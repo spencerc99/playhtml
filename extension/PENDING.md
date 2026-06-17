@@ -13,3 +13,4 @@ Format suggestion: "- short user-facing description (#PR)"
 - Preserved pending event uploads when upgrading existing local browsing databases.
 - Stored click events sooner to avoid losing them during fast page exits.
 - Cursor trails now render as smooth, hand-drawn ink strokes with tapered ends (perfect-freehand)
+- Fixed the data collection settings panel to show local storage usage and stored event counts.
