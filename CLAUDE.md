@@ -151,6 +151,7 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 
 - **Commits:** Short imperative subject; scope paths when helpful (e.g., `react:`, `extension:`). Group mechanical changes separately.
 - **Changesets:** ALWAYS add a changeset whenever you modify code under `packages/` (core libraries: `playhtml`, `@playhtml/react`, `@playhtml/common`). Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps). Skip changesets only for changes outside `packages/` (website, extension, docs, internal-docs).
+- **Docs audit for package changes:** Whenever you change code under `packages/`, check whether public documentation in `apps/docs/` needs to change. Update the relevant user-facing docs in the same PR when behavior, APIs, attributes, classes, examples, or gotchas change. Common places to check are `apps/docs/src/content/docs/capabilities.mdx`, `apps/docs/src/content/docs/getting-started.mdx`, `apps/docs/src/content/docs/reference/react-api.md`, and the `data/`, `advanced/`, and `integrations/` docs. If no docs change is needed, mention why in the PR summary.
 - **Releases:** `bun run version-packages` then `bun run release` (builds + publishes via changesets).
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
 
@@ -181,6 +182,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 ## Documentation
 
 - `apps/docs/`: Public developer-facing and user-facing documentation. All user-visible docs live here as Astro + Starlight pages. DO NOT PUT PLANS IN HERE.
+- Package behavior changes should be reflected in `apps/docs/` when they affect how users write HTML, React components, CSS, shared data, setup code, or troubleshooting steps.
 - `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).
 
 ## Security & Configuration
