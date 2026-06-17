@@ -74,50 +74,95 @@
   }
 
   &__stats {
-    display: flex;
-    gap: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: $border;
     border: 1px solid $border;
     border-radius: 8px;
     overflow: hidden;
   }
 
   &__storage-summary {
+    margin-top: 14px;
     margin-bottom: 12px;
   }
 
+  &__storage-title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: $text;
+  }
+
   &__stats-detail {
-    margin-top: 4px;
-    font-size: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 7px;
+    margin-top: 5px;
+    font-size: 9px;
+    line-height: 1;
     color: $text-muted;
     font-family: $font-mono;
+  }
+
+  &__stats-detail-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  &__stats-detail-icon {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    color: $text-muted;
+  }
+
+  &__stats-detail-count {
+    display: inline-block;
+    max-width: 4ch;
+    overflow: hidden;
+    text-overflow: clip;
   }
 
   &__stat {
-    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 8px 4px;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 7px 3px 6px;
+    background: $bg;
     font-family: $font-mono;
-
-    & + & {
-      border-left: 1px solid $border;
-    }
   }
 
   &__stat-value {
-    font-size: 15px;
+    font-size: 12px;
     font-weight: 700;
     color: $text;
-    line-height: 1.2;
+    line-height: 1.1;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    text-align: center;
   }
 
   &__stat-label {
-    font-size: 9px;
+    font-size: 7px;
+    line-height: 1.1;
     color: $text-muted;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
     margin-top: 1px;
+    text-align: center;
+    white-space: nowrap;
   }
 
   &__context {

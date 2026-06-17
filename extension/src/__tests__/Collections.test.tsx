@@ -49,11 +49,11 @@ describe("Collections", () => {
         return {
           success: true,
           stats: {
-            totalEvents: 3,
+            totalEvents: 128430,
             estimatedSizeBytes: 1536,
             localUsageBytes: 3145728,
             oldestEvent: Date.now(),
-            countsByType: { cursor: 2, keyboard: 1 },
+            countsByType: { cursor: 88210, keyboard: 8108 },
           },
         };
       }
@@ -72,20 +72,26 @@ describe("Collections", () => {
     try {
       const text = container.textContent ?? "";
       const keyboardIndex = text.indexOf("Keyboard");
+      const titleIndex = text.indexOf("Local database");
       const storageIndex = text.indexOf("3.0 MBlocal storage");
-      const eventsIndex = text.indexOf("3events");
+      const eventsIndex = text.indexOf("128Kevents");
       const sizeIndex = text.indexOf("1.5 KBevent data");
       const exportIndex = text.indexOf("Export data");
 
       expect(keyboardIndex).toBeGreaterThanOrEqual(0);
+      expect(titleIndex).toBeGreaterThan(keyboardIndex);
       expect(storageIndex).toBeGreaterThanOrEqual(0);
       expect(eventsIndex).toBeGreaterThanOrEqual(0);
       expect(sizeIndex).toBeGreaterThanOrEqual(0);
+      expect(storageIndex).toBeGreaterThan(titleIndex);
       expect(storageIndex).toBeGreaterThan(keyboardIndex);
       expect(exportIndex).toBeGreaterThan(sizeIndex);
-      expect(text).toContain("cursor 2");
-      expect(text).toContain("keyboard 1");
-      expect(text).not.toContain("Local database");
+      expect(
+        container.querySelector('[aria-label="cursor events: 88K"]'),
+      ).not.toBeNull();
+      expect(
+        container.querySelector('[aria-label="keyboard events: 8.1K"]'),
+      ).not.toBeNull();
     } finally {
       cleanupRoot(root, container);
     }
@@ -113,6 +119,7 @@ describe("Collections", () => {
     try {
       const text = container.textContent ?? "";
 
+      expect(text).toContain("Local database");
       expect(text).toContain("2.0 KBlocal storage");
       expect(text).toContain("0events");
       expect(text).toContain("0 Bevent data");
@@ -139,6 +146,7 @@ describe("Collections", () => {
 
       expect(text).not.toContain("local storage");
       expect(text).not.toContain("event data");
+      expect(text).not.toContain("Local database");
       expect(text).toContain("Export data");
     } finally {
       cleanupRoot(root, container);

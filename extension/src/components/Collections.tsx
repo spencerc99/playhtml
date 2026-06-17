@@ -38,6 +38,20 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatCompactCount(count: number): string {
+  if (count < 1000) return String(count);
+
+  const formatDecimal = (value: number) =>
+    (Math.floor(value * 10) / 10).toFixed(1);
+
+  if (count < 10000) return `${formatDecimal(count / 1000)}K`;
+  if (count < 1000000) return `${Math.floor(count / 1000)}K`;
+  if (count < 10000000) return `${formatDecimal(count / 1000000)}M`;
+  if (count < 1000000000) return `${Math.floor(count / 1000000)}M`;
+  if (count < 10000000000) return `${formatDecimal(count / 1000000000)}B`;
+  return `${Math.floor(count / 1000000000)}B`;
+}
+
 function formatAge(ts: number): string {
   if (!ts) return "";
   const days = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
@@ -48,12 +62,14 @@ function formatAge(ts: number): string {
   return `${months}mo`;
 }
 
-function formatEventTypeCounts(countsByType: Record<string, number>): string {
+function getEventTypeCounts(countsByType: Record<string, number>) {
   const orderedTypes = getValidEventTypes();
   return orderedTypes
     .filter((type) => (countsByType[type] ?? 0) > 0)
-    .map((type) => `${type} ${(countsByType[type] ?? 0).toLocaleString()}`)
-    .join(" · ");
+    .map((type) => ({
+      type,
+      count: formatCompactCount(countsByType[type] ?? 0),
+    }));
 }
 
 // ── Shared collector list UI ──────────────────────────────────────────────────
@@ -656,9 +672,9 @@ export function Collections({ onBack }: CollectionsProps) {
     return <div className="collections__loading">Loading collections...</div>;
   }
 
-  const eventTypeSummary = storageStats
-    ? formatEventTypeCounts(storageStats.countsByType)
-    : "";
+  const eventTypeCounts = storageStats
+    ? getEventTypeCounts(storageStats.countsByType)
+    : [];
   const hasActiveCollection = Object.values(modes).some((mode) => mode !== "off");
 
   return (
@@ -790,6 +806,7 @@ export function Collections({ onBack }: CollectionsProps) {
 
         {storageStats && hasActiveCollection && (
           <div className="collections__storage-summary">
+            <h3 className="collections__storage-title">Local database</h3>
             <div className="collections__stats">
               <div className="collections__stat">
                 <span className="collections__stat-value">
@@ -801,7 +818,7 @@ export function Collections({ onBack }: CollectionsProps) {
               </div>
               <div className="collections__stat">
                 <span className="collections__stat-value">
-                  {storageStats.totalEvents.toLocaleString()}
+                  {formatCompactCount(storageStats.totalEvents)}
                 </span>
                 <span className="collections__stat-label">events</span>
               </div>
@@ -820,8 +837,27 @@ export function Collections({ onBack }: CollectionsProps) {
                 </div>
               )}
             </div>
-            {eventTypeSummary && (
-              <div className="collections__stats-detail">{eventTypeSummary}</div>
+            {eventTypeCounts.length > 0 && (
+              <div className="collections__stats-detail">
+                {eventTypeCounts.map(({ type, count }) => (
+                  <span
+                    key={type}
+                    className="collections__stats-detail-item"
+                    aria-label={`${type} events: ${count}`}
+                    title={`${type} events: ${count}`}
+                  >
+                    <span
+                      aria-hidden
+                      className="collections__stats-detail-icon"
+                    >
+                      <CollectorIcon type={type} size={10} />
+                    </span>
+                    <span className="collections__stats-detail-count">
+                      {count}
+                    </span>
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         )}
