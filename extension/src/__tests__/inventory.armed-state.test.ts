@@ -54,4 +54,12 @@ describe("ArmedState", () => {
     s.arm("tape");
     expect(cb).not.toHaveBeenCalled();
   });
+
+  it("disarming when already disarmed is a no-op (no notify)", () => {
+    const s = new ArmedState();
+    const cb = vi.fn();
+    s.subscribe(cb);
+    s.disarm();
+    expect(cb).not.toHaveBeenCalled();
+  });
 });
