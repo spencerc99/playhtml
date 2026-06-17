@@ -4,7 +4,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render } from "@testing-library/react";
 import "@testing-library/dom";
-import { CanPlayElement } from "../index";
+import { CanPlayElement, withSharedState } from "../index";
 import { CanMoveElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "@playhtml/common";
@@ -315,5 +315,20 @@ describe("CanPlayElement with built-in capabilities", () => {
         setMyAwareness: vi.fn(),
       }),
     ).not.toThrow();
+  });
+
+  it("uses the withSharedState id instead of a conflicting child id", () => {
+    const SharedElement = withSharedState(
+      { id: "configured-id", defaultData: { count: 0 } },
+      ({ data }) => <div id="child-id">{data.count}</div>,
+    );
+
+    const { container } = render(<SharedElement />);
+
+    expect(container.querySelector("#configured-id")).toBeTruthy();
+    expect(container.querySelector("#child-id")).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('id="configured-id"'),
+    );
   });
 });

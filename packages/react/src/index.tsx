@@ -1,3 +1,5 @@
+// ABOUTME: Provides React bindings for playhtml elements and shared state.
+// ABOUTME: Exposes components, hooks, and helpers that connect React to playhtml.
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
@@ -275,6 +277,12 @@ export function CanPlayElement<T extends object, V = any>({
   // browsers and break real-time collaboration.
   const childProps = renderedChildren?.props as { id?: string; className?: string } | undefined;
   const childId = childProps?.id;
+  if (id && childId && id !== childId) {
+    console.warn(
+      `[@playhtml/react] <${primaryTag}> received id="${id}" but its child element has id="${childId}". ` +
+      `Using id="${id}" for shared state.`,
+    );
+  }
   if (!id && !childId && !dataSource) {
     const childType = typeof renderedChildren?.type === "string"
       ? `<${renderedChildren.type}>`
@@ -305,6 +313,7 @@ export function CanPlayElement<T extends object, V = any>({
           ? { shared: shared }
           : { shared: "" }
         : {}),
+      ...(id ? { id } : {}),
     },
     { fragmentId: id },
   );
