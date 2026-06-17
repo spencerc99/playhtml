@@ -4,9 +4,11 @@
 export class WieldCursor {
   private el: HTMLDivElement;
   private icon: HTMLDivElement;
-  private onMove = (e: PointerEvent) => {
-    this.el.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 10}px)`;
-  };
+  private onMove = (e: PointerEvent) => this.positionAt(e.clientX, e.clientY);
+
+  private positionAt(x: number, y: number): void {
+    this.el.style.transform = `translate(${x + 12}px, ${y + 10}px)`;
+  }
 
   constructor(shadow: ShadowRoot) {
     this.el = document.createElement("div");
@@ -17,8 +19,10 @@ export class WieldCursor {
     shadow.appendChild(this.el);
   }
 
-  show(iconUrl: string): void {
+  /** Show the wielded icon, seeded at the last known cursor position so it doesn't flash at (0,0). */
+  show(iconUrl: string, at: { x: number; y: number }): void {
     this.icon.style.backgroundImage = `url("${iconUrl}")`;
+    this.positionAt(at.x, at.y);
     this.el.classList.add("show");
     window.addEventListener("pointermove", this.onMove);
   }

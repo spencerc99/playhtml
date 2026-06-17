@@ -25,6 +25,7 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
   const root = createRoot(reactContainer);
 
   const openSignal = { at: null as { x: number; y: number } | null, seq: 0 };
+  // Placeholder until the first pointermove; the keyboard summon opens at the real cursor once tracked.
   let lastCursor = { x: window.innerWidth - 60, y: window.innerHeight - 60 };
   const trackCursor = (e: PointerEvent) => { lastCursor = { x: e.clientX, y: e.clientY }; };
   window.addEventListener("pointermove", trackCursor);
@@ -44,7 +45,8 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
   const offArmed = deps.inventory.onArmedChange((armed) => {
     if (armed) {
       const item = deps.inventory.list().find((i) => i.id === armed.itemId);
-      if (item) wield.show(item.icon);
+      if (item) wield.show(item.icon, lastCursor);
+      // TODO(v1-limitation): resetting to "" on disarm clobbers a host page's own inline html cursor.
       document.documentElement.style.cursor = "crosshair";
     } else {
       wield.hide();

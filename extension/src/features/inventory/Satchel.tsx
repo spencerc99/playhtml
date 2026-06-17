@@ -14,7 +14,6 @@ interface Props {
 }
 
 export function Satchel({ inventory, openSignal }: Props) {
-  const [, setOpen] = useState(false);
   const [armed, setArmed] = useState<ArmedTool | null>(inventory.getArmed());
   const nubRef = useRef<HTMLDivElement>(null);
   const kitRef = useRef<HTMLDivElement>(null);
@@ -45,11 +44,9 @@ export function Satchel({ inventory, openSignal }: Props) {
     }
     kit.style.left = `${Math.max(12, x)}px`;
     kit.style.top = `${Math.max(12, y)}px`;
-    setOpen(true);
   }
   function closeKit() {
     kitRef.current?.classList.remove("show");
-    setOpen(false);
   }
 
   // drag the nub (snap to nearest edge on release)
