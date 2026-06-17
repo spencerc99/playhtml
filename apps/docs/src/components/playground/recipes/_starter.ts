@@ -39,14 +39,14 @@ export const starterRecipe: { id: string; html: string } = {
     h2 { color: #2800ff; }
     .illustration:active { transform: translateY(5px); }
     .dipped { transform: translateY(5px); }
-    #lamp.clicked { filter: brightness(1.2) saturate(1.6) drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85)); }
+    #lamp.toggled { filter: brightness(1.2) saturate(1.6) drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85)); }
     .highlighted { box-shadow: 0px 0px 30px 10px rgb(245, 169, 15) !important; background: rgb(245 169 15 / 80%); }
     .capabilities li { width: fit-content; cursor: zoom-in; padding: 4px 0; }
     .capabilities li:hover { text-shadow: 0px 0px 4px rgb(245, 169, 15); }
     #colorBox { width: 200px; height: 60px; margin-bottom: 10px; background-color: white; display: block; }
     #shootingStar { top: -36px; left: -36px; font-size: 36px; position: fixed; text-shadow: 0 0 4px yellow; }
     #catOrDog { width: 200px; }
-    #catOrDog.clicked { content: url("${IMG_BASE}/dog.png"); }
+    #catOrDog.toggled { content: url("${IMG_BASE}/dog.png"); }
     #plant { width: 200px; }
     #hoverBox.hovered { background: blue !important; transform: scale(1.1); }
     .reaction { transition: all 0.2s ease; cursor: pointer; }

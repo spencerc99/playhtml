@@ -158,10 +158,12 @@ import { CanMoveElement } from "@playhtml/react";
 <button id="my-switch" class="switch" can-toggle>off</button>
 
 <style>
-  .switch.clicked { background: #6cd97e; }
-  .switch.clicked::after { content: "on"; }
+  .switch.toggled { background: #6cd97e; }
+  .switch.toggled::after { content: "on"; }
 </style>
 ```
+
+`can-toggle` adds the `toggled` class when the element is on. The older `clicked` class is still applied for existing styles.
   </TabItem>
   <TabItem label="React">
 ```tsx
