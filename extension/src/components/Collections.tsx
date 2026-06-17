@@ -48,12 +48,14 @@ function formatAge(ts: number): string {
   return `${months}mo`;
 }
 
-function formatEventTypeCounts(countsByType: Record<string, number>): string {
+function getEventTypeCounts(countsByType: Record<string, number>) {
   const orderedTypes = getValidEventTypes();
   return orderedTypes
     .filter((type) => (countsByType[type] ?? 0) > 0)
-    .map((type) => `${type} ${(countsByType[type] ?? 0).toLocaleString()}`)
-    .join(" · ");
+    .map((type) => ({
+      type,
+      count: (countsByType[type] ?? 0).toLocaleString(),
+    }));
 }
 
 // ── Shared collector list UI ──────────────────────────────────────────────────
@@ -656,9 +658,9 @@ export function Collections({ onBack }: CollectionsProps) {
     return <div className="collections__loading">Loading collections...</div>;
   }
 
-  const eventTypeSummary = storageStats
-    ? formatEventTypeCounts(storageStats.countsByType)
-    : "";
+  const eventTypeCounts = storageStats
+    ? getEventTypeCounts(storageStats.countsByType)
+    : [];
   const hasActiveCollection = Object.values(modes).some((mode) => mode !== "off");
 
   return (
@@ -790,6 +792,7 @@ export function Collections({ onBack }: CollectionsProps) {
 
         {storageStats && hasActiveCollection && (
           <div className="collections__storage-summary">
+            <h3 className="collections__storage-title">Local database</h3>
             <div className="collections__stats">
               <div className="collections__stat">
                 <span className="collections__stat-value">
@@ -820,8 +823,14 @@ export function Collections({ onBack }: CollectionsProps) {
                 </div>
               )}
             </div>
-            {eventTypeSummary && (
-              <div className="collections__stats-detail">{eventTypeSummary}</div>
+            {eventTypeCounts.length > 0 && (
+              <div className="collections__stats-detail">
+                {eventTypeCounts.map(({ type, count }) => (
+                  <span key={type} className="collections__stats-detail-item">
+                    {type} {count}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         )}
