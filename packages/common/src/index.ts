@@ -503,6 +503,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
     updateElement: ({ element, data }) => {
       // handling migration from "boolean" to "{on: boolean}" type
       const on = typeof data === "object" ? data.on : data;
+      element.classList.toggle("toggled", on);
       element.classList.toggle("clicked", on);
     },
     onClick: (e: MouseEvent, { data, setData }) => {

@@ -75,6 +75,8 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["toggle-test"]).toEqual({
       on: true,
     });
+    expect(el.classList.contains("toggled")).toBe(true);
+    expect(el.classList.contains("clicked")).toBe(true);
 
     // Test mutator form
     handler.setData((draft: any) => {
@@ -87,6 +89,8 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["toggle-test"]).toEqual({
       on: false,
     });
+    expect(el.classList.contains("toggled")).toBe(false);
+    expect(el.classList.contains("clicked")).toBe(false);
   });
 
   it("removes handlers for unmounted elements so replacements can register", async () => {
