@@ -9,11 +9,6 @@ import type { Item } from "../features/inventory/types";
 const tape: Item = { id: "tape", tier: "system", label: "Tape", icon: "tape.png" };
 const beacon: Item = { id: "beacon", tier: "found", label: "Beacon", icon: "beacon.png" };
 
-beforeEach(() => {
-  // ensure load() reads an empty store (found counts start at 0)
-  (browser.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
-});
-
 async function makeApi() {
   const m = new InventoryManager();
   await m.load();
@@ -21,6 +16,11 @@ async function makeApi() {
 }
 
 describe("InventoryManager API", () => {
+  beforeEach(() => {
+    // ensure load() reads an empty store (found counts start at 0)
+    (browser.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
   it("registers and lists", async () => {
     const api = await makeApi();
     api.register(tape);

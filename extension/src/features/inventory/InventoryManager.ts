@@ -15,7 +15,7 @@ export class InventoryManager {
     await this.held.load();
   }
 
-  count(itemId: string): number {
+  private resolveCount(itemId: string): number {
     const item = this.registry.get(itemId);
     if (!item) return 0;
     return item.tier === "system" ? Infinity : this.held.count(itemId);
@@ -27,12 +27,12 @@ export class InventoryManager {
     arm: (itemId: string) => {
       const item = this.registry.get(itemId);
       if (!item) return;
-      if (this.count(itemId) <= 0) return;
+      if (this.resolveCount(itemId) === 0) return;
       this.armedState.arm(itemId);
     },
     disarm: () => this.armedState.disarm(),
     getArmed: (): ArmedTool | null => this.armedState.get(),
     onArmedChange: (cb) => this.armedState.subscribe(cb),
-    count: (itemId: string) => this.count(itemId),
+    count: (itemId: string) => this.resolveCount(itemId),
   };
 }
