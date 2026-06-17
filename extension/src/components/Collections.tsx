@@ -38,6 +38,20 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatCompactCount(count: number): string {
+  if (count < 1000) return String(count);
+
+  const formatDecimal = (value: number) =>
+    (Math.floor(value * 10) / 10).toFixed(1);
+
+  if (count < 10000) return `${formatDecimal(count / 1000)}K`;
+  if (count < 1000000) return `${Math.floor(count / 1000)}K`;
+  if (count < 10000000) return `${formatDecimal(count / 1000000)}M`;
+  if (count < 1000000000) return `${Math.floor(count / 1000000)}M`;
+  if (count < 10000000000) return `${formatDecimal(count / 1000000000)}B`;
+  return `${Math.floor(count / 1000000000)}B`;
+}
+
 function formatAge(ts: number): string {
   if (!ts) return "";
   const days = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
@@ -54,7 +68,7 @@ function getEventTypeCounts(countsByType: Record<string, number>) {
     .filter((type) => (countsByType[type] ?? 0) > 0)
     .map((type) => ({
       type,
-      count: (countsByType[type] ?? 0).toLocaleString(),
+      count: formatCompactCount(countsByType[type] ?? 0),
     }));
 }
 
@@ -804,7 +818,7 @@ export function Collections({ onBack }: CollectionsProps) {
               </div>
               <div className="collections__stat">
                 <span className="collections__stat-value">
-                  {storageStats.totalEvents.toLocaleString()}
+                  {formatCompactCount(storageStats.totalEvents)}
                 </span>
                 <span className="collections__stat-label">events</span>
               </div>
@@ -826,8 +840,21 @@ export function Collections({ onBack }: CollectionsProps) {
             {eventTypeCounts.length > 0 && (
               <div className="collections__stats-detail">
                 {eventTypeCounts.map(({ type, count }) => (
-                  <span key={type} className="collections__stats-detail-item">
-                    {type} {count}
+                  <span
+                    key={type}
+                    className="collections__stats-detail-item"
+                    aria-label={`${type} events: ${count}`}
+                    title={`${type} events: ${count}`}
+                  >
+                    <span
+                      aria-hidden
+                      className="collections__stats-detail-icon"
+                    >
+                      <CollectorIcon type={type} size={10} />
+                    </span>
+                    <span className="collections__stats-detail-count">
+                      {count}
+                    </span>
                   </span>
                 ))}
               </div>
