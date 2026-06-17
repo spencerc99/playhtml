@@ -7,6 +7,7 @@ import { BottleOverlay } from "../../components/BottleOverlay";
 import { injectShadowReact } from "../../entrypoints/content/inject-ui";
 import { MESSAGE_BOTTLE_CSS } from "../../components/MessageBottle";
 import type { GlobalFeatureDeps, SocialExperiment } from "./types";
+import browser from "webextension-polyfill";
 
 export const bottlesExperiment: SocialExperiment = {
   id: "bottles",
@@ -19,6 +20,14 @@ export const bottlesExperiment: SocialExperiment = {
       deps.playerPid,
       deps.createPageData,
     );
+
+    deps.inventory.register({
+      id: "message-bottle",
+      tier: "system",
+      label: "Message bottle",
+      icon: browser.runtime.getURL("inventory/bottle.png"),
+      accent: deps.playerColor,
+    });
 
     const ui = injectShadowReact(
       BottleOverlay as any,
