@@ -44,13 +44,12 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
   const wield = new WieldCursor(shadow);
   const offArmed = deps.inventory.onArmedChange((armed) => {
     if (armed) {
+      // Keep the page's normal cursor visible; the wield icon rides beside it so it
+      // reads as the cursor "holding" the tool.
       const item = deps.inventory.list().find((i) => i.id === armed.itemId);
       if (item) wield.show(item.icon, lastCursor);
-      // TODO(v1-limitation): resetting to "" on disarm clobbers a host page's own inline html cursor.
-      document.documentElement.style.cursor = "crosshair";
     } else {
       wield.hide();
-      document.documentElement.style.cursor = "";
     }
   });
 
@@ -65,6 +64,5 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
     wield.destroy();
     root.unmount();
     host.remove();
-    document.documentElement.style.cursor = "";
   };
 }
