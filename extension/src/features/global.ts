@@ -6,10 +6,7 @@ import { FLAGS } from "../flags";
 import { SOCIAL_EXPERIMENTS } from "./social/registry";
 import type { GlobalFeatureDeps } from "./social/types";
 import { InventoryManager } from "./inventory/InventoryManager";
-
-// TEMP STUB — replaced in the "satchel surface" task (Task 9) with the real import:
-//   import { initInventorySurface } from "./inventory";
-const initInventorySurface = (_deps: GlobalFeatureDeps): (() => void) => () => {};
+import { initInventorySurface } from "./inventory";
 
 export type { GlobalFeatureDeps } from "./social/types";
 
