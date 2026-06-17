@@ -11,7 +11,7 @@ export interface Item {
   label: string;
   /** Asset URL for the cut-out icon (resolved via browser.runtime.getURL at register time). */
   icon: string;
-  /** Color used for the armed edge glow / wield tint; defaults to the player color. */
+  /** Author/player color carried for experiments to use (e.g. an armed edge glow); inventory itself doesn't render it yet. */
   accent?: string;
 }
 
