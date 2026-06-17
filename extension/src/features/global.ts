@@ -56,7 +56,12 @@ export async function initGlobalFeatures(
   const devEnabled = await internalDevFeaturesEnabled();
 
   const manager = new InventoryManager();
-  await manager.load();
+  try {
+    await manager.load();
+  } catch (err) {
+    // A storage read failure must not take down the social experiments; continue with an empty held store.
+    console.error("[we-were-online] inventory load failed, continuing with empty held store:", err);
+  }
   const deps: GlobalFeatureDeps = { ...caller, inventory: manager.api };
 
   for (const exp of SOCIAL_EXPERIMENTS) {
