@@ -1,5 +1,14 @@
-// ABOUTME: TEMP STUB replaced in Task 10 with the real manifest-commands listener.
-// ABOUTME: Registers a callback to open the inventory; no-op until Task 10 wires the command.
-export function registerKeyboardSummon(_onOpen: () => void): () => void {
-  return () => {};
+// ABOUTME: Registers a listener for the manifest "open-inventory" command (forwarded from background).
+// ABOUTME: Reliable across sites because it rides browser.commands, not a page keydown.
+
+import browser from "webextension-polyfill";
+
+export function registerKeyboardSummon(onOpen: () => void): () => void {
+  const handler = (msg: unknown) => {
+    if (typeof msg === "object" && msg !== null && (msg as { type?: string }).type === "wwo:open-inventory") {
+      onOpen();
+    }
+  };
+  browser.runtime.onMessage.addListener(handler);
+  return () => browser.runtime.onMessage.removeListener(handler);
 }
