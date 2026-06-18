@@ -215,6 +215,16 @@ jobs:
             echo "tag_created=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Create GitHub release
+        if: env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="@playhtml/extension@$VERSION"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "See https://wewere.online/changelog/ for release notes."
+
       - name: Announce release on Discord
         if: env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
         env:

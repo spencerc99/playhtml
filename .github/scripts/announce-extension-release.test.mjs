@@ -2,7 +2,9 @@
 // ABOUTME: Verifies changelog extraction and public changelog link payloads.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   buildExtensionReleasePayload,
   extractExtensionChangelogSection,
@@ -53,5 +55,23 @@ describe("buildExtensionReleasePayload", () => {
       payload.embeds[0].fields[0].value,
       "[wewere.online/changelog](https://wewere.online/changelog/)",
     );
+  });
+});
+
+describe("extension release workflow", () => {
+  it("creates the GitHub release before announcing it", () => {
+    const workflowPath = fileURLToPath(
+      new URL("../workflows/extension-release.yml", import.meta.url),
+    );
+    const workflow = readFileSync(workflowPath, "utf8");
+    const releaseStepIndex = workflow.indexOf("- name: Create GitHub release");
+    const releaseCommandIndex = workflow.indexOf("gh release create");
+    const announceStepIndex = workflow.indexOf("- name: Announce release on Discord");
+
+    assert.notEqual(releaseStepIndex, -1);
+    assert.notEqual(releaseCommandIndex, -1);
+    assert.notEqual(announceStepIndex, -1);
+    assert.ok(releaseStepIndex < announceStepIndex);
+    assert.ok(releaseCommandIndex < announceStepIndex);
   });
 });
