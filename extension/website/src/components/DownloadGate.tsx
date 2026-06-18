@@ -9,6 +9,14 @@ const CHROME_DOWNLOAD_URL =
   'https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc?authuser=0&hl=en';
 const FIREFOX_DOWNLOAD_URL =
   'https://addons.mozilla.org/en-US/firefox/addon/we-were-online/';
+const EDGE_DOWNLOAD_URL =
+  'https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl';
+
+const DOWNLOAD_LINKS = [
+  { browser: 'Chrome', url: CHROME_DOWNLOAD_URL },
+  { browser: 'Firefox', url: FIREFOX_DOWNLOAD_URL },
+  { browser: 'Edge', url: EDGE_DOWNLOAD_URL },
+];
 
 const SUBSCRIBED_KEY = 'wewere.subscribed';
 
@@ -47,22 +55,17 @@ function DownloadButtons({ size = 'default' }: { size?: 'default' | 'large' }) {
       : styles.downloadGroup;
   return (
     <div className={className}>
-      <a
-        href={CHROME_DOWNLOAD_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.downloadButton}
-      >
-        install for Chrome
-      </a>
-      <a
-        href={FIREFOX_DOWNLOAD_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.downloadButton}
-      >
-        install for Firefox
-      </a>
+      {DOWNLOAD_LINKS.map(({ browser, url }) => (
+        <a
+          key={browser}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.downloadButton}
+        >
+          install for {browser}
+        </a>
+      ))}
     </div>
   );
 }

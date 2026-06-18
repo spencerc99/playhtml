@@ -5,6 +5,8 @@ const CHROME_URL =
   'https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc?authuser=0&hl=en';
 const FIREFOX_URL =
   'https://addons.mozilla.org/en-US/firefox/addon/we-were-online/';
+const EDGE_URL =
+  'https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl';
 const HOMEPAGE_URL = 'https://wewere.online/';
 const PLAYHTML_URL = 'https://playhtml.fun/';
 const DISCORD_INVITE_URL = 'https://discord.gg/SKbsSf4ptU';
@@ -15,6 +17,25 @@ const REPLY_EMAIL = 'hi@spencer.place';
 export const WELCOME_EMAIL_SUBJECT = 'welcome to we were online!';
 
 export const UPDATES_EMAIL_SUBJECT = 'updates from we were online';
+
+const DOWNLOAD_LINKS = [
+  { browser: 'Chrome', textBrowser: 'Chrome (or chromium equivalents)', url: CHROME_URL },
+  { browser: 'Firefox', textBrowser: 'Firefox', url: FIREFOX_URL },
+  { browser: 'Edge', textBrowser: 'Edge', url: EDGE_URL },
+];
+
+const DOWNLOAD_BUTTON_STYLE =
+  'display:inline-block;background-color:#4a9a8a;color:#faf7f2;padding:12px 20px;border-radius:4px;text-decoration:none;font-weight:600;font-size:15px;margin-right:8px;margin-bottom:8px';
+
+const WELCOME_DOWNLOAD_TEXT = DOWNLOAD_LINKS.map(
+  ({ textBrowser, url }) => `- Download on ${textBrowser}: ${url}`,
+).join('\n');
+
+const WELCOME_DOWNLOAD_HTML = DOWNLOAD_LINKS.map(
+  ({ browser, url }) => `<a href="${url}" style="${DOWNLOAD_BUTTON_STYLE}" target="_blank">
+                Download on ${browser}
+              </a>`,
+).join('\n              ');
 
 const SHARED_EMAIL_TEXT = `As a reminder, we were online is a browser extension—part game, artwork, and tool—that turns the existing Internet into a living, shared world, actively shaped by its inhabitants. Eventually, I want this to be a space where we can bump into each other all over the web and other creatives can create more embodied social media from their personal websites to bring belonging to the open web (building on top of playhtml: ${PLAYHTML_URL}).
 
@@ -38,8 +59,7 @@ export const WELCOME_EMAIL_TEXT = `Hi everyone!
 
 Thanks for signing up and being willing to try something that makes the Internet hopefully feel a bit more alive :) I'm excited to share the beta of we were online (${HOMEPAGE_URL}) with you.
 
-- Download on Chrome (or chromium equivalents): ${CHROME_URL}
-- Download on Firefox: ${FIREFOX_URL}
+${WELCOME_DOWNLOAD_TEXT}
 - Use another browser or run into any issues? let me know
 
 ${SHARED_EMAIL_TEXT}`;
@@ -118,12 +138,7 @@ const WELCOME_EMAIL_HTML = buildEmailHtml(
               with you.
             </p>
             <div style="margin:24px 0">
-              <a href="${CHROME_URL}" style="display:inline-block;background-color:#4a9a8a;color:#faf7f2;padding:12px 20px;border-radius:4px;text-decoration:none;font-weight:600;font-size:15px;margin-right:8px;margin-bottom:8px" target="_blank">
-                Download on Chrome
-              </a>
-              <a href="${FIREFOX_URL}" style="display:inline-block;background-color:#4a9a8a;color:#faf7f2;padding:12px 20px;border-radius:4px;text-decoration:none;font-weight:600;font-size:15px;margin-right:8px;margin-bottom:8px" target="_blank">
-                Download on Firefox
-              </a>
+              ${WELCOME_DOWNLOAD_HTML}
             </div>
             <p style="font-size:16px;line-height:1.6;margin:0 0 16px 0">
               (Chrome download also works for Chromium-equivalents.) Use another browser or run into any issues?
