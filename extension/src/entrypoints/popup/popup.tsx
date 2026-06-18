@@ -1,3 +1,6 @@
+// ABOUTME: Entry point for the extension popup UI.
+// ABOUTME: Loads identity, collection status, portrait navigation, and settings views.
+
 import React, { useState, useEffect, lazy, Suspense } from "react";
 // Agentation is a dev-only toolbar — loaded at runtime so it never appears in the production bundle
 const Agentation = import.meta.env.DEV
@@ -20,6 +23,8 @@ import {
   InventoryItem,
   PlayHTMLStatus,
 } from "../../types";
+
+const PUBLIC_CHANGELOG_URL = "https://wewere.online/changelog/";
 
 function PlayHTMLPopup() {
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(
@@ -409,7 +414,13 @@ function PlayHTMLPopup() {
       onViewCollections={() => setCurrentView("collections")}
       onViewHistory={toggleHistoricalOverlay}
       onViewProfile={() => setCurrentView("profile")}
-      onViewBagSettings={bagEnabled ? () => setCurrentView("bag-settings") : undefined}
+      onViewBagSettings={
+        bagEnabled ? () => setCurrentView("bag-settings") : undefined
+      }
+      onViewChangelog={async () => {
+        await browser.tabs.create({ url: PUBLIC_CHANGELOG_URL });
+        window.close();
+      }}
     />
   );
 }

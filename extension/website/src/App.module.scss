@@ -26,6 +26,52 @@ $accent-rust: #c4724e;
   z-index: 1;
 }
 
+.siteNav {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  color: $text-muted;
+  backdrop-filter: blur(4px);
+
+  a {
+    color: inherit;
+    position: relative;
+    text-decoration: none;
+    transition: color 0.15s;
+
+    &:hover {
+      color: $accent-teal;
+    }
+
+    &[aria-current="page"] {
+      color: $text;
+
+      &::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -4px;
+        height: 1px;
+        background: rgba($accent-teal, 0.7);
+      }
+    }
+  }
+
+  @media (max-width: 520px) {
+    top: 14px;
+    right: 14px;
+    gap: 12px;
+    font-size: 0.75rem;
+  }
+}
+
 .hero {
   position: relative;
   min-height: 100vh;
