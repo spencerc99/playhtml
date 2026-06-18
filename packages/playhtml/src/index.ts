@@ -1116,9 +1116,17 @@ function createPlayElementData<T extends TagType, TData = any>(
         // Batch all nested mutations into a single Yjs transaction to coalesce events
         doc.transact(() => {
           const returned = (newData as (draft: unknown) => unknown)(dataProxy);
-          if (isDevelopmentMode && returned !== undefined) {
+          // Only warn when the return looks like an intended *replacement*
+          // snapshot (an object/array). Terse arrows like `d => d.count++` or
+          // `d => (d.x = 1)` return a number/boolean as a side effect of a
+          // valid in-place mutation — warning on those is just noise.
+          if (
+            isDevelopmentMode &&
+            returned !== undefined &&
+            typeof returned === "object"
+          ) {
             console.warn(
-              `[playhtml] A setData() mutator for "${elementId}" returned a value. ` +
+              `[playhtml] A setData() mutator for "${elementId}" returned an object. ` +
                 `Mutators must mutate the draft in place (e.g. \`d => { d.count++ }\`); ` +
                 `the return value is ignored. To replace the whole snapshot, pass a value instead of a function.`,
             );
@@ -1689,15 +1697,15 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   } else {
     const handler = new ElementHandler(elementData);
+    tagElementHandlers.set(elementId, handler);
     // View handlers can emit capability descendants (mount points for
-    // `define`d capabilities / `register`ed ids); bind them after each render.
+    // `define`d capabilities / `register`ed ids). Bind the current children and
+    // re-bind only when the subtree's child structure changes (observer-driven,
+    // so a ticking view doesn't re-scan every frame).
     if (elementInitializerInfo.view) {
       handler.onAfterRender = setupViewDescendants;
-      // The constructor's initial render ran before onAfterRender was wired,
-      // so bind descendants from that first paint now.
-      setupViewDescendants(element);
+      handler.observeDescendants();
     }
-    tagElementHandlers.set(elementId, handler);
   }
 
   // redo this now that we have set it in the mapping.
@@ -1886,6 +1894,9 @@ function removePlayElement(element: Element | null) {
       clearTimeout(timerId);
       sharedHydrationTimers.delete(key);
     }
+    // Run onMount cleanup (rAF loops, timers, event listeners) and disconnect
+    // the descendant observer so view elements don't leak after removal.
+    handler.destroy?.();
     tagElementHandler.delete(elementId);
   }
 }
@@ -1984,7 +1995,7 @@ function createPlayElementHandle(elementId: string): PlayElementHandle {
     setLocalData: (next) => findHandlerForElementId(elementId)?.setLocalData(next),
     setMyAwareness: (next) =>
       findHandlerForElementId(elementId)?.setMyAwareness(next),
-    requestUpdate: () => findHandlerForElementId(elementId)?.render(),
+    requestUpdate: () => findHandlerForElementId(elementId)?.requestUpdate(),
     unregister: () => {
       pendingRegistrations.delete(elementId);
       const el = document.getElementById(elementId);
@@ -2071,7 +2082,17 @@ function setupViewDescendants(root: HTMLElement): void {
     for (const el of els) {
       if (el === root || !el.id) continue;
       const existing = elementHandlers.get(tag)?.get(el.id);
-      if (existing && existing.element === el) continue; // already bound
+      if (existing) {
+        if (existing.element === el) continue; // already bound to this node
+        // Same id, different node: a keyed list reused the id on a fresh DOM
+        // node (lit-html replaced the old one). If the old node is detached,
+        // tear its handler down so the new node can bind — otherwise
+        // setupPlayElementForTag would reject it as a duplicate id and the new
+        // node would silently never bind.
+        if (!existing.element.isConnected) {
+          removePlayElement(existing.element);
+        }
+      }
       void setupPlayElementForTag(el, tag);
     }
   }

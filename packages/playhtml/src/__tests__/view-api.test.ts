@@ -145,6 +145,87 @@ describe("rail 2: register + view", () => {
   });
 });
 
+describe("rail 2: lifecycle & guards", () => {
+  it("runs the onMount cleanup on unregister()", async () => {
+    const el = document.createElement("div");
+    el.id = "lifecycle";
+    document.body.appendChild(el);
+
+    const cleanup = vi.fn();
+    const handle = playhtml.register("lifecycle", {
+      defaultData: {},
+      view: () => html`<span>hi</span>`,
+      onMount: () => cleanup,
+    });
+    await tick();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    handle.unregister();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects setLocalData called during render (no infinite recursion)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const el = document.createElement("div");
+    el.id = "local-loop";
+    document.body.appendChild(el);
+
+    playhtml.register<{}, { n: number }>("local-loop", {
+      defaultData: {},
+      defaultLocalData: { n: 0 },
+      view: ({ localData, setLocalData }) => {
+        // Illegal: writing localData during render would recurse forever.
+        setLocalData((d) => { d.n += 1; });
+        return html`<span>${localData.n}</span>`;
+      },
+    });
+    await tick();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("setLocalData() was called during a view render"),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("requestUpdate is a no-op for non-view (updateElement) handlers", async () => {
+    const el = document.createElement("div");
+    el.id = "imperative";
+    document.body.appendChild(el);
+
+    const updateElement = vi.fn();
+    const handle = playhtml.register("imperative", {
+      defaultData: { x: 1 },
+      updateElement,
+    });
+    await tick();
+    const callsAfterMount = updateElement.mock.calls.length;
+
+    handle.requestUpdate();
+    // No view → requestUpdate should not re-run updateElement.
+    expect(updateElement.mock.calls.length).toBe(callsAfterMount);
+  });
+
+  it("does not wire onClick when a view is present (React/props path)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const el = document.createElement("div");
+    el.id = "view-plus-click";
+    el.setAttribute("can-play", "");
+    // Simulate how React / extraCapabilities stamp props on the element,
+    // bypassing register()'s validateViewInitializer.
+    const onClick = vi.fn();
+    (el as any).defaultData = {};
+    (el as any).view = () => html`<button>x</button>`;
+    (el as any).onClick = onClick;
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+    await tick();
+
+    el.querySelector("button")!.click();
+    expect(onClick).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+});
+
 describe("rail 2: validation", () => {
   it("throws when view and updateElement are both provided", () => {
     expect(() =>

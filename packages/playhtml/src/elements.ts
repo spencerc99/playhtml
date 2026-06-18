@@ -41,12 +41,17 @@ export class ElementHandler<T = any, U = any, V = any> {
   ) => void;
   triggerAwarenessUpdate?: () => void;
   devMode?: boolean;
-  // Set while a `view` render is in flight, so setData/setLocalData can detect
-  // (and reject) writes made synchronously during render — a re-render loop.
+  // Set while a `view` render is in flight, so setData/setLocalData/
+  // setMyAwareness can detect (and reject) writes made synchronously during
+  // render — a re-render loop.
   private isRendering = false;
+  // Cleanup returned by onMount, invoked on destroy()/removePlayElement so
+  // rAF loops, timers, and event listeners set up in onMount don't leak.
+  private onUnmount?: () => void;
   // Allows the runtime to wire up capability descendants emitted by a view
-  // (e.g. mount points for `define`d capabilities) after each render.
+  // (e.g. mount points for `define`d capabilities). Driven by descendantObserver.
   onAfterRender?: (element: HTMLElement) => void;
+  private descendantObserver?: MutationObserver;
 
   // event handlers
   onClick?: (
@@ -115,7 +120,28 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.reinitializeElementData(elementData);
 
     if (onMount) {
-      onMount(this.getSetupData());
+      const cleanup = onMount(this.getSetupData());
+      if (typeof cleanup === "function") {
+        this.onUnmount = cleanup;
+      }
+    }
+  }
+
+  /**
+   * Tears down anything onMount set up (rAF loops, timers, listeners).
+   * Called by removePlayElement / unregister(). Idempotent.
+   */
+  destroy(): void {
+    this.descendantObserver?.disconnect();
+    this.descendantObserver = undefined;
+    const cleanup = this.onUnmount;
+    this.onUnmount = undefined;
+    if (cleanup) {
+      try {
+        cleanup();
+      } catch (e) {
+        console.error(`[playhtml] onMount cleanup for "${this.element.id}" threw`, e);
+      }
     }
   }
 
@@ -141,6 +167,20 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.updateElement = updateElement;
     this.view = view;
     this.devMode = devMode;
+
+    // In view mode, element-level event handlers are not wired — interactions
+    // belong in the template (@click, etc.). Enforce the mutual exclusion here
+    // (the shared binding path) so React props / extraCapabilities can't
+    // silently run a view AND fire imperative onClick/onDrag handlers.
+    if (view && (onClick || onDrag || onDragStart)) {
+      console.error(
+        `[playhtml] "${element.id}" provides a \`view\` alongside onClick/onDrag/onDragStart. ` +
+          `In view mode these are ignored — attach events inside the template (e.g. @click). `,
+      );
+      onClick = undefined;
+      onDrag = undefined;
+      onDragStart = undefined;
+    }
 
     // Handle all the event handlers
     if (onClick && !this.onClick) {
@@ -236,6 +276,9 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   setLocalData(localData: U | ((draft: U) => void)): void {
+    // setLocalData re-renders in view mode, so calling it during render would
+    // recurse infinitely. Reject it like setData.
+    if (this.rejectWriteDuringRender("setLocalData")) return;
     if (typeof localData === "function") {
       (localData as (draft: U) => void)(this.localData);
     } else {
@@ -278,20 +321,64 @@ export class ElementHandler<T = any, U = any, V = any> {
       } finally {
         this.isRendering = false;
       }
-      this.onAfterRender?.(this.element);
+      // Descendant binding is driven by a MutationObserver (see
+      // observeDescendants), NOT from here — re-running it on every render
+      // would scan the whole subtree ~60fps for clock-driven views. The
+      // observer only fires when child nodes actually change.
       return;
     }
     this.updateElement?.(this.getEventHandlerData());
   }
 
+  /**
+   * Begins binding capability descendants emitted by this view (mount points
+   * for `define`d capabilities / `register`ed ids). Binds the current children
+   * once, then re-binds only when the subtree's child structure changes — so a
+   * text/attribute-only re-render (a ticking timer) does no scanning at all.
+   * Called once by the runtime after `onAfterRender` is wired.
+   */
+  observeDescendants(): void {
+    if (!this.onAfterRender || this.descendantObserver) return;
+    this.onAfterRender(this.element); // bind children from the first render
+    if (typeof MutationObserver !== "undefined") {
+      this.descendantObserver = new MutationObserver(() => {
+        this.onAfterRender?.(this.element);
+      });
+      this.descendantObserver.observe(this.element, {
+        childList: true,
+        subtree: true,
+      });
+    }
+  }
+
+  /**
+   * Re-runs the view and repaints from current state. No-op for elements
+   * without a `view` (it's the view-repaint primitive), and a no-op during an
+   * in-flight render (calling it from inside `view` would recurse).
+   */
+  requestUpdate(): void {
+    if (!this.view || this.isRendering) return;
+    this.render();
+  }
+
+  /** Warns and returns true if a write was attempted during a view render. */
+  private rejectWriteDuringRender(method: string): boolean {
+    if (!this.isRendering) return false;
+    console.error(
+      `[playhtml] ${method}() was called during a view render for "${this.element.id}". ` +
+        `Views must be pure — drive writes from @event handlers (e.g. @click) instead. Ignoring this write.`,
+    );
+    return true;
+  }
+
   updateAwareness(data: V[], byStableId: Map<string, V>) {
     this.awareness = data;
     this.awarenessByStableId = byStableId;
-    if (this.updateElementAwareness) {
-      this.updateElementAwareness(this.getAwarenessEventHandlerData());
-    } else if (this.view) {
-      // Views render from awareness too (e.g. "3 people here"), so an
-      // awareness change re-renders even without updateElementAwareness.
+    this.updateElementAwareness?.(this.getAwarenessEventHandlerData());
+    // Views render from awareness too (e.g. "3 people here"), so an awareness
+    // change must re-render — even when updateElementAwareness is also present
+    // (otherwise the view goes stale while the callback runs).
+    if (this.view) {
       this.render();
     }
   }
@@ -306,7 +393,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setMyAwareness: (newData) => this.setMyAwareness(newData),
-      requestUpdate: () => this.render(),
+      requestUpdate: () => this.requestUpdate(),
     };
   }
 
@@ -326,7 +413,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setMyAwareness: (newData) => this.setMyAwareness(newData),
-      requestUpdate: () => this.render(),
+      requestUpdate: () => this.requestUpdate(),
     };
   }
 
@@ -354,16 +441,9 @@ export class ElementHandler<T = any, U = any, V = any> {
    *   recommended portable pattern is setData(draft => { ... }).
    */
   setData(data: T | ((draft: T) => void)): void {
-    if (this.isRendering) {
-      // Writing shared data from inside a view render is a re-render loop:
-      // the write triggers another render, which writes again. Reject it and
-      // point at the fix (drive writes from @event handlers in the template).
-      console.error(
-        `[playhtml] setData() was called during a view render for "${this.element.id}". ` +
-          `Views must be pure — drive writes from @event handlers (e.g. @click) instead. Ignoring this write.`,
-      );
-      return;
-    }
+    // Writing shared data from inside a view render is a re-render loop:
+    // the write triggers another render, which writes again. Reject it.
+    if (this.rejectWriteDuringRender("setData")) return;
     // The onChange implementation in index.ts understands both forms.
     // Cast is safe because the callee inspects and branches by typeof.
     this.onChange(data as unknown as T);
@@ -371,6 +451,9 @@ export class ElementHandler<T = any, U = any, V = any> {
 
   // TODO: this should be keyed on the element to avoid conflicts
   setMyAwareness(data: V): void {
+    // In view mode an awareness change re-renders, so writing awareness during
+    // render would loop. Reject it like the other write paths.
+    if (this.rejectWriteDuringRender("setMyAwareness")) return;
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
       return;

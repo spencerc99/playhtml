@@ -59,8 +59,10 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   ) => void;
   // @deprecated use onMount instead
   additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
-  // Used to set up any additional event handlers
-  onMount?: (eventData: ElementSetupData<T, U, V>) => void;
+  // Used to set up any additional event handlers. May return a cleanup
+  // function (to cancel rAF loops, timers, listeners) that runs when the
+  // element is removed/unregistered.
+  onMount?: (eventData: ElementSetupData<T, U, V>) => void | (() => void);
 
   // Advanced settings
   resetShortcut?: ModifierKey;
