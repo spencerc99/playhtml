@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bottle test — we were online</title>
+    <style>
+      :root {
+        --page-bg: #ffffff;
+      }
+      body {
+        margin: 0;
+        padding: 60px 24px 120px;
+        background: var(--page-bg);
+        color: #111;
+        max-width: 1100px;
+        margin-inline: auto;
+        line-height: 1.55;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      h1 { font-weight: 500; margin-bottom: 8px; font-size: 22px; }
+      p { color: #444; max-width: 640px; }
+      code { font-family: ui-monospace, monospace; font-size: 13px; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 18px;
+        margin-top: 24px;
+      }
+      .field-frame {
+        background: var(--page-bg);
+        border: 1px solid #e0e0e0;
+        border-radius: 3px;
+        position: relative;
+        overflow: hidden;
+        height: 320px;
+      }
+      .label {
+        position: absolute;
+        top: 10px;
+        left: 12px;
+        font-size: 12px;
+        color: #777;
+        z-index: 5;
+      }
+      .name {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        font-size: 11px;
+        color: #999;
+        font-family: ui-monospace, monospace;
+        z-index: 5;
+      }
+      .field {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>message in a bottle — eight variants</h1>
+    <p>
+      Eight found-object styles half-buried in the page. Hover to reveal more
+      of the buried object; click to lift it out and read what's inside. Each
+      grid cell is its own page (separate <code>pageKey</code> + localStorage).
+    </p>
+
+    <div class="grid">
+      <div class="field-frame">
+        <div class="label">1. green-glass bottle</div>
+        <div class="name">bottle</div>
+        <div class="field" id="bottle-bottle"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">2. clay tablet</div>
+        <div class="name">tablet</div>
+        <div class="field" id="bottle-tablet"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">3. wax-sealed scroll</div>
+        <div class="name">scroll</div>
+        <div class="field" id="bottle-scroll"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">4. floppy disk</div>
+        <div class="name">floppy</div>
+        <div class="field" id="bottle-floppy"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">5. brass key tag</div>
+        <div class="name">keytag</div>
+        <div class="field" id="bottle-keytag"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">6. glass vial</div>
+        <div class="name">vial</div>
+        <div class="field" id="bottle-vial"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">7. scribble note</div>
+        <div class="name">mirrored</div>
+        <div class="field" id="bottle-mirrored"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">7a. tiny text (apparent letters)</div>
+        <div class="name">tinytext</div>
+        <div class="field" id="bottle-tinytext"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">7a-v. tiny text vertical</div>
+        <div class="name">tinytextV</div>
+        <div class="field" id="bottle-tinytextv"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">7b. ghost text (white-on-white)</div>
+        <div class="name">ghosttext</div>
+        <div class="field" id="bottle-ghosttext"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">7c. cipher glyphs</div>
+        <div class="name">cipher</div>
+        <div class="field" id="bottle-cipher"></div>
+      </div>
+      <div class="field-frame">
+        <div class="label">8. rock</div>
+        <div class="name">rock</div>
+        <div class="field" id="bottle-rock"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./bottle-test.tsx"></script>
+  </body>
+</html>
