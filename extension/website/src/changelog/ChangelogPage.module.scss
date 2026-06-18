@@ -1,0 +1,196 @@
+// ABOUTME: Styles for the public extension changelog page.
+// ABOUTME: Handles release timelines, text notes, and media attachments.
+
+@use "../styles/variables" as *;
+
+$accent-teal: #4a9a8a;
+$accent-rust: #c4724e;
+$border: #e8e2d8;
+$surface: #fffaf2;
+$text-faint: #b4aca3;
+$font-heading: "Lora", Georgia, serif;
+$font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+:global(body) {
+  margin: 0;
+}
+
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(74, 154, 138, 0.16), transparent 32rem),
+    $bg;
+  color: $text;
+  font-family: $font-body;
+  padding: 28px 20px 64px;
+}
+
+.shell {
+  width: min(820px, 100%);
+  margin: 0 auto;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 52px;
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.wordmark {
+  font-family: $font-wordmark;
+  font-style: italic;
+  font-weight: 200;
+  font-size: 18px;
+  color: $text;
+  text-decoration: none;
+}
+
+.navLinks {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.navLink {
+  color: $text-muted;
+  position: relative;
+  text-decoration: none;
+  transition: color 0.15s;
+
+  &:hover {
+    color: $accent-teal;
+  }
+
+  &[aria-current="page"] {
+    color: $text;
+
+    &::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -4px;
+      height: 1px;
+      background: rgba($accent-teal, 0.7);
+    }
+  }
+}
+
+.hero {
+  margin-bottom: 48px;
+}
+
+.title {
+  font-family: $font-heading;
+  font-size: clamp(2.4rem, 8vw, 5.2rem);
+  line-height: 0.95;
+  margin: 0 0 16px;
+}
+
+.releases {
+  display: grid;
+  gap: 32px;
+}
+
+.release {
+  border-top: 1px solid $border;
+  padding-top: 24px;
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: 28px;
+}
+
+.releaseMeta {
+  position: sticky;
+  top: 20px;
+  align-self: start;
+}
+
+.version {
+  font-family: $font-heading;
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+.date {
+  color: $text-faint;
+  font-size: 13px;
+  margin: 0;
+}
+
+.blocks {
+  display: grid;
+  gap: 12px;
+}
+
+.heading {
+  color: $accent-teal;
+  font-family: $font-mono;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  margin: 4px 0 0;
+}
+
+.bullet {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.bullet::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: $accent-teal;
+  margin-top: 10px;
+}
+
+.paragraph {
+  line-height: 1.65;
+  margin: 0;
+}
+
+.media {
+  display: block;
+  width: 100%;
+  max-height: 560px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  object-fit: contain;
+  box-shadow: 0 10px 30px rgba(61, 56, 51, 0.08);
+}
+
+.video {
+  aspect-ratio: 16 / 9;
+}
+
+@media (max-width: 680px) {
+  .page {
+    padding: 20px 16px 48px;
+  }
+
+  .nav {
+    align-items: flex-start;
+    margin-bottom: 40px;
+  }
+
+  .release {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .releaseMeta {
+    position: static;
+  }
+}
