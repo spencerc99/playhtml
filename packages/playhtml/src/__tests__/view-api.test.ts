@@ -351,6 +351,53 @@ describe("rail 2: define + composition", () => {
       document.getElementById("chip-1")!.querySelector(".chip")!.textContent,
     ).toBe("chip");
   });
+
+  it("tears down capability children removed from a keyed list (no leak)", async () => {
+    const cleanups: Record<string, ReturnType<typeof vi.fn>> = {};
+    playhtml.define<{ name: string }>("can-room", {
+      defaultData: (el) => ({ name: el.id }),
+      view: ({ data }) => html`<span class="room">${data.name}</span>`,
+      onMount: ({ getElement }) => {
+        const id = getElement().id;
+        const cleanup = vi.fn();
+        cleanups[id] = cleanup;
+        return cleanup;
+      },
+    });
+
+    const root = document.createElement("div");
+    root.id = "room-list";
+    document.body.appendChild(root);
+
+    const handle = playhtml.register<{ names: string[] }>("room-list", {
+      defaultData: { names: ["room-a", "room-b"] },
+      view: ({ data }) => html`${repeat(
+        data.names,
+        (n) => n,
+        (n) => html`<div id=${n} can-room></div>`,
+      )}`,
+    });
+    await tick();
+    await tick();
+
+    const roomHandlers = playhtml.elementHandlers.get("can-room")!;
+    expect(roomHandlers.has("room-a")).toBe(true);
+    expect(roomHandlers.has("room-b")).toBe(true);
+
+    // Remove room-b from the list → its node leaves the DOM → the observer
+    // reconciles and tears down the orphaned handler.
+    handle.setData((d) => {
+      d.names = d.names.filter((n) => n !== "room-b");
+    });
+    await tick();
+    await tick();
+    await tick();
+
+    expect(roomHandlers.has("room-a")).toBe(true);
+    expect(roomHandlers.has("room-b")).toBe(false);
+    expect(cleanups["room-b"]).toHaveBeenCalledTimes(1);
+    expect(cleanups["room-a"]).not.toHaveBeenCalled();
+  });
 });
 
 describe("primitive defaultData", () => {

@@ -2112,12 +2112,21 @@ function definePlayCapability<T = any, U = any, V = any>(
 }
 
 /**
- * After a view renders, bind any capability descendants it produced — mount
- * points for `define`d capabilities or `register`ed ids. This is what makes
- * data-driven lists of collaborative children (e.g. a chat list rendering
- * `<div can-chat>` per room) work. Idempotent: elements already bound to the
- * same DOM node are skipped, so it's safe to run on every render.
+ * After a view renders, reconcile the capability descendants it produced —
+ * mount points for `define`d capabilities or `register`ed ids. This is what
+ * makes data-driven lists of collaborative children (e.g. a chat list
+ * rendering `<div can-chat>` per room) work. Driven by a MutationObserver on
+ * the view root (see ElementHandler.observeDescendants), so it runs when the
+ * child structure changes — not on every render.
+ *
+ * Reconciliation, not just binding: newly-present descendants are bound, and
+ * descendants this root previously bound that are now gone (a keyed list item
+ * was removed) are torn down via removePlayElement — which runs their onMount
+ * cleanup and disconnects their observers, so churning lists don't leak
+ * handlers pointing at detached DOM. Shared data is preserved.
  */
+const viewDescendants = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
+
 function setupViewDescendants(root: HTMLElement): void {
   // Stamp pending single-element registrations onto matching descendants.
   for (const [id, init] of pendingRegistrations) {
@@ -2127,12 +2136,17 @@ function setupViewDescendants(root: HTMLElement): void {
       stampRegistrationOntoElement(el, init);
     }
   }
+  // Capability descendants present in this render, keyed by `tag:id`. The scan
+  // is subtree-wide, so each view-root tracks its full descendant set
+  // (including nested ones) — teardown below covers every depth.
+  const present = new Map<string, HTMLElement>();
   for (const tag of getTagTypes()) {
     const els = Array.from(root.querySelectorAll(`[${tag}]`)).filter(
       isHTMLElement,
     );
     for (const el of els) {
       if (el === root || !el.id) continue;
+      present.set(`${tag}:${el.id}`, el);
       const existing = elementHandlers.get(tag)?.get(el.id);
       if (existing) {
         if (existing.element === el) continue; // already bound to this node
@@ -2148,7 +2162,20 @@ function setupViewDescendants(root: HTMLElement): void {
       void setupPlayElementForTag(el, tag);
     }
   }
+  // Tear down descendants this root bound previously that are gone now.
+  const previous = viewDescendants.get(root);
+  if (previous) {
+    for (const [key, el] of previous) {
+      if (!present.has(key)) {
+        // removePlayElement runs the handler's destroy() (onMount cleanup +
+        // observer disconnect) and preserves the shared data.
+        removePlayElement(el);
+      }
+    }
+  }
+  viewDescendants.set(root, present);
 }
+
 
 /**
  * Completely deletes all shared collaborative data for an element.
