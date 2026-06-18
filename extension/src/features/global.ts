@@ -41,6 +41,12 @@ export async function initGlobalFeatures(
   }
 
   return () => {
-    for (const c of cleanups) c();
+    for (const c of cleanups) {
+      try {
+        c();
+      } catch (err) {
+        console.error("[we-were-online] social experiment cleanup failed:", err);
+      }
+    }
   };
 }

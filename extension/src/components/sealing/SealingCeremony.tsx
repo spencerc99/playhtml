@@ -136,6 +136,11 @@ export function SealingCeremony({
     const fissure = createSlotFissure(container, slotX, slotY);
     let finaleHandle: { dispose: () => void } | null = null;
 
+    // Timers scheduled by autoRoll(); cleared on unmount so an aborted seal
+    // (Escape mid-ceremony) can't fire the finale against a disposed scene.
+    let disposed = false;
+    const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+
     function autoRoll() {
       hint.style.opacity = "0";
 
@@ -165,7 +170,8 @@ export function SealingCeremony({
       // 3. After roll completes, measure the (now thick) rolled tube and
       //    fit it to the card: rotate to portrait if landscape, then uniform
       //    scale so the long axis = CARD_H_PX. Proportions preserved.
-      setTimeout(() => {
+      pendingTimers.push(setTimeout(() => {
+        if (disposed) return;
         const fit = computeCardFit(mesh);
         animate(mesh.rotation.z, fit.rotateZ, {
           duration: 0.6,
@@ -197,13 +203,14 @@ export function SealingCeremony({
             camera.updateProjectionMatrix();
           },
         });
-      }, 1200);
+      }, 1200));
 
       // 4. Then start the finale
-      setTimeout(startFinale, 2000);
+      pendingTimers.push(setTimeout(startFinale, 2000));
     }
 
     function startFinale() {
+      if (disposed) return;
       finaleHandle = playFinale({
         mesh,
         materialsToClip: [material, backMaterial],
@@ -246,6 +253,8 @@ export function SealingCeremony({
     frameId = requestAnimationFrame(renderTick);
 
     return () => {
+      disposed = true;
+      for (const t of pendingTimers) clearTimeout(t);
       cancelAnimationFrame(frameId);
       dragControl.dispose();
       fissure.dispose();

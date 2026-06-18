@@ -21,7 +21,6 @@ export interface BottleMessageRecord {
 
 export interface BottlePageData {
   messages: Record<string, BottleMessageRecord>;
-  totalCount: number;
 }
 
 export interface RenderedBottle {
@@ -41,7 +40,13 @@ const STORAGE_LAST_AUTHORED = "bottle:lastAuthored:v1";
 const ALWAYS_VISIBLE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const AUTHOR_RATE_LIMIT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days per domain
 const MAX_VISIBLE_BOTTLES = 3;
-const EMPTY_BOTTLE_PROBABILITY = 1.0; // TODO: set back to 0.3 for production
+const EMPTY_BOTTLE_PROBABILITY = 0.3;
+
+// Flip on for local debugging of spawn/render decisions.
+const VERBOSE = false;
+function debug(...args: unknown[]): void {
+  if (VERBOSE) console.log(...args);
+}
 
 type RenderCallback = (req: BottleRenderRequest) => void;
 
@@ -54,10 +59,18 @@ interface AuthoredMap {
 }
 
 export class BottleManager {
-  private data: BottlePageData = { messages: {}, totalCount: 0 };
+  private data: BottlePageData = { messages: {} };
   private channel: PageDataChannel<BottlePageData> | null = null;
   private renderCallback: RenderCallback | null = null;
   private cleanups: (() => void)[] = [];
+
+  // The empty-bottle decision is made once per page load and reused across
+  // every subsequent render. Re-deciding on each render (which fires on
+  // channel updates and markSeen) would re-roll the probability, pick a new
+  // anchor, and mint a new `empty-…` id — changing the bottle's React key
+  // mid-interaction and unmounting an open dialog (destroying the draft).
+  // null = not yet decided; { bottle: null } = decided not to show one.
+  private emptyDecision: { bottle: RenderedBottle | null } | null = null;
 
   constructor(
     private playerColor: string,
@@ -71,7 +84,6 @@ export class BottleManager {
     const channelName = `bottles:${normalizeUrl(location.href)}`;
     this.channel = this.createPageData<BottlePageData>(channelName, {
       messages: {},
-      totalCount: 0,
     });
 
     this.channel.onUpdate((data: BottlePageData) => {
@@ -123,8 +135,11 @@ export class BottleManager {
 
     this.channel.setData((draft: BottlePageData) => {
       draft.messages[id] = record;
-      draft.totalCount = (draft.totalCount ?? 0) + 1;
     });
+
+    // The empty bottle (if any) is now filled by our own message; drop the
+    // cached decision so it isn't re-rendered as empty.
+    this.emptyDecision = { bottle: null };
 
     this.markAuthored();
     // Mark our own message seen so we don't see it again ourselves
@@ -156,7 +171,7 @@ export class BottleManager {
   private render(): void {
     if (!this.renderCallback) return;
     const bottles = this.computeRenderList();
-    console.log(
+    debug(
       `[bottles] render: ${bottles.length} bottle(s)`,
       bottles.map((b) => ({
         id: b.id,
@@ -169,14 +184,12 @@ export class BottleManager {
 
   private computeRenderList(): RenderedBottle[] {
     const seen = this.loadSeen();
-    const now = Date.now();
 
     // Filter visible messages
     const visible: BottleMessageRecord[] = [];
     for (const id of Object.keys(this.data.messages)) {
       const m = this.data.messages[id];
       if (m.hidden) continue;
-      const isFresh = now - m.createdAt < ALWAYS_VISIBLE_WINDOW_MS;
       const userHasRead = seen[id] !== undefined;
       // Per Spencer: never re-show what you've read. Fresh window does NOT
       // override personal read state — once you've read it, it's gone.
@@ -205,32 +218,44 @@ export class BottleManager {
       return out;
     }
 
-    // No filled bottles for this user — maybe an empty
-    if (this.shouldShowEmpty()) {
-      const anchor = pickBottleAnchor();
-      if (!anchor) {
-        console.log("[bottles] no anchor candidates on this page");
-        return [];
-      }
-      const pos = resolveBottlePosition(anchor);
-      if (pos === null) {
-        console.log("[bottles] anchor resolved offscreen or overlapping", anchor);
-        return [];
-      }
-      return [
-        {
-          id: `empty-${Date.now()}`,
-          anchor,
-          isEmpty: true,
-        },
-      ];
-    } else {
-      console.log(
+    // No filled bottles for this user — maybe an empty one. Decided once per
+    // page load and cached so re-renders don't re-roll / re-anchor / re-id it.
+    const empty = this.resolveEmptyBottle();
+    return empty ? [empty] : [];
+  }
+
+  /**
+   * Decide once whether to show an empty bottle and, if so, where. The result
+   * (including "no") is cached for the page's lifetime so subsequent renders
+   * reuse the same id + anchor — keeping an open dialog mounted.
+   */
+  private resolveEmptyBottle(): RenderedBottle | null {
+    if (!this.emptyDecision) {
+      this.emptyDecision = { bottle: this.decideEmptyBottle() };
+    }
+    return this.emptyDecision.bottle;
+  }
+
+  private decideEmptyBottle(): RenderedBottle | null {
+    if (!this.shouldShowEmpty()) {
+      debug(
         "[bottles] skipping empty bottle this load (rate-limited or rolled below threshold)",
       );
+      return null;
     }
-
-    return [];
+    const anchor = pickBottleAnchor();
+    if (!anchor) {
+      debug("[bottles] no anchor candidates on this page");
+      return null;
+    }
+    if (resolveBottlePosition(anchor) === null) {
+      debug("[bottles] anchor resolved offscreen or overlapping", anchor);
+      return null;
+    }
+    const id = (typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    return { id: `empty-${id}`, anchor, isEmpty: true };
   }
 
   private shouldShowEmpty(): boolean {
