@@ -3,6 +3,7 @@
 
 import type { PageDataChannel } from "@playhtml/common";
 import { normalizeUrl } from "../utils/urlNormalization";
+import { bottleDebug as debug } from "./bottle-debug";
 import {
   pickBottleAnchor,
   resolveBottlePosition,
@@ -47,12 +48,6 @@ const ALWAYS_VISIBLE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const AUTHOR_RATE_LIMIT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days per domain
 const MAX_VISIBLE_BOTTLES = 3;
 const EMPTY_BOTTLE_PROBABILITY = 0.3;
-
-// Flip on for local debugging of spawn/render decisions.
-const VERBOSE = false;
-function debug(...args: unknown[]): void {
-  if (VERBOSE) console.log(...args);
-}
 
 type RenderCallback = (req: BottleRenderRequest) => void;
 
@@ -125,7 +120,7 @@ export class BottleManager {
     if (!this.channel) return;
     if (!text.trim()) return;
     if (this.isRateLimited()) {
-      console.log("[bottles] rate limited — skipping author");
+      debug("[bottles] rate limited — skipping author");
       return;
     }
 

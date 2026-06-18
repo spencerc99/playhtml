@@ -1,5 +1,5 @@
 // ABOUTME: A message-bottle visual + read/write flow. Half-buried card that lifts and opens to a dialog.
-// ABOUTME: Pure controlled component — accepts messages and an onSeal callback; storage is owned by the parent.
+// ABOUTME: Pure controlled component — accepts a thread of notes and an onSeal callback; storage is owned by the parent.
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

@@ -1017,26 +1017,43 @@ export default defineContentScript({
       }
 
       private async setupPresenceDetection() {
-        // Check immediately — catches pages where playhtml init ran before us
+        // Cursors/presence are page-specific; bottles & other social
+        // experiments run on every page. Set up presence first (which may init
+        // our own playhtml for cursor sites), then always give the experiments
+        // a chance to run — ensureGlobalFeatures is idempotent and self-gating.
+        await this.setupPresence();
+        await this.ensureGlobalFeatures();
+
+        // Surface any pending announcements as a toast (no-op if all seen / no match)
+        try {
+          const { maybeInjectAnnouncementToast } = await import(
+            "../announcements/inject-toast"
+          );
+          await maybeInjectAnnouncementToast();
+        } catch (err) {
+          console.error("[we-were-online] announcement toast failed:", err);
+        }
+      }
+
+      private async setupPresence() {
+        // On pages that already run playhtml, defer presence/cursors to the
+        // page's instance (we only inject our identity). We don't stand up our
+        // own cursor instance here — but bottles still get one later via
+        // ensureGlobalFeatures, on its own extension-owned room.
         if (this.hasNativePlayhtml()) {
           console.log("[we-were-online] Native playhtml detected at startup");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
-          await this.ensureGlobalFeatures();
           return;
         }
 
         // Race condition: on dev servers (Vite), page scripts may load after
         // our content script. Wait briefly for the data-playhtml marker or
         // cursor styles to appear before initializing our own instance.
-        const nativeAppeared = await this.waitForNativePlayhtml(1500);
-        if (nativeAppeared) {
-          console.log(
-            "[we-were-online] Native playhtml detected after waiting",
-          );
+        if (await this.waitForNativePlayhtml(1500)) {
+          console.log("[we-were-online] Native playhtml detected after waiting");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
-          await this.ensureGlobalFeatures();
           return;
         }
 
@@ -1052,7 +1069,6 @@ export default defineContentScript({
             cursorsEnabled: enableCursors,
           })
         ) {
-          await this.ensureGlobalFeatures();
           return;
         }
 
@@ -1068,14 +1084,8 @@ export default defineContentScript({
         this.playhtmlInstance = playhtml;
         this.listenForPresenceCount();
 
-        // Global features that run on every page (no domain gating). Reuses the
-        // instance just inited above rather than spinning up a second one.
-        await this.ensureGlobalFeatures();
-
-        const color =
-          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-
-        // Initialize domain-specific features (link glow, follow, nav broadcast)
+        // Domain-specific features (link glow, follow, nav broadcast) reuse the
+        // instance just inited above.
         if (enableCursors) {
           try {
             await initCustomSite({
@@ -1083,21 +1093,12 @@ export default defineContentScript({
               createPresenceRoom: playhtml.createPresenceRoom,
               presence: playhtml.presence,
               cursorClient: playhtml.cursorClient,
-              playerColor: color,
+              playerColor:
+                this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a",
             });
           } catch (err) {
             console.error("[we-were-online] initCustomSite failed:", err);
           }
-        }
-
-        // Surface any pending announcements as a toast (no-op if all seen / no match)
-        try {
-          const { maybeInjectAnnouncementToast } = await import(
-            "../announcements/inject-toast"
-          );
-          await maybeInjectAnnouncementToast();
-        } catch (err) {
-          console.error("[we-were-online] announcement toast failed:", err);
         }
       }
 

@@ -1,6 +1,8 @@
 // ABOUTME: Picks DOM-anchored positions for bottles so two visitors see them at the same content offsets.
 // ABOUTME: Stores a CSS selector + relative offset; resolves to a viewport position at render time.
 
+import { bottleDebug as debug } from "./bottle-debug";
+
 export interface BottleAnchor {
   selector: string;
   offsetX: number; // 0..1, fraction of anchor element width
@@ -37,10 +39,10 @@ const MIN_ACCEPTABLE_SCORE = 0.85;
 export function pickBottleAnchor(): BottleAnchor | null {
   const candidates = collectAnchorCandidates();
   if (!candidates.length) {
-    console.log("[bottles] no anchor candidates collected from DOM");
+    debug("[bottles] no anchor candidates collected from DOM");
     return null;
   }
-  console.log(
+  debug(
     `[bottles] collected ${candidates.length} anchor candidate(s), trying up to ${MAX_PICK_ATTEMPTS} placements`,
   );
 
@@ -60,7 +62,7 @@ export function pickBottleAnchor(): BottleAnchor | null {
     if (!best || result.score > best.score) {
       best = { anchor, score: result.score, reason: result.reason };
       if (result.score >= GOOD_ENOUGH_SCORE) {
-        console.log(
+        debug(
           `[bottles] picked anchor (grid, score=${result.score.toFixed(2)}): ${anchor.selector}`,
         );
         return anchor;
@@ -82,7 +84,7 @@ export function pickBottleAnchor(): BottleAnchor | null {
     if (!best || result.score > best.score) {
       best = { anchor, score: result.score, reason: result.reason };
       if (result.score >= GOOD_ENOUGH_SCORE) {
-        console.log(
+        debug(
           `[bottles] picked anchor (random, score=${result.score.toFixed(2)}): ${selector}`,
         );
         return anchor;
@@ -91,13 +93,13 @@ export function pickBottleAnchor(): BottleAnchor | null {
   }
 
   if (best && best.score >= MIN_ACCEPTABLE_SCORE) {
-    console.log(
+    debug(
       `[bottles] picked best-available anchor (score=${best.score.toFixed(2)}): ${best.anchor.selector}`,
     );
     return best.anchor;
   }
 
-  console.log(
+  debug(
     `[bottles] all ${MAX_PICK_ATTEMPTS} placements below MIN_ACCEPTABLE_SCORE. ` +
       `best=${best ? best.score.toFixed(2) : "n/a"} rejections=`,
     reasonCounts,
