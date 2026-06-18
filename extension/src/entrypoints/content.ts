@@ -42,6 +42,9 @@ export default defineContentScript({
       private playerIdentity: any = null;
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
+      // The extension's own playhtml instance, lazily inited. Shared between the
+      // cursor-site path and the headless every-page path for social experiments.
+      private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -976,12 +979,50 @@ export default defineContentScript({
         console.log("[we-were-online] Dispatched identity injection event");
       }
 
+      /**
+       * Initialize social experiments (bottles, …) on this page. They run on
+       * every page, independent of cursor support and native playhtml. When no
+       * experiment is active we open no connection at all. If the extension
+       * hasn't already inited playhtml (cursor-site path), spin up a headless
+       * instance (cursors off) so experiments have a createPageData handle.
+       */
+      private async ensureGlobalFeatures() {
+        if (this.globalCleanup) return; // already running on this page
+
+        const { anyGlobalFeatureActive, initGlobalFeatures } = await import(
+          "../features/global"
+        );
+        if (!(await anyGlobalFeatureActive())) return;
+
+        if (!this.playhtmlInstance) {
+          const { playhtml } = await import("playhtml");
+          await playhtml.init({ cursors: { enabled: false } });
+          this.playhtmlInstance = playhtml;
+        }
+
+        const color =
+          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+        const pid = this.playerIdentity?.publicKey ?? "anon";
+
+        try {
+          this.globalCleanup = await initGlobalFeatures({
+            createPageData: this.playhtmlInstance.createPageData,
+            presence: this.playhtmlInstance.presence,
+            playerColor: color,
+            playerPid: pid,
+          });
+        } catch (err) {
+          console.error("[we-were-online] initGlobalFeatures failed:", err);
+        }
+      }
+
       private async setupPresenceDetection() {
         // Check immediately — catches pages where playhtml init ran before us
         if (this.hasNativePlayhtml()) {
           console.log("[we-were-online] Native playhtml detected at startup");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
+          await this.ensureGlobalFeatures();
           return;
         }
 
@@ -995,6 +1036,7 @@ export default defineContentScript({
           );
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
+          await this.ensureGlobalFeatures();
           return;
         }
 
@@ -1010,6 +1052,7 @@ export default defineContentScript({
             cursorsEnabled: enableCursors,
           })
         ) {
+          await this.ensureGlobalFeatures();
           return;
         }
 
@@ -1022,25 +1065,15 @@ export default defineContentScript({
             coordinateMode: "absolute",
           },
         });
+        this.playhtmlInstance = playhtml;
         this.listenForPresenceCount();
+
+        // Global features that run on every page (no domain gating). Reuses the
+        // instance just inited above rather than spinning up a second one.
+        await this.ensureGlobalFeatures();
 
         const color =
           this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-        const pid = this.playerIdentity?.publicKey ?? "anon";
-
-        // Global features that run on every page (no domain gating)
-        try {
-          const { initGlobalFeatures } = await import("../features/global");
-          const cleanupGlobal = await initGlobalFeatures({
-            createPageData: playhtml.createPageData,
-            presence: playhtml.presence,
-            playerColor: color,
-            playerPid: pid,
-          });
-          this.globalCleanup = cleanupGlobal;
-        } catch (err) {
-          console.error("[we-were-online] initGlobalFeatures failed:", err);
-        }
 
         // Initialize domain-specific features (link glow, follow, nav broadcast)
         if (enableCursors) {

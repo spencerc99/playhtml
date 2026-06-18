@@ -43,8 +43,8 @@ export const bottlesExperiment: SocialExperiment = {
     manager.init((req: BottleRenderRequest) => {
       ui.render({
         bottles: req.bottles,
-        onSeal: (_id: string, text: string, anchor: BottleAnchor) => {
-          manager.seal(text, anchor);
+        onSeal: (id: string, text: string, anchor: BottleAnchor) => {
+          manager.seal(text, { id, anchor });
         },
         onOpened: (_id: string) => {
           // Don't mark seen on open — would re-render and unmount mid-interaction.

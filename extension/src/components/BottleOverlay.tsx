@@ -102,17 +102,8 @@ export function BottleOverlay({
           }}
         >
           <MessageBottle
-            messages={
-              slot.isEmpty
-                ? []
-                : [
-                    {
-                      id: slot.id,
-                      text: slot.text ?? "",
-                      authorColor: slot.authorColor,
-                    },
-                  ]
-            }
+            notes={slot.isEmpty ? [] : slot.notes ?? []}
+            authorColor={slot.authorColor}
             onSeal={(text) => onSeal(slot.id, text, slot.anchor)}
             onOpened={() => onOpened(slot.id)}
             onClosed={() => onClosed(slot.id)}

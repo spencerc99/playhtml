@@ -23,6 +23,24 @@ async function internalDevFeaturesEnabled(): Promise<boolean> {
   }
 }
 
+function isExperimentActive(
+  exp: { flag: keyof typeof FLAGS },
+  devEnabled: boolean,
+): boolean {
+  // Run if shipped-on for everyone, or if this dev has internal features on.
+  return Boolean(FLAGS[exp.flag]) || devEnabled;
+}
+
+/**
+ * Whether any social experiment would run on this page. The content script
+ * calls this before deciding to spin up a headless playhtml instance — on
+ * pages where no experiment is active we open no connection at all.
+ */
+export async function anyGlobalFeatureActive(): Promise<boolean> {
+  const devEnabled = await internalDevFeaturesEnabled();
+  return SOCIAL_EXPERIMENTS.some((exp) => isExperimentActive(exp, devEnabled));
+}
+
 export async function initGlobalFeatures(
   deps: GlobalFeatureDeps,
 ): Promise<() => void> {
@@ -30,8 +48,7 @@ export async function initGlobalFeatures(
   const devEnabled = await internalDevFeaturesEnabled();
 
   for (const exp of SOCIAL_EXPERIMENTS) {
-    // Run if shipped-on for everyone, or if this dev has internal features on.
-    if (!FLAGS[exp.flag] && !devEnabled) continue;
+    if (!isExperimentActive(exp, devEnabled)) continue;
     try {
       const cleanup = await exp.init(deps);
       cleanups.push(cleanup);

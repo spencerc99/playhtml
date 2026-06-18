@@ -442,7 +442,14 @@ function buildStructuralSelector(el: Element): string | null {
   return parts.join(" > ");
 }
 
+// Hosts the extension injects into the page. Anchoring a bottle to one of
+// these (or their subtree) would let a bottle attach to our own overlay, so we
+// exclude them. Matched by id prefix since each feature mints its own host id.
+const EXTENSION_HOST_SELECTOR =
+  '[id^="we-were-online"], [id^="wewere-"], [id^="playhtml-historical-overlay"]';
+
 function isReasonableAnchor(el: HTMLElement): boolean {
+  if (el.closest(EXTENSION_HOST_SELECTOR)) return false;
   const rect = el.getBoundingClientRect();
   if (rect.width < 80 || rect.height < 16) return false;
   const closestChrome = el.closest("nav, aside, footer, header");

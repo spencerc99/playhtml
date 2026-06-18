@@ -136,36 +136,42 @@ export function SealingCeremony({
     const fissure = createSlotFissure(container, slotX, slotY);
     let finaleHandle: { dispose: () => void } | null = null;
 
-    // Timers scheduled by autoRoll(); cleared on unmount so an aborted seal
-    // (Escape mid-ceremony) can't fire the finale against a disposed scene.
+    // Timers + animations scheduled by autoRoll(); stopped on unmount so an
+    // aborted seal (Escape mid-ceremony) can't fire the finale or keep mutating
+    // the disposed Three.js scene after teardown.
     let disposed = false;
     const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+    const animations: { stop: () => void }[] = [];
+    const track = <T extends { stop: () => void }>(a: T): T => {
+      animations.push(a);
+      return a;
+    };
 
     function autoRoll() {
       hint.style.opacity = "0";
 
       // 1. Auto-finish the roll with a spring
-      animate(
-        state.rollAmount,
-        1,
-        {
+      track(
+        animate(state.rollAmount, 1, {
           duration: 1.2,
           ease: [0.4, 0.0, 0.2, 1],
           onUpdate: (v) => {
             state.rollAmount = v;
           },
-        },
+        }),
       );
 
       // 2. Subtle zoom-out as the paper rolls (already in view, so small)
-      animate(camera.zoom, 0.85, {
-        duration: 1.2,
-        ease: [0.4, 0.0, 0.2, 1],
-        onUpdate: (v) => {
-          camera.zoom = v;
-          camera.updateProjectionMatrix();
-        },
-      });
+      track(
+        animate(camera.zoom, 0.85, {
+          duration: 1.2,
+          ease: [0.4, 0.0, 0.2, 1],
+          onUpdate: (v) => {
+            camera.zoom = v;
+            camera.updateProjectionMatrix();
+          },
+        }),
+      );
 
       // 3. After roll completes, measure the (now thick) rolled tube and
       //    fit it to the card: rotate to portrait if landscape, then uniform
@@ -173,36 +179,42 @@ export function SealingCeremony({
       pendingTimers.push(setTimeout(() => {
         if (disposed) return;
         const fit = computeCardFit(mesh);
-        animate(mesh.rotation.z, fit.rotateZ, {
-          duration: 0.6,
-          ease: [0.4, 0.0, 0.2, 1],
-          onUpdate: (v) => {
-            mesh.rotation.z = v;
-          },
-        });
+        track(
+          animate(mesh.rotation.z, fit.rotateZ, {
+            duration: 0.6,
+            ease: [0.4, 0.0, 0.2, 1],
+            onUpdate: (v) => {
+              mesh.rotation.z = v;
+            },
+          }),
+        );
         // Non-uniform fit to the exact card box (32×64) so the landed
         // rectangle matches the on-page tinytextV card proportions.
         const fromX = mesh.scale.x;
         const fromY = mesh.scale.y;
-        animate(0, 1, {
-          duration: 0.7,
-          ease: [0.4, 0.0, 0.2, 1],
-          onUpdate: (t) => {
-            mesh.scale.set(
-              fromX + (fit.scaleX - fromX) * t,
-              fromY + (fit.scaleY - fromY) * t,
-              fromX + (fit.scaleX - fromX) * t,
-            );
-          },
-        });
-        animate(camera.zoom, zoomOut, {
-          duration: 0.7,
-          ease: [0.4, 0.0, 0.2, 1],
-          onUpdate: (v) => {
-            camera.zoom = v;
-            camera.updateProjectionMatrix();
-          },
-        });
+        track(
+          animate(0, 1, {
+            duration: 0.7,
+            ease: [0.4, 0.0, 0.2, 1],
+            onUpdate: (t) => {
+              mesh.scale.set(
+                fromX + (fit.scaleX - fromX) * t,
+                fromY + (fit.scaleY - fromY) * t,
+                fromX + (fit.scaleX - fromX) * t,
+              );
+            },
+          }),
+        );
+        track(
+          animate(camera.zoom, zoomOut, {
+            duration: 0.7,
+            ease: [0.4, 0.0, 0.2, 1],
+            onUpdate: (v) => {
+              camera.zoom = v;
+              camera.updateProjectionMatrix();
+            },
+          }),
+        );
       }, 1200));
 
       // 4. Then start the finale
@@ -255,6 +267,7 @@ export function SealingCeremony({
     return () => {
       disposed = true;
       for (const t of pendingTimers) clearTimeout(t);
+      for (const a of animations) a.stop();
       cancelAnimationFrame(frameId);
       dragControl.dispose();
       fissure.dispose();

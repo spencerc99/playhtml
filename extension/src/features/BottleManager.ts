@@ -9,24 +9,30 @@ import {
   type BottleAnchor,
 } from "./bottle-anchor";
 
-export interface BottleMessageRecord {
-  id: string;
+/** A single note in a bottle's thread. Replies append, never replace. */
+export interface BottleNote {
   text: string;
   createdAt: number;
   createdBy: string;
   authorColor: string;
+}
+
+/** A bottle anchored to a spot on the page, holding a thread of notes. */
+export interface BottleRecord {
+  id: string;
   anchor: BottleAnchor;
+  notes: BottleNote[];
   hidden?: boolean;
 }
 
 export interface BottlePageData {
-  messages: Record<string, BottleMessageRecord>;
+  bottles: Record<string, BottleRecord>;
 }
 
 export interface RenderedBottle {
   id: string;
-  text?: string; // undefined for empty bottles
-  authorColor?: string;
+  notes?: BottleNote[]; // undefined for empty bottles
+  authorColor?: string; // the latest note's author color (left-edge stripe)
   anchor: BottleAnchor;
   isEmpty: boolean;
 }
@@ -59,18 +65,26 @@ interface AuthoredMap {
 }
 
 export class BottleManager {
-  private data: BottlePageData = { messages: {} };
+  private data: BottlePageData = { bottles: {} };
   private channel: PageDataChannel<BottlePageData> | null = null;
   private renderCallback: RenderCallback | null = null;
   private cleanups: (() => void)[] = [];
+  // Session-local backup of the author cooldown, in case the localStorage write
+  // in markAuthored() fails. 0 = never authored this session.
+  private lastAuthoredAt = 0;
 
-  // The empty-bottle decision is made once per page load and reused across
-  // every subsequent render. Re-deciding on each render (which fires on
-  // channel updates and markSeen) would re-roll the probability, pick a new
-  // anchor, and mint a new `empty-…` id — changing the bottle's React key
-  // mid-interaction and unmounting an open dialog (destroying the draft).
-  // null = not yet decided; { bottle: null } = decided not to show one.
-  private emptyDecision: { bottle: RenderedBottle | null } | null = null;
+  // Whether to show an empty bottle at all. The probability roll is made once
+  // per page load and kept sticky: re-rolling each render (fires on channel
+  // updates and markSeen) would flicker the bottle in and out and change its
+  // React key mid-interaction, unmounting an open dialog (destroying the draft).
+  // undefined = not yet rolled.
+  private showEmpty: boolean | undefined = undefined;
+
+  // The placed empty bottle (id + anchor), cached once it successfully resolves
+  // so its id stays stable across renders. Stays null while showEmpty is true
+  // but no anchor resolves yet — so a transient early no-anchor doesn't suppress
+  // the bottle for the rest of the page's life; it retries on later renders.
+  private emptyBottle: RenderedBottle | null = null;
 
   constructor(
     private playerColor: string,
@@ -83,7 +97,7 @@ export class BottleManager {
 
     const channelName = `bottles:${normalizeUrl(location.href)}`;
     this.channel = this.createPageData<BottlePageData>(channelName, {
-      messages: {},
+      bottles: {},
     });
 
     this.channel.onUpdate((data: BottlePageData) => {
@@ -102,11 +116,12 @@ export class BottleManager {
   }
 
   /**
-   * Author a new message. Called by the overlay when a user seals a bottle.
-   * If `existingId` is provided, replace that empty bottle's anchor; otherwise
-   * spawn a fresh anchor.
+   * Seal a note into a bottle. Called by the overlay when a user finishes
+   * writing. If `target` names an existing bottle, the note is appended to that
+   * bottle's thread (a reply, same anchor); otherwise a new bottle is created
+   * at the target anchor (e.g. sealing into an empty prompt or a fresh spot).
    */
-  seal(text: string, existingAnchor?: BottleAnchor): void {
+  seal(text: string, target: { id: string; anchor: BottleAnchor }): void {
     if (!this.channel) return;
     if (!text.trim()) return;
     if (this.isRateLimited()) {
@@ -114,44 +129,50 @@ export class BottleManager {
       return;
     }
 
-    const anchor = existingAnchor ?? pickBottleAnchor();
-    if (!anchor) {
-      console.log("[bottles] no anchor available — skipping author");
-      return;
-    }
-
-    const id = (typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-
-    const record: BottleMessageRecord = {
-      id,
+    const note: BottleNote = {
       text: text.slice(0, 500),
       createdAt: Date.now(),
       createdBy: this.playerPid,
       authorColor: this.playerColor,
-      anchor,
     };
 
+    const existing = this.data.bottles[target.id];
+    const bottleId = existing
+      ? target.id
+      : (typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
     this.channel.setData((draft: BottlePageData) => {
-      draft.messages[id] = record;
+      const bottle = draft.bottles[bottleId];
+      if (bottle) {
+        // Reply: append to the thread. push() is the CRDT-safe array op.
+        bottle.notes.push(note);
+      } else {
+        draft.bottles[bottleId] = {
+          id: bottleId,
+          anchor: target.anchor,
+          notes: [note],
+        };
+      }
     });
 
-    // The empty bottle (if any) is now filled by our own message; drop the
-    // cached decision so it isn't re-rendered as empty.
-    this.emptyDecision = { bottle: null };
+    // The empty bottle (if any) is now filled by our own message; suppress it
+    // so it isn't re-rendered as empty.
+    this.showEmpty = false;
+    this.emptyBottle = null;
 
     this.markAuthored();
-    // Mark our own message seen so we don't see it again ourselves
-    this.markSeen(id);
+    // Mark our own bottle seen so we don't see it again ourselves
+    this.markSeen(bottleId);
   }
 
   /**
-   * Mark a message id as seen by this user (read-cooldown).
+   * Mark a bottle id as seen by this user (read-cooldown).
    */
-  markSeen(messageId: string): void {
+  markSeen(bottleId: string): void {
     const map = this.loadSeen();
-    map[messageId] = Date.now();
+    map[bottleId] = Date.now();
     this.saveSeen(map);
     // Re-render so the seen bottle disappears from this user's view
     this.render();
@@ -185,38 +206,43 @@ export class BottleManager {
   private computeRenderList(): RenderedBottle[] {
     const seen = this.loadSeen();
 
-    // Filter visible messages
-    const visible: BottleMessageRecord[] = [];
-    for (const id of Object.keys(this.data.messages)) {
-      const m = this.data.messages[id];
-      if (m.hidden) continue;
+    // Filter visible bottles. Read defensively: a dev room persisted under an
+    // earlier data shape (no `bottles` map, or records without `notes`) would
+    // otherwise throw here and blank the page. Legacy entries are skipped.
+    const visible: BottleRecord[] = [];
+    const bottles = this.data.bottles ?? {};
+    for (const id of Object.keys(bottles)) {
+      const b = bottles[id];
+      if (!b || !Array.isArray(b.notes)) continue;
+      if (b.hidden || b.notes.length === 0) continue;
       const userHasRead = seen[id] !== undefined;
       // Per Spencer: never re-show what you've read. Fresh window does NOT
       // override personal read state — once you've read it, it's gone.
       if (userHasRead) continue;
-      visible.push(m);
+      visible.push(b);
       if (visible.length >= MAX_VISIBLE_BOTTLES * 3) break;
     }
 
-    // Sort by recency, prefer fresh
-    visible.sort((a, b) => b.createdAt - a.createdAt);
-    const top = visible.slice(0, MAX_VISIBLE_BOTTLES);
+    // Sort by recency of the latest note, prefer fresh
+    visible.sort((a, b) => latestNoteAt(b) - latestNoteAt(a));
 
-    if (top.length > 0) {
-      // Render real bottles. Resolve anchors at render-time (skip if anchor broken)
-      const out: RenderedBottle[] = [];
-      for (const m of top) {
-        if (resolveBottlePosition(m.anchor) === null) continue;
-        out.push({
-          id: m.id,
-          text: m.text,
-          authorColor: m.authorColor,
-          anchor: m.anchor,
-          isEmpty: false,
-        });
-      }
-      return out;
+    // Resolve anchors BEFORE capping, so newest bottles with broken/offscreen
+    // anchors don't consume the visible slots and hide older renderable ones.
+    const out: RenderedBottle[] = [];
+    for (const b of visible) {
+      if (resolveBottlePosition(b.anchor) === null) continue;
+      const latest = b.notes[b.notes.length - 1];
+      out.push({
+        id: b.id,
+        notes: b.notes,
+        authorColor: latest.authorColor,
+        anchor: b.anchor,
+        isEmpty: false,
+      });
+      if (out.length >= MAX_VISIBLE_BOTTLES) break;
     }
+
+    if (out.length > 0) return out;
 
     // No filled bottles for this user — maybe an empty one. Decided once per
     // page load and cached so re-renders don't re-roll / re-anchor / re-id it.
@@ -225,37 +251,37 @@ export class BottleManager {
   }
 
   /**
-   * Decide once whether to show an empty bottle and, if so, where. The result
-   * (including "no") is cached for the page's lifetime so subsequent renders
-   * reuse the same id + anchor — keeping an open dialog mounted.
+   * Whether to show an empty bottle and, if so, where. The probability roll is
+   * sticky (cached in showEmpty); the placement retries each render until an
+   * anchor resolves, then caches the placed bottle so its id stays stable.
    */
   private resolveEmptyBottle(): RenderedBottle | null {
-    if (!this.emptyDecision) {
-      this.emptyDecision = { bottle: this.decideEmptyBottle() };
-    }
-    return this.emptyDecision.bottle;
-  }
+    if (this.emptyBottle) return this.emptyBottle;
 
-  private decideEmptyBottle(): RenderedBottle | null {
-    if (!this.shouldShowEmpty()) {
-      debug(
-        "[bottles] skipping empty bottle this load (rate-limited or rolled below threshold)",
-      );
-      return null;
+    if (this.showEmpty === undefined) {
+      this.showEmpty = this.shouldShowEmpty();
+      if (!this.showEmpty) {
+        debug(
+          "[bottles] skipping empty bottle this load (rate-limited or rolled below threshold)",
+        );
+      }
     }
+    if (!this.showEmpty) return null;
+
     const anchor = pickBottleAnchor();
     if (!anchor) {
-      debug("[bottles] no anchor candidates on this page");
+      debug("[bottles] no anchor candidates yet — will retry next render");
       return null;
     }
     if (resolveBottlePosition(anchor) === null) {
-      debug("[bottles] anchor resolved offscreen or overlapping", anchor);
+      debug("[bottles] anchor offscreen/overlapping — will retry next render");
       return null;
     }
     const id = (typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
       : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    return { id: `empty-${id}`, anchor, isEmpty: true };
+    this.emptyBottle = { id: `empty-${id}`, anchor, isEmpty: true };
+    return this.emptyBottle;
   }
 
   private shouldShowEmpty(): boolean {
@@ -264,31 +290,33 @@ export class BottleManager {
   }
 
   private isRateLimited(): boolean {
-    const map = this.loadAuthored();
     const domain = location.hostname;
-    const last = map[domain];
+    // The in-memory timestamp backs up the persisted one: if a previous
+    // markAuthored() failed to write to localStorage, the cooldown still holds
+    // for this session instead of letting the user author repeatedly.
+    const last = Math.max(
+      this.loadAuthored()[domain] ?? 0,
+      this.lastAuthoredAt,
+    );
     if (!last) return false;
     return Date.now() - last < AUTHOR_RATE_LIMIT_MS;
   }
 
   private markAuthored(): void {
+    const now = Date.now();
+    this.lastAuthoredAt = now;
     const map = this.loadAuthored();
-    map[location.hostname] = Date.now();
+    map[location.hostname] = now;
     try {
       localStorage.setItem(STORAGE_LAST_AUTHORED, JSON.stringify(map));
     } catch {
-      // ignore
+      // Persisted write failed (quota/unavailable); lastAuthoredAt still gates
+      // this session.
     }
   }
 
   private loadSeen(): SeenMap {
-    try {
-      const raw = localStorage.getItem(STORAGE_LAST_SEEN);
-      if (raw) return JSON.parse(raw) as SeenMap;
-    } catch {
-      // fall through
-    }
-    return {};
+    return parseTimestampMap(localStorage.getItem(STORAGE_LAST_SEEN));
   }
 
   private saveSeen(map: SeenMap): void {
@@ -300,12 +328,39 @@ export class BottleManager {
   }
 
   private loadAuthored(): AuthoredMap {
-    try {
-      const raw = localStorage.getItem(STORAGE_LAST_AUTHORED);
-      if (raw) return JSON.parse(raw) as AuthoredMap;
-    } catch {
-      // fall through
-    }
+    return parseTimestampMap(localStorage.getItem(STORAGE_LAST_AUTHORED));
+  }
+}
+
+/** Timestamp of a bottle's most recent note (0 if somehow empty). */
+function latestNoteAt(b: BottleRecord): number {
+  return b.notes.length ? b.notes[b.notes.length - 1].createdAt : 0;
+}
+
+/**
+ * Parse a stored `{ key: timestamp }` map, tolerating any malformed payload.
+ * A bare `null`, an array, or non-number values would otherwise be trusted as
+ * a map and crash later lookups (`seen[id]` on `null` throws), so anything that
+ * isn't a plain object of numbers degrades to an empty map.
+ */
+function parseTimestampMap(raw: string | null): Record<string, number> {
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
     return {};
   }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    return {};
+  }
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+  }
+  return out;
 }

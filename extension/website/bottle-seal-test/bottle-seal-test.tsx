@@ -56,15 +56,23 @@ function App() {
     const msgEl = document.getElementById("msg") as HTMLTextAreaElement | null;
     const colorEl = document.getElementById("color") as HTMLInputElement | null;
     const playBtn = document.getElementById("play") as HTMLButtonElement | null;
+    const onMsg = () => msgEl && setText(msgEl.value);
+    const onColor = () => colorEl && setColor(colorEl.value);
+    const onPlay = () => setPlaying(true);
     if (msgEl) {
       msgEl.value = text;
-      msgEl.addEventListener("input", () => setText(msgEl.value));
+      msgEl.addEventListener("input", onMsg);
     }
     if (colorEl) {
       colorEl.value = color;
-      colorEl.addEventListener("input", () => setColor(colorEl.value));
+      colorEl.addEventListener("input", onColor);
     }
-    if (playBtn) playBtn.addEventListener("click", () => setPlaying(true));
+    if (playBtn) playBtn.addEventListener("click", onPlay);
+    return () => {
+      msgEl?.removeEventListener("input", onMsg);
+      colorEl?.removeEventListener("input", onColor);
+      playBtn?.removeEventListener("click", onPlay);
+    };
   }, []);
 
   if (!playing) return null;

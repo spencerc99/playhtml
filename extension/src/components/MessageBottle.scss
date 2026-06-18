@@ -9,18 +9,6 @@ $capsuleH: $visibleH + $hiddenH;
 $moundTopGap: 18px;
 $slotY: $moundTopGap + $visibleH;
 
-.mb-field {
-  position: relative;
-  width: 100%;
-  min-height: 460px;
-}
-
-.mb-fieldSlot {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: auto;
-}
-
 .mb-mound {
   position: relative;
   display: inline-block;
@@ -267,6 +255,29 @@ $slotY: $moundTopGap + $visibleH;
 .mb-label {
   font-size: 13px;
   color: #555;
+}
+
+// The bottle's thread of notes — oldest first, newest at the bottom.
+.mb-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mb-note {
+  padding: 8px 10px;
+  border: 1px solid #e2e2e2;
+  border-left: 3px solid #bbb;
+  border-radius: 2px;
+  background: #fafafa;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #111;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .mb-messageField {

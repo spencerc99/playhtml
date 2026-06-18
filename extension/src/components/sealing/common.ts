@@ -349,6 +349,7 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
   let frameId = 0;
   let fissureOpened = false;
   let completed = false;
+  let completeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Travel ends with the bottle's BOTTOM edge sitting at the slot line, so
   // the whole bottle hovers visibly above the fissure right before plunge.
@@ -394,7 +395,7 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
         fissure.close();
         if (!completed) {
           completed = true;
-          setTimeout(onComplete, T_FISSURE_CLOSE + 100);
+          completeTimer = setTimeout(onComplete, T_FISSURE_CLOSE + 100);
         }
       }
     }
@@ -406,6 +407,9 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
   return {
     dispose() {
       cancelAnimationFrame(frameId);
+      // Cancel the deferred onComplete so teardown during the fissure-close
+      // window doesn't call back into an unmounted React tree.
+      if (completeTimer !== null) clearTimeout(completeTimer);
     },
   };
 }

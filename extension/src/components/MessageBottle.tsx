@@ -4,22 +4,19 @@
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SealingCeremony } from "./sealing/SealingCeremony";
-import "./MessageBottle.scss";
+import type { BottleNote } from "../features/BottleManager";
 
-// Compiled stylesheet as a string, for injecting into a Shadow DOM root
-// (the extension renders the bottle inside a closed shadow tree). The plain
-// side-effect import above styles the website build; this string styles the
-// extension. Both come from the same .scss, so class names stay in sync.
+// Compiled stylesheet as a string, injected into the bottle's Shadow DOM root
+// by the extension (features/social/bottles.ts). We deliberately do NOT import
+// the .scss as a global side effect: the content script's CSS is injected into
+// every page via the manifest, which would leak these .mb-* rules onto every
+// host page and defeat the shadow-DOM isolation.
 export { default as MESSAGE_BOTTLE_CSS } from "./MessageBottle.scss?inline";
 
-export interface BottleMessageRef {
-  id: string;
-  text: string;
-  authorColor?: string;
-}
-
 interface MessageBottleProps {
-  messages: BottleMessageRef[];
+  /** The bottle's thread, oldest first. Empty for an unwritten prompt. */
+  notes: BottleNote[];
+  authorColor?: string;
   onSeal: (text: string) => void;
   onOpened?: () => void;
   /** Fires when the dialog fully closes (after read/write/cancel). */
@@ -33,14 +30,6 @@ interface MessageBottleProps {
   portalContainer?: Element | null;
 }
 
-interface BottleFieldProps {
-  pageKey: string;
-  seed?: string[];
-  count?: number;
-  pageBg?: string;
-  children?: React.ReactNode;
-}
-
 type Stage =
   | "sealed"
   | "unrolling"
@@ -50,13 +39,9 @@ type Stage =
   | "sealing"
   | "closing";
 
-function pickMessage(messages: BottleMessageRef[]): BottleMessageRef | null {
-  if (!messages.length) return null;
-  return messages[Math.floor(Math.random() * messages.length)];
-}
-
 export function MessageBottle({
-  messages,
+  notes,
+  authorColor,
   onSeal,
   onOpened,
   onClosed,
@@ -65,35 +50,46 @@ export function MessageBottle({
   portalContainer,
 }: MessageBottleProps) {
   const [stage, setStage] = useState<Stage>("sealed");
-  const [current, setCurrent] = useState<BottleMessageRef | null>(null);
   const [draft, setDraft] = useState("");
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [sealedText, setSealedText] = useState("");
   const capsuleRef = useRef<HTMLButtonElement>(null);
   const writeRef = useRef<HTMLTextAreaElement>(null);
+  // Stage-transition timers, tracked so they can be cleared on unmount and at
+  // the start of each new transition (otherwise an unmount mid-open/close runs
+  // setStage on a gone component, resurrecting or mutating a closed dialog).
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearTimers = useCallback(() => {
+    for (const t of timersRef.current) clearTimeout(t);
+    timersRef.current = [];
+  }, []);
+
+  useEffect(() => clearTimers, [clearTimers]);
 
   const open = useCallback(() => {
     if (capsuleRef.current) {
       const r = capsuleRef.current.getBoundingClientRect();
       setOrigin({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
     }
-    setCurrent(pickMessage(messages));
     setStage("unrolling");
-    setTimeout(() => setStage("expanding"), 700);
-    setTimeout(() => setStage("read"), 700 + 480);
+    clearTimers();
+    timersRef.current.push(setTimeout(() => setStage("expanding"), 700));
+    timersRef.current.push(setTimeout(() => setStage("read"), 700 + 480));
     if (onOpened) onOpened();
-  }, [messages, onOpened]);
+  }, [onOpened, clearTimers]);
 
   const close = useCallback(() => {
     setStage("closing");
-    setTimeout(() => {
-      setStage("sealed");
-      setDraft("");
-      setCurrent(null);
-      setOrigin(null);
-      if (onClosed) onClosed();
-    }, 360);
-  }, [onClosed]);
+    clearTimers();
+    timersRef.current.push(
+      setTimeout(() => {
+        setStage("sealed");
+        setDraft("");
+        setOrigin(null);
+        if (onClosed) onClosed();
+      }, 360),
+    );
+  }, [onClosed, clearTimers]);
 
   const goWrite = useCallback(() => {
     setStage("write");
@@ -171,9 +167,8 @@ export function MessageBottle({
     .filter(Boolean)
     .join(" ");
 
-  // The card shows the first message's author color as a left-edge stripe.
-  const authorColor = messages[0]?.authorColor;
-  const isEmpty = messages.length === 0;
+  // The card shows the latest note's author color as a left-edge stripe.
+  const isEmpty = notes.length === 0;
 
   return (
     <>
@@ -213,16 +208,32 @@ export function MessageBottle({
             <div className="mb-paper">
               {(stage === "read" || stage === "expanding") && (
                 <div className="mb-readPane">
-                  <div className="mb-label">a message left here</div>
-                  <textarea
-                    className="mb-messageField"
-                    value={
-                      current
-                        ? current.text
-                        : "(this bottle is empty — be the first to leave a message)"
-                    }
-                    readOnly
-                  />
+                  <div className="mb-label">
+                    {isEmpty
+                      ? "an empty bottle"
+                      : notes.length === 1
+                        ? "a message left here"
+                        : `${notes.length} messages left here`}
+                  </div>
+                  {isEmpty ? (
+                    <textarea
+                      className="mb-messageField"
+                      value="(this bottle is empty — be the first to leave a message)"
+                      readOnly
+                    />
+                  ) : (
+                    <div className="mb-thread">
+                      {notes.map((n, i) => (
+                        <div
+                          key={i}
+                          className="mb-note"
+                          style={{ borderLeftColor: n.authorColor }}
+                        >
+                          {n.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="mb-actions">
                     <button type="button" onClick={close}>
                       seal & leave
@@ -270,7 +281,7 @@ export function MessageBottle({
         createPortal(
           <SealingCeremony
             text={sealedText}
-            authorColor={messages[0]?.authorColor ?? "#4a9a8a"}
+            authorColor={authorColor ?? "#4a9a8a"}
             slotX={origin.x}
             slotY={origin.y}
             onComplete={finishCeremony}
@@ -304,114 +315,3 @@ function TinyTextVerticalArt() {
   );
 }
 
-// ============================
-// BottleField — website-only sandbox wrapper that owns localStorage state
-// ============================
-
-interface SandboxMessage {
-  id: string;
-  text: string;
-  ts: number;
-}
-
-const STORAGE_PREFIX = "bottle:v1:";
-
-function loadSandboxMessages(pageKey: string, seed: string[]): SandboxMessage[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + pageKey);
-    if (raw) {
-      const parsed = JSON.parse(raw) as SandboxMessage[];
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    }
-  } catch {
-    // fall through
-  }
-  return seed.map((text, i) => ({
-    id: `seed-${i}`,
-    text,
-    ts: Date.now() - (seed.length - i) * 86_400_000,
-  }));
-}
-
-function saveSandboxMessages(pageKey: string, messages: SandboxMessage[]): void {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + pageKey, JSON.stringify(messages));
-  } catch {
-    // ignore
-  }
-}
-
-function hashSeed(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function pseudoRandom(seed: number, i: number): number {
-  const x = Math.sin(seed * 9301 + i * 49297) * 233280;
-  return x - Math.floor(x);
-}
-
-export function BottleField({
-  pageKey,
-  seed = [],
-  count = 3,
-  pageBg = "#ffffff",
-  children,
-}: BottleFieldProps) {
-  const [messages, setMessages] = useState<SandboxMessage[]>(() =>
-    loadSandboxMessages(pageKey, seed),
-  );
-
-  const positions = Array.from({ length: count }, (_, i) => {
-    const s = hashSeed(pageKey + ":" + i);
-    return {
-      top: 6 + pseudoRandom(s, 1) * 80,
-      left: 6 + pseudoRandom(s, 2) * 86,
-      rotate: -18 + pseudoRandom(s, 3) * 36,
-    };
-  });
-
-  const handleSeal = useCallback(
-    (slotIndex: number) => (text: string) => {
-      const slotKey = `${pageKey}:${slotIndex}`;
-      const next: SandboxMessage[] = [
-        ...messages,
-        { id: `m-${Date.now()}-${slotIndex}`, text, ts: Date.now() },
-      ];
-      setMessages(next);
-      saveSandboxMessages(slotKey, next);
-    },
-    [messages, pageKey],
-  );
-
-  return (
-    <div className="mb-field">
-      {children}
-      {positions.map((p, i) => {
-        const slotKey = `${pageKey}:${i}`;
-        const slotMessages = loadSandboxMessages(slotKey, seed);
-        const refs: BottleMessageRef[] = slotMessages.map((m) => ({
-          id: m.id,
-          text: m.text,
-        }));
-        return (
-          <div
-            key={i}
-            className="mb-fieldSlot"
-            style={{ top: `${p.top}%`, left: `${p.left}%` }}
-          >
-            <MessageBottle
-              messages={refs}
-              onSeal={handleSeal(i)}
-              rotateDeg={p.rotate}
-              pageBg={pageBg}
-            />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
