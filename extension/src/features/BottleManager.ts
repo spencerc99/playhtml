@@ -90,7 +90,9 @@ export class BottleManager {
   init(onRender: RenderCallback): void {
     this.renderCallback = onRender;
 
-    const channelName = `bottles:${normalizeUrl(location.href)}`;
+    // `wwo:` namespaces all we-were-online extension data channels; `bottles`
+    // is the feature, the normalized URL the page scope.
+    const channelName = `wwo:bottles:${normalizeUrl(location.href)}`;
     this.channel = this.createPageData<BottlePageData>(channelName, {
       bottles: {},
     });
