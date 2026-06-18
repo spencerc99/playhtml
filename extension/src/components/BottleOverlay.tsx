@@ -117,7 +117,6 @@ export function BottleOverlay({
             onOpened={() => onOpened(slot.id)}
             onClosed={() => onClosed(slot.id)}
             rotateDeg={slot.rotate}
-            variant="tinytextV"
             portalContainer={portalContainer}
           />
         </div>

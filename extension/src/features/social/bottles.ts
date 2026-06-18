@@ -5,7 +5,7 @@ import { BottleManager, type BottleRenderRequest } from "../BottleManager";
 import type { BottleAnchor } from "../bottle-anchor";
 import { BottleOverlay } from "../../components/BottleOverlay";
 import { injectShadowReact } from "../../entrypoints/content/inject-ui";
-import { MESSAGE_BOTTLE_CSS } from "../../components/MessageBottle.styles";
+import { MESSAGE_BOTTLE_CSS } from "../../components/MessageBottle";
 import type { GlobalFeatureDeps, SocialExperiment } from "./types";
 
 export const bottlesExperiment: SocialExperiment = {
