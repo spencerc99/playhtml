@@ -41,6 +41,7 @@ export default defineContentScript({
     class PlayHTMLExtension {
       private playerIdentity: any = null;
       private isInitialized = false;
+      private globalCleanup: (() => void) | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -1023,10 +1024,26 @@ export default defineContentScript({
         });
         this.listenForPresenceCount();
 
+        const color =
+          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+        const pid = this.playerIdentity?.publicKey ?? "anon";
+
+        // Global features that run on every page (no domain gating)
+        try {
+          const { initGlobalFeatures } = await import("../features/global");
+          const cleanupGlobal = await initGlobalFeatures({
+            createPageData: playhtml.createPageData,
+            presence: playhtml.presence,
+            playerColor: color,
+            playerPid: pid,
+          });
+          this.globalCleanup = cleanupGlobal;
+        } catch (err) {
+          console.error("[we-were-online] initGlobalFeatures failed:", err);
+        }
+
         // Initialize domain-specific features (link glow, follow, nav broadcast)
         if (enableCursors) {
-          const color =
-            this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
           try {
             await initCustomSite({
               createPageData: playhtml.createPageData,
