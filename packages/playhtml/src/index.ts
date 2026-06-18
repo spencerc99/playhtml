@@ -1166,9 +1166,9 @@ function isCorrectElementInitializer(
 ): tagInfo is ElementInitializer {
   return (
     tagInfo != null &&
+    // Any non-undefined default is valid — objects, functions, and primitives
+    // (e.g. `defaultData: 0` or `""`), which views commonly use.
     tagInfo.defaultData !== undefined &&
-    (typeof tagInfo.defaultData === "object" ||
-      typeof tagInfo.defaultData === "function") &&
     // A valid initializer needs an update path: either the imperative
     // `updateElement` or the declarative `view`.
     (tagInfo.updateElement !== undefined || tagInfo.view !== undefined)
@@ -1401,7 +1401,7 @@ export interface PlayHTMLComponents {
   setupPlayElementForTag: typeof setupPlayElementForTag;
   register: typeof registerPlayElement;
   define: typeof definePlayCapability;
-  getHandle: (elementId: string) => PlayElementHandle;
+  getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<(typeof store)["play"]>;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
@@ -1815,7 +1815,7 @@ function setupPlayElement(
     return;
   }
 
-  // If this element was registered (rail 2) before it existed, stamp its
+  // If this element was registered via register() before it existed, stamp its
   // initializer on now so the can-play branch below picks it up.
   if (element.id && pendingRegistrations.has(element.id)) {
     stampRegistrationOntoElement(element, pendingRegistrations.get(element.id)!);
@@ -1902,7 +1902,7 @@ function removePlayElement(element: Element | null) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Rail 2: programmatic registration (`register` / `define`) + `view`
+// Programmatic registration (`register` / `define`) + `view`
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1930,7 +1930,7 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
 const pendingRegistrations = new Map<string, ElementInitializer>();
 
 /**
- * Enforces the rail-2 invariants: a `view` cannot coexist with the imperative
+ * Enforces the `view` invariants: a `view` cannot coexist with the imperative
  * `updateElement` or with element-level event handlers, and an initializer
  * must provide at least one update path.
  */
@@ -1975,8 +1975,19 @@ function applyPendingRegistration(elementId: string): void {
   void setupPlayElementForTag(element, TagType.CanPlay);
 }
 
-/** Finds the live handler for an element id, preferring the can-play handler. */
-function findHandlerForElementId(elementId: string): ElementHandler | undefined {
+/**
+ * Finds the live handler for an element id. An element can carry several
+ * capabilities at once, all sharing one id, so pass the capability tag (e.g.
+ * "can-toggle") to disambiguate. Without a tag, prefers the can-play handler
+ * and otherwise returns the first match.
+ */
+function findHandlerForElementId(
+  elementId: string,
+  tag?: string,
+): ElementHandler | undefined {
+  if (tag !== undefined) {
+    return elementHandlers.get(tag)?.get(elementId);
+  }
   const canPlay = elementHandlers.get(TagType.CanPlay)?.get(elementId);
   if (canPlay) return canPlay;
   for (const [, map] of elementHandlers) {
@@ -1986,16 +1997,47 @@ function findHandlerForElementId(elementId: string): ElementHandler | undefined 
   return undefined;
 }
 
-function createPlayElementHandle(elementId: string): PlayElementHandle {
+/**
+ * Emits a development-only warning when a handle write lands on an element
+ * that has not bound yet (wrong id, or the element does not exist). Writes are
+ * dropped silently otherwise; reads stay quiet.
+ */
+function warnUnboundHandleWrite(method: string, elementId: string): void {
+  if (!isDevelopmentMode) return;
+  console.warn(
+    `[playhtml] ${method}("${elementId}") — no bound element with that id yet; the write was dropped. ` +
+      `Register/add the element first, or check the id.`,
+  );
+}
+
+function createPlayElementHandle(
+  elementId: string,
+  tag?: string,
+): PlayElementHandle {
   return {
     id: elementId,
     getElement: () => document.getElementById(elementId),
-    getData: () => findHandlerForElementId(elementId)?.data,
-    setData: (next) => findHandlerForElementId(elementId)?.setData(next),
-    setLocalData: (next) => findHandlerForElementId(elementId)?.setLocalData(next),
-    setMyAwareness: (next) =>
-      findHandlerForElementId(elementId)?.setMyAwareness(next),
-    requestUpdate: () => findHandlerForElementId(elementId)?.requestUpdate(),
+    getData: () => findHandlerForElementId(elementId, tag)?.data,
+    setData: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setData", elementId);
+      handler.setData(next);
+    },
+    setLocalData: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setLocalData", elementId);
+      handler.setLocalData(next);
+    },
+    setMyAwareness: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setMyAwareness", elementId);
+      handler.setMyAwareness(next);
+    },
+    requestUpdate: () => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("requestUpdate", elementId);
+      handler.requestUpdate();
+    },
     unregister: () => {
       pendingRegistrations.delete(elementId);
       const el = document.getElementById(elementId);
@@ -2005,10 +2047,10 @@ function createPlayElementHandle(elementId: string): PlayElementHandle {
 }
 
 /**
- * Registers a `view`/`updateElement` initializer for a single element by id
- * (rail 2). Callable before or after `init()` and before or after the element
- * exists; binding happens once both are present. Returns a handle for
- * reads/writes from outside the view (e.g. form submit handlers).
+ * Registers a `view`/`updateElement` initializer for a single element by id.
+ * Callable before or after `init()` and before or after the element exists;
+ * binding happens once both are present. Returns a handle for reads/writes
+ * from outside the view (e.g. form submit handlers).
  */
 function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
@@ -2023,39 +2065,49 @@ function registerPlayElement<T = any, U = any, V = any>(
         `It will bind automatically when the element appears.`,
     );
   }
-  return createPlayElementHandle(elementId) as PlayElementHandle<T, U, V>;
+  // register always binds via can-play, so scope the handle to that tag.
+  return createPlayElementHandle(
+    elementId,
+    TagType.CanPlay,
+  ) as PlayElementHandle<T, U, V>;
 }
 
 /**
- * Registers a reusable capability under an attribute name (rail 2). Every
- * element carrying `[tagName]` gets it — including ones added to the DOM
- * later. The imperative counterpart of `init({ extraCapabilities })`.
+ * Registers a reusable capability under an attribute name (e.g. "can-note").
+ * Every element carrying that attribute gets the capability — including ones
+ * added to the DOM later. The imperative counterpart of
+ * `init({ extraCapabilities })`.
+ *
+ * @param capabilityName - The attribute name elements use to opt in (used in an
+ *   attribute selector, e.g. `[can-note]`).
  */
 function definePlayCapability<T = any, U = any, V = any>(
-  tagName: string,
+  capabilityName: string,
   init: ElementInitializer<T, U, V>,
 ): void {
-  if (tagName === PAGE_TAG) {
+  if (capabilityName === PAGE_TAG) {
     throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
   }
-  if (tagName === TagType.CanPlay) {
+  if (capabilityName === TagType.CanPlay) {
     throw new Error(
       `[playhtml] "${TagType.CanPlay}" is reserved — use register(id, init) for single elements.`,
     );
   }
-  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, tagName)) {
+  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {
     throw new Error(
-      `[playhtml] "${tagName}" is a built-in capability and cannot be redefined.`,
+      `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
     );
   }
-  validateViewInitializer(tagName, init as ElementInitializer);
-  capabilitiesToInitializer[tagName] = init as ElementInitializer;
+  validateViewInitializer(capabilityName, init as ElementInitializer);
+  capabilitiesToInitializer[capabilityName] = init as ElementInitializer;
   // Upgrade any elements already on the page (no-op before init()).
   if (hasSynced) {
-    const els = Array.from(document.querySelectorAll(`[${tagName}]`)).filter(
-      isHTMLElement,
+    const els = Array.from(
+      document.querySelectorAll(`[${capabilityName}]`),
+    ).filter(isHTMLElement);
+    void Promise.all(
+      els.map((el) => setupPlayElementForTag(el, capabilityName)),
     );
-    void Promise.all(els.map((el) => setupPlayElementForTag(el, tagName)));
   }
 }
 
@@ -2245,7 +2297,7 @@ export type {
   CursorPresence,
 } from "@playhtml/common";
 
-// Re-export a curated subset of lit-html for rail-2 `view` authoring, so
+// Re-export a curated subset of lit-html for `view` authoring, so
 // script-tag and module users can `import { html, repeat } from "playhtml"`.
 // Intentionally NO `unsafeHTML` — auto-escaping of interpolated values is a
 // core safety property of the view API.

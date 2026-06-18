@@ -1,0 +1,283 @@
+---
+title: "Reactive views (register + view)"
+description: "Render can-play elements declaratively from state with playhtml.register, playhtml.define, and the view function — the vanilla path for todo lists, polls, chat, and other data-driven UI."
+sidebar:
+  order: 2
+---
+
+Built-in capabilities (`can-move`, `can-toggle`, …) cover the common cases, and `can-play` lets you hand-write an `updateElement` that mutates the DOM yourself. But the moment your element renders a **list that grows, shrinks, and reorders** — a guestbook, a poll, a chat — hand-mutating the DOM gets painful fast: you end up tracking which items you've already rendered, diffing by hand, and reaching for `innerHTML`.
+
+The **view API** is the vanilla escape hatch for that. You write a pure function from state to markup; playhtml renders it and re-renders it whenever the data changes, patching only what actually differs. It's powered by [lit-html](https://lit.dev/docs/libraries/standalone-templates/), which ships inside playhtml.
+
+> **React users:** you already have this — use [`withSharedState`](/docs/using-react/) and write JSX. The view API is the equivalent for people writing plain HTML and JS.
+
+## The shape in one example
+
+```html
+<div id="counter" can-play></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+
+  playhtml.register("counter", {
+    defaultData: { count: 0 },
+    view: ({ data, setData }) => html`
+      <span>${data.count}</span>
+      <button @click=${() => setData((d) => { d.count += 1; })}>+</button>
+    `,
+  });
+
+  playhtml.init();
+</script>
+```
+
+The `<div can-play>` is an empty **mount point**. `register` attaches a `view` to it; playhtml renders the template inside the div, wires the `@click` handler, and re-renders the `<span>` (and only the `<span>`) every time `count` changes — locally or from another tab.
+
+## `playhtml.register(elementId, init)`
+
+Binds a view (or an `updateElement`) to one element by `id` and returns a **handle** for reading and writing from outside the view.
+
+```js
+const handle = playhtml.register("counter", { defaultData, view });
+```
+
+- Call it **before or after `playhtml.init()`**, and before or after the element exists in the DOM — binding happens once both are present (the same model as `customElements.define`). This removes the old "configure before init" ordering footgun.
+- The element needs a stable, unique `id`. The `can-play` attribute is optional when you register by id — `register` implies it.
+- Re-registering the same id replaces its initializer.
+
+The handle:
+
+```ts
+type PlayElementHandle<T> = {
+  id: string;
+  getElement(): HTMLElement | null;   // null until bound
+  getData(): T | undefined;           // read-only snapshot — never mutate it
+  setData(next: T | ((draft: T) => void)): void;
+  setLocalData(next: U | ((draft: U) => void)): void;
+  setMyAwareness(next: V): void;
+  requestUpdate(): void;              // re-render now (see "clock-driven views")
+  unregister(): void;                // detach + run onMount cleanup (data is kept)
+};
+```
+
+Use the handle to drive writes from code **outside** the view — a form submit handler, a button elsewhere on the page:
+
+```js
+const guestbook = playhtml.register("guestbook", { defaultData: [], view });
+
+document.getElementById("guestbook-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const fields = Object.fromEntries(new FormData(e.target));
+  guestbook.setData((d) => {
+    d.unshift({ id: crypto.randomUUID(), ...fields, at: Date.now() });
+  });
+  e.target.reset();
+});
+```
+
+## Writing a `view`
+
+`view` receives one context object and returns a lit-html template:
+
+```js
+view: ({ data, localData, awareness, setData, setLocalData, setMyAwareness, element }) =>
+  html`…`
+```
+
+| field | what it is |
+| --- | --- |
+| `data` | current shared (synced) state — a read-only snapshot |
+| `localData` | per-user, per-tab state that is **not** synced (UI toggles, drafts) |
+| `awareness` | array of every connected user's awareness value (presence) |
+| `setData` | write shared state (see [Data essentials](/docs/data/data-essentials/)) |
+| `setLocalData` | write local state; re-renders the view |
+| `setMyAwareness` | broadcast your presence value |
+| `element` | the mount-point element (read `element.dataset.*` for per-instance config) |
+
+A view re-renders automatically whenever **`data`, `localData`, or `awareness`** changes.
+
+### Templates: what you can import
+
+```js
+import { html, svg, repeat, classMap, styleMap, nothing } from "playhtml";
+```
+
+- `html` — the tagged template. Interpolated values are **auto-escaped** — user text can't inject markup.
+- `svg` — for SVG fragments (e.g. `<path>` inside an `<svg>`).
+- `repeat(items, keyFn, templateFn)` — keyed lists. The key keeps DOM identity stable across inserts/removals/reorders. **Always key by a stable unique id** (`crypto.randomUUID()`), never an array index or timestamp — two users acting in the same millisecond is exactly what playhtml makes routine.
+- `classMap` / `styleMap` — ergonomic class/style bindings.
+- `nothing` — render nothing (or just return `null`/`undefined`).
+
+```js
+view: ({ data }) => html`
+  <ul>
+    ${repeat(
+      data.entries,
+      (e) => e.id,
+      (e) => html`<li class=${classMap({ mine: e.author === me })}>${e.text}</li>`,
+    )}
+  </ul>
+`;
+```
+
+### Events go in the template
+
+Attach handlers with lit-html's `@event` syntax, not `onClick`/`onDrag` on the initializer (those are for the imperative `updateElement` path and are ignored when a `view` is present):
+
+```js
+html`<button @click=${() => setData((d) => { d.on = !d.on; })}>toggle</button>`
+```
+
+### Views must be pure
+
+A `view` may **not** call `setData` / `setLocalData` / `setMyAwareness` while it renders — that's an infinite re-render loop (and, because shared data is a CRDT, a quick way to bloat a room). playhtml rejects such writes with a console error. Drive all writes from `@event` handlers or from `onMount`.
+
+If you need a side effect when data changes (play a sound, scroll, focus), do it from an event handler or an `onMount` loop — not from inside the render.
+
+## Local UI state: `localData`
+
+Not everything should sync. A chat panel's open/closed state, an in-progress text draft, a hover highlight — that's per-user. Put it in `localData`; `setLocalData` re-renders the view but never touches the shared room.
+
+```js
+playhtml.register("panel", {
+  defaultData: {},
+  defaultLocalData: { open: false },
+  view: ({ localData, setLocalData }) => html`
+    <button @click=${() => setLocalData((d) => { d.open = !d.open; })}>
+      ${localData.open ? "hide" : "show"}
+    </button>
+    ${localData.open ? html`<div class="body">…</div>` : nothing}
+  `,
+});
+```
+
+## Clock-driven views: `requestUpdate()`
+
+A view re-renders when state changes — but a running timer's display changes every frame while its *data* doesn't. For views that render from state **plus the wall clock** (timers, countdowns, "5 minutes ago" labels, animations), call `requestUpdate()` from a loop in `onMount` to force a repaint. `onMount` may return a cleanup function — **always return it** so the loop stops when the element is removed:
+
+```js
+playhtml.register("timer", {
+  defaultData: { startAt: 0, running: false },
+  view: ({ data }) => {
+    const elapsed = data.running ? Date.now() - data.startAt : 0;
+    return html`<span>${(elapsed / 1000).toFixed(1)}s</span>`;
+  },
+  onMount: ({ getData, requestUpdate }) => {
+    let raf;
+    const tick = () => {
+      if (getData().running) requestUpdate();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf); // runs on unregister()/removal
+  },
+});
+```
+
+## Reusable capabilities: `playhtml.define(name, init)`
+
+`register` binds one element. When you want the **same behavior on many elements** — twenty sticky notes, a row of reaction buttons — `define` registers a capability under an attribute name. Every element carrying that attribute gets it, including ones added to the DOM later.
+
+```html
+<div id="note-1" can-note data-color="yellow"></div>
+<div id="note-2" can-note data-color="pink"></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+
+  playhtml.define("can-note", {
+    defaultData: (el) => ({ text: "", color: el.dataset.color ?? "yellow" }),
+    view: ({ data, setData }) => html`
+      <textarea
+        class="note note--${data.color}"
+        .value=${data.text}
+        @input=${(e) => setData((d) => { d.text = e.target.value; })}
+      ></textarea>
+    `,
+  });
+
+  playhtml.init();
+</script>
+```
+
+Each element still needs a unique `id` (per-element data is keyed by it). `register(id, init)` is just `define` scoped to a single element.
+
+## Composition: views that render other capabilities
+
+A view can render mount points for **other** capabilities — including ones you `define`. playhtml binds those children automatically as the view produces them, so you can build collaborative UI that spawns more collaborative UI at runtime. The classic case is a chat app: a parent view renders one `<div can-chat>` per room, and each room is its own independently-synced view.
+
+```js
+playhtml.define("can-chat", {
+  defaultData: { messages: [] },
+  defaultLocalData: { open: false },
+  view: ({ data, localData, setData, setLocalData, element }) => {
+    const send = (e) => {
+      e.preventDefault();
+      const text = new FormData(e.target).get("t")?.toString().trim();
+      if (!text) return;
+      setData((d) => { d.messages.push({ id: crypto.randomUUID(), text }); });
+      e.target.reset();
+    };
+    return html`
+      <div class="chat ${localData.open ? "open" : ""}">
+        <div class="head" @click=${() => setLocalData((d) => { d.open = !d.open; })}>
+          # ${element.dataset.name}
+        </div>
+        ${localData.open
+          ? html`
+              <div class="body">
+                ${repeat(data.messages, (m) => m.id, (m) => html`<div>${m.text}</div>`)}
+              </div>
+              <form @submit=${send}><input name="t" /><button>send</button></form>
+            `
+          : nothing}
+      </div>
+    `;
+  },
+});
+
+playhtml.register("chats", {
+  defaultData: { rooms: ["general"] },
+  view: ({ data, setData }) => {
+    const create = (e) => {
+      e.preventDefault();
+      const name = new FormData(e.target).get("n")?.toString().trim();
+      if (name) setData((d) => { if (!d.rooms.includes(name)) d.rooms.push(name); });
+      e.target.reset();
+    };
+    return html`
+      ${repeat(data.rooms, (n) => n, (n) => html`<div id="chat-${n}" can-chat data-name=${n}></div>`)}
+      <form @submit=${create}><input name="n" /><button>add room</button></form>
+    `;
+  },
+});
+```
+
+**Rules for capability children:**
+
+- Render them **keyed** (`repeat(..., (n) => n, ...)`) and **empty** — let the child capability own its own contents. Don't interpolate into a child's subtree from the parent.
+- Adding a child binds it; removing it (via the keyed list) tears its handler down. Its **shared data is preserved** — re-adding a room with the same id rehydrates its history.
+- Children get their own `id`. Derive it from stable data, and prefer a generated/namespaced id over raw user input so two children can't collide.
+
+## `playhtml.getHandle(elementId, capability?)`
+
+Get a handle for any bound element, not just ones you `register`ed — useful for reaching a `define`d child from outside. Because data is keyed by capability **and** id, pass the capability name when an element has more than one:
+
+```js
+playhtml.getHandle("chat-general", "can-chat").getData();
+```
+
+## Security note
+
+playhtml never uses `innerHTML` for your data, and `unsafeHTML` is deliberately **not** exported — so interpolated text and attribute *values* can't inject markup. Two sharp edges remain, because they're about the *content* of a binding, not escaping:
+
+- **`style=${someString}`** with user-controlled data is CSS injection (background-image trackers, overlays). Prefer `styleMap({ ... })` and validate values you didn't compute yourself.
+- **`href`/`src=${someUrl}`** are not URL-sanitized — a `javascript:` URL in an `href` will execute on click. Validate the scheme (allow only `http(s)`/relative) for any data-derived URL.
+
+## Gotchas
+
+- **Don't write during render.** See [Views must be pure](#views-must-be-pure).
+- **Key lists by a stable id**, never index or timestamp.
+- **Return the `onMount` cleanup** for any loop/listener/timer you start, or it leaks past removal.
+- **Don't bind `.value` on a free-text `<input>`** you want the user to type into freely unless you also write every keystroke to state — an unbound input keeps its value across re-renders; a bound one is reset to state on each render. Read uncontrolled inputs via `FormData` on submit.
+- **Changing the shape of already-live data** (array → map, renamed field) needs a migration or a new field name — see [Data essentials](/docs/data/data-essentials/).

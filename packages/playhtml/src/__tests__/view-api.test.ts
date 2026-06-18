@@ -279,6 +279,49 @@ describe("rail 2: define + composition", () => {
     expect(playhtml.getHandle("note-a").getData()).toEqual({ text: "note-a" });
   });
 
+  it("getHandle(id, tag) disambiguates between capabilities sharing one id", async () => {
+    // One element carries two capabilities under the same id: a custom
+    // `define`d capability and a `can-play` view (via register).
+    playhtml.define<{ flavor: string }>("can-flavor", {
+      defaultData: { flavor: "vanilla" },
+      view: ({ data }) => html`<span class="flavor">${data.flavor}</span>`,
+    });
+
+    const el = document.createElement("div");
+    el.id = "dual-cap";
+    el.setAttribute("can-flavor", "");
+    document.body.appendChild(el);
+
+    // Bind the define'd capability first. register() below stamps its own
+    // defaultData/view as element props (for can-play), so set up can-flavor
+    // before those props land on the node.
+    await playhtml.setupPlayElementForTag(el, "can-flavor");
+    await tick();
+
+    playhtml.register<{ count: number }>("dual-cap", {
+      defaultData: { count: 7 },
+      view: ({ data }) => html`<span class="count">${data.count}</span>`,
+    });
+    await tick();
+    await tick();
+
+    // Both handlers exist keyed by the same id under different tags.
+    expect(playhtml.elementHandlers.get("can-play")!.has("dual-cap")).toBe(true);
+    expect(playhtml.elementHandlers.get("can-flavor")!.has("dual-cap")).toBe(
+      true,
+    );
+
+    // The tag selects which capability's data the handle reads.
+    expect(playhtml.getHandle("dual-cap", "can-play").getData()).toEqual({
+      count: 7,
+    });
+    expect(playhtml.getHandle("dual-cap", "can-flavor").getData()).toEqual({
+      flavor: "vanilla",
+    });
+    // Without a tag, can-play wins.
+    expect(playhtml.getHandle("dual-cap").getData()).toEqual({ count: 7 });
+  });
+
   it("a view that renders capability mount points binds them", async () => {
     playhtml.define<{ label: string }>("can-chip", {
       defaultData: { label: "chip" },
@@ -307,5 +350,35 @@ describe("rail 2: define + composition", () => {
     expect(
       document.getElementById("chip-1")!.querySelector(".chip")!.textContent,
     ).toBe("chip");
+  });
+});
+
+describe("primitive defaultData", () => {
+  it("accepts a primitive defaultData and renders it", async () => {
+    const el = document.createElement("div");
+    el.id = "primitive";
+    document.body.appendChild(el);
+
+    const handle = playhtml.register<number>("primitive", {
+      defaultData: 0,
+      view: ({ data }) => html`<span class="n">${data}</span>`,
+    });
+    await tick();
+
+    expect(el.querySelector(".n")!.textContent).toBe("0");
+    expect(handle.getData()).toBe(0);
+  });
+});
+
+describe("handle writes before binding", () => {
+  it("a write through a handle for a non-existent id does not throw", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handle = playhtml.getHandle("never-bound");
+
+    // No element with this id exists, so the write has no handler to land on.
+    expect(() => handle.setData({ anything: true })).not.toThrow();
+    expect(handle.getData()).toBeUndefined();
+
+    warnSpy.mockRestore();
   });
 });

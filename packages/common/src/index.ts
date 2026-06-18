@@ -28,7 +28,7 @@ export interface ElementInitializer<T = any, U = any, V = any> {
    */
   updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
   /**
-   * Declarative render path (rail 2): a pure function from state to a lit-html
+   * Declarative render path: a pure function from state to a lit-html
    * template. playhtml patches the returned template into the element whenever
    * data, localData, or awareness changes (and on explicit `requestUpdate()`).
    *
