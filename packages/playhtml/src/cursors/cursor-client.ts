@@ -1,3 +1,5 @@
+// ABOUTME: Implements collaborative cursor presence, rendering, styling, and proximity.
+// ABOUTME: Publishes local pointer state and renders remote cursor awareness updates.
 import type YProvider from "y-partyserver/provider";
 import {
   CursorPresence,
@@ -305,6 +307,52 @@ function getCursorStyleForUser(color: string): string {
   return `url("data:image/svg+xml,${userCursorSvgEncoded}"), auto`;
 }
 
+function updateDocumentCursorStyle(cursorStyle: string): void {
+  if (
+    document.documentElement.style.getPropertyValue("--playhtml-cursor") !==
+    cursorStyle
+  ) {
+    document.documentElement.style.setProperty("--playhtml-cursor", cursorStyle);
+  }
+}
+
+function setDocumentCursorStyle(cursorStyle: string): void {
+  updateDocumentCursorStyle(cursorStyle);
+  if (
+    document.documentElement.getAttribute("data-playhtml-cursors-active") !==
+    "true"
+  ) {
+    document.documentElement.setAttribute("data-playhtml-cursors-active", "true");
+  }
+}
+
+function setDocumentNativeCursor(): void {
+  if (document.documentElement.hasAttribute("data-playhtml-cursors-active")) {
+    document.documentElement.removeAttribute("data-playhtml-cursors-active");
+  }
+}
+
+function clearDocumentCursorStyle(): void {
+  setDocumentNativeCursor();
+  document.documentElement.style.removeProperty("--playhtml-cursor");
+}
+
+function decodeCursorUrl(cursorUrl: string): string {
+  try {
+    return decodeURIComponent(cursorUrl);
+  } catch {
+    return cursorUrl;
+  }
+}
+
+function isOwnCursorUrl(cursorUrl: string, color: string): boolean {
+  const ownCursorUrl = `data:image/svg+xml,${encodeSVG(getSvgForCursor(color))}`;
+  return (
+    cursorUrl === ownCursorUrl ||
+    decodeCursorUrl(cursorUrl) === decodeCursorUrl(ownCursorUrl)
+  );
+}
+
 /**
  * Convert a camelCase CSS property (e.g. "backgroundColor") to kebab-case
  * (e.g. "background-color") for use with CSSStyleDeclaration.setProperty /
@@ -361,6 +409,17 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
     return;
   }
   return cursorStyle.slice(5, closeQuote);
+}
+
+function getNearestInlineCursorStyle(element: Element): string | undefined {
+  let current: Element | null = element;
+  while (current) {
+    if (current instanceof HTMLElement && current.style.cursor) {
+      return current.style.cursor;
+    }
+    current = current.parentElement;
+  }
+  return;
 }
 
 export class CursorClientAwareness {
@@ -466,6 +525,9 @@ export class CursorClientAwareness {
   // properties than the previous call.
   private cursorStyleKeys: Map<string, Set<string>> = new Map();
   private lastKnownContainer: HTMLElement | null = null;
+  private pendingUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private removeCursorTrackingListeners: (() => void) | null = null;
+  private awarenessChangeHandler: ((args: any) => void) | null = null;
   // Maps Yjs clientId -> stableId (publicKey). Multiple clientIds can map to
   // the same stableId when a user has multiple tabs open. Used to:
   // (a) skip rendering our own cursor from other tabs
@@ -506,16 +568,24 @@ export class CursorClientAwareness {
     this.setupAwarenessHandling();
 
     // Set initial cursor style (throws if identity has no primary color)
-    document.documentElement.style.cursor = getCursorStyleForUser(
-      getPrimaryColor(this.playerIdentity),
-    );
+    this.updateDocumentCursorForColor(getPrimaryColor(this.playerIdentity));
+  }
+
+  private updateDocumentCursorForColor(color: string): void {
+    const cursorStyle = getCursorStyleForUser(color);
+    if (!this.currentCursor || this.currentCursor.pointer === "mouse") {
+      setDocumentCursorStyle(cursorStyle);
+      return;
+    }
+    updateDocumentCursorStyle(cursorStyle);
   }
 
   private setupAwarenessHandling(): void {
     // Listen to awareness changes for cursor updates
-    this.provider.awareness.on("change", ({ added, updated, removed }: any) => {
+    this.awarenessChangeHandler = ({ added, updated, removed }: any) => {
       this.handleAwarenessChange(added, updated, removed);
-    });
+    };
+    this.provider.awareness.on("change", this.awarenessChangeHandler);
 
     // Initial sync of existing awareness states
     // First, publish our own player identity so others (and us) see it immediately
@@ -736,6 +806,11 @@ export class CursorClientAwareness {
         transition: all 0.1s ease;
         transform-origin: center;
       }
+
+      html[data-playhtml-cursors-active="true"],
+      html[data-playhtml-cursors-active="true"] * {
+        cursor: var(--playhtml-cursor) !important;
+      }
       
       .playhtml-cursor-fade-in {
         animation: cursorFadeIn 0.3s ease-out;
@@ -880,27 +955,28 @@ export class CursorClientAwareness {
       const element = document.elementFromPoint(e.clientX, e.clientY);
 
       if (element) {
-        const style = window.getComputedStyle(element);
-        const maybeCustomCursor = extractUrlFromCursorStyle(style.cursor);
-
-        if (maybeCustomCursor) {
-          const ourCursorSvg = encodeSVG(
-            getSvgForCursor(getPrimaryColor(this.playerIdentity)),
-          );
-
-          if (!maybeCustomCursor.includes(ourCursorSvg)) {
-            pointer = maybeCustomCursor;
-          }
+        const inlineCursorStyle = getNearestInlineCursorStyle(element);
+        const maybeCustomCursor = inlineCursorStyle
+          ? extractUrlFromCursorStyle(inlineCursorStyle)
+          : undefined;
+        if (
+          maybeCustomCursor &&
+          !isOwnCursorUrl(
+            maybeCustomCursor,
+            getPrimaryColor(this.playerIdentity),
+          )
+        ) {
+          pointer = maybeCustomCursor;
         }
       }
 
       // Show/hide our own cursor based on pointer type (like cursor-party)
       if (pointer === "mouse") {
-        document.documentElement.style.cursor = getCursorStyleForUser(
-          getPrimaryColor(this.playerIdentity),
+        setDocumentCursorStyle(
+          getCursorStyleForUser(getPrimaryColor(this.playerIdentity)),
         );
       } else {
-        document.documentElement.style.cursor = "auto";
+        setDocumentNativeCursor();
       }
 
       // Convert to storage coordinates based on mode
@@ -947,9 +1023,10 @@ export class CursorClientAwareness {
     // When mouse leaves the window, keep presence alive but stop updating position.
     // The cursor freezes at its last known position for other clients.
     // TODO: consider displaying inactive cursors differently (faded, grayed out, etc.)
-    document.addEventListener("mouseleave", () => {
+    const handleMouseLeave = () => {
       this.showAllCursors();
-    });
+    };
+    document.addEventListener("mouseleave", handleMouseLeave);
 
     // Reposition remote cursors on scroll/zoom/resize. In relative mode,
     // cursors use position:fixed so viewport coords must be recalculated.
@@ -979,9 +1056,34 @@ export class CursorClientAwareness {
     }
 
     // Clean up presence when the page is actually closed/navigated away
-    window.addEventListener("beforeunload", () => {
+    const handleBeforeUnload = () => {
       this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
-    });
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    this.removeCursorTrackingListeners = () => {
+      document.removeEventListener("mousemove", updateCursor);
+      document.removeEventListener("touchmove", updateTouchCursor);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("mouseleave", handleMouseLeave);
+      window.removeEventListener("scroll", repositionOnViewportChange);
+      window.removeEventListener("resize", repositionOnViewportChange);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener(
+          "scroll",
+          repositionOnViewportChange,
+        );
+        window.visualViewport.removeEventListener(
+          "resize",
+          repositionOnViewportChange,
+        );
+      }
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (viewportChangeRaf !== null) {
+        cancelAnimationFrame(viewportChangeRaf);
+        viewportChangeRaf = null;
+      }
+    };
   }
 
   // Re-derive positions for all remote cursors. In relative mode, this is
@@ -1062,7 +1164,8 @@ export class CursorClientAwareness {
       this.lastUpdate = now;
       this.updateThrottled = false;
     } else {
-      setTimeout(() => {
+      this.pendingUpdateTimeout = setTimeout(() => {
+        this.pendingUpdateTimeout = null;
         this.updateCursorAwareness();
         this.lastUpdate = performance.now();
         this.updateThrottled = false;
@@ -1497,7 +1600,7 @@ export class CursorClientAwareness {
         const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
         self.playerIdentity.playerStyle.colorPalette[0] = newColor;
         self.savePlayerIdentityToStorage();
-        document.documentElement.style.cursor = getCursorStyleForUser(newColor);
+        self.updateDocumentCursorForColor(newColor);
         if (oldColor !== newColor) {
           self.emitGlobalEvent("color", newColor);
         }
@@ -1773,7 +1876,7 @@ export class CursorClientAwareness {
       this.savePlayerIdentityToStorage();
       // Re-broadcast awareness with new identity and update local cursor style
       const nextColor = getPrimaryColor(this.playerIdentity);
-      document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+      this.updateDocumentCursorForColor(nextColor);
       this.updateCursorAwareness();
       // Emit color/name events so subscribers (e.g. the React context behind
       // usePlayerIdentity) react to identity injected through configure() —
@@ -1814,6 +1917,20 @@ export class CursorClientAwareness {
   }
 
   destroy(): void {
+    if (this.awarenessChangeHandler) {
+      this.provider.awareness.off("change", this.awarenessChangeHandler);
+      this.awarenessChangeHandler = null;
+    }
+    if (this.removeCursorTrackingListeners) {
+      this.removeCursorTrackingListeners();
+      this.removeCursorTrackingListeners = null;
+    }
+    if (this.pendingUpdateTimeout) {
+      clearTimeout(this.pendingUpdateTimeout);
+      this.pendingUpdateTimeout = null;
+      this.updateThrottled = false;
+    }
+
     // Clean up cursors
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
@@ -1840,6 +1957,7 @@ export class CursorClientAwareness {
 
     // Remove awareness data
     this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    clearDocumentCursorStyle();
   }
 
   // Debug method to inspect spatial partitioning efficiency

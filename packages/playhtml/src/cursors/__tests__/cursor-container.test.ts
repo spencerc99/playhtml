@@ -1,9 +1,11 @@
 // ABOUTME: Tests for cursor container resolution — element, selector, getter.
 // ABOUTME: Null handling and getter-on-every-call semantics.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as Y from "yjs";
 import { resolveCursorContainer } from "../container";
 import { CursorClientAwareness } from "../cursor-client";
+
+const originalElementFromPoint = document.elementFromPoint;
 
 describe("resolveCursorContainer", () => {
   beforeEach(() => {
@@ -48,9 +50,31 @@ describe("resolveCursorContainer", () => {
 });
 
 describe("cursor client with container option", () => {
+  const clients: CursorClientAwareness[] = [];
+
   beforeEach(() => {
     document.body.innerHTML = "";
     document.head.querySelectorAll("#playhtml-cursor-styles").forEach((n) => n.remove());
+  });
+
+  afterEach(() => {
+    for (const client of clients.splice(0)) {
+      client.destroy();
+    }
+    document.body.style.cursor = "";
+    document.documentElement.style.cursor = "";
+    document.documentElement.style.removeProperty("--playhtml-cursor");
+    document.documentElement.removeAttribute("data-playhtml-cursors-active");
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    if (originalElementFromPoint) {
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: originalElementFromPoint,
+      });
+    } else {
+      delete (document as any).elementFromPoint;
+    }
   });
 
   function makeFakeProvider() {
@@ -74,7 +98,12 @@ describe("cursor client with container option", () => {
       on(_event: string, cb: (args: any) => void) {
         listeners.push(cb);
       },
-      off() {},
+      off(_event: string, cb: (args: any) => void) {
+        const index = listeners.indexOf(cb);
+        if (index !== -1) {
+          listeners.splice(index, 1);
+        }
+      },
       emit(args: any) {
         listeners.forEach((cb) => cb(args));
       },
@@ -90,13 +119,22 @@ describe("cursor client with container option", () => {
     } as any;
   }
 
+  function makeClient(
+    provider: ReturnType<typeof makeFakeProvider>,
+    options: ConstructorParameters<typeof CursorClientAwareness>[1],
+  ) {
+    const client = new CursorClientAwareness(provider, options);
+    clients.push(client);
+    return client;
+  }
+
   it("appends cursor DOM into the container element", () => {
     const layer = document.createElement("div");
     layer.id = "cursor-layer";
     document.body.appendChild(layer);
 
     const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const client = makeClient(provider, {
       enabled: true,
       container: layer,
       playerIdentity: {
@@ -133,7 +171,7 @@ describe("cursor client with container option", () => {
     document.body.appendChild(layer);
 
     const provider = makeFakeProvider();
-    new CursorClientAwareness(provider, {
+    makeClient(provider, {
       enabled: true,
       container: layer,
       playerIdentity: {
@@ -148,7 +186,7 @@ describe("cursor client with container option", () => {
 
   it("falls back to document.head when container is document.body (default)", () => {
     const provider = makeFakeProvider();
-    new CursorClientAwareness(provider, {
+    makeClient(provider, {
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -170,7 +208,7 @@ describe("cursor client with container option", () => {
 
     let active: HTMLElement = layerA;
     const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const client = makeClient(provider, {
       enabled: true,
       container: () => active,
       playerIdentity: {
@@ -212,7 +250,7 @@ describe("cursor client with container option", () => {
     const provider = makeFakeProvider();
     const calls: string[] = [];
 
-    const client = new CursorClientAwareness(provider, {
+    const client = makeClient(provider, {
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -256,7 +294,7 @@ describe("cursor client with container option", () => {
       backgroundColor: "rgb(255, 0, 0)",
     };
 
-    const client = new CursorClientAwareness(provider, {
+    const client = makeClient(provider, {
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -309,7 +347,7 @@ describe("cursor client with container option", () => {
     document.body.appendChild(zoneEl);
 
     const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const client = makeClient(provider, {
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -362,7 +400,7 @@ describe("cursor client with container option", () => {
     const provider = makeFakeProvider();
     const pagesSeen: string[] = [];
 
-    const client = new CursorClientAwareness(provider, {
+    const client = makeClient(provider, {
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -408,4 +446,213 @@ describe("cursor client with container option", () => {
     expect(pagesSeen).toContain("/b");
     void client;
   });
+
+  it("keeps the colored cursor when the browser normalizes its own cursor data URL", () => {
+    const provider = makeFakeProvider();
+    const client = makeClient(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    const coloredCursor =
+      document.documentElement.style.getPropertyValue("--playhtml-cursor");
+    const urlMatch = coloredCursor.match(/^url\("(.*)"\), auto$/);
+    expect(urlMatch).not.toBeNull();
+
+    const decodedCursor = `url("${decodeURIComponent(urlMatch![1])}"), auto`;
+    document.body.style.cursor = decodedCursor;
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => document.body),
+    });
+
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+
+    expect(document.documentElement.getAttribute("data-playhtml-cursors-active")).toBe(
+      "true",
+    );
+    expect(document.documentElement.style.getPropertyValue("--playhtml-cursor")).toBe(
+      coloredCursor,
+    );
+    client.destroy();
+  });
+
+  it("does not publish pending cursor updates after destroy", () => {
+    vi.useFakeTimers();
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => document.body),
+    });
+    const provider = makeFakeProvider();
+    const client = makeClient(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+    client.destroy();
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: 20,
+        clientY: 20,
+      }),
+    );
+    vi.runOnlyPendingTimers();
+
+    expect(provider.awareness.getLocalState().__playhtml_cursors__).toBeNull();
+  });
+
+  it("does not render remote cursor updates after destroy", () => {
+    const layer = document.createElement("div");
+    layer.id = "cursor-layer";
+    document.body.appendChild(layer);
+
+    const provider = makeFakeProvider();
+    const client = makeClient(provider, {
+      enabled: true,
+      container: layer,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    client.destroy();
+    provider.awareness._states.set(99, {
+      __playhtml_cursors__: {
+        cursor: { x: 10, y: 10, pointer: "mouse" },
+        page: "/",
+        playerIdentity: {
+          publicKey: "remote-1",
+          playerStyle: { colorPalette: ["#00ff00"] },
+        },
+        lastSeen: Date.now(),
+      },
+    });
+    provider.awareness.emit({ added: [99], updated: [], removed: [] });
+
+    expect(layer.querySelectorAll(".playhtml-cursor-other")).toHaveLength(0);
+  });
+
+  it("uses the native cursor while hovering a different custom cursor", () => {
+    const provider = makeFakeProvider();
+    const client = makeClient(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    const customCursor =
+      "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
+    document.body.style.cursor = `url("${customCursor}"), auto`;
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => document.body),
+    });
+
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+
+    const state = provider.awareness.getLocalState().__playhtml_cursors__;
+    expect(document.documentElement.getAttribute("data-playhtml-cursors-active")).toBeNull();
+    expect(state.cursor.pointer).toBe(customCursor);
+    client.destroy();
+  });
+
+  it("activates a document-level cursor override for descendants with normal cursor keywords", () => {
+    const target = document.createElement("button");
+    target.style.cursor = "pointer";
+    document.body.appendChild(target);
+
+    const provider = makeFakeProvider();
+    const client = makeClient(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    const coloredCursor =
+      document.documentElement.style.getPropertyValue("--playhtml-cursor");
+
+    expect(document.documentElement.getAttribute("data-playhtml-cursors-active")).toBe(
+      "true",
+    );
+    expect(document.documentElement.style.getPropertyValue("--playhtml-cursor")).toBe(
+      coloredCursor,
+    );
+    expect(document.getElementById("playhtml-cursor-styles")?.textContent).toContain(
+      "html[data-playhtml-cursors-active=\"true\"] *",
+    );
+    client.destroy();
+  });
+
+  it("does not churn the cursor override while moving over normal cursor keywords", () => {
+    const target = document.createElement("button");
+    target.style.cursor = "pointer";
+    document.body.appendChild(target);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => target),
+    });
+
+    const provider = makeFakeProvider();
+    const client = makeClient(provider, {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+    });
+
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+
+    const removeAttribute = vi.spyOn(document.documentElement, "removeAttribute");
+    const setAttribute = vi.spyOn(document.documentElement, "setAttribute");
+
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+
+    expect(removeAttribute).not.toHaveBeenCalledWith(
+      "data-playhtml-cursors-active",
+    );
+    expect(setAttribute).not.toHaveBeenCalledWith(
+      "data-playhtml-cursors-active",
+      "true",
+    );
+    client.destroy();
+  });
+
 });
