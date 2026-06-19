@@ -51,8 +51,8 @@ function markSubscribed(): void {
 function DownloadButtons({ size = 'default' }: { size?: 'default' | 'large' }) {
   const className =
     size === 'large'
-      ? `${styles.downloadGroup} ${styles.downloadGroupLarge}`
-      : styles.downloadGroup;
+      ? `${styles.downloadGroup} ${styles.downloadSurface} ${styles.downloadGroupLarge}`
+      : `${styles.downloadGroup} ${styles.downloadSurface}`;
   return (
     <div className={className}>
       <span className={styles.downloadLabel}>install:</span>

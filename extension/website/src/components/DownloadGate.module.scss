@@ -141,8 +141,18 @@ $mobile-query: "(hover: none) and (pointer: coarse)";
   color: $text-muted;
 }
 
+.downloadSurface {
+  background: rgba($bg, 0.74);
+  border: 1.5px solid rgba($text, 0.28);
+  border-radius: 999px;
+  padding: 8px 16px;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 1px 0 rgba($text, 0.06);
+}
+
 .downloadGroupLarge {
   font-size: 1.0625rem;
+  padding: 11px 20px;
 }
 
 .downloadLabel {

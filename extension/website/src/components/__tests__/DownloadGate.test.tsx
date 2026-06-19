@@ -14,6 +14,7 @@ vi.mock("../DownloadGate.module.scss", () => ({
     desktopOnly: "desktopOnly",
     mobileOnly: "mobileOnly",
     downloadGroup: "downloadGroup",
+    downloadSurface: "downloadSurface",
     downloadGroupLarge: "downloadGroupLarge",
     downloadLabel: "downloadLabel",
     downloadLink: "downloadLink",
@@ -30,6 +31,7 @@ describe("DownloadGate", () => {
     const html = renderToStaticMarkup(<DownloadGate />);
 
     expect(html).toContain('install:');
+    expect(html).toContain('downloadSurface');
     expect(html).toContain('>Chrome</a>');
     expect(html).toContain('>Firefox</a>');
     expect(html).toContain('>Edge</a>');
