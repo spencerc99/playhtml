@@ -559,11 +559,11 @@ let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
 } | null = null;
 
-// If the user supplied an explicit `room` to init(), we store it and reuse it
-// across navigations. A string stays fixed for the page's lifetime; a function
-// is re-invoked on each nav so a path-derived room switches correctly. If no
-// explicit room was given, we store the default-room options and re-derive on
-// each nav so pathname-based rooms switch correctly.
+// If init() receives an explicit `room`, we store it for future navigation
+// checks. A string stays fixed across navigation until init() receives another
+// room; a function is re-invoked on each nav so a path-derived room switches
+// correctly. If no explicit room was given, we store the default-room options
+// and re-derive on each nav so pathname-based rooms switch correctly.
 let explicitRoomOption: string | (() => string) | undefined = undefined;
 
 /** Resolve the explicit room option to a string, calling it if it's a function

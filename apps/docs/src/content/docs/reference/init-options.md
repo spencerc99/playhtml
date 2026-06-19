@@ -31,7 +31,7 @@ Override it when you want to decouple state from the URL — for example, a site
 playhtml.init({ room: "global-guestbook" });
 ```
 
-A **string** stays fixed for the page's lifetime — it never changes on [client-side navigation](/docs/advanced/navigation/). Pass a **function** to compute the room on each navigation, so a custom URL-derived room follows the route the way the default does:
+A **string** stays fixed across [client-side navigation](/docs/advanced/navigation/) until you call `init()` again with a different room. Pass a **function** to compute the room on each navigation, so a custom URL-derived room follows the route the way the default does:
 
 ```js
 playhtml.init({ room: () => `notes${window.location.pathname}` });

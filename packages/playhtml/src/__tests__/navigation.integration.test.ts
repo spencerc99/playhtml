@@ -260,16 +260,6 @@ describe("playhtml.handleNavigation", () => {
     expect(playhtml.elementHandlers.get("can-move")?.has("doomed")).toBe(false);
   });
 
-  // ============================================================
-  // SKIPPED pending the doc re-init fix. These assert that page (and element)
-  // data RESET on a room change during SPA nav. The first attempt — deleting
-  // page-data keys from the reused Yjs doc — was removed because the delete
-  // tombstone synced back and destroyed the original room's persisted data on a
-  // round trip (data loss). The correct fix re-inits the doc on a room change
-  // (discard, don't delete); these tests un-skip and pass once that lands.
-  // See internal-docs/specs/2026-06-19-page-data-room-isolation.md.
-  // ============================================================
-
   it("does not carry page-data into the next room on navigation", async () => {
     // Page data is room-scoped: a channel's contents written in room /a must
     // NOT survive into room /b. The doc is reused across room rebuilds, so
