@@ -204,14 +204,10 @@ export class BottleManager {
   private computeRenderList(): RenderedBottle[] {
     const seen = this.loadSeen();
 
-    // Filter visible bottles. Read defensively: a dev room persisted under an
-    // earlier data shape (no `bottles` map, or records without `notes`) would
-    // otherwise throw here and blank the page. Legacy entries are skipped.
+    // Filter visible bottles.
     const visible: BottleRecord[] = [];
-    const bottles = this.data.bottles ?? {};
-    for (const id of Object.keys(bottles)) {
-      const b = bottles[id];
-      if (!b || !Array.isArray(b.notes)) continue;
+    for (const id of Object.keys(this.data.bottles)) {
+      const b = this.data.bottles[id];
       if (b.hidden || b.notes.length === 0) continue;
       const userHasRead = seen[id] !== undefined;
       // Per Spencer: never re-show what you've read. Fresh window does NOT
@@ -254,7 +250,16 @@ export class BottleManager {
    * anchor resolves, then caches the placed bottle so its id stays stable.
    */
   private resolveEmptyBottle(): RenderedBottle | null {
-    if (this.emptyBottle) return this.emptyBottle;
+    if (this.emptyBottle) {
+      // Re-validate the cached anchor: if it no longer resolves (layout shifted
+      // after we placed it), drop the cache so we re-place below rather than
+      // returning a bottle the overlay will silently hide forever. showEmpty
+      // stays true, so the probability roll isn't repeated — only placement.
+      if (resolveBottlePosition(this.emptyBottle.anchor) !== null) {
+        return this.emptyBottle;
+      }
+      this.emptyBottle = null;
+    }
 
     if (this.showEmpty === undefined) {
       this.showEmpty = this.shouldShowEmpty();

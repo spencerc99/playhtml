@@ -92,8 +92,12 @@ export function MessageBottle({
   }, [onClosed, clearTimers]);
 
   const goWrite = useCallback(() => {
+    // Cancel the open() stage timers — clicking "write a reply" during the
+    // expanding window would otherwise let the pending read timer fire and
+    // snap the dialog back to read, dropping the user out of the write box.
+    clearTimers();
     setStage("write");
-  }, []);
+  }, [clearTimers]);
 
   const seal = useCallback(() => {
     const text = draft.trim();
