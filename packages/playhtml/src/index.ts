@@ -386,9 +386,14 @@ export interface InitOptions<T = unknown> {
    * All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent
    * conflicting with other people's sites.
    * Defaults to `window.location.pathname + window.location.search. You can customize this by
-   * passing in your own room dynamically
+   * passing in your own room dynamically.
+   *
+   * Pass a function to make the room recompute on SPA navigation: it is called
+   * at init and again on each route change, so a path-derived room follows the
+   * URL the same way the default room does. A static string stays fixed for the
+   * page's lifetime.
    */
-  room?: string;
+  room?: string | (() => string);
 
   /**
    * Provide your own partykit host if you'd like to run your own server and customize the logic.
@@ -550,10 +555,19 @@ let awarenessChangeTarget: {
 } | null = null;
 
 // If the user supplied an explicit `room` to init(), we store it and reuse it
-// across navigations (static rooms should not change on URL change). If they
-// didn't, we store the default-room options and re-derive on each nav so
-// pathname-based rooms switch correctly.
-let explicitRoomOption: string | undefined = undefined;
+// across navigations. A string stays fixed for the page's lifetime; a function
+// is re-invoked on each nav so a path-derived room switches correctly. If no
+// explicit room was given, we store the default-room options and re-derive on
+// each nav so pathname-based rooms switch correctly.
+let explicitRoomOption: string | (() => string) | undefined = undefined;
+
+/** Resolve the explicit room option to a string, calling it if it's a function
+ * (so a path-derived room recomputes on each nav). undefined if none was set. */
+function resolveExplicitRoom(): string | undefined {
+  return typeof explicitRoomOption === "function"
+    ? explicitRoomOption()
+    : explicitRoomOption;
+}
 let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
@@ -702,7 +716,7 @@ async function runHandleNavigation(): Promise<void> {
   if (firstSetup) return;
 
   const nextRoomInput =
-    explicitRoomOption ?? getDefaultRoom(cachedDefaultRoomOptions);
+    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
   const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
@@ -737,6 +751,10 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    // Page data is room-scoped. The doc is reused across room rebuilds, so the
+    // previous room's page-data would otherwise persist in the doc and sync
+    // into the new room. Clear it on room change so each room starts clean.
+    clearPageData();
     buildMainProvider({
       room: newMainRoom,
       partykitHost: __currentHost,
@@ -836,7 +854,7 @@ async function initPlayHTMLOnce({
 }: InitOptions = {}) {
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
-  const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
+  const inputRoom = resolveExplicitRoom() ?? getDefaultRoom(defaultRoomOptions);
   cursorOptionsCache = cursors;
   cachedOnError = onError;
   isDevelopmentMode = developmentMode;
@@ -1863,6 +1881,55 @@ function removePlayElement(element: Element | null) {
  * @param tag - The capability tag (e.g., "can-move", "can-toggle")
  * @param elementId - The element ID
  */
+/**
+ * Reset all page-data channels on room change. Page data is room-scoped, but
+ * the Yjs doc is reused across room rebuilds, so the previous room's page-data
+ * would otherwise persist in the doc and sync into the new room. We delete each
+ * channel entry (and its observer/proxy/refcount bookkeeping) so the channel
+ * returns to its default in the new room — exactly as if freshly opened there.
+ *
+ * A channel HANDLE held across the route change stays usable: getData() falls
+ * back to the default when the entry is absent, and setData() re-acquires its
+ * proxy on demand (page-data.ts) rather than assuming it still exists.
+ */
+function clearPageData(): void {
+  const pageStore = store.play[PAGE_TAG];
+  if (!pageStore) return;
+
+  for (const name of Object.keys(pageStore)) {
+    const observer = yObserverByKey.get(`${PAGE_TAG}:${name}`);
+    const yVal = getYjsValue(pageStore[name]);
+    if (observer && yVal && typeof (yVal as any).unobserveDeep === "function") {
+      try {
+        (yVal as any).unobserveDeep(observer);
+      } catch {
+        // best-effort
+      }
+    }
+    yObserverByKey.delete(`${PAGE_TAG}:${name}`);
+    proxyByTagAndId.get(PAGE_TAG)?.delete(name);
+  }
+
+  try {
+    doc.transact(() => {
+      for (const name of Object.keys(pageStore)) {
+        delete pageStore[name];
+      }
+    });
+  } catch (error) {
+    console.warn("[PLAYHTML] Failed to clear page data on room change:", error);
+  }
+
+  // Refcounts and listener sets are reset so a re-opened channel re-installs
+  // its observer (refCount 1) with a FRESH listener set. A stale handle from
+  // before the room change holds the OLD set; its destroy() only tears down the
+  // shared state if the map still points at that old set (identity check), so
+  // it can't clobber the reopened channel. Surviving handles re-acquire their
+  // proxy lazily on setData.
+  pageDataRefCounts.clear();
+  pageDataListeners.clear();
+}
+
 function deleteElementData(tag: string, elementId: string): void {
   if (!hasSynced) {
     console.warn(

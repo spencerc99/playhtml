@@ -81,10 +81,11 @@ export function createPageDataChannel<T>(
 
     setData(data: T | ((draft: T) => void)): void {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
-      const currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
-      if (!currentProxy) {
-        throw new Error(`PageDataChannel "${name}" proxy not found — data may have been cleaned up`);
-      }
+      // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
+      // out from under this still-alive handle). ensureProxy re-seeds the
+      // default and re-registers the proxy, so the handle keeps working.
+      const currentProxy = (getProxy(PAGE_TAG, name) ??
+        ensureProxy<T>(PAGE_TAG, name, defaultValue)) as T;
       if (typeof data === "function") {
         doc.transact(() => {
           (data as (draft: T) => void)(currentProxy);
@@ -113,6 +114,13 @@ export function createPageDataChannel<T>(
         listeners.delete(cb);
       }
       handleListeners.clear();
+
+      // If a room change reset this channel, the map now holds a DIFFERENT
+      // listener set (belonging to a channel reopened in the new room). This
+      // stale handle must not tear down that reopened channel's shared state.
+      if (channelListeners.get(name) !== listeners) {
+        return;
+      }
 
       const remaining = (channelRefCounts.get(name) ?? 1) - 1;
       channelRefCounts.set(name, remaining);

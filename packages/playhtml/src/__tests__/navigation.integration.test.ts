@@ -124,6 +124,18 @@ describe("playhtml.handleNavigation", () => {
     expect(before).toContain("my-app-room");
   });
 
+  it("recomputes a function explicit room on navigation", async () => {
+    // A function room is re-invoked on each nav, so a path-derived room follows
+    // the URL — unlike a static string, which stays fixed.
+    const { before, after } = await roomsAcrossNav("/a", "/b", {
+      room: () => `wwo${window.location.pathname}`,
+    });
+    expect(before).toContain("wwo");
+    expect(before).toContain("a");
+    expect(after).toContain("b");
+    expect(before).not.toEqual(after);
+  });
+
   it("strips filename extension from pathname when deriving default room", async () => {
     const { before, after } = await roomsAcrossNav(
       "/page.html",
@@ -167,6 +179,93 @@ describe("playhtml.handleNavigation", () => {
     await playhtml.handleNavigation();
 
     expect(playhtml.elementHandlers.get("can-move")?.has("doomed")).toBe(false);
+  });
+
+  it("does not carry page-data into the next room on navigation", async () => {
+    // Page data is room-scoped: a channel's contents written in room /a must
+    // NOT survive into room /b. The doc is reused across room rebuilds, so
+    // without an explicit reset the old room's page-data would persist in the
+    // doc and sync into the new room. Tested at the local-doc layer (no socket).
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/room-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const channelA = playhtml.createPageData("notes", { items: [] as string[] });
+      channelA.setData({ items: ["from-a"] });
+      await new Promise((r) => queueMicrotask(r));
+      expect(channelA.getData()).toEqual({ items: ["from-a"] });
+
+      // Navigate to a different room.
+      history.replaceState(null, "", "/room-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // A channel opened in room /b must start from its default, not /a's data.
+      const channelB = playhtml.createPageData("notes", { items: [] as string[] });
+      expect(channelB.getData()).toEqual({ items: [] });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("keeps a surviving page-data handle usable after a room change", async () => {
+    // A consumer that holds a channel handle across an SPA route change must
+    // still be able to read/write it — the room-change reset clears the DATA
+    // but must not orphan the handle's proxy (which would make setData throw).
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/survive-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const channel = playhtml.createPageData("counter", { n: 0 });
+      channel.setData({ n: 1 });
+      await new Promise((r) => queueMicrotask(r));
+
+      history.replaceState(null, "", "/survive-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Same handle, after nav: reads the cleared default, and writing works.
+      expect(channel.getData()).toEqual({ n: 0 });
+      expect(() => channel.setData({ n: 5 })).not.toThrow();
+      await new Promise((r) => queueMicrotask(r));
+      expect(channel.getData()).toEqual({ n: 5 });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("a stale handle's destroy after a room change does not break a reopened channel", async () => {
+    // After nav, code often re-creates its channel. Destroying the OLD handle
+    // (e.g. in a cleanup) must not tear down the freshly reopened same-name
+    // channel's listeners/observer/proxy.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/stale-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const oldHandle = playhtml.createPageData("shared", { v: "a" });
+      await new Promise((r) => queueMicrotask(r));
+
+      history.replaceState(null, "", "/stale-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Reopen the same channel name in the new room, then destroy the old one.
+      const newHandle = playhtml.createPageData("shared", { v: "default" });
+      const updates: any[] = [];
+      newHandle.onUpdate((d) => updates.push(d));
+      oldHandle.destroy();
+
+      // The reopened channel must still be live: its writes apply and notify.
+      newHandle.setData({ v: "b" });
+      await new Promise((r) => queueMicrotask(r));
+      expect(newHandle.getData()).toEqual({ v: "b" });
+      expect(updates).toContainEqual({ v: "b" });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
   });
 
   it("cleans up awareness listener on destroy and allows re-init", async () => {
