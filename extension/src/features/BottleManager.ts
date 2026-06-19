@@ -89,11 +89,12 @@ export class BottleManager {
   init(onRender: RenderCallback): void {
     this.renderCallback = onRender;
 
-    // The room is already per-page (set when the WWO playhtml instance inits),
-    // so the channel key only needs to name the feature within that room — no
-    // URL. `wwo:bottles` also stays distinct from sibling keys (e.g. link-glows)
-    // on the custom-cursor-site pages where bottles share the site's room.
-    this.channel = this.createPageData<BottlePageData>("wwo:bottles", {
+    // The room is already extension-owned and per-page (set when the WWO
+    // playhtml instance inits), so the channel key only needs to name the
+    // feature within that room — no `wwo:` prefix, no URL. `bottles` stays
+    // distinct from sibling keys (e.g. link-glows) on the custom-cursor-site
+    // pages where bottles share the site's room.
+    this.channel = this.createPageData<BottlePageData>("bottles", {
       bottles: {},
     });
 
