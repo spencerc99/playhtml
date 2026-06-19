@@ -26,6 +26,8 @@ export const bottlesExperiment: SocialExperiment = {
         bottles: [],
         onSeal: () => {},
         onOpened: () => {},
+        onClosed: () => {},
+        onAnchorLost: () => {},
         portalContainer: null,
       },
       {
@@ -40,17 +42,32 @@ export const bottlesExperiment: SocialExperiment = {
     // shadow's CSS but is NOT inside the React tree that re-renders the overlay.
     const shadowPortal = ui.portal;
 
+    // Bottles whose reply was dropped (rate-limited etc.) — don't mark them
+    // seen on close, so the bottle stays for the user to retry after cooldown.
+    const dropped = new Set<string>();
+
     manager.init((req: BottleRenderRequest) => {
       ui.render({
         bottles: req.bottles,
         onSeal: (id: string, text: string, anchor: BottleAnchor) => {
-          manager.seal(text, { id, anchor });
+          if (manager.seal(text, { id, anchor })) {
+            dropped.delete(id);
+          } else {
+            dropped.add(id);
+          }
         },
         onOpened: (_id: string) => {
           // Don't mark seen on open — would re-render and unmount mid-interaction.
         },
         onClosed: (id: string) => {
+          if (dropped.has(id)) {
+            dropped.delete(id);
+            return; // reply was dropped — keep the bottle visible to retry
+          }
           if (!id.startsWith("empty-")) manager.markSeen(id);
+        },
+        onAnchorLost: (id: string) => {
+          manager.notifyAnchorLost(id);
         },
         portalContainer: shadowPortal,
       });

@@ -119,12 +119,15 @@ export class BottleManager {
    * bottle's thread (a reply, same anchor); otherwise a new bottle is created
    * at the target anchor (e.g. sealing into an empty prompt or a fresh spot).
    */
-  seal(text: string, target: { id: string; anchor: BottleAnchor }): void {
-    if (!this.channel) return;
-    if (!text.trim()) return;
+  /** Returns true if the note was persisted, false if dropped (no channel,
+   * empty text, or rate-limited) so the caller can avoid marking the bottle
+   * seen and losing the user's reply. */
+  seal(text: string, target: { id: string; anchor: BottleAnchor }): boolean {
+    if (!this.channel) return false;
+    if (!text.trim()) return false;
     if (this.isRateLimited()) {
       debug("[bottles] rate limited — skipping author");
-      return;
+      return false;
     }
 
     const note: BottleNote = {
@@ -163,6 +166,7 @@ export class BottleManager {
     this.markAuthored();
     // Mark our own bottle seen so we don't see it again ourselves
     this.markSeen(bottleId);
+    return true;
   }
 
   /**
@@ -174,6 +178,18 @@ export class BottleManager {
     this.saveSeen(map);
     // Re-render so the seen bottle disappears from this user's view
     this.render();
+  }
+
+  /**
+   * The overlay couldn't resolve this bottle's anchor at render time (layout
+   * shifted after placement). If it's the cached empty bottle, drop the cache
+   * and re-render so it re-places at a now-valid anchor instead of vanishing.
+   */
+  notifyAnchorLost(bottleId: string): void {
+    if (this.emptyBottle && this.emptyBottle.id === bottleId) {
+      this.emptyBottle = null;
+      this.render();
+    }
   }
 
   destroy(): void {

@@ -12,6 +12,9 @@ interface BottleOverlayProps {
   onSeal: (bottleId: string, text: string, anchor: BottleAnchor) => void;
   onOpened: (bottleId: string) => void;
   onClosed: (bottleId: string) => void;
+  /** A bottle's anchor stopped resolving (layout shift) — lets the manager
+   *  re-place a cached empty bottle rather than letting it silently vanish. */
+  onAnchorLost: (bottleId: string) => void;
   /** Shadow root used as the portal target for the open dialog. */
   portalContainer: Element | null;
 }
@@ -27,6 +30,7 @@ export function BottleOverlay({
   onSeal,
   onOpened,
   onClosed,
+  onAnchorLost,
   portalContainer,
 }: BottleOverlayProps) {
   const [tick, setTick] = useState(0);
@@ -74,11 +78,23 @@ export function BottleOverlay({
   }, []);
 
   const resolved: ResolvedBottleSlot[] = [];
+  const lost: string[] = [];
   for (const b of bottles) {
     const pos = resolveBottlePosition(b.anchor);
-    if (!pos) continue;
+    if (!pos) {
+      lost.push(b.id);
+      continue;
+    }
     resolved.push({ ...b, x: pos.x, y: pos.y, rotate: pos.rotate });
   }
+
+  // Notify the manager of bottles whose anchor no longer resolves (after the
+  // commit, not during render) so it can re-place a cached empty bottle.
+  const lostKey = lost.join(",");
+  useEffect(() => {
+    for (const id of lost) onAnchorLost(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lostKey]);
 
   return (
     <div
