@@ -1778,6 +1778,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     }
 
     existingHandler.reinitializeElementData(elementData);
+    applySharedElementDataToHandler(tag as string, elementId, existingHandler);
     // ensure observer is attached
     attachSyncedStoreObserver(tag as string, elementId);
     return;
@@ -1793,6 +1794,27 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 
   attachSyncedStoreObserver(tag as string, elementId);
+}
+
+function applySharedElementDataToHandler(
+  tag: string,
+  elementId: string,
+  handler: ElementHandler,
+): boolean {
+  const proxy = store.play[tag]?.[elementId];
+  if (proxy === undefined) return false;
+
+  // Push a plain snapshot into the handler for stable rendering.
+  const applyKey = `${tag}:${elementId}`;
+  // Mark as remote-apply so onChange can permit programmatic updates for RO elements.
+  remoteApplyingKeys.add(applyKey);
+  try {
+    // @ts-ignore private usage intended
+    handler.__data = clonePlain(proxy);
+  } finally {
+    remoteApplyingKeys.delete(applyKey);
+  }
+  return true;
 }
 
 function attachSyncedStoreObserver(tag: string, elementId: string) {
@@ -1816,19 +1838,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      // Push plain snapshot into handler for stable rendering
-      const proxy = store.play[tag]?.[elementId];
-      if (!proxy) return;
-      const plain = clonePlain(proxy);
-      // Mark as remote-apply so onChange can permit programmatic updates for RO elements
-      const applyKey = `${tag}:${elementId}`;
-      remoteApplyingKeys.add(applyKey);
-      try {
-        // @ts-ignore private usage intended
-        handler.__data = plain;
-      } finally {
-        remoteApplyingKeys.delete(applyKey);
-      }
+      if (!applySharedElementDataToHandler(tag, elementId, handler)) return;
       // Mark that this shared reference has received data
       sharedUpdateSeen.add(key);
       // Debug: log updates for shared elements

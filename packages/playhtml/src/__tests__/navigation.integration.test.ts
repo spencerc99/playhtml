@@ -591,8 +591,42 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it("resets page data while leaving element data intact across navigation", async () => {
-    // Page-data reset must not disturb element capability data: an element that
+  it("resets connected element handler data on a room change", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/element-a");
+      document.body.innerHTML = `<div id="counter" can-play>count</div>`;
+      const element = document.getElementById("counter") as HTMLElement & {
+        defaultData: { count: number };
+        updateElement: (event: { data: { count: number } }) => void;
+      };
+      element.defaultData = { count: 0 };
+      element.updateElement = ({ data }) => {
+        element.dataset.count = String(data.count);
+      };
+
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+      const handler = playhtml.elementHandlers.get("can-play")?.get("counter");
+      expect(handler).toBeTruthy();
+      handler?.setData({ count: 7 });
+      await new Promise((r) => queueMicrotask(r));
+      expect(handler?.data).toEqual({ count: 7 });
+      expect(element.dataset.count).toBe("7");
+
+      history.replaceState(null, "", "/element-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(handler?.data).toEqual({ count: 0 });
+      expect(element.dataset.count).toBe("0");
+    } finally {
+      document.body.innerHTML = "";
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("resets page data while keeping connected elements registered across navigation", async () => {
+    // Page-data reset must not disturb element registration: an element that
     // survives the navigation keeps its handler, and page data still resets.
     const origPath = window.location.pathname + window.location.search;
     try {
