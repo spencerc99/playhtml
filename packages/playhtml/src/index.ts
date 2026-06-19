@@ -84,9 +84,14 @@ type StoreShape = {
   // tag -> elementId -> data proxy (value typed at usage sites)
   play: Record<string, Record<string, unknown>>;
 };
-const store = syncedStore<StoreShape>({ play: {} });
-const doc = getYjsDoc(store);
-const publicSyncedStore = createReadOnlyStore(store.play);
+// store/doc/publicSyncedStore are recreated on a room change (recreateStore),
+// so they're reassignable. A fresh doc has no op history — discarding the old
+// one on a room change resets page + element data to the new room with no
+// tombstone synced back (unlike deleting keys from the reused doc, which
+// destroys the original room's persisted data on a round trip).
+let store = syncedStore<StoreShape>({ play: {} });
+let doc = getYjsDoc(store);
+let publicSyncedStore = createReadOnlyStore(store.play);
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
@@ -386,9 +391,14 @@ export interface InitOptions<T = unknown> {
    * All rooms are automatically prefixed with their host (`window.location.hostname`) to prevent
    * conflicting with other people's sites.
    * Defaults to `window.location.pathname + window.location.search. You can customize this by
-   * passing in your own room dynamically
+   * passing in your own room dynamically.
+   *
+   * Pass a function to make the room recompute on SPA navigation: it is called
+   * at init and again on each route change, so a path-derived room follows the
+   * URL the same way the default room does. A static string stays fixed for the
+   * page's lifetime.
    */
-  room?: string;
+  room?: string | (() => string);
 
   /**
    * Provide your own partykit host if you'd like to run your own server and customize the logic.
@@ -549,14 +559,57 @@ let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
 } | null = null;
 
-// If the user supplied an explicit `room` to init(), we store it and reuse it
-// across navigations (static rooms should not change on URL change). If they
-// didn't, we store the default-room options and re-derive on each nav so
-// pathname-based rooms switch correctly.
-let explicitRoomOption: string | undefined = undefined;
+// If init() receives an explicit `room`, we store it for future navigation
+// checks. A string stays fixed across navigation until init() receives another
+// room; a function is re-invoked on each nav so a path-derived room switches
+// correctly. If no explicit room was given, we store the default-room options
+// and re-derive on each nav so pathname-based rooms switch correctly.
+let explicitRoomOption: string | (() => string) | undefined = undefined;
+
+/** Resolve the explicit room option to a string, calling it if it's a function
+ * (so a path-derived room recomputes on each nav). undefined if none was set. */
+function resolveExplicitRoom(): string | undefined {
+  return typeof explicitRoomOption === "function"
+    ? explicitRoomOption()
+    : explicitRoomOption;
+}
 let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
+
+function hasInitOption<K extends keyof InitOptions>(
+  options: InitOptions,
+  key: K,
+): options is InitOptions & Required<Pick<InitOptions, K>> {
+  return Object.prototype.hasOwnProperty.call(options, key);
+}
+
+function applyActiveInitOptions(options: InitOptions): boolean {
+  let shouldHandleNavigation = false;
+
+  if (hasInitOption(options, "room")) {
+    explicitRoomOption = options.room;
+    shouldHandleNavigation = true;
+  }
+
+  if (hasInitOption(options, "defaultRoomOptions")) {
+    cachedDefaultRoomOptions = options.defaultRoomOptions ?? {
+      includeSearch: false,
+    };
+    shouldHandleNavigation = true;
+  }
+
+  if (hasInitOption(options, "cursors")) {
+    cursorOptionsCache = options.cursors ?? {};
+    shouldHandleNavigation = true;
+  }
+
+  if (hasInitOption(options, "onError")) {
+    cachedOnError = options.onError;
+  }
+
+  return shouldHandleNavigation;
+}
 
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
@@ -619,6 +672,44 @@ function teardownCursors(): void {
 function teardownMainProvider(): void {
   try { yprovider?.disconnect?.(); } catch {}
   try { yprovider?.destroy?.(); } catch {}
+}
+
+/**
+ * Recreate the shared SyncedStore/Y.Doc from scratch. Called on a room change so
+ * the new room starts from an empty doc — page AND element data reset to the new
+ * room's state, exactly like a page reload, with no tombstone carried into the
+ * old room (discard, don't delete). The old doc is destroyed.
+ *
+ * Everything derived from the doc is rebuilt: globalData, the public read-only
+ * store, and the page-data + proxy bookkeeping. Connected element handlers
+ * re-register against the fresh store via setupElements() (called by the caller
+ * after the new provider is built); surviving page-data handles re-bind lazily
+ * through their ensureProxy/attachObserver re-acquire path.
+ */
+function recreateStore(): void {
+  const oldDoc = doc;
+
+  store = syncedStore<StoreShape>({ play: {} });
+  doc = getYjsDoc(store);
+  publicSyncedStore = createReadOnlyStore(store.play);
+  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
+
+  // Proxies and observers referenced the old doc — drop them so they rebuild
+  // against the fresh store. KEEP page-data listener sets + refcounts: a channel
+  // handle held across the room change is still a handle on that name, and its
+  // onUpdate callbacks live in the preserved set. When the channel re-binds to
+  // the fresh store (a new createPageData, or a surviving handle's next
+  // read/write), its observer re-attaches wired to that same preserved set — so
+  // surviving handles keep notifying. (Element proxies have no such cross-nav
+  // handle to preserve; they re-register via setupElements.)
+  proxyByTagAndId.clear();
+  yObserverByKey.clear();
+
+  try {
+    oldDoc.destroy();
+  } catch {
+    // best-effort
+  }
 }
 
 /**
@@ -702,9 +793,15 @@ async function runHandleNavigation(): Promise<void> {
   if (firstSetup) return;
 
   const nextRoomInput =
-    explicitRoomOption ?? getDefaultRoom(cachedDefaultRoomOptions);
+    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
   const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
+
+  const cursorsWanted = Boolean(cursorOptionsCache?.enabled);
+  const cursorsActive = cursorClient !== null;
+  // An enable/disable transition must (re)build or tear down cursors regardless
+  // of room change — a later init({ cursors }) can flip this on an unchanged URL.
+  const cursorEnabledChanged = cursorsWanted !== cursorsActive;
 
   let cursorRoomChanged = false;
   if (cursorOptionsCache?.enabled) {
@@ -737,6 +834,12 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    // Re-init the doc for the new room: page AND element data are room-scoped,
+    // and the doc is reused across rooms, so a fresh doc resets both to the new
+    // room (like a page reload) without syncing a delete tombstone back to the
+    // old room. Must happen before buildMainProvider so the new provider binds
+    // the fresh doc.
+    recreateStore();
     buildMainProvider({
       room: newMainRoom,
       partykitHost: __currentHost,
@@ -746,21 +849,25 @@ async function runHandleNavigation(): Promise<void> {
     __currentRoomId = newMainRoom;
   }
 
-  if (cursorRoomChanged && cursorOptionsCache) {
+  if (cursorEnabledChanged || (cursorRoomChanged && cursorOptionsCache)) {
+    // teardownCursors handles the disable case (wanted off, currently on) and
+    // clears the way for a rebuild on enable / room change.
     teardownCursors();
-    buildCursors({
-      cursors: cursorOptionsCache,
-      mainRoom: newMainRoom,
-      partykitHost: __currentHost,
-      onError: cachedOnError,
-    });
+    if (cursorsWanted && cursorOptionsCache) {
+      buildCursors({
+        cursors: cursorOptionsCache,
+        mainRoom: newMainRoom,
+        partykitHost: __currentHost,
+        onError: cachedOnError,
+      });
+    }
   }
 
   // Rebind awareness listener to the current provider. This is required
   // whenever we rebuilt yprovider or cursorClient above — the old awareness
   // object was destroyed along with its provider, orphaning any listener
   // we had attached at init time.
-  if (mainRoomChanged || cursorRoomChanged) {
+  if (mainRoomChanged || cursorRoomChanged || cursorEnabledChanged) {
     bindAwarenessListener();
   }
 
@@ -791,7 +898,16 @@ async function runHandleNavigation(): Promise<void> {
 }
 
 function initPlayHTML(options: InitOptions = {}) {
-  if (initStarted) return readyPromise;
+  if (initStarted) {
+    const shouldHandleNavigation = applyActiveInitOptions(options);
+    if (!shouldHandleNavigation) {
+      return readyPromise;
+    }
+
+    return readyPromise.then(async () => {
+      await navigationController?.trigger();
+    });
+  }
 
   const existingPlayhtml = (window as any).playhtml;
   if (existingPlayhtml) {
@@ -836,7 +952,7 @@ async function initPlayHTMLOnce({
 }: InitOptions = {}) {
   explicitRoomOption = explicitRoom;
   cachedDefaultRoomOptions = defaultRoomOptions;
-  const inputRoom = explicitRoom ?? getDefaultRoom(defaultRoomOptions);
+  const inputRoom = resolveExplicitRoom() ?? getDefaultRoom(defaultRoomOptions);
   cursorOptionsCache = cursors;
   cachedOnError = onError;
   isDevelopmentMode = developmentMode;
@@ -1325,8 +1441,10 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   return createPageDataChannel(name, defaultValue, {
     ensureProxy: ensureElementProxy,
     getProxy: (tag, id) => proxyByTagAndId.get(tag)?.get(id),
-    doc,
-    storePlay: store.play,
+    // Getters so a handle held across a room change (which recreates store/doc)
+    // reads the current ones, not stale references captured at creation.
+    getDoc: () => doc,
+    getStorePlay: () => store.play,
     proxyByTagAndId,
     yObserverByKey,
     channelRefCounts: pageDataRefCounts,
@@ -1496,7 +1614,9 @@ export const playhtml: PlayHTMLComponents = {
   removePlayElement,
   deleteElementData,
   setupPlayElementForTag,
-  syncedStore: publicSyncedStore,
+  get syncedStore() {
+    return publicSyncedStore;
+  },
   elementHandlers,
   eventHandlers,
   dispatchPlayEvent,
@@ -1658,6 +1778,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     }
 
     existingHandler.reinitializeElementData(elementData);
+    applySharedElementDataToHandler(tag as string, elementId, existingHandler);
     // ensure observer is attached
     attachSyncedStoreObserver(tag as string, elementId);
     return;
@@ -1673,6 +1794,27 @@ async function setupPlayElementForTag<T extends TagType | string>(
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
 
   attachSyncedStoreObserver(tag as string, elementId);
+}
+
+function applySharedElementDataToHandler(
+  tag: string,
+  elementId: string,
+  handler: ElementHandler,
+): boolean {
+  const proxy = store.play[tag]?.[elementId];
+  if (proxy === undefined) return false;
+
+  // Push a plain snapshot into the handler for stable rendering.
+  const applyKey = `${tag}:${elementId}`;
+  // Mark as remote-apply so onChange can permit programmatic updates for RO elements.
+  remoteApplyingKeys.add(applyKey);
+  try {
+    // @ts-ignore private usage intended
+    handler.__data = clonePlain(proxy);
+  } finally {
+    remoteApplyingKeys.delete(applyKey);
+  }
+  return true;
 }
 
 function attachSyncedStoreObserver(tag: string, elementId: string) {
@@ -1696,19 +1838,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      // Push plain snapshot into handler for stable rendering
-      const proxy = store.play[tag]?.[elementId];
-      if (!proxy) return;
-      const plain = clonePlain(proxy);
-      // Mark as remote-apply so onChange can permit programmatic updates for RO elements
-      const applyKey = `${tag}:${elementId}`;
-      remoteApplyingKeys.add(applyKey);
-      try {
-        // @ts-ignore private usage intended
-        handler.__data = plain;
-      } finally {
-        remoteApplyingKeys.delete(applyKey);
-      }
+      if (!applySharedElementDataToHandler(tag, elementId, handler)) return;
       // Mark that this shared reference has received data
       sharedUpdateSeen.add(key);
       // Debug: log updates for shared elements

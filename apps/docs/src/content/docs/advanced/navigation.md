@@ -14,9 +14,32 @@ playhtml automatically listens for:
 - The browser's `navigation` API (`navigation.addEventListener("navigate")`) — fires on pushState, replaceState, and back/forward in Chromium 102+.
 - `popstate` events — fires on back/forward in all browsers.
 
-Whenever navigation is detected, playhtml rebuilds the Yjs room (if the room depends on URL), rescans the DOM for interactive elements, and refreshes cursors.
+Whenever navigation is detected, playhtml recomputes the room. If it changed, playhtml reconnects to the new room, rescans the DOM for interactive elements, and refreshes cursors. **On a room change the document's data resets to the new room** (see [Room-scoped data](#room-scoped-data-on-navigation) below).
 
 This covers most cases automatically. The sections below describe framework-specific integrations for cases auto-detection can't cover.
+
+## Picking the room
+
+The default room is derived from the URL pathname, so it recomputes automatically on navigation. To control it yourself, pass `room` to `init`:
+
+```ts
+// Static string — fixed across navigation until init() receives another room.
+playhtml.init({ room: "my-app" });
+
+// Function — re-invoked on every navigation, so a URL-derived room follows the
+// route the same way the default room does. Use this for custom per-page rooms.
+playhtml.init({ room: () => `notes${window.location.pathname}` });
+```
+
+A static string stays fixed across navigation until you call `init()` again with another room (good for a single shared room). A function is called at init and again on each navigation, so the room can follow the URL.
+
+## Room-scoped data on navigation
+
+Data in playhtml — both element data (`can-move`, `can-toggle`, …) and page data (`createPageData`) — is scoped to the room. When navigation **changes the room**, the document re-initializes so the new room starts from a clean state: the old room's data does not carry over, and your code re-creates / re-registers it for the new room exactly as on a fresh page load.
+
+When navigation does **not** change the room — a hash change, a static explicit room, or a path that maps to the same room — nothing resets and data persists across the route change.
+
+This reset discards the in-memory document and rebuilds it; it never deletes from the previous room, so a previous room's persisted data is never modified by navigating away and back.
 
 ## React Router / Next.js / any React router
 
@@ -120,12 +143,6 @@ The default auto-detection handles this because Astro fires `popstate`. You only
 
 - `playhtml:navigated` — fires on `document` after each successful navigation handling, with `event.detail.room` set to the current room ID.
 
-## Known limitations
+## Handles held across navigation
 
-**Cross-room state bleed on room-switching navigation.** The underlying Yjs doc is a module-level singleton that's reused across navigations. When the room changes (e.g., `room: "pathname"` with pathname-based navigation), the new room's state is merged into the existing doc rather than starting fresh. For most use cases this is unobservable — but if the same element `id` exists in both rooms with different data, CRDT merge semantics apply (later-write-wins per key).
-
-In practice this does not affect:
-
-- `room: "domain"` (single room across all URLs).
-- Pages with distinct element IDs per route.
-- Default-derived rooms where each URL's DOM has its own element IDs.
+A `createPageData` handle you keep across a room-changing navigation stays usable: it reads the new room's data (its default until re-seeded), its `setData` still writes, and its `onUpdate` keeps firing. You don't have to re-create channels on navigation, though doing so is also fine — a re-created channel and a surviving handle for the same name share one live channel in the new room.
