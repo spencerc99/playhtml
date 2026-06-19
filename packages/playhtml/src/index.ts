@@ -572,6 +572,40 @@ let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
 
+function hasInitOption<K extends keyof InitOptions>(
+  options: InitOptions,
+  key: K,
+): options is InitOptions & Required<Pick<InitOptions, K>> {
+  return Object.prototype.hasOwnProperty.call(options, key);
+}
+
+function applyActiveInitOptions(options: InitOptions): boolean {
+  let shouldHandleNavigation = false;
+
+  if (hasInitOption(options, "room")) {
+    explicitRoomOption = options.room;
+    shouldHandleNavigation = true;
+  }
+
+  if (hasInitOption(options, "defaultRoomOptions")) {
+    cachedDefaultRoomOptions = options.defaultRoomOptions ?? {
+      includeSearch: false,
+    };
+    shouldHandleNavigation = true;
+  }
+
+  if (hasInitOption(options, "cursors")) {
+    cursorOptionsCache = options.cursors ?? {};
+    shouldHandleNavigation = true;
+  }
+
+  if (hasInitOption(options, "onError")) {
+    cachedOnError = options.onError;
+  }
+
+  return shouldHandleNavigation;
+}
+
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
  * assigns module-level `yprovider`, attaches onError, attaches
@@ -809,7 +843,16 @@ async function runHandleNavigation(): Promise<void> {
 }
 
 function initPlayHTML(options: InitOptions = {}) {
-  if (initStarted) return readyPromise;
+  if (initStarted) {
+    const shouldHandleNavigation = applyActiveInitOptions(options);
+    if (!shouldHandleNavigation) {
+      return readyPromise;
+    }
+
+    return readyPromise.then(async () => {
+      await navigationController?.trigger();
+    });
+  }
 
   const existingPlayhtml = (window as any).playhtml;
   if (existingPlayhtml) {

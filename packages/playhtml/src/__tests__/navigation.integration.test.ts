@@ -136,6 +136,50 @@ describe("playhtml.handleNavigation", () => {
     expect(before).not.toEqual(after);
   });
 
+  it("uses a new explicit room from a later init call", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/",
+      } as any);
+      const before = playhtml.roomId;
+
+      history.replaceState(null, "", "/about");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/about",
+      } as any);
+
+      expect(playhtml.roomId).toContain("%2Fabout");
+      expect(playhtml.roomId).not.toEqual(before);
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("keeps the active explicit room when a later init has no room option", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/about");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/about",
+      } as any);
+      const before = playhtml.roomId;
+
+      history.replaceState(null, "", "/support");
+      await playhtml.init({} as any);
+      await playhtml.handleNavigation();
+
+      expect(playhtml.roomId).toEqual(before);
+      expect(playhtml.roomId).toContain("%2Fabout");
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
   it("strips filename extension from pathname when deriving default room", async () => {
     const { before, after } = await roomsAcrossNav(
       "/page.html",
