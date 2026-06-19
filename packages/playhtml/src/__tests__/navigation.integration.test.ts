@@ -262,6 +262,60 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
+  it("a surviving handle reads its default after a room change (acts like a fresh page)", async () => {
+    // After a room change every channel must behave as if freshly opened in the
+    // new room: getData returns the handle's DEFAULT, not the old room's data
+    // and not a bare empty object.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/fresh-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const channel = playhtml.createPageData("doc", { title: "untitled", n: 0 });
+      channel.setData({ title: "hello", n: 3 });
+      await new Promise((r) => queueMicrotask(r));
+      expect(channel.getData()).toEqual({ title: "hello", n: 3 });
+
+      history.replaceState(null, "", "/fresh-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(channel.getData()).toEqual({ title: "untitled", n: 0 });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("delivers a remote update to a listen-only surviving handle after a room change", async () => {
+    // A handle that only listens (never writes) after the room change must
+    // still receive updates — its observer must be live, not waiting for a
+    // local setData to revive it. We simulate a 'remote' update by writing
+    // through a SECOND handle on the same channel.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/remote-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const listener = playhtml.createPageData("feed", { items: [] as string[] });
+      const seen: any[] = [];
+      listener.onUpdate((d) => seen.push(d));
+
+      history.replaceState(null, "", "/remote-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Another handle writes (stands in for a remote peer). The listen-only
+      // handle must be notified without having written anything itself.
+      const writer = playhtml.createPageData("feed", { items: [] as string[] });
+      writer.setData({ items: ["hi"] });
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(seen).toContainEqual({ items: ["hi"] });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
   it("a stale handle's destroy after a room change does not break a reopened channel", async () => {
     // After nav, code often re-creates its channel. Destroying the OLD handle
     // (e.g. in a cleanup) must not tear down the freshly reopened same-name

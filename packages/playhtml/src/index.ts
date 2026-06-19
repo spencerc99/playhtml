@@ -1896,6 +1896,15 @@ function clearPageData(): void {
   const pageStore = store.play[PAGE_TAG];
   if (!pageStore) return;
 
+  // Detach observers and drop the proxy/value for every page-data channel: the
+  // data is room-scoped and must not survive into the new room. We deliberately
+  // KEEP pageDataListeners and pageDataRefCounts. A handle held across the room
+  // change is still a handle on the same channel name — when the new page
+  // re-opens that channel (or the surviving handle next writes), createPageData
+  // / setData re-seed the value and re-attach the observer, wired to the SAME
+  // preserved listener set. So surviving handles and freshly opened ones share
+  // one live channel in the new room, exactly as two createPageData(name) calls
+  // do normally. getData returns the default until the channel is re-seeded.
   for (const name of Object.keys(pageStore)) {
     const observer = yObserverByKey.get(`${PAGE_TAG}:${name}`);
     const yVal = getYjsValue(pageStore[name]);
@@ -1919,15 +1928,6 @@ function clearPageData(): void {
   } catch (error) {
     console.warn("[PLAYHTML] Failed to clear page data on room change:", error);
   }
-
-  // Refcounts and listener sets are reset so a re-opened channel re-installs
-  // its observer (refCount 1) with a FRESH listener set. A stale handle from
-  // before the room change holds the OLD set; its destroy() only tears down the
-  // shared state if the map still points at that old set (identity check), so
-  // it can't clobber the reopened channel. Surviving handles re-acquire their
-  // proxy lazily on setData.
-  pageDataRefCounts.clear();
-  pageDataListeners.clear();
 }
 
 function deleteElementData(tag: string, elementId: string): void {

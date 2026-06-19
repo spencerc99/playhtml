@@ -73,13 +73,14 @@ export function createPageDataChannel<T>(
     yObserverByKey.set(observerKey, observer);
   }
 
-  // Attach observer if this is the first handle for this channel
   const refCount = (channelRefCounts.get(name) ?? 0) + 1;
   channelRefCounts.set(name, refCount);
 
-  if (refCount === 1) {
-    attachObserver();
-  }
+  // Ensure an observer is attached for this channel. attachObserver is
+  // idempotent, so this is safe whether this is the first handle or a handle
+  // re-opening a channel whose observer was detached by a room-change reset
+  // (where refCount may already be > 1 from a sibling handle that survived).
+  attachObserver();
 
   let destroyed = false;
 
@@ -93,13 +94,12 @@ export function createPageDataChannel<T>(
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
       // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
       // out from under this still-alive handle). ensureProxy re-seeds the
-      // default; we also re-register the channel's listener set and re-attach
-      // the deep observer so this handle keeps both writing AND notifying.
+      // default into a fresh value and attachObserver re-attaches the deep
+      // observer, wired to this channel's preserved listener set — so the
+      // handle keeps both writing AND notifying after the reset.
       let currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
       if (!currentProxy) {
         currentProxy = ensureProxy<T>(PAGE_TAG, name, defaultValue) as T;
-        if (!channelListeners.has(name)) channelListeners.set(name, listeners);
-        if (!channelRefCounts.has(name)) channelRefCounts.set(name, 1);
         attachObserver();
       }
       if (typeof data === "function") {
@@ -130,13 +130,6 @@ export function createPageDataChannel<T>(
         listeners.delete(cb);
       }
       handleListeners.clear();
-
-      // If a room change reset this channel, the map now holds a DIFFERENT
-      // listener set (belonging to a channel reopened in the new room). This
-      // stale handle must not tear down that reopened channel's shared state.
-      if (channelListeners.get(name) !== listeners) {
-        return;
-      }
 
       const remaining = (channelRefCounts.get(name) ?? 1) - 1;
       channelRefCounts.set(name, remaining);
