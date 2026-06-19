@@ -236,6 +236,32 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
+  it("keeps notifying a surviving handle's onUpdate after a room change", async () => {
+    // A handle that registered onUpdate and survives a room change must keep
+    // receiving updates: when its proxy is re-acquired on the next setData, the
+    // deep observer has to be re-attached, or notifications go silently dead.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/notify-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const channel = playhtml.createPageData("live", { n: 0 });
+      const updates: any[] = [];
+      channel.onUpdate((d) => updates.push(d));
+
+      history.replaceState(null, "", "/notify-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Writing through the surviving handle must still notify its listener.
+      channel.setData({ n: 7 });
+      await new Promise((r) => queueMicrotask(r));
+      expect(updates).toContainEqual({ n: 7 });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
   it("a stale handle's destroy after a room change does not break a reopened channel", async () => {
     // After nav, code often re-creates its channel. Destroying the OLD handle
     // (e.g. in a cleanup) must not tear down the freshly reopened same-name
