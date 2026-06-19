@@ -19,7 +19,7 @@ playhtml.init({
 
 ## `room`
 
-**Type:** `string` &nbsp; **Default:** `window.location.pathname + window.location.search`
+**Type:** `string | (() => string)` &nbsp; **Default:** `window.location.pathname + window.location.search`
 
 The room to connect users to — users sharing a room share state. Every room is automatically prefixed with `window.location.hostname` so your rooms can never collide with another site's rooms.
 
@@ -30,6 +30,14 @@ Override it when you want to decouple state from the URL — for example, a site
 ```js
 playhtml.init({ room: "global-guestbook" });
 ```
+
+A **string** stays fixed for the page's lifetime — it never changes on [client-side navigation](/docs/advanced/navigation/). Pass a **function** to compute the room on each navigation, so a custom URL-derived room follows the route the way the default does:
+
+```js
+playhtml.init({ room: () => `notes${window.location.pathname}` });
+```
+
+When navigation changes the room, the document resets to the new room (page and element data alike) — see [Navigation & SPAs](/docs/advanced/navigation/).
 
 ## `host`
 
