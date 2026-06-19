@@ -1,0 +1,54 @@
+name: Publish snapshot (next)
+
+# Manually publish a prerelease of the packages to the npm `next` dist-tag,
+# from any branch — so a PR's changes can be tested in real projects via
+# `npm install playhtml@next` before it merges to `latest`.
+#
+# Versions are snapshot-stamped (e.g. 2.11.0-next-<sha>) and NOT committed or
+# git-tagged; this only publishes to npm. Runs `bun run release:snapshot`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/ref to publish from (defaults to the branch this is run on)"
+        required: false
+        default: ""
+
+concurrency: release-snapshot-${{ github.event.inputs.ref || github.ref }}
+
+jobs:
+  snapshot:
+    name: Publish snapshot to npm `next`
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # for npm provenance / OIDC trusted publishing
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Publish snapshot to npm `next`
+        run: bun run release:snapshot
+        env:
+          # Auth: if your packages use npm OIDC trusted publishing, register
+          # THIS workflow file as a trusted publisher and provenance will
+          # authenticate automatically. Otherwise add an NPM_TOKEN repo secret.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
