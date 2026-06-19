@@ -126,7 +126,10 @@ export default defineConfig({
         },
         {
           label: "Capabilities",
-          items: [{ label: "All capabilities", slug: "capabilities" }],
+          items: [
+            { label: "All capabilities", slug: "capabilities" },
+            { label: "Custom elements", slug: "custom-elements" },
+          ],
         },
         { label: "Data", autogenerate: { directory: "data" } },
         { label: "Advanced", autogenerate: { directory: "advanced" } },

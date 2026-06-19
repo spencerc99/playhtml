@@ -415,7 +415,7 @@ Click "+" to append a new `<li>`. The child addition itself mirrors — new read
 
 ## can-play
 
-**What it does.** The "build your own capability" escape hatch. You define `defaultData`, `onClick` / `onDrag` / `onMount` handlers, and an `updateElement` callback — playhtml syncs the data and fires your handlers.
+**What it does.** The "build your own capability" escape hatch. You define `defaultData` and either an imperative `updateElement` callback (shown below) or a declarative `view` that renders from state — playhtml syncs the data and re-renders. For anything beyond a one-liner, prefer the declarative path: see [**Custom elements**](/docs/custom-elements/) for `register` / `define` / `view` (vanilla) and `withSharedState` (React) side by side.
 
 **Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
 
@@ -459,7 +459,7 @@ export const CheerButton = withSharedState(
   </TabItem>
 </Tabs>
 
-Deeper material on custom capabilities lives in [Data essentials](/docs/data/data-essentials/) and [Dynamic elements](/docs/advanced/dynamic-elements/).
+Deeper material on custom capabilities lives in [**Custom elements**](/docs/custom-elements/) (the declarative `view` / `withSharedState` path), [Data essentials](/docs/data/data-essentials/), and [Dynamic elements](/docs/advanced/dynamic-elements/).
 
 ---
 

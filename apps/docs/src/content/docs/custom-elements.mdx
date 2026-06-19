@@ -1,0 +1,435 @@
+---
+title: "Custom elements"
+description: "Build your own collaborative element with your own data and rendering — playhtml.register / define + view in vanilla, withSharedState in React. Same concept, side by side."
+sidebar:
+  order: 5
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** data model and rendering — a counter, a poll, a guestbook, a chat — you build a custom element: define the shape of its shared state and a function that renders it, and playhtml handles sync, persistence, and re-rendering.
+
+This is one concept with two idioms:
+
+- **Vanilla** — `playhtml.register(id, { defaultData, view })`. `view` is a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template; playhtml re-renders it when state changes.
+- **React** — `withSharedState({ defaultData }, render)`. `render` is a normal function component; React re-renders it when state changes.
+
+Use the framework toggle in any code block below to flip the whole page between them.
+
+## Vanilla ↔ React, at a glance
+
+The data, presence, and render core is identical. The few vanilla-specific primitives map onto native React idioms:
+
+| Goal | Vanilla | React |
+| --- | --- | --- |
+| Define an element | `playhtml.register(id, { defaultData, view })` | `withSharedState({ defaultData }, render)` |
+| Render function | `view: (ctx) => html\`…\`` | `(playProps, props) => <jsx/>` |
+| Read / write shared state | `data` / `setData` | `data` / `setData` — _identical_ |
+| Presence | `awareness` / `setMyAwareness` | `awareness` / `setMyAwareness` — _identical_ |
+| Per-user UI state | `localData` / `setLocalData` | `useState` |
+| The DOM node | `ctx.element` | `ctx.ref` |
+| Lists | `repeat(items, keyFn, tpl)` | `items.map(… key=…)` |
+| Conditional class/style | `classMap` / `styleMap` | `className` / `style={{}}` |
+| Reuse on many elements | `playhtml.define(name, init)` | export the component |
+| Side effects / timers | `onMount(ctx){ … return cleanup }` | `useEffect(() => { … return cleanup }, [])` |
+| Repaint from the clock | `requestUpdate()` | a `useState` tick |
+| Drive from outside | the handle from `register` | lift state / context |
+
+`setData` works the same in both: pass a replacement value, or a **mutator** that edits a draft in place (`setData(d => { d.count++ })`). The mutator form is merge-friendly across clients — see [Data essentials](/docs/data/data-essentials/).
+
+## A click counter
+
+The element is an empty mount point; everything you see is rendered from `count`.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<div id="counter" can-play></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+
+  playhtml.register("counter", {
+    defaultData: { count: 0 },
+    view: ({ data, setData }) => html`
+      <button @click=${() => setData((d) => { d.count += 1; })}>
+        ${data.count}
+      </button>
+    `,
+  });
+
+  playhtml.init();
+</script>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { withSharedState } from "@playhtml/react";
+
+export const Counter = withSharedState(
+  { defaultData: { count: 0 } },
+  ({ data, setData }) => (
+    <button onClick={() => setData((d) => { d.count += 1; })}>
+      {data.count}
+    </button>
+  ),
+);
+```
+  </TabItem>
+</Tabs>
+
+`register` returns a **handle** (see [driving from outside](#driving-it-from-outside)); the React form returns a component you render anywhere inside a `<PlayProvider>`.
+
+## State to style
+
+Both forms re-render whenever `data` changes — locally or from another tab.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<div id="lamp" can-play></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+
+  playhtml.register("lamp", {
+    defaultData: { on: false },
+    view: ({ data, setData }) => html`
+      <img
+        class=${data.on ? "lamp on" : "lamp"}
+        src="/lamp.png"
+        @click=${() => setData((d) => { d.on = !d.on; })}
+      />
+    `,
+  });
+</script>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+export const Lamp = withSharedState(
+  { defaultData: { on: false } },
+  ({ data, setData }) => (
+    <img
+      className={data.on ? "lamp on" : "lamp"}
+      src="/lamp.png"
+      onClick={() => setData((d) => { d.on = !d.on; })}
+    />
+  ),
+);
+```
+  </TabItem>
+</Tabs>
+
+## Local UI state
+
+Not everything should sync. A panel's open/closed state, a text draft, a hover — that's per-user. Vanilla puts it in `localData` (a separate, un-synced store); React uses `useState`, exactly as in any component.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+playhtml.register("panel", {
+  defaultData: {},
+  defaultLocalData: { open: false },
+  view: ({ localData, setLocalData }) => html`
+    <button @click=${() => setLocalData((d) => { d.open = !d.open; })}>
+      ${localData.open ? "hide" : "show"}
+    </button>
+    ${localData.open ? html`<div class="body">…</div>` : null}
+  `,
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { useState } from "react";
+
+export const Panel = withSharedState({ defaultData: {} }, () => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen((o) => !o)}>{open ? "hide" : "show"}</button>
+      {open && <div className="body">…</div>}
+    </>
+  );
+});
+```
+  </TabItem>
+</Tabs>
+
+## Presence (who's here)
+
+`awareness` is the array of every connected user's ephemeral value; `setMyAwareness` broadcasts yours. Identical in both — and the view re-renders when people join, leave, or change theirs.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+playhtml.register("online", {
+  defaultData: {},
+  myDefaultAwareness: "#2563eb",
+  view: ({ awareness, setMyAwareness }) => html`
+    <div class="row">
+      ${repeat(awareness, (_c, i) => i, (color) =>
+        html`<span class="dot" style=${`background:${color}`}></span>`)}
+      <input type="color" @input=${(e) => setMyAwareness(e.target.value)} />
+    </div>
+  `,
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+export const Online = withSharedState(
+  { defaultData: {}, myDefaultAwareness: "#2563eb" },
+  ({ awareness, setMyAwareness }) => (
+    <div className="row">
+      {awareness.map((color, i) => (
+        <span key={i} className="dot" style={{ background: color }} />
+      ))}
+      <input type="color" onInput={(e) => setMyAwareness(e.currentTarget.value)} />
+    </div>
+  ),
+);
+```
+  </TabItem>
+</Tabs>
+
+## Lists
+
+`repeat(items, keyFn, template)` is lit-html's keyed list; React uses `.map` with `key`. **Key by a stable unique id** (`crypto.randomUUID()`), never an array index or timestamp — two users acting in the same millisecond is routine here.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+const guestbook = playhtml.register("guestbook", {
+  defaultData: { entries: [] },
+  view: ({ data }) => html`
+    <ul>
+      ${repeat(data.entries, (e) => e.id, (e) => html`<li>${e.text}</li>`)}
+    </ul>
+  `,
+});
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = new FormData(e.target).get("text");
+  guestbook.setData((d) => {
+    d.entries.unshift({ id: crypto.randomUUID(), text });
+  });
+  e.target.reset();
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+export const Guestbook = withSharedState(
+  { defaultData: { entries: [] } },
+  ({ data, setData }) => {
+    const [text, setText] = useState("");
+    const submit = (e) => {
+      e.preventDefault();
+      setData((d) => { d.entries.unshift({ id: crypto.randomUUID(), text }); });
+      setText("");
+    };
+    return (
+      <>
+        <ul>{data.entries.map((e) => <li key={e.id}>{e.text}</li>)}</ul>
+        <form onSubmit={submit}>
+          <input value={text} onChange={(e) => setText(e.target.value)} />
+        </form>
+      </>
+    );
+  },
+);
+```
+  </TabItem>
+</Tabs>
+
+## Reusing the same element many times
+
+Vanilla `define(name, init)` registers a capability under an attribute, so every `[name]` element gets it (including ones added later). In React you just render the component as many times as you like.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<div id="note-1" can-note data-color="yellow"></div>
+<div id="note-2" can-note data-color="pink"></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+  playhtml.define("can-note", {
+    defaultData: (el) => ({ text: "", color: el.dataset.color }),
+    view: ({ data, setData }) => html`
+      <textarea
+        class="note note--${data.color}"
+        .value=${data.text}
+        @input=${(e) => setData((d) => { d.text = e.target.value; })}
+      ></textarea>
+    `,
+  });
+  playhtml.init();
+</script>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+const Note = withSharedState(
+  ({ color }) => ({ defaultData: { text: "", color } }),
+  ({ data, setData }) => (
+    <textarea
+      className={`note note--${data.color}`}
+      value={data.text}
+      onChange={(e) => setData((d) => { d.text = e.target.value; })}
+    />
+  ),
+);
+
+// render as many as you want — give each a stable id
+<Note id="note-1" color="yellow" />
+<Note id="note-2" color="pink" />
+```
+  </TabItem>
+</Tabs>
+
+Each instance needs a stable, unique `id` — per-element data is keyed by it.
+
+## Clock-driven views
+
+A view re-renders when state changes — but a running timer's display changes every frame while its data doesn't. Vanilla calls `requestUpdate()` from a loop in `onMount`; React drives the same loop with a `useState` tick. **Return the cleanup** so the loop stops when the element goes away.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+playhtml.register("timer", {
+  defaultData: { startAt: 0, running: false },
+  view: ({ data }) => {
+    const elapsed = data.running ? Date.now() - data.startAt : 0;
+    return html`<span>${(elapsed / 1000).toFixed(1)}s</span>`;
+  },
+  onMount: ({ getData, requestUpdate }) => {
+    let raf;
+    const tick = () => {
+      if (getData().running) requestUpdate();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  },
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+export const Timer = withSharedState(
+  { defaultData: { startAt: 0, running: false } },
+  ({ data }) => {
+    const [, tick] = useState(0);
+    useEffect(() => {
+      let raf;
+      const loop = () => {
+        if (data.running) tick((n) => n + 1); // force a re-render
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+      return () => cancelAnimationFrame(raf);
+    }, [data.running]);
+    const elapsed = data.running ? Date.now() - data.startAt : 0;
+    return <span>{(elapsed / 1000).toFixed(1)}s</span>;
+  },
+);
+```
+  </TabItem>
+</Tabs>
+
+## Composition: elements that render other elements
+
+A view can render mount points for **other** custom elements, and playhtml binds them as they appear (and tears them down when a keyed list removes them, preserving their shared data). The React equivalent is just nesting components. A chat app is the classic case: a parent renders one room per name, and each room is its own independently-synced element.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+playhtml.define("can-chat", {
+  defaultData: { messages: [] },
+  view: ({ data, setData, element }) => html`
+    <strong>${element.dataset.name}</strong>
+    ${repeat(data.messages, (m) => m.id, (m) => html`<div>${m.text}</div>`)}
+  `,
+});
+
+playhtml.register("chats", {
+  defaultData: { rooms: ["general"] },
+  view: ({ data }) => html`
+    ${repeat(data.rooms, (n) => n, (n) =>
+      html`<div id="chat-${n}" can-chat data-name=${n}></div>`)}
+  `,
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+const Chat = withSharedState(
+  ({ name }) => ({ defaultData: { messages: [] } }),
+  ({ data }, { name }) => (
+    <>
+      <strong>{name}</strong>
+      {data.messages.map((m) => <div key={m.id}>{m.text}</div>)}
+    </>
+  ),
+);
+
+const Chats = withSharedState(
+  { defaultData: { rooms: ["general"] } },
+  ({ data }) => data.rooms.map((n) => <Chat key={n} id={`chat-${n}`} name={n} />),
+);
+```
+  </TabItem>
+</Tabs>
+
+**Rules for vanilla capability children:** render them keyed and empty (let the child own its contents), and give each a stable id. Adding one binds it; removing it from a keyed list tears its handler down while preserving its shared data, so re-adding the same id rehydrates it.
+
+## Driving it from outside
+
+Sometimes the thing that writes state lives outside the render — a form elsewhere on the page, a global button. Vanilla returns a **handle** from `register`; React lifts state up or shares it via context, the usual way.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+const counter = playhtml.register("counter", { defaultData: { n: 0 }, view });
+
+document.getElementById("reset").addEventListener("click", () => {
+  counter.setData({ n: 0 });
+});
+
+// The handle: getElement, getData, setData, setLocalData,
+// setMyAwareness, requestUpdate, unregister.
+// playhtml.getHandle(id, capability?) reaches any bound element.
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+// State already lives in the component tree — share it the React way
+// (lift to a parent, or a context) and call setData from there.
+function ResetButton({ onReset }) {
+  return <button onClick={onReset}>reset</button>;
+}
+```
+  </TabItem>
+</Tabs>
+
+## Rules that apply to both
+
+- **Renders must be pure.** Don't call `setData` / `setLocalData` / `setMyAwareness` while rendering — it's an infinite re-render loop (and, on shared data, a way to bloat the room). Vanilla rejects such writes with a console error; React surfaces the usual "cannot update during render" warning. Drive writes from event handlers or effects.
+- **Key lists by a stable id**, never index or timestamp.
+- **Changing the shape of already-live data** (array → map, renamed field) needs a migration or a new field name — see [Data essentials](/docs/data/data-essentials/).
+
+## Security: rendering untrusted data
+
+Shared data and awareness come from other users, so treat any value you render as attacker-controllable. playhtml never uses `innerHTML` for your data — interpolated **text and attribute values are auto-escaped** in both lit-html and React (and `unsafeHTML` is deliberately not exported from `playhtml`). Two sharp edges remain, because they're about the *content* of a binding, not escaping:
+
+- **`style` from a user-controlled string** is CSS injection (background-image trackers, overlays). Prefer `styleMap({ … })` / a React style object, and validate values you didn't compute yourself.
+- **`href` / `src` from user data** is not URL-sanitized — a `javascript:` URL executes on click. Validate the scheme (allow only `http(s)` / relative) for any data-derived URL.
+
+## Reference
+
+- Vanilla: [`register` / `define` / `view` API](/docs/reference/view-api/)
+- React: [`@playhtml/react` API](/docs/reference/react-api/)
