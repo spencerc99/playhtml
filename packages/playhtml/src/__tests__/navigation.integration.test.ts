@@ -411,4 +411,165 @@ describe("playhtml.handleNavigation", () => {
     } as any);
     await expect(resetPlayHTML()).resolves.toBeUndefined();
   });
+
+  // ============================================================
+  // "Acts like a fresh page": after a room change, page data must behave
+  // exactly as if the new page had loaded and run its own init. These assert
+  // the holistic property, not just individual surviving-handle behaviors.
+  // ============================================================
+
+  it("a channel opened AFTER navigation behaves like a fresh page-load init", async () => {
+    // The real model: the new page's code calls createPageData itself. A
+    // channel opened after the room change must be fully live — reads default,
+    // writes, and notifies — identical to opening it on a first page load, with
+    // no residue from the previous room.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/after-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const before = playhtml.createPageData("doc", { text: "" });
+      before.setData({ text: "from-a" });
+      await new Promise((r) => queueMicrotask(r));
+
+      history.replaceState(null, "", "/after-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Brand-new handle opened on the "new page" — not the surviving one.
+      const fresh = playhtml.createPageData("doc", { text: "default" });
+      const updates: any[] = [];
+      fresh.onUpdate((d) => updates.push(d));
+
+      // Reads the default (no /after-a residue), writes apply, listener fires.
+      expect(fresh.getData()).toEqual({ text: "default" });
+      fresh.setData({ text: "from-b" });
+      await new Promise((r) => queueMicrotask(r));
+      expect(fresh.getData()).toEqual({ text: "from-b" });
+      expect(updates).toContainEqual({ text: "from-b" });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("does not leak page-data back to the original room on a round trip (A→B→A)", async () => {
+    // Core isolation guarantee: writing in room B must not bleed into room A.
+    // Returning to A shows A's original data, and B's value is gone from A.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/trip-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const ch = playhtml.createPageData("note", { v: "" });
+      ch.setData({ v: "alpha" });
+      await new Promise((r) => queueMicrotask(r));
+
+      history.replaceState(null, "", "/trip-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+      // In B, the channel starts from default; write a B-only value.
+      expect(playhtml.createPageData("note", { v: "" }).getData()).toEqual({ v: "" });
+      playhtml.createPageData("note", { v: "" }).setData({ v: "beta" });
+      await new Promise((r) => queueMicrotask(r));
+
+      history.replaceState(null, "", "/trip-a");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+      // Back in A: B's "beta" must not be here. (A's persisted "alpha" lives on
+      // the server; locally after reset the channel reads its default — the key
+      // assertion is that "beta" did NOT leak across.)
+      expect(playhtml.createPageData("note", { v: "" }).getData()).not.toEqual({
+        v: "beta",
+      });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("resets multiple page-data channels together on a room change", async () => {
+    // A real page has several channels; all of them must reset on nav, not just
+    // the first one iterated.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/multi-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const a = playhtml.createPageData("a", { v: 0 });
+      const b = playhtml.createPageData("b", { v: 0 });
+      const c = playhtml.createPageData("c", { v: 0 });
+      a.setData({ v: 1 });
+      b.setData({ v: 2 });
+      c.setData({ v: 3 });
+      await new Promise((r) => queueMicrotask(r));
+
+      history.replaceState(null, "", "/multi-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Every channel is back to its default in the new room.
+      expect(a.getData()).toEqual({ v: 0 });
+      expect(b.getData()).toEqual({ v: 0 });
+      expect(c.getData()).toEqual({ v: 0 });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("resets page data while leaving element data intact across navigation", async () => {
+    // Page-data reset must not disturb element capability data: an element that
+    // survives the navigation keeps its handler, and page data still resets.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/coexist-a");
+      document.body.innerHTML = `<div id="el" can-move style="width:10px;height:10px;">x</div>`;
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const page = playhtml.createPageData("p", { v: 0 });
+      page.setData({ v: 9 });
+      await new Promise((r) => queueMicrotask(r));
+      expect(playhtml.elementHandlers.get("can-move")?.has("el")).toBe(true);
+
+      history.replaceState(null, "", "/coexist-b");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Page data reset…
+      expect(page.getData()).toEqual({ v: 0 });
+      // …and the still-connected element keeps its handler.
+      expect(playhtml.elementHandlers.get("can-move")?.has("el")).toBe(true);
+    } finally {
+      document.body.innerHTML = "";
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("does not accumulate duplicate update notifications across repeated navigation", async () => {
+    // Navigating A→B→A→B must not leave behind extra observers/listeners that
+    // make a single write notify multiple times (the page-data analog of the
+    // elementHandlers dedup guard).
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/dup-a");
+      await playhtml.init({ host: "http://localhost:1999" } as any);
+
+      const ch = playhtml.createPageData("k", { n: 0 });
+      const updates: any[] = [];
+      ch.onUpdate((d) => updates.push(d));
+
+      for (const path of ["/dup-b", "/dup-a", "/dup-b"]) {
+        history.replaceState(null, "", path);
+        await playhtml.handleNavigation();
+        await new Promise((r) => queueMicrotask(r));
+      }
+
+      updates.length = 0; // ignore any reset-time notifications
+      ch.setData({ n: 5 });
+      await new Promise((r) => queueMicrotask(r));
+
+      // Exactly one notification for the one write — no duplicates.
+      expect(updates.filter((u) => u.n === 5)).toHaveLength(1);
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
 });
