@@ -15,7 +15,8 @@ vi.mock("../DownloadGate.module.scss", () => ({
     mobileOnly: "mobileOnly",
     downloadGroup: "downloadGroup",
     downloadGroupLarge: "downloadGroupLarge",
-    downloadButton: "downloadButton",
+    downloadLabel: "downloadLabel",
+    downloadLink: "downloadLink",
     form: "form",
     row: "row",
     input: "input",
@@ -25,10 +26,16 @@ vi.mock("../DownloadGate.module.scss", () => ({
 }));
 
 describe("DownloadGate", () => {
-  it("renders an Edge install link with the desktop browser downloads", () => {
+  it("renders compact desktop browser download links", () => {
     const html = renderToStaticMarkup(<DownloadGate />);
 
-    expect(html).toContain('install for Edge');
+    expect(html).toContain('install:');
+    expect(html).toContain('>Chrome</a>');
+    expect(html).toContain('>Firefox</a>');
+    expect(html).toContain('>Edge</a>');
+    expect(html).not.toContain('install for Chrome');
+    expect(html).not.toContain('install for Firefox');
+    expect(html).not.toContain('install for Edge');
     expect(html).toContain(`href="${EDGE_DOWNLOAD_URL}"`);
   });
 });

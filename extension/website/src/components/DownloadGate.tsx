@@ -55,16 +55,23 @@ function DownloadButtons({ size = 'default' }: { size?: 'default' | 'large' }) {
       : styles.downloadGroup;
   return (
     <div className={className}>
-      {DOWNLOAD_LINKS.map(({ browser, url }) => (
-        <a
-          key={browser}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.downloadButton}
-        >
-          install for {browser}
-        </a>
+      <span className={styles.downloadLabel}>install:</span>
+      {DOWNLOAD_LINKS.map(({ browser, url }, index) => (
+        <span key={browser} className={styles.downloadItem}>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.downloadLink}
+          >
+            {browser}
+          </a>
+          {index < DOWNLOAD_LINKS.length - 1 ? (
+            <span className={styles.downloadSeparator} aria-hidden="true">
+              ·
+            </span>
+          ) : null}
+        </span>
       ))}
     </div>
   );
