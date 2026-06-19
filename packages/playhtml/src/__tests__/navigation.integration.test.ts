@@ -180,6 +180,41 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
+  it("enables cursors via a later init on an unchanged URL", async () => {
+    // A re-init that turns cursors ON must actually build them, even when the
+    // room hasn't changed — the cursor rebuild was gated on a cursor-ROOM
+    // change, so an enable transition on the same URL was silently dropped.
+    await playhtml.init({
+      host: "http://localhost:1999",
+      room: "/cursors-toggle",
+      cursors: { enabled: false },
+    } as any);
+    expect(playhtml.cursorClient).toBeNull();
+
+    await playhtml.init({
+      host: "http://localhost:1999",
+      cursors: { enabled: true },
+    } as any);
+
+    expect(playhtml.cursorClient).not.toBeNull();
+  });
+
+  it("disables cursors via a later init on an unchanged URL", async () => {
+    await playhtml.init({
+      host: "http://localhost:1999",
+      room: "/cursors-toggle-off",
+      cursors: { enabled: true },
+    } as any);
+    expect(playhtml.cursorClient).not.toBeNull();
+
+    await playhtml.init({
+      host: "http://localhost:1999",
+      cursors: { enabled: false },
+    } as any);
+
+    expect(playhtml.cursorClient).toBeNull();
+  });
+
   it("strips filename extension from pathname when deriving default room", async () => {
     const { before, after } = await roomsAcrossNav(
       "/page.html",

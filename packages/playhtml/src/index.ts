@@ -797,6 +797,12 @@ async function runHandleNavigation(): Promise<void> {
   const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
+  const cursorsWanted = Boolean(cursorOptionsCache?.enabled);
+  const cursorsActive = cursorClient !== null;
+  // An enable/disable transition must (re)build or tear down cursors regardless
+  // of room change — a later init({ cursors }) can flip this on an unchanged URL.
+  const cursorEnabledChanged = cursorsWanted !== cursorsActive;
+
   let cursorRoomChanged = false;
   if (cursorOptionsCache?.enabled) {
     if (cursorOptionsCache.room) {
@@ -843,21 +849,25 @@ async function runHandleNavigation(): Promise<void> {
     __currentRoomId = newMainRoom;
   }
 
-  if (cursorRoomChanged && cursorOptionsCache) {
+  if (cursorEnabledChanged || (cursorRoomChanged && cursorOptionsCache)) {
+    // teardownCursors handles the disable case (wanted off, currently on) and
+    // clears the way for a rebuild on enable / room change.
     teardownCursors();
-    buildCursors({
-      cursors: cursorOptionsCache,
-      mainRoom: newMainRoom,
-      partykitHost: __currentHost,
-      onError: cachedOnError,
-    });
+    if (cursorsWanted && cursorOptionsCache) {
+      buildCursors({
+        cursors: cursorOptionsCache,
+        mainRoom: newMainRoom,
+        partykitHost: __currentHost,
+        onError: cachedOnError,
+      });
+    }
   }
 
   // Rebind awareness listener to the current provider. This is required
   // whenever we rebuilt yprovider or cursorClient above — the old awareness
   // object was destroyed along with its provider, orphaning any listener
   // we had attached at init time.
-  if (mainRoomChanged || cursorRoomChanged) {
+  if (mainRoomChanged || cursorRoomChanged || cursorEnabledChanged) {
     bindAwarenessListener();
   }
 
