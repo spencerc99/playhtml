@@ -1008,7 +1008,9 @@ export default defineContentScript({
           const { playhtml } = await import("playhtml");
           await playhtml.init({
             cursors: { enabled: false },
-            room: `wwo${window.location.pathname}`,
+            // Function form so the room recomputes on SPA navigation — bottles
+            // follow the URL instead of staying pinned to the initial path.
+            room: () => `wwo${window.location.pathname}`,
           });
           this.playhtmlInstance = playhtml;
         }
