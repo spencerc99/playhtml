@@ -16,26 +16,18 @@ This is one concept with two idioms:
 
 Use the framework toggle in any code block below to flip the whole page between them.
 
-## Vanilla ↔ React, at a glance
+## If you already know one framework
 
-The data, presence, and render core is identical. The few vanilla-specific primitives map onto native React idioms:
+The shared-state core is the same in both: `data` plus `setData` (pass a value, or a **mutator** that edits a draft in place — `setData(d => { d.count++ })`, which is merge-friendly across clients; see [Data essentials](/docs/data/data-essentials/)), and `awareness` plus `setMyAwareness` for presence. The render function returns a lit-html template in vanilla and JSX in React; everything below is the same shape on both sides.
 
-| Goal | Vanilla | React |
-| --- | --- | --- |
-| Define an element | `playhtml.register(id, { defaultData, view })` | `withSharedState({ defaultData }, render)` |
-| Render function | `view: (ctx) => html\`…\`` | `(playProps, props) => <jsx/>` |
-| Read / write shared state | `data` / `setData` | `data` / `setData` — _identical_ |
-| Presence | `awareness` / `setMyAwareness` | `awareness` / `setMyAwareness` — _identical_ |
-| Per-user UI state | `localData` / `setLocalData` | `useState` |
-| The DOM node | `ctx.element` | `ctx.ref` |
-| Lists | `repeat(items, keyFn, tpl)` | `items.map(… key=…)` |
-| Conditional class/style | `classMap` / `styleMap` | `className` / `style={{}}` |
-| Reuse on many elements | `playhtml.define(name, init)` | export the component |
-| Side effects / timers | `onMount(ctx){ … return cleanup }` | `useEffect(() => { … return cleanup }, [])` |
-| Repaint from the clock | `requestUpdate()` | a `useState` tick |
-| Drive from outside | the handle from `register` | lift state / context |
+Only four things are framework-specific, and they're the spots worth reading carefully:
 
-`setData` works the same in both: pass a replacement value, or a **mutator** that edits a draft in place (`setData(d => { d.count++ })`). The mutator form is merge-friendly across clients — see [Data essentials](/docs/data/data-essentials/).
+- **Per-user UI state** (a panel toggle, a text draft): vanilla keeps it in `localData` / `setLocalData`; React uses `useState`.
+- **Repainting from the clock** (a ticking timer whose data isn't changing): vanilla calls `requestUpdate()` from an `onMount` loop; React drives a re-render with a `useState` tick in `useEffect`.
+- **Reusing the element many times**: vanilla `playhtml.define(name, init)` registers a capability for every `[name]` element; React just renders the component N times.
+- **Writing from outside the element**: vanilla uses the handle returned by `register`; React lifts state up or shares it via context.
+
+Each is shown in context below.
 
 ## A click counter
 
