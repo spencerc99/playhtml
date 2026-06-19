@@ -84,9 +84,14 @@ type StoreShape = {
   // tag -> elementId -> data proxy (value typed at usage sites)
   play: Record<string, Record<string, unknown>>;
 };
-const store = syncedStore<StoreShape>({ play: {} });
-const doc = getYjsDoc(store);
-const publicSyncedStore = createReadOnlyStore(store.play);
+// store/doc/publicSyncedStore are recreated on a room change (recreateStore),
+// so they're reassignable. A fresh doc has no op history — discarding the old
+// one on a room change resets page + element data to the new room with no
+// tombstone synced back (unlike deleting keys from the reused doc, which
+// destroys the original room's persisted data on a round trip).
+let store = syncedStore<StoreShape>({ play: {} });
+let doc = getYjsDoc(store);
+let publicSyncedStore = createReadOnlyStore(store.play);
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
@@ -670,6 +675,44 @@ function teardownMainProvider(): void {
 }
 
 /**
+ * Recreate the shared SyncedStore/Y.Doc from scratch. Called on a room change so
+ * the new room starts from an empty doc — page AND element data reset to the new
+ * room's state, exactly like a page reload, with no tombstone carried into the
+ * old room (discard, don't delete). The old doc is destroyed.
+ *
+ * Everything derived from the doc is rebuilt: globalData, the public read-only
+ * store, and the page-data + proxy bookkeeping. Connected element handlers
+ * re-register against the fresh store via setupElements() (called by the caller
+ * after the new provider is built); surviving page-data handles re-bind lazily
+ * through their ensureProxy/attachObserver re-acquire path.
+ */
+function recreateStore(): void {
+  const oldDoc = doc;
+
+  store = syncedStore<StoreShape>({ play: {} });
+  doc = getYjsDoc(store);
+  publicSyncedStore = createReadOnlyStore(store.play);
+  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
+
+  // Proxies and observers referenced the old doc — drop them so they rebuild
+  // against the fresh store. KEEP page-data listener sets + refcounts: a channel
+  // handle held across the room change is still a handle on that name, and its
+  // onUpdate callbacks live in the preserved set. When the channel re-binds to
+  // the fresh store (a new createPageData, or a surviving handle's next
+  // read/write), its observer re-attaches wired to that same preserved set — so
+  // surviving handles keep notifying. (Element proxies have no such cross-nav
+  // handle to preserve; they re-register via setupElements.)
+  proxyByTagAndId.clear();
+  yObserverByKey.clear();
+
+  try {
+    oldDoc.destroy();
+  } catch {
+    // best-effort
+  }
+}
+
+/**
  * Detach the current awareness "change" listener (if any) and attach a fresh
  * one to whichever provider currently holds awareness (cursor provider if
  * cursors enabled, otherwise main yprovider). Safe to call multiple times.
@@ -785,14 +828,12 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
-    // NOTE: page data (and element data) still ride the reused doc across room
-    // changes, so they currently bleed from the old room into the new one on
-    // SPA navigation. The fix is to re-init the doc on a room change (discard,
-    // don't delete — a fresh doc has no tombstone to sync back). Tracked in
-    // internal-docs/specs/2026-06-19-page-data-room-isolation.md. The earlier
-    // delete-based clearPageData was removed: deleting from the reused CRDT doc
-    // synced a tombstone back to the original room and destroyed its persisted
-    // data on a round trip.
+    // Re-init the doc for the new room: page AND element data are room-scoped,
+    // and the doc is reused across rooms, so a fresh doc resets both to the new
+    // room (like a page reload) without syncing a delete tombstone back to the
+    // old room. Must happen before buildMainProvider so the new provider binds
+    // the fresh doc.
+    recreateStore();
     buildMainProvider({
       room: newMainRoom,
       partykitHost: __currentHost,
@@ -1390,8 +1431,10 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   return createPageDataChannel(name, defaultValue, {
     ensureProxy: ensureElementProxy,
     getProxy: (tag, id) => proxyByTagAndId.get(tag)?.get(id),
-    doc,
-    storePlay: store.play,
+    // Getters so a handle held across a room change (which recreates store/doc)
+    // reads the current ones, not stale references captured at creation.
+    getDoc: () => doc,
+    getStorePlay: () => store.play,
     proxyByTagAndId,
     yObserverByKey,
     channelRefCounts: pageDataRefCounts,
@@ -1561,7 +1604,9 @@ export const playhtml: PlayHTMLComponents = {
   removePlayElement,
   deleteElementData,
   setupPlayElementForTag,
-  syncedStore: publicSyncedStore,
+  get syncedStore() {
+    return publicSyncedStore;
+  },
   elementHandlers,
   eventHandlers,
   dispatchPlayEvent,

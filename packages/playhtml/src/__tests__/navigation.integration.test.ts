@@ -235,7 +235,7 @@ describe("playhtml.handleNavigation", () => {
   // See internal-docs/specs/2026-06-19-page-data-room-isolation.md.
   // ============================================================
 
-  it.skip("does not carry page-data into the next room on navigation", async () => {
+  it("does not carry page-data into the next room on navigation", async () => {
     // Page data is room-scoped: a channel's contents written in room /a must
     // NOT survive into room /b. The doc is reused across room rebuilds, so
     // without an explicit reset the old room's page-data would persist in the
@@ -263,7 +263,7 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it.skip("keeps a surviving page-data handle usable after a room change", async () => {
+  it("keeps a surviving page-data handle usable after a room change", async () => {
     // A consumer that holds a channel handle across an SPA route change must
     // still be able to read/write it — the room-change reset clears the DATA
     // but must not orphan the handle's proxy (which would make setData throw).
@@ -316,7 +316,7 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it.skip("a surviving handle reads its default after a room change (acts like a fresh page)", async () => {
+  it("a surviving handle reads its default after a room change (acts like a fresh page)", async () => {
     // After a room change every channel must behave as if freshly opened in the
     // new room: getData returns the handle's DEFAULT, not the old room's data
     // and not a bare empty object.
@@ -428,7 +428,7 @@ describe("playhtml.handleNavigation", () => {
   // the holistic property, not just individual surviving-handle behaviors.
   // ============================================================
 
-  it.skip("a channel opened AFTER navigation behaves like a fresh page-load init", async () => {
+  it("a channel opened AFTER navigation behaves like a fresh page-load init", async () => {
     // The real model: the new page's code calls createPageData itself. A
     // channel opened after the room change must be fully live — reads default,
     // writes, and notifies — identical to opening it on a first page load, with
@@ -462,7 +462,7 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it.skip("does not leak page-data back to the original room on a round trip (A→B→A)", async () => {
+  it("does not leak page-data back to the original room on a round trip (A→B→A)", async () => {
     // Core isolation guarantee: writing in room B must not bleed into room A.
     // Returning to A shows A's original data, and B's value is gone from A.
     const origPath = window.location.pathname + window.location.search;
@@ -485,18 +485,49 @@ describe("playhtml.handleNavigation", () => {
       history.replaceState(null, "", "/trip-a");
       await playhtml.handleNavigation();
       await new Promise((r) => queueMicrotask(r));
-      // Back in A: B's "beta" must not be here. (A's persisted "alpha" lives on
-      // the server; locally after reset the channel reads its default — the key
-      // assertion is that "beta" did NOT leak across.)
-      expect(playhtml.createPageData("note", { v: "" }).getData()).not.toEqual({
-        v: "beta",
+      // Back in A: the doc was re-inited on each room change (discard, not
+      // delete), so neither B's "beta" nor a stale "alpha" bleeds in — the
+      // channel reads its default. Crucially the reset never deleted from the
+      // original room's doc (which would have synced a tombstone back and
+      // destroyed A's persisted data — the P1 data-loss bug we removed).
+      expect(playhtml.createPageData("note", { v: "" }).getData()).toEqual({
+        v: "",
       });
     } finally {
       history.replaceState(null, "", origPath);
     }
   });
 
-  it.skip("resets multiple page-data channels together on a room change", async () => {
+  it("does NOT reset data on same-room navigation (preserves #85 persistence)", async () => {
+    // The reset only happens on a ROOM change. Navigating within the same room
+    // (e.g. a hash change, or an explicit static room) must preserve page data —
+    // this is the persist-across-route behavior #85 added for element data.
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      history.replaceState(null, "", "/stayroom#one");
+      // Static explicit room → same room regardless of path/hash.
+      await playhtml.init({ host: "http://localhost:1999", room: "fixed" } as any);
+
+      const ch = playhtml.createPageData("keep", { v: "" });
+      ch.setData({ v: "persisted" });
+      await new Promise((r) => queueMicrotask(r));
+
+      // Navigate (hash change) — room is unchanged, so NO reset.
+      history.replaceState(null, "", "/stayroom#two");
+      await playhtml.handleNavigation();
+      await new Promise((r) => queueMicrotask(r));
+
+      // Data survives the same-room navigation.
+      expect(ch.getData()).toEqual({ v: "persisted" });
+      expect(playhtml.createPageData("keep", { v: "" }).getData()).toEqual({
+        v: "persisted",
+      });
+    } finally {
+      history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("resets multiple page-data channels together on a room change", async () => {
     // A real page has several channels; all of them must reset on nav, not just
     // the first one iterated.
     const origPath = window.location.pathname + window.location.search;
@@ -525,7 +556,7 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it.skip("resets page data while leaving element data intact across navigation", async () => {
+  it("resets page data while leaving element data intact across navigation", async () => {
     // Page-data reset must not disturb element capability data: an element that
     // survives the navigation keeps its handler, and page data still resets.
     const origPath = window.location.pathname + window.location.search;

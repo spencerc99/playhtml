@@ -13,8 +13,11 @@ export { PAGE_TAG };
 interface PageDataDeps {
   ensureProxy: <T>(tag: string, id: string, defaultData: T) => T;
   getProxy: (tag: string, id: string) => unknown;
-  doc: Y.Doc;
-  storePlay: Partial<Record<string, Record<string, unknown>>>;
+  // doc + store are read through getters so a channel handle held across a room
+  // change (which recreates both) sees the CURRENT doc/store, not a stale one
+  // captured at channel-creation time.
+  getDoc: () => Y.Doc;
+  getStorePlay: () => Partial<Record<string, Record<string, unknown>>>;
   proxyByTagAndId: Map<string, Map<string, any>>;
   yObserverByKey: Map<string, (...args: unknown[]) => void>;
   // Per-init-cycle tracking, scoped to avoid leaking across init() calls
@@ -28,12 +31,15 @@ export function createPageDataChannel<T>(
   deps: PageDataDeps,
 ): PageDataChannel<T> {
   const {
-    ensureProxy, getProxy, doc, storePlay, proxyByTagAndId,
+    ensureProxy, getProxy, getDoc, getStorePlay, proxyByTagAndId,
     yObserverByKey, channelRefCounts, channelListeners,
   } = deps;
+  // Read live each use so we follow a room-change store/doc swap.
+  const storePlay = () => getStorePlay();
+  const doc = () => getDoc();
 
   // Ensure the store entry and proxy exist
-  storePlay[PAGE_TAG] ??= {};
+  storePlay()[PAGE_TAG] ??= {};
   ensureProxy<T>(PAGE_TAG, name, defaultValue);
 
   // Set up shared listener set for this channel if it doesn't exist
@@ -53,7 +59,7 @@ export function createPageDataChannel<T>(
   const observerKey = `${PAGE_TAG}:${name}`;
   function attachObserver(): void {
     if (yObserverByKey.has(observerKey)) return;
-    const yVal = getYjsValue(storePlay[PAGE_TAG]?.[name]);
+    const yVal = getYjsValue(storePlay()[PAGE_TAG]?.[name]);
     if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
     let scheduled = false;
     const observer = () => {
@@ -61,7 +67,7 @@ export function createPageDataChannel<T>(
       scheduled = true;
       queueMicrotask(() => {
         scheduled = false;
-        const currentProxy = storePlay[PAGE_TAG]?.[name];
+        const currentProxy = storePlay()[PAGE_TAG]?.[name];
         if (!currentProxy) return;
         const plain = clonePlain(currentProxy) as T;
         for (const cb of listeners) {
@@ -87,7 +93,7 @@ export function createPageDataChannel<T>(
   return {
     getData(): T {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
-      return clonePlain(storePlay[PAGE_TAG]?.[name] ?? defaultValue) as T;
+      return clonePlain(storePlay()[PAGE_TAG]?.[name] ?? defaultValue) as T;
     },
 
     setData(data: T | ((draft: T) => void)): void {
@@ -103,11 +109,11 @@ export function createPageDataChannel<T>(
         attachObserver();
       }
       if (typeof data === "function") {
-        doc.transact(() => {
+        doc().transact(() => {
           (data as (draft: T) => void)(currentProxy);
         });
       } else {
-        doc.transact(() => {
+        doc().transact(() => {
           deepReplaceIntoProxy(currentProxy, data);
         });
       }
@@ -141,7 +147,7 @@ export function createPageDataChannel<T>(
         const key = `${PAGE_TAG}:${name}`;
         const obs = yObserverByKey.get(key);
         if (obs) {
-          const yVal = getYjsValue(storePlay[PAGE_TAG]?.[name]);
+          const yVal = getYjsValue(storePlay()[PAGE_TAG]?.[name]);
           if (yVal && typeof (yVal as any).unobserveDeep === "function") {
             (yVal as any).unobserveDeep(obs);
           }
