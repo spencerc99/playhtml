@@ -2,7 +2,6 @@
 // ABOUTME: Mirrors the LinkGlowManager pattern — channel.onUpdate drives a render callback.
 
 import type { PageDataChannel } from "@playhtml/common";
-import { normalizeUrl } from "../utils/urlNormalization";
 import { bottleDebug as debug } from "./bottle-debug";
 import {
   pickBottleAnchor,
@@ -90,10 +89,11 @@ export class BottleManager {
   init(onRender: RenderCallback): void {
     this.renderCallback = onRender;
 
-    // `wwo:` namespaces all we-were-online extension data channels; `bottles`
-    // is the feature, the normalized URL the page scope.
-    const channelName = `wwo:bottles:${normalizeUrl(location.href)}`;
-    this.channel = this.createPageData<BottlePageData>(channelName, {
+    // The room is already per-page (set when the WWO playhtml instance inits),
+    // so the channel key only needs to name the feature within that room — no
+    // URL. `wwo:bottles` also stays distinct from sibling keys (e.g. link-glows)
+    // on the custom-cursor-site pages where bottles share the site's room.
+    this.channel = this.createPageData<BottlePageData>("wwo:bottles", {
       bottles: {},
     });
 

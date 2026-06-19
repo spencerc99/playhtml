@@ -995,8 +995,21 @@ export default defineContentScript({
         if (!(await anyGlobalFeatureActive())) return;
 
         if (!this.playhtmlInstance) {
+          // No instance yet (normal or native-playhtml page): stand up our own,
+          // in an extension-owned room isolated from any site's playhtml room so
+          // WWO data can't be read/written by the host site. The room is
+          // auto-prefixed with the page host; we add a `wwo` segment + the path
+          // so it stays per-page but never collides with the site's own room.
+          //
+          // NOTE: on custom cursor-sites we instead REUSE the cursor instance
+          // (set in setupPresence), whose room is the SITE's room — so bottles
+          // are co-mingled there. Isolating that case needs a playhtml core
+          // change (per-channel data room); tracked as a follow-up.
           const { playhtml } = await import("playhtml");
-          await playhtml.init({ cursors: { enabled: false } });
+          await playhtml.init({
+            cursors: { enabled: false },
+            room: `wwo${window.location.pathname}`,
+          });
           this.playhtmlInstance = playhtml;
         }
 
@@ -1039,7 +1052,7 @@ export default defineContentScript({
         // On pages that already run playhtml, defer presence/cursors to the
         // page's instance (we only inject our identity). We don't stand up our
         // own cursor instance here — but bottles still get one later via
-        // ensureGlobalFeatures, on its own extension-owned room.
+        // ensureGlobalFeatures, in their own extension-owned room.
         if (this.hasNativePlayhtml()) {
           console.log("[we-were-online] Native playhtml detected at startup");
           this.injectIdentityIntoMainWorld();
