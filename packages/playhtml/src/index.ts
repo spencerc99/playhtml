@@ -785,10 +785,14 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
-    // Page data is room-scoped. The doc is reused across room rebuilds, so the
-    // previous room's page-data would otherwise persist in the doc and sync
-    // into the new room. Clear it on room change so each room starts clean.
-    clearPageData();
+    // NOTE: page data (and element data) still ride the reused doc across room
+    // changes, so they currently bleed from the old room into the new one on
+    // SPA navigation. The fix is to re-init the doc on a room change (discard,
+    // don't delete — a fresh doc has no tombstone to sync back). Tracked in
+    // internal-docs/specs/2026-06-19-page-data-room-isolation.md. The earlier
+    // delete-based clearPageData was removed: deleting from the reused CRDT doc
+    // synced a tombstone back to the original room and destroyed its persisted
+    // data on a round trip.
     buildMainProvider({
       room: newMainRoom,
       partykitHost: __currentHost,
@@ -1924,55 +1928,6 @@ function removePlayElement(element: Element | null) {
  * @param tag - The capability tag (e.g., "can-move", "can-toggle")
  * @param elementId - The element ID
  */
-/**
- * Reset all page-data channels on room change. Page data is room-scoped, but
- * the Yjs doc is reused across room rebuilds, so the previous room's page-data
- * would otherwise persist in the doc and sync into the new room. We delete each
- * channel entry (and its observer/proxy/refcount bookkeeping) so the channel
- * returns to its default in the new room — exactly as if freshly opened there.
- *
- * A channel HANDLE held across the route change stays usable: getData() falls
- * back to the default when the entry is absent, and setData() re-acquires its
- * proxy on demand (page-data.ts) rather than assuming it still exists.
- */
-function clearPageData(): void {
-  const pageStore = store.play[PAGE_TAG];
-  if (!pageStore) return;
-
-  // Detach observers and drop the proxy/value for every page-data channel: the
-  // data is room-scoped and must not survive into the new room. We deliberately
-  // KEEP pageDataListeners and pageDataRefCounts. A handle held across the room
-  // change is still a handle on the same channel name — when the new page
-  // re-opens that channel (or the surviving handle next writes), createPageData
-  // / setData re-seed the value and re-attach the observer, wired to the SAME
-  // preserved listener set. So surviving handles and freshly opened ones share
-  // one live channel in the new room, exactly as two createPageData(name) calls
-  // do normally. getData returns the default until the channel is re-seeded.
-  for (const name of Object.keys(pageStore)) {
-    const observer = yObserverByKey.get(`${PAGE_TAG}:${name}`);
-    const yVal = getYjsValue(pageStore[name]);
-    if (observer && yVal && typeof (yVal as any).unobserveDeep === "function") {
-      try {
-        (yVal as any).unobserveDeep(observer);
-      } catch {
-        // best-effort
-      }
-    }
-    yObserverByKey.delete(`${PAGE_TAG}:${name}`);
-    proxyByTagAndId.get(PAGE_TAG)?.delete(name);
-  }
-
-  try {
-    doc.transact(() => {
-      for (const name of Object.keys(pageStore)) {
-        delete pageStore[name];
-      }
-    });
-  } catch (error) {
-    console.warn("[PLAYHTML] Failed to clear page data on room change:", error);
-  }
-}
-
 function deleteElementData(tag: string, elementId: string): void {
   if (!hasSynced) {
     console.warn(
