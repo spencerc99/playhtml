@@ -431,15 +431,21 @@ That's four wildly different shapes — short array, blob payload, animation see
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<button can-play id="cheer" data-count="0">❤️ <span>0</span></button>
+<div id="cheer" can-play></div>
 
-<script>
-  const el = document.getElementById("cheer");
-  el.defaultData = { count: 0 };
-  el.onClick = (_e, { data, setData }) => setData({ count: data.count + 1 });
-  el.updateElement = ({ element, data }) => {
-    element.querySelector("span").textContent = data.count;
-  };
+<script type="module">
+  import { playhtml, html } from "playhtml";
+
+  playhtml.register("cheer", {
+    defaultData: { count: 0 },
+    view: ({ data, setData }) => html`
+      <button @click=${() => setData((d) => { d.count += 1; })}>
+        ❤️ ${data.count}
+      </button>
+    `,
+  });
+
+  playhtml.init();
 </script>
 ```
   </TabItem>
@@ -450,7 +456,7 @@ import { withSharedState } from "@playhtml/react";
 export const CheerButton = withSharedState(
   { defaultData: { count: 0 }, id: "cheer" },
   ({ data, setData }) => (
-    <button onClick={() => setData({ count: data.count + 1 })}>
+    <button onClick={() => setData((d) => { d.count += 1; })}>
       ❤️ {data.count}
     </button>
   ),

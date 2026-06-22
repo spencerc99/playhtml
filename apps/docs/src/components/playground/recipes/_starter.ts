@@ -102,37 +102,39 @@ export const starterRecipe: { id: string; html: string } = {
     <ul id="guestbook"></ul>
 
     <div>here's a reaction button — everyone sees the count</div>
-    <button id="reactionBtn" can-play class="reaction" style="font-size: 24px; padding: 10px 20px; margin: 10px 0;">
-      <span id="reactionLabel">react</span> <span id="reactionCount">0</span>
-    </button>
+    <div id="reactionBtn" can-play></div>
   </div>
 
   <script type="module">
-    import { playhtml } from "playhtml";
+    import { playhtml, html } from "playhtml";
 
-    // Configure the can-play reaction button BEFORE init. With can-play,
-    // playhtml reads the per-element handler properties off the DOM node
-    // itself: defaultData / updateElement / onClick / onMount. So we
-    // attach them before init scans the page.
-    const reactionBtn = document.getElementById("reactionBtn");
-    reactionBtn.defaultData = { count: 0 };
-    reactionBtn.onClick = ({ data, setData, element }) => {
-      const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-      if (hasReacted) {
-        setData({ count: data.count - 1 });
-        localStorage.removeItem("reacted-reaction");
-        element.classList.remove("reacted");
-      } else {
-        setData({ count: data.count + 1 });
-        localStorage.setItem("reacted-reaction", "true");
-        element.classList.add("reacted");
-      }
-    };
-    reactionBtn.updateElement = ({ data, element }) => {
-      element.querySelector("#reactionCount").textContent = data.count;
-      const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-      element.classList.toggle("reacted", hasReacted);
-    };
+    // Register the reaction button with a view. register() can run before OR
+    // after init() — there's no ordering rule. The view renders from the
+    // shared \`data\`; the @click handler writes it and the view re-renders.
+    playhtml.register("reactionBtn", {
+      defaultData: { count: 0 },
+      view: ({ data, setData }) => {
+        const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
+        const react = () => {
+          if (localStorage.getItem("reacted-reaction")) {
+            setData((d) => { d.count -= 1; });
+            localStorage.removeItem("reacted-reaction");
+          } else {
+            setData((d) => { d.count += 1; });
+            localStorage.setItem("reacted-reaction", "true");
+          }
+        };
+        return html\`
+          <button
+            class="reaction \${hasReacted ? "reacted" : ""}"
+            style="font-size: 24px; padding: 10px 20px; margin: 10px 0;"
+            @click=\${react}
+          >
+            react \${data.count}
+          </button>
+        \`;
+      },
+    });
 
     await playhtml.init({
       developmentMode: true,
