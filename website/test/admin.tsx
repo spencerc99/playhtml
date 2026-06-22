@@ -34,8 +34,8 @@ interface DebugLog {
 type EnvName = "production" | "staging" | "development";
 
 const HOSTS: Record<EnvName, string> = {
-  production: "https://playhtml.spencerc99.partykit.dev",
-  staging: "https://staging.playhtml.spencerc99.partykit.dev",
+  production: "https://playhtml.spencerc99.workers.dev",
+  staging: "https://playhtml-staging.spencerc99.workers.dev",
   development: "http://localhost:1999",
 };
 

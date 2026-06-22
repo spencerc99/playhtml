@@ -262,7 +262,7 @@ function getCanPlayData(elementId?: string): MoveData | undefined {
   return playhtml?.syncedStore?.["can-play"]?.[elementId];
 }
 
-const FridgeWord = withSharedState<MoveData, any, Props>(
+const FridgeWord = withSharedState<MoveData, MoveLocalData, Props>(
   (props: Props) => {
     // Check for "can-play" data to migrate to "can-move" (reverse migration)
     const canPlayData = getCanPlayData(props.id);
@@ -339,7 +339,7 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
                   border: "2px dotted red",
                 }
               : {}),
-          }}
+          } as React.CSSProperties}
         >
           {word}
           {deleteMode ? (
@@ -1080,8 +1080,8 @@ const AdminSettings = ({
           type="checkbox"
           checked={data.showDefaultWords}
           onChange={(e) =>
-            setData((d) => {
-              d.showDefaultWords = e.target.checked;
+            setData({
+              showDefaultWords: e.target.checked,
             })
           }
         />
@@ -1137,7 +1137,7 @@ const FridgeWordsContent = withSharedState(
       >
         Finding the words...
       </div>
-    ) : props.hasError ? (
+    ) : hasError ? (
       <div
         style={{
           position: "absolute",
