@@ -2,4 +2,4 @@
 "playhtml": patch
 ---
 
-Honor updated room options when an SPA remounts playhtml after client-side navigation, so explicit page-derived rooms can move to the new route instead of staying on the first initialized page.
+Allow passing a function-valued `room` so `handleNavigation()` can recompute it on route changes.

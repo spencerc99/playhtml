@@ -23,7 +23,7 @@ This covers most cases automatically. The sections below describe framework-spec
 The default room is derived from the URL pathname, so it recomputes automatically on navigation. To control it yourself, pass `room` to `init`:
 
 ```ts
-// Static string — fixed across navigation until init() receives another room.
+// Static string — fixed across navigation.
 playhtml.init({ room: "my-app" });
 
 // Function — re-invoked on every navigation, so a URL-derived room follows the
@@ -31,7 +31,7 @@ playhtml.init({ room: "my-app" });
 playhtml.init({ room: () => `notes${window.location.pathname}` });
 ```
 
-A static string stays fixed across navigation until you call `init()` again with another room (good for a single shared room). A function is called at init and again on each navigation, so the room can follow the URL.
+A static string stays fixed across navigation (good for a single shared room). A function is called at init and again on each navigation, so the room can follow the URL. `init()` options are captured on the first successful call; call `handleNavigation()` after client-side route changes instead of re-running `init()` with different options.
 
 ## Room-scoped data on navigation
 
