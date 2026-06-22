@@ -136,7 +136,7 @@ describe("playhtml.handleNavigation", () => {
     expect(before).not.toEqual(after);
   });
 
-  it("uses a new explicit room from a later init call", async () => {
+  it("keeps the first explicit room when a later init passes a different room", async () => {
     const origPath = window.location.pathname + window.location.search;
     try {
       history.replaceState(null, "", "/");
@@ -152,8 +152,9 @@ describe("playhtml.handleNavigation", () => {
         room: "/about",
       } as any);
 
-      expect(playhtml.roomId).toContain("%2Fabout");
-      expect(playhtml.roomId).not.toEqual(before);
+      expect(playhtml.roomId).toEqual(before);
+      expect(playhtml.roomId).toContain("%2F");
+      expect(playhtml.roomId).not.toContain("%2Fabout");
     } finally {
       history.replaceState(null, "", origPath);
     }
@@ -180,10 +181,7 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it("enables cursors via a later init on an unchanged URL", async () => {
-    // A re-init that turns cursors ON must actually build them, even when the
-    // room hasn't changed — the cursor rebuild was gated on a cursor-ROOM
-    // change, so an enable transition on the same URL was silently dropped.
+  it("keeps cursor options from the first init when a later init enables cursors", async () => {
     await playhtml.init({
       host: "http://localhost:1999",
       room: "/cursors-toggle",
@@ -196,10 +194,10 @@ describe("playhtml.handleNavigation", () => {
       cursors: { enabled: true },
     } as any);
 
-    expect(playhtml.cursorClient).not.toBeNull();
+    expect(playhtml.cursorClient).toBeNull();
   });
 
-  it("disables cursors via a later init on an unchanged URL", async () => {
+  it("keeps cursor options from the first init when a later init disables cursors", async () => {
     await playhtml.init({
       host: "http://localhost:1999",
       room: "/cursors-toggle-off",
@@ -212,7 +210,7 @@ describe("playhtml.handleNavigation", () => {
       cursors: { enabled: false },
     } as any);
 
-    expect(playhtml.cursorClient).toBeNull();
+    expect(playhtml.cursorClient).not.toBeNull();
   });
 
   it("strips filename extension from pathname when deriving default room", async () => {

@@ -559,11 +559,11 @@ let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
 } | null = null;
 
-// If init() receives an explicit `room`, we store it for future navigation
-// checks. A string stays fixed across navigation until init() receives another
-// room; a function is re-invoked on each nav so a path-derived room switches
-// correctly. If no explicit room was given, we store the default-room options
-// and re-derive on each nav so pathname-based rooms switch correctly.
+// If the first init() receives an explicit `room`, we store it for future
+// navigation checks. A string stays fixed across navigation; a function is
+// re-invoked on each nav so a path-derived room switches correctly. If no
+// explicit room was given, we store the default-room options and re-derive on
+// each nav so pathname-based rooms switch correctly.
 let explicitRoomOption: string | (() => string) | undefined = undefined;
 
 /** Resolve the explicit room option to a string, calling it if it's a function
@@ -576,40 +576,6 @@ function resolveExplicitRoom(): string | undefined {
 let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
-
-function hasInitOption<K extends keyof InitOptions>(
-  options: InitOptions,
-  key: K,
-): options is InitOptions & Required<Pick<InitOptions, K>> {
-  return Object.prototype.hasOwnProperty.call(options, key);
-}
-
-function applyActiveInitOptions(options: InitOptions): boolean {
-  let shouldHandleNavigation = false;
-
-  if (hasInitOption(options, "room")) {
-    explicitRoomOption = options.room;
-    shouldHandleNavigation = true;
-  }
-
-  if (hasInitOption(options, "defaultRoomOptions")) {
-    cachedDefaultRoomOptions = options.defaultRoomOptions ?? {
-      includeSearch: false,
-    };
-    shouldHandleNavigation = true;
-  }
-
-  if (hasInitOption(options, "cursors")) {
-    cursorOptionsCache = options.cursors ?? {};
-    shouldHandleNavigation = true;
-  }
-
-  if (hasInitOption(options, "onError")) {
-    cachedOnError = options.onError;
-  }
-
-  return shouldHandleNavigation;
-}
 
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
@@ -799,8 +765,8 @@ async function runHandleNavigation(): Promise<void> {
 
   const cursorsWanted = Boolean(cursorOptionsCache?.enabled);
   const cursorsActive = cursorClient !== null;
-  // An enable/disable transition must (re)build or tear down cursors regardless
-  // of room change — a later init({ cursors }) can flip this on an unchanged URL.
+  // Cursor setup is static after init, but the cursor client can still be
+  // rebuilt when navigation changes the cursor room.
   const cursorEnabledChanged = cursorsWanted !== cursorsActive;
 
   let cursorRoomChanged = false;
@@ -899,14 +865,7 @@ async function runHandleNavigation(): Promise<void> {
 
 function initPlayHTML(options: InitOptions = {}) {
   if (initStarted) {
-    const shouldHandleNavigation = applyActiveInitOptions(options);
-    if (!shouldHandleNavigation) {
-      return readyPromise;
-    }
-
-    return readyPromise.then(async () => {
-      await navigationController?.trigger();
-    });
+    return readyPromise;
   }
 
   const existingPlayhtml = (window as any).playhtml;
