@@ -2,7 +2,7 @@
 // ABOUTME: Verifies that built-in capability updateElement functions are called alongside React state updates.
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import "@testing-library/dom";
 import { CanPlayElement } from "../index";
 import { CanMoveElement } from "../elements";
@@ -160,7 +160,43 @@ describe("CanPlayElement with built-in capabilities", () => {
       });
     });
 
+    expect(setupSpy).toHaveBeenCalledTimes(1);
     expect(removeSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not re-register when synced data only updates React state", async () => {
+    const setupSpy = vi
+      .spyOn(playhtml, "setupPlayElement")
+      .mockImplementation(() => {});
+
+    const { container } = render(
+      <CanPlayElement defaultData={{ count: 0 }}>
+        {({ data }) => <div id="sync-count">{data.count}</div>}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-play]") as HTMLElement;
+    expect(element).toBeTruthy();
+    await waitFor(() => expect(setupSpy).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      (element as any).updateElement({
+        data: { count: 1 },
+        awareness: [],
+        awarenessByStableId: new Map(),
+        myAwareness: undefined,
+        element,
+        localData: undefined,
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setMyAwareness: vi.fn(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(document.getElementById("sync-count")?.textContent).toBe("1");
+    });
+    expect(setupSpy).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes element handler props without removing the element", () => {
@@ -236,9 +272,7 @@ describe("CanPlayElement with built-in capabilities", () => {
 
     unmount();
 
-    expect(setupSpy).toHaveBeenCalledWith(element, {
-      ignoreIfAlreadySetup: true,
-    });
+    expect(setupSpy).toHaveBeenCalledWith(element);
     expect(removeSpy).toHaveBeenCalledWith(element);
   });
 
