@@ -1,3 +1,5 @@
+// ABOUTME: Exposes React wrappers that bind components to playhtml shared state.
+// ABOUTME: Keeps DOM element registration in sync with React props and lifecycle.
 // TODO: idk why but this is not getting registered otherwise??
 import React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
@@ -115,6 +117,7 @@ export function CanPlayElement<T extends object, V = any>({
     loadingAttributes["loading-style"] = loading.style;
   }
   const ref = useRef<HTMLElement>(null);
+  const lastSetupInputsRef = useRef<unknown[] | null>(null);
   const { defaultData, myDefaultAwareness } = elementProps;
   const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
     typeof fnOrValue === "function"
@@ -179,6 +182,22 @@ export function CanPlayElement<T extends object, V = any>({
     capabilityUpdateElementAwareness?.(handlerData);
   };
 
+  const setupInputs = [
+    ...Object.entries(computedTagInfo).flat(),
+    dataSource,
+    shared,
+    dataSourceReadOnly,
+    loading?.behavior,
+    loading?.customClass,
+    loading?.style,
+    ...Object.entries(elementProps).flat(),
+  ];
+
+  const setupInputsChanged = (previous: unknown[] | null): boolean => {
+    if (!previous || previous.length !== setupInputs.length) return true;
+    return previous.some((value, index) => value !== setupInputs[index]);
+  };
+
   useEffect(() => {
     if (ref.current) {
       for (const [key, value] of Object.entries(elementProps)) {
@@ -193,11 +212,14 @@ export function CanPlayElement<T extends object, V = any>({
       // @ts-ignore
       ref.current.updateElementAwareness = updateElementAwareness;
 
+      if (!setupInputsChanged(lastSetupInputsRef.current)) {
+        return;
+      }
+      lastSetupInputsRef.current = setupInputs;
+
       // Setup the element, which will handle data-source discovery if needed
       try {
-        playhtml.setupPlayElement(ref.current, {
-          ignoreIfAlreadySetup: true,
-        });
+        playhtml.setupPlayElement(ref.current);
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
 
