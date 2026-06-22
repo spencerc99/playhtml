@@ -1,0 +1,58 @@
+name: Publish snapshot
+
+# Manually publish a prerelease of the packages to a chosen npm dist-tag
+# (default `next`), from any branch — so a PR's changes can be tested in real
+# projects via `npm install playhtml@<tag>` before it merges to `latest`.
+# Parallel PRs can publish under distinct tags (e.g. `view`) without clobbering
+# each other.
+#
+# Versions are snapshot-stamped (e.g. 2.11.0-next-<sha>) and NOT committed or
+# git-tagged; this only publishes to npm. Runs `bun run release:snapshot`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "npm dist-tag to publish to (e.g. next, view)"
+        required: false
+        default: "next"
+      ref:
+        description: "Branch/ref to publish from (defaults to the branch this is run on)"
+        required: false
+        default: ""
+
+concurrency: release-snapshot-${{ github.event.inputs.ref || github.ref }}
+
+jobs:
+  snapshot:
+    name: Publish snapshot to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # for npm provenance / OIDC trusted publishing
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Publish snapshot to npm
+        run: bun run release:snapshot
+        env:
+          SNAPSHOT_TAG: ${{ github.event.inputs.tag || 'next' }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
