@@ -1,7 +1,8 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, RefObject } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
@@ -32,7 +33,7 @@ export function useCursorPresences(): Map<string, CursorPresenceView> {
  * own copy of the same element (matched by element id).
  */
 export function useCursorZone(
-  ref: RefObject<HTMLElement | null>,
+  ref: React.RefObject<HTMLElement | null>,
   options?: CursorZoneOptions,
 ): void {
   const { registerCursorZone, unregisterCursorZone } = useContext(PlayContext);
