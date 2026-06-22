@@ -1,3 +1,5 @@
+// ABOUTME: Provides React component wrappers for built-in playhtml capabilities.
+// ABOUTME: Bridges React children into can-move, can-toggle, and related elements.
 import {
   CanMoveBounds,
   CanMoveBoundsMinVisible,
@@ -6,7 +8,8 @@ import {
   TagType,
 } from "@playhtml/common";
 import classNames from "classnames";
-import React, { useState } from "react";
+import * as React from "react";
+import { useState } from "react";
 import { CanPlayElement, WithPlayOptionalProps } from ".";
 import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";

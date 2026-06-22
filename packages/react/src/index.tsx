@@ -1,5 +1,7 @@
+// ABOUTME: Exposes the core React bindings for playhtml components.
+// ABOUTME: Registers can-play elements and shared-state helpers for React apps.
 // TODO: idk why but this is not getting registered otherwise??
-import React from "react";
+import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
 import playhtml from "./playhtml-singleton";
