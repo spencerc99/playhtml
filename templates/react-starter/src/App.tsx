@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import {
   PlayProvider,
   PlayContext,
@@ -104,6 +104,8 @@ const ReactionButton = withSharedState(
 
 function App() {
   const [highlightedCapability, setHighlightedCapability] = useState<string | null>(null);
+  const starTemplateRef = useRef<HTMLDivElement>(null);
+  const starContainerRef = useRef<HTMLDivElement>(null);
 
   const capabilities = [
     "can-play",
@@ -189,11 +191,29 @@ function App() {
               />
             </CanHoverElement>
 
-            <CanDuplicateElement>
-              <button style={{ fontSize: "24px", padding: "10px 20px", cursor: "pointer" }}>
-                🌟 Click to clone me!
-              </button>
-            </CanDuplicateElement>
+            <div>
+              {/* Template element to clone, and the container clones land in. */}
+              <div
+                id="star-template"
+                ref={starTemplateRef}
+                style={{ fontSize: "32px", display: "inline-block", margin: "0 4px" }}
+              >
+                🌟
+              </div>
+              <div
+                id="star-container"
+                ref={starContainerRef}
+                style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}
+              />
+              <CanDuplicateElement
+                elementToDuplicate={starTemplateRef}
+                canDuplicateTo={starContainerRef}
+              >
+                <button style={{ fontSize: "24px", padding: "10px 20px", cursor: "pointer" }}>
+                  🌟 Click to clone me!
+                </button>
+              </CanDuplicateElement>
+            </div>
           </div>
 
           <h2 style={{ color: "#2800ff" }}>playhtml getting started</h2>

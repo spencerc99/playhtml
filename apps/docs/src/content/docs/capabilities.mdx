@@ -317,8 +317,25 @@ import { TagType } from "@playhtml/common";
   </TabItem>
   <TabItem label="React">
 ```tsx
-// React wiring for can-duplicate typically pairs with setupPlayElement
-// so freshly-mounted clones register themselves. See "Dynamic elements".
+import { useRef } from "react";
+import { CanDuplicateElement } from "@playhtml/react";
+
+function BunnyField() {
+  // `elementToDuplicate` is the template that gets cloned; `canDuplicateTo` is
+  // where clones are appended. Both elements need a stable `id`.
+  const template = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLDivElement>(null);
+
+  return (
+    <div>
+      <div id="bunny-template" ref={template}>🐰</div>
+      <div id="bunny-field" ref={field} />
+      <CanDuplicateElement elementToDuplicate={template} canDuplicateTo={field}>
+        <button>clone a bunny</button>
+      </CanDuplicateElement>
+    </div>
+  );
+}
 ```
   </TabItem>
 </Tabs>

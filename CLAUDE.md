@@ -163,6 +163,10 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 - Capabilities detected via data attributes (e.g., `can-move`, `can-toggle`)
 - Custom elements use the `can-play` attribute with JavaScript setup
 
+### Starter templates for core API changes
+
+The starter templates in `templates/` (`html-starter/`, `react-starter/`) are the first thing new users copy, so they MUST stay working and copy-pasteable. Whenever you change a public API surface they exercise — the vanilla `can-play` element API (`defaultData` / `onClick` / `updateElement` / `setupPlayElement`), the React capability components (`<CanDuplicateElement>`, `<CanToggleElement>`, etc.), or `playhtml.init` options — update the matching starter in the same PR and verify it live in a browser. The starters are standalone projects: `react-starter` is Vite+TS with no `tsconfig.json` of its own (so `npm run build`'s `tsc` step picks up the monorepo root config and fails — verify with `npx vite build` plus a live browser test instead); `html-starter` is static files loading `playhtml@latest` from unpkg. Only use real, existing API methods in the starters — e.g. there is no `playhtml.setupCustomElement`; vanilla custom elements set `defaultData`/`onClick`/`updateElement` directly on the DOM element, then call `playhtml.setupPlayElement(el)`.
+
 ### State Management
 
 - `setData()` for persistent, synced state changes

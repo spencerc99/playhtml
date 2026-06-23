@@ -1,6 +1,7 @@
 // ABOUTME: Provides React component wrappers for built-in playhtml capabilities.
 // ABOUTME: Bridges React children into can-move, can-toggle, and related elements.
 import {
+  CanDuplicateTo,
   CanMoveBounds,
   CanMoveBoundsMinVisible,
   CanMoveBoundsMinVisiblePx,
@@ -9,9 +10,8 @@ import {
 } from "@playhtml/common";
 import classNames from "classnames";
 import * as React from "react";
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { CanPlayElement, WithPlayOptionalProps } from ".";
-import playhtml from "./playhtml-singleton";
 import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
 
 /**
@@ -179,57 +179,82 @@ export function CanDuplicateElement({
   elementToDuplicate: React.RefObject<HTMLElement>;
   canDuplicateTo?: React.RefObject<HTMLElement>;
 }) {
-  const [addedElements, setAddedElements] = useState<string[]>([]);
+  // The capability finds the template and container by id through the
+  // `can-duplicate` / `can-duplicate-to` attributes, but the consumer hands us
+  // refs. Refs only resolve once their elements are committed, so track the ids
+  // in state and re-render once they're available to stamp onto the trigger.
+  const [templateId, setTemplateId] = useState<string | undefined>(undefined);
+  const [duplicateToId, setDuplicateToId] = useState<string | undefined>(
+    undefined
+  );
+
+  // The trigger needs a stable id so its handler isn't re-registered under a
+  // fresh content-hash on every render. Use the child's own id if it has one.
+  const generatedTriggerId = useId();
+  const childId =
+    React.isValidElement(children) &&
+    typeof (children.props as { id?: string }).id === "string"
+      ? (children.props as { id: string }).id
+      : undefined;
+  const triggerId = childId ?? generatedTriggerId;
+
+  // Refs are populated before any effect runs, so a one-shot mount effect is
+  // enough to resolve the template/container ids.
+  useEffect(() => {
+    const resolvedTemplateId = elementToDuplicate.current?.id;
+    if (!elementToDuplicate.current) {
+      console.error(
+        `[@playhtml/react] <CanDuplicateElement> elementToDuplicate ref is not attached to an element. Cannot duplicate.`
+      );
+      return;
+    }
+    if (!resolvedTemplateId) {
+      console.error(
+        `[@playhtml/react] <CanDuplicateElement> elementToDuplicate must have an "id" so clones can reference it. Cannot duplicate.`
+      );
+      return;
+    }
+    setTemplateId(resolvedTemplateId);
+    setDuplicateToId(canDuplicateTo?.current?.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Until the template ref resolves we can't register the capability (it needs
+  // the template id), so hold off rendering the trigger to avoid registering it
+  // as an inert can-play element.
+  if (!templateId) {
+    return null;
+  }
+
+  // Both attributes go through `tagInfo` so they land on the trigger element as
+  // real DOM attributes — the capability reads them via getAttribute.
+  const tagInfo: Record<string, string> = {
+    [TagType.CanDuplicate]: templateId,
+  };
+  if (duplicateToId) {
+    tagInfo[CanDuplicateTo] = duplicateToId;
+  }
 
   return (
     <CanPlayElement
       // @ts-ignore
+      tagInfo={tagInfo}
       {...TagTypeToElement[TagType.CanDuplicate]}
       children={(renderData) => {
-        const { data } = renderData;
-        let lastElement: HTMLElement | null =
-          document.getElementById(addedElements.slice(-1)?.[0]) ?? null;
-        if (!elementToDuplicate?.current) {
-          console.error(
-            `Element ${elementToDuplicate} not found. Cannot duplicate.`
-          );
-          return renderSingleChildOrPlayable(children, renderData);
-        }
-
-        const eleToDuplicate = elementToDuplicate.current;
-
-        function insertDuplicatedElement(newElement: Node) {
-          if (canDuplicateTo?.current) {
-            const duplicateToElement = canDuplicateTo.current;
-            if (duplicateToElement) {
-              duplicateToElement.appendChild(newElement);
-              return;
-            }
-          }
-
-          // By default insert after the latest element inserted (or the element to duplicate if none yet)
-          eleToDuplicate!.parentNode!.insertBefore(
-            newElement,
-            (lastElement || eleToDuplicate!).nextSibling
+        const renderedChild = renderSingleChildOrPlayable(children, renderData);
+        // Stamp a stable id onto the trigger if the consumer didn't give one,
+        // so its handler is keyed consistently instead of by content hash.
+        if (
+          !childId &&
+          React.isValidElement(renderedChild) &&
+          typeof renderedChild.type === "string"
+        ) {
+          return React.cloneElement(
+            renderedChild as React.ReactElement<{ id?: string }>,
+            { id: triggerId }
           );
         }
-
-        const addedElementsSet = new Set(addedElements);
-        for (const elementId of data) {
-          if (addedElementsSet.has(elementId)) continue;
-
-          const newElement = eleToDuplicate.cloneNode(true) as HTMLElement;
-          Object.assign(newElement, { ...elementToDuplicate });
-          newElement.id = elementId;
-
-          insertDuplicatedElement(newElement);
-          addedElements.push(elementId);
-          playhtml.setupPlayElement(newElement);
-          lastElement = newElement;
-        }
-        setAddedElements(addedElements);
-
-        return renderSingleChildOrPlayable(children, renderData);
+        return renderedChild;
       }}
     />
   );
