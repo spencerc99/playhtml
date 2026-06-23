@@ -169,7 +169,7 @@ ReactDOM.createRoot(
             <CanHoverElement>
               <div id="verify-hover" style={{ width: 80, height: 80, background: "#3d3833", borderRadius: 8 }} className="hover-verify" />
             </CanHoverElement>
-            <style>{`.hover-verify.hovering { outline: 3px solid #4a9a8a; }`}</style>
+            <style>{`.hover-verify[data-playhtml-hover] { outline: 3px solid #4a9a8a; }`}</style>
           </div>
         </div>
       </div>

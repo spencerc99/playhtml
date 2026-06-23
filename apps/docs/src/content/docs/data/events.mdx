@@ -5,6 +5,7 @@ sidebar:
   order: 4
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import { RainSprinklerDemo } from "@/components/react/data-demos/RainSprinklerDemo";
 import { LiveReactionsDemo } from "@/components/react/data-demos/LiveReactionsDemo";
 
@@ -26,8 +27,8 @@ Comparing all four primitives side by side: see the [decision table on data esse
 
 ## The API
 
-### Vanilla HTML
-
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 Register listeners in `playhtml.init()`, then dispatch from anywhere:
 
 ```js
@@ -48,9 +49,8 @@ document.querySelector("#celebrate").addEventListener("click", () => {
 ```
 
 `events` in the init options is an object keyed by a local name (the key) — `type` is the wire identifier every client must agree on.
-
-### React
-
+  </TabItem>
+  <TabItem label="React">
 Events live on the `PlayContext`. Register a listener inside an effect; dispatch whenever:
 
 ```tsx
@@ -77,6 +77,8 @@ function ConfettiButton() {
 ```
 
 Always return the cleanup in the effect — if the component unmounts and you don't remove the listener, you'll accumulate duplicates on every remount.
+  </TabItem>
+</Tabs>
 
 ## Passing data with an event
 

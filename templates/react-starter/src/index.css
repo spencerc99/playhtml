@@ -22,3 +22,14 @@ body {
 button {
   font-family: inherit;
 }
+
+/* CanHoverElement sets [data-playhtml-hover] while anyone on the page is
+   hovering, so the effect is shared. Style that attribute instead of :hover. */
+#hoverBox {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#hoverBox[data-playhtml-hover] {
+  background: blue !important;
+  transform: scale(1.1);
+}
