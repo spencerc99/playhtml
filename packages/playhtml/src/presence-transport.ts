@@ -7,12 +7,12 @@ import type {
   PresenceClientMessage,
   PresenceServerMessage,
 } from "@playhtml/common";
+import { validatePresenceClientMessage } from "@playhtml/common";
 import {
   isPresenceRecord,
   isPresenceRemoves,
   isPresenceSnapshot,
-  validatePresenceClientMessage,
-} from "@playhtml/common";
+} from "./presence-utils";
 
 export type PresenceSocket = {
   readyState?: number;

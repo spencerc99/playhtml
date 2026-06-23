@@ -2,7 +2,6 @@
 // ABOUTME: Validates ephemeral channel updates before they enter PlayHTML rooms.
 
 import type { Cursor, CursorZonePosition, PlayerIdentity } from "./cursor-types";
-import { isPresenceRecord } from "./presence-guards";
 
 export const MAX_PRESENCE_VALUE_BYTES = 4096;
 export const MAX_PRESENCE_PAGE_LENGTH = 512;
@@ -85,7 +84,7 @@ export function getPresenceChannelCadence(
 export function validatePresenceClientMessage(
   value: unknown,
 ): PresenceClientMessage {
-  if (!isPresenceRecord(value)) {
+  if (!isRecord(value)) {
     throw new Error("Presence message must be an object");
   }
 
@@ -128,7 +127,7 @@ function validatePresenceValue(channel: unknown, value: unknown): void {
 }
 
 function validateCursorPresenceValue(value: unknown): void {
-  if (!isPresenceRecord(value)) {
+  if (!isRecord(value)) {
     throw new Error("cursor presence value must be an object");
   }
 
@@ -152,7 +151,7 @@ function validateCursorPresenceValue(value: unknown): void {
 }
 
 function validatePlayerIdentity(value: unknown): void {
-  if (!isPresenceRecord(value)) {
+  if (!isRecord(value)) {
     throw new Error("identity must be an object");
   }
   validateRequiredBoundedString(
@@ -160,7 +159,7 @@ function validatePlayerIdentity(value: unknown): void {
     "identity.publicKey",
     MAX_PRESENCE_IDENTITY_STRING_LENGTH,
   );
-  if (!isPresenceRecord(value.playerStyle)) {
+  if (!isRecord(value.playerStyle)) {
     throw new Error("identity.playerStyle must be an object");
   }
   const colorPalette = value.playerStyle.colorPalette;
@@ -185,7 +184,7 @@ function validatePlayerIdentity(value: unknown): void {
 }
 
 function validateCursor(value: unknown): void {
-  if (!isPresenceRecord(value)) {
+  if (!isRecord(value)) {
     throw new Error("cursor must be an object");
   }
   if (!Number.isFinite(value.x)) {
@@ -200,7 +199,7 @@ function validateCursor(value: unknown): void {
 }
 
 function validateZone(value: unknown): void {
-  if (!isPresenceRecord(value)) {
+  if (!isRecord(value)) {
     throw new Error("cursor zone must be an object");
   }
   if (typeof value.zoneId !== "string" || value.zoneId.length === 0) {
@@ -279,4 +278,8 @@ function assertJsonSize(value: unknown): void {
       `Presence value must be ${MAX_PRESENCE_VALUE_BYTES} bytes or less`,
     );
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

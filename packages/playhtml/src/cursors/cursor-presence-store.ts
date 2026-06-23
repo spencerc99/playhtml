@@ -13,7 +13,7 @@ import {
   isCursor,
   isPlayerIdentity,
   isPresenceCursorChannelValue,
-} from "@playhtml/common";
+} from "../presence-utils";
 
 type PeerChannels = Record<string, unknown>;
 
@@ -109,15 +109,16 @@ export class CursorPresenceStore {
       cursor,
       playerIdentity: identity,
       lastSeen,
-      message: channels.message == null
-        ? null
-        : typeof channels.message === "string"
-          ? channels.message
-          : null,
+      message: getNullableString(channels.message),
       page,
       zone,
     };
   }
+}
+
+function getNullableString(value: unknown): string | null {
+  if (value == null) return null;
+  return typeof value === "string" ? value : null;
 }
 
 function getOptionalString(value: unknown): string | undefined {

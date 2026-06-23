@@ -1386,14 +1386,15 @@ export class CursorClientAwareness {
   private publishPresenceTransportState(): void {
     if (!this.presenceTransport) return;
 
+    const page = getPresencePage();
     this.presenceTransport.join({
       identity: this.playerIdentity,
-      page: getPresencePage(),
+      page,
     });
     if (this.currentCursor) {
       this.presenceTransport.update("cursor", {
         cursor: this.currentCursor,
-        page: getPresencePage(),
+        page,
         zone: this.currentZone,
         at: Date.now(),
       });
@@ -2261,6 +2262,7 @@ export class CursorClientAwareness {
     const presences = new Map<string, CursorPresenceView>();
 
     if (this.presenceTransport) {
+      const page = getPresencePage();
       const localCoords = this.currentCursor
         ? this.storageToClient(this.currentCursor.x, this.currentCursor.y)
         : null;
@@ -2274,7 +2276,7 @@ export class CursorClientAwareness {
           : null,
         playerIdentity: this.playerIdentity,
         zone: this.currentZone,
-        page: getPresencePage(),
+        page,
       });
       const remotePresences = this.presenceStore.getRemotePresences(
         this.playerIdentity.publicKey,

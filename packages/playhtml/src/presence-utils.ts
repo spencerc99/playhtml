@@ -1,7 +1,7 @@
-// ABOUTME: Provides shared runtime guards for generic presence protocol values.
-// ABOUTME: Keeps client and server presence parsing consistent across packages.
+// ABOUTME: Provides core-library runtime guards for presence transport values.
+// ABOUTME: Keeps cursor presence parsing readable without expanding public APIs.
 
-import type { Cursor, CursorZonePosition, PlayerIdentity } from "./cursor-types";
+import type { Cursor, CursorZonePosition, PlayerIdentity } from "@playhtml/common";
 
 export type PresenceCursorChannelValue = {
   cursor?: Cursor | null;
