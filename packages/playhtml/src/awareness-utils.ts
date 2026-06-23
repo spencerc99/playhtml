@@ -4,8 +4,8 @@
 /**
  * Resolves the stable ID for a client's awareness entry.
  * When cursors are enabled, uses playerIdentity.publicKey (stable across sessions).
- * When cursors are disabled we use yprovider; no client sets __playhtml_cursors__,
- * so we fall back to clientId to avoid skipping all awareness.
+ * Presence-only clients publish the same publicKey in __playhtml_identity__.
+ * If neither identity exists, fall back to clientId so anonymous awareness still works.
  */
 export function getStableIdForAwareness(
   state: Record<string, unknown>,

@@ -9,15 +9,13 @@ import type {
   PresenceChangesMessage,
   PresenceSnapshot,
 } from "@playhtml/common";
+import {
+  isCursor,
+  isPlayerIdentity,
+  isPresenceCursorChannelValue,
+} from "@playhtml/common";
 
 type PeerChannels = Record<string, unknown>;
-
-type CursorChannelValue = {
-  cursor?: Cursor | null;
-  zone?: CursorZonePosition | null;
-  page?: string;
-  at?: number;
-};
 
 export type StoredCursorPresence = CursorPresence & {
   cursor: Cursor | null;
@@ -97,7 +95,7 @@ export class CursorPresenceStore {
     let zone: CursorZonePosition | null = null;
 
     if (cursorChannel !== undefined) {
-      if (!isCursorChannelValue(cursorChannel)) return null;
+      if (!isPresenceCursorChannelValue(cursorChannel)) return null;
       if (cursorChannel.cursor !== null) {
         if (!isCursor(cursorChannel.cursor)) return null;
         cursor = cursorChannel.cursor;
@@ -111,50 +109,17 @@ export class CursorPresenceStore {
       cursor,
       playerIdentity: identity,
       lastSeen,
-      message: getNullableString(channels.message),
+      message: channels.message == null
+        ? null
+        : typeof channels.message === "string"
+          ? channels.message
+          : null,
       page,
       zone,
     };
   }
 }
 
-function isPlayerIdentity(value: unknown): value is PlayerIdentity {
-  if (!isRecord(value)) return false;
-  if (typeof value.publicKey !== "string" || value.publicKey.length === 0) {
-    return false;
-  }
-  const style = value.playerStyle;
-  return (
-    isRecord(style) &&
-    Array.isArray(style.colorPalette) &&
-    typeof style.colorPalette[0] === "string" &&
-    style.colorPalette[0].length > 0
-  );
-}
-
-function isCursorChannelValue(value: unknown): value is CursorChannelValue {
-  return isRecord(value) && "cursor" in value;
-}
-
-function isCursor(value: unknown): value is Cursor {
-  return (
-    isRecord(value) &&
-    Number.isFinite(value.x) &&
-    Number.isFinite(value.y) &&
-    typeof value.pointer === "string" &&
-    value.pointer.length > 0
-  );
-}
-
-function getNullableString(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  return typeof value === "string" ? value : null;
-}
-
 function getOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

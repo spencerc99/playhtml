@@ -7,7 +7,12 @@ import type {
   PresenceClientMessage,
   PresenceServerMessage,
 } from "@playhtml/common";
-import { validatePresenceClientMessage } from "@playhtml/common";
+import {
+  isPresenceRecord,
+  isPresenceRemoves,
+  isPresenceSnapshot,
+  validatePresenceClientMessage,
+} from "@playhtml/common";
 
 export type PresenceSocket = {
   readyState?: number;
@@ -188,7 +193,7 @@ function parsePresenceServerMessage(value: unknown): PresenceServerMessage | nul
     return null;
   }
 
-  if (!isRecord(parsed)) return null;
+  if (!isPresenceRecord(parsed)) return null;
   switch (parsed.type) {
     case "presence-sync":
       return isPresenceSnapshot(parsed.peers)
@@ -211,22 +216,4 @@ function parsePresenceServerMessage(value: unknown): PresenceServerMessage | nul
     default:
       return null;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isPresenceSnapshot(value: unknown): value is Record<string, Record<string, unknown>> {
-  if (!isRecord(value)) return false;
-  return Object.values(value).every(isRecord);
-}
-
-function isPresenceRemoves(value: unknown): value is Record<string, string[]> {
-  if (!isRecord(value)) return false;
-  return Object.values(value).every(
-    (channels) =>
-      Array.isArray(channels) &&
-      channels.every((channel) => typeof channel === "string"),
-  );
 }
