@@ -367,13 +367,26 @@ By default, clones are inserted right after the template (or the previous clone)
   </TabItem>
   <TabItem label="React">
 ```tsx
-// CanDuplicateElement takes refs, not selectors. canDuplicateTo is the
-// React equivalent of the can-duplicate-to attribute. See "React API".
+import { useRef } from "react";
 import { CanDuplicateElement } from "@playhtml/react";
 
-<CanDuplicateElement elementToDuplicate={templateRef} canDuplicateTo={penRef}>
-  <button>clone a bunny</button>
-</CanDuplicateElement>
+// CanDuplicateElement takes refs, not selectors. `elementToDuplicate` is the
+// template that gets cloned; `canDuplicateTo` is the React equivalent of the
+// can-duplicate-to attribute. Both elements need a stable `id`.
+function BunnyField() {
+  const template = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLDivElement>(null);
+
+  return (
+    <div>
+      <div id="bunny-template" ref={template}>🐰</div>
+      <div id="bunny-field" ref={field} />
+      <CanDuplicateElement elementToDuplicate={template} canDuplicateTo={field}>
+        <button>clone a bunny</button>
+      </CanDuplicateElement>
+    </div>
+  );
+}
 ```
   </TabItem>
 </Tabs>
