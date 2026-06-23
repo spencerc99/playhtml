@@ -94,8 +94,34 @@ describe("getLiveDocumentPersistenceDecision", () => {
         liveDocumentBase64: "source",
         persistedDocumentBase64: "newer",
         liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: false,
+        liveDocumentMatchesLastSave: true,
       })
     ).toEqual({ kind: "reload-persisted-document" });
+  });
+
+  it("preserves both sides when connected live data conflicts with persisted data", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: true,
+      })
+    ).toEqual({ kind: "skip-live-save" });
+  });
+
+  it("preserves unsaved live data when an empty room conflicts with persisted data", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: false,
+        liveDocumentMatchesLastSave: false,
+      })
+    ).toEqual({ kind: "skip-live-save" });
   });
 
   it("saves live data when autosave contains the persisted document", () => {
@@ -104,6 +130,8 @@ describe("getLiveDocumentPersistenceDecision", () => {
         liveDocumentBase64: "source",
         persistedDocumentBase64: "source",
         liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: false,
       })
     ).toEqual({ kind: "save-live-document" });
     expect(
@@ -111,6 +139,8 @@ describe("getLiveDocumentPersistenceDecision", () => {
         liveDocumentBase64: "source",
         persistedDocumentBase64: "persisted",
         liveDocumentContainsPersistedDocument: true,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: false,
       })
     ).toEqual({ kind: "save-live-document" });
     expect(
@@ -118,6 +148,8 @@ describe("getLiveDocumentPersistenceDecision", () => {
         liveDocumentBase64: "source",
         persistedDocumentBase64: null,
         liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: false,
       })
     ).toEqual({ kind: "save-live-document" });
   });
