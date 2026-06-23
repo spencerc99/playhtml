@@ -3,6 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   getNextAlarmTime,
+  getCompactionCommitDecision,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
   shouldCommitCompactionSnapshot,
@@ -46,6 +47,29 @@ describe("shouldCommitCompactionSnapshot", () => {
         persistedDocumentBase64: null,
       })
     ).toBe(false);
+  });
+});
+
+describe("getCompactionCommitDecision", () => {
+  it("persists the live document before compaction when persisted data changed", () => {
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+      })
+    ).toEqual({ kind: "commit-compaction" });
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+      })
+    ).toEqual({ kind: "persist-live-document" });
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: null,
+      })
+    ).toEqual({ kind: "persist-live-document" });
   });
 });
 

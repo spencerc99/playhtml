@@ -24,7 +24,30 @@ export function shouldCommitCompactionSnapshot({
   sourceDocumentBase64: string;
   persistedDocumentBase64: string | null;
 }): boolean {
-  return persistedDocumentBase64 === sourceDocumentBase64;
+  return (
+    getCompactionCommitDecision({
+      sourceDocumentBase64,
+      persistedDocumentBase64,
+    }).kind === "commit-compaction"
+  );
+}
+
+export type CompactionCommitDecision =
+  | { kind: "commit-compaction" }
+  | { kind: "persist-live-document" };
+
+export function getCompactionCommitDecision({
+  sourceDocumentBase64,
+  persistedDocumentBase64,
+}: {
+  sourceDocumentBase64: string;
+  persistedDocumentBase64: string | null;
+}): CompactionCommitDecision {
+  if (persistedDocumentBase64 === sourceDocumentBase64) {
+    return { kind: "commit-compaction" };
+  }
+
+  return { kind: "persist-live-document" };
 }
 
 // Emergency compaction protects rooms that stay continuously connected and

@@ -61,10 +61,10 @@ import {
   SharedElementPermissions,
 } from "./sharing";
 import {
+  getCompactionCommitDecision,
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
-  shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
@@ -101,6 +101,10 @@ type CommitCompactedDocumentOptions = {
   compactedDocument: CompactedDocument;
   beforeCommit?: () => Promise<boolean>;
   afterReplace?: () => Promise<void>;
+};
+
+type PersistLiveDocumentOptions = {
+  allowCompaction: boolean;
 };
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
@@ -478,23 +482,27 @@ export class PartyServer extends YServer {
     beforeCommit,
     afterReplace,
   }: CommitCompactedDocumentOptions): Promise<boolean> {
-    this.isSkippingSave = true;
     const rollbackResetEpoch = await this.getResetEpoch();
     let documentSaved = false;
+    let autosavePaused = false;
 
     try {
       const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
-      if (
-        !shouldCommitCompactionSnapshot({
-          sourceDocumentBase64: compactedDocument.sourceBase64,
-          persistedDocumentBase64,
-        })
-      ) {
+      const commitDecision = getCompactionCommitDecision({
+        sourceDocumentBase64: compactedDocument.sourceBase64,
+        persistedDocumentBase64,
+      });
+
+      if (commitDecision.kind === "persist-live-document") {
         console.warn(
-          `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source`
+          `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
         );
+        await this.persistLiveDocument({ allowCompaction: false });
         return false;
       }
+
+      this.isSkippingSave = true;
+      autosavePaused = true;
 
       if (beforeCommit && !(await beforeCommit())) {
         return false;
@@ -526,7 +534,9 @@ export class PartyServer extends YServer {
       this.compactionAutosaveSnapshot = null;
       throw error;
     } finally {
-      this.isSkippingSave = false;
+      if (autosavePaused) {
+        this.isSkippingSave = false;
+      }
     }
   }
 
@@ -1255,13 +1265,19 @@ export class PartyServer extends YServer {
   }
 
   override async onSave(): Promise<void> {
+    await this.persistLiveDocument({ allowCompaction: true });
+  }
+
+  private async persistLiveDocument({
+    allowCompaction,
+  }: PersistLiveDocumentOptions): Promise<boolean> {
     const doc = this.document;
 
     if (!this.isPersistenceAvailable()) {
       console.warn(
         `[PartyServer] Autosave skipped for room ${this.name}: Supabase persistence unavailable, room is in transient mode.`
       );
-      return;
+      return false;
     }
 
     // Skip autosave if we are performing a reset operation
@@ -1269,7 +1285,7 @@ export class PartyServer extends YServer {
       console.log(
         "[PartyServer] Skipping autosave due to active reset operation"
       );
-      return;
+      return false;
     }
 
     // Get current reset epoch for logging and validation
@@ -1284,7 +1300,7 @@ export class PartyServer extends YServer {
       console.warn(
         `[PartyServer] Autosave skipped for room ${this.name}: ${resetEpochDecision.reason}`
       );
-      return;
+      return false;
     }
 
     if (resetEpochDecision.kind === "promote-server-epoch") {
@@ -1335,30 +1351,31 @@ export class PartyServer extends YServer {
         `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
         error
       );
+      return false;
     }
 
-    if (!error) {
-      if (this.consumeCompactionAutosave(documentBase64)) {
-        console.log(
-          `[PartyServer] Compaction autosave completed: room=${this.name}`
-        );
-        return;
-      }
+    if (this.consumeCompactionAutosave(documentBase64)) {
+      console.log(
+        `[PartyServer] Compaction autosave completed: room=${this.name}`
+      );
+      return true;
     }
 
-    if (!error && activeConnectionCount > 0) {
+    if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
         documentSize,
         now: Date.now(),
       });
       if (compacted) {
-        return;
+        return true;
       }
     }
 
-    if (!error && activeConnectionCount === 0) {
+    if (allowCompaction && activeConnectionCount === 0) {
       await this.scheduleEmptyRoomCompaction();
     }
+
+    return true;
   }
 
   private async maybeCompactLargeConnectedRoom({
