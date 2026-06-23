@@ -203,4 +203,36 @@ describe("createPresenceAPI identity propagation", () => {
 
     unsubscribe();
   });
+
+  it("merges cursor transport snapshots with Yjs presence by public key", () => {
+    const awareness = makeAwareness(1);
+    const localIdentity = makeIdentity("pk_local");
+    let cursorPresences = new Map<string, any>();
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => localIdentity,
+      getCursorPresences: () => cursorPresences,
+    });
+
+    api.setMyPresence("status", { text: "here" });
+    cursorPresences = new Map([
+      [
+        "pk_local",
+        {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          playerIdentity: localIdentity,
+        },
+      ],
+    ]);
+
+    const presences = api.getPresences();
+
+    expect(presences.get("1")).toBeUndefined();
+    expect(presences.get("pk_local")).toMatchObject({
+      cursor: { x: 10, y: 20, pointer: "mouse" },
+      isMe: true,
+      playerIdentity: localIdentity,
+      status: { text: "here" },
+    });
+  });
 });

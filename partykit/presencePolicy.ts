@@ -11,6 +11,7 @@ import type {
 import { getPresenceChannelCadence } from "@playhtml/common";
 
 const PRESENCE_RATE_WINDOW_MS = 1000;
+const MAX_PRESENCE_CHANNELS_PER_CONNECTION = 32;
 const PRESENCE_MESSAGE_BUDGET_HZ: Record<PresenceMessageBudgetBucket, number> = {
   frame: 90,
   interactive: 45,
@@ -106,6 +107,7 @@ export function recordPresenceUpdate(
     peer = new Map();
     state.peers.set(connectionId, peer);
   }
+  assertPresenceChannelCapacity(peer, channel);
   peer.set(channel, value);
 
   let updates = state.dirtyUpdates.get(connectionId);
@@ -119,6 +121,27 @@ export function recordPresenceUpdate(
   if (removes) {
     removes.delete(channel);
     if (removes.size === 0) state.dirtyRemoves.delete(connectionId);
+  }
+}
+
+export function restorePresenceConnectionChannels(
+  state: PresenceRoomState,
+  connectionId: string,
+  channels: Record<string, unknown>,
+): void {
+  let peer = state.peers.get(connectionId);
+  if (!peer) {
+    peer = new Map();
+    state.peers.set(connectionId, peer);
+  }
+
+  peer.clear();
+  for (const [channel, value] of Object.entries(channels)) {
+    assertPresenceChannelCapacity(peer, channel);
+    peer.set(channel, value);
+  }
+  if (peer.size === 0) {
+    state.peers.delete(connectionId);
   }
 }
 
@@ -269,4 +292,13 @@ function removalsFromPeers(
     removes[connectionId] = Array.from(channels);
   }
   return removes;
+}
+
+function assertPresenceChannelCapacity(
+  peer: Map<string, unknown>,
+  channel: string,
+): void {
+  if (peer.has(channel)) return;
+  if (peer.size < MAX_PRESENCE_CHANNELS_PER_CONNECTION) return;
+  throw new Error("Presence channel limit exceeded");
 }

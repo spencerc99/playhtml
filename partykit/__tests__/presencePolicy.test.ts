@@ -10,6 +10,7 @@ import {
   recordPresenceClear,
   recordPresenceRemoval,
   recordPresenceUpdate,
+  restorePresenceConnectionChannels,
   takePresenceChanges,
   getPresenceSyncSnapshot,
 } from "../presencePolicy";
@@ -147,6 +148,39 @@ describe("presence room policy", () => {
         "conn-1": {
           cursor: latestCursor,
         },
+      },
+    });
+  });
+
+  it("caps channel count per connection", () => {
+    const state = createPresenceRoomState();
+
+    for (let i = 0; i < 32; i++) {
+      recordPresenceUpdate(state, "conn-1", `channel-${i}`, i);
+    }
+
+    expect(() =>
+      recordPresenceUpdate(state, "conn-1", "channel-32", "extra"),
+    ).toThrow("Presence channel limit exceeded");
+  });
+
+  it("restores persisted connection channels without rebroadcasting them", () => {
+    const state = createPresenceRoomState();
+
+    restorePresenceConnectionChannels(state, "conn-1", {
+      identity: {
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"] },
+      },
+      cursor: latestCursor,
+    });
+    recordPresenceClear(state, "conn-1", "cursor");
+
+    expect(takePresenceChanges(state)).toEqual({
+      type: "presence-changes",
+      updates: {},
+      removes: {
+        "conn-1": ["cursor"],
       },
     });
   });

@@ -10,15 +10,16 @@ import type {
 import { validatePresenceClientMessage } from "@playhtml/common";
 
 export type PresenceSocket = {
-  send(message: string): void;
+  readyState?: number;
+  send(message: string): boolean | void;
   close(): void;
   addEventListener(
-    event: "message",
-    callback: (event: MessageEvent) => void,
+    event: "message" | "open" | "close" | "error",
+    callback: (event: Event | MessageEvent) => void,
   ): void;
   removeEventListener(
-    event: "message",
-    callback: (event: MessageEvent) => void,
+    event: "message" | "open" | "close" | "error",
+    callback: (event: Event | MessageEvent) => void,
   ): void;
 };
 
@@ -38,16 +39,35 @@ export type PresenceJoinInput = {
 };
 
 type PresenceTransportListener = (message: PresenceServerMessage) => void;
+type PresenceTransportStatus = "open" | "close" | "error";
+type PresenceTransportStatusListener = (
+  status: PresenceTransportStatus,
+) => void;
+
+const SOCKET_OPEN_STATE = 1;
 
 export class RealtimePresenceTransport {
   private socket: PresenceSocket;
   private listeners = new Set<PresenceTransportListener>();
+  private statusListeners = new Set<PresenceTransportStatusListener>();
+  private latestJoin: PresenceJoinInput | null = null;
+  private channelValues = new Map<string, unknown>();
   private onMessage = (event: MessageEvent) => {
     const message = parsePresenceServerMessage(event.data);
     if (!message) return;
     for (const listener of this.listeners) {
       listener(message);
     }
+  };
+  private onOpen = () => {
+    this.flushCurrentState();
+    this.notifyStatus("open");
+  };
+  private onClose = () => {
+    this.notifyStatus("close");
+  };
+  private onError = () => {
+    this.notifyStatus("error");
   };
 
   constructor(options: PresenceTransportOptions) {
@@ -58,12 +78,17 @@ export class RealtimePresenceTransport {
       host: options.host,
       room: options.room,
       party: "presence",
+      maxEnqueuedMessages: 0,
     });
-    this.socket.addEventListener("message", this.onMessage);
+    this.socket.addEventListener("message", this.onMessage as EventListener);
+    this.socket.addEventListener("open", this.onOpen);
+    this.socket.addEventListener("close", this.onClose);
+    this.socket.addEventListener("error", this.onError);
   }
 
   join(input: PresenceJoinInput): void {
-    this.send({
+    this.latestJoin = input;
+    this.sendIfOpen({
       type: "presence-join",
       identity: input.identity,
       page: input.page,
@@ -71,7 +96,8 @@ export class RealtimePresenceTransport {
   }
 
   update(channel: string, value: unknown): void {
-    this.send({
+    this.channelValues.set(channel, value);
+    this.sendIfOpen({
       type: "presence-update",
       channel,
       value,
@@ -79,7 +105,8 @@ export class RealtimePresenceTransport {
   }
 
   clear(channel: string): void {
-    this.send({
+    this.channelValues.delete(channel);
+    this.sendIfOpen({
       type: "presence-clear",
       channel,
     });
@@ -92,15 +119,58 @@ export class RealtimePresenceTransport {
     };
   }
 
-  destroy(): void {
-    this.socket.removeEventListener("message", this.onMessage);
-    this.socket.close();
-    this.listeners.clear();
+  subscribeStatus(listener: PresenceTransportStatusListener): () => void {
+    this.statusListeners.add(listener);
+    return () => {
+      this.statusListeners.delete(listener);
+    };
   }
 
-  private send(message: PresenceClientMessage): void {
+  destroy(): void {
+    this.socket.removeEventListener("message", this.onMessage as EventListener);
+    this.socket.removeEventListener("open", this.onOpen);
+    this.socket.removeEventListener("close", this.onClose);
+    this.socket.removeEventListener("error", this.onError);
+    this.socket.close();
+    this.listeners.clear();
+    this.statusListeners.clear();
+  }
+
+  private flushCurrentState(): void {
+    if (this.latestJoin) {
+      this.sendIfOpen({
+        type: "presence-join",
+        identity: this.latestJoin.identity,
+        page: this.latestJoin.page,
+      });
+    }
+
+    for (const [channel, value] of this.channelValues) {
+      this.sendIfOpen({
+        type: "presence-update",
+        channel,
+        value,
+      });
+    }
+  }
+
+  private sendIfOpen(message: PresenceClientMessage): void {
     validatePresenceClientMessage(message);
+    if (!this.isSocketOpen()) return;
     this.socket.send(JSON.stringify(message));
+  }
+
+  private isSocketOpen(): boolean {
+    return (
+      this.socket.readyState === undefined ||
+      this.socket.readyState === SOCKET_OPEN_STATE
+    );
+  }
+
+  private notifyStatus(status: PresenceTransportStatus): void {
+    for (const listener of this.statusListeners) {
+      listener(status);
+    }
   }
 }
 

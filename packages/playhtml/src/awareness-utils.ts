@@ -1,3 +1,6 @@
+// ABOUTME: Resolves stable awareness identities for cursor and presence maps.
+// ABOUTME: Builds fingerprints for user-authored awareness channels.
+
 /**
  * Resolves the stable ID for a client's awareness entry.
  * When cursors are enabled, uses playerIdentity.publicKey (stable across sessions).
@@ -11,7 +14,14 @@ export function getStableIdForAwareness(
   const cursorData = state.__playhtml_cursors__ as
     | { playerIdentity?: { publicKey?: string } }
     | undefined;
-  return cursorData?.playerIdentity?.publicKey ?? String(clientId);
+  const identityData = state.__playhtml_identity__ as
+    | { publicKey?: string }
+    | undefined;
+  return (
+    cursorData?.playerIdentity?.publicKey ??
+    identityData?.publicKey ??
+    String(clientId)
+  );
 }
 
 /**

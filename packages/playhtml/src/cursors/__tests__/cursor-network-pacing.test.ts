@@ -77,6 +77,7 @@ function dispatchMouseMove(x: number, y: number) {
 
 function makeFakePresenceTransport() {
   const listeners = new Set<(message: unknown) => void>();
+  const statusListeners = new Set<(status: "open" | "close" | "error") => void>();
   return {
     updates: [] as Array<{ channel: string; value: unknown }>,
     clears: [] as string[],
@@ -93,6 +94,13 @@ function makeFakePresenceTransport() {
     }),
     emit(message: unknown) {
       for (const listener of listeners) listener(message);
+    },
+    subscribeStatus: vi.fn((listener: (status: "open" | "close" | "error") => void) => {
+      statusListeners.add(listener);
+      return () => statusListeners.delete(listener);
+    }),
+    emitStatus(status: "open" | "close" | "error") {
+      for (const listener of statusListeners) listener(status);
     },
     destroy: vi.fn(),
   };
@@ -305,7 +313,44 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("keeps 60Hz publishing for transport-backed cursor rooms with about twenty peers", () => {
+  it("ignores unsafe remote custom cursor URLs", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: {
+              x: 10,
+              y: 20,
+              pointer: 'x" onload="alert(1)',
+            },
+            page: "/",
+            zone: null,
+            at: 100,
+          },
+        },
+      },
+    });
+
+    expect(document.querySelector(".playhtml-cursor-other")).not.toBe(null);
+    expect(document.querySelector(".playhtml-cursor-other image")).toBe(null);
+
+    client.destroy();
+  });
+
+  it("backs off transport-backed cursor publishing when about twenty peers are present", () => {
     const provider = makeFakeProvider();
     const transport = makeFakePresenceTransport();
     const client = new CursorClientAwareness(
@@ -337,9 +382,88 @@ describe("cursor network pacing", () => {
     dispatchMouseMove(10, 20);
     vi.advanceTimersByTime(Math.ceil(1000 / 60));
 
+    expect(transport.updates).toHaveLength(0);
+
+    vi.advanceTimersByTime(
+      Math.ceil(getCursorNetworkIntervalMs(20) - (1000 / 60)),
+    );
+
     expect(transport.updates).toHaveLength(1);
 
     client.destroy();
+  });
+
+  it("replays join and latest cursor state when the transport opens", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const identity = makeIdentity("local", "#ff0000");
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: identity,
+      },
+      transport as any,
+    );
+    transport.join.mockClear();
+    transport.updates = [];
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+    transport.updates = [];
+    transport.emitStatus("open");
+
+    expect(transport.join).toHaveBeenCalledWith({
+      identity,
+      page: "/",
+    });
+    expect(transport.updates).toEqual([
+      {
+        channel: "cursor",
+        value: expect.objectContaining({
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          page: "/",
+        }),
+      },
+    ]);
+
+    client.destroy();
+  });
+
+  it("omits overlong page paths from transport messages", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const identity = makeIdentity("local", "#ff0000");
+    const originalPath = window.location.pathname;
+    window.history.pushState(null, "", `/${"x".repeat(600)}`);
+
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: identity,
+      },
+      transport as any,
+    );
+    try {
+      dispatchMouseMove(10, 20);
+      vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+      expect(transport.join).toHaveBeenCalledWith({
+        identity,
+        page: undefined,
+      });
+      expect(transport.updates[0]).toEqual({
+        channel: "cursor",
+        value: expect.objectContaining({
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          page: undefined,
+        }),
+      });
+    } finally {
+      client.destroy();
+      window.history.pushState(null, "", originalPath);
+    }
   });
 
   it("repositions transport-backed remote cursors after viewport changes", () => {

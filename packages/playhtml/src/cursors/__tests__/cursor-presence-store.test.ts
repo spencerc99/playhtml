@@ -61,6 +61,31 @@ describe("CursorPresenceStore", () => {
     expect(store.getRemotePresences(alice.publicKey).size).toBe(0);
   });
 
+  it("keeps identity-only peers visible before their first cursor frame", () => {
+    const store = new CursorPresenceStore();
+
+    store.applySync({
+      "conn-1": {
+        identity: alice,
+        page: "/week/1",
+      },
+    });
+
+    expect(Array.from(store.getRemotePresences("pk_self"))).toEqual([
+      [
+        "pk_alice",
+        {
+          cursor: null,
+          playerIdentity: alice,
+          lastSeen: undefined,
+          message: null,
+          page: "/week/1",
+          zone: null,
+        },
+      ],
+    ]);
+  });
+
   it("coalesces cursor changes to the latest received value", () => {
     const store = new CursorPresenceStore();
     store.applySync({
@@ -94,7 +119,7 @@ describe("CursorPresenceStore", () => {
     expect(store.getPresenceByStableId("pk_bob")?.lastSeen).toBe(116);
   });
 
-  it("removes a cursor when the cursor channel is removed", () => {
+  it("keeps the identity after the cursor channel is removed", () => {
     const store = new CursorPresenceStore();
     store.applySync({
       "conn-1": {
@@ -113,6 +138,13 @@ describe("CursorPresenceStore", () => {
       },
     });
 
-    expect(store.getPresenceByStableId("pk_bob")).toBe(null);
+    expect(store.getPresenceByStableId("pk_bob")).toEqual({
+      cursor: null,
+      playerIdentity: bob,
+      lastSeen: undefined,
+      message: null,
+      page: undefined,
+      zone: null,
+    });
   });
 });

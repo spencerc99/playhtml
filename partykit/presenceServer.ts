@@ -20,7 +20,7 @@ import {
   createPresenceMessageBudgetState,
   createPresenceRoomState,
   recordPresenceRemoval,
-  recordPresenceUpdate,
+  restorePresenceConnectionChannels,
   takePresenceChanges,
 } from "./presencePolicy";
 import { isExpectedPresenceClose } from "./presenceDiagnostics";
@@ -101,12 +101,18 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
-    applyPresenceClientMessage(
-      this.presenceState,
-      presenceConnection.id,
-      parsed,
-    );
-    this.storeConnectionChannels(presenceConnection);
+    try {
+      this.restorePeerFromConnection(presenceConnection);
+      applyPresenceClientMessage(
+        this.presenceState,
+        presenceConnection.id,
+        parsed,
+      );
+      this.storeConnectionChannels(presenceConnection);
+    } catch (error) {
+      this.sendError(connection, getErrorMessage(error));
+      return;
+    }
 
     if (parsed.type !== "presence-ping") {
       this.scheduleBroadcast();
@@ -199,9 +205,11 @@ export class PresenceServer extends Server<Env> {
     const channels = connection.state?.[PRESENCE_CHANNELS_STATE_KEY];
     if (!channels) return;
 
-    for (const [channel, value] of Object.entries(channels)) {
-      recordPresenceUpdate(this.presenceState, connection.id, channel, value);
-    }
+    restorePresenceConnectionChannels(
+      this.presenceState,
+      connection.id,
+      channels,
+    );
   }
 
   private sendError(connection: Connection, message: string): void {

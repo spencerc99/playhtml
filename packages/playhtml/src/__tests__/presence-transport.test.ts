@@ -10,14 +10,18 @@ import {
 class FakeSocket {
   sent: string[] = [];
   closed = false;
+  readyState = WebSocket.CONNECTING;
   listeners = new Map<string, Set<(event: MessageEvent) => void>>();
 
-  send(message: string): void {
+  send(message: string): boolean {
+    if (this.readyState !== WebSocket.OPEN) return false;
     this.sent.push(message);
+    return true;
   }
 
   close(): void {
     this.closed = true;
+    this.readyState = WebSocket.CLOSED;
   }
 
   addEventListener(event: string, callback: (event: MessageEvent) => void): void {
@@ -36,6 +40,22 @@ class FakeSocket {
   receive(data: unknown): void {
     const event = { data: JSON.stringify(data) } as MessageEvent;
     for (const listener of this.listeners.get("message") ?? []) {
+      listener(event);
+    }
+  }
+
+  open(): void {
+    this.readyState = WebSocket.OPEN;
+    const event = {} as MessageEvent;
+    for (const listener of this.listeners.get("open") ?? []) {
+      listener(event);
+    }
+  }
+
+  disconnect(): void {
+    this.readyState = WebSocket.CLOSED;
+    const event = {} as MessageEvent;
+    for (const listener of this.listeners.get("close") ?? []) {
       listener(event);
     }
   }
@@ -70,6 +90,8 @@ describe("RealtimePresenceTransport", () => {
       socketFactory: () => socket,
     });
 
+    socket.open();
+
     transport.join({
       identity: {
         publicKey: "pk_1",
@@ -97,6 +119,100 @@ describe("RealtimePresenceTransport", () => {
         value: {
           cursor: { x: 1, y: 2, pointer: "mouse" },
           at: 100,
+        },
+      },
+    ]);
+  });
+
+  it("coalesces state while closed and flushes the latest values on open", () => {
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+
+    transport.join({
+      identity: {
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"] },
+      },
+      page: "/week/1",
+    });
+    transport.update("cursor", {
+      cursor: { x: 1, y: 2, pointer: "mouse" },
+      at: 100,
+    });
+    transport.update("cursor", {
+      cursor: { x: 10, y: 20, pointer: "mouse" },
+      at: 116,
+    });
+
+    expect(socket.sent).toEqual([]);
+
+    socket.open();
+
+    expect(socket.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+        },
+        page: "/week/1",
+      },
+      {
+        type: "presence-update",
+        channel: "cursor",
+        value: {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          at: 116,
+        },
+      },
+    ]);
+  });
+
+  it("replays join and latest state after reconnect", () => {
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+
+    transport.join({
+      identity: {
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"] },
+      },
+      page: "/week/1",
+    });
+    socket.open();
+    socket.sent = [];
+    socket.disconnect();
+    socket.readyState = WebSocket.CONNECTING;
+
+    transport.update("cursor", {
+      cursor: { x: 20, y: 30, pointer: "mouse" },
+      at: 200,
+    });
+    socket.open();
+
+    expect(socket.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+        },
+        page: "/week/1",
+      },
+      {
+        type: "presence-update",
+        channel: "cursor",
+        value: {
+          cursor: { x: 20, y: 30, pointer: "mouse" },
+          at: 200,
         },
       },
     ]);

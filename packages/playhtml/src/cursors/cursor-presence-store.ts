@@ -20,7 +20,7 @@ type CursorChannelValue = {
 };
 
 export type StoredCursorPresence = CursorPresence & {
-  cursor: Cursor;
+  cursor: Cursor | null;
   playerIdentity: PlayerIdentity;
 };
 
@@ -91,16 +91,29 @@ export class CursorPresenceStore {
     if (!isPlayerIdentity(identity)) return null;
 
     const cursorChannel = channels.cursor;
-    if (!isCursorChannelValue(cursorChannel)) return null;
-    if (!isCursor(cursorChannel.cursor)) return null;
+    let cursor: Cursor | null = null;
+    let lastSeen: number | undefined;
+    let page = getOptionalString(channels.page);
+    let zone: CursorZonePosition | null = null;
+
+    if (cursorChannel !== undefined) {
+      if (!isCursorChannelValue(cursorChannel)) return null;
+      if (cursorChannel.cursor !== null) {
+        if (!isCursor(cursorChannel.cursor)) return null;
+        cursor = cursorChannel.cursor;
+      }
+      lastSeen = cursorChannel.at;
+      page = cursorChannel.page ?? page;
+      zone = cursorChannel.zone ?? null;
+    }
 
     return {
-      cursor: cursorChannel.cursor,
+      cursor,
       playerIdentity: identity,
-      lastSeen: cursorChannel.at,
+      lastSeen,
       message: getNullableString(channels.message),
-      page: cursorChannel.page ?? getOptionalString(channels.page),
-      zone: cursorChannel.zone ?? null,
+      page,
+      zone,
     };
   }
 }
