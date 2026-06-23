@@ -36,6 +36,8 @@ export interface ElementInitializer<T = any, U = any, V = any> {
    * render (it loops, and is a dev-mode error). Drive writes from `@event`
    * handlers in the template instead. Mutually exclusive with `updateElement`,
    * `onClick`, and `onDrag` (use `@click` etc. in the template).
+   *
+   * @experimental New and subject to change in a future minor release.
    */
   view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   updateElementAwareness?: (

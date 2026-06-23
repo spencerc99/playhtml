@@ -7,6 +7,10 @@ sidebar:
 
 The vanilla API for building custom collaborative elements. For usage with side-by-side examples, see [Custom elements](/docs/custom-elements/); for the React equivalent, see the [React API](/docs/reference/react-api/).
 
+:::caution[Experimental]
+This API (`register` / `define` / `view`) is new and **experimental** — signatures may change in a future minor release. The imperative `can-play` path (`updateElement`) is unaffected. Feedback welcome on [#95](https://github.com/spencerc99/playhtml/issues/95).
+:::
+
 ```ts
 import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playhtml";
 ```

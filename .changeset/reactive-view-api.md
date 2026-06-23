@@ -3,7 +3,9 @@
 "@playhtml/common": minor
 ---
 
-Add a reactive `view` API for vanilla `can-play` (RFC #95). Custom capabilities can now render declaratively from state instead of hand-mutating the DOM:
+Add a reactive `view` API for vanilla `can-play` (RFC #95). Custom capabilities can now render declaratively from state instead of hand-mutating the DOM.
+
+**This API (`register` / `define` / `view` and the element handle) is experimental** — purely additive (the imperative `can-play`/`updateElement` path and `@playhtml/react` are unchanged), but the surface may change in a future minor based on feedback ([#95](https://github.com/spencerc99/playhtml/issues/95)).
 
 - **`view`** — a new optional field on the capability definition. It's a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template that playhtml patches into the element on every data/localData/awareness change. Mutually exclusive with `updateElement` (and with element-level `onClick`/`onDrag`, which move into the template as `@click` etc.).
 - **`playhtml.register(elementId, init)`** — binds a `view`/`updateElement` initializer to a single element by id and returns a handle (`getElement`, `getData`, `setData`, `setLocalData`, `setMyAwareness`, `requestUpdate`, `unregister`) for reads/writes from outside the view. Callable before or after `init()` and before or after the element exists.

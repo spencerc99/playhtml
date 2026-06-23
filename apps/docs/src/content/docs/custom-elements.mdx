@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** data model and rendering — a counter, a poll, a guestbook, a chat — you build a custom element: define the shape of its shared state and a function that renders it, and playhtml handles sync, persistence, and re-rendering.
 
@@ -13,6 +13,14 @@ This is one concept with two idioms:
 
 - **Vanilla** — `playhtml.register(id, { defaultData, view })`. `view` is a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template; playhtml re-renders it when state changes.
 - **React** — `withSharedState({ defaultData }, render)`. `render` is a normal function component; React re-renders it when state changes.
+
+<Aside type="caution" title="The vanilla view API is experimental">
+  `playhtml.register` / `playhtml.define` and the `view` render function are new
+  and **experimental** — the surface may change in a future minor release based
+  on feedback. The imperative `can-play` path (`updateElement`) keeps working,
+  and the React `withSharedState` API on this page is **stable**, not experimental.
+  Trying the view API? Tell us how it goes in [#95](https://github.com/spencerc99/playhtml/issues/95).
+</Aside>
 
 Use the framework toggle in any code block below to flip the whole page between them.
 
