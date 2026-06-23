@@ -1,3 +1,5 @@
+// ABOUTME: Tracks local and remote cursor awareness for collaborative pages.
+// ABOUTME: Renders ephemeral cursor presence without writing shared document data.
 import type YProvider from "y-partyserver/provider";
 import {
   CursorPresence,
@@ -15,6 +17,7 @@ import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
+import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -370,8 +373,16 @@ export class CursorClientAwareness {
   private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
   private playerIdentity: PlayerIdentity;
-  private updateThrottled: boolean = false;
+  private awarenessUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastUpdate: number = 0;
+  private pointerFrame: number | null = null;
+  private pendingPointerSample: {
+    clientX: number;
+    clientY: number;
+    input: "mouse" | "touch";
+  } | null = null;
+  private cursorEventCleanups: Array<() => void> = [];
+  private ownCursorSvgCache: { color: string; svg: string } | null = null;
   private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
@@ -874,27 +885,85 @@ export class CursorClientAwareness {
     return bestZone;
   }
 
-  private setupCursorTracking(): void {
-    const updateCursor = (e: MouseEvent) => {
-      let pointer = "mouse";
-      const element = document.elementFromPoint(e.clientX, e.clientY);
+  private getOwnCursorSvg(): string {
+    const color = getPrimaryColor(this.playerIdentity);
+    if (this.ownCursorSvgCache?.color !== color) {
+      this.ownCursorSvgCache = {
+        color,
+        svg: encodeSVG(getSvgForCursor(color)),
+      };
+    }
+    return this.ownCursorSvgCache.svg;
+  }
+
+  private addCursorEventListener(
+    target: EventTarget,
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: AddEventListenerOptions | boolean,
+  ): void {
+    target.addEventListener(type, listener, options);
+    this.cursorEventCleanups.push(() => {
+      target.removeEventListener(type, listener, options);
+    });
+  }
+
+  private requestPointerFrame(callback: FrameRequestCallback): number {
+    if (typeof window.requestAnimationFrame === "function") {
+      return window.requestAnimationFrame(callback);
+    }
+    return window.setTimeout(() => callback(performance.now()), 1000 / 60);
+  }
+
+  private cancelPointerFrame(frame: number): void {
+    if (typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(frame);
+    } else {
+      window.clearTimeout(frame);
+    }
+  }
+
+  private queuePointerSample(
+    clientX: number,
+    clientY: number,
+    input: "mouse" | "touch",
+  ): void {
+    this.pendingPointerSample = { clientX, clientY, input };
+
+    if (this.pointerFrame !== null) return;
+    this.pointerFrame = this.requestPointerFrame(() => {
+      this.pointerFrame = null;
+      const sample = this.pendingPointerSample;
+      this.pendingPointerSample = null;
+      if (sample) {
+        this.processPointerSample(sample);
+      }
+    });
+  }
+
+  private processPointerSample(sample: {
+    clientX: number;
+    clientY: number;
+    input: "mouse" | "touch";
+  }): void {
+    let pointer: string = sample.input;
+
+    if (sample.input === "mouse") {
+      pointer = "mouse";
+      const element = document.elementFromPoint(sample.clientX, sample.clientY);
 
       if (element) {
         const style = window.getComputedStyle(element);
         const maybeCustomCursor = extractUrlFromCursorStyle(style.cursor);
 
-        if (maybeCustomCursor) {
-          const ourCursorSvg = encodeSVG(
-            getSvgForCursor(getPrimaryColor(this.playerIdentity)),
-          );
-
-          if (!maybeCustomCursor.includes(ourCursorSvg)) {
-            pointer = maybeCustomCursor;
-          }
+        if (
+          maybeCustomCursor &&
+          !maybeCustomCursor.includes(this.getOwnCursorSvg())
+        ) {
+          pointer = maybeCustomCursor;
         }
       }
 
-      // Show/hide our own cursor based on pointer type (like cursor-party)
       if (pointer === "mouse") {
         document.documentElement.style.cursor = getCursorStyleForUser(
           getPrimaryColor(this.playerIdentity),
@@ -902,36 +971,30 @@ export class CursorClientAwareness {
       } else {
         document.documentElement.style.cursor = "auto";
       }
+    }
 
-      // Convert to storage coordinates based on mode
-      const storageCoords = this.clientToStorage(e.clientX, e.clientY);
-      this.currentCursor = {
-        x: storageCoords.x,
-        y: storageCoords.y,
-        pointer,
-      };
-      this.currentZone = this.hitTestZones(e.clientX, e.clientY);
-      this.throttledUpdateCursorAwareness();
+    const storageCoords = this.clientToStorage(sample.clientX, sample.clientY);
+    this.currentCursor = {
+      x: storageCoords.x,
+      y: storageCoords.y,
+      pointer,
+    };
+    this.currentZone = this.hitTestZones(sample.clientX, sample.clientY);
+    this.scheduleCursorAwarenessUpdate();
+    this.updateAllCursorVisibility();
+  }
 
-      // Update visibility of all other cursors when our cursor moves
-      this.updateAllCursorVisibility();
+  private setupCursorTracking(): void {
+    const updateCursor = (event: Event) => {
+      const e = event as MouseEvent;
+      this.queuePointerSample(e.clientX, e.clientY, "mouse");
     };
 
-    const updateTouchCursor = (e: TouchEvent) => {
+    const updateTouchCursor = (event: Event) => {
+      const e = event as TouchEvent;
       const touch = e.touches[0];
       if (touch) {
-        // Convert to storage coordinates based on mode
-        const storageCoords = this.clientToStorage(touch.clientX, touch.clientY);
-        this.currentCursor = {
-          x: storageCoords.x,
-          y: storageCoords.y,
-          pointer: "touch",
-        };
-        this.currentZone = this.hitTestZones(touch.clientX, touch.clientY);
-        this.throttledUpdateCursorAwareness();
-
-        // Update visibility of all other cursors when our cursor moves
-        this.updateAllCursorVisibility();
+        this.queuePointerSample(touch.clientX, touch.clientY, "touch");
       }
     };
 
@@ -940,14 +1003,16 @@ export class CursorClientAwareness {
       // Same rationale as mouseleave: switching apps shouldn't remove presence.
     };
 
-    document.addEventListener("mousemove", updateCursor);
-    document.addEventListener("touchmove", updateTouchCursor);
-    document.addEventListener("touchend", handleTouchEnd);
+    this.addCursorEventListener(document, "mousemove", updateCursor);
+    this.addCursorEventListener(document, "touchmove", updateTouchCursor, {
+      passive: true,
+    });
+    this.addCursorEventListener(document, "touchend", handleTouchEnd);
 
     // When mouse leaves the window, keep presence alive but stop updating position.
     // The cursor freezes at its last known position for other clients.
     // TODO: consider displaying inactive cursors differently (faded, grayed out, etc.)
-    document.addEventListener("mouseleave", () => {
+    this.addCursorEventListener(document, "mouseleave", () => {
       this.showAllCursors();
     });
 
@@ -963,23 +1028,25 @@ export class CursorClientAwareness {
         this.repositionAllCursors();
       });
     };
-    window.addEventListener("scroll", repositionOnViewportChange, {
+    this.addCursorEventListener(window, "scroll", repositionOnViewportChange, {
       passive: true,
     });
-    window.addEventListener("resize", repositionOnViewportChange);
+    this.addCursorEventListener(window, "resize", repositionOnViewportChange);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener(
+      this.addCursorEventListener(
+        window.visualViewport,
         "scroll",
         repositionOnViewportChange,
       );
-      window.visualViewport.addEventListener(
+      this.addCursorEventListener(
+        window.visualViewport,
         "resize",
         repositionOnViewportChange,
       );
     }
 
     // Clean up presence when the page is actually closed/navigated away
-    window.addEventListener("beforeunload", () => {
+    this.addCursorEventListener(window, "beforeunload", () => {
       this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
     });
   }
@@ -1049,28 +1116,48 @@ export class CursorClientAwareness {
     this.updateAllCursorVisibility();
   }
 
-  private throttledUpdateCursorAwareness(): void {
-    if (this.updateThrottled) return;
+  private getActiveCursorConnectionCount(): number {
+    const states = this.provider.awareness.getStates();
+    const localClientId = this.provider.awareness.clientID;
+    let count = 1;
 
-    this.updateThrottled = true;
+    states.forEach((state, clientId) => {
+      if (clientId === localClientId) return;
+      const valid = getValidCursorPresence(
+        state as Record<string, unknown>,
+        clientId,
+      );
+      if (valid) count++;
+    });
+
+    return count;
+  }
+
+  private scheduleCursorAwarenessUpdate(): void {
+    if (this.awarenessUpdateTimeout !== null) return;
+
     const now = performance.now();
     const elapsed = now - this.lastUpdate;
-    const targetInterval = 1000 / 60; // 60fps
+    const targetInterval = getCursorNetworkIntervalMs(
+      this.getActiveCursorConnectionCount(),
+    );
 
     if (elapsed >= targetInterval) {
       this.updateCursorAwareness();
-      this.lastUpdate = now;
-      this.updateThrottled = false;
     } else {
-      setTimeout(() => {
+      this.awarenessUpdateTimeout = setTimeout(() => {
+        this.awarenessUpdateTimeout = null;
         this.updateCursorAwareness();
-        this.lastUpdate = performance.now();
-        this.updateThrottled = false;
       }, targetInterval - elapsed);
     }
   }
 
   private updateCursorAwareness(): void {
+    if (this.awarenessUpdateTimeout !== null) {
+      clearTimeout(this.awarenessUpdateTimeout);
+      this.awarenessUpdateTimeout = null;
+    }
+
     const cursorPresence: CursorPresence = {
       cursor: this.currentCursor,
       playerIdentity: this.playerIdentity,
@@ -1085,6 +1172,7 @@ export class CursorClientAwareness {
       CURSOR_AWARENESS_FIELD,
       cursorPresence,
     );
+    this.lastUpdate = performance.now();
   }
 
   private getContainer(): HTMLElement {
@@ -1496,6 +1584,7 @@ export class CursorClientAwareness {
         }
         const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
         self.playerIdentity.playerStyle.colorPalette[0] = newColor;
+        self.ownCursorSvgCache = null;
         self.savePlayerIdentityToStorage();
         document.documentElement.style.cursor = getCursorStyleForUser(newColor);
         if (oldColor !== newColor) {
@@ -1770,6 +1859,7 @@ export class CursorClientAwareness {
       const prevColor = getPrimaryColor(this.playerIdentity);
       const prevName = this.playerIdentity?.name;
       this.playerIdentity = options.playerIdentity;
+      this.ownCursorSvgCache = null;
       this.savePlayerIdentityToStorage();
       // Re-broadcast awareness with new identity and update local cursor style
       const nextColor = getPrimaryColor(this.playerIdentity);
@@ -1814,6 +1904,20 @@ export class CursorClientAwareness {
   }
 
   destroy(): void {
+    this.cursorEventCleanups.forEach((cleanup) => cleanup());
+    this.cursorEventCleanups = [];
+
+    if (this.pointerFrame !== null) {
+      this.cancelPointerFrame(this.pointerFrame);
+      this.pointerFrame = null;
+    }
+    this.pendingPointerSample = null;
+
+    if (this.awarenessUpdateTimeout !== null) {
+      clearTimeout(this.awarenessUpdateTimeout);
+      this.awarenessUpdateTimeout = null;
+    }
+
     // Clean up cursors
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
