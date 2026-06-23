@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
+import { createComparisonSummary } from "./utils/adminComparison";
 import { deriveRoomId } from "@playhtml/common";
 import { extractRecords, type ModerationRecord } from "@moderation";
 
@@ -509,9 +510,7 @@ const AdminConsole: React.FC = () => {
   } | null>(null);
 
   // Debug sections visibility
-  const [showRawDbData, setShowRawDbData] = useState(false);
   const [showYDocDebug, setShowYDocDebug] = useState(false);
-  const [showDataComparison, setShowDataComparison] = useState(false);
   const [_showBackupComparison, setShowBackupComparison] = useState(false);
 
   // Section collapse/expand state
@@ -521,9 +520,9 @@ const AdminConsole: React.FC = () => {
     ydocData: true,
     roomMetadata: true,
     sharedData: true,
-    rawDbData: true,
-    yDocDebug: true,
-    dataComparison: true,
+    rawDbData: false,
+    yDocDebug: false,
+    dataComparison: false,
     backupComparison: true,
     cleanupTools: false, // Collapsed by default
   });
@@ -542,6 +541,8 @@ const AdminConsole: React.FC = () => {
   >([]);
   const [reconstructedDoc, setReconstructedDoc] = useState<any>(null);
   const [comparisonData, setComparisonData] = useState<any>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
   const [backupComparisonData, setBackupComparisonData] = useState<any>(null);
 
   const [debugToolsEnabled, setDebugToolsEnabled] = useState(false);
@@ -733,9 +734,10 @@ const AdminConsole: React.FC = () => {
         // Clear previous room data immediately
         setRoomData(null);
         setRoomStatus(null);
-        setShowRawDbData(false);
+        setRawDbData(null);
         setShowYDocDebug(false);
-        setShowDataComparison(false);
+        setComparisonData(null);
+        setComparisonError(null);
         setShowBackupComparison(false);
         setBackupComparisonData(null);
         setBackupBase64(null);
@@ -748,9 +750,10 @@ const AdminConsole: React.FC = () => {
         setCurrentRoomId("");
         setRoomData(null);
         setRoomStatus(null);
-        setShowRawDbData(false);
+        setRawDbData(null);
         setShowYDocDebug(false);
-        setShowDataComparison(false);
+        setComparisonData(null);
+        setComparisonError(null);
         setShowBackupComparison(false);
         setBackupComparisonData(null);
         setBackupBase64(null);
@@ -927,9 +930,16 @@ const AdminConsole: React.FC = () => {
     // Clear previous data immediately when starting a new load
     setRoomData(null);
     setDebugToolsEnabled(false);
-    setShowRawDbData(false);
+    setRawDbData(null);
     setShowYDocDebug(false);
-    setShowDataComparison(false);
+    setComparisonData(null);
+    setComparisonError(null);
+    setSectionsExpanded((prev) => ({
+      ...prev,
+      rawDbData: false,
+      yDocDebug: false,
+      dataComparison: false,
+    }));
     setShowBackupComparison(false);
     setBackupComparisonData(null);
     setBackupBase64(null);
@@ -961,6 +971,7 @@ const AdminConsole: React.FC = () => {
         type: "success",
       });
       addLog("info", `Loaded room data for ${displayRoomId}`, data);
+      void compareDataMethods({ roomId: encodedRoomId });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       const displayRoomId = decodeRoomId(encodedRoomId);
@@ -1180,7 +1191,7 @@ const AdminConsole: React.FC = () => {
 
       const data = await response.json();
       setRawDbData(data);
-      setShowRawDbData(true);
+      setSectionsExpanded((prev) => ({ ...prev, rawDbData: true }));
       addLog("info", "Loaded raw database data", data);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -1192,6 +1203,7 @@ const AdminConsole: React.FC = () => {
     if (!currentRoomId || !adminToken) return;
 
     setShowYDocDebug(true);
+    setSectionsExpanded((prev) => ({ ...prev, yDocDebug: true }));
     setDebugSteps([]);
     setReconstructedDoc(null);
 
@@ -1287,13 +1299,19 @@ const AdminConsole: React.FC = () => {
     }
   };
 
-  const compareDataMethods = async () => {
-    if (!currentRoomId || !adminToken) return;
+  const compareDataMethods = async (
+    options: { roomId?: string; forceShow?: boolean } = {}
+  ) => {
+    const targetRoomId = options.roomId || currentRoomId;
+    if (!targetRoomId || !adminToken) return;
 
     try {
+      setComparisonLoading(true);
+      setComparisonError(null);
       addLog("info", "Comparing data extraction methods...");
 
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
+      const encodedRoomId = ensureEncodedRoomId(targetRoomId);
+      const baseUrl = `${getPartykitHost()}/parties/main/${encodedRoomId}`;
       const url = `${baseUrl}/admin/live-compare?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1311,53 +1329,20 @@ const AdminConsole: React.FC = () => {
 
       const comparison = await response.json();
       setComparisonData(comparison);
-      setShowDataComparison(true);
+      const summary = createComparisonSummary(comparison);
+      const shouldShowDetails = options.forceShow || summary.shouldShowDetails;
+      setSectionsExpanded((prev) => ({
+        ...prev,
+        dataComparison: shouldShowDetails ? true : prev.dataComparison,
+      }));
       addLog("info", "Data method comparison results:", comparison);
-
-      // Show summary alert
-      const directHasData = comparison.methods?.direct?.hasData;
-      const liveHasData = comparison.methods?.live?.hasData;
-      const dataMatch = comparison.differences?.dataMatch;
-
-      const directData = comparison.methods?.direct?.data || {};
-      const liveData = comparison.methods?.live?.data || {};
-      const directKeyCount = Object.keys(directData).reduce(
-        (sum, tag) => sum + Object.keys(directData[tag] || {}).length,
-        0
-      );
-      const liveKeyCount = Object.keys(liveData).reduce(
-        (sum, tag) => sum + Object.keys(liveData[tag] || {}).length,
-        0
-      );
-
-      let summary = "🔍 Data Comparison Results:\n\n";
-      summary += `Direct method: ${
-        directHasData ? `✅ ${directKeyCount} elements` : "❌ No data"
-      }\n`;
-      summary += `Live method: ${
-        liveHasData ? `✅ ${liveKeyCount} elements` : "❌ No data"
-      }\n`;
-      summary += `Data match: ${
-        dataMatch ? "✅ Identical" : "❌ Different"
-      }\n\n`;
-
-      if (!dataMatch && directHasData && liveHasData) {
-        const keyDiffs = comparison.differences?.sameKeys;
-        if (keyDiffs) {
-          summary += `Capability differences:\n`;
-          summary += `- Direct only: ${
-            keyDiffs.directOnly.join(", ") || "none"
-          }\n`;
-          summary += `- Live only: ${keyDiffs.liveOnly.join(", ") || "none"}\n`;
-          summary += `- Common: ${keyDiffs.common.join(", ") || "none"}\n`;
-        }
-      }
-
-      summary += "\nSee comparison section below for detailed view.";
-      alert(summary);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
+      setComparisonError(msg);
+      setSectionsExpanded((prev) => ({ ...prev, dataComparison: true }));
       addLog("error", `Failed to compare data methods: ${msg}`, error);
+    } finally {
+      setComparisonLoading(false);
     }
   };
 
@@ -2150,6 +2135,11 @@ const AdminConsole: React.FC = () => {
     ));
   };
 
+  const comparisonSummary = React.useMemo(
+    () => createComparisonSummary(comparisonData),
+    [comparisonData]
+  );
+
   if (!adminToken) {
     return (
       <LoginScreen
@@ -2399,170 +2389,223 @@ const AdminConsole: React.FC = () => {
             </>
           )}
 
-          {showRawDbData && rawDbData && (
+          {roomData && (
             <div className="data-section">
               <SectionHeader
                 title="Raw Database Data"
                 sectionKey="rawDbData"
                 isExpanded={sectionsExpanded.rawDbData}
                 onToggle={toggleSection}
+                actions={
+                  <button
+                    className="tool-btn"
+                    disabled={!debugToolsEnabled}
+                    onClick={loadRawDatabaseData}
+                  >
+                    Load Raw DB Data
+                  </button>
+                }
               />
               {sectionsExpanded.rawDbData && (
-                <>
-                  <div className="debug-info">
-                    <div className="debug-item">
-                      <strong>Document Size:</strong>
-                      <span>
-                        {rawDbData.document
-                          ? `${
-                              Math.round(
-                                (rawDbData.document.base64Length / 1024) * 100
-                              ) / 100
-                            } KB`
-                          : "No data"}
-                      </span>
+                rawDbData ? (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Document Size:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? `${
+                                Math.round(
+                                  (rawDbData.document.base64Length / 1024) *
+                                    100
+                                ) / 100
+                              } KB`
+                            : "No data"}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Base64 Length:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? rawDbData.document.base64Length.toLocaleString()
+                            : "0"}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Last Updated:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? new Date(
+                                rawDbData.document.created_at
+                              ).toLocaleString()
+                            : "Never"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="debug-item">
-                      <strong>Base64 Length:</strong>
-                      <span>
-                        {rawDbData.document
-                          ? rawDbData.document.base64Length.toLocaleString()
-                          : "0"}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Last Updated:</strong>
-                      <span>
-                        {rawDbData.document
-                          ? new Date(
-                              rawDbData.document.created_at
-                            ).toLocaleString()
-                          : "Never"}
-                      </span>
-                    </div>
+                    <JSONViewer data={rawDbData} />
+                  </>
+                ) : (
+                  <div className="empty">
+                    Load raw database data to inspect the stored base64
+                    snapshot.
                   </div>
-                  <JSONViewer data={rawDbData} />
-                </>
+                )
               )}
             </div>
           )}
 
-          {showYDocDebug && (
+          {roomData && (
             <div className="data-section">
               <SectionHeader
                 title="Y.Doc Loading Debug"
                 sectionKey="yDocDebug"
                 isExpanded={sectionsExpanded.yDocDebug}
                 onToggle={toggleSection}
+                actions={
+                  <button
+                    className="tool-btn"
+                    disabled={!debugToolsEnabled}
+                    onClick={debugYDocLoading}
+                  >
+                    Run Y.Doc Debug
+                  </button>
+                }
               />
               {sectionsExpanded.yDocDebug && (
-                <>
-                  <div className="debug-steps">
-                    {debugSteps.map((step, index) => (
-                      <div key={index} className={`debug-step ${step.type}`}>
-                        {step.message}
-                      </div>
-                    ))}
+                showYDocDebug ? (
+                  <>
+                    <div className="debug-steps">
+                      {debugSteps.map((step, index) => (
+                        <div key={index} className={`debug-step ${step.type}`}>
+                          {step.message}
+                        </div>
+                      ))}
+                    </div>
+                    {reconstructedDoc && (
+                      <JSONViewer data={reconstructedDoc} />
+                    )}
+                  </>
+                ) : (
+                  <div className="empty">
+                    Run the Y.Doc debug flow to reconstruct the stored snapshot
+                    from base64.
                   </div>
-                  {reconstructedDoc && <JSONViewer data={reconstructedDoc} />}
-                </>
+                )
               )}
             </div>
           )}
 
-          {showDataComparison && comparisonData && (
+          {roomData && (
             <div className="data-section">
               <SectionHeader
                 title="Live vs Admin Data Comparison"
                 sectionKey="dataComparison"
                 isExpanded={sectionsExpanded.dataComparison}
                 onToggle={toggleSection}
-              />
-              {sectionsExpanded.dataComparison && (
-                <>
-                  <div className="debug-info">
-                    <div className="debug-item">
-                      <strong>Direct Method Keys:</strong>
-                      <span>
-                        {Object.keys(
-                          comparisonData.methods?.direct?.data || {}
-                        ).reduce(
-                          (sum, tag) =>
-                            sum +
-                            Object.keys(
-                              comparisonData.methods.direct.data[tag] || {}
-                            ).length,
-                          0
-                        )}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Live Method Keys:</strong>
-                      <span>
-                        {Object.keys(
-                          comparisonData.methods?.live?.data || {}
-                        ).reduce(
-                          (sum, tag) =>
-                            sum +
-                            Object.keys(
-                              comparisonData.methods.live.data[tag] || {}
-                            ).length,
-                          0
-                        )}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Data Match:</strong>
-                      <span
-                        style={{
-                          color: comparisonData.differences?.dataMatch
-                            ? "#38a169"
-                            : "#e53e3e",
-                        }}
-                      >
-                        {comparisonData.differences?.dataMatch
-                          ? "✅ Yes"
-                          : "❌ No"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="tool-grid" style={{ marginBottom: "10px" }}>
-                    <button
-                      className="tool-btn destructive"
-                      disabled={!debugToolsEnabled}
-                      onClick={handleForceReloadLive}
+                actions={
+                  <div className="section-actions">
+                    <span
+                      className={`comparison-status ${
+                        comparisonError
+                          ? "error"
+                          : comparisonLoading
+                            ? "checking"
+                            : comparisonSummary.status
+                      }`}
                     >
-                      Force DB → Live
-                    </button>
+                      {comparisonError
+                        ? "Comparison failed"
+                        : comparisonLoading
+                          ? "Checking..."
+                          : comparisonSummary.statusLabel}
+                    </span>
                     <button
                       className="tool-btn"
-                      disabled={!debugToolsEnabled}
-                      onClick={handleForceSaveLive}
+                      disabled={!debugToolsEnabled || comparisonLoading}
+                      onClick={() => compareDataMethods({ forceShow: true })}
                     >
-                      Force Save DB ← Live
+                      {comparisonLoading ? "Checking..." : "Compare Now"}
                     </button>
                   </div>
-                  <div className="shared-data-grid">
-                    <div className="shared-section">
-                      <h4>Direct Method Data (Admin Console)</h4>
-                      <JSONViewer
-                        data={comparisonData.methods?.direct?.data || {}}
-                      />
+                }
+              />
+              {sectionsExpanded.dataComparison && (
+                comparisonError ? (
+                  <div className="status-display error">{comparisonError}</div>
+                ) : comparisonData ? (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Direct Method Keys:</strong>
+                        <span>{comparisonSummary.directElementCount}</span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Live Method Keys:</strong>
+                        <span>{comparisonSummary.liveElementCount}</span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Data Match:</strong>
+                        <span
+                          style={{
+                            color: comparisonSummary.dataMatch
+                              ? "#38a169"
+                              : "#e53e3e",
+                          }}
+                        >
+                          {comparisonSummary.dataMatch ? "Yes" : "No"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="shared-section">
-                      <h4>Live Method Data (unstable_getYDoc)</h4>
-                      {comparisonData.methods?.live?.data?.error ? (
-                        <div className="empty">
-                          Error: {comparisonData.methods.live.data.error}
-                        </div>
-                      ) : (
+                    <div
+                      className="tool-grid"
+                      style={{ marginBottom: "10px" }}
+                    >
+                      <button
+                        className="tool-btn destructive"
+                        disabled={!debugToolsEnabled}
+                        onClick={handleForceReloadLive}
+                      >
+                        Force DB → Live
+                      </button>
+                      <button
+                        className="tool-btn"
+                        disabled={!debugToolsEnabled}
+                        onClick={handleForceSaveLive}
+                      >
+                        Force Save DB ← Live
+                      </button>
+                    </div>
+                    <div className="shared-data-grid">
+                      <div className="shared-section">
+                        <h4>Direct Method Data (Admin Console)</h4>
                         <JSONViewer
-                          data={comparisonData.methods?.live?.data || {}}
+                          data={comparisonData.methods?.direct?.data || {}}
                         />
-                      )}
+                      </div>
+                      <div className="shared-section">
+                        <h4>Live Method Data (unstable_getYDoc)</h4>
+                        {comparisonData.methods?.live?.data?.error ? (
+                          <div className="empty">
+                            Error: {comparisonData.methods.live.data.error}
+                          </div>
+                        ) : (
+                          <JSONViewer
+                            data={comparisonData.methods?.live?.data || {}}
+                          />
+                        )}
+                      </div>
                     </div>
+                  </>
+                ) : comparisonLoading ? (
+                  <div className="status-display loading">
+                    Comparing live and admin data...
                   </div>
-                </>
+                ) : (
+                  <div className="empty">
+                    The comparison runs automatically after room load. Use
+                    Compare Now to run it again.
+                  </div>
+                )
               )}
             </div>
           )}
@@ -3117,33 +3160,12 @@ const AdminConsole: React.FC = () => {
               Export Raw Document
             </button>
             <button
-              className="tool-btn"
-              disabled={!debugToolsEnabled}
-              onClick={loadRawDatabaseData}
-            >
-              Load Raw DB Data
-            </button>
-            <button
               className="tool-btn destructive"
               disabled={!debugToolsEnabled}
               onClick={restoreRawDocument}
               title="Restore from a raw base64-encoded YJS document file"
             >
               Restore Raw Document
-            </button>
-            <button
-              className="tool-btn"
-              disabled={!debugToolsEnabled}
-              onClick={debugYDocLoading}
-            >
-              Debug Y.Doc Loading
-            </button>
-            <button
-              className="tool-btn"
-              disabled={!debugToolsEnabled}
-              onClick={compareDataMethods}
-            >
-              Compare Live vs Admin Data
             </button>
             <button
               className="tool-btn destructive"
