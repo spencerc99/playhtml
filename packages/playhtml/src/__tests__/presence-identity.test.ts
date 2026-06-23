@@ -158,4 +158,49 @@ describe("createPresenceAPI identity propagation", () => {
     expect(remote).toBeDefined();
     expect(remote!.playerIdentity).toBeUndefined();
   });
+
+  it("reads cursor channel state from the cursor client snapshot", () => {
+    const awareness = makeAwareness(1);
+    const localIdentity = makeIdentity("pk_local");
+    const remoteIdentity = makeIdentity("pk_remote");
+    let cursorCallback:
+      | ((presences: Map<string, any>) => void)
+      | undefined;
+    let cursorPresences = new Map<string, any>();
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => localIdentity,
+      getCursorPresences: () => cursorPresences,
+      onCursorPresencesChange(callback) {
+        cursorCallback = callback;
+        return () => {
+          cursorCallback = undefined;
+        };
+      },
+    });
+    const snapshots: Array<Map<string, any>> = [];
+
+    const unsubscribe = api.onPresenceChange("cursor", (presences) => {
+      snapshots.push(presences);
+    });
+    cursorPresences = new Map([
+      [
+        "pk_remote",
+        {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          playerIdentity: remoteIdentity,
+        },
+      ],
+    ]);
+    cursorCallback?.(cursorPresences);
+
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1].get("pk_remote")).toMatchObject({
+      cursor: { x: 10, y: 20, pointer: "mouse" },
+      playerIdentity: remoteIdentity,
+      isMe: false,
+    });
+
+    unsubscribe();
+  });
 });

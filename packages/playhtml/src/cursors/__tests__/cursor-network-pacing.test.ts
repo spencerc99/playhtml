@@ -75,6 +75,29 @@ function dispatchMouseMove(x: number, y: number) {
   );
 }
 
+function makeFakePresenceTransport() {
+  const listeners = new Set<(message: unknown) => void>();
+  return {
+    updates: [] as Array<{ channel: string; value: unknown }>,
+    clears: [] as string[],
+    join: vi.fn(),
+    update(channel: string, value: unknown) {
+      this.updates.push({ channel, value });
+    },
+    clear(channel: string) {
+      this.clears.push(channel);
+    },
+    subscribe: vi.fn((listener: (message: unknown) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }),
+    emit(message: unknown) {
+      for (const listener of listeners) listener(message);
+    },
+    destroy: vi.fn(),
+  };
+}
+
 describe("cursor network pacing", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -180,6 +203,235 @@ describe("cursor network pacing", () => {
     expect(provider.awareness.setLocalStateField).toHaveBeenCalledTimes(
       callCountAfterIdentityChange,
     );
+
+    client.destroy();
+  });
+
+  it("publishes movement through presence transport instead of cursor awareness when available", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    provider.awareness.setLocalStateField.mockClear();
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(provider.awareness.setLocalStateField).not.toHaveBeenCalledWith(
+      "__playhtml_cursors__",
+      expect.anything(),
+    );
+    expect(transport.updates).toHaveLength(1);
+    expect(transport.updates[0]).toEqual({
+      channel: "cursor",
+      value: expect.objectContaining({
+        cursor: { x: 10, y: 20, pointer: "mouse" },
+        page: "/",
+      }),
+    });
+
+    client.destroy();
+  });
+
+  it("renders remote cursors from presence transport sync messages", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: { x: 10, y: 20, pointer: "mouse" },
+            page: "/",
+            zone: null,
+            at: 100,
+          },
+        },
+      },
+    });
+
+    expect(document.querySelector(".playhtml-cursor-other")).not.toBe(null);
+    expect(client.getCursorPresences().get("remote")?.cursor).toEqual({
+      x: 10,
+      y: 20,
+      pointer: "mouse",
+    });
+
+    client.destroy();
+  });
+
+  it("keeps 60Hz publishing for transport-backed cursor rooms with about twenty peers", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    const peers: Record<string, any> = {};
+    for (let i = 0; i < 19; i++) {
+      peers[`conn-${i}`] = {
+        identity: makeIdentity(
+          `remote-${i}`,
+          `#${String(i + 1).padStart(6, "0")}`,
+        ),
+        cursor: {
+          cursor: { x: i, y: i, pointer: "mouse" },
+          page: "/",
+          zone: null,
+          at: 100,
+        },
+      };
+    }
+    transport.emit({ type: "presence-sync", peers });
+    transport.updates = [];
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(transport.updates).toHaveLength(1);
+
+    client.destroy();
+  });
+
+  it("repositions transport-backed remote cursors after viewport changes", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        coordinateMode: "relative",
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 500,
+    });
+
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: { x: 50, y: 50, pointer: "mouse" },
+            page: "/",
+            zone: null,
+            at: 100,
+          },
+        },
+      },
+    });
+    const cursor = document.querySelector(
+      ".playhtml-cursor-other",
+    ) as HTMLElement;
+    expect(cursor.style.left).toBe("500px");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 800,
+    });
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(cursor.style.left).toBe("400px");
+
+    client.destroy();
+  });
+
+  it("publishes global cursor identity changes through the presence transport", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    transport.updates = [];
+
+    window.cursors.color = "#00ff00";
+    window.cursors.name = "Ada";
+
+    expect(
+      transport.updates.filter((update) => update.channel === "identity"),
+    ).toEqual([
+      {
+        channel: "identity",
+        value: expect.objectContaining({
+          playerStyle: { colorPalette: ["#00ff00"] },
+          publicKey: "local",
+        }),
+      },
+      {
+        channel: "identity",
+        value: expect.objectContaining({
+          name: "Ada",
+          publicKey: "local",
+        }),
+      },
+    ]);
+
+    client.destroy();
+  });
+
+  it("keeps the local player in allColors on the presence transport path", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: { x: 10, y: 20, pointer: "mouse" },
+            page: "/",
+            zone: null,
+            at: 100,
+          },
+        },
+      },
+    });
+
+    expect(client.getSnapshot().allColors).toEqual(["#ff0000", "#00ff00"]);
+    expect(window.cursors.allColors).toEqual(["#ff0000", "#00ff00"]);
 
     client.destroy();
   });

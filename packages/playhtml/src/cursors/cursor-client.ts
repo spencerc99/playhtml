@@ -7,6 +7,7 @@ import {
   CursorZonePosition,
   PlayerIdentity,
   Cursor,
+  type PresenceServerMessage,
   generatePersistentPlayerIdentity,
   PROXIMITY_THRESHOLD,
   PLAYER_IDENTITY_STORAGE_KEY,
@@ -18,6 +19,7 @@ import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
+import { CursorPresenceStore } from "./cursor-presence-store";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -27,6 +29,14 @@ const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 export type ValidCursorPresence = CursorPresence & {
   cursor: NonNullable<CursorPresence["cursor"]>;
   playerIdentity: PlayerIdentity;
+};
+
+type CursorPresenceTransport = {
+  join(input: { identity: PlayerIdentity; page?: string }): void;
+  update(channel: string, value: unknown): void;
+  clear(channel: string): void;
+  subscribe(listener: (message: PresenceServerMessage) => void): () => void;
+  destroy(): void;
 };
 
 /** Returns primary color from player identity; throws if missing (no default). */
@@ -391,11 +401,14 @@ export class CursorClientAwareness {
   private chat: CursorChat | null = null;
   private currentMessage: string | null = null;
   private otherUsersWithMessages: Set<string> = new Set();
+  private lastSentMessage: string | null = null;
   private cursorPresenceChangeCallbacks = new Map<
     string,
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
+  private presenceStore = new CursorPresenceStore();
+  private presenceTransportUnsubscribe: (() => void) | null = null;
 
   // When the cursor container is a non-body element with a CSS transform,
   // cursors are stored and rendered in container-local coordinates. The
@@ -490,7 +503,8 @@ export class CursorClientAwareness {
 
   constructor(
     private provider: YProvider,
-    private options: CursorOptions = {}
+    private options: CursorOptions = {},
+    private presenceTransport?: CursorPresenceTransport,
   ) {
     this.playerIdentity =
       options.playerIdentity || generatePersistentPlayerIdentity();
@@ -514,12 +528,17 @@ export class CursorClientAwareness {
   private initialize(): void {
     this.addCursorStyles();
     this.setupCursorTracking();
-    this.setupAwarenessHandling();
+    if (this.presenceTransport) {
+      this.setupPresenceTransportHandling();
+    } else {
+      this.setupAwarenessHandling();
+    }
 
     // Set initial cursor style (throws if identity has no primary color)
     document.documentElement.style.cursor = getCursorStyleForUser(
       getPrimaryColor(this.playerIdentity),
     );
+    this.refreshPresenceTransportColors();
   }
 
   private setupAwarenessHandling(): void {
@@ -533,6 +552,73 @@ export class CursorClientAwareness {
     this.updateCursorAwareness();
     // Then, sync existing states (including ours) into local structures
     this.syncExistingAwareness();
+  }
+
+  private setupPresenceTransportHandling(): void {
+    this.presenceTransport?.join({
+      identity: this.playerIdentity,
+      page: window.location.pathname,
+    });
+    this.presenceTransportUnsubscribe = this.presenceTransport?.subscribe(
+      (message) => {
+        this.handlePresenceTransportMessage(message);
+      },
+    ) ?? null;
+  }
+
+  private handlePresenceTransportMessage(message: PresenceServerMessage): void {
+    if (message.type === "presence-sync") {
+      this.presenceStore.applySync(message.peers);
+    } else if (message.type === "presence-changes") {
+      this.presenceStore.applyChanges(message);
+    } else {
+      return;
+    }
+
+    this.renderPresenceStore();
+  }
+
+  private renderPresenceStore(): void {
+    const presences = this.presenceStore.getRemotePresences(
+      this.playerIdentity.publicKey,
+    );
+    const activeStableIds = new Set(presences.keys());
+
+    for (const [stableId, presence] of presences) {
+      this.updateCursor(stableId, presence);
+      if (presence.message) {
+        this.otherUsersWithMessages.add(stableId);
+      } else {
+        this.otherUsersWithMessages.delete(stableId);
+      }
+    }
+
+    for (const stableId of Array.from(this.cursors.keys())) {
+      if (!activeStableIds.has(stableId)) {
+        this.otherUsersWithMessages.delete(stableId);
+        this.removeCursor(stableId);
+      }
+    }
+
+    this.rebuildSpatialGrid();
+    this.refreshPresenceTransportColors();
+    this.updateChatCTA();
+    this.checkProximityOptimized();
+    this.notifyCursorPresenceListeners();
+  }
+
+  private refreshPresenceTransportColors(): void {
+    if (!this.presenceTransport) return;
+
+    this.allPlayerColors.clear();
+    this.allPlayerColors.add(getPrimaryColor(this.playerIdentity));
+    const presences = this.presenceStore.getRemotePresences(
+      this.playerIdentity.publicKey,
+    );
+    for (const presence of presences.values()) {
+      this.allPlayerColors.add(getPrimaryColor(presence.playerIdentity));
+    }
+    this.updateGlobalColors();
   }
 
   private syncExistingAwareness(): void {
@@ -631,6 +717,25 @@ export class CursorClientAwareness {
 
   private rebuildSpatialGrid(): void {
     this.spatialGrid.clear();
+
+    if (this.presenceTransport) {
+      const presences = this.presenceStore.getRemotePresences(
+        this.playerIdentity.publicKey,
+      );
+      for (const [stableId, presence] of presences) {
+        const clientCoords = this.storageToClient(
+          presence.cursor.x,
+          presence.cursor.y,
+        );
+        this.spatialGrid.insert({
+          id: stableId,
+          x: clientCoords.x,
+          y: clientCoords.y,
+          data: presence,
+        });
+      }
+      return;
+    }
 
     const states = this.provider.awareness.getStates();
     const myClientId = this.provider.awareness.clientID;
@@ -1047,7 +1152,11 @@ export class CursorClientAwareness {
 
     // Clean up presence when the page is actually closed/navigated away
     this.addCursorEventListener(window, "beforeunload", () => {
-      this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+      if (this.presenceTransport) {
+        this.presenceTransport.clear("cursor");
+      } else {
+        this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+      }
     });
   }
 
@@ -1057,6 +1166,17 @@ export class CursorClientAwareness {
   // position:absolute and the browser handles scroll — only zone cursors
   // need re-resolution (getBoundingClientRect changes on scroll).
   private repositionAllCursors(): void {
+    if (this.presenceTransport) {
+      const presences = this.presenceStore.getRemotePresences(
+        this.playerIdentity.publicKey,
+      );
+      for (const [stableId, presence] of presences) {
+        this.snapCursorToPresence(stableId, presence);
+      }
+      this.updateAllCursorVisibility();
+      return;
+    }
+
     const states = this.provider.awareness.getStates();
     const localClientId = this.provider.awareness.clientID;
     const myPublicKey = this.playerIdentity.publicKey;
@@ -1075,48 +1195,59 @@ export class CursorClientAwareness {
       );
       if (!valid?.cursor) continue;
 
-      const animator = this.cursorAnimators.get(stableId);
-      if (!animator) continue;
-
-      // For cursors in a zone, re-resolve from the zone element's current
-      // bounding rect so the cursor tracks the element after scroll/resize.
-      if (valid.zone) {
-        const zoneEntry = this.zones.get(valid.zone.zoneId);
-        if (zoneEntry && document.contains(zoneEntry.element)) {
-          const rect = zoneEntry.element.getBoundingClientRect();
-          const cursorEl = this.cursors.get(stableId);
-          const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
-          const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
-          const zoneViewportX = rect.left + valid.zone.relX * rect.width - offsetX;
-          const zoneViewportY = rect.top + valid.zone.relY * rect.height - offsetY;
-          if (this.coordinateMode === "absolute") {
-            animator.snapTo({
-              x: zoneViewportX + window.scrollX,
-              y: zoneViewportY + window.scrollY,
-            });
-          } else {
-            animator.snapTo({ x: zoneViewportX, y: zoneViewportY });
-          }
-          continue;
-        }
-        // Zone not found locally: fall through
-      }
-
-      // In absolute mode, non-zone cursors use position:absolute with
-      // document coords — the browser handles scroll, nothing to do.
-      // With a transformed cursor container, cursors are also positioned
-      // absolutely (in container-local coords) and the parent's CSS
-      // transform composes them into viewport pixels for free.
-      if (this.coordinateMode === "absolute" || this.getContainerMatrix()) continue;
-
-      const targetCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
-      animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
+      this.snapCursorToPresence(stableId, valid);
     }
 
     this.updateAllCursorVisibility();
   }
 
+  private snapCursorToPresence(
+    stableId: string,
+    presence: ValidCursorPresence,
+  ): void {
+    const animator = this.cursorAnimators.get(stableId);
+    if (!animator) return;
+
+    // For cursors in a zone, re-resolve from the zone element's current
+    // bounding rect so the cursor tracks the element after scroll/resize.
+    if (presence.zone) {
+      const zoneEntry = this.zones.get(presence.zone.zoneId);
+      if (zoneEntry && document.contains(zoneEntry.element)) {
+        const rect = zoneEntry.element.getBoundingClientRect();
+        const cursorEl = this.cursors.get(stableId);
+        const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
+        const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
+        const zoneViewportX = rect.left + presence.zone.relX * rect.width - offsetX;
+        const zoneViewportY = rect.top + presence.zone.relY * rect.height - offsetY;
+        if (this.coordinateMode === "absolute") {
+          animator.snapTo({
+            x: zoneViewportX + window.scrollX,
+            y: zoneViewportY + window.scrollY,
+          });
+        } else {
+          animator.snapTo({ x: zoneViewportX, y: zoneViewportY });
+        }
+        return;
+      }
+    }
+
+    // In absolute mode, non-zone cursors use position:absolute with document
+    // coords, so the browser handles scroll. With a transformed cursor
+    // container, the parent's CSS transform composes the cursor position.
+    if (this.coordinateMode === "absolute" || this.getContainerMatrix()) return;
+
+    const targetCoords = this.storageToClient(
+      presence.cursor.x,
+      presence.cursor.y,
+    );
+    animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
+  }
+
   private getActiveCursorConnectionCount(): number {
+    if (this.presenceTransport) {
+      return Math.max(1, this.presenceStore.getConnectionCount() + 1);
+    }
+
     const states = this.provider.awareness.getStates();
     const localClientId = this.provider.awareness.clientID;
     let count = 1;
@@ -1138,9 +1269,9 @@ export class CursorClientAwareness {
 
     const now = performance.now();
     const elapsed = now - this.lastUpdate;
-    const targetInterval = getCursorNetworkIntervalMs(
-      this.getActiveCursorConnectionCount(),
-    );
+    const targetInterval = this.presenceTransport
+      ? 1000 / 60
+      : getCursorNetworkIntervalMs(this.getActiveCursorConnectionCount());
 
     if (elapsed >= targetInterval) {
       this.updateCursorAwareness();
@@ -1158,14 +1289,30 @@ export class CursorClientAwareness {
       this.awarenessUpdateTimeout = null;
     }
 
+    const lastSeen = Date.now();
     const cursorPresence: CursorPresence = {
       cursor: this.currentCursor,
       playerIdentity: this.playerIdentity,
-      lastSeen: Date.now(),
+      lastSeen,
       message: this.currentMessage,
       page: window.location.pathname,
       zone: this.currentZone,
     };
+
+    if (this.presenceTransport) {
+      this.presenceTransport.update("cursor", {
+        cursor: cursorPresence.cursor,
+        page: cursorPresence.page,
+        zone: cursorPresence.zone,
+        at: lastSeen,
+      });
+      if (this.currentMessage !== this.lastSentMessage) {
+        this.presenceTransport.update("message", this.currentMessage);
+        this.lastSentMessage = this.currentMessage;
+      }
+      this.lastUpdate = performance.now();
+      return;
+    }
 
     // Set cursor data in awareness using reserved field
     this.provider.awareness.setLocalStateField(
@@ -1215,6 +1362,10 @@ export class CursorClientAwareness {
   }
 
   private findAwarenessByStableId(stableId: string): ValidCursorPresence | null {
+    if (this.presenceTransport) {
+      return this.presenceStore.getPresenceByStableId(stableId);
+    }
+
     const states = this.provider.awareness.getStates();
     for (const [clientId, state] of states) {
       const sid = getStableIdForAwareness(
@@ -1587,6 +1738,8 @@ export class CursorClientAwareness {
         self.ownCursorSvgCache = null;
         self.savePlayerIdentityToStorage();
         document.documentElement.style.cursor = getCursorStyleForUser(newColor);
+        self.publishPlayerIdentity();
+        self.refreshPresenceTransportColors();
         if (oldColor !== newColor) {
           self.emitGlobalEvent("color", newColor);
         }
@@ -1598,6 +1751,7 @@ export class CursorClientAwareness {
         const oldName = self.playerIdentity.name;
         self.playerIdentity.name = newName;
         self.savePlayerIdentityToStorage();
+        self.publishPlayerIdentity();
         if (oldName !== newName) {
           self.emitGlobalEvent("name", newName);
         }
@@ -1861,9 +2015,11 @@ export class CursorClientAwareness {
       this.playerIdentity = options.playerIdentity;
       this.ownCursorSvgCache = null;
       this.savePlayerIdentityToStorage();
-      // Re-broadcast awareness with new identity and update local cursor style
+      // Publish identity and update local cursor style.
       const nextColor = getPrimaryColor(this.playerIdentity);
       document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+      this.publishPlayerIdentity();
+      this.refreshPresenceTransportColors();
       this.updateCursorAwareness();
       // Emit color/name events so subscribers (e.g. the React context behind
       // usePlayerIdentity) react to identity injected through configure() —
@@ -1876,6 +2032,10 @@ export class CursorClientAwareness {
         this.emitGlobalEvent("name", nextName);
       }
     }
+  }
+
+  private publishPlayerIdentity(): void {
+    this.presenceTransport?.update("identity", this.playerIdentity);
   }
 
   registerZone(element: HTMLElement, options?: CursorZoneOptions): void {
@@ -1942,8 +2102,14 @@ export class CursorClientAwareness {
       this.chat.destroy();
     }
 
-    // Remove awareness data
-    this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    if (this.presenceTransport) {
+      this.presenceTransportUnsubscribe?.();
+      this.presenceTransportUnsubscribe = null;
+      this.presenceTransport.clear("cursor");
+      this.presenceTransport.destroy();
+    } else {
+      this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    }
   }
 
   // Debug method to inspect spatial partitioning efficiency
@@ -2006,6 +2172,45 @@ export class CursorClientAwareness {
   // to client pixel coordinates so consumers can use them directly for CSS left/top.
   getCursorPresences(): Map<string, CursorPresenceView> {
     const presences = new Map<string, CursorPresenceView>();
+
+    if (this.presenceTransport) {
+      const localCoords = this.currentCursor
+        ? this.storageToClient(this.currentCursor.x, this.currentCursor.y)
+        : null;
+      presences.set(this.playerIdentity.publicKey, {
+        cursor: localCoords && this.currentCursor
+          ? {
+              x: localCoords.x,
+              y: localCoords.y,
+              pointer: this.currentCursor.pointer,
+            }
+          : null,
+        playerIdentity: this.playerIdentity,
+        zone: this.currentZone,
+        page: window.location.pathname,
+      });
+      const remotePresences = this.presenceStore.getRemotePresences(
+        this.playerIdentity.publicKey,
+      );
+      for (const [stableId, presence] of remotePresences) {
+        const clientCoords = this.storageToClient(
+          presence.cursor.x,
+          presence.cursor.y,
+        );
+        presences.set(stableId, {
+          cursor: {
+            x: clientCoords.x,
+            y: clientCoords.y,
+            pointer: presence.cursor.pointer,
+          },
+          playerIdentity: presence.playerIdentity,
+          zone: presence.zone,
+          page: presence.page,
+        });
+      }
+      return presences;
+    }
+
     const states = this.provider.awareness.getStates();
 
     states.forEach((state, clientId) => {

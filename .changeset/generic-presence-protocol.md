@@ -1,5 +1,6 @@
 ---
 "@playhtml/common": patch
+"playhtml": patch
 ---
 
-Add shared realtime presence protocol types and validation helpers for PlayHTML presence transport.
+Move cursor motion onto PlayHTML's realtime presence transport and add shared protocol validation for presence messages.

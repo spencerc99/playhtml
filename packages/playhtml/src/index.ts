@@ -48,6 +48,10 @@ import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
 import { createPageDataChannel, PAGE_TAG } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import {
+  canUseRealtimePresenceTransport,
+  RealtimePresenceTransport,
+} from "./presence-transport";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -751,7 +755,17 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
-  cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+  const cursorPresenceTransport = canUseRealtimePresenceTransport()
+    ? new RealtimePresenceTransport({
+        host: partykitHost,
+        room: currentCursorRoomId,
+      })
+    : undefined;
+  cursorClient = new CursorClientAwareness(
+    providerForCursors,
+    cursorOptions,
+    cursorPresenceTransport,
+  );
 }
 
 async function runHandleNavigation(): Promise<void> {
@@ -994,6 +1008,9 @@ async function initPlayHTMLOnce({
     getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
     getPlayerIdentity: () =>
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
   });
 
   if (extraCapabilities) {

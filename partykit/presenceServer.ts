@@ -20,6 +20,7 @@ import {
   recordPresenceUpdate,
   takePresenceChanges,
 } from "./presencePolicy";
+import { isExpectedPresenceClose } from "./presenceDiagnostics";
 
 const PRESENCE_CHANNELS_STATE_KEY = "__playhtmlPresenceChannels";
 const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
@@ -184,7 +185,7 @@ export class PresenceServer extends Server<Env> {
     reason: string,
     wasClean: boolean,
   ): string | null {
-    if (code === 1000 && wasClean) return null;
+    if (isExpectedPresenceClose(code, wasClean)) return null;
 
     const openedAt = connection.state?.[PRESENCE_OPENED_AT_STATE_KEY];
     const duration =

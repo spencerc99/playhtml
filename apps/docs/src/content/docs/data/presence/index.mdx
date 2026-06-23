@@ -38,8 +38,9 @@ const me = playhtml.presence.getMyIdentity();
 
 ### Cursor presence subscribes the same way
 
-Cursor movements are exposed as a special channel. Playhtml keeps small rooms at a high
-update rate and automatically scales network updates down as more people join:
+Cursor movements are exposed as a special channel. Playhtml sends cursor motion through
+its realtime presence layer so cursor rendering can stay responsive without writing
+pointer movement into persistent shared data:
 
 ```js
 const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {
