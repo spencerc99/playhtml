@@ -2,16 +2,19 @@
 // ABOUTME: Keeps per-room cursor traffic bounded while small rooms stay at 60Hz.
 
 const MAX_CURSOR_NETWORK_HZ = 60;
-const MIN_CURSOR_NETWORK_HZ = 12;
-const CURSOR_ROOM_NETWORK_BUDGET_HZ = 480;
+const FULL_RATE_CURSOR_CONNECTIONS = 6;
+const CURSOR_ROOM_FANOUT_BUDGET = 600;
 
 export function getCursorNetworkHz(activeCursorCount: number): number {
   const participantCount = Math.max(1, Math.ceil(activeCursorCount));
-  const budgetedHz = CURSOR_ROOM_NETWORK_BUDGET_HZ / participantCount;
 
-  return Math.max(
-    MIN_CURSOR_NETWORK_HZ,
-    Math.min(MAX_CURSOR_NETWORK_HZ, budgetedHz),
+  if (participantCount <= FULL_RATE_CURSOR_CONNECTIONS) {
+    return MAX_CURSOR_NETWORK_HZ;
+  }
+
+  return Math.min(
+    MAX_CURSOR_NETWORK_HZ,
+    CURSOR_ROOM_FANOUT_BUDGET / participantCount ** 2,
   );
 }
 

@@ -3,7 +3,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { CursorClientAwareness } from "../cursor-client";
-import { getCursorNetworkIntervalMs } from "../cursor-network-pacing";
+import {
+  getCursorNetworkHz,
+  getCursorNetworkIntervalMs,
+} from "../cursor-network-pacing";
 
 function makeIdentity(publicKey: string, color: string) {
   return {
@@ -92,11 +95,14 @@ describe("cursor network pacing", () => {
 
   it("keeps the network interval at 60Hz for small rooms", () => {
     expect(getCursorNetworkIntervalMs(1)).toBeCloseTo(1000 / 60);
-    expect(getCursorNetworkIntervalMs(8)).toBeCloseTo(1000 / 60);
+    expect(getCursorNetworkIntervalMs(6)).toBeCloseTo(1000 / 60);
   });
 
-  it("lowers the network rate when a room has about twenty cursor connections", () => {
-    expect(getCursorNetworkIntervalMs(20)).toBeGreaterThan(1000 / 60);
+  it("backs off by fanout after the sixth cursor connection", () => {
+    expect(getCursorNetworkHz(7)).toBeCloseTo(600 / 7 ** 2);
+    expect(getCursorNetworkHz(8)).toBeCloseTo(600 / 8 ** 2);
+    expect(getCursorNetworkHz(12)).toBeCloseTo(600 / 12 ** 2);
+    expect(getCursorNetworkHz(20)).toBeCloseTo(1.5);
   });
 
   it("does not publish at a 60Hz interval when about twenty cursor connections are active", () => {
