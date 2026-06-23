@@ -2,6 +2,8 @@
 // ABOUTME: Keeps cursor coalescing testable without a Durable Object runtime.
 import { describe, expect, it } from "bun:test";
 import {
+  applyPresenceClientMessage,
+  createPresenceSyncMessage,
   createPresenceRoomState,
   recordPresenceClear,
   recordPresenceRemoval,
@@ -104,6 +106,45 @@ describe("presence room policy", () => {
       },
       "conn-2": {
         status: { text: "reading" },
+      },
+    });
+  });
+
+  it("applies join identity and page as generic presence channels", () => {
+    const state = createPresenceRoomState();
+    const identity = {
+      publicKey: "pk_1",
+      playerStyle: { colorPalette: ["red"] },
+    };
+
+    applyPresenceClientMessage(state, "conn-1", {
+      type: "presence-join",
+      identity,
+      page: "/week/1",
+    });
+
+    expect(takePresenceChanges(state)).toEqual({
+      type: "presence-changes",
+      updates: {
+        "conn-1": {
+          identity,
+          page: "/week/1",
+        },
+      },
+      removes: {},
+    });
+  });
+
+  it("creates the server sync message from the current snapshot", () => {
+    const state = createPresenceRoomState();
+    recordPresenceUpdate(state, "conn-1", "cursor", latestCursor);
+
+    expect(createPresenceSyncMessage(state)).toEqual({
+      type: "presence-sync",
+      peers: {
+        "conn-1": {
+          cursor: latestCursor,
+        },
       },
     });
   });

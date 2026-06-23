@@ -2,8 +2,10 @@
 // ABOUTME: Coalesces volatile channel updates before the Worker broadcasts them.
 
 import type {
+  PresenceClientMessage,
   PresenceChangesMessage,
   PresenceSnapshot,
+  PresenceSyncMessage,
 } from "@playhtml/common";
 
 export type PresenceRoomState = {
@@ -97,6 +99,40 @@ export function getPresenceSyncSnapshot(
   state: PresenceRoomState,
 ): PresenceSnapshot {
   return snapshotFromPeers(state.peers);
+}
+
+export function createPresenceSyncMessage(
+  state: PresenceRoomState,
+): PresenceSyncMessage {
+  return {
+    type: "presence-sync",
+    peers: getPresenceSyncSnapshot(state),
+  };
+}
+
+export function applyPresenceClientMessage(
+  state: PresenceRoomState,
+  connectionId: string,
+  message: PresenceClientMessage,
+): void {
+  switch (message.type) {
+    case "presence-join":
+      if (message.identity !== undefined) {
+        recordPresenceUpdate(state, connectionId, "identity", message.identity);
+      }
+      if (message.page !== undefined) {
+        recordPresenceUpdate(state, connectionId, "page", message.page);
+      }
+      return;
+    case "presence-update":
+      recordPresenceUpdate(state, connectionId, message.channel, message.value);
+      return;
+    case "presence-clear":
+      recordPresenceClear(state, connectionId, message.channel);
+      return;
+    case "presence-ping":
+      return;
+  }
 }
 
 export function takePresenceChanges(

@@ -76,6 +76,7 @@ import {
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
+export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
