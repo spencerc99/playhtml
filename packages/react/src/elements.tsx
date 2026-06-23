@@ -7,7 +7,6 @@ import {
   TagTypeToElement,
   TagType,
 } from "@playhtml/common";
-import classNames from "classnames";
 import * as React from "react";
 import { useState } from "react";
 import { CanPlayElement, WithPlayOptionalProps } from ".";
@@ -237,40 +236,24 @@ export function CanDuplicateElement({
 
 export function CanHoverElement({
   children,
-}: {
-  children: SingleChildOrPlayable;
-}) {
+  dataSource,
+  shared,
+  standalone,
+}: { children: SingleChildOrPlayable } & WithPlayOptionalProps) {
   return (
     <CanPlayElement
-      {...{
-        defaultData: {},
-        myDefaultAwareness: { isHovering: false },
-        onMount: ({ setMyAwareness, getElement }) => {
-          const element = getElement();
-          element.addEventListener("mouseover", () => {
-            setMyAwareness({ isHovering: true });
-          });
-          element.addEventListener("mouseout", () => {
-            setMyAwareness({ isHovering: false });
-          });
-        },
-      }}
+      // @ts-ignore
+      tagInfo={[TagType.CanHover]}
+      {...TagTypeToElement[TagType.CanHover]}
+      {...(dataSource ? { dataSource } : {})}
+      {...(shared ? { shared } : {})}
+      {...(standalone ? { standalone } : {})}
       children={(renderData) => {
-        const { awareness } = renderData;
         const renderedChildren = renderSingleChildOrPlayable(
           children,
           renderData
         );
-
-        return React.cloneElement(
-          React.Children.only(renderedChildren) as React.ReactElement<{ className?: string }>,
-          {
-            className: classNames(
-              (renderedChildren?.props as { className?: string })?.className,
-              awareness.some((ele: { isHovering?: boolean }) => ele.isHovering) ? "hovering" : ""
-            ),
-          }
-        );
+        return renderedChildren;
       }}
     />
   );

@@ -1,0 +1,51 @@
+---
+title: "Page-level data"
+description: "createPageData: named persistent channels that aren't tied to any element."
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Page data is a persistent data channel keyed by a name — no DOM element required. Good for counters, vote tallies, link trackers — anything page-shaped instead of element-shaped.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+`playhtml.createPageData(name, default)` returns a channel handle:
+
+```js
+const counter = playhtml.createPageData("my-counter", { count: 0 });
+counter.setData((draft) => { draft.count += 1; });
+counter.onUpdate((data) => { /* re-render */ });
+```
+  </TabItem>
+  <TabItem label="React">
+The [`usePageData`](/docs/reference/react-api/#usepagedata) hook wraps `createPageData` with `useState`-style ergonomics and manages the channel's lifecycle for you:
+
+```tsx
+import { usePageData } from "@playhtml/react";
+
+function VisitCounter() {
+  const [data, setData] = usePageData("visits", { count: 0 });
+  return (
+    <button onClick={() => setData((draft) => { draft.count += 1; })}>
+      {data.count} visits
+    </button>
+  );
+}
+```
+  </TabItem>
+</Tabs>
+
+The vanilla channel handle exposes four methods (`usePageData` wraps these for you):
+
+- **`getData()`** — read the current value synchronously.
+- **`setData(value | (draft) => void)`** — write. Accepts a replacement value or a mutator function, with the same merge semantics as element `setData`; see [data essentials](/docs/data/data-essentials/).
+- **`onUpdate(cb)`** — subscribe to changes. Returns an unsubscribe function.
+- **`destroy()`** — detach the channel and its observers. Call this when the channel is no longer needed (e.g. on teardown) to avoid leaking the subscription.
+
+When you should reach for `createPageData` vs. element data, presence, or events: see the [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+
+## Navigation
+
+Page data is room-scoped, like element data. On a single-page app, when navigation changes the room the channel resets to the new room — it reads its default until re-seeded. A channel handle you hold across the navigation stays usable (it keeps writing and notifying). Navigation that doesn't change the room leaves the data untouched. See [Navigation & SPAs](/docs/advanced/navigation/).
