@@ -75,13 +75,16 @@ import {
   withTimeout,
   type PersistenceMode,
 } from "./persistenceMode";
+import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
+const CONNECTION_OPENED_AT_STATE_KEY = "__playhtmlConnectionOpenedAt";
 
 type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
   [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
+  [CONNECTION_OPENED_AT_STATE_KEY]?: number;
 };
 
 type CompactedDocument = {
@@ -548,6 +551,33 @@ export class PartyServer extends YServer {
       .state;
     const value = state?.[ACCEPTED_RESET_EPOCH_STATE_KEY];
     return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  private setConnectionOpenedAt(
+    connection: Party.Connection,
+    openedAt: number
+  ): void {
+    const trackedConnection =
+      connection as Party.Connection<PartyServerConnectionState>;
+    trackedConnection.setState((previousState) => {
+      const state =
+        previousState && typeof previousState === "object" ? previousState : {};
+      return {
+        ...(state as Record<string, unknown>),
+        [CONNECTION_OPENED_AT_STATE_KEY]: openedAt,
+      };
+    });
+  }
+
+  private getConnectionOpenedAt(
+    connection: Party.Connection
+  ): number | undefined {
+    const state = (connection as Party.Connection<PartyServerConnectionState>)
+      .state;
+    const value = state?.[CONNECTION_OPENED_AT_STATE_KEY];
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
   }
 
   private getRoomResetMessage(resetEpoch: number): string {
@@ -1030,6 +1060,7 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     ctx: Party.ConnectionContext
   ) {
+    this.setConnectionOpenedAt(connection, Date.now());
     await this.waitForEmptyRoomCompaction();
 
     const url = new URL(ctx.request.url);
@@ -1150,8 +1181,37 @@ export class PartyServer extends YServer {
     reason: string,
     wasClean: boolean
   ): Promise<void> {
-    await super.onClose(connection, code, reason, wasClean);
-    await this.scheduleEmptyRoomCompaction();
+    const closeDiagnostic = getConnectionCloseDiagnostic({
+      roomName: this.name,
+      connectionId: connection.id,
+      code,
+      reason,
+      wasClean,
+      openedAt: this.getConnectionOpenedAt(connection),
+    });
+    if (closeDiagnostic) {
+      console.warn(closeDiagnostic);
+    }
+
+    try {
+      await super.onClose(connection, code, reason, wasClean);
+    } catch (error) {
+      console.error(
+        `[PartyServer] super.onClose failed: room=${this.name} connection=${connection.id} ` +
+          `code=${code} reason=${JSON.stringify(reason)} wasClean=${wasClean}`,
+        error
+      );
+      throw error;
+    }
+
+    try {
+      await this.scheduleEmptyRoomCompaction();
+    } catch (error) {
+      console.error(
+        `[PartyServer] Empty-room compaction scheduling failed after close: room=${this.name} connection=${connection.id}`,
+        error
+      );
+    }
   }
 
   // Benign disconnect errors thrown by the Cloudflare runtime when a client's
