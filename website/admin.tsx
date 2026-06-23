@@ -509,8 +509,6 @@ const AdminConsole: React.FC = () => {
     type: "loading" | "success" | "error" | "empty";
   } | null>(null);
 
-  // Debug sections visibility
-  const [showYDocDebug, setShowYDocDebug] = useState(false);
   const [_showBackupComparison, setShowBackupComparison] = useState(false);
 
   // Section collapse/expand state
@@ -521,7 +519,6 @@ const AdminConsole: React.FC = () => {
     roomMetadata: true,
     sharedData: true,
     rawDbData: false,
-    yDocDebug: false,
     dataComparison: false,
     backupComparison: true,
     cleanupTools: false, // Collapsed by default
@@ -536,10 +533,6 @@ const AdminConsole: React.FC = () => {
 
   // Debug data
   const [rawDbData, setRawDbData] = useState<any>(null);
-  const [debugSteps, setDebugSteps] = useState<
-    Array<{ message: string; type: string }>
-  >([]);
-  const [reconstructedDoc, setReconstructedDoc] = useState<any>(null);
   const [comparisonData, setComparisonData] = useState<any>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
@@ -735,7 +728,6 @@ const AdminConsole: React.FC = () => {
         setRoomData(null);
         setRoomStatus(null);
         setRawDbData(null);
-        setShowYDocDebug(false);
         setComparisonData(null);
         setComparisonError(null);
         setShowBackupComparison(false);
@@ -751,7 +743,6 @@ const AdminConsole: React.FC = () => {
         setRoomData(null);
         setRoomStatus(null);
         setRawDbData(null);
-        setShowYDocDebug(false);
         setComparisonData(null);
         setComparisonError(null);
         setShowBackupComparison(false);
@@ -931,13 +922,11 @@ const AdminConsole: React.FC = () => {
     setRoomData(null);
     setDebugToolsEnabled(false);
     setRawDbData(null);
-    setShowYDocDebug(false);
     setComparisonData(null);
     setComparisonError(null);
     setSectionsExpanded((prev) => ({
       ...prev,
       rawDbData: false,
-      yDocDebug: false,
       dataComparison: false,
     }));
     setShowBackupComparison(false);
@@ -1196,106 +1185,6 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to load raw data: ${msg}`, error);
-    }
-  };
-
-  const debugYDocLoading = async () => {
-    if (!currentRoomId || !adminToken) return;
-
-    setShowYDocDebug(true);
-    setSectionsExpanded((prev) => ({ ...prev, yDocDebug: true }));
-    setDebugSteps([]);
-    setReconstructedDoc(null);
-
-    const addStep = (
-      message: string,
-      type: "info" | "success" | "warning" | "error" = "info"
-    ) => {
-      setDebugSteps((prev) => [
-        ...prev,
-        { message: `[${new Date().toLocaleTimeString()}] ${message}`, type },
-      ]);
-      const level: DebugLog["level"] =
-        type === "success" ? "info" : type === "warning" ? "warn" : type;
-      addLog(level, message);
-    };
-
-    try {
-      addStep("🔍 Starting Y.Doc reconstruction debug...", "info");
-      addStep("📁 Fetching raw database document...", "info");
-
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
-      const rawUrl = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
-        adminToken
-      )}`;
-
-      const rawResponse = await fetch(rawUrl);
-      const rawData = await rawResponse.json();
-
-      if (!rawData.document) {
-        addStep("❌ No document found in database", "error");
-        return;
-      }
-
-      addStep(
-        `✅ Found document: ${rawData.document.base64Length} bytes`,
-        "success"
-      );
-      addStep("🔧 Attempting to reconstruct Y.Doc from base64...", "info");
-
-      try {
-        // Import Y.js dynamically
-        const Y = await import("yjs");
-        const doc = new Y.Doc();
-
-        const base64 = rawData.document.document;
-        const buffer = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-
-        addStep(`📦 Decoded ${buffer.length} bytes from base64`, "success");
-
-        Y.applyUpdate(doc, buffer);
-        addStep("✅ Successfully applied update to new Y.Doc", "success");
-
-        addStep("🔧 Using SyncedStore to extract data...", "info");
-        const { syncedStore } = await import("@syncedstore/core");
-        const store = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          doc
-        );
-
-        // Clone using same logic as original
-        const reconstructedData = JSON.parse(JSON.stringify(store.play));
-        const hasAnyData = Object.keys(reconstructedData).some(
-          (tag) => Object.keys(reconstructedData[tag] || {}).length > 0
-        );
-
-        if (hasAnyData) {
-          addStep(
-            `🎯 Extracted ${
-              Object.keys(reconstructedData).length
-            } capability types`,
-            "success"
-          );
-          const totalElements = Object.values(reconstructedData).reduce(
-            (sum: number, tagData: any) => sum + Object.keys(tagData).length,
-            0
-          );
-          addStep(`📊 Found ${totalElements} total elements`, "success");
-        } else {
-          addStep("⚠️  Y.Doc loaded but contains no PlayHTML data", "warning");
-        }
-
-        setReconstructedDoc(reconstructedData);
-        addStep("✅ Debug reconstruction complete!", "success");
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        addStep(`❌ Y.Doc reconstruction failed: ${msg}`, "error");
-        addLog("error", "Y.Doc reconstruction error", error);
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      addStep(`❌ Debug process failed: ${msg}`, "error");
-      addLog("error", "Debug Y.Doc loading error", error);
     }
   };
 
@@ -2448,47 +2337,6 @@ const AdminConsole: React.FC = () => {
                   <div className="empty">
                     Load raw database data to inspect the stored base64
                     snapshot.
-                  </div>
-                )
-              )}
-            </div>
-          )}
-
-          {roomData && (
-            <div className="data-section">
-              <SectionHeader
-                title="Y.Doc Loading Debug"
-                sectionKey="yDocDebug"
-                isExpanded={sectionsExpanded.yDocDebug}
-                onToggle={toggleSection}
-                actions={
-                  <button
-                    className="tool-btn"
-                    disabled={!debugToolsEnabled}
-                    onClick={debugYDocLoading}
-                  >
-                    Run Y.Doc Debug
-                  </button>
-                }
-              />
-              {sectionsExpanded.yDocDebug && (
-                showYDocDebug ? (
-                  <>
-                    <div className="debug-steps">
-                      {debugSteps.map((step, index) => (
-                        <div key={index} className={`debug-step ${step.type}`}>
-                          {step.message}
-                        </div>
-                      ))}
-                    </div>
-                    {reconstructedDoc && (
-                      <JSONViewer data={reconstructedDoc} />
-                    )}
-                  </>
-                ) : (
-                  <div className="empty">
-                    Run the Y.Doc debug flow to reconstruct the stored snapshot
-                    from base64.
                   </div>
                 )
               )}

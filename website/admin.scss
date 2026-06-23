@@ -603,40 +603,6 @@ section {
   }
 }
 
-.debug-steps {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-  padding: 15px;
-  margin-bottom: 15px;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
-
-  .debug-step {
-    margin-bottom: 8px;
-    padding: 4px 0;
-    word-break: break-word;
-    overflow-wrap: break-word;
-
-    &.success {
-      color: #28a745;
-    }
-
-    &.warning {
-      color: #ffc107;
-    }
-
-    &.error {
-      color: #dc3545;
-    }
-
-    &.info {
-      color: #17a2b8;
-    }
-  }
-}
-
 .tool-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
