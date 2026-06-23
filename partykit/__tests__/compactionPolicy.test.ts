@@ -56,20 +56,33 @@ describe("getCompactionCommitDecision", () => {
       getCompactionCommitDecision({
         sourceDocumentBase64: "source",
         persistedDocumentBase64: "source",
+        sourceContainsPersistedDocument: false,
       })
     ).toEqual({ kind: "commit-compaction" });
     expect(
       getCompactionCommitDecision({
         sourceDocumentBase64: "source",
         persistedDocumentBase64: "newer",
+        sourceContainsPersistedDocument: true,
       })
     ).toEqual({ kind: "persist-live-document" });
     expect(
       getCompactionCommitDecision({
         sourceDocumentBase64: "source",
         persistedDocumentBase64: null,
+        sourceContainsPersistedDocument: false,
       })
     ).toEqual({ kind: "persist-live-document" });
+  });
+
+  it("leaves persisted data untouched when the live source is missing database updates", () => {
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "skip-compaction" });
   });
 });
 

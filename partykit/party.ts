@@ -14,6 +14,7 @@ import {
   docToJson,
   jsonToDoc,
   encodeDocToBase64,
+  documentContainsSnapshot,
   replaceDocFromSnapshot,
   setDocResetEpoch,
   getDocResetEpoch,
@@ -488,9 +489,16 @@ export class PartyServer extends YServer {
 
     try {
       const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
+      const sourceContainsPersistedDocument =
+        persistedDocumentBase64 !== null &&
+        documentContainsSnapshot(
+          compactedDocument.sourceBase64,
+          persistedDocumentBase64
+        );
       const commitDecision = getCompactionCommitDecision({
         sourceDocumentBase64: compactedDocument.sourceBase64,
         persistedDocumentBase64,
+        sourceContainsPersistedDocument,
       });
 
       if (commitDecision.kind === "persist-live-document") {
@@ -498,6 +506,13 @@ export class PartyServer extends YServer {
           `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
         );
         await this.persistLiveDocument({ allowCompaction: false });
+        return false;
+      }
+
+      if (commitDecision.kind === "skip-compaction") {
+        console.warn(
+          `[PartyServer] Compaction skipped for room=${this.name}: persisted document has updates missing from live source`
+        );
         return false;
       }
 

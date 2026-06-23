@@ -28,23 +28,31 @@ export function shouldCommitCompactionSnapshot({
     getCompactionCommitDecision({
       sourceDocumentBase64,
       persistedDocumentBase64,
+      sourceContainsPersistedDocument: false,
     }).kind === "commit-compaction"
   );
 }
 
 export type CompactionCommitDecision =
   | { kind: "commit-compaction" }
-  | { kind: "persist-live-document" };
+  | { kind: "persist-live-document" }
+  | { kind: "skip-compaction" };
 
 export function getCompactionCommitDecision({
   sourceDocumentBase64,
   persistedDocumentBase64,
+  sourceContainsPersistedDocument,
 }: {
   sourceDocumentBase64: string;
   persistedDocumentBase64: string | null;
+  sourceContainsPersistedDocument: boolean;
 }): CompactionCommitDecision {
   if (persistedDocumentBase64 === sourceDocumentBase64) {
     return { kind: "commit-compaction" };
+  }
+
+  if (persistedDocumentBase64 !== null && !sourceContainsPersistedDocument) {
+    return { kind: "skip-compaction" };
   }
 
   return { kind: "persist-live-document" };
