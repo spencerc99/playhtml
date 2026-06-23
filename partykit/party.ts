@@ -20,6 +20,7 @@ import {
 } from "./docUtils";
 import {
   STORAGE_KEYS,
+  DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_DOCUMENT_WARNING_BYTES,
@@ -63,7 +64,7 @@ import {
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
-  shouldCommitBackgroundCompaction,
+  shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
@@ -90,6 +91,7 @@ type PartyServerConnectionState = Record<string, unknown> & {
 
 type CompactedDocument = {
   base64: string;
+  sourceBase64: string;
   beforeSize: number;
   afterSize: number;
   resetEpoch: number;
@@ -229,6 +231,10 @@ export class PartyServer extends YServer {
 
   private async clearEmptyRoomCompactAfter(): Promise<void> {
     await this.ctx.storage.delete(STORAGE_KEYS.emptyRoomCompactAfter);
+  }
+
+  private async setEmptyRoomCompactAfter(timestamp: number): Promise<void> {
+    await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
   }
 
   private async getEmergencyCompactCheckAfter(): Promise<number | null> {
@@ -428,7 +434,8 @@ export class PartyServer extends YServer {
       return null;
     }
 
-    const beforeSize = encodeDocToBase64(doc).length;
+    const sourceBase64 = encodeDocToBase64(doc);
+    const beforeSize = sourceBase64.length;
     const resetEpoch = Date.now();
     const compactDoc = jsonToDoc(currentPlayData);
     setDocResetEpoch(compactDoc, resetEpoch);
@@ -436,6 +443,7 @@ export class PartyServer extends YServer {
 
     return {
       base64,
+      sourceBase64,
       beforeSize,
       afterSize: base64.length,
       resetEpoch,
@@ -451,6 +459,20 @@ export class PartyServer extends YServer {
     await this.setResetEpoch(resetEpoch);
   }
 
+  private async getPersistedDocumentBase64(): Promise<string | null> {
+    const { data, error } = await supabase
+      .from("documents")
+      .select("document")
+      .eq("name", this.name)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return typeof data?.document === "string" ? data.document : null;
+  }
+
   private async commitCompactedDocument({
     compactedDocument,
     beforeCommit,
@@ -461,6 +483,19 @@ export class PartyServer extends YServer {
     let documentSaved = false;
 
     try {
+      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
+      if (
+        !shouldCommitCompactionSnapshot({
+          sourceDocumentBase64: compactedDocument.sourceBase64,
+          persistedDocumentBase64,
+        })
+      ) {
+        console.warn(
+          `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source`
+        );
+        return false;
+      }
+
       if (beforeCommit && !(await beforeCommit())) {
         return false;
       }
@@ -753,7 +788,17 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleEmptyRoomCompaction(): Promise<void> {
-    await Promise.resolve();
+    if (this.isSkippingSave) return;
+    if (!this.isPersistenceAvailable()) return;
+    if (this.getOpenConnectionCount() !== 0) return;
+
+    const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
+    await this.setEmptyRoomCompactAfter(compactAfter);
+    await this.scheduleNextAlarm();
+
+    console.log(
+      `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
+    );
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -1341,18 +1386,16 @@ export class PartyServer extends YServer {
 
     const recheckAfter = now + this.getEmergencyCompactRecheckDelayMs();
 
-    if (!shouldCommitBackgroundCompaction()) {
-      await this.setEmergencyCompactCheckAfter(recheckAfter);
-      console.warn(
-        `[PartyServer] Background compaction skipped: room=${this.name}, documentBytes=${documentSize}, nextCheckAt=${recheckAfter}`
-      );
-      return false;
-    }
-
-    // Connected rooms keep raw Yjs history so hibernated clients can resume
-    // without merging against a rewritten snapshot. This path pays the
-    // expensive docToJson/jsonToDoc/encode check at most once per cooldown
-    // window.
+    // Connected rooms normally keep raw Yjs history so hibernated clients can
+    // resume without merging against a rewritten snapshot. This path is the
+    // exception: once a never-empty room crosses the high-watermark threshold,
+    // the server pays the expensive docToJson/jsonToDoc/encode check at most
+    // once per cooldown window. If compaction is useful, it is enforced as a
+    // reset boundary by broadcasting room-reset and closing active sockets.
+    // That disruption is intentional because silently replacing Yjs history
+    // while clients are connected can merge stale client history back into the
+    // room. If compaction is not useful, the cooldown prevents every later
+    // autosave of a naturally large document from rebuilding the whole Y.Doc.
     const compactedDocument = this.buildCompactedDocument(this.document);
     if (compactedDocument === null) {
       await this.setEmergencyCompactCheckAfter(recheckAfter);
@@ -1373,7 +1416,7 @@ export class PartyServer extends YServer {
       return false;
     }
 
-    await this.commitCompactedDocument({
+    const committed = await this.commitCompactedDocument({
       compactedDocument,
       afterReplace: async () => {
         await this.setEmergencyCompactCheckAfter(recheckAfter);
@@ -1388,7 +1431,10 @@ export class PartyServer extends YServer {
         );
       },
     });
-    return true;
+    if (!committed) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
+    }
+    return committed;
   }
 
   override async onRequest(request: Request): Promise<Response> {
@@ -1838,14 +1884,6 @@ export class PartyServer extends YServer {
     if (this.getOpenConnectionCount() !== 0) return;
 
     const run = async () => {
-      if (!shouldCommitBackgroundCompaction()) {
-        await this.clearEmptyRoomCompactAfter();
-        console.warn(
-          `[PartyServer] Empty-room compaction skipped: room=${this.name}, background compaction is disabled`
-        );
-        return;
-      }
-
       const compactedDocument = this.buildCompactedDocument(this.document);
       if (compactedDocument === null) {
         await this.clearEmptyRoomCompactAfter();
@@ -1878,6 +1916,9 @@ export class PartyServer extends YServer {
           await this.clearEmptyRoomCompactAfter();
         },
       });
+      if (!committed) {
+        await this.clearEmptyRoomCompactAfter();
+      }
       if (committed) {
         console.log(
           `[PartyServer] Empty-room compacted: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes (${((1 - compactedDocument.afterSize / compactedDocument.beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${compactedDocument.resetEpoch}`

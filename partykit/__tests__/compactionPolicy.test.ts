@@ -5,7 +5,7 @@ import {
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
-  shouldCommitBackgroundCompaction,
+  shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "../compactionPolicy";
@@ -26,9 +26,26 @@ describe("isCompactionAutosave", () => {
   });
 });
 
-describe("shouldCommitBackgroundCompaction", () => {
-  it("does not let background compaction replace saved room state", () => {
-    expect(shouldCommitBackgroundCompaction()).toBe(false);
+describe("shouldCommitCompactionSnapshot", () => {
+  it("only commits when the persisted document still matches the compacted source", () => {
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+      })
+    ).toBe(true);
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+      })
+    ).toBe(false);
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: null,
+      })
+    ).toBe(false);
   });
 });
 

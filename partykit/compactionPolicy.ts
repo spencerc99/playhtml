@@ -17,8 +17,14 @@ export function isCompactionAutosave(
   );
 }
 
-export function shouldCommitBackgroundCompaction(): boolean {
-  return false;
+export function shouldCommitCompactionSnapshot({
+  sourceDocumentBase64,
+  persistedDocumentBase64,
+}: {
+  sourceDocumentBase64: string;
+  persistedDocumentBase64: string | null;
+}): boolean {
+  return persistedDocumentBase64 === sourceDocumentBase64;
 }
 
 // Emergency compaction protects rooms that stay continuously connected and
