@@ -20,7 +20,6 @@ import {
 } from "./docUtils";
 import {
   STORAGE_KEYS,
-  DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_DOCUMENT_WARNING_BYTES,
@@ -64,10 +63,15 @@ import {
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
+  shouldCommitBackgroundCompaction,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
-import { isResetEpochStale, parseClientResetEpoch } from "./resetEpochPolicy";
+import {
+  getAutosaveResetEpochDecision,
+  isResetEpochStale,
+  parseClientResetEpoch,
+} from "./resetEpochPolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -221,10 +225,6 @@ export class PartyServer extends YServer {
   private async getEmptyRoomCompactAfter(): Promise<number | null> {
     const value = await this.ctx.storage.get(STORAGE_KEYS.emptyRoomCompactAfter);
     return typeof value === "number" ? value : null;
-  }
-
-  private async setEmptyRoomCompactAfter(timestamp: number): Promise<void> {
-    await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
   }
 
   private async clearEmptyRoomCompactAfter(): Promise<void> {
@@ -753,17 +753,7 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleEmptyRoomCompaction(): Promise<void> {
-    if (this.isSkippingSave) return;
-    if (!this.isPersistenceAvailable()) return;
-    if (this.getOpenConnectionCount() !== 0) return;
-
-    const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
-    await this.setEmptyRoomCompactAfter(compactAfter);
-    await this.scheduleNextAlarm();
-
-    console.log(
-      `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
-    );
+    await Promise.resolve();
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -1238,33 +1228,30 @@ export class PartyServer extends YServer {
     }
 
     // Get current reset epoch for logging and validation
-    const serverResetEpoch = await this.getResetEpoch();
+    let serverResetEpoch = await this.getResetEpoch();
     const docResetEpoch = getDocResetEpoch(doc);
+    const resetEpochDecision = getAutosaveResetEpochDecision(
+      docResetEpoch,
+      serverResetEpoch
+    );
 
-    if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
-      const reason =
-        docResetEpoch === null
-          ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
-          : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
+    if (resetEpochDecision.kind === "skip") {
       console.warn(
-        `[PartyServer] Autosave skipped for room ${this.name}: ${reason}`
+        `[PartyServer] Autosave skipped for room ${this.name}: ${resetEpochDecision.reason}`
       );
       return;
     }
 
-    if (
-      docResetEpoch !== null &&
-      serverResetEpoch !== null &&
-      docResetEpoch > serverResetEpoch
-    ) {
+    if (resetEpochDecision.kind === "promote-server-epoch") {
+      await this.setResetEpoch(resetEpochDecision.resetEpoch);
+      serverResetEpoch = resetEpochDecision.resetEpoch;
       console.warn(
-        `[PartyServer] Autosave skipped for room ${this.name}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
+        `[PartyServer] Autosave promoted server reset epoch for room ${this.name}: doc reset epoch=${resetEpochDecision.resetEpoch}`
       );
-      return;
     }
 
     // Ordinary autosave preserves Yjs history so reconnecting clients can merge
-    // safely. Empty-room compaction is handled as a reset boundary by alarms.
+    // safely.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
     this.lastKnownDocumentBytes = documentSize;
@@ -1354,16 +1341,18 @@ export class PartyServer extends YServer {
 
     const recheckAfter = now + this.getEmergencyCompactRecheckDelayMs();
 
-    // Connected rooms normally keep raw Yjs history so hibernated clients can
-    // resume without merging against a rewritten snapshot. This path is the
-    // exception: once a never-empty room crosses the high-watermark threshold,
-    // the server pays the expensive docToJson/jsonToDoc/encode check at most
-    // once per cooldown window. If compaction is useful, it is enforced as a
-    // reset boundary by broadcasting room-reset and closing active sockets.
-    // That disruption is intentional because silently replacing Yjs history
-    // while clients are connected can merge stale client history back into the
-    // room. If compaction is not useful, the cooldown prevents every later
-    // autosave of a naturally large document from rebuilding the whole Y.Doc.
+    if (!shouldCommitBackgroundCompaction()) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
+      console.warn(
+        `[PartyServer] Background compaction skipped: room=${this.name}, documentBytes=${documentSize}, nextCheckAt=${recheckAfter}`
+      );
+      return false;
+    }
+
+    // Connected rooms keep raw Yjs history so hibernated clients can resume
+    // without merging against a rewritten snapshot. This path pays the
+    // expensive docToJson/jsonToDoc/encode check at most once per cooldown
+    // window.
     const compactedDocument = this.buildCompactedDocument(this.document);
     if (compactedDocument === null) {
       await this.setEmergencyCompactCheckAfter(recheckAfter);
@@ -1849,6 +1838,14 @@ export class PartyServer extends YServer {
     if (this.getOpenConnectionCount() !== 0) return;
 
     const run = async () => {
+      if (!shouldCommitBackgroundCompaction()) {
+        await this.clearEmptyRoomCompactAfter();
+        console.warn(
+          `[PartyServer] Empty-room compaction skipped: room=${this.name}, background compaction is disabled`
+        );
+        return;
+      }
+
       const compactedDocument = this.buildCompactedDocument(this.document);
       if (compactedDocument === null) {
         await this.clearEmptyRoomCompactAfter();

@@ -17,6 +17,10 @@ export function isCompactionAutosave(
   );
 }
 
+export function shouldCommitBackgroundCompaction(): boolean {
+  return false;
+}
+
 // Emergency compaction protects rooms that stay continuously connected and
 // therefore never reach the empty-room compaction path. The check is split in
 // two parts: this cheap predicate runs on every autosave using the encoded

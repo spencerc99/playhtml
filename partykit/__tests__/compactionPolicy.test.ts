@@ -5,6 +5,7 @@ import {
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
+  shouldCommitBackgroundCompaction,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "../compactionPolicy";
@@ -22,6 +23,12 @@ describe("isCompactionAutosave", () => {
     expect(isCompactionAutosave("snapshot-a", "snapshot-a")).toBe(true);
     expect(isCompactionAutosave("snapshot-b", "snapshot-a")).toBe(false);
     expect(isCompactionAutosave("snapshot-a", null)).toBe(false);
+  });
+});
+
+describe("shouldCommitBackgroundCompaction", () => {
+  it("does not let background compaction replace saved room state", () => {
+    expect(shouldCommitBackgroundCompaction()).toBe(false);
   });
 });
 
