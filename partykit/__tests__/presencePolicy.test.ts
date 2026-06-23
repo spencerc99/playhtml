@@ -3,6 +3,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   applyPresenceClientMessage,
+  consumePresenceMessageBudget,
+  createPresenceMessageBudgetState,
   createPresenceSyncMessage,
   createPresenceRoomState,
   recordPresenceClear,
@@ -147,5 +149,95 @@ describe("presence room policy", () => {
         },
       },
     });
+  });
+
+  it("accepts cursor messages at the frame budget", () => {
+    const state = createPresenceMessageBudgetState();
+    for (let i = 0; i < 90; i++) {
+      expect(
+        consumePresenceMessageBudget(
+          state,
+          "conn-1",
+          {
+            type: "presence-update",
+            channel: "cursor",
+            value: { cursor: { x: i, y: i, pointer: "mouse" } },
+          },
+          1000,
+        ),
+      ).toEqual({ accepted: true });
+    }
+
+    expect(
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        {
+          type: "presence-update",
+          channel: "cursor",
+          value: { cursor: { x: 91, y: 91, pointer: "mouse" } },
+        },
+        1000,
+      ),
+    ).toEqual({ accepted: false, channel: "cursor", hz: 90 });
+  });
+
+  it("keeps event-channel budgets separate from cursor frame traffic", () => {
+    const state = createPresenceMessageBudgetState();
+    for (let i = 0; i < 90; i++) {
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        {
+          type: "presence-update",
+          channel: "cursor",
+          value: { cursor: { x: i, y: i, pointer: "mouse" } },
+        },
+        1000,
+      );
+    }
+
+    expect(
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        {
+          type: "presence-update",
+          channel: "message",
+          value: "still accepted",
+        },
+        1000,
+      ),
+    ).toEqual({ accepted: true });
+  });
+
+  it("resets message budgets after the window elapses", () => {
+    const state = createPresenceMessageBudgetState();
+    for (let i = 0; i < 10; i++) {
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        { type: "presence-ping" },
+        1000,
+      );
+    }
+
+    expect(
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        { type: "presence-ping" },
+        1000,
+      ),
+    ).toEqual({ accepted: false, channel: "control", hz: 10 });
+
+    expect(
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        { type: "presence-ping" },
+        2000,
+      ),
+    ).toEqual({ accepted: true });
   });
 });

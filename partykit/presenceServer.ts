@@ -15,6 +15,9 @@ import {
 } from "@playhtml/common";
 import {
   applyPresenceClientMessage,
+  clearPresenceMessageBudget,
+  consumePresenceMessageBudget,
+  createPresenceMessageBudgetState,
   createPresenceRoomState,
   recordPresenceRemoval,
   recordPresenceUpdate,
@@ -25,10 +28,18 @@ import { isExpectedPresenceClose } from "./presenceDiagnostics";
 const PRESENCE_CHANNELS_STATE_KEY = "__playhtmlPresenceChannels";
 const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
 const PRESENCE_BROADCAST_INTERVAL_MS = 1000 / 60;
+const MAX_PRESENCE_RAW_MESSAGE_BYTES = 8192;
+const PRESENCE_INVALID_MESSAGE_WINDOW_MS = 1000;
+const PRESENCE_INVALID_MESSAGE_LIMIT = 10;
 
 type PresenceConnectionState = Record<string, unknown> & {
   [PRESENCE_CHANNELS_STATE_KEY]?: Record<string, unknown>;
   [PRESENCE_OPENED_AT_STATE_KEY]?: number;
+};
+
+type InvalidMessageWindow = {
+  startedAt: number;
+  count: number;
 };
 
 export class PresenceServer extends Server<Env> {
@@ -37,6 +48,8 @@ export class PresenceServer extends Server<Env> {
   };
 
   private presenceState = createPresenceRoomState();
+  private messageBudgets = createPresenceMessageBudgetState();
+  private invalidMessageWindows = new Map<string, InvalidMessageWindow>();
   private lastBroadcastAt = 0;
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -59,6 +72,14 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
+    if (new TextEncoder().encode(message).byteLength > MAX_PRESENCE_RAW_MESSAGE_BYTES) {
+      this.sendError(
+        connection,
+        `Presence messages must be ${MAX_PRESENCE_RAW_MESSAGE_BYTES} bytes or less`,
+      );
+      return;
+    }
+
     let parsed: PresenceClientMessage;
     try {
       parsed = validatePresenceClientMessage(JSON.parse(message));
@@ -69,6 +90,17 @@ export class PresenceServer extends Server<Env> {
 
     const presenceConnection =
       connection as Connection<PresenceConnectionState>;
+    const budget = consumePresenceMessageBudget(
+      this.messageBudgets,
+      presenceConnection.id,
+      parsed,
+      Date.now(),
+    );
+    if (!budget.accepted) {
+      this.sendRate(presenceConnection, budget.channel, budget.hz);
+      return;
+    }
+
     applyPresenceClientMessage(
       this.presenceState,
       presenceConnection.id,
@@ -91,6 +123,8 @@ export class PresenceServer extends Server<Env> {
       connection as Connection<PresenceConnectionState>;
     this.restorePeerFromConnection(presenceConnection);
     recordPresenceRemoval(this.presenceState, presenceConnection.id);
+    clearPresenceMessageBudget(this.messageBudgets, presenceConnection.id);
+    this.invalidMessageWindows.delete(presenceConnection.id);
     this.scheduleBroadcast();
 
     const diagnostic = this.getCloseDiagnostic(
@@ -171,12 +205,50 @@ export class PresenceServer extends Server<Env> {
   }
 
   private sendError(connection: Connection, message: string): void {
+    if (!this.consumeInvalidMessageBudget(connection.id)) {
+      connection.close(1008, "too many invalid presence messages");
+      return;
+    }
+
     connection.send(
       JSON.stringify({
         type: "presence-error",
         message,
       }),
     );
+  }
+
+  private sendRate(
+    connection: Connection,
+    channel: string,
+    hz: number,
+  ): void {
+    connection.send(
+      JSON.stringify({
+        type: "presence-rate",
+        channel,
+        hz,
+      }),
+    );
+  }
+
+  private consumeInvalidMessageBudget(connectionId: string): boolean {
+    const now = Date.now();
+    let window = this.invalidMessageWindows.get(connectionId);
+    if (
+      !window ||
+      now - window.startedAt >= PRESENCE_INVALID_MESSAGE_WINDOW_MS
+    ) {
+      window = { startedAt: now, count: 0 };
+      this.invalidMessageWindows.set(connectionId, window);
+    }
+
+    if (window.count >= PRESENCE_INVALID_MESSAGE_LIMIT) {
+      return false;
+    }
+
+    window.count++;
+    return true;
   }
 
   private getCloseDiagnostic(

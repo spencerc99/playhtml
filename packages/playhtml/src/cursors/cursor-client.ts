@@ -1311,6 +1311,7 @@ export class CursorClientAwareness {
         this.lastSentMessage = this.currentMessage;
       }
       this.lastUpdate = performance.now();
+      this.notifyCursorPresenceListeners();
       return;
     }
 

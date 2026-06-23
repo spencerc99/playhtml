@@ -4,6 +4,8 @@
 import type { Cursor, CursorZonePosition, PlayerIdentity } from "./cursor-types";
 
 export const MAX_PRESENCE_VALUE_BYTES = 4096;
+export const MAX_PRESENCE_PAGE_LENGTH = 512;
+export const MAX_PRESENCE_IDENTITY_STRING_LENGTH = 512;
 
 export type PresenceChannelCadence = "frame" | "interactive" | "event";
 
@@ -88,7 +90,7 @@ export function validatePresenceClientMessage(
 
   switch (value.type) {
     case "presence-join":
-      validateOptionalString(value.page, "page");
+      validatePresenceJoinMessage(value);
       return value as PresenceJoinMessage;
     case "presence-update":
       validateChannel(value.channel);
@@ -101,6 +103,14 @@ export function validatePresenceClientMessage(
       return value as PresencePingMessage;
     default:
       throw new Error("Unsupported presence message type");
+  }
+}
+
+function validatePresenceJoinMessage(value: Record<string, unknown>): void {
+  assertJsonSize(value);
+  validateOptionalBoundedString(value.page, "page", MAX_PRESENCE_PAGE_LENGTH);
+  if (value.identity !== undefined) {
+    validatePlayerIdentity(value.identity);
   }
 }
 
@@ -133,11 +143,44 @@ function validateCursorPresenceValue(value: unknown): void {
     validateZone(value.zone);
   }
 
-  validateOptionalString(value.page, "page");
+  validateOptionalBoundedString(value.page, "page", MAX_PRESENCE_PAGE_LENGTH);
 
   if (value.at !== undefined && !Number.isFinite(value.at)) {
     throw new Error("cursor at must be a finite number");
   }
+}
+
+function validatePlayerIdentity(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new Error("identity must be an object");
+  }
+  validateRequiredBoundedString(
+    value.publicKey,
+    "identity.publicKey",
+    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+  );
+  if (!isRecord(value.playerStyle)) {
+    throw new Error("identity.playerStyle must be an object");
+  }
+  const colorPalette = value.playerStyle.colorPalette;
+  if (!Array.isArray(colorPalette)) {
+    throw new Error("identity.playerStyle.colorPalette must be an array");
+  }
+  validateRequiredBoundedString(
+    colorPalette[0],
+    "identity.playerStyle.colorPalette[0]",
+    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+  );
+  validateOptionalBoundedString(
+    value.name,
+    "identity.name",
+    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+  );
+  validateOptionalBoundedString(
+    value.playerStyle.cursorStyle,
+    "identity.playerStyle.cursorStyle",
+    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+  );
 }
 
 function validateCursor(value: unknown): void {
@@ -182,9 +225,39 @@ function validateChannel(value: unknown): asserts value is string {
   }
 }
 
-function validateOptionalString(value: unknown, name: string): void {
-  if (value !== undefined && typeof value !== "string") {
+function validateRequiredBoundedString(
+  value: unknown,
+  name: string,
+  maxLength: number,
+): void {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${name} must be a non-empty string`);
+  }
+  validateStringBounds(value, name, maxLength);
+}
+
+function validateOptionalBoundedString(
+  value: unknown,
+  name: string,
+  maxLength: number,
+): void {
+  if (value === undefined) return;
+  if (typeof value !== "string") {
     throw new Error(`${name} must be a string`);
+  }
+  validateStringBounds(value, name, maxLength);
+}
+
+function validateStringBounds(
+  value: string,
+  name: string,
+  maxLength: number,
+): void {
+  if (value.length > maxLength) {
+    throw new Error(`${name} must be ${maxLength} characters or less`);
+  }
+  if (/[\u0000-\u001f\u007f]/.test(value)) {
+    throw new Error(`${name} must not contain control characters`);
   }
 }
 

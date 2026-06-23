@@ -3,10 +3,40 @@
 
 import type {
   PresenceClientMessage,
+  PresenceChannelCadence,
   PresenceChangesMessage,
   PresenceSnapshot,
   PresenceSyncMessage,
 } from "@playhtml/common";
+import { getPresenceChannelCadence } from "@playhtml/common";
+
+const PRESENCE_RATE_WINDOW_MS = 1000;
+const PRESENCE_MESSAGE_BUDGET_HZ: Record<PresenceMessageBudgetBucket, number> = {
+  frame: 90,
+  interactive: 45,
+  event: 20,
+  control: 10,
+};
+
+type PresenceMessageBudgetBucket = PresenceChannelCadence | "control";
+
+type PresenceMessageBudgetWindow = {
+  startedAt: number;
+  count: number;
+};
+
+export type PresenceMessageBudgetState = Map<
+  string,
+  Map<PresenceMessageBudgetBucket, PresenceMessageBudgetWindow>
+>;
+
+export type PresenceMessageBudgetDecision =
+  | { accepted: true }
+  | {
+      accepted: false;
+      channel: string;
+      hz: number;
+    };
 
 export type PresenceRoomState = {
   peers: Map<string, Map<string, unknown>>;
@@ -20,6 +50,49 @@ export function createPresenceRoomState(): PresenceRoomState {
     dirtyUpdates: new Map(),
     dirtyRemoves: new Map(),
   };
+}
+
+export function createPresenceMessageBudgetState(): PresenceMessageBudgetState {
+  return new Map();
+}
+
+export function consumePresenceMessageBudget(
+  state: PresenceMessageBudgetState,
+  connectionId: string,
+  message: PresenceClientMessage,
+  now: number,
+): PresenceMessageBudgetDecision {
+  const bucket = getPresenceMessageBudgetBucket(message);
+  const hz = PRESENCE_MESSAGE_BUDGET_HZ[bucket];
+  let connectionBudgets = state.get(connectionId);
+  if (!connectionBudgets) {
+    connectionBudgets = new Map();
+    state.set(connectionId, connectionBudgets);
+  }
+
+  let window = connectionBudgets.get(bucket);
+  if (!window || now - window.startedAt >= PRESENCE_RATE_WINDOW_MS) {
+    window = { startedAt: now, count: 0 };
+    connectionBudgets.set(bucket, window);
+  }
+
+  if (window.count >= hz) {
+    return {
+      accepted: false,
+      channel: getPresenceMessageBudgetChannel(message),
+      hz,
+    };
+  }
+
+  window.count++;
+  return { accepted: true };
+}
+
+export function clearPresenceMessageBudget(
+  state: PresenceMessageBudgetState,
+  connectionId: string,
+): void {
+  state.delete(connectionId);
 }
 
 export function recordPresenceUpdate(
@@ -133,6 +206,25 @@ export function applyPresenceClientMessage(
     case "presence-ping":
       return;
   }
+}
+
+function getPresenceMessageBudgetBucket(
+  message: PresenceClientMessage,
+): PresenceMessageBudgetBucket {
+  if (message.type === "presence-update") {
+    return getPresenceChannelCadence(message.channel);
+  }
+  if (message.type === "presence-clear") {
+    return getPresenceChannelCadence(message.channel);
+  }
+  return "control";
+}
+
+function getPresenceMessageBudgetChannel(message: PresenceClientMessage): string {
+  if (message.type === "presence-update" || message.type === "presence-clear") {
+    return message.channel;
+  }
+  return "control";
 }
 
 export function takePresenceChanges(

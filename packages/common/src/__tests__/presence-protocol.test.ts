@@ -59,4 +59,40 @@ describe("presence protocol", () => {
       }),
     ).toThrow("Presence value must be 4096 bytes or less");
   });
+
+  it("rejects joins without a stable identity key", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          playerStyle: { colorPalette: ["red"] },
+        },
+      }),
+    ).toThrow("identity.publicKey must be a non-empty string");
+  });
+
+  it("rejects joins without a primary identity color", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: [] },
+        },
+      }),
+    ).toThrow("identity.playerStyle.colorPalette[0] must be a non-empty string");
+  });
+
+  it("rejects oversized join pages", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+        },
+        page: `/${"x".repeat(512)}`,
+      }),
+    ).toThrow("page must be 512 characters or less");
+  });
 });

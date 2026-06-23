@@ -239,6 +239,35 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
+  it("notifies local cursor presence listeners without waiting for transport echo", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    const snapshots: Array<Map<string, any>> = [];
+    client.onCursorPresencesChange((presences) => {
+      snapshots.push(new Map(presences));
+    });
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].get("local")).toMatchObject({
+      cursor: { x: 10, y: 20, pointer: "mouse" },
+      playerIdentity: makeIdentity("local", "#ff0000"),
+      page: "/",
+    });
+
+    client.destroy();
+  });
+
   it("renders remote cursors from presence transport sync messages", () => {
     const provider = makeFakeProvider();
     const transport = makeFakePresenceTransport();
