@@ -2,6 +2,7 @@
 // ABOUTME: Keeps hibernation-safe compaction rules testable outside Cloudflare runtime.
 import { describe, expect, it } from "bun:test";
 import {
+  getLiveDocumentPersistenceDecision,
   getNextAlarmTime,
   getCompactionCommitDecision,
   isCompactionAutosave,
@@ -83,6 +84,42 @@ describe("getCompactionCommitDecision", () => {
         sourceContainsPersistedDocument: false,
       })
     ).toEqual({ kind: "skip-compaction" });
+  });
+});
+
+describe("getLiveDocumentPersistenceDecision", () => {
+  it("reloads persisted data when autosave is missing database updates", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        liveDocumentContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "reload-persisted-document" });
+  });
+
+  it("saves live data when autosave contains the persisted document", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+        liveDocumentContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "save-live-document" });
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "persisted",
+        liveDocumentContainsPersistedDocument: true,
+      })
+    ).toEqual({ kind: "save-live-document" });
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: null,
+        liveDocumentContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "save-live-document" });
   });
 });
 

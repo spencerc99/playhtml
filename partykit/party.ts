@@ -63,6 +63,7 @@ import {
 } from "./sharing";
 import {
   getCompactionCommitDecision,
+  getLiveDocumentPersistenceDecision,
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
@@ -552,6 +553,76 @@ export class PartyServer extends YServer {
       if (autosavePaused) {
         this.isSkippingSave = false;
       }
+    }
+  }
+
+  private async reloadLiveDocumentFromPersistedSnapshot(
+    persistedDocumentBase64: string
+  ): Promise<void> {
+    const activeConnectionCount = this.getOpenConnectionCount();
+    const rollbackResetEpoch = await this.getResetEpoch();
+    let resetEpochChanged = false;
+    let snapshotBase64 = persistedDocumentBase64;
+
+    this.isSkippingSave = true;
+
+    try {
+      if (activeConnectionCount > 0) {
+        const snapshotDoc = new Y.Doc();
+        Y.applyUpdate(
+          snapshotDoc,
+          new Uint8Array(Buffer.from(persistedDocumentBase64, "base64"))
+        );
+
+        const resetEpoch = Date.now();
+        setDocResetEpoch(snapshotDoc, resetEpoch);
+        snapshotBase64 = encodeDocToBase64(snapshotDoc);
+
+        await this.setResetEpoch(resetEpoch);
+        resetEpochChanged = true;
+
+        const { error } = await supabase.from("documents").upsert(
+          {
+            name: this.name,
+            document: snapshotBase64,
+          },
+          { onConflict: "name" }
+        );
+
+        if (error) {
+          throw new Error(error.message);
+        }
+      }
+
+      replaceDocFromSnapshot(this.document, snapshotBase64);
+      this.lastKnownDocumentBytes = snapshotBase64.length;
+
+      if (activeConnectionCount > 0) {
+        const resetEpoch = await this.getResetEpoch();
+        if (resetEpoch !== null) {
+          this.broadcastCustomMessage(this.getRoomResetMessage(resetEpoch));
+        }
+        const closedCount = this.closeConnections(
+          "Room Reloaded from Persisted Data"
+        );
+        console.warn(
+          `[PartyServer] Reloaded stale live document for room=${this.name}; closedConnections=${closedCount}`
+        );
+      }
+
+      await Promise.resolve();
+    } catch (error) {
+      if (resetEpochChanged) {
+        await this.restoreResetEpoch(rollbackResetEpoch);
+      }
+      throw error;
+    } finally {
+      setTimeout(() => {
+        this.isSkippingSave = false;
+        console.log(
+          `[PartyServer] Autosave re-enabled after live document reload`
+        );
+      }, 1000);
     }
   }
 
@@ -1330,8 +1401,40 @@ export class PartyServer extends YServer {
     // safely.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
-    this.lastKnownDocumentBytes = documentSize;
     const activeConnectionCount = this.getOpenConnectionCount();
+
+    try {
+      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
+      const liveDocumentContainsPersistedDocument =
+        persistedDocumentBase64 !== null &&
+        documentContainsSnapshot(documentBase64, persistedDocumentBase64);
+      const persistenceDecision = getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: documentBase64,
+        persistedDocumentBase64,
+        liveDocumentContainsPersistedDocument,
+      });
+
+      if (
+        persistenceDecision.kind === "reload-persisted-document" &&
+        persistedDocumentBase64 !== null
+      ) {
+        console.warn(
+          `[PartyServer] Autosave skipped for room ${this.name}: live document is missing persisted updates; reloading persisted document`
+        );
+        await this.reloadLiveDocumentFromPersistedSnapshot(
+          persistedDocumentBase64
+        );
+        return false;
+      }
+    } catch (error) {
+      console.error(
+        `[PartyServer] SUPABASE AUTOSAVE SAFETY CHECK FAILED for room ${this.name}:`,
+        error
+      );
+      return false;
+    }
+
+    this.lastKnownDocumentBytes = documentSize;
 
     const serverLimits = this.getServerLimits();
     if (

@@ -38,6 +38,33 @@ export type CompactionCommitDecision =
   | { kind: "persist-live-document" }
   | { kind: "skip-compaction" };
 
+export type LiveDocumentPersistenceDecision =
+  | { kind: "save-live-document" }
+  | { kind: "reload-persisted-document" };
+
+export function getLiveDocumentPersistenceDecision({
+  liveDocumentBase64,
+  persistedDocumentBase64,
+  liveDocumentContainsPersistedDocument,
+}: {
+  liveDocumentBase64: string;
+  persistedDocumentBase64: string | null;
+  liveDocumentContainsPersistedDocument: boolean;
+}): LiveDocumentPersistenceDecision {
+  if (persistedDocumentBase64 === null) {
+    return { kind: "save-live-document" };
+  }
+
+  if (
+    persistedDocumentBase64 === liveDocumentBase64 ||
+    liveDocumentContainsPersistedDocument
+  ) {
+    return { kind: "save-live-document" };
+  }
+
+  return { kind: "reload-persisted-document" };
+}
+
 export function getCompactionCommitDecision({
   sourceDocumentBase64,
   persistedDocumentBase64,
