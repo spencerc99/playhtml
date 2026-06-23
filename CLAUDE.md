@@ -97,6 +97,7 @@ The library revolves around "capabilities" -- interactive behaviors added to HTM
 - `party.ts`: Main PartyKit room implementation (Yjs doc sync, Supabase persistence)
 - `admin.ts`: Admin utilities
 - `db.ts`: Database connection layer
+- Production Worker logs for this backend belong to the Cloudflare Worker named `playhtml` configured by `partykit/wrangler.jsonc`. `wrangler tail --config partykit/wrangler.jsonc` is live-only and can be noisy for Durable Object WebSocket traffic. Historical log searches must use Workers Observability Query Builder in the Cloudflare dashboard, or a dedicated Cloudflare API token with Workers Observability read access; the Wrangler OAuth token in `~/.wrangler/config/default.toml` has tail access but is not sufficient for the stored Workers Observability telemetry API. Useful incident search terms include room ids such as `class.playhtml.fun-%2Fweek%2F1` and persistence strings such as `SUPABASE PERSISTENCE UNAVAILABLE`, `SUPABASE AUTOSAVE FAILED`, `Autosave skipped`, `Hard Reset`, `Restore Snapshot`, `Emergency compacted connected room`, and `Empty-room compacted`.
 
 ### Docs Site (apps/docs/)
 
