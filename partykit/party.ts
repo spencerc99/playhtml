@@ -63,7 +63,6 @@ import {
 } from "./sharing";
 import {
   getCompactionCommitDecision,
-  getLiveDocumentPersistenceDecision,
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
@@ -1330,40 +1329,12 @@ export class PartyServer extends YServer {
       );
     }
 
-    // Ordinary autosave treats the live Durable Object as authoritative after
-    // reset epoch validation.
+    // Ordinary autosave treats the live Durable Object as authoritative. The DB
+    // only wins through reset-boundary paths (admin restore/reset, force-reload-live,
+    // compaction), which bump the reset epoch and are caught by the validation above.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
     const activeConnectionCount = this.getOpenConnectionCount();
-
-    try {
-      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
-      const liveDocumentContainsPersistedDocument =
-        persistedDocumentBase64 !== null &&
-        documentContainsSnapshot(documentBase64, persistedDocumentBase64);
-      const persistenceDecision = getLiveDocumentPersistenceDecision({
-        liveDocumentBase64: documentBase64,
-        persistedDocumentBase64,
-        liveDocumentContainsPersistedDocument,
-      });
-
-      if (
-        persistenceDecision.kind === "save-live-document" &&
-        persistedDocumentBase64 !== null &&
-        persistedDocumentBase64 !== documentBase64 &&
-        !liveDocumentContainsPersistedDocument
-      ) {
-        console.warn(
-          `[PartyServer] Autosave preserving live document for room ${this.name}: live document does not contain persisted updates; live document will overwrite persisted data`
-        );
-      }
-    } catch (error) {
-      console.error(
-        `[PartyServer] SUPABASE AUTOSAVE SAFETY CHECK FAILED for room ${this.name}:`,
-        error
-      );
-      return false;
-    }
 
     this.lastKnownDocumentBytes = documentSize;
 
