@@ -1332,6 +1332,12 @@ export class PartyServer extends YServer {
     // Ordinary autosave treats the live Durable Object as authoritative. The DB
     // only wins through reset-boundary paths (admin restore/reset, force-reload-live,
     // compaction), which bump the reset epoch and are caught by the validation above.
+    //
+    // Consequence: direct/external writes to the documents row (SQL, Supabase
+    // console, scripts) are NOT supported. They do not bump the reset epoch, so
+    // the next autosave overwrites them with the live doc. To change a room's
+    // persisted data out of band, go through the admin console (force-reload-live
+    // or an admin edit), which creates a reset boundary.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
     const activeConnectionCount = this.getOpenConnectionCount();
