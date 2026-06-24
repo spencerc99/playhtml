@@ -17,6 +17,83 @@ export function isCompactionAutosave(
   );
 }
 
+export function shouldCommitCompactionSnapshot({
+  sourceDocumentBase64,
+  persistedDocumentBase64,
+}: {
+  sourceDocumentBase64: string;
+  persistedDocumentBase64: string | null;
+}): boolean {
+  return (
+    getCompactionCommitDecision({
+      sourceDocumentBase64,
+      persistedDocumentBase64,
+      sourceContainsPersistedDocument: false,
+    }).kind === "commit-compaction"
+  );
+}
+
+export type CompactionCommitDecision =
+  | { kind: "commit-compaction" }
+  | { kind: "persist-live-document" }
+  | { kind: "skip-compaction" };
+
+export type LiveDocumentPersistenceDecision =
+  | { kind: "save-live-document" }
+  | { kind: "reload-persisted-document" }
+  | { kind: "skip-live-save" };
+
+export function getLiveDocumentPersistenceDecision({
+  liveDocumentBase64,
+  persistedDocumentBase64,
+  liveDocumentContainsPersistedDocument,
+  hasOpenConnections,
+  liveDocumentMatchesLastSave,
+}: {
+  liveDocumentBase64: string;
+  persistedDocumentBase64: string | null;
+  liveDocumentContainsPersistedDocument: boolean;
+  hasOpenConnections: boolean;
+  liveDocumentMatchesLastSave: boolean;
+}): LiveDocumentPersistenceDecision {
+  if (persistedDocumentBase64 === null) {
+    return { kind: "save-live-document" };
+  }
+
+  if (
+    persistedDocumentBase64 === liveDocumentBase64 ||
+    liveDocumentContainsPersistedDocument
+  ) {
+    return { kind: "save-live-document" };
+  }
+
+  if (hasOpenConnections || !liveDocumentMatchesLastSave) {
+    return { kind: "skip-live-save" };
+  }
+
+  return { kind: "reload-persisted-document" };
+}
+
+export function getCompactionCommitDecision({
+  sourceDocumentBase64,
+  persistedDocumentBase64,
+  sourceContainsPersistedDocument,
+}: {
+  sourceDocumentBase64: string;
+  persistedDocumentBase64: string | null;
+  sourceContainsPersistedDocument: boolean;
+}): CompactionCommitDecision {
+  if (persistedDocumentBase64 === sourceDocumentBase64) {
+    return { kind: "commit-compaction" };
+  }
+
+  if (persistedDocumentBase64 !== null && !sourceContainsPersistedDocument) {
+    return { kind: "skip-compaction" };
+  }
+
+  return { kind: "persist-live-document" };
+}
+
 // Emergency compaction protects rooms that stay continuously connected and
 // therefore never reach the empty-room compaction path. The check is split in
 // two parts: this cheap predicate runs on every autosave using the encoded
