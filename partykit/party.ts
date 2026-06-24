@@ -63,7 +63,6 @@ import {
 } from "./sharing";
 import {
   getCompactionCommitDecision,
-  getLiveDocumentPersistenceDecision,
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
@@ -149,7 +148,6 @@ export class PartyServer extends YServer {
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
   private lastKnownDocumentBytes = 0;
-  private lastPersistedDocumentBase64: string | null = null;
   private hasWarnedDocumentSize = false;
 
   // In-memory caches for hot-path data that rarely changes.
@@ -232,7 +230,6 @@ export class PartyServer extends YServer {
   }
 
   markDocumentPersisted(documentBase64: string): void {
-    this.lastPersistedDocumentBase64 = documentBase64;
     this.lastKnownDocumentBytes = documentBase64.length;
   }
 
@@ -560,34 +557,6 @@ export class PartyServer extends YServer {
       if (autosavePaused) {
         this.isSkippingSave = false;
       }
-    }
-  }
-
-  private async reloadLiveDocumentFromPersistedSnapshot(
-    persistedDocumentBase64: string
-  ): Promise<boolean> {
-    if (this.getOpenConnectionCount() !== 0) {
-      console.warn(
-        `[PartyServer] Persisted document reload skipped for room=${this.name}: clients connected before reload`
-      );
-      return false;
-    }
-
-    this.isSkippingSave = true;
-
-    try {
-      replaceDocFromSnapshot(this.document, persistedDocumentBase64);
-      this.markDocumentPersisted(persistedDocumentBase64);
-
-      await Promise.resolve();
-      return true;
-    } finally {
-      setTimeout(() => {
-        this.isSkippingSave = false;
-        console.log(
-          `[PartyServer] Autosave re-enabled after live document reload`
-        );
-      }, 1000);
     }
   }
 
@@ -1360,52 +1329,18 @@ export class PartyServer extends YServer {
       );
     }
 
-    // Ordinary autosave preserves Yjs history so reconnecting clients can merge
-    // safely.
+    // Ordinary autosave treats the live Durable Object as authoritative. The DB
+    // only wins through reset-boundary paths (admin restore/reset, force-reload-live,
+    // compaction), which bump the reset epoch and are caught by the validation above.
+    //
+    // Consequence: direct/external writes to the documents row (SQL, Supabase
+    // console, scripts) are NOT supported. They do not bump the reset epoch, so
+    // the next autosave overwrites them with the live doc. To change a room's
+    // persisted data out of band, go through the admin console (force-reload-live
+    // or an admin edit), which creates a reset boundary.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
     const activeConnectionCount = this.getOpenConnectionCount();
-
-    try {
-      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
-      const liveDocumentContainsPersistedDocument =
-        persistedDocumentBase64 !== null &&
-        documentContainsSnapshot(documentBase64, persistedDocumentBase64);
-      const persistenceDecision = getLiveDocumentPersistenceDecision({
-        liveDocumentBase64: documentBase64,
-        persistedDocumentBase64,
-        liveDocumentContainsPersistedDocument,
-        hasOpenConnections: activeConnectionCount > 0,
-        liveDocumentMatchesLastSave:
-          this.lastPersistedDocumentBase64 === documentBase64,
-      });
-
-      if (
-        persistenceDecision.kind === "reload-persisted-document" &&
-        persistedDocumentBase64 !== null
-      ) {
-        console.warn(
-          `[PartyServer] Autosave skipped for room ${this.name}: live document is missing persisted updates; reloading persisted document`
-        );
-        await this.reloadLiveDocumentFromPersistedSnapshot(
-          persistedDocumentBase64
-        );
-        return false;
-      }
-
-      if (persistenceDecision.kind === "skip-live-save") {
-        console.warn(
-          `[PartyServer] Autosave skipped for room ${this.name}: live document conflicts with persisted updates; leaving live and persisted documents unchanged`
-        );
-        return false;
-      }
-    } catch (error) {
-      console.error(
-        `[PartyServer] SUPABASE AUTOSAVE SAFETY CHECK FAILED for room ${this.name}:`,
-        error
-      );
-      return false;
-    }
 
     this.lastKnownDocumentBytes = documentSize;
 

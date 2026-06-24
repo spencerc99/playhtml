@@ -459,9 +459,9 @@ export class AdminHandler {
         );
       }
 
-      // Use the centralized restoreFromSnapshot method without bumping epoch
+      // Force DB -> live is an authoritative admin reset boundary.
       const result = await this.context.restoreFromSnapshot(data.document, {
-        bumpEpoch: false,
+        bumpEpoch: true,
       });
       this.context.markPersistenceAvailable();
 
