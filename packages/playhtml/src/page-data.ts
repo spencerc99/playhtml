@@ -25,6 +25,53 @@ interface PageDataDeps {
   channelListeners: Map<string, Set<(data: any) => void>>;
 }
 
+function pageDataObserverKey(name: string): string {
+  return `${PAGE_TAG}:${name}`;
+}
+
+function attachPageDataObserver<T>(
+  name: string,
+  deps: PageDataDeps,
+  listeners: Set<(data: T) => void>
+): void {
+  const { getStorePlay, yObserverByKey } = deps;
+  const observerKey = pageDataObserverKey(name);
+  if (yObserverByKey.has(observerKey)) return;
+  const yVal = getYjsValue(getStorePlay()[PAGE_TAG]?.[name]);
+  if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
+  let scheduled = false;
+  const observer = () => {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      const currentProxy = getStorePlay()[PAGE_TAG]?.[name];
+      if (!currentProxy) return;
+      const plain = clonePlain(currentProxy) as T;
+      for (const cb of listeners) {
+        cb(plain);
+      }
+    });
+  };
+  (yVal as any).observeDeep(observer);
+  yObserverByKey.set(observerKey, observer);
+}
+
+export function refreshPageDataChannels(deps: PageDataDeps): void {
+  const { channelListeners, getStorePlay } = deps;
+
+  for (const [name, listeners] of channelListeners) {
+    const currentProxy = getStorePlay()[PAGE_TAG]?.[name];
+    if (!currentProxy) continue;
+
+    attachPageDataObserver(name, deps, listeners);
+    const plain = clonePlain(currentProxy);
+    for (const cb of listeners) {
+      cb(plain);
+    }
+  }
+}
+
 export function createPageDataChannel<T>(
   name: string,
   defaultValue: T,
@@ -56,27 +103,8 @@ export function createPageDataChannel<T>(
   // handle opens the channel, and again if setData re-seeds the proxy after a
   // room change (otherwise the re-seeded value has no observer and onUpdate
   // goes silently dead for handles that survived the reset).
-  const observerKey = `${PAGE_TAG}:${name}`;
   function attachObserver(): void {
-    if (yObserverByKey.has(observerKey)) return;
-    const yVal = getYjsValue(storePlay()[PAGE_TAG]?.[name]);
-    if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
-    let scheduled = false;
-    const observer = () => {
-      if (scheduled) return;
-      scheduled = true;
-      queueMicrotask(() => {
-        scheduled = false;
-        const currentProxy = storePlay()[PAGE_TAG]?.[name];
-        if (!currentProxy) return;
-        const plain = clonePlain(currentProxy) as T;
-        for (const cb of listeners) {
-          cb(plain);
-        }
-      });
-    };
-    (yVal as any).observeDeep(observer);
-    yObserverByKey.set(observerKey, observer);
+    attachPageDataObserver(name, deps, listeners);
   }
 
   const refCount = (channelRefCounts.get(name) ?? 0) + 1;
@@ -144,7 +172,7 @@ export function createPageDataChannel<T>(
         channelRefCounts.delete(name);
         channelListeners.delete(name);
 
-        const key = `${PAGE_TAG}:${name}`;
+        const key = pageDataObserverKey(name);
         const obs = yObserverByKey.get(key);
         if (obs) {
           const yVal = getYjsValue(storePlay()[PAGE_TAG]?.[name]);

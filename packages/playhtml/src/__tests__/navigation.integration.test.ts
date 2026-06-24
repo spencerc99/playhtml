@@ -7,6 +7,9 @@ describe("playhtml.handleNavigation", () => {
   beforeEach(async () => {
     try { await resetPlayHTML(); } catch {}
     document.body.innerHTML = "";
+    localStorage.clear();
+    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
+    (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = false;
     delete (window as any).playhtml;
     delete document.documentElement.dataset.playhtml;
     document.head.querySelectorAll("link[href*='playhtml']").forEach((n) => n.remove());
@@ -610,6 +613,136 @@ describe("playhtml.handleNavigation", () => {
     } finally {
       document.body.innerHTML = "";
       history.replaceState(null, "", origPath);
+    }
+  });
+
+  it("handles server room-reset by reconnecting the current room without a page reload", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    try {
+      history.replaceState(null, "", "/server-reset");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/server-reset",
+      } as any);
+
+      const room = playhtml.roomId;
+      const page = playhtml.createPageData("p", { v: 0 });
+      page.setData({ v: 9 });
+      await new Promise((r) => queueMicrotask(r));
+      expect(page.getData()).toEqual({ v: 9 });
+
+      const providerBefore = providers[providers.length - 1];
+      expect(providerBefore).toBeTruthy();
+
+      providerBefore.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 12345 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(localStorage.getItem(`playhtml_resetEpoch_${room}`)).toBe("12345");
+      expect(providers.length).toBeGreaterThan(1);
+      expect(playhtml.roomId).toBe(room);
+      expect(page.getData()).toEqual({ v: 0 });
+    } finally {
+      history.replaceState(null, "", origPath);
+      localStorage.clear();
+    }
+  });
+
+  it("runs another reconnect when a newer server reset arrives during reconnect", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    try {
+      history.replaceState(null, "", "/server-reset-overlap");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/server-reset-overlap",
+      } as any);
+
+      const room = playhtml.roomId;
+      const page = playhtml.createPageData("p", { v: 0 });
+      page.setData({ v: 9 });
+      await new Promise((r) => queueMicrotask(r));
+
+      const providerBefore = providers[providers.length - 1];
+      (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = true;
+      providerBefore.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 100 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+
+      const reconnectingProvider = providers[providers.length - 1];
+      expect(reconnectingProvider).not.toBe(providerBefore);
+      reconnectingProvider.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 101 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+      expect(localStorage.getItem(`playhtml_resetEpoch_${room}`)).toBe("101");
+
+      reconnectingProvider.emit("sync", true);
+      await new Promise((r) => queueMicrotask(r));
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(providers.length).toBe(3);
+      providers[providers.length - 1].emit("sync", true);
+      await new Promise((r) => queueMicrotask(r));
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(page.getData()).toEqual({ v: 0 });
+    } finally {
+      (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = false;
+      history.replaceState(null, "", origPath);
+      localStorage.clear();
+    }
+  });
+
+  it("allows another reset attempt after a reconnect never syncs", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    vi.useFakeTimers();
+
+    try {
+      history.replaceState(null, "", "/server-reset-timeout");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/server-reset-timeout",
+      } as any);
+
+      const providerBefore = providers[providers.length - 1];
+      (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = true;
+      providerBefore.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 200 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(providers.length).toBe(2);
+      const timedOutProvider = providers[providers.length - 1];
+
+      await vi.advanceTimersByTimeAsync(6000);
+      await new Promise((r) => queueMicrotask(r));
+
+      timedOutProvider.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 201 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(providers.length).toBe(3);
+    } finally {
+      vi.useRealTimers();
+      consoleError.mockRestore();
+      (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = false;
+      history.replaceState(null, "", origPath);
+      localStorage.clear();
     }
   });
 
