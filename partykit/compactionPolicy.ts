@@ -38,23 +38,16 @@ export type CompactionCommitDecision =
   | { kind: "persist-live-document" }
   | { kind: "skip-compaction" };
 
-export type LiveDocumentPersistenceDecision =
-  | { kind: "save-live-document" }
-  | { kind: "reload-persisted-document" }
-  | { kind: "skip-live-save" };
+export type LiveDocumentPersistenceDecision = { kind: "save-live-document" };
 
 export function getLiveDocumentPersistenceDecision({
   liveDocumentBase64,
   persistedDocumentBase64,
   liveDocumentContainsPersistedDocument,
-  hasOpenConnections,
-  liveDocumentMatchesLastSave,
 }: {
   liveDocumentBase64: string;
   persistedDocumentBase64: string | null;
   liveDocumentContainsPersistedDocument: boolean;
-  hasOpenConnections: boolean;
-  liveDocumentMatchesLastSave: boolean;
 }): LiveDocumentPersistenceDecision {
   if (persistedDocumentBase64 === null) {
     return { kind: "save-live-document" };
@@ -67,11 +60,7 @@ export function getLiveDocumentPersistenceDecision({
     return { kind: "save-live-document" };
   }
 
-  if (hasOpenConnections || !liveDocumentMatchesLastSave) {
-    return { kind: "skip-live-save" };
-  }
-
-  return { kind: "reload-persisted-document" };
+  return { kind: "save-live-document" };
 }
 
 export function getCompactionCommitDecision({

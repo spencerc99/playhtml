@@ -149,7 +149,6 @@ export class PartyServer extends YServer {
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
   private lastKnownDocumentBytes = 0;
-  private lastPersistedDocumentBase64: string | null = null;
   private hasWarnedDocumentSize = false;
 
   // In-memory caches for hot-path data that rarely changes.
@@ -232,7 +231,6 @@ export class PartyServer extends YServer {
   }
 
   markDocumentPersisted(documentBase64: string): void {
-    this.lastPersistedDocumentBase64 = documentBase64;
     this.lastKnownDocumentBytes = documentBase64.length;
   }
 
@@ -560,34 +558,6 @@ export class PartyServer extends YServer {
       if (autosavePaused) {
         this.isSkippingSave = false;
       }
-    }
-  }
-
-  private async reloadLiveDocumentFromPersistedSnapshot(
-    persistedDocumentBase64: string
-  ): Promise<boolean> {
-    if (this.getOpenConnectionCount() !== 0) {
-      console.warn(
-        `[PartyServer] Persisted document reload skipped for room=${this.name}: clients connected before reload`
-      );
-      return false;
-    }
-
-    this.isSkippingSave = true;
-
-    try {
-      replaceDocFromSnapshot(this.document, persistedDocumentBase64);
-      this.markDocumentPersisted(persistedDocumentBase64);
-
-      await Promise.resolve();
-      return true;
-    } finally {
-      setTimeout(() => {
-        this.isSkippingSave = false;
-        console.log(
-          `[PartyServer] Autosave re-enabled after live document reload`
-        );
-      }, 1000);
     }
   }
 
@@ -1360,8 +1330,8 @@ export class PartyServer extends YServer {
       );
     }
 
-    // Ordinary autosave preserves Yjs history so reconnecting clients can merge
-    // safely.
+    // Ordinary autosave treats the live Durable Object as authoritative after
+    // reset epoch validation.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
     const activeConnectionCount = this.getOpenConnectionCount();
@@ -1375,29 +1345,17 @@ export class PartyServer extends YServer {
         liveDocumentBase64: documentBase64,
         persistedDocumentBase64,
         liveDocumentContainsPersistedDocument,
-        hasOpenConnections: activeConnectionCount > 0,
-        liveDocumentMatchesLastSave:
-          this.lastPersistedDocumentBase64 === documentBase64,
       });
 
       if (
-        persistenceDecision.kind === "reload-persisted-document" &&
-        persistedDocumentBase64 !== null
+        persistenceDecision.kind === "save-live-document" &&
+        persistedDocumentBase64 !== null &&
+        persistedDocumentBase64 !== documentBase64 &&
+        !liveDocumentContainsPersistedDocument
       ) {
         console.warn(
-          `[PartyServer] Autosave skipped for room ${this.name}: live document is missing persisted updates; reloading persisted document`
+          `[PartyServer] Autosave preserving live document for room ${this.name}: live document does not contain persisted updates; live document will overwrite persisted data`
         );
-        await this.reloadLiveDocumentFromPersistedSnapshot(
-          persistedDocumentBase64
-        );
-        return false;
-      }
-
-      if (persistenceDecision.kind === "skip-live-save") {
-        console.warn(
-          `[PartyServer] Autosave skipped for room ${this.name}: live document conflicts with persisted updates; leaving live and persisted documents unchanged`
-        );
-        return false;
       }
     } catch (error) {
       console.error(
