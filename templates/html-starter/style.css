@@ -180,7 +180,13 @@ h2 {
   width: 200px;
 }
 
-#hoverBox.hovered {
+/* can-hover sets [data-playhtml-hover] while anyone on the page is hovering.
+   Style that attribute instead of :hover so the effect is shared. */
+#hoverBox {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#hoverBox[data-playhtml-hover] {
   background: blue !important;
   transform: scale(1.1);
 }

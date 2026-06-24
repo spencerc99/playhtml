@@ -14,6 +14,7 @@ import {
   docToJson,
   jsonToDoc,
   encodeDocToBase64,
+  documentContainsSnapshot,
   replaceDocFromSnapshot,
   setDocResetEpoch,
   getDocResetEpoch,
@@ -61,13 +62,19 @@ import {
   SharedElementPermissions,
 } from "./sharing";
 import {
+  getCompactionCommitDecision,
+  getLiveDocumentPersistenceDecision,
   getNextAlarmTime,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "./compactionPolicy";
-import { isResetEpochStale, parseClientResetEpoch } from "./resetEpochPolicy";
+import {
+  getAutosaveResetEpochDecision,
+  isResetEpochStale,
+  parseClientResetEpoch,
+} from "./resetEpochPolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -90,6 +97,7 @@ type PartyServerConnectionState = Record<string, unknown> & {
 
 type CompactedDocument = {
   base64: string;
+  sourceBase64: string;
   beforeSize: number;
   afterSize: number;
   resetEpoch: number;
@@ -99,6 +107,10 @@ type CommitCompactedDocumentOptions = {
   compactedDocument: CompactedDocument;
   beforeCommit?: () => Promise<boolean>;
   afterReplace?: () => Promise<void>;
+};
+
+type PersistLiveDocumentOptions = {
+  allowCompaction: boolean;
 };
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
@@ -141,6 +153,7 @@ export class PartyServer extends YServer {
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
   private lastKnownDocumentBytes = 0;
+  private lastPersistedDocumentBase64: string | null = null;
   private hasWarnedDocumentSize = false;
 
   // In-memory caches for hot-path data that rarely changes.
@@ -222,17 +235,22 @@ export class PartyServer extends YServer {
     return Array.from(this.getConnections()).length;
   }
 
+  markDocumentPersisted(documentBase64: string): void {
+    this.lastPersistedDocumentBase64 = documentBase64;
+    this.lastKnownDocumentBytes = documentBase64.length;
+  }
+
   private async getEmptyRoomCompactAfter(): Promise<number | null> {
     const value = await this.ctx.storage.get(STORAGE_KEYS.emptyRoomCompactAfter);
     return typeof value === "number" ? value : null;
   }
 
-  private async setEmptyRoomCompactAfter(timestamp: number): Promise<void> {
-    await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
-  }
-
   private async clearEmptyRoomCompactAfter(): Promise<void> {
     await this.ctx.storage.delete(STORAGE_KEYS.emptyRoomCompactAfter);
+  }
+
+  private async setEmptyRoomCompactAfter(timestamp: number): Promise<void> {
+    await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
   }
 
   private async getEmergencyCompactCheckAfter(): Promise<number | null> {
@@ -432,7 +450,8 @@ export class PartyServer extends YServer {
       return null;
     }
 
-    const beforeSize = encodeDocToBase64(doc).length;
+    const sourceBase64 = encodeDocToBase64(doc);
+    const beforeSize = sourceBase64.length;
     const resetEpoch = Date.now();
     const compactDoc = jsonToDoc(currentPlayData);
     setDocResetEpoch(compactDoc, resetEpoch);
@@ -440,6 +459,7 @@ export class PartyServer extends YServer {
 
     return {
       base64,
+      sourceBase64,
       beforeSize,
       afterSize: base64.length,
       resetEpoch,
@@ -455,16 +475,61 @@ export class PartyServer extends YServer {
     await this.setResetEpoch(resetEpoch);
   }
 
+  private async getPersistedDocumentBase64(): Promise<string | null> {
+    const { data, error } = await supabase
+      .from("documents")
+      .select("document")
+      .eq("name", this.name)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return typeof data?.document === "string" ? data.document : null;
+  }
+
   private async commitCompactedDocument({
     compactedDocument,
     beforeCommit,
     afterReplace,
   }: CommitCompactedDocumentOptions): Promise<boolean> {
-    this.isSkippingSave = true;
     const rollbackResetEpoch = await this.getResetEpoch();
     let documentSaved = false;
+    let autosavePaused = false;
 
     try {
+      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
+      const sourceContainsPersistedDocument =
+        persistedDocumentBase64 !== null &&
+        documentContainsSnapshot(
+          compactedDocument.sourceBase64,
+          persistedDocumentBase64
+        );
+      const commitDecision = getCompactionCommitDecision({
+        sourceDocumentBase64: compactedDocument.sourceBase64,
+        persistedDocumentBase64,
+        sourceContainsPersistedDocument,
+      });
+
+      if (commitDecision.kind === "persist-live-document") {
+        console.warn(
+          `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
+        );
+        await this.persistLiveDocument({ allowCompaction: false });
+        return false;
+      }
+
+      if (commitDecision.kind === "skip-compaction") {
+        console.warn(
+          `[PartyServer] Compaction skipped for room=${this.name}: persisted document has updates missing from live source`
+        );
+        return false;
+      }
+
+      this.isSkippingSave = true;
+      autosavePaused = true;
+
       if (beforeCommit && !(await beforeCommit())) {
         return false;
       }
@@ -484,6 +549,7 @@ export class PartyServer extends YServer {
       }
 
       documentSaved = true;
+      this.markDocumentPersisted(compactedDocument.base64);
       this.compactionAutosaveSnapshot = compactedDocument.base64;
       replaceDocFromSnapshot(this.document, compactedDocument.base64);
       await afterReplace?.();
@@ -495,7 +561,37 @@ export class PartyServer extends YServer {
       this.compactionAutosaveSnapshot = null;
       throw error;
     } finally {
-      this.isSkippingSave = false;
+      if (autosavePaused) {
+        this.isSkippingSave = false;
+      }
+    }
+  }
+
+  private async reloadLiveDocumentFromPersistedSnapshot(
+    persistedDocumentBase64: string
+  ): Promise<boolean> {
+    if (this.getOpenConnectionCount() !== 0) {
+      console.warn(
+        `[PartyServer] Persisted document reload skipped for room=${this.name}: clients connected before reload`
+      );
+      return false;
+    }
+
+    this.isSkippingSave = true;
+
+    try {
+      replaceDocFromSnapshot(this.document, persistedDocumentBase64);
+      this.markDocumentPersisted(persistedDocumentBase64);
+
+      await Promise.resolve();
+      return true;
+    } finally {
+      setTimeout(() => {
+        this.isSkippingSave = false;
+        console.log(
+          `[PartyServer] Autosave re-enabled after live document reload`
+        );
+      }, 1000);
     }
   }
 
@@ -697,6 +793,7 @@ export class PartyServer extends YServer {
         throw new Error(`Failed to save snapshot: ${saveError.message}`);
       }
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
+      this.markDocumentPersisted(updatedBase64);
 
       // Reload the live server from the snapshot
       console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
@@ -1269,10 +1366,7 @@ export class PartyServer extends YServer {
     this.markPersistenceAvailable();
 
     if (result.data) {
-      this.lastKnownDocumentBytes =
-        typeof result.data.document === "string"
-          ? result.data.document.length
-          : 0;
+      this.markDocumentPersisted(result.data.document);
       Y.applyUpdate(
         this.document,
         new Uint8Array(Buffer.from(result.data.document, "base64"))
@@ -1281,13 +1375,19 @@ export class PartyServer extends YServer {
   }
 
   override async onSave(): Promise<void> {
+    await this.persistLiveDocument({ allowCompaction: true });
+  }
+
+  private async persistLiveDocument({
+    allowCompaction,
+  }: PersistLiveDocumentOptions): Promise<boolean> {
     const doc = this.document;
 
     if (!this.isPersistenceAvailable()) {
       console.warn(
         `[PartyServer] Autosave skipped for room ${this.name}: Supabase persistence unavailable, room is in transient mode.`
       );
-      return;
+      return false;
     }
 
     // Skip autosave if we are performing a reset operation
@@ -1295,41 +1395,80 @@ export class PartyServer extends YServer {
       console.log(
         "[PartyServer] Skipping autosave due to active reset operation"
       );
-      return;
+      return false;
     }
 
     // Get current reset epoch for logging and validation
-    const serverResetEpoch = await this.getResetEpoch();
+    let serverResetEpoch = await this.getResetEpoch();
     const docResetEpoch = getDocResetEpoch(doc);
+    const resetEpochDecision = getAutosaveResetEpochDecision(
+      docResetEpoch,
+      serverResetEpoch
+    );
 
-    if (this.isEpochStale(docResetEpoch, serverResetEpoch)) {
-      const reason =
-        docResetEpoch === null
-          ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
-          : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
+    if (resetEpochDecision.kind === "skip") {
       console.warn(
-        `[PartyServer] Autosave skipped for room ${this.name}: ${reason}`
+        `[PartyServer] Autosave skipped for room ${this.name}: ${resetEpochDecision.reason}`
       );
-      return;
+      return false;
     }
 
-    if (
-      docResetEpoch !== null &&
-      serverResetEpoch !== null &&
-      docResetEpoch > serverResetEpoch
-    ) {
+    if (resetEpochDecision.kind === "promote-server-epoch") {
+      await this.setResetEpoch(resetEpochDecision.resetEpoch);
+      serverResetEpoch = resetEpochDecision.resetEpoch;
       console.warn(
-        `[PartyServer] Autosave skipped for room ${this.name}: doc reset epoch (${docResetEpoch}) is ahead of server epoch (${serverResetEpoch})`
+        `[PartyServer] Autosave promoted server reset epoch for room ${this.name}: doc reset epoch=${resetEpochDecision.resetEpoch}`
       );
-      return;
     }
 
     // Ordinary autosave preserves Yjs history so reconnecting clients can merge
-    // safely. Empty-room compaction is handled as a reset boundary by alarms.
+    // safely.
     const documentBase64 = encodeDocToBase64(doc);
     const documentSize = documentBase64.length;
-    this.lastKnownDocumentBytes = documentSize;
     const activeConnectionCount = this.getOpenConnectionCount();
+
+    try {
+      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
+      const liveDocumentContainsPersistedDocument =
+        persistedDocumentBase64 !== null &&
+        documentContainsSnapshot(documentBase64, persistedDocumentBase64);
+      const persistenceDecision = getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: documentBase64,
+        persistedDocumentBase64,
+        liveDocumentContainsPersistedDocument,
+        hasOpenConnections: activeConnectionCount > 0,
+        liveDocumentMatchesLastSave:
+          this.lastPersistedDocumentBase64 === documentBase64,
+      });
+
+      if (
+        persistenceDecision.kind === "reload-persisted-document" &&
+        persistedDocumentBase64 !== null
+      ) {
+        console.warn(
+          `[PartyServer] Autosave skipped for room ${this.name}: live document is missing persisted updates; reloading persisted document`
+        );
+        await this.reloadLiveDocumentFromPersistedSnapshot(
+          persistedDocumentBase64
+        );
+        return false;
+      }
+
+      if (persistenceDecision.kind === "skip-live-save") {
+        console.warn(
+          `[PartyServer] Autosave skipped for room ${this.name}: live document conflicts with persisted updates; leaving live and persisted documents unchanged`
+        );
+        return false;
+      }
+    } catch (error) {
+      console.error(
+        `[PartyServer] SUPABASE AUTOSAVE SAFETY CHECK FAILED for room ${this.name}:`,
+        error
+      );
+      return false;
+    }
+
+    this.lastKnownDocumentBytes = documentSize;
 
     const serverLimits = this.getServerLimits();
     if (
@@ -1364,30 +1503,32 @@ export class PartyServer extends YServer {
         `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
         error
       );
+      return false;
+    }
+    this.markDocumentPersisted(documentBase64);
+
+    if (this.consumeCompactionAutosave(documentBase64)) {
+      console.log(
+        `[PartyServer] Compaction autosave completed: room=${this.name}`
+      );
+      return true;
     }
 
-    if (!error) {
-      if (this.consumeCompactionAutosave(documentBase64)) {
-        console.log(
-          `[PartyServer] Compaction autosave completed: room=${this.name}`
-        );
-        return;
-      }
-    }
-
-    if (!error && activeConnectionCount > 0) {
+    if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
         documentSize,
         now: Date.now(),
       });
       if (compacted) {
-        return;
+        return true;
       }
     }
 
-    if (!error && activeConnectionCount === 0) {
+    if (allowCompaction && activeConnectionCount === 0) {
       await this.scheduleEmptyRoomCompaction();
     }
+
+    return true;
   }
 
   private async maybeCompactLargeConnectedRoom({
@@ -1445,7 +1586,7 @@ export class PartyServer extends YServer {
       return false;
     }
 
-    await this.commitCompactedDocument({
+    const committed = await this.commitCompactedDocument({
       compactedDocument,
       afterReplace: async () => {
         await this.setEmergencyCompactCheckAfter(recheckAfter);
@@ -1460,7 +1601,10 @@ export class PartyServer extends YServer {
         );
       },
     });
-    return true;
+    if (!committed) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
+    }
+    return committed;
   }
 
   override async onRequest(request: Request): Promise<Response> {
@@ -1839,6 +1983,7 @@ export class PartyServer extends YServer {
         throw new Error(`Failed to save reset document: ${saveError.message}`);
       }
       console.log(`[Hard Reset] Successfully saved fresh doc to database`);
+      this.markDocumentPersisted(freshBase64);
 
       // Reload the live server from the new snapshot
       console.log(`[Hard Reset] Reloading live server from snapshot...`);
@@ -1942,6 +2087,9 @@ export class PartyServer extends YServer {
           await this.clearEmptyRoomCompactAfter();
         },
       });
+      if (!committed) {
+        await this.clearEmptyRoomCompactAfter();
+      }
       if (committed) {
         console.log(
           `[PartyServer] Empty-room compacted: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes (${((1 - compactedDocument.afterSize / compactedDocument.beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${compactedDocument.resetEpoch}`

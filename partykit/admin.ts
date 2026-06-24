@@ -416,6 +416,7 @@ export class AdminHandler {
         { onConflict: "name" }
       );
       if (error) throw new Error(error.message);
+      this.context.markDocumentPersisted(base64);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -537,6 +538,7 @@ export class AdminHandler {
         console.error(`[Admin] Database error:`, error);
         throw new Error(error.message);
       }
+      this.context.markDocumentPersisted(base64);
 
       console.log(`[Admin] Successfully saved to database and live doc`);
 
@@ -593,6 +595,7 @@ export class AdminHandler {
           .from("documents")
           .upsert({ name: this.context.name, document: base64 }, { onConflict: "name" });
         if (error) throw new Error(error.message);
+        this.context.markDocumentPersisted(base64);
       }
 
       return new Response(
@@ -799,6 +802,7 @@ export class AdminHandler {
           `Failed to save cleaned document: ${saveError.message}`
         );
       }
+      this.context.markDocumentPersisted(base64);
 
       return new Response(
         JSON.stringify({

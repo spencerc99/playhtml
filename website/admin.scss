@@ -1,3 +1,5 @@
+// ABOUTME: Styles the browser admin console for inspecting and managing rooms.
+// ABOUTME: Defines layout, data viewers, debug tools, and moderation controls.
 .admin-container {
   max-width: min(1200px, 100vw);
   margin: 0 auto;
@@ -559,37 +561,45 @@ section {
   }
 }
 
-.debug-steps {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-  padding: 15px;
-  margin-bottom: 15px;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 
-  .debug-step {
-    margin-bottom: 8px;
-    padding: 4px 0;
-    word-break: break-word;
-    overflow-wrap: break-word;
+  .tool-btn {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+  }
+}
 
-    &.success {
-      color: #28a745;
-    }
+.comparison-status {
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f7fafc;
+  color: #4a5568;
+  font-size: 0.8rem;
+  font-weight: 600;
 
-    &.warning {
-      color: #ffc107;
-    }
+  &.checking {
+    background: #bee3f8;
+    border-color: #90cdf4;
+    color: #2c5282;
+  }
 
-    &.error {
-      color: #dc3545;
-    }
+  &.match {
+    background: #c6f6d5;
+    border-color: #9ae6b4;
+    color: #22543d;
+  }
 
-    &.info {
-      color: #17a2b8;
-    }
+  &.different,
+  &.error {
+    background: #fed7d7;
+    border-color: #fc8181;
+    color: #9b2c2c;
   }
 }
 

@@ -191,7 +191,7 @@ export function waitForProviderStatus(
 
 export async function inspectRoom({ host, room, adminToken }) {
   const response = await fetch(
-    `https://${host}/parties/main/${encodeURIComponent(room)}/admin/inspect`,
+    `${getPartyHttpUrl(host, room)}/admin/inspect`,
     {
       headers: { Authorization: `Bearer ${adminToken}` },
     }

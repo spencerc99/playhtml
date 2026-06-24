@@ -2,9 +2,12 @@
 // ABOUTME: Keeps hibernation-safe compaction rules testable outside Cloudflare runtime.
 import { describe, expect, it } from "bun:test";
 import {
+  getLiveDocumentPersistenceDecision,
   getNextAlarmTime,
+  getCompactionCommitDecision,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
+  shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "../compactionPolicy";
@@ -22,6 +25,133 @@ describe("isCompactionAutosave", () => {
     expect(isCompactionAutosave("snapshot-a", "snapshot-a")).toBe(true);
     expect(isCompactionAutosave("snapshot-b", "snapshot-a")).toBe(false);
     expect(isCompactionAutosave("snapshot-a", null)).toBe(false);
+  });
+});
+
+describe("shouldCommitCompactionSnapshot", () => {
+  it("only commits when the persisted document still matches the compacted source", () => {
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+      })
+    ).toBe(true);
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+      })
+    ).toBe(false);
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: null,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("getCompactionCommitDecision", () => {
+  it("persists the live document before compaction when persisted data changed", () => {
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "commit-compaction" });
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        sourceContainsPersistedDocument: true,
+      })
+    ).toEqual({ kind: "persist-live-document" });
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: null,
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "persist-live-document" });
+  });
+
+  it("leaves persisted data untouched when the live source is missing database updates", () => {
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "skip-compaction" });
+  });
+});
+
+describe("getLiveDocumentPersistenceDecision", () => {
+  it("reloads persisted data when autosave is missing database updates", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: false,
+        liveDocumentMatchesLastSave: true,
+      })
+    ).toEqual({ kind: "reload-persisted-document" });
+  });
+
+  it("preserves both sides when connected live data conflicts with persisted data", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: true,
+      })
+    ).toEqual({ kind: "skip-live-save" });
+  });
+
+  it("preserves unsaved live data when an empty room conflicts with persisted data", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: false,
+        liveDocumentMatchesLastSave: false,
+      })
+    ).toEqual({ kind: "skip-live-save" });
+  });
+
+  it("saves live data when autosave contains the persisted document", () => {
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: false,
+      })
+    ).toEqual({ kind: "save-live-document" });
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: "persisted",
+        liveDocumentContainsPersistedDocument: true,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: false,
+      })
+    ).toEqual({ kind: "save-live-document" });
+    expect(
+      getLiveDocumentPersistenceDecision({
+        liveDocumentBase64: "source",
+        persistedDocumentBase64: null,
+        liveDocumentContainsPersistedDocument: false,
+        hasOpenConnections: true,
+        liveDocumentMatchesLastSave: false,
+      })
+    ).toEqual({ kind: "save-live-document" });
   });
 });
 
