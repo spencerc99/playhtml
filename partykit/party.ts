@@ -20,6 +20,10 @@ import {
   getDocResetEpoch,
 } from "./docUtils";
 import {
+  createAdminSnapshotFromPlayData,
+  resolveRoomResetEpoch,
+} from "./adminMutation";
+import {
   STORAGE_KEYS,
   DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS,
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
@@ -644,6 +648,16 @@ export class PartyServer extends YServer {
     return connections.length;
   }
 
+  private async createResetEpoch(): Promise<number> {
+    const storedEpoch = await this.getResetEpoch();
+    return resolveRoomResetEpoch({
+      snapshotEpoch: null,
+      storedEpoch,
+      bumpEpoch: true,
+      now: Date.now(),
+    });
+  }
+
   /**
    * Determine whether a candidate epoch (from a doc, client, or bridge message)
    * is stale relative to the authoritative epoch stored in room storage.
@@ -685,6 +699,7 @@ export class PartyServer extends YServer {
   ): Promise<{
     documentSize: number;
     resetEpoch: number;
+    closedConnections: number;
   }> {
     const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
@@ -701,12 +716,12 @@ export class PartyServer extends YServer {
       );
 
       const storedEpoch = await this.getResetEpoch();
-      let resetEpoch = getDocResetEpoch(snapshotDoc);
-      if (options?.bumpEpoch) {
-        resetEpoch = Date.now();
-      } else if (resetEpoch === null) {
-        resetEpoch = storedEpoch ?? Date.now();
-      }
+      const resetEpoch = resolveRoomResetEpoch({
+        snapshotEpoch: getDocResetEpoch(snapshotDoc),
+        storedEpoch,
+        bumpEpoch: Boolean(options?.bumpEpoch),
+        now: Date.now(),
+      });
       setDocResetEpoch(snapshotDoc, resetEpoch);
 
       const updatedBase64 = encodeDocToBase64(snapshotDoc);
@@ -733,13 +748,6 @@ export class PartyServer extends YServer {
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
       this.markDocumentPersisted(updatedBase64);
 
-      // Reload the live server from the snapshot
-      console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
-      const liveYDoc = this.document;
-      replaceDocFromSnapshot(liveYDoc, updatedBase64);
-      setDocResetEpoch(liveYDoc, resetEpoch);
-      console.log(`[Restore Snapshot] Successfully reloaded live server`);
-
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
       console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
@@ -756,16 +764,24 @@ export class PartyServer extends YServer {
         `[Restore Snapshot] Closed ${closedCount} connections`
       );
 
+      // Flush disconnect work before installing the authoritative snapshot.
+      await Promise.resolve();
+
+      // Reload the live server from the snapshot
+      console.log(`[Restore Snapshot] Reloading live server from snapshot...`);
+      const liveYDoc = this.document;
+      replaceDocFromSnapshot(liveYDoc, updatedBase64);
+      setDocResetEpoch(liveYDoc, resetEpoch);
+      console.log(`[Restore Snapshot] Successfully reloaded live server`);
+
       console.log(
         `[Restore Snapshot] Completed successfully: ${documentSize} bytes`
       );
 
-      // Flush pending microtasks
-      await Promise.resolve();
-
       return {
         documentSize,
         resetEpoch,
+        closedConnections: closedCount,
       };
     } catch (error: unknown) {
       const errorMessage =
@@ -786,6 +802,16 @@ export class PartyServer extends YServer {
         console.log("[Restore Snapshot] Autosave re-enabled");
       }, 1000);
     }
+  }
+
+  async commitAdminPlayData(playData: Record<string, any>): Promise<{
+    documentSize: number;
+    resetEpoch: number;
+    closedConnections: number;
+  }> {
+    const resetEpoch = await this.createResetEpoch();
+    const snapshot = createAdminSnapshotFromPlayData(playData, resetEpoch);
+    return this.restoreFromSnapshot(snapshot.base64, { bumpEpoch: false });
   }
 
   // Ensure an alarm is set for bridge lease pruning or empty-room compaction.
@@ -1742,6 +1768,7 @@ export class PartyServer extends YServer {
     beforeSize: number;
     afterSize: number;
     resetEpoch: number;
+    closedConnections: number;
   }> {
     const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
@@ -1805,7 +1832,7 @@ export class PartyServer extends YServer {
         ).toFixed(2)} MB)`
       );
 
-      const resetEpoch = Date.now();
+      const resetEpoch = await this.createResetEpoch();
       let freshBase64: string;
       let afterSize: number;
 
@@ -1859,12 +1886,6 @@ export class PartyServer extends YServer {
       console.log(`[Hard Reset] Successfully saved fresh doc to database`);
       this.markDocumentPersisted(freshBase64);
 
-      // Reload the live server from the new snapshot
-      console.log(`[Hard Reset] Reloading live server from snapshot...`);
-      replaceDocFromSnapshot(liveYDoc, freshBase64);
-      setDocResetEpoch(liveYDoc, resetEpoch);
-      console.log(`[Hard Reset] Successfully reloaded live server`);
-
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
       console.log(`[Hard Reset] Set resetEpoch: ${resetEpoch}`);
@@ -1878,6 +1899,15 @@ export class PartyServer extends YServer {
       const closedCount = this.closeConnections("Room Reset by Admin");
       console.log(`[Hard Reset] Closed ${closedCount} connections`);
 
+      // Flush disconnect work before installing the authoritative snapshot.
+      await Promise.resolve();
+
+      // Reload the live server from the snapshot
+      console.log(`[Hard Reset] Reloading live server from snapshot...`);
+      replaceDocFromSnapshot(liveYDoc, freshBase64);
+      setDocResetEpoch(liveYDoc, resetEpoch);
+      console.log(`[Hard Reset] Successfully reloaded live server`);
+
       const sizeReduction = beforeSize - afterSize;
       const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(
         1
@@ -1887,14 +1917,11 @@ export class PartyServer extends YServer {
         `[Hard Reset] Completed successfully: ${beforeSize} -> ${afterSize} bytes (${sizeReductionPercent}% reduction)`
       );
 
-      // Flush pending microtasks to ensure any queued autosave callbacks are processed
-      // before we release the lock
-      await Promise.resolve();
-
       return {
         beforeSize,
         afterSize,
         resetEpoch,
+        closedConnections: closedCount,
       };
     } catch (error: unknown) {
       const errorMessage =

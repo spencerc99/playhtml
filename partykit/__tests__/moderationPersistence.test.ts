@@ -1,11 +1,12 @@
 // ABOUTME: Round-trip test for the moderation-remove persistence path on a real Y.Doc.
-// ABOUTME: Mirrors handleModerationRemove's docToJson -> remove -> replaceDocState -> re-extract chain.
+// ABOUTME: Mirrors database snapshot extraction, moderation removal, fresh snapshot commit.
 import { describe, expect, it } from "bun:test";
+import * as Y from "yjs";
+import { Buffer } from "node:buffer";
+import { createAdminSnapshotFromPlayData } from "../adminMutation";
 import {
   jsonToDoc,
   docToJson,
-  replaceDocState,
-  encodeDocToBase64,
 } from "../docUtils";
 import {
   extractRecords,
@@ -40,8 +41,8 @@ function targetFor(play: Record<string, unknown>, key: string): RemoveTarget {
   return { key, contentHash: rec.contentHash };
 }
 
-// Performs the exact mutation handleModerationRemove does, minus the Supabase
-// upsert (a network call). Returns the re-extracted play after the round-trip.
+// Performs the exact data mutation handleModerationRemove does, minus network I/O.
+// Returns the play data re-extracted from the fresh snapshot that would be saved.
 function runRemovalThroughDoc(
   play: Record<string, unknown>,
   targets: RemoveTarget[]
@@ -51,12 +52,17 @@ function runRemovalThroughDoc(
   if (!livePlay) throw new Error("doc has no play data");
 
   const result = removeRecordsByTargets(livePlay, targets);
-  if (result.removed > 0) {
-    replaceDocState(doc, result.play);
-    // Exercise the encode step the handler runs before persisting.
-    encodeDocToBase64(doc);
+  if (result.removed === 0) {
+    return { result, rePlay: docToJson(doc) };
   }
-  return { result, rePlay: docToJson(doc) };
+
+  const snapshot = createAdminSnapshotFromPlayData(result.play, 1234);
+  const reDoc = new Y.Doc();
+  Y.applyUpdate(
+    reDoc,
+    new Uint8Array(Buffer.from(snapshot.base64, "base64"))
+  );
+  return { result, rePlay: docToJson(reDoc) };
 }
 
 describe("moderation removal persistence round-trip", () => {
