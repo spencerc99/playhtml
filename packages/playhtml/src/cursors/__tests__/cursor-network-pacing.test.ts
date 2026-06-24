@@ -297,7 +297,7 @@ describe("cursor network pacing", () => {
             cursor: { x: 10, y: 20, pointer: "mouse" },
             page: "/",
             zone: null,
-            at: 100,
+            at: Date.now(),
           },
         },
       },
@@ -338,7 +338,7 @@ describe("cursor network pacing", () => {
             },
             page: "/",
             zone: null,
-            at: 100,
+            at: Date.now(),
           },
         },
       },
@@ -372,7 +372,7 @@ describe("cursor network pacing", () => {
           cursor: { x: i, y: i, pointer: "mouse" },
           page: "/",
           zone: null,
-          at: 100,
+          at: Date.now(),
         },
       };
     }
@@ -389,6 +389,158 @@ describe("cursor network pacing", () => {
     );
 
     expect(transport.updates).toHaveLength(1);
+
+    client.destroy();
+  });
+
+  it("keeps transport publishing at 60Hz when joined peers have no active cursor", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    const peers: Record<string, any> = {};
+    for (let i = 0; i < 19; i++) {
+      peers[`conn-${i}`] = {
+        identity: makeIdentity(
+          `remote-${i}`,
+          `#${String(i + 1).padStart(6, "0")}`,
+        ),
+        page: "/",
+      };
+    }
+    transport.emit({ type: "presence-sync", peers });
+    transport.updates = [];
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(transport.updates).toHaveLength(1);
+
+    client.destroy();
+  });
+
+  it("expires stale transport cursor positions", () => {
+    vi.setSystemTime(100_000);
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: { x: 10, y: 20, pointer: "mouse" },
+            page: "/",
+            zone: null,
+            at: 69_000,
+          },
+        },
+      },
+    });
+
+    expect(document.querySelector(".playhtml-cursor-other")).toBe(null);
+    expect(client.getCursorPresences().get("remote")?.cursor).toBeNull();
+
+    client.destroy();
+  });
+
+  it("checks proximity immediately after local transport cursor movement", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const onProximityEntered = vi.fn();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        onProximityEntered,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: { x: 12, y: 22, pointer: "mouse" },
+            page: "/",
+            zone: null,
+            at: Date.now(),
+          },
+        },
+      },
+    });
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(onProximityEntered).toHaveBeenCalledTimes(1);
+
+    client.destroy();
+  });
+
+  it("uses server cursor rate messages as an additional publish cap", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+    transport.emit({ type: "presence-rate", channel: "cursor", hz: 10 });
+    transport.updates = [];
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(transport.updates).toHaveLength(0);
+
+    vi.advanceTimersByTime(Math.ceil(1000 / 10));
+
+    expect(transport.updates).toHaveLength(1);
+
+    client.destroy();
+  });
+
+  it("warns when the presence server rejects a message", () => {
+    const provider = makeFakeProvider();
+    const transport = makeFakePresenceTransport();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new CursorClientAwareness(
+      provider,
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+      },
+      transport as any,
+    );
+
+    transport.emit({ type: "presence-error", message: "bad cursor" });
+
+    expect(warn).toHaveBeenCalledWith(
+      "[playhtml] Presence server rejected message:",
+      "bad cursor",
+    );
 
     client.destroy();
   });
@@ -496,7 +648,7 @@ describe("cursor network pacing", () => {
             cursor: { x: 50, y: 50, pointer: "mouse" },
             page: "/",
             zone: null,
-            at: 100,
+            at: Date.now(),
           },
         },
       },
@@ -577,7 +729,7 @@ describe("cursor network pacing", () => {
             cursor: { x: 10, y: 20, pointer: "mouse" },
             page: "/",
             zone: null,
-            at: 100,
+            at: Date.now(),
           },
         },
       },

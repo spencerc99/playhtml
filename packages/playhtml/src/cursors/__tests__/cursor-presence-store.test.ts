@@ -15,6 +15,13 @@ const bob: PlayerIdentity = {
   playerStyle: { colorPalette: ["blue"] },
 };
 
+function makeIdentity(publicKey: string): PlayerIdentity {
+  return {
+    publicKey,
+    playerStyle: { colorPalette: ["#000000"] },
+  };
+}
+
 describe("CursorPresenceStore", () => {
   it("builds remote cursor presence from generic presence sync channels", () => {
     const store = new CursorPresenceStore();
@@ -146,5 +153,53 @@ describe("CursorPresenceStore", () => {
       page: undefined,
       zone: null,
     });
+  });
+
+  it("counts only fresh remote peers with active cursors", () => {
+    const store = new CursorPresenceStore();
+    store.applySync({
+      "conn-idle": {
+        identity: makeIdentity("idle"),
+        page: "/",
+      },
+      "conn-fresh": {
+        identity: makeIdentity("fresh"),
+        cursor: {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          page: "/",
+          at: 1000,
+        },
+      },
+      "conn-stale": {
+        identity: makeIdentity("stale"),
+        cursor: {
+          cursor: { x: 30, y: 40, pointer: "mouse" },
+          page: "/",
+          at: 1,
+        },
+      },
+    });
+
+    expect(store.getRemoteActiveCursorCount("local", 1000, 500)).toBe(1);
+  });
+
+  it("removes expired cursor channels while keeping identity presence", () => {
+    const store = new CursorPresenceStore();
+    store.applySync({
+      "conn-stale": {
+        identity: makeIdentity("stale"),
+        cursor: {
+          cursor: { x: 30, y: 40, pointer: "mouse" },
+          page: "/",
+          at: 1,
+        },
+      },
+    });
+
+    expect(store.removeExpiredCursors(1000, 500)).toBe(true);
+
+    const presence = store.getRemotePresences("local").get("stale");
+    expect(presence?.playerIdentity.publicKey).toBe("stale");
+    expect(presence?.cursor).toBeNull();
   });
 });

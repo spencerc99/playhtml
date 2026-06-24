@@ -20,7 +20,10 @@ import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
-import { CursorPresenceStore } from "./cursor-presence-store";
+import {
+  CURSOR_PRESENCE_MAX_AGE_MS,
+  CursorPresenceStore,
+} from "./cursor-presence-store";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -457,6 +460,8 @@ export class CursorClientAwareness {
   private presenceStore = new CursorPresenceStore();
   private presenceTransportUnsubscribe: (() => void) | null = null;
   private presenceTransportStatusUnsubscribe: (() => void) | null = null;
+  private presenceExpiryInterval: ReturnType<typeof setInterval> | null = null;
+  private serverCursorMaxHz: number | null = null;
 
   // When the cursor container is a non-body element with a CSS transform,
   // cursors are stored and rendered in container-local coordinates. The
@@ -615,6 +620,7 @@ export class CursorClientAwareness {
         this.handlePresenceTransportMessage(message);
       },
     ) ?? null;
+    this.startPresenceExpiryTimer();
   }
 
   private handlePresenceTransportMessage(message: PresenceServerMessage): void {
@@ -622,11 +628,44 @@ export class CursorClientAwareness {
       this.presenceStore.applySync(message.peers);
     } else if (message.type === "presence-changes") {
       this.presenceStore.applyChanges(message);
+    } else if (message.type === "presence-rate") {
+      this.handlePresenceRate(message.channel, message.hz);
+      return;
+    } else if (message.type === "presence-error") {
+      console.warn(
+        "[playhtml] Presence server rejected message:",
+        message.message,
+      );
+      return;
     } else {
       return;
     }
 
+    this.removeExpiredPresenceCursors();
     this.renderPresenceStore();
+  }
+
+  private handlePresenceRate(channel: string, hz: number): void {
+    if (channel !== "cursor") return;
+    if (!Number.isFinite(hz) || hz <= 0) return;
+    this.serverCursorMaxHz = hz;
+  }
+
+  private startPresenceExpiryTimer(): void {
+    if (this.presenceExpiryInterval !== null) return;
+    this.presenceExpiryInterval = setInterval(() => {
+      if (this.removeExpiredPresenceCursors()) {
+        this.renderPresenceStore();
+      }
+    }, 1000);
+  }
+
+  private removeExpiredPresenceCursors(): boolean {
+    if (!this.presenceTransport) return false;
+    return this.presenceStore.removeExpiredCursors(
+      Date.now(),
+      CURSOR_PRESENCE_MAX_AGE_MS,
+    );
   }
 
   private renderPresenceStore(): void {
@@ -1305,7 +1344,13 @@ export class CursorClientAwareness {
 
   private getActiveCursorConnectionCount(): number {
     if (this.presenceTransport) {
-      return Math.max(1, this.presenceStore.getConnectionCount() + 1);
+      const localCount = this.currentCursor ? 1 : 0;
+      const remoteCount = this.presenceStore.getRemoteActiveCursorCount(
+        this.playerIdentity.publicKey,
+        Date.now(),
+        CURSOR_PRESENCE_MAX_AGE_MS,
+      );
+      return Math.max(1, localCount + remoteCount);
     }
 
     const states = this.provider.awareness.getStates();
@@ -1332,14 +1377,18 @@ export class CursorClientAwareness {
     const targetInterval = getCursorNetworkIntervalMs(
       this.getActiveCursorConnectionCount(),
     );
+    const serverInterval = this.serverCursorMaxHz
+      ? 1000 / this.serverCursorMaxHz
+      : 0;
+    const effectiveTargetInterval = Math.max(targetInterval, serverInterval);
 
-    if (elapsed >= targetInterval) {
+    if (elapsed >= effectiveTargetInterval) {
       this.updateCursorAwareness();
     } else {
       this.awarenessUpdateTimeout = setTimeout(() => {
         this.awarenessUpdateTimeout = null;
         this.updateCursorAwareness();
-      }, targetInterval - elapsed);
+      }, effectiveTargetInterval - elapsed);
     }
   }
 
@@ -1371,6 +1420,7 @@ export class CursorClientAwareness {
         this.lastSentMessage = this.currentMessage;
       }
       this.lastUpdate = performance.now();
+      this.checkProximityOptimized();
       this.notifyCursorPresenceListeners();
       return;
     }
@@ -2189,6 +2239,10 @@ export class CursorClientAwareness {
     }
 
     if (this.presenceTransport) {
+      if (this.presenceExpiryInterval !== null) {
+        clearInterval(this.presenceExpiryInterval);
+        this.presenceExpiryInterval = null;
+      }
       this.presenceTransportUnsubscribe?.();
       this.presenceTransportUnsubscribe = null;
       this.presenceTransportStatusUnsubscribe?.();

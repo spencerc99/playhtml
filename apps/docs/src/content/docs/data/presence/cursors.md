@@ -96,7 +96,7 @@ cursors: {
 
 **Presence data includes:**
 - `presence.page` - The page path the cursor is on
-- `presence.cursor` - Current cursor position `{ x, y, pointer }`
+- `presence.cursor` - Current cursor position `{ x, y, pointer }`, or `null` when the user is present but not publishing a cursor position
 - `presence.playerIdentity` - User info `{ name, playerStyle: { colorPalette } }`
 - `presence.message` - Chat message (if chat enabled)
 - `presence.lastSeen` - Timestamp
@@ -128,6 +128,8 @@ cursors: {
 
 ```javascript
 getCursorStyle: (presence) => {
+  if (!presence.cursor) return {};
+
   const distance = Math.sqrt(
     Math.pow(presence.cursor.x - myX, 2) +
     Math.pow(presence.cursor.y - myY, 2)

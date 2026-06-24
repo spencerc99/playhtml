@@ -16,7 +16,7 @@ const IDENTITY_FIELD = "__playhtml_identity__";
 const SYSTEM_FIELDS = new Set(["playerIdentity", "cursor", "isMe"]);
 
 /** Minimal awareness interface matching YPartyKitProvider.awareness */
-interface AwarenessLike {
+export interface AwarenessLike {
   clientID: number;
   getStates(): Map<number, Record<string, unknown>>;
   getLocalState(): Record<string, unknown> | null;
@@ -54,9 +54,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
   // boolean) so SPA navigation that rebuilds the provider — and with it the
   // awareness object — re-arms the write on the new awareness.
   function ensureIdentityWritten(): void {
-    const awareness = getAwareness();
-    if (awareness.getLocalState()?.[IDENTITY_FIELD]) return;
-    awareness.setLocalStateField(IDENTITY_FIELD, deps.getPlayerIdentity());
+    ensureAwarenessIdentity(getAwareness(), deps.getPlayerIdentity());
   }
 
   function channelFingerprint(
@@ -289,4 +287,12 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       return deps.getPlayerIdentity();
     },
   };
+}
+
+export function ensureAwarenessIdentity(
+  awareness: AwarenessLike,
+  identity: PlayerIdentity,
+): void {
+  if (awareness.getLocalState()?.[IDENTITY_FIELD]) return;
+  awareness.setLocalStateField(IDENTITY_FIELD, identity);
 }

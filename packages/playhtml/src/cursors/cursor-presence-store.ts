@@ -17,6 +17,8 @@ import {
 
 type PeerChannels = Record<string, unknown>;
 
+export const CURSOR_PRESENCE_MAX_AGE_MS = 30_000;
+
 export type StoredCursorPresence = CursorPresence & {
   cursor: Cursor | null;
   playerIdentity: PlayerIdentity;
@@ -75,8 +77,43 @@ export class CursorPresenceStore {
     return null;
   }
 
-  getConnectionCount(): number {
-    return this.peers.size;
+  getRemoteActiveCursorCount(
+    localPublicKey: string,
+    now: number,
+    maxAgeMs: number,
+  ): number {
+    const activePublicKeys = new Set<string>();
+
+    for (const connectionId of this.peers.keys()) {
+      const channels = this.peers.get(connectionId);
+      if (!channels) continue;
+      const identity = channels.identity;
+      if (!isPlayerIdentity(identity)) continue;
+      if (identity.publicKey === localPublicKey) continue;
+
+      const cursorChannel = channels.cursor;
+      if (!isActiveCursorChannel(cursorChannel, now, maxAgeMs)) continue;
+      activePublicKeys.add(identity.publicKey);
+    }
+
+    return activePublicKeys.size;
+  }
+
+  removeExpiredCursors(now: number, maxAgeMs: number): boolean {
+    let changed = false;
+
+    for (const [connectionId, channels] of this.peers) {
+      if (!("cursor" in channels)) continue;
+      if (isActiveCursorChannel(channels.cursor, now, maxAgeMs)) continue;
+
+      delete channels.cursor;
+      changed = true;
+      if (Object.keys(channels).length === 0) {
+        this.peers.delete(connectionId);
+      }
+    }
+
+    return changed;
   }
 
   private getPresenceForConnection(
@@ -123,4 +160,16 @@ function getNullableString(value: unknown): string | null {
 
 function getOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function isActiveCursorChannel(
+  value: unknown,
+  now: number,
+  maxAgeMs: number,
+): boolean {
+  if (!isPresenceCursorChannelValue(value)) return false;
+  if (value.cursor === null) return false;
+  if (!isCursor(value.cursor)) return false;
+  if (!Number.isFinite(value.at)) return false;
+  return now - Number(value.at) <= maxAgeMs;
 }
