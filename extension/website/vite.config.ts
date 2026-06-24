@@ -13,6 +13,11 @@ export default defineConfig({
     alias: {
       "@movement": path.resolve(__dirname, "./shared"),
       "@extension": path.resolve(__dirname, "../src"),
+      // Extension social code (bottles, inventory) imports webextension-polyfill;
+      // on the site there's no extension context, so alias it to a small shim
+      // (getURL → /asset paths, storage.local → localStorage). Lets the social
+      // playground run the real initGlobalFeatures unchanged.
+      "webextension-polyfill": path.resolve(__dirname, "./shared/webext-shim.ts"),
       playhtml: path.resolve(__dirname, "../../packages/playhtml/src/index.ts"),
       "@playhtml/react": path.resolve(__dirname, "../../packages/react/src"),
       "@playhtml/common": path.resolve(__dirname, "../../packages/common/src"),
