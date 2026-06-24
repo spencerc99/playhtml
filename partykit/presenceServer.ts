@@ -23,7 +23,7 @@ import {
   restorePresenceConnectionChannels,
   takePresenceChanges,
 } from "./presencePolicy";
-import { isExpectedPresenceClose } from "./presenceDiagnostics";
+import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
 
 const PRESENCE_CHANNELS_STATE_KEY = "__playhtmlPresenceChannels";
 const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
@@ -265,16 +265,17 @@ export class PresenceServer extends Server<Env> {
     reason: string,
     wasClean: boolean,
   ): string | null {
-    if (isExpectedPresenceClose(code, wasClean)) return null;
-
     const openedAt = connection.state?.[PRESENCE_OPENED_AT_STATE_KEY];
-    const duration =
-      typeof openedAt === "number" ? Date.now() - openedAt : "unknown";
-    return (
-      `[PresenceServer] WebSocket closed abnormally: room=${this.name} ` +
-      `connection=${connection.id} code=${code} reason="${reason}" ` +
-      `wasClean=${wasClean} durationMs=${duration}`
-    );
+    return getConnectionCloseDiagnostic({
+      roomName: this.name,
+      connectionId: connection.id,
+      code,
+      reason,
+      wasClean,
+      openedAt,
+      label: "PresenceServer",
+      quietCloseCodes: [1000, 1005],
+    });
   }
 }
 

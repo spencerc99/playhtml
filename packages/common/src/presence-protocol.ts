@@ -84,7 +84,7 @@ export function getPresenceChannelCadence(
 export function validatePresenceClientMessage(
   value: unknown,
 ): PresenceClientMessage {
-  if (!isRecord(value)) {
+  if (!isPresenceRecord(value)) {
     throw new Error("Presence message must be an object");
   }
 
@@ -127,7 +127,7 @@ function validatePresenceValue(channel: unknown, value: unknown): void {
 }
 
 function validateCursorPresenceValue(value: unknown): void {
-  if (!isRecord(value)) {
+  if (!isPresenceRecord(value)) {
     throw new Error("cursor presence value must be an object");
   }
 
@@ -150,8 +150,21 @@ function validateCursorPresenceValue(value: unknown): void {
   }
 }
 
+export function isPlayerIdentity(value: unknown): value is PlayerIdentity {
+  try {
+    assertPlayerIdentity(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validatePlayerIdentity(value: unknown): void {
-  if (!isRecord(value)) {
+  assertPlayerIdentity(value);
+}
+
+function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
+  if (!isPresenceRecord(value)) {
     throw new Error("identity must be an object");
   }
   validateRequiredBoundedString(
@@ -159,7 +172,7 @@ function validatePlayerIdentity(value: unknown): void {
     "identity.publicKey",
     MAX_PRESENCE_IDENTITY_STRING_LENGTH,
   );
-  if (!isRecord(value.playerStyle)) {
+  if (!isPresenceRecord(value.playerStyle)) {
     throw new Error("identity.playerStyle must be an object");
   }
   const colorPalette = value.playerStyle.colorPalette;
@@ -183,8 +196,21 @@ function validatePlayerIdentity(value: unknown): void {
   );
 }
 
+export function isCursor(value: unknown): value is Cursor {
+  try {
+    assertCursor(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validateCursor(value: unknown): void {
-  if (!isRecord(value)) {
+  assertCursor(value);
+}
+
+function assertCursor(value: unknown): asserts value is Cursor {
+  if (!isPresenceRecord(value)) {
     throw new Error("cursor must be an object");
   }
   if (!Number.isFinite(value.x)) {
@@ -199,7 +225,7 @@ function validateCursor(value: unknown): void {
 }
 
 function validateZone(value: unknown): void {
-  if (!isRecord(value)) {
+  if (!isPresenceRecord(value)) {
     throw new Error("cursor zone must be an object");
   }
   if (typeof value.zoneId !== "string" || value.zoneId.length === 0) {
@@ -217,12 +243,7 @@ function validateChannel(value: unknown): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error("Presence channel must be a non-empty string");
   }
-  if (value.length > 128) {
-    throw new Error("Presence channel must be 128 characters or less");
-  }
-  if (/[\u0000-\u001f\u007f]/.test(value)) {
-    throw new Error("Presence channel must not contain control characters");
-  }
+  validateStringBounds(value, "Presence channel", 128);
 }
 
 function validateRequiredBoundedString(
@@ -280,6 +301,8 @@ function assertJsonSize(value: unknown): void {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isPresenceRecord(
+  value: unknown,
+): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

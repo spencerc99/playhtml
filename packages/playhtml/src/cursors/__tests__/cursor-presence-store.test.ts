@@ -155,34 +155,6 @@ describe("CursorPresenceStore", () => {
     });
   });
 
-  it("counts only fresh remote peers with active cursors", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
-      "conn-idle": {
-        identity: makeIdentity("idle"),
-        page: "/",
-      },
-      "conn-fresh": {
-        identity: makeIdentity("fresh"),
-        cursor: {
-          cursor: { x: 10, y: 20, pointer: "mouse" },
-          page: "/",
-          at: 1000,
-        },
-      },
-      "conn-stale": {
-        identity: makeIdentity("stale"),
-        cursor: {
-          cursor: { x: 30, y: 40, pointer: "mouse" },
-          page: "/",
-          at: 1,
-        },
-      },
-    });
-
-    expect(store.getRemoteActiveCursorCount("local", 1000, 500)).toBe(1);
-  });
-
   it("removes expired cursor channels while keeping identity presence", () => {
     const store = new CursorPresenceStore();
     store.applySync({

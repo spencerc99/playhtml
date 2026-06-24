@@ -77,28 +77,6 @@ export class CursorPresenceStore {
     return null;
   }
 
-  getRemoteActiveCursorCount(
-    localPublicKey: string,
-    now: number,
-    maxAgeMs: number,
-  ): number {
-    const activePublicKeys = new Set<string>();
-
-    for (const connectionId of this.peers.keys()) {
-      const channels = this.peers.get(connectionId);
-      if (!channels) continue;
-      const identity = channels.identity;
-      if (!isPlayerIdentity(identity)) continue;
-      if (identity.publicKey === localPublicKey) continue;
-
-      const cursorChannel = channels.cursor;
-      if (!isActiveCursorChannel(cursorChannel, now, maxAgeMs)) continue;
-      activePublicKeys.add(identity.publicKey);
-    }
-
-    return activePublicKeys.size;
-  }
-
   removeExpiredCursors(now: number, maxAgeMs: number): boolean {
     let changed = false;
 

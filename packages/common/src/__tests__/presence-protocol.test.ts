@@ -4,6 +4,9 @@
 import { describe, expect, it } from "vitest";
 import {
   getPresenceChannelCadence,
+  isCursor,
+  isPlayerIdentity,
+  isPresenceRecord,
   validatePresenceClientMessage,
 } from "../presence-protocol";
 
@@ -94,5 +97,26 @@ describe("presence protocol", () => {
         page: `/${"x".repeat(512)}`,
       }),
     ).toThrow("page must be 512 characters or less");
+  });
+
+  it("exposes boolean predicates that match the protocol shape", () => {
+    expect(isPresenceRecord({ channel: "status" })).toBe(true);
+    expect(isPresenceRecord(["status"])).toBe(false);
+
+    expect(isCursor({ x: 1, y: 2, pointer: "mouse" })).toBe(true);
+    expect(isCursor({ x: Number.NaN, y: 2, pointer: "mouse" })).toBe(false);
+
+    expect(
+      isPlayerIdentity({
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"] },
+      }),
+    ).toBe(true);
+    expect(
+      isPlayerIdentity({
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"], cursorStyle: "\u0000" },
+      }),
+    ).toBe(false);
   });
 });

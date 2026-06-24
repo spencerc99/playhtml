@@ -63,24 +63,20 @@ export function consumePresenceMessageBudget(
   message: PresenceClientMessage,
   now: number,
 ): PresenceMessageBudgetDecision {
-  const bucket = getPresenceMessageBudgetBucket(message);
-  const hz = PRESENCE_MESSAGE_BUDGET_HZ[bucket];
-  let connectionBudgets = state.get(connectionId);
-  if (!connectionBudgets) {
-    connectionBudgets = new Map();
-    state.set(connectionId, connectionBudgets);
-  }
+  const target = getPresenceMessageBudgetTarget(message);
+  const hz = PRESENCE_MESSAGE_BUDGET_HZ[target.bucket];
+  const connectionBudgets = getOrCreate(state, connectionId, () => new Map());
 
-  let window = connectionBudgets.get(bucket);
+  let window = connectionBudgets.get(target.bucket);
   if (!window || now - window.startedAt >= PRESENCE_RATE_WINDOW_MS) {
     window = { startedAt: now, count: 0 };
-    connectionBudgets.set(bucket, window);
+    connectionBudgets.set(target.bucket, window);
   }
 
   if (window.count >= hz) {
     return {
       accepted: false,
-      channel: getPresenceMessageBudgetChannel(message),
+      channel: target.channel,
       hz,
     };
   }
@@ -102,26 +98,18 @@ export function recordPresenceUpdate(
   channel: string,
   value: unknown,
 ): void {
-  let peer = state.peers.get(connectionId);
-  if (!peer) {
-    peer = new Map();
-    state.peers.set(connectionId, peer);
-  }
+  const peer = getOrCreate(state.peers, connectionId, () => new Map());
   assertPresenceChannelCapacity(peer, channel);
   peer.set(channel, value);
 
-  let updates = state.dirtyUpdates.get(connectionId);
-  if (!updates) {
-    updates = new Map();
-    state.dirtyUpdates.set(connectionId, updates);
-  }
+  const updates = getOrCreate(
+    state.dirtyUpdates,
+    connectionId,
+    () => new Map(),
+  );
   updates.set(channel, value);
 
-  const removes = state.dirtyRemoves.get(connectionId);
-  if (removes) {
-    removes.delete(channel);
-    if (removes.size === 0) state.dirtyRemoves.delete(connectionId);
-  }
+  deleteChannelAndPrune(state.dirtyRemoves, connectionId, channel);
 }
 
 export function restorePresenceConnectionChannels(
@@ -129,11 +117,7 @@ export function restorePresenceConnectionChannels(
   connectionId: string,
   channels: Record<string, unknown>,
 ): void {
-  let peer = state.peers.get(connectionId);
-  if (!peer) {
-    peer = new Map();
-    state.peers.set(connectionId, peer);
-  }
+  const peer = getOrCreate(state.peers, connectionId, () => new Map());
 
   peer.clear();
   for (const [channel, value] of Object.entries(channels)) {
@@ -156,17 +140,13 @@ export function recordPresenceClear(
   peer.delete(channel);
   if (peer.size === 0) state.peers.delete(connectionId);
 
-  const updates = state.dirtyUpdates.get(connectionId);
-  if (updates) {
-    updates.delete(channel);
-    if (updates.size === 0) state.dirtyUpdates.delete(connectionId);
-  }
+  deleteChannelAndPrune(state.dirtyUpdates, connectionId, channel);
 
-  let removes = state.dirtyRemoves.get(connectionId);
-  if (!removes) {
-    removes = new Set();
-    state.dirtyRemoves.set(connectionId, removes);
-  }
+  const removes = getOrCreate(
+    state.dirtyRemoves,
+    connectionId,
+    () => new Set(),
+  );
   removes.add(channel);
 }
 
@@ -181,11 +161,11 @@ export function recordPresenceRemoval(
   state.peers.delete(connectionId);
   state.dirtyUpdates.delete(connectionId);
 
-  let removes = state.dirtyRemoves.get(connectionId);
-  if (!removes) {
-    removes = new Set();
-    state.dirtyRemoves.set(connectionId, removes);
-  }
+  const removes = getOrCreate(
+    state.dirtyRemoves,
+    connectionId,
+    () => new Set(),
+  );
   for (const channel of channels) {
     removes.add(channel);
   }
@@ -231,23 +211,42 @@ export function applyPresenceClientMessage(
   }
 }
 
-function getPresenceMessageBudgetBucket(
+function getPresenceMessageBudgetTarget(
   message: PresenceClientMessage,
-): PresenceMessageBudgetBucket {
-  if (message.type === "presence-update") {
-    return getPresenceChannelCadence(message.channel);
+): { bucket: PresenceMessageBudgetBucket; channel: string } {
+  if (message.type === "presence-update" || message.type === "presence-clear") {
+    return {
+      bucket: getPresenceChannelCadence(message.channel),
+      channel: message.channel,
+    };
   }
-  if (message.type === "presence-clear") {
-    return getPresenceChannelCadence(message.channel);
-  }
-  return "control";
+  return { bucket: "control", channel: "control" };
 }
 
-function getPresenceMessageBudgetChannel(message: PresenceClientMessage): string {
-  if (message.type === "presence-update" || message.type === "presence-clear") {
-    return message.channel;
+function getOrCreate<K, V>(
+  map: Map<K, V>,
+  key: K,
+  createValue: () => V,
+): V {
+  let value = map.get(key);
+  if (value === undefined) {
+    value = createValue();
+    map.set(key, value);
   }
-  return "control";
+  return value;
+}
+
+function deleteChannelAndPrune<
+  T extends { delete(key: string): boolean; size: number },
+>(
+  map: Map<string, T>,
+  connectionId: string,
+  channel: string,
+): void {
+  const channels = map.get(connectionId);
+  if (!channels) return;
+  channels.delete(channel);
+  if (channels.size === 0) map.delete(connectionId);
 }
 
 export function takePresenceChanges(

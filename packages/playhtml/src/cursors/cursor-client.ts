@@ -35,6 +35,10 @@ export type ValidCursorPresence = CursorPresence & {
   playerIdentity: PlayerIdentity;
 };
 
+type RemoteCursorPresence = CursorPresence & {
+  playerIdentity: PlayerIdentity;
+};
+
 type CursorPresenceTransport = {
   join(input: { identity: PlayerIdentity; page?: string }): void;
   update(channel: string, value: unknown): void;
@@ -669,14 +673,15 @@ export class CursorClientAwareness {
   }
 
   private renderPresenceStore(): void {
-    const presences = this.presenceStore.getRemotePresences(
-      this.playerIdentity.publicKey,
-    );
-    const activeStableIds = new Set(presences.keys());
+    const activeStableIds = new Set<string>();
 
-    for (const [stableId, presence] of presences) {
+    for (const [stableId, presence] of this.cursorPresenceEntries()) {
+      activeStableIds.add(stableId);
       if (presence.cursor) {
-        this.updateCursor(stableId, presence as ValidCursorPresence);
+        this.updateCursor(stableId, {
+          ...presence,
+          cursor: presence.cursor,
+        });
       } else {
         this.removeCursor(stableId);
       }
@@ -702,14 +707,9 @@ export class CursorClientAwareness {
   }
 
   private refreshPresenceTransportColors(): void {
-    if (!this.presenceTransport) return;
-
     this.allPlayerColors.clear();
     this.allPlayerColors.add(getPrimaryColor(this.playerIdentity));
-    const presences = this.presenceStore.getRemotePresences(
-      this.playerIdentity.publicKey,
-    );
-    for (const presence of presences.values()) {
+    for (const [, presence] of this.cursorPresenceEntries()) {
       this.allPlayerColors.add(getPrimaryColor(presence.playerIdentity));
     }
     this.updateGlobalColors();
@@ -785,15 +785,10 @@ export class CursorClientAwareness {
     this.rebuildSpatialGrid();
 
     this.allPlayerColors.clear();
-    states.forEach((clientState, clientId) => {
-      const valid = getValidCursorPresence(
-        clientState as Record<string, unknown>,
-        clientId,
-      );
-      if (valid) {
-        this.allPlayerColors.add(getPrimaryColor(valid.playerIdentity));
-      }
-    });
+    this.allPlayerColors.add(getPrimaryColor(this.playerIdentity));
+    for (const [, presence] of this.cursorPresenceEntries()) {
+      this.allPlayerColors.add(getPrimaryColor(presence.playerIdentity));
+    }
 
     this.updateGlobalColors();
     this.updateChatCTA();
@@ -809,25 +804,15 @@ export class CursorClientAwareness {
     return false;
   }
 
-  private rebuildSpatialGrid(): void {
-    this.spatialGrid.clear();
-
+  private *cursorPresenceEntries(options: {
+    includeLocalAwareness?: boolean;
+  } = {}): Iterable<[string, RemoteCursorPresence]> {
     if (this.presenceTransport) {
       const presences = this.presenceStore.getRemotePresences(
         this.playerIdentity.publicKey,
       );
       for (const [stableId, presence] of presences) {
-        if (!presence.cursor) continue;
-        const clientCoords = this.storageToClient(
-          presence.cursor.x,
-          presence.cursor.y,
-        );
-        this.spatialGrid.insert({
-          id: stableId,
-          x: clientCoords.x,
-          y: clientCoords.y,
-          data: presence,
-        });
+        yield [stableId, presence];
       }
       return;
     }
@@ -836,29 +821,71 @@ export class CursorClientAwareness {
     const myClientId = this.provider.awareness.clientID;
     const myPublicKey = this.playerIdentity.publicKey;
 
-    states.forEach((clientState, clientId) => {
-      if (clientId === myClientId) return;
-
+    for (const [clientId, state] of states) {
       const stableId = getStableIdForAwareness(
-        clientState as Record<string, unknown>,
+        state as Record<string, unknown>,
         clientId,
       );
-      if (stableId === myPublicKey) return;
+      if (
+        !options.includeLocalAwareness &&
+        (clientId === myClientId || stableId === myPublicKey)
+      ) {
+        continue;
+      }
 
       const valid = getValidCursorPresence(
-        clientState as Record<string, unknown>,
+        state as Record<string, unknown>,
         clientId,
       );
-      if (!valid) return;
+      if (!valid) continue;
+      yield [stableId, valid];
+    }
+  }
 
-      const clientCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
+  private *activeCursorPresenceEntries(options: {
+    freshOnly?: boolean;
+    now?: number;
+  } = {}): Iterable<[string, ValidCursorPresence]> {
+    const now = options.now ?? Date.now();
+    for (const [stableId, presence] of this.cursorPresenceEntries()) {
+      if (!presence.cursor) continue;
+      if (options.freshOnly && !this.isFreshCursorPresence(presence, now)) {
+        continue;
+      }
+      yield [
+        stableId,
+        {
+          ...presence,
+          cursor: presence.cursor,
+        },
+      ];
+    }
+  }
+
+  private isFreshCursorPresence(
+    presence: RemoteCursorPresence,
+    now: number,
+  ): boolean {
+    if (!this.presenceTransport) return true;
+    if (!Number.isFinite(presence.lastSeen)) return false;
+    return now - Number(presence.lastSeen) <= CURSOR_PRESENCE_MAX_AGE_MS;
+  }
+
+  private rebuildSpatialGrid(): void {
+    this.spatialGrid.clear();
+
+    for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
+      const clientCoords = this.storageToClient(
+        presence.cursor.x,
+        presence.cursor.y,
+      );
       this.spatialGrid.insert({
         id: stableId,
         x: clientCoords.x,
         y: clientCoords.y,
-        data: valid,
+        data: presence,
       });
-    });
+    }
   }
 
   private checkProximityOptimized(): void {
@@ -1261,40 +1288,8 @@ export class CursorClientAwareness {
   // position:absolute and the browser handles scroll — only zone cursors
   // need re-resolution (getBoundingClientRect changes on scroll).
   private repositionAllCursors(): void {
-    if (this.presenceTransport) {
-      const presences = this.presenceStore.getRemotePresences(
-        this.playerIdentity.publicKey,
-      );
-      for (const [stableId, presence] of presences) {
-        if (!presence.cursor) continue;
-        this.snapCursorToPresence(stableId, {
-          ...presence,
-          cursor: presence.cursor,
-        });
-      }
-      this.updateAllCursorVisibility();
-      return;
-    }
-
-    const states = this.provider.awareness.getStates();
-    const localClientId = this.provider.awareness.clientID;
-    const myPublicKey = this.playerIdentity.publicKey;
-
-    for (const [numericId, state] of states) {
-      const stableId = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        numericId,
-      );
-      if (numericId === localClientId) continue;
-      if (stableId === myPublicKey) continue;
-
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        numericId,
-      );
-      if (!valid?.cursor) continue;
-
-      this.snapCursorToPresence(stableId, valid);
+    for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
+      this.snapCursorToPresence(stableId, presence);
     }
 
     this.updateAllCursorVisibility();
@@ -1343,30 +1338,15 @@ export class CursorClientAwareness {
   }
 
   private getActiveCursorConnectionCount(): number {
-    if (this.presenceTransport) {
-      const localCount = this.currentCursor ? 1 : 0;
-      const remoteCount = this.presenceStore.getRemoteActiveCursorCount(
-        this.playerIdentity.publicKey,
-        Date.now(),
-        CURSOR_PRESENCE_MAX_AGE_MS,
-      );
-      return Math.max(1, localCount + remoteCount);
+    const localCount = this.currentCursor ? 1 : 0;
+    let remoteCount = 0;
+    for (const _presence of this.activeCursorPresenceEntries({
+      freshOnly: true,
+    })) {
+      remoteCount++;
     }
 
-    const states = this.provider.awareness.getStates();
-    const localClientId = this.provider.awareness.clientID;
-    let count = 1;
-
-    states.forEach((state, clientId) => {
-      if (clientId === localClientId) return;
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (valid) count++;
-    });
-
-    return count;
+    return Math.max(1, localCount + remoteCount);
   }
 
   private scheduleCursorAwarenessUpdate(): void {
@@ -1495,23 +1475,8 @@ export class CursorClientAwareness {
   }
 
   private findAwarenessByStableId(stableId: string): ValidCursorPresence | null {
-    if (this.presenceTransport) {
-      const presence = this.presenceStore.getPresenceByStableId(stableId);
-      return presence?.cursor ? (presence as ValidCursorPresence) : null;
-    }
-
-    const states = this.provider.awareness.getStates();
-    for (const [clientId, state] of states) {
-      const sid = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (sid !== stableId) continue;
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (valid) return valid;
+    for (const [sid, presence] of this.activeCursorPresenceEntries()) {
+      if (sid === stableId) return presence;
     }
     return null;
   }
@@ -2332,57 +2297,30 @@ export class CursorClientAwareness {
         zone: this.currentZone,
         page,
       });
-      const remotePresences = this.presenceStore.getRemotePresences(
-        this.playerIdentity.publicKey,
-      );
-      for (const [stableId, presence] of remotePresences) {
-        const clientCoords = presence.cursor
-          ? this.storageToClient(presence.cursor.x, presence.cursor.y)
-          : null;
-        presences.set(stableId, {
-          cursor: clientCoords && presence.cursor
-            ? {
-                x: clientCoords.x,
-                y: clientCoords.y,
-                pointer: presence.cursor.pointer,
-              }
-            : null,
-          playerIdentity: presence.playerIdentity,
-          zone: presence.zone,
-          page: presence.page,
-        });
-      }
-      return presences;
     }
 
-    const states = this.provider.awareness.getStates();
-
-    states.forEach((state, clientId) => {
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (!valid) return;
-
-      const stableId = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      const clientCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
+    for (const [stableId, presence] of this.cursorPresenceEntries({
+      includeLocalAwareness: !this.presenceTransport,
+    })) {
+      const clientCoords = presence.cursor
+        ? this.storageToClient(presence.cursor.x, presence.cursor.y)
+        : null;
       presences.set(stableId, {
-        cursor: {
-          x: clientCoords.x,
-          y: clientCoords.y,
-          pointer: valid.cursor.pointer,
-        },
-        playerIdentity: valid.playerIdentity,
-        zone: valid.zone,
+        cursor: clientCoords && presence.cursor
+          ? {
+              x: clientCoords.x,
+              y: clientCoords.y,
+              pointer: presence.cursor.pointer,
+            }
+          : null,
+        playerIdentity: presence.playerIdentity,
+        zone: presence.zone,
         // Expose the reader's pathname so consumers can group presences by
         // page — e.g. a docs sidebar can show "who is reading which page"
         // without maintaining a parallel room-per-page structure.
-        page: valid.page,
+        page: presence.page,
       });
-    });
+    }
 
     return presences;
   }
