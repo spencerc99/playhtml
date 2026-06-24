@@ -4,7 +4,10 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
-import { createComparisonSummary } from "./utils/adminComparison";
+import {
+  createComparisonSummary,
+  type AdminComparisonDifference,
+} from "./utils/adminComparison";
 import { deriveRoomId } from "@playhtml/common";
 import { extractRecords, type ModerationRecord } from "@moderation";
 import {
@@ -44,6 +47,8 @@ const HOSTS: Record<EnvName, string> = {
   staging: "https://playhtml-staging.spencerc99.workers.dev",
   development: "http://localhost:1999",
 };
+
+const COMPARISON_DIFF_LIMIT = 100;
 
 // Auto-detect environment based on current hostname
 function detectEnvironment(): EnvName {
@@ -239,6 +244,63 @@ const JSONViewer: React.FC<{
 
   return (
     <div className="interactive-json-viewer">{renderValue(data, depth)}</div>
+  );
+};
+
+const ComparisonDifferences: React.FC<{
+  differenceCount: number;
+  differences: AdminComparisonDifference[];
+}> = ({ differenceCount, differences }) => {
+  if (differenceCount === 0) {
+    return (
+      <div className="comparison-diff-empty">
+        Data differs, but no field-level differences were found.
+      </div>
+    );
+  }
+
+  const visibleDifferences = differences.slice(0, COMPARISON_DIFF_LIMIT);
+  const hiddenCount = differenceCount - visibleDifferences.length;
+
+  return (
+    <div className="comparison-diff-panel">
+      <div className="comparison-diff-header">
+        <strong>Differences</strong>
+        <span>
+          Showing {visibleDifferences.length} of {differenceCount}
+        </span>
+      </div>
+      <ol className="comparison-diff-list">
+        {visibleDifferences.map((difference, index) => (
+          <li
+            key={`${difference.kind}-${difference.path}-${index}`}
+            className={`comparison-diff-item ${difference.kind}`}
+          >
+            <div className="comparison-diff-row">
+              <span className={`comparison-diff-badge ${difference.kind}`}>
+                {difference.kind}
+              </span>
+              <code className="comparison-diff-path">{difference.path}</code>
+            </div>
+            <div className="comparison-diff-values">
+              <div>
+                <strong>Admin</strong>
+                <code>{difference.adminPreview}</code>
+              </div>
+              <div>
+                <strong>Live</strong>
+                <code>{difference.livePreview}</code>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {hiddenCount > 0 && (
+        <div className="comparison-diff-more">
+          {hiddenCount} more difference{hiddenCount === 1 ? "" : "s"} hidden.
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -2563,7 +2625,13 @@ const AdminConsole: React.FC = () => {
                         Force Save DB ← Live
                       </button>
                     </div>
-                    <div className="shared-data-grid">
+                    {comparisonSummary.dataMatch === false && (
+                      <ComparisonDifferences
+                        differenceCount={comparisonSummary.differenceCount}
+                        differences={comparisonSummary.differences}
+                      />
+                    )}
+                    <div className="comparison-data-grid">
                       <div className="shared-section">
                         <h4>Direct Method Data (Admin Console)</h4>
                         <JSONViewer
