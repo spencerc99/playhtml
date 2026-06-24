@@ -1,5 +1,39 @@
 # Change Log
 
+## 1.0.0
+
+### Patch Changes
+
+- 9eb15ee: Fix `CanDuplicateElement` so it actually clones. It previously registered under
+  `can-play` and never set the `can-duplicate` attribute, so the capability's
+  `onClick` had no template id to build clone ids from and no clone was ever
+  inserted. The component now stamps both `can-duplicate` (pointing at the
+  `elementToDuplicate` element's id) and `can-duplicate-to` (the `canDuplicateTo`
+  container's id) as real DOM attributes, gives the trigger a stable id so its
+  handler isn't re-keyed on every render, and lets the built-in capability handle
+  the duplication. Clones now appear on click, persist across reloads, and sync
+  across tabs.
+
+  Also fix an infinite render loop in `CanPlayElement`: it pushed every synced
+  value into React state unconditionally, but capability data can arrive as a
+  fresh reference for unchanged data (e.g. a Yjs collection snapshot), so React
+  never bailed and the setup effect re-ran forever. Synced state is now compared
+  by value and only applied when it actually changed, which is what made
+  `CanDuplicateElement`'s array data loop.
+
+- 5e42df6: `CanHoverElement` now delegates to the built-in `can-hover` capability, so it sets the `[data-playhtml-hover]` attribute on its child while anyone is hovering — matching the vanilla `can-hover` behavior. Previously it toggled a `hovering` class with a separate, divergent implementation.
+
+  If you styled the React component's hover effect via `.hovering`, switch your CSS to target `[data-playhtml-hover]` instead. This also brings the component's awareness shape in line with the capability and makes hover sync work consistently with `can-mirror`. `CanHoverElement` additionally now accepts the shared `dataSource`, `shared`, and `standalone` props like the other capability components.
+
+  Also drops the now-unused `classnames` runtime dependency.
+
+- Updated dependencies [60ccf22]
+- Updated dependencies [8b0e546]
+- Updated dependencies [60ccf22]
+- Updated dependencies [9df0417]
+  - playhtml@2.11.0
+  - @playhtml/common@0.7.1
+
 ## 0.12.0
 
 ### Minor Changes
