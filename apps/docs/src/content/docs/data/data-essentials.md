@@ -30,6 +30,8 @@ Two rules that catch most mistakes:
 
 `setData` accepts two shapes, and the one you pick determines merge semantics. Picking wrong can silently clobber concurrent edits from other readers.
 
+For a deeper guide to numbers, lists, keyed collections, nested fields, and whole-value replacements, see [Merging data changes](/docs/data/merging-data/).
+
 ### Mutator form (merge-friendly)
 
 Pass a function that receives a draft and mutate it in place. playhtml ships only the delta, so two readers appending to the same list will both land. **This is the recommended form for counters, increments, arrays, nested objects, and any update that should build on the value at write time.**
