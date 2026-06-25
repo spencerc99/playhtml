@@ -6,7 +6,8 @@ import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
 import {
   createComparisonSummary,
-  type AdminComparisonDifference,
+  createInlineDiffLookup,
+  type InlineDiffLookup,
 } from "./utils/adminComparison";
 import { deriveRoomId } from "@playhtml/common";
 import { extractRecords, type ModerationRecord } from "@moderation";
@@ -47,8 +48,6 @@ const HOSTS: Record<EnvName, string> = {
   staging: "https://playhtml-staging.spencerc99.workers.dev",
   development: "http://localhost:1999",
 };
-
-const COMPARISON_DIFF_LIMIT = 100;
 
 // Auto-detect environment based on current hostname
 function detectEnvironment(): EnvName {
@@ -110,10 +109,15 @@ const EnvironmentDisplay: React.FC<{
 const JSONViewer: React.FC<{
   data: any;
   depth?: number;
-}> = ({ data, depth = 0 }) => {
+  inlineDiff?: InlineDiffLookup["admin"];
+}> = ({ data, depth = 0, inlineDiff }) => {
   // Track explicitly toggled items: true = collapsed, false = expanded
   const [toggledItems, setToggledItems] = useState<Map<string, boolean>>(
     new Map()
+  );
+  const inlineDiffPaths = React.useMemo(
+    () => Object.keys(inlineDiff ?? {}),
+    [inlineDiff]
   );
 
   const toggleCollapsed = (id: string, currentState: boolean) => {
@@ -124,10 +128,25 @@ const JSONViewer: React.FC<{
     });
   };
 
+  const getRowClassName = (path: string): string | undefined => {
+    const marker = inlineDiff?.[path];
+    return marker ? `json-diff-row ${marker}` : undefined;
+  };
+
+  const pathContainsInlineDiff = (path: string): boolean => {
+    if (!path) return inlineDiffPaths.length > 0;
+    return inlineDiffPaths.some(
+      (diffPath) =>
+        diffPath === path ||
+        diffPath.startsWith(`${path}.`) ||
+        diffPath.startsWith(`${path}[`)
+    );
+  };
+
   const renderValue = (
     obj: any,
     currentDepth: number = 0,
-    path: string = "root"
+    path: string = ""
   ): React.ReactNode => {
     if (obj === null) {
       return <span className="json-null">null</span>;
@@ -165,7 +184,8 @@ const JSONViewer: React.FC<{
       }
 
       const id = `array-${path}`;
-      const shouldAutoExpand = obj.length <= 7 && currentDepth <= 4;
+      const shouldAutoExpand =
+        pathContainsInlineDiff(path) || (obj.length <= 7 && currentDepth <= 4);
       // If user has toggled, use that; otherwise use auto-expand logic
       const isCollapsed = toggledItems.has(id)
         ? toggledItems.get(id)!
@@ -187,12 +207,19 @@ const JSONViewer: React.FC<{
             style={{ marginLeft: "12px" }}
           >
             {!isCollapsed &&
-              obj.map((item, index) => (
-                <div key={index} style={{ marginLeft: "20px" }}>
-                  <span className="json-index">{index}:</span>{" "}
-                  {renderValue(item, currentDepth + 1, `${path}[${index}]`)}
-                </div>
-              ))}
+              obj.map((item, index) => {
+                const itemPath = `${path}[${index}]`;
+                return (
+                  <div
+                    key={index}
+                    className={getRowClassName(itemPath)}
+                    style={{ marginLeft: "20px" }}
+                  >
+                    <span className="json-index">{index}:</span>{" "}
+                    {renderValue(item, currentDepth + 1, itemPath)}
+                  </div>
+                );
+              })}
           </div>
         </>
       );
@@ -205,7 +232,8 @@ const JSONViewer: React.FC<{
       }
 
       const id = `object-${path}`;
-      const shouldAutoExpand = keys.length <= 7 && currentDepth <= 4;
+      const shouldAutoExpand =
+        pathContainsInlineDiff(path) || (keys.length <= 7 && currentDepth <= 4);
       // If user has toggled, use that; otherwise use auto-expand logic
       const isCollapsed = toggledItems.has(id)
         ? toggledItems.get(id)!
@@ -227,13 +255,20 @@ const JSONViewer: React.FC<{
             style={{ marginLeft: "12px" }}
           >
             {!isCollapsed &&
-              keys.map((key) => (
-                <div key={key} style={{ marginLeft: "20px" }}>
-                  <span className="json-key">"{key}"</span>
-                  <span className="json-colon">:</span>{" "}
-                  {renderValue(obj[key], currentDepth + 1, `${path}.${key}`)}
-                </div>
-              ))}
+              keys.map((key) => {
+                const childPath = path ? `${path}.${key}` : key;
+                return (
+                  <div
+                    key={key}
+                    className={getRowClassName(childPath)}
+                    style={{ marginLeft: "20px" }}
+                  >
+                    <span className="json-key">"{key}"</span>
+                    <span className="json-colon">:</span>{" "}
+                    {renderValue(obj[key], currentDepth + 1, childPath)}
+                  </div>
+                );
+              })}
           </div>
         </>
       );
@@ -244,63 +279,6 @@ const JSONViewer: React.FC<{
 
   return (
     <div className="interactive-json-viewer">{renderValue(data, depth)}</div>
-  );
-};
-
-const ComparisonDifferences: React.FC<{
-  differenceCount: number;
-  differences: AdminComparisonDifference[];
-}> = ({ differenceCount, differences }) => {
-  if (differenceCount === 0) {
-    return (
-      <div className="comparison-diff-empty">
-        Data differs, but no field-level differences were found.
-      </div>
-    );
-  }
-
-  const visibleDifferences = differences.slice(0, COMPARISON_DIFF_LIMIT);
-  const hiddenCount = differenceCount - visibleDifferences.length;
-
-  return (
-    <div className="comparison-diff-panel">
-      <div className="comparison-diff-header">
-        <strong>Differences</strong>
-        <span>
-          Showing {visibleDifferences.length} of {differenceCount}
-        </span>
-      </div>
-      <ol className="comparison-diff-list">
-        {visibleDifferences.map((difference, index) => (
-          <li
-            key={`${difference.kind}-${difference.path}-${index}`}
-            className={`comparison-diff-item ${difference.kind}`}
-          >
-            <div className="comparison-diff-row">
-              <span className={`comparison-diff-badge ${difference.kind}`}>
-                {difference.kind}
-              </span>
-              <code className="comparison-diff-path">{difference.path}</code>
-            </div>
-            <div className="comparison-diff-values">
-              <div>
-                <strong>Admin</strong>
-                <code>{difference.adminPreview}</code>
-              </div>
-              <div>
-                <strong>Live</strong>
-                <code>{difference.livePreview}</code>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ol>
-      {hiddenCount > 0 && (
-        <div className="comparison-diff-more">
-          {hiddenCount} more difference{hiddenCount === 1 ? "" : "s"} hidden.
-        </div>
-      )}
-    </div>
   );
 };
 
@@ -2230,6 +2208,10 @@ const AdminConsole: React.FC = () => {
     () => createComparisonSummary(comparisonData),
     [comparisonData]
   );
+  const comparisonInlineDiff = React.useMemo(
+    () => createInlineDiffLookup(comparisonSummary.differences),
+    [comparisonSummary.differences]
+  );
 
   if (!adminToken) {
     return (
@@ -2625,17 +2607,12 @@ const AdminConsole: React.FC = () => {
                         Force Save DB ← Live
                       </button>
                     </div>
-                    {comparisonSummary.dataMatch === false && (
-                      <ComparisonDifferences
-                        differenceCount={comparisonSummary.differenceCount}
-                        differences={comparisonSummary.differences}
-                      />
-                    )}
                     <div className="comparison-data-grid">
                       <div className="shared-section">
                         <h4>Direct Method Data (Admin Console)</h4>
                         <JSONViewer
                           data={comparisonData.methods?.direct?.data || {}}
+                          inlineDiff={comparisonInlineDiff.admin}
                         />
                       </div>
                       <div className="shared-section">
@@ -2647,6 +2624,7 @@ const AdminConsole: React.FC = () => {
                         ) : (
                           <JSONViewer
                             data={comparisonData.methods?.live?.data || {}}
+                            inlineDiff={comparisonInlineDiff.live}
                           />
                         )}
                       </div>

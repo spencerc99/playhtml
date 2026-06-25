@@ -2,6 +2,7 @@
 // ABOUTME: Provides small pure helpers for rendering admin console drift state.
 type ComparisonStatus = "different" | "match" | "unavailable";
 type ComparisonDifferenceKind = "admin-only" | "changed" | "live-only";
+type InlineDiffMarker = "added" | "removed";
 
 export interface AdminComparisonDifference {
   adminPreview: string;
@@ -19,6 +20,11 @@ export interface AdminComparisonSummary {
   shouldShowDetails: boolean;
   status: ComparisonStatus;
   statusLabel: string;
+}
+
+export interface InlineDiffLookup {
+  admin: Record<string, InlineDiffMarker>;
+  live: Record<string, InlineDiffMarker>;
 }
 
 function countElements(data: unknown): number {
@@ -158,6 +164,29 @@ function collectDifferences(
       path: formatPath(path),
     },
   ];
+}
+
+export function createInlineDiffLookup(
+  differences: AdminComparisonDifference[]
+): InlineDiffLookup {
+  const lookup: InlineDiffLookup = { admin: {}, live: {} };
+
+  for (const difference of differences) {
+    if (difference.kind === "changed") {
+      lookup.admin[difference.path] = "removed";
+      lookup.live[difference.path] = "added";
+      continue;
+    }
+
+    if (difference.kind === "admin-only") {
+      lookup.admin[difference.path] = "removed";
+      continue;
+    }
+
+    lookup.live[difference.path] = "added";
+  }
+
+  return lookup;
 }
 
 export function createComparisonSummary(

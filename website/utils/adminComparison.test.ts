@@ -2,7 +2,10 @@
 // ABOUTME: Keeps drift detection behavior independent from the admin console UI.
 import { describe, expect, test } from "bun:test";
 
-import { createComparisonSummary } from "./adminComparison";
+import {
+  createComparisonSummary,
+  createInlineDiffLookup,
+} from "./adminComparison";
 
 describe("createComparisonSummary", () => {
   test("summarizes matching live and admin data without showing details", () => {
@@ -151,5 +154,42 @@ describe("createComparisonSummary", () => {
         path: "can-play.guestbook.entries[1].text",
       },
     ]);
+  });
+
+  test("maps differences to git-style admin and live inline markers", () => {
+    const summary = createComparisonSummary({
+      methods: {
+        direct: {
+          data: {
+            "can-move": {
+              box: { x: 1 },
+              triangle: { x: 4 },
+            },
+          },
+        },
+        live: {
+          data: {
+            "can-move": {
+              box: { x: 2 },
+              circle: { x: 3 },
+            },
+          },
+        },
+      },
+      differences: {
+        dataMatch: false,
+      },
+    });
+
+    expect(createInlineDiffLookup(summary.differences)).toEqual({
+      admin: {
+        "can-move.box.x": "removed",
+        "can-move.triangle": "removed",
+      },
+      live: {
+        "can-move.box.x": "added",
+        "can-move.circle": "added",
+      },
+    });
   });
 });

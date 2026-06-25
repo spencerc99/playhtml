@@ -487,6 +487,40 @@ section {
       display: none;
     }
   }
+
+  .json-diff-row {
+    border-radius: 4px;
+    margin-bottom: 1px;
+    margin-top: 1px;
+    min-width: 0;
+    padding: 2px 6px 2px 20px;
+    position: relative;
+
+    &::before {
+      font-weight: 700;
+      left: 7px;
+      position: absolute;
+      top: 2px;
+    }
+
+    &.added {
+      background: #dafbe1;
+
+      &::before {
+        color: #1a7f37;
+        content: "+";
+      }
+    }
+
+    &.removed {
+      background: #ffebe9;
+
+      &::before {
+        color: #cf222e;
+        content: "-";
+      }
+    }
+  }
 }
 
 .comparison-data-grid {
@@ -499,140 +533,6 @@ section {
   .shared-section {
     min-width: 0;
   }
-}
-
-.comparison-diff-panel {
-  background: #fffaf0;
-  border: 1px solid #fbd38d;
-  border-radius: 6px;
-  margin-bottom: 12px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.comparison-diff-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid #fbd38d;
-  color: #744210;
-  font-size: 0.9rem;
-
-  span {
-    color: #975a16;
-    font-size: 0.8rem;
-    white-space: nowrap;
-  }
-}
-
-.comparison-diff-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.comparison-diff-item {
-  padding: 10px 12px;
-  border-bottom: 1px solid #feebc8;
-
-  &:last-child {
-    border-bottom: none;
-  }
-
-  &.admin-only {
-    border-left: 4px solid #dd6b20;
-  }
-
-  &.changed {
-    border-left: 4px solid #d69e2e;
-  }
-
-  &.live-only {
-    border-left: 4px solid #3182ce;
-  }
-}
-
-.comparison-diff-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  margin-bottom: 8px;
-}
-
-.comparison-diff-badge {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 2px 8px;
-  color: white;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-
-  &.admin-only {
-    background: #dd6b20;
-  }
-
-  &.changed {
-    background: #d69e2e;
-  }
-
-  &.live-only {
-    background: #3182ce;
-  }
-}
-
-.comparison-diff-path {
-  min-width: 0;
-  color: #2d3748;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 0.82rem;
-  overflow-wrap: anywhere;
-}
-
-.comparison-diff-values {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-
-  div {
-    min-width: 0;
-    background: white;
-    border: 1px solid #fbd38d;
-    border-radius: 4px;
-    padding: 8px;
-  }
-
-  strong {
-    display: block;
-    margin-bottom: 4px;
-    color: #744210;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-  }
-
-  code {
-    display: block;
-    color: #2d3748;
-    font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-    font-size: 0.8rem;
-    overflow-wrap: anywhere;
-  }
-}
-
-.comparison-diff-empty,
-.comparison-diff-more {
-  background: #f7fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  color: #4a5568;
-  font-size: 0.85rem;
-  margin-bottom: 12px;
-  padding: 10px 12px;
 }
 
 .metadata-list {
@@ -882,15 +782,8 @@ section {
     grid-template-columns: 1fr;
   }
 
-  .comparison-data-grid,
-  .comparison-diff-values {
+  .comparison-data-grid {
     grid-template-columns: 1fr;
-  }
-
-  .comparison-diff-header,
-  .comparison-diff-row {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }
 
