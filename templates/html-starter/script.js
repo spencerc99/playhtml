@@ -1,3 +1,6 @@
+// ABOUTME: Vanilla starter behavior for the static HTML template.
+// ABOUTME: Wires local UI interactions and can-play reaction state.
+
 // Print a message in the dev panel's console panel
 console.log("playhtml starter loaded");
 
@@ -59,13 +62,17 @@ function addGuestbook() {
 const reactionBtn = document.getElementById("reactionBtn");
 if (reactionBtn) {
   reactionBtn.defaultData = { count: 0 };
-  reactionBtn.onClick = (_e, { data, setData }) => {
+  reactionBtn.onClick = (_e, { setData }) => {
     const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
     if (hasReacted) {
-      setData({ count: data.count - 1 });
+      setData((draft) => {
+        draft.count -= 1;
+      });
       localStorage.removeItem("reacted-reaction");
     } else {
-      setData({ count: data.count + 1 });
+      setData((draft) => {
+        draft.count += 1;
+      });
       localStorage.setItem("reacted-reaction", "true");
     }
   };

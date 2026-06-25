@@ -1,3 +1,6 @@
+// ABOUTME: React reaction button example backed by shared playhtml state.
+// ABOUTME: Stores per-user reaction choice locally while sharing the count.
+
 import React, { useEffect, useState } from "react";
 import { withSharedState } from "@playhtml/react";
 
@@ -31,15 +34,18 @@ export const ReactionView = withSharedState(
     return (
       <button
         onClick={(_e) => {
-          const { count } = data;
           if (hasReacted) {
-            setData({ count: count - 1 });
+            setData((draft) => {
+              draft.count -= 1;
+            });
             if (ref.current) {
               localStorage.removeItem(ref.current.id);
             }
             setHasReacted(false);
           } else {
-            setData({ count: count + 1 });
+            setData((draft) => {
+              draft.count += 1;
+            });
             if (ref.current) {
               localStorage.setItem(ref.current.id, "true");
             }

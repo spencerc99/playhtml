@@ -2,4 +2,4 @@
 "@playhtml/react": patch
 ---
 
-Fix the ReactiveOrb example to increment against the current shared data so homepage counters do not overwrite synced counts from an initial render.
+Fix React counter examples to increment against the current shared data so counters do not overwrite synced counts from an initial render.

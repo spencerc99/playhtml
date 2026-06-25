@@ -1,3 +1,6 @@
+// ABOUTME: React starter app showcasing the main playhtml capabilities.
+// ABOUTME: Demonstrates persistent data, presence, events, and built-in elements.
+
 import React, { useState, useEffect, useContext, useRef } from "react";
 import {
   PlayProvider,
@@ -78,15 +81,18 @@ const ReactionButton = withSharedState(
     return (
       <button
         onClick={() => {
-          const { count } = data;
           if (hasReacted) {
-            setData({ count: count - 1 });
+            setData((draft) => {
+              draft.count -= 1;
+            });
             if (ref.current) {
               localStorage.removeItem(ref.current.id);
             }
             setHasReacted(false);
           } else {
-            setData({ count: count + 1 });
+            setData((draft) => {
+              draft.count += 1;
+            });
             if (ref.current) {
               localStorage.setItem(ref.current.id, "true");
             }
