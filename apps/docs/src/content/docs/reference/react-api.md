@@ -270,10 +270,19 @@ Boolean that is `true` until the initial state from the server has landed, then 
 
 ```tsx
 const { isLoading } = usePlayContext();
+const didCountSession = useRef(false);
+
 useEffect(() => {
-  if (!isLoading) setData({ count: data.count + 1 });
-}, [isLoading]);
+  if (isLoading || didCountSession.current) return;
+  didCountSession.current = true;
+
+  setData((draft) => {
+    draft.count += 1;
+  });
+}, [isLoading, setData]);
 ```
+
+Use a ref guard plus the mutator form for this kind of write, and don't include the field you write in the dependency list.
 
 `hasSynced` is a deprecated alias for `!isLoading` — prefer `isLoading` in new code.
 

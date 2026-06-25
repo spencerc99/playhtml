@@ -100,7 +100,8 @@ React (withSharedState):
 - For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
 
 DATA UPDATES:
-- Simple: setData({ count: data.count + 1 })
+- Counters/increments: setData((draft) => { draft.count += 1 })
+- Replacement writes: setData({ ...data, on: !data.on }) for small whole-value toggles
 - Arrays: setData((draft) => { draft.items.push(item) })
 - LIMITATIONS: In mutator form, use splice() not shift()/pop()/[i]=value
 

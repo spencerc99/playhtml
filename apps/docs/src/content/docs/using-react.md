@@ -66,12 +66,20 @@ Pass a callback instead of an object if the default data depends on props:
 export const ReactionView = withSharedState(
   ({ reaction: { count } }) => ({ defaultData: { count } }),
   ({ data, setData }, { reaction: { emoji } }) => (
-    <button onClick={() => setData({ count: data.count + 1 })}>
+    <button
+      onClick={() => {
+        setData((draft) => {
+          draft.count += 1;
+        });
+      }}
+    >
       {emoji} {data.count}
     </button>
   ),
 );
 ```
+
+Use the mutator form for counters and other `+/-` updates so each interaction edits the draft value at write time.
 
 Add `myDefaultAwareness` to the config to get presence-style ephemeral per-user data alongside your persistent data.
 
