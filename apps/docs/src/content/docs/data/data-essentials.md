@@ -30,13 +30,19 @@ Two rules that catch most mistakes:
 
 `setData` accepts two shapes, and the one you pick determines merge semantics. Picking wrong can silently clobber concurrent edits from other readers.
 
+For a deeper guide to numbers, lists, keyed collections, nested fields, and whole-value replacements, see [Merging data changes](/docs/advanced/merging-data/).
+
 ### Mutator form (merge-friendly)
 
-Pass a function that receives a draft and mutate it in place. playhtml ships only the delta, so two readers appending to the same list will both land. **This is the recommended form for anything containing arrays or nested objects.**
+Pass a function that receives a draft and mutate it in place. playhtml ships only the delta, so two readers appending to the same list will both land. **This is the recommended form for counters, increments, arrays, nested objects, and any update that should build on the value at write time.**
 
 ```js
 setData((draft) => {
   draft.messages.push({ text: "hello" });
+});
+
+setData((draft) => {
+  draft.count += 1;
 });
 ```
 
@@ -47,6 +53,8 @@ Pass a full value. This replaces the entire snapshot. Last write wins. Safer for
 ```js
 setData({ ...data, on: !data.on });
 ```
+
+For counters and `+/-` changes, prefer the mutator form. It updates the draft at write time instead of copying a rendered `data` snapshot back into shared data.
 
 ### Supported array operations in mutator form
 
@@ -257,14 +265,15 @@ Some state is personal: "has this user already reacted", collapsed sections, dis
 
 ```js
 const reactedKey = `reacted-${elementId}`;
-const hasReacted = Boolean(localStorage.getItem(reactedKey));
 
-onClick: (_e, { data, setData }) => {
+onClick: (_e, { setData }) => {
+  const hasReacted = Boolean(localStorage.getItem(reactedKey));
+
   if (hasReacted) {
-    setData({ count: data.count - 1 });
+    setData((draft) => { draft.count -= 1; });
     localStorage.removeItem(reactedKey);
   } else {
-    setData({ count: data.count + 1 });
+    setData((draft) => { draft.count += 1; });
     localStorage.setItem(reactedKey, "true");
   }
 };

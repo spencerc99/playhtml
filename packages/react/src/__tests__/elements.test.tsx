@@ -3,12 +3,14 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render } from "@testing-library/react";
+import { fireEvent } from "@testing-library/dom";
 import "@testing-library/dom";
 import { CanPlayElement } from "../index";
 import { CanMoveElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "@playhtml/common";
 import type { ElementAwarenessEventHandlerData } from "@playhtml/common";
+import { ReactiveOrb } from "../../examples/ReactiveOrb";
 
 describe("CanPlayElement with built-in capabilities", () => {
   beforeEach(() => {
@@ -447,5 +449,31 @@ describe("CanPlayElement with built-in capabilities", () => {
         setMyAwareness: vi.fn(),
       }),
     ).not.toThrow();
+  });
+
+  it("increments ReactiveOrb clicks through the current shared data", () => {
+    const setData = vi.fn();
+    const elementHandlers = new Map([
+      [TagType.CanPlay, new Map([["orb-test", { setData }]])],
+    ]);
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
+      elementHandlers as typeof playhtml.elementHandlers,
+    );
+
+    const { container } = render(
+      <ReactiveOrb id="orb-test" className="orb-test" />,
+    );
+
+    fireEvent.click(container.querySelector("#orb-test") as HTMLElement);
+
+    expect(setData).toHaveBeenCalledTimes(1);
+    const update = setData.mock.calls[0][0];
+    expect(update).toBeInstanceOf(Function);
+
+    const draft = { clicks: 41 };
+    update(draft);
+    expect(draft).toEqual({ clicks: 42 });
   });
 });

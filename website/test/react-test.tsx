@@ -1,3 +1,6 @@
+// ABOUTME: Manual React integration test page for playhtml capabilities.
+// ABOUTME: Exercises React wrappers, shared state, cursors, and loading modes.
+
 import "../home.scss";
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -106,7 +109,11 @@ const WithSharedStateCanPlayWithLoading = withSharedState(
         cursor: "pointer",
       }}
       id="pulse-counter"
-      onClick={() => setData({ count: data.count + 1 })}
+      onClick={() => {
+        setData((draft) => {
+          draft.count += 1;
+        });
+      }}
     >
       can-play (pulse) - {data.count}
     </div>

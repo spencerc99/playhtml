@@ -504,7 +504,11 @@ That's four wildly different shapes — short array, blob payload, animation see
 <script>
   const el = document.getElementById("cheer");
   el.defaultData = { count: 0 };
-  el.onClick = (_e, { data, setData }) => setData({ count: data.count + 1 });
+  el.onClick = (_e, { setData }) => {
+    setData((draft) => {
+      draft.count += 1;
+    });
+  };
   el.updateElement = ({ element, data }) => {
     element.querySelector("span").textContent = data.count;
   };
@@ -518,7 +522,13 @@ import { withSharedState } from "@playhtml/react";
 export const CheerButton = withSharedState(
   { defaultData: { count: 0 }, id: "cheer" },
   ({ data, setData }) => (
-    <button onClick={() => setData({ count: data.count + 1 })}>
+    <button
+      onClick={() => {
+        setData((draft) => {
+          draft.count += 1;
+        });
+      }}
+    >
       ❤️ {data.count}
     </button>
   ),
@@ -526,6 +536,8 @@ export const CheerButton = withSharedState(
 ```
   </TabItem>
 </Tabs>
+
+Counters should use the mutator form of `setData`. It applies the increment to the draft at write time instead of copying a rendered `data` snapshot back into shared data. The same idea applies to pushing list entries, updating nested fields, and upserting keyed collections; see [Merging data changes](/docs/advanced/merging-data/).
 
 Deeper material on custom capabilities lives in [Data essentials](/docs/data/data-essentials/) and [Dynamic elements](/docs/advanced/dynamic-elements/).
 

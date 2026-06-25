@@ -116,14 +116,18 @@ export const starterRecipe: { id: string; html: string } = {
     // attach them before init scans the page.
     const reactionBtn = document.getElementById("reactionBtn");
     reactionBtn.defaultData = { count: 0 };
-    reactionBtn.onClick = ({ data, setData, element }) => {
+    reactionBtn.onClick = ({ setData, element }) => {
       const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
       if (hasReacted) {
-        setData({ count: data.count - 1 });
+        setData((draft) => {
+          draft.count -= 1;
+        });
         localStorage.removeItem("reacted-reaction");
         element.classList.remove("reacted");
       } else {
-        setData({ count: data.count + 1 });
+        setData((draft) => {
+          draft.count += 1;
+        });
         localStorage.setItem("reacted-reaction", "true");
         element.classList.add("reacted");
       }

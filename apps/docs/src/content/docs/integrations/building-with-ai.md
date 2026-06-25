@@ -100,9 +100,20 @@ React (withSharedState):
 - For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
 
 DATA UPDATES:
-- Simple: setData({ count: data.count + 1 })
-- Arrays: setData((draft) => { draft.items.push(item) })
-- LIMITATIONS: In mutator form, use splice() not shift()/pop()/[i]=value
+- `setData` has two forms: mutator and replacement
+- Prefer mutator form when the write builds on current shared data:
+  - Numbers/totals: setData((draft) => { draft.count += 1 })
+  - Ordered lists: setData((draft) => { draft.messages.push(message) })
+  - Bounded lists: push, then draft.messages.splice(0, draft.messages.length - 100)
+  - Nested fields: setData((draft) => { draft.settings.theme = "dark" })
+  - Unique collections: setData((draft) => { draft.byUser[userId] = value })
+- Avoid replacement writes that rebuild from rendered data:
+  - Bad for counters: setData({ count: data.count + 1 })
+  - Bad for appends: setData({ messages: [...data.messages, message] })
+- Use replacement form only when intentionally replacing the whole stored value:
+  - setData({ on: true })
+  - setData({ x: e.clientX, y: e.clientY })
+- LIMITATIONS: In mutator form, arrays support push() and splice(); use splice() instead of shift()/pop()/items[i]=value
 
 PER-USER DATA:
 - Use localStorage for data that should NOT sync (like "has this user reacted?")
