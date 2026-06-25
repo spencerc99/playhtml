@@ -2,7 +2,7 @@
 title: "Merging data changes"
 description: "How to avoid clobbering shared numbers, lists, maps, and nested data."
 sidebar:
-  order: 2
+  order: 1
 ---
 
 Shared data can be edited by more than one reader at the same time. The easiest way to keep those edits smooth is to choose the data shape and `setData` form that match the kind of merge you want.

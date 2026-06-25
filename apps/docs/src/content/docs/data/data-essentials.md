@@ -30,7 +30,7 @@ Two rules that catch most mistakes:
 
 `setData` accepts two shapes, and the one you pick determines merge semantics. Picking wrong can silently clobber concurrent edits from other readers.
 
-For a deeper guide to numbers, lists, keyed collections, nested fields, and whole-value replacements, see [Merging data changes](/docs/data/merging-data/).
+For a deeper guide to numbers, lists, keyed collections, nested fields, and whole-value replacements, see [Merging data changes](/docs/advanced/merging-data/).
 
 ### Mutator form (merge-friendly)
 
