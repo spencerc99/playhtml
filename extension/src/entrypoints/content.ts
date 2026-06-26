@@ -41,6 +41,10 @@ export default defineContentScript({
     class PlayHTMLExtension {
       private playerIdentity: any = null;
       private isInitialized = false;
+      private globalCleanup: (() => void) | null = null;
+      // The extension's own playhtml instance, lazily inited. Shared between the
+      // cursor-site path and the headless every-page path for social experiments.
+      private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -975,8 +979,82 @@ export default defineContentScript({
         console.log("[we-were-online] Dispatched identity injection event");
       }
 
+      /**
+       * Initialize social experiments (bottles, …) on this page. They run on
+       * every page, independent of cursor support and native playhtml. When no
+       * experiment is active we open no connection at all. If the extension
+       * hasn't already inited playhtml (cursor-site path), spin up a headless
+       * instance (cursors off) so experiments have a createPageData handle.
+       */
+      private async ensureGlobalFeatures() {
+        if (this.globalCleanup) return; // already running on this page
+
+        const { anyGlobalFeatureActive, initGlobalFeatures } = await import(
+          "../features/global"
+        );
+        if (!(await anyGlobalFeatureActive())) return;
+
+        if (!this.playhtmlInstance) {
+          // No instance yet (normal or native-playhtml page): stand up our own,
+          // in an extension-owned room isolated from any site's playhtml room so
+          // WWO data can't be read/written by the host site. The room is
+          // auto-prefixed with the page host; we add a `wwo` segment + the path
+          // so it stays per-page but never collides with the site's own room.
+          //
+          // NOTE: on custom cursor-sites we instead REUSE the cursor instance
+          // (set in setupPresence), whose room is the SITE's room — so bottles
+          // are co-mingled there. Isolating that case needs a playhtml core
+          // change (per-channel data room); tracked as a follow-up.
+          const { playhtml } = await import("playhtml");
+          await playhtml.init({
+            cursors: { enabled: false },
+            // Function form so the room recomputes on SPA navigation — bottles
+            // follow the URL instead of staying pinned to the initial path.
+            room: () => `wwo${window.location.pathname}`,
+          });
+          this.playhtmlInstance = playhtml;
+        }
+
+        const color =
+          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
+        const pid = this.playerIdentity?.publicKey ?? "anon";
+
+        try {
+          this.globalCleanup = await initGlobalFeatures({
+            createPageData: this.playhtmlInstance.createPageData,
+            presence: this.playhtmlInstance.presence,
+            playerColor: color,
+            playerPid: pid,
+          });
+        } catch (err) {
+          console.error("[we-were-online] initGlobalFeatures failed:", err);
+        }
+      }
+
       private async setupPresenceDetection() {
-        // Check immediately — catches pages where playhtml init ran before us
+        // Cursors/presence are page-specific; bottles & other social
+        // experiments run on every page. Set up presence first (which may init
+        // our own playhtml for cursor sites), then always give the experiments
+        // a chance to run — ensureGlobalFeatures is idempotent and self-gating.
+        await this.setupPresence();
+        await this.ensureGlobalFeatures();
+
+        // Surface any pending announcements as a toast (no-op if all seen / no match)
+        try {
+          const { maybeInjectAnnouncementToast } = await import(
+            "../announcements/inject-toast"
+          );
+          await maybeInjectAnnouncementToast();
+        } catch (err) {
+          console.error("[we-were-online] announcement toast failed:", err);
+        }
+      }
+
+      private async setupPresence() {
+        // On pages that already run playhtml, defer presence/cursors to the
+        // page's instance (we only inject our identity). We don't stand up our
+        // own cursor instance here — but bottles still get one later via
+        // ensureGlobalFeatures, in their own extension-owned room.
         if (this.hasNativePlayhtml()) {
           console.log("[we-were-online] Native playhtml detected at startup");
           this.injectIdentityIntoMainWorld();
@@ -987,11 +1065,8 @@ export default defineContentScript({
         // Race condition: on dev servers (Vite), page scripts may load after
         // our content script. Wait briefly for the data-playhtml marker or
         // cursor styles to appear before initializing our own instance.
-        const nativeAppeared = await this.waitForNativePlayhtml(1500);
-        if (nativeAppeared) {
-          console.log(
-            "[we-were-online] Native playhtml detected after waiting",
-          );
+        if (await this.waitForNativePlayhtml(1500)) {
+          console.log("[we-were-online] Native playhtml detected after waiting");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
@@ -1021,33 +1096,24 @@ export default defineContentScript({
             coordinateMode: "absolute",
           },
         });
+        this.playhtmlInstance = playhtml;
         this.listenForPresenceCount();
 
-        // Initialize domain-specific features (link glow, follow, nav broadcast)
+        // Domain-specific features (link glow, follow, nav broadcast) reuse the
+        // instance just inited above.
         if (enableCursors) {
-          const color =
-            this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
           try {
             await initCustomSite({
               createPageData: playhtml.createPageData,
               createPresenceRoom: playhtml.createPresenceRoom,
               presence: playhtml.presence,
               cursorClient: playhtml.cursorClient,
-              playerColor: color,
+              playerColor:
+                this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a",
             });
           } catch (err) {
             console.error("[we-were-online] initCustomSite failed:", err);
           }
-        }
-
-        // Surface any pending announcements as a toast (no-op if all seen / no match)
-        try {
-          const { maybeInjectAnnouncementToast } = await import(
-            "../announcements/inject-toast"
-          );
-          await maybeInjectAnnouncementToast();
-        } catch (err) {
-          console.error("[we-were-online] announcement toast failed:", err);
         }
       }
 

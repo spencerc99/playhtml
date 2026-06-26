@@ -1,3 +1,6 @@
+// ABOUTME: Vanilla starter behavior for the static HTML template.
+// ABOUTME: Wires local UI interactions and can-play reaction state.
+
 // Print a message in the dev panel's console panel
 console.log("playhtml starter loaded");
 
@@ -53,32 +56,30 @@ function addGuestbook() {
   document.getElementById("guestbook").appendChild(newMessage);
 }
 
-// Reaction button setup
-window.playhtml.setupCustomElement({
-  selector: "#reactionBtn",
-  defaultData: { count: 0 },
-  onClick: (element, data, setData) => {
+// Reaction button setup. #reactionBtn has the `can-play` attribute, so we
+// configure its shared-state handlers directly on the element, then re-register
+// it so playhtml picks up the config.
+const reactionBtn = document.getElementById("reactionBtn");
+if (reactionBtn) {
+  reactionBtn.defaultData = { count: 0 };
+  reactionBtn.onClick = (_e, { setData }) => {
     const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-
     if (hasReacted) {
-      setData({ count: data.count - 1 });
+      setData((draft) => {
+        draft.count -= 1;
+      });
       localStorage.removeItem("reacted-reaction");
-      element.classList.remove("reacted");
     } else {
-      setData({ count: data.count + 1 });
+      setData((draft) => {
+        draft.count += 1;
+      });
       localStorage.setItem("reacted-reaction", "true");
-      element.classList.add("reacted");
     }
-  },
-  onUpdate: (element, data) => {
+  };
+  reactionBtn.updateElement = ({ element, data }) => {
     document.getElementById("reactionCount").textContent = data.count;
-  },
-  onMount: (element, data) => {
-    // Set initial state based on localStorage
     const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-    if (hasReacted) {
-      element.classList.add("reacted");
-    }
-    document.getElementById("reactionCount").textContent = data.count;
-  }
-});
+    element.classList.toggle("reacted", hasReacted);
+  };
+  window.playhtml.setupPlayElement(reactionBtn);
+}

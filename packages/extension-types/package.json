@@ -35,6 +35,6 @@
   "devDependencies": {
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-dts": "^3.0.3"
+    "vite-plugin-dts": "^4.5.4"
   }
 }

@@ -43,6 +43,10 @@ bun smoke:partykit:limits
 # Verifies empty-room compaction, reset rejection, and fresh reconnect.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:compaction
 
+# Recreates a stale live compaction source while the documents row contains
+# newer data, and verifies automatic compaction leaves the newer row intact.
+SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:stale-compaction
+
 # Verifies connected-room high-watermark compaction.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:emergency
 
@@ -93,6 +97,7 @@ Config:
 - `ADMIN_TOKEN`: required for `test:partykit:compaction`.
 - `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.
 - `PARTYKIT_EMPTY_ROOM_COMPACT_DELAY_MS`: expected server empty-room compaction delay. Defaults to `300000`.
+- `PARTYKIT_STALE_COMPACTION_SETTLE_MS`: extra wait after the empty-room compaction delay for the stale-source smoke. Defaults to `20000`.
 - `PARTYKIT_SKIP_COMPACTION_SETTLE_CHECK=1`: skips the extra no-op alarm wait after reconnect.
 - `PARTYKIT_EMERGENCY_TARGET_RAW_BYTES`: target local raw Y.Doc size for the emergency smoke. Defaults to `120000`.
 - `PARTYKIT_EMERGENCY_BATCH_SIZE`: temp entry batch size while building the emergency smoke doc. Defaults to `2000`.

@@ -10,6 +10,10 @@ import { createRoot } from "react-dom/client";
 import { PlayProvider, useCursorPresences } from "@playhtml/react";
 import FeaturesGrid from "./components/FeaturesGrid";
 import ExperimentsArchive from "./components/ExperimentsArchive";
+import {
+  isGuestbookNameAllowed,
+  sanitizeGuestbookName,
+} from "./utils/guestbookValidation";
 
 interface FormData {
   name: string;
@@ -22,10 +26,51 @@ const GuestbookSubmissionLimit = {
   windowMs: 10 * 60 * 1000,
   storageKey: "playhtml:guestbook-submission-timestamps",
 };
+const GuestbookNameStorageKey = "name";
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
 }
+
+function readStoredGuestbookName(): string {
+  const storedName = window.localStorage.getItem(GuestbookNameStorageKey);
+  if (!storedName) return "";
+
+  try {
+    const parsedName = JSON.parse(storedName);
+    return typeof parsedName === "string" ? parsedName : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredGuestbookName(name: string) {
+  window.localStorage.setItem(GuestbookNameStorageKey, JSON.stringify(name));
+}
+
+function setupGuestbookNameInput() {
+  const nameInput = document.querySelector<HTMLInputElement>(
+    'input[name="name"]',
+  );
+  if (!nameInput) return;
+
+  nameInput.value = sanitizeGuestbookName(readStoredGuestbookName());
+  writeStoredGuestbookName(nameInput.value);
+
+  const syncNameInput = () => {
+    const sanitizedName = sanitizeGuestbookName(nameInput.value);
+    if (nameInput.value !== sanitizedName) {
+      nameInput.value = sanitizedName;
+    }
+
+    writeStoredGuestbookName(sanitizedName);
+  };
+
+  nameInput.addEventListener("input", syncNameInput);
+  nameInput.addEventListener("change", syncNameInput);
+}
+
+setupGuestbookNameInput();
 
 function HomepageConsoleStatus() {
   const cursorPresences = useCursorPresences();
@@ -166,6 +211,20 @@ if (reactContentElement) {
                   return false;
                 }
 
+                const submittedName = String(inputData.name);
+                if (!isGuestbookNameAllowed(submittedName)) {
+                  const nameEle = element.querySelector<HTMLInputElement>(
+                    'input[name="name"]'
+                  );
+                  const sanitizedName = sanitizeGuestbookName(submittedName);
+                  if (nameEle) {
+                    nameEle.value = sanitizedName;
+                  }
+                  writeStoredGuestbookName(sanitizedName);
+                  alert("please use letters and numbers only for your name");
+                  return false;
+                }
+
                 if (
                   words.some((word) => {
                     const regex = new RegExp(`\\b${word}\\b`, "gi");
@@ -201,9 +260,9 @@ if (reactContentElement) {
                 }
 
                 const newEntry: FormData = {
-                  name: "someone",
                   message: "something",
                   ...inputData,
+                  name: submittedName,
                   timestamp,
                 };
 

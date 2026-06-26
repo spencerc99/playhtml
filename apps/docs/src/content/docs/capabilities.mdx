@@ -18,6 +18,16 @@ import { SmileyRow } from '@/components/react/capability-demos/SmileyRow';
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
+:::tip[Every playhtml element needs a stable id]
+The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers** — that's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
+
+For **many elements that share a selector** — a row of magnets, a list of reactions — give each the same markup and add a single `selector-id` attribute instead of inventing unique ids. playhtml indexes the matches by position, so the N-th `.magnet` always gets the N-th slot of state. See [Dynamic elements](/docs/advanced/dynamic-elements/#many-of-a-kind-elements-with-selector-id).
+:::
+
+:::tip[Shift-click to reset]
+The built-in interactive capabilities — `can-move`, `can-spin`, `can-toggle`, and `can-grow` — support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](#resetting-custom-elements) option.
+:::
+
 Every section below has the same shape:
 
 - A short description of what the capability does and the kind of state it owns.
@@ -248,7 +258,7 @@ import { TagType } from "@playhtml/common";
 
 ## can-hover
 
-**What it does.** Tracks which cursors are currently hovering an element. Presence-based, _not_ persistent — when a user leaves, their hover clears.
+**What it does.** Shares hover state across everyone on the page. Presence-based, _not_ persistent — when a user leaves, their hover clears.
 
 **Use it for:** "who's looking at this right now" affordances, social read-receipts, zero-latency shared hover effects.
 
@@ -256,13 +266,44 @@ import { TagType } from "@playhtml/common";
   <HoverCursorColorsDemo client:only="react" />
 </div>
 
+**How it works.** While *anyone* (you or another reader) is hovering the element, playhtml sets a `data-playhtml-hover` attribute on it; when nobody is hovering, the attribute is removed. Style the effect by targeting `[data-playhtml-hover]` instead of the `:hover` pseudo-class — that's the only change from a normal hover style, and it's the same attribute whether you use the vanilla capability or the React component.
+
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
 <div can-hover id="hover-pad">hover me</div>
+
+<style>
+  /* Use [data-playhtml-hover], NOT :hover, so the effect fires
+     for everyone when anyone on the page hovers the element. */
+  #hover-pad[data-playhtml-hover] {
+    background: #fde047;
+    transform: scale(1.05);
+  }
+</style>
 ```
   </TabItem>
   <TabItem label="React">
+```tsx
+import { CanHoverElement } from "@playhtml/react";
+
+<CanHoverElement>
+  <div id="hover-pad">hover me</div>
+</CanHoverElement>
+```
+
+```css
+/* Same attribute as the vanilla capability */
+#hover-pad[data-playhtml-hover] {
+  background: #fde047;
+  transform: scale(1.05);
+}
+```
+  </TabItem>
+</Tabs>
+
+If you want the hover effect to reflect *who* is hovering (e.g. tint the element with each viewer's cursor color) rather than a plain on/off, read the hover roster off awareness with a custom `can-play` element:
+
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
 import { TagType } from "@playhtml/common";
@@ -284,8 +325,6 @@ import { TagType } from "@playhtml/common";
   )}
 </CanPlayElement>
 ```
-  </TabItem>
-</Tabs>
 
 ## can-duplicate
 
@@ -314,11 +353,40 @@ import { TagType } from "@playhtml/common";
 </script>
 <button id="reset-btn">reset</button>
 ```
+
+By default, clones are inserted right after the template (or the previous clone). Add **`can-duplicate-to`** — an element id or CSS selector — to drop every clone into a specific container instead:
+
+```html
+<button
+  can-duplicate="#bunny-template"
+  can-duplicate-to="#bunny-pen"
+  id="clone-btn"
+>clone a bunny</button>
+<div id="bunny-pen"></div>
+```
   </TabItem>
   <TabItem label="React">
 ```tsx
-// React wiring for can-duplicate typically pairs with setupPlayElement
-// so freshly-mounted clones register themselves. See "Dynamic elements".
+import { useRef } from "react";
+import { CanDuplicateElement } from "@playhtml/react";
+
+// CanDuplicateElement takes refs, not selectors. `elementToDuplicate` is the
+// template that gets cloned; `canDuplicateTo` is the React equivalent of the
+// can-duplicate-to attribute. Both elements need a stable `id`.
+function BunnyField() {
+  const template = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLDivElement>(null);
+
+  return (
+    <div>
+      <div id="bunny-template" ref={template}>🐰</div>
+      <div id="bunny-field" ref={field} />
+      <CanDuplicateElement elementToDuplicate={template} canDuplicateTo={field}>
+        <button>clone a bunny</button>
+      </CanDuplicateElement>
+    </div>
+  );
+}
 ```
   </TabItem>
 </Tabs>
@@ -465,7 +533,29 @@ export const CheerButton = withSharedState(
   </TabItem>
 </Tabs>
 
+Counters should use the mutator form of `setData`. It applies the increment to the draft at write time instead of copying a rendered `data` snapshot back into shared data. The same idea applies to pushing list entries, updating nested fields, and upserting keyed collections; see [Merging data changes](/docs/advanced/merging-data/).
+
 Deeper material on custom capabilities lives in [**Custom elements**](/docs/custom-elements/) (the declarative `view` / `withSharedState` path), [Data essentials](/docs/data/data-essentials/), and [Dynamic elements](/docs/advanced/dynamic-elements/).
+
+### Resetting custom elements
+
+The built-in interactive capabilities support shift-click to reset (see the tip at the top of this page). Opt your own `can-play` element into the same gesture with `resetShortcut` — a modifier key that, when held while clicking, restores the element's `defaultData` for everyone:
+
+```js
+el.defaultData = { count: 0 };
+el.resetShortcut = "shiftKey"; // "shiftKey" | "ctrlKey" | "altKey" | "metaKey"
+```
+
+In React, pass it in the config:
+
+```tsx
+withSharedState(
+  { defaultData: { count: 0 }, id: "cheer", resetShortcut: "shiftKey" },
+  ({ data, setData }) => /* … */,
+);
+```
+
+You can also reset programmatically by calling `element.reset()`.
 
 ---
 

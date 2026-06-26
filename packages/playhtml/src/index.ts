@@ -46,7 +46,11 @@ import {
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
-import { createPageDataChannel, PAGE_TAG } from "./page-data";
+import {
+  createPageDataChannel,
+  PAGE_TAG,
+  refreshPageDataChannels,
+} from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
@@ -457,19 +461,14 @@ function onMessage(data: string) {
 
   // Handle system messages
   if (message.type === "room-reset") {
-    console.warn(
-      `[PLAYHTML] Received room-reset message with epoch=${message.resetEpoch}. Storing and reloading...`,
-    );
-    // Store the reset epoch if provided
-    if (message.resetEpoch) {
-      const storageKey = `playhtml_resetEpoch_${__currentRoomId}`;
-      localStorage.setItem(storageKey, String(message.resetEpoch));
-      console.log(
-        `[PLAYHTML] Stored resetEpoch=${message.resetEpoch} in localStorage key=${storageKey}`,
-      );
+    const resetEpoch = Number(message.resetEpoch);
+    if (!Number.isFinite(resetEpoch)) {
+      console.error("[PLAYHTML] Received room-reset without a resetEpoch");
+      window.location.reload();
+      return;
     }
-    // Force reload to fetch fresh state
-    window.location.reload();
+
+    queueServerRoomReset(resetEpoch);
     return;
   }
 
@@ -559,11 +558,11 @@ let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
 } | null = null;
 
-// If init() receives an explicit `room`, we store it for future navigation
-// checks. A string stays fixed across navigation until init() receives another
-// room; a function is re-invoked on each nav so a path-derived room switches
-// correctly. If no explicit room was given, we store the default-room options
-// and re-derive on each nav so pathname-based rooms switch correctly.
+// If the first init() receives an explicit `room`, we store it for future
+// navigation checks. A string stays fixed across navigation; a function is
+// re-invoked on each nav so a path-derived room switches correctly. If no
+// explicit room was given, we store the default-room options and re-derive on
+// each nav so pathname-based rooms switch correctly.
 let explicitRoomOption: string | (() => string) | undefined = undefined;
 
 /** Resolve the explicit room option to a string, calling it if it's a function
@@ -576,40 +575,10 @@ function resolveExplicitRoom(): string | undefined {
 let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
-
-function hasInitOption<K extends keyof InitOptions>(
-  options: InitOptions,
-  key: K,
-): options is InitOptions & Required<Pick<InitOptions, K>> {
-  return Object.prototype.hasOwnProperty.call(options, key);
-}
-
-function applyActiveInitOptions(options: InitOptions): boolean {
-  let shouldHandleNavigation = false;
-
-  if (hasInitOption(options, "room")) {
-    explicitRoomOption = options.room;
-    shouldHandleNavigation = true;
-  }
-
-  if (hasInitOption(options, "defaultRoomOptions")) {
-    cachedDefaultRoomOptions = options.defaultRoomOptions ?? {
-      includeSearch: false,
-    };
-    shouldHandleNavigation = true;
-  }
-
-  if (hasInitOption(options, "cursors")) {
-    cursorOptionsCache = options.cursors ?? {};
-    shouldHandleNavigation = true;
-  }
-
-  if (hasInitOption(options, "onError")) {
-    cachedOnError = options.onError;
-  }
-
-  return shouldHandleNavigation;
-}
+let roomResetPromise: Promise<void> | null = null;
+let pendingRoomResetEpoch: number | null = null;
+const SERVER_ROOM_RESET_SYNC_TIMEOUT_MS = 5000;
+const mainProviderSyncWaiters = new Set<(error?: Error) => void>();
 
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
@@ -651,6 +620,7 @@ function buildMainProvider(args: {
   yprovider.on("error", () => {
     onError?.();
   });
+  yprovider.on("sync", handleMainProviderSync);
 
   // Register custom-message handler once, outside the sync callback,
   // to avoid duplicate registrations on reconnect.
@@ -788,6 +758,130 @@ function buildCursors(args: {
   cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
 }
 
+function storeResetEpochForRoom(room: string, resetEpoch: number): void {
+  const storageKey = `playhtml_resetEpoch_${room}`;
+  localStorage.setItem(storageKey, String(resetEpoch));
+  console.log(
+    `[PLAYHTML] Stored resetEpoch=${resetEpoch} in localStorage key=${storageKey}`,
+  );
+}
+
+function waitForMainProviderSync(timeoutMs?: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (hasSynced) {
+      resolve();
+      return;
+    }
+
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timeout !== null) clearTimeout(timeout);
+      mainProviderSyncWaiters.delete(finish);
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+
+    mainProviderSyncWaiters.add(finish);
+
+    if (timeoutMs !== undefined) {
+      timeout = setTimeout(() => {
+        finish(new Error("Timed out waiting for playhtml room reset sync"));
+      }, timeoutMs);
+    }
+  });
+}
+
+function handleMainProviderSync(connected: boolean): void {
+  if (!connected) console.error("Issue connecting to yjs...");
+  if (hasSynced) return;
+  hasSynced = true;
+  const waiters = [...mainProviderSyncWaiters];
+  mainProviderSyncWaiters.clear();
+  waiters.forEach((finish) => finish());
+}
+
+function queueServerRoomReset(resetEpoch: number): void {
+  storeResetEpochForRoom(__currentRoomId, resetEpoch);
+
+  if (roomResetPromise) {
+    pendingRoomResetEpoch = Math.max(pendingRoomResetEpoch ?? 0, resetEpoch);
+    return;
+  }
+
+  roomResetPromise = runQueuedServerRoomReset(resetEpoch)
+    .catch((error) => {
+      console.error("[PLAYHTML] Failed to reconnect after room-reset:", error);
+      window.location.reload();
+    })
+    .finally(() => {
+      roomResetPromise = null;
+      pendingRoomResetEpoch = null;
+    });
+}
+
+async function runQueuedServerRoomReset(resetEpoch: number): Promise<void> {
+  let nextResetEpoch = resetEpoch;
+
+  while (true) {
+    const completedResetEpoch = nextResetEpoch;
+    pendingRoomResetEpoch = null;
+    await resetCurrentRoomFromServer();
+
+    if (
+      pendingRoomResetEpoch === null ||
+      pendingRoomResetEpoch <= completedResetEpoch
+    ) {
+      return;
+    }
+
+    nextResetEpoch = pendingRoomResetEpoch;
+  }
+}
+
+async function resetCurrentRoomFromServer(): Promise<void> {
+  if (!__currentRoomId || !__currentHost) {
+    throw new Error("playhtml cannot reset before init()");
+  }
+
+  teardownMainProvider();
+  teardownCursors();
+  hasSynced = false;
+  lastElementAwarenessFingerprint = null;
+  recreateStore();
+
+  buildMainProvider({
+    room: __currentRoomId,
+    partykitHost: __currentHost,
+    onError: cachedOnError,
+    onMessage,
+  });
+
+  if (cursorOptionsCache?.enabled) {
+    buildCursors({
+      cursors: cursorOptionsCache,
+      mainRoom: __currentRoomId,
+      partykitHost: __currentHost,
+      onError: cachedOnError,
+    });
+  }
+
+  bindAwarenessListener();
+  markAllElementsAsLoading();
+  await waitForMainProviderSync(SERVER_ROOM_RESET_SYNC_TIMEOUT_MS);
+  refreshPageDataChannels(getPageDataDeps());
+  setupElements();
+  markAllElementsAsReady();
+  cursorClient?.refreshContainer?.();
+  cursorClient?.refreshCursorStyles?.();
+  dispatchNavigated(__currentRoomId);
+}
+
 async function runHandleNavigation(): Promise<void> {
   // firstSetup is true before init and after resetPlayHTML — skip nav in both.
   if (firstSetup) return;
@@ -799,8 +893,8 @@ async function runHandleNavigation(): Promise<void> {
 
   const cursorsWanted = Boolean(cursorOptionsCache?.enabled);
   const cursorsActive = cursorClient !== null;
-  // An enable/disable transition must (re)build or tear down cursors regardless
-  // of room change — a later init({ cursors }) can flip this on an unchanged URL.
+  // Cursor setup is static after init, but the cursor client can still be
+  // rebuilt when navigation changes the cursor room.
   const cursorEnabledChanged = cursorsWanted !== cursorsActive;
 
   let cursorRoomChanged = false;
@@ -874,18 +968,8 @@ async function runHandleNavigation(): Promise<void> {
   markAllElementsAsLoading();
 
   if (mainRoomChanged) {
-    await new Promise<void>((resolve) => {
-      if (hasSynced) {
-        resolve();
-        return;
-      }
-      yprovider.on("sync", (connected: boolean) => {
-        if (!connected) console.error("Issue connecting to yjs...");
-        if (hasSynced) return;
-        hasSynced = true;
-        resolve();
-      });
-    });
+    await waitForMainProviderSync();
+    refreshPageDataChannels(getPageDataDeps());
   }
 
   setupElements();
@@ -899,14 +983,7 @@ async function runHandleNavigation(): Promise<void> {
 
 function initPlayHTML(options: InitOptions = {}) {
   if (initStarted) {
-    const shouldHandleNavigation = applyActiveInitOptions(options);
-    if (!shouldHandleNavigation) {
-      return readyPromise;
-    }
-
-    return readyPromise.then(async () => {
-      await navigationController?.trigger();
-    });
+    return readyPromise;
   }
 
   const existingPlayhtml = (window as any).playhtml;
@@ -1065,43 +1142,27 @@ async function initPlayHTMLOnce({
   // Mark all discovered playhtml elements as loading before sync
   markAllElementsAsLoading();
 
-  // await until yprovider is synced
-  await new Promise((resolve) => {
-    if (hasSynced) {
-      resolve(true);
+  await waitForMainProviderSync();
+  console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+
+  setupElements();
+
+  // Mark all elements as ready after sync completes and elements are set up
+  markAllElementsAsReady();
+  isLoading = false;
+  readyResolve();
+
+  // Fetch simple permissions for referenced shared elements so clients can block writes locally
+  if (sharedReferences.length > 0) {
+    try {
+      const elementIds = sharedReferences.map((r) => r.elementId);
+      yprovider.sendMessage(
+        JSON.stringify({ type: "export-permissions", elementIds })
+      );
+    } catch (error) {
+      console.error("[PLAYHTML] Error during post-sync setup:", error);
     }
-    yprovider.on("sync", (connected: boolean) => {
-      if (!connected) {
-        console.error("Issue connecting to yjs...");
-      }
-      if (hasSynced) {
-        return;
-      }
-      hasSynced = true;
-      console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
-
-      setupElements();
-
-      // Mark all elements as ready after sync completes and elements are set up
-      markAllElementsAsReady();
-      isLoading = false;
-      readyResolve();
-
-      // Fetch simple permissions for referenced shared elements so clients can block writes locally
-      if (sharedReferences.length > 0) {
-        try {
-          const elementIds = sharedReferences.map((r) => r.elementId);
-          yprovider.sendMessage(
-            JSON.stringify({ type: "export-permissions", elementIds })
-          );
-        } catch (error) {
-          console.error("[PLAYHTML] Error during post-sync setup:", error);
-        }
-      }
-
-      resolve(true);
-    });
-  });
+  }
 
   return yprovider;
 }
@@ -1462,13 +1523,10 @@ function setupElements(): void {
   firstSetup = false;
 }
 
-function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
-  if (!hasSynced) {
-    throw new Error("playhtml.createPageData is not available before init()");
-  }
-  return createPageDataChannel(name, defaultValue, {
+function getPageDataDeps() {
+  return {
     ensureProxy: ensureElementProxy,
-    getProxy: (tag, id) => proxyByTagAndId.get(tag)?.get(id),
+    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
     // Getters so a handle held across a room change (which recreates store/doc)
     // reads the current ones, not stale references captured at creation.
     getDoc: () => doc,
@@ -1477,7 +1535,14 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
     yObserverByKey,
     channelRefCounts: pageDataRefCounts,
     channelListeners: pageDataListeners,
-  });
+  };
+}
+
+function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
+  if (!hasSynced) {
+    throw new Error("playhtml.createPageData is not available before init()");
+  }
+  return createPageDataChannel(name, defaultValue, getPageDataDeps());
 }
 
 function createPresenceRoom(name: string): PresenceRoom {
@@ -1593,6 +1658,9 @@ export async function resetPlayHTML(): Promise<void> {
       map.clear();
     }
     elementHandlers.clear();
+    pageDataRefCounts.clear();
+    pageDataListeners.clear();
+    mainProviderSyncWaiters.clear();
 
     teardownCursors();
     teardownMainProvider();
@@ -1624,6 +1692,8 @@ export async function resetPlayHTML(): Promise<void> {
     cachedDefaultRoomOptions = { includeSearch: false };
     cursorOptionsCache = undefined;
     cachedOnError = undefined;
+    roomResetPromise = null;
+    pendingRoomResetEpoch = null;
   } finally {
     // firstSetup = true (set above) is the canonical "not initialized"
     // flag — runHandleNavigation checks it to skip nav after reset.

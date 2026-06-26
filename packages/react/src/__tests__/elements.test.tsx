@@ -3,12 +3,14 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render } from "@testing-library/react";
+import { fireEvent } from "@testing-library/dom";
 import "@testing-library/dom";
 import { CanPlayElement } from "../index";
 import { CanMoveElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "@playhtml/common";
 import type { ElementAwarenessEventHandlerData } from "@playhtml/common";
+import { ReactiveOrb } from "../../examples/ReactiveOrb";
 
 describe("CanPlayElement with built-in capabilities", () => {
   beforeEach(() => {
@@ -285,6 +287,138 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(element.getAttribute("can-move-bounds")).toBe("#fridge");
   });
 
+  it("does not re-render when synced data is a fresh reference but equal in value", () => {
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    let renderCount = 0;
+
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore array data mirrors can-duplicate's shape
+        tagInfo={[TagType.CanDuplicate]}
+        defaultData={["a", "b"]}
+        defaultLocalData={[]}
+        updateElement={() => {}}
+      >
+        {({ data }) => {
+          renderCount++;
+          return <div id="array-child">{JSON.stringify(data)}</div>;
+        }}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-duplicate]") as HTMLElement;
+    expect(element).toBeTruthy();
+
+    const rendersAfterMount = renderCount;
+
+    // Simulate the data observer firing several times with a NEW array reference
+    // each time but identical contents — exactly how a Yjs collection snapshot
+    // arrives. Equal-by-value syncs must not schedule re-renders.
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        (element as any).updateElement({
+          data: ["a", "b"],
+          awareness: [],
+          awarenessByStableId: new Map(),
+          myAwareness: undefined,
+          element,
+          localData: [],
+          setData: vi.fn(),
+          setLocalData: vi.fn(),
+          setMyAwareness: vi.fn(),
+        });
+      });
+    }
+
+    expect(renderCount).toBe(rendersAfterMount);
+  });
+
+  it("re-renders when synced data actually changes in value", () => {
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    let lastData: unknown;
+
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanDuplicate]}
+        defaultData={["a"]}
+        defaultLocalData={[]}
+        updateElement={() => {}}
+      >
+        {({ data }) => {
+          lastData = data;
+          return <div id="array-child">{JSON.stringify(data)}</div>;
+        }}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-duplicate]") as HTMLElement;
+
+    act(() => {
+      (element as any).updateElement({
+        data: ["a", "b"],
+        awareness: [],
+        awarenessByStableId: new Map(),
+        myAwareness: undefined,
+        element,
+        localData: [],
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setMyAwareness: vi.fn(),
+      });
+    });
+
+    expect(lastData).toEqual(["a", "b"]);
+  });
+
+  it("re-renders when awarenessByStableId Map contents change", () => {
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    let lastByStableId: Map<string, unknown> | undefined;
+
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanHover]}
+        defaultData={{}}
+        myDefaultAwareness={{ isHovering: false }}
+        updateElement={() => {}}
+        updateElementAwareness={() => {}}
+      >
+        {({ awarenessByStableId }) => {
+          lastByStableId = awarenessByStableId as Map<string, unknown>;
+          return <div id="awareness-child" />;
+        }}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-hover]") as HTMLElement;
+
+    act(() => {
+      (element as any).updateElementAwareness({
+        data: {},
+        awareness: [{ isHovering: true }],
+        // A new Map reference with real content. Maps have no enumerable own
+        // keys, so a naive object comparison would wrongly treat this as equal
+        // to the empty initial Map and drop the presence update.
+        awarenessByStableId: new Map([["alice", { isHovering: true }]]),
+        myAwareness: { isHovering: false },
+        element,
+        localData: undefined,
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setMyAwareness: vi.fn(),
+      });
+    });
+
+    expect(lastByStableId?.get("alice")).toEqual({ isHovering: true });
+  });
+
   it("works without a capability updateElement (pure can-play)", () => {
     const { container } = render(
       <CanPlayElement defaultData={{ count: 0 }}>
@@ -315,5 +449,31 @@ describe("CanPlayElement with built-in capabilities", () => {
         setMyAwareness: vi.fn(),
       }),
     ).not.toThrow();
+  });
+
+  it("increments ReactiveOrb clicks through the current shared data", () => {
+    const setData = vi.fn();
+    const elementHandlers = new Map([
+      [TagType.CanPlay, new Map([["orb-test", { setData }]])],
+    ]);
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
+      elementHandlers as typeof playhtml.elementHandlers,
+    );
+
+    const { container } = render(
+      <ReactiveOrb id="orb-test" className="orb-test" />,
+    );
+
+    fireEvent.click(container.querySelector("#orb-test") as HTMLElement);
+
+    expect(setData).toHaveBeenCalledTimes(1);
+    const update = setData.mock.calls[0][0];
+    expect(update).toBeInstanceOf(Function);
+
+    const draft = { clicks: 41 };
+    update(draft);
+    expect(draft).toEqual({ clicks: 42 });
   });
 });

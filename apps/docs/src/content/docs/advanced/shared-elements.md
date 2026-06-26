@@ -98,6 +98,8 @@ export const Status = withSharedState(
 );
 ```
 
+The prop names map to the HTML attributes: `shared` → `shared`, `dataSource` → `data-source`. For forcing read-only, `CanToggleElement` exposes a convenience `readOnly` prop, while `CanPlayElement` / `withSharedState` use `dataSourceReadOnly` (both set `data-source-read-only`). See the [React API reference](/docs/reference/react-api/#shared-data-props).
+
 #### Troubleshooting
 
 - **Nothing shows up / stays local only**: ensure `data-source` is correct and the capability matches the source element's capability.

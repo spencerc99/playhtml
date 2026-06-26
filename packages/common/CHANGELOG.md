@@ -1,5 +1,11 @@
 # @playhtml/common
 
+## 0.7.1
+
+### Patch Changes
+
+- 9df0417: Can-toggle elements now apply the `toggled` class when active while continuing to apply `clicked` for existing styles.
+
 ## 0.7.0
 
 ### Minor Changes
