@@ -125,7 +125,7 @@ BUILT-IN CAPABILITIES (if they fit the use case):
 - can-spin: Rotatable element
 - can-grow: Click to scale up/down
 - can-duplicate: Click to clone element
-- can-hover: Hover to toggle on/off state
+- can-hover: Shares hover presence while someone is hovering
 - can-mirror: Syncs all element changes automatically
 - Use these instead of can-play when possible
 
