@@ -9,7 +9,7 @@ playhtml plays well with AI coding assistants. There are two supported paths, de
 
 ## Claude Code plugin (recommended)
 
-If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), install the `playhtml` plugin. It ships a skill that activates automatically when you ask Claude to build playhtml elements — no manual context required. The plugin covers the APIs, data types, and the most common mistakes (mutator vs replacement, stable ids, presence vs data, and so on).
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), install the `playhtml` plugin. It ships a skill that activates automatically when you ask Claude to build playhtml elements, with no manual context required. The plugin covers the APIs, data types, and the most common mistakes (mutator vs replacement, stable ids, presence vs data, and so on).
 
 ```bash
 claude plugin marketplace add spencerc99/playhtml
