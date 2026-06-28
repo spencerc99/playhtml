@@ -2,6 +2,7 @@
 // ABOUTME: Bootstraps the playhtml singleton and exposes cursor/presence helpers.
 import {
   createContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -225,13 +226,13 @@ export function PlayProvider({
     return playhtml.cursorClient.triggerCursorAnimation(stableId, animationClass, durationMs);
   };
 
-  const registerCursorZone = (element: HTMLElement, options?: CursorZoneOptions) => {
+  const registerCursorZone = useCallback((element: HTMLElement, options?: CursorZoneOptions) => {
     playhtml.cursorClient?.registerZone(element, options);
-  };
+  }, []);
 
-  const unregisterCursorZone = (elementId: string) => {
+  const unregisterCursorZone = useCallback((elementId: string) => {
     playhtml.cursorClient?.unregisterZone(elementId);
-  };
+  }, []);
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
     allColors: [] as string[],

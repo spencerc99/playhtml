@@ -12,6 +12,7 @@ import {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useCursorZone,
 } from "../index";
 import type { PlayerIdentity } from "@playhtml/common";
 
@@ -242,5 +243,98 @@ describe("usePlayerIdentity", () => {
     );
     expect(captured?.color.toLowerCase()).toBe("#ffae00");
     expect(captured?.pid).toBe("pk_injectedtestkey");
+  });
+});
+
+describe("useCursorZone", () => {
+  function makeContext({
+    registerCursorZone,
+    unregisterCursorZone,
+  }: {
+    registerCursorZone: React.ContextType<typeof PlayContext>["registerCursorZone"];
+    unregisterCursorZone: React.ContextType<typeof PlayContext>["unregisterCursorZone"];
+  }) {
+    return {
+      setupPlayElements: vi.fn(),
+      dispatchPlayEvent: vi.fn(),
+      registerPlayEventListener: vi.fn(),
+      removePlayEventListener: vi.fn(),
+      deleteElementData: vi.fn(),
+      hasSynced: true,
+      isLoading: false,
+      isProviderMissing: false,
+      configureCursors: vi.fn(),
+      getMyPlayerIdentity: vi.fn(() => null),
+      triggerCursorAnimation: vi.fn(() => false),
+      registerCursorZone,
+      unregisterCursorZone,
+      cursors: { allColors: [], color: "", name: undefined },
+      cursorPresences: new Map(),
+    } as unknown as React.ContextType<typeof PlayContext>;
+  }
+
+  function CursorZone({
+    options,
+  }: {
+    options?: Parameters<typeof useCursorZone>[1];
+  }) {
+    const ref = React.useRef<HTMLDivElement>(null);
+    useCursorZone(ref, options);
+    return <div id="zone-a" data-testid="zone" ref={ref} />;
+  }
+
+  it("unregisters the id that was registered even if the element id changes before cleanup", () => {
+    const registerCursorZone = vi.fn();
+    const unregisterCursorZone = vi.fn();
+    const ctx = makeContext({ registerCursorZone, unregisterCursorZone });
+
+    const { getByTestId, unmount } = render(
+      <PlayContext.Provider value={ctx}>
+        <CursorZone />
+      </PlayContext.Provider>,
+    );
+
+    const element = getByTestId("zone") as HTMLDivElement;
+    expect(registerCursorZone).toHaveBeenCalledWith(element, undefined);
+
+    element.id = "zone-b";
+    unmount();
+
+    expect(unregisterCursorZone).toHaveBeenCalledWith("zone-a");
+  });
+
+  it("re-registers the zone when options change", () => {
+    const registerCursorZone = vi.fn();
+    const unregisterCursorZone = vi.fn();
+    const ctx = makeContext({ registerCursorZone, unregisterCursorZone });
+    const firstOptions = { getCursorStyle: vi.fn(() => ({ opacity: "0.5" })) };
+    const secondOptions = { getCursorStyle: vi.fn(() => ({ opacity: "1" })) };
+
+    const { getByTestId, rerender } = render(
+      <PlayContext.Provider value={ctx}>
+        <CursorZone options={firstOptions} />
+      </PlayContext.Provider>,
+    );
+
+    const element = getByTestId("zone") as HTMLDivElement;
+    expect(registerCursorZone).toHaveBeenCalledWith(element, firstOptions);
+
+    rerender(
+      <PlayContext.Provider value={ctx}>
+        <CursorZone options={firstOptions} />
+      </PlayContext.Provider>,
+    );
+    registerCursorZone.mockClear();
+    unregisterCursorZone.mockClear();
+
+    rerender(
+      <PlayContext.Provider value={ctx}>
+        <CursorZone options={secondOptions} />
+      </PlayContext.Provider>,
+    );
+
+    expect(unregisterCursorZone).toHaveBeenCalledWith("zone-a");
+    expect(registerCursorZone).toHaveBeenCalledWith(element, secondOptions);
+    expect(registerCursorZone).toHaveBeenCalledTimes(1);
   });
 });
