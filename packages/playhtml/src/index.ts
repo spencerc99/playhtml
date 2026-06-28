@@ -531,7 +531,6 @@ function isPromiseLike(value: unknown): value is Promise<void> {
 }
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
-let isDevelopmentMode = false;
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -579,6 +578,116 @@ let roomResetPromise: Promise<void> | null = null;
 let pendingRoomResetEpoch: number | null = null;
 const SERVER_ROOM_RESET_SYNC_TIMEOUT_MS = 5000;
 const mainProviderSyncWaiters = new Set<(error?: Error) => void>();
+let isDevelopmentMode = false;
+
+// The config declared for this playhtml instance. Captured by the first call
+// that supplies config — whether configure() or a config-bearing init() — and
+// locked from then on. Later differing config warns and is ignored (see
+// applyConfig). Bootstrap reads everything it needs from here, so config has a
+// single source of truth regardless of which call site declared it.
+let configuredOptions: InitOptions | null = null;
+
+/**
+ * Returns true if `incoming` config conflicts with the already-locked config.
+ *
+ * Lenient and directional: only keys that `incoming` actually specifies are
+ * checked, and only against `locked`'s value for that same key. So:
+ *  - passing NO/empty options (an "ensure running" init()) never conflicts,
+ *  - passing the SAME options from another call site never conflicts (the
+ *    "declare identical options everywhere" pattern stays quiet),
+ *  - a genuine value difference on a key the caller specified DOES conflict.
+ *
+ * Function-valued options (`room` as a function, `events`, `onError`, cursor
+ * callbacks) are stripped before comparison: closures never compare equal
+ * across call sites, so comparing them would yield false conflicts — the first
+ * declaration's functions win. Object keys are sorted so key order is ignored.
+ */
+function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
+  // Declared inside so it can't land in a temporal dead zone during this
+  // module's import cycle (a top-level helper referenced here intermittently
+  // resolved as undefined under the test bundler).
+  const serialize = (value: unknown): unknown => {
+    if (typeof value === "function") return undefined;
+    if (Array.isArray(value)) return value.map(serialize);
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+        const s = serialize((value as Record<string, unknown>)[key]);
+        if (s !== undefined) out[key] = s;
+      }
+      return out;
+    }
+    return value;
+  };
+
+  for (const key of Object.keys(incoming) as (keyof InitOptions)[]) {
+    const incomingVal = serialize(incoming[key]);
+    // A key whose value strips to undefined (e.g. a function-only option)
+    // carries no comparable opinion — skip it.
+    if (incomingVal === undefined) continue;
+    const lockedVal = serialize(locked[key]);
+    if (JSON.stringify(incomingVal) !== JSON.stringify(lockedVal)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if these options declare no config worth locking (an "ensure running"
+ * call). Such a call must NOT lock config, so a real configure() can still win
+ * before connection. */
+function isEmptyConfig(options: InitOptions): boolean {
+  return Object.values(options).every((v) => v === undefined);
+}
+
+/**
+ * Capture init config into module state. The first caller to supply real config
+ * wins and locks it; a later call with conflicting values warns and is ignored.
+ * An empty "ensure running" call does NOT lock — config stays open for a later
+ * configure(). Bootstrap locks whatever config is current when it starts (see
+ * lockConfigForBootstrap), so config can't change once connected.
+ */
+function applyConfig(options: InitOptions): void {
+  if (configuredOptions) {
+    if (configsConflict(configuredOptions, options)) {
+      console.warn(
+        "[playhtml] Ignoring conflicting config passed after playhtml was already configured. " +
+          "Config is locked to the first declaration. Declare it once up front with " +
+          "playhtml.configure(...) (or matching options at every call site).",
+      );
+    }
+    return;
+  }
+
+  if (isEmptyConfig(options)) return;
+
+  configuredOptions = options;
+  explicitRoomOption = options.room;
+  cachedDefaultRoomOptions = options.defaultRoomOptions ?? {
+    includeSearch: false,
+  };
+  cursorOptionsCache = options.cursors ?? {};
+  cachedOnError = options.onError;
+  isDevelopmentMode = options.developmentMode ?? false;
+
+  if (options.extraCapabilities) {
+    for (const [tag, tagInfo] of Object.entries(options.extraCapabilities)) {
+      capabilitiesToInitializer[tag] = tagInfo;
+    }
+  }
+  if (options.events) {
+    for (const [eventType, event] of Object.entries(options.events)) {
+      registerPlayEventListener(eventType, event);
+    }
+  }
+}
+
+/** Lock config at the moment bootstrap starts. If no real config was declared,
+ * lock to empty so a configure() that arrives AFTER connection warns rather
+ * than silently doing nothing — config genuinely can't change post-connect. */
+function lockConfigForBootstrap(): void {
+  if (!configuredOptions) configuredOptions = {};
+}
 
 /**
  * Builds a fresh main Yjs provider for the given room. Side effects:
@@ -882,6 +991,49 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   dispatchNavigated(__currentRoomId);
 }
 
+/**
+ * Wires the listener that lets the browser extension inject a player identity.
+ * The extension runs in Chrome's isolated world and can't call
+ * cursorClient.configure() directly, so it dispatches a CustomEvent on the
+ * shared DOM instead.
+ *
+ * The extension only provides publicKey and playerStyle (the canonical stable
+ * identity + chosen color). All other fields on the page's current identity are
+ * preserved — the page may have arbitrary fields the extension doesn't know
+ * about.
+ *
+ * Idempotent: only attaches once. Safe to call from both the initial
+ * cursor-enabled path and the late-enable path.
+ */
+function setupExtensionIdentityListener(): void {
+  if (configureIdentityListener) return;
+
+  // TODO: The extension should also be able to set `name` — currently
+  // there's no UI for it in the extension, so we preserve the page's
+  // value. Once the extension has a name field, include it in the merge.
+  configureIdentityListener = ((e: CustomEvent) => {
+    const incoming = e.detail?.playerIdentity;
+    if (!incoming || !cursorClient) return;
+
+    const current = cursorClient.getMyPlayerIdentity();
+    const merged = {
+      ...current,
+      publicKey: incoming.publicKey,
+      playerStyle: incoming.playerStyle,
+    };
+
+    cursorClient.configure({ playerIdentity: merged });
+    console.log("[playhtml] Merged extension identity via CustomEvent");
+  }) as EventListener;
+  document.addEventListener(
+    "playhtml:configure-identity",
+    configureIdentityListener,
+  );
+
+  // Signal that we're ready to receive identity injection events
+  document.dispatchEvent(new CustomEvent("playhtml:ready"));
+}
+
 async function runHandleNavigation(): Promise<void> {
   // firstSetup is true before init and after resetPlayHTML — skip nav in both.
   if (firstSetup) return;
@@ -981,8 +1133,28 @@ async function runHandleNavigation(): Promise<void> {
   dispatchNavigated(__currentRoomId);
 }
 
+/**
+ * Declare config for this playhtml instance without connecting. Idempotent and
+ * framework-agnostic: call it once, up front, from wherever owns the config (a
+ * <head> script, PlayProvider, an island). Connection happens later via init()
+ * / standalone component mount, which read whatever config was declared here.
+ *
+ * Use this when you can't put a single init() at the top of your app — Astro
+ * islands, multi-page apps, multiple React roots — so config doesn't depend on
+ * which "ensure running" call happens to run first. The first declaration wins;
+ * a later conflicting one warns and is ignored.
+ */
+function configurePlayHTML(options: InitOptions = {}): void {
+  applyConfig(options);
+}
+
 function initPlayHTML(options: InitOptions = {}) {
   if (initStarted) {
+    // Already bootstrapping/running. init() here means "ensure running" — the
+    // connection is already in flight. Still funnel options through applyConfig
+    // so a conflicting late config warns (and a matching/empty one is a quiet
+    // no-op). Config is locked to the first declaration.
+    applyConfig(options);
     return readyPromise;
   }
 
@@ -1009,30 +1181,35 @@ function initPlayHTML(options: InitOptions = {}) {
   }
 
   initStarted = true;
-  const initPromise = initPlayHTMLOnce(options);
+  // Capture config (honoring any earlier configure() call — applyConfig is a
+  // no-op if config is already locked) before bootstrapping.
+  applyConfig(options);
+  const initPromise = initPlayHTMLOnce();
   initPromise.catch((error) => {
     readyReject(error);
   });
   return initPromise;
 }
 
-async function initPlayHTMLOnce({
-  // TODO: if it is a localhost url, need to make some deterministic way to connect to the same room.
-  host,
-  extraCapabilities,
-  events,
-  defaultRoomOptions = { includeSearch: false },
-  room: explicitRoom,
-  onError,
-  developmentMode = false,
-  cursors = {},
-}: InitOptions = {}) {
-  explicitRoomOption = explicitRoom;
-  cachedDefaultRoomOptions = defaultRoomOptions;
-  const inputRoom = resolveExplicitRoom() ?? getDefaultRoom(defaultRoomOptions);
-  cursorOptionsCache = cursors;
-  cachedOnError = onError;
-  isDevelopmentMode = developmentMode;
+/**
+ * Connect and set up playhtml. Reads config exclusively from module state
+ * (populated by applyConfig), so there is a single source of truth regardless
+ * of which call site declared the config.
+ *
+ * TODO: if it is a localhost url, need to make some deterministic way to connect
+ * to the same room.
+ */
+async function initPlayHTMLOnce() {
+  // Connection is about to read config; freeze it. A later configure() now
+  // warns instead of silently no-op'ing — config can't change post-connect.
+  lockConfigForBootstrap();
+  // host/onError/developmentMode are not mirrored into long-lived module state
+  // beyond cachedOnError/isDevelopmentMode, so read them from configuredOptions.
+  const host = configuredOptions?.host;
+  const cursors = cursorOptionsCache ?? {};
+  const inputRoom =
+    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
+  const onError = cachedOnError;
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -1073,38 +1250,7 @@ async function initPlayHTMLOnce({
   });
 
   if (cursors.enabled) {
-    // Listen for identity injection from the browser extension. The extension
-    // runs in Chrome's isolated world and can't call cursorClient.configure()
-    // directly, so it dispatches a CustomEvent on the shared DOM instead.
-    //
-    // The extension only provides publicKey and playerStyle (the canonical
-    // stable identity + chosen color). All other fields on the page's
-    // current identity are preserved — the page may have arbitrary fields
-    // the extension doesn't know about.
-    // TODO: The extension should also be able to set `name` — currently
-    // there's no UI for it in the extension, so we preserve the page's
-    // value. Once the extension has a name field, include it in the merge.
-    configureIdentityListener = ((e: CustomEvent) => {
-      const incoming = e.detail?.playerIdentity;
-      if (!incoming || !cursorClient) return;
-
-      const current = cursorClient.getMyPlayerIdentity();
-      const merged = {
-        ...current,
-        publicKey: incoming.publicKey,
-        playerStyle: incoming.playerStyle,
-      };
-
-      cursorClient.configure({ playerIdentity: merged });
-      console.log("[playhtml] Merged extension identity via CustomEvent");
-    }) as EventListener;
-    document.addEventListener(
-      "playhtml:configure-identity",
-      configureIdentityListener,
-    );
-
-    // Signal that we're ready to receive identity injection events
-    document.dispatchEvent(new CustomEvent("playhtml:ready"));
+    setupExtensionIdentityListener();
   }
 
   // Create presence API — always available, wraps whichever awareness provider exists
@@ -1114,24 +1260,16 @@ async function initPlayHTMLOnce({
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
   });
 
-  if (extraCapabilities) {
-    for (const [tag, tagInfo] of Object.entries(extraCapabilities)) {
-      capabilitiesToInitializer[tag] = tagInfo;
-    }
-  }
+  // extraCapabilities and events were applied by applyConfig when config was
+  // declared, so they're available before this connect step runs.
 
-  if (events) {
-    for (const [eventType, event] of Object.entries(events)) {
-      registerPlayEventListener(eventType, event);
-    }
-  }
   // Import default styles
   const playStyles = document.createElement("link");
   playStyles.rel = "stylesheet";
   playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
   document.head.appendChild(playStyles);
 
-  if (developmentMode) {
+  if (isDevelopmentMode) {
     setupDevUI(playhtml);
   }
   // TODO: expose a way to activate the dev tools UI on any page at runtime
@@ -1546,6 +1684,7 @@ function createPresenceRoom(name: string): PresenceRoom {
 
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
+  configure: typeof configurePlayHTML;
   readonly isLoading: boolean;
   readonly ready: Promise<void>;
   handleNavigation: () => Promise<void>;
@@ -1660,6 +1799,8 @@ export async function resetPlayHTML(): Promise<void> {
     cachedOnError = undefined;
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
+    isDevelopmentMode = false;
+    configuredOptions = null;
   } finally {
     // firstSetup = true (set above) is the canonical "not initialized"
     // flag — runHandleNavigation checks it to skip nav after reset.
@@ -1669,6 +1810,7 @@ export async function resetPlayHTML(): Promise<void> {
 // Expose big variables to the window object for debugging purposes.
 export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
+  configure: configurePlayHTML,
   get isLoading() {
     return isLoading;
   },

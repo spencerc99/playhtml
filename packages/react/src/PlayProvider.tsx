@@ -183,6 +183,13 @@ export function PlayProvider({
 
   useEffect(() => {
     let cancelled = false;
+    // Declare config before connecting so it's the single source of truth even
+    // if a `standalone` component elsewhere calls init() (with no options)
+    // first. configure() is a no-op once config is locked, so this is safe to
+    // run regardless of ordering.
+    if (processedInitOptions) {
+      playhtml.configure(processedInitOptions);
+    }
     const initPromise = playhtml.init(processedInitOptions);
     const readyPromise = isReadyPromise(playhtml.ready) ? playhtml.ready : initPromise;
 
