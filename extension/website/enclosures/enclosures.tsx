@@ -207,6 +207,127 @@ function hexToRgb(hex: string): [number, number, number] | null {
     : null;
 }
 
+// ─── Demo / fallback data ─────────────────────────────────────────────────────
+// Used when the live API is unreachable. Proportions approximated from real
+// aggregated browsing patterns to illustrate the visualization's intent.
+const DEMO_DOMAINS: Array<{ domain: string; count: number }> = [
+  // Alphabet
+  { domain: "google.com", count: 312 },
+  { domain: "youtube.com", count: 248 },
+  { domain: "gmail.com", count: 195 },
+  { domain: "docs.google.com", count: 142 },
+  { domain: "drive.google.com", count: 108 },
+  { domain: "maps.google.com", count: 88 },
+  { domain: "calendar.google.com", count: 72 },
+  { domain: "meet.google.com", count: 55 },
+  { domain: "translate.google.com", count: 38 },
+  { domain: "photos.google.com", count: 28 },
+  { domain: "news.google.com", count: 22 },
+  { domain: "play.google.com", count: 18 },
+  // Meta
+  { domain: "facebook.com", count: 168 },
+  { domain: "instagram.com", count: 112 },
+  { domain: "whatsapp.com", count: 78 },
+  { domain: "threads.net", count: 22 },
+  { domain: "messenger.com", count: 38 },
+  // Amazon
+  { domain: "amazon.com", count: 118 },
+  { domain: "github.com", count: 205 },
+  { domain: "twitch.tv", count: 45 },
+  { domain: "imdb.com", count: 28 },
+  { domain: "goodreads.com", count: 18 },
+  // Microsoft
+  { domain: "linkedin.com", count: 125 },
+  { domain: "microsoft.com", count: 55 },
+  { domain: "office.com", count: 78 },
+  { domain: "outlook.com", count: 68 },
+  { domain: "bing.com", count: 42 },
+  { domain: "azure.com", count: 32 },
+  { domain: "github.com", count: 10 }, // will aggregate with amazon's github.com
+  // Apple
+  { domain: "apple.com", count: 52 },
+  { domain: "icloud.com", count: 35 },
+  // ByteDance
+  { domain: "tiktok.com", count: 95 },
+  // X Corp
+  { domain: "twitter.com", count: 108 },
+  { domain: "x.com", count: 52 },
+  // Independent web — many small sites
+  { domain: "reddit.com", count: 145 },
+  { domain: "wikipedia.org", count: 112 },
+  { domain: "stackoverflow.com", count: 102 },
+  { domain: "spotify.com", count: 78 },
+  { domain: "netflix.com", count: 65 },
+  { domain: "openai.com", count: 88 },
+  { domain: "anthropic.com", count: 42 },
+  { domain: "notion.so", count: 62 },
+  { domain: "discord.com", count: 58 },
+  { domain: "figma.com", count: 52 },
+  { domain: "slack.com", count: 48 },
+  { domain: "zoom.us", count: 42 },
+  { domain: "medium.com", count: 38 },
+  { domain: "substack.com", count: 32 },
+  { domain: "vercel.com", count: 28 },
+  { domain: "cloudflare.com", count: 22 },
+  { domain: "netlify.com", count: 18 },
+  { domain: "supabase.com", count: 16 },
+  { domain: "nytimes.com", count: 35 },
+  { domain: "theguardian.com", count: 22 },
+  { domain: "bbc.com", count: 28 },
+  { domain: "mdn.mozilla.org", count: 38 },
+  { domain: "news.ycombinator.com", count: 42 },
+  { domain: "pinterest.com", count: 28 },
+  { domain: "canva.com", count: 22 },
+  { domain: "shopify.com", count: 25 },
+  { domain: "etsy.com", count: 18 },
+  { domain: "duolingo.com", count: 22 },
+  { domain: "coursera.org", count: 15 },
+  { domain: "udemy.com", count: 18 },
+  { domain: "letterboxd.com", count: 14 },
+  { domain: "chess.com", count: 12 },
+  { domain: "codepen.io", count: 15 },
+  { domain: "soundcloud.com", count: 12 },
+  { domain: "bandcamp.com", count: 10 },
+  { domain: "itch.io", count: 8 },
+  { domain: "miro.com", count: 18 },
+  { domain: "airtable.com", count: 14 },
+  { domain: "typeform.com", count: 10 },
+  { domain: "dropbox.com", count: 14 },
+  { domain: "dev.to", count: 14 },
+  { domain: "hashnode.com", count: 8 },
+  { domain: "smashingmagazine.com", count: 10 },
+  { domain: "css-tricks.com", count: 12 },
+  { domain: "tumblr.com", count: 10 },
+  { domain: "lobste.rs", count: 8 },
+  // Tiny independent sites — the long tail of the open web
+  { domain: "bearblog.dev", count: 4 },
+  { domain: "buttondown.email", count: 5 },
+  { domain: "micro.blog", count: 3 },
+  { domain: "neocities.org", count: 4 },
+  { domain: "glitch.com", count: 6 },
+  { domain: "replit.com", count: 8 },
+  { domain: "arena.com", count: 4 },
+  { domain: "codesandbox.io", count: 10 },
+  { domain: "obsidian.md", count: 8 },
+  { domain: "kagi.com", count: 6 },
+  { domain: "duckduckgo.com", count: 18 },
+  { domain: "protonmail.com", count: 10 },
+  { domain: "fastmail.com", count: 6 },
+  { domain: "hey.com", count: 5 },
+  { domain: "linear.app", count: 12 },
+  { domain: "loom.com", count: 8 },
+  { domain: "arc.net", count: 6 },
+  { domain: "raycast.com", count: 5 },
+];
+
+function buildDemoData(): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const { domain, count } of DEMO_DOMAINS) {
+    counts.set(domain, (counts.get(domain) ?? 0) + count);
+  }
+  return counts;
+}
+
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
 interface LayoutResult {
@@ -546,6 +667,7 @@ export const EnclosuresViz: React.FC = () => {
   const [totalDomains, setTotalDomains] = useState(0);
   const [activeVisitors, setActiveVisitors] = useState(0);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   // Re-compute layout when window resizes or domain data changes
   const rebuildLayout = useCallback(() => {
@@ -567,7 +689,8 @@ export const EnclosuresViz: React.FC = () => {
     async function fetchData() {
       try {
         const res = await fetch(`${RECENT_EVENTS_URL}?type=navigation&limit=10000`);
-        if (!res.ok || cancelled) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (cancelled) return;
         const events: CollectionEvent[] = await res.json();
 
         const counts = new Map<string, number>();
@@ -581,10 +704,21 @@ export const EnclosuresViz: React.FC = () => {
         }
 
         if (cancelled) return;
-        domainCountsRef.current = counts;
+        // Fall back to demo data if the API returned nothing useful
+        if (counts.size < 5) {
+          domainCountsRef.current = buildDemoData();
+          setIsDemo(true);
+        } else {
+          domainCountsRef.current = counts;
+        }
         rebuildLayout();
       } catch (err) {
-        console.error("[enclosures] fetch error:", err);
+        // API unavailable — show illustrative demo data
+        console.info("[enclosures] using demo data:", (err as Error).message);
+        if (cancelled) return;
+        domainCountsRef.current = buildDemoData();
+        setIsDemo(true);
+        rebuildLayout();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -821,9 +955,15 @@ export const EnclosuresViz: React.FC = () => {
         {activeVisitors > 0 && (
           <div className="enc-stat">{activeVisitors} online now</div>
         )}
-        <div className={`enc-stat ${connected ? "live" : "offline"}`}>
-          {connected ? "● live" : "○ connecting..."}
-        </div>
+        {isDemo ? (
+          <div className="enc-stat" style={{ color: "rgba(255,209,102,0.45)" }}>
+            illustrative data
+          </div>
+        ) : (
+          <div className={`enc-stat ${connected ? "live" : "offline"}`}>
+            {connected ? "● live" : "○ connecting..."}
+          </div>
+        )}
       </div>
 
       {tooltip && (
