@@ -4,6 +4,7 @@ import { canMirrorInitializer, type ElementState } from "./canMirror";
 export type { ElementState } from "./canMirror";
 
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
+export * from "./presence-protocol";
 
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)

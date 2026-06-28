@@ -63,7 +63,9 @@ The hook subscribes and unsubscribes with the component lifecycle. Your channel 
 
 ### Cursor presence subscribes the same way
 
-Cursor movements update at ~60fps and are exposed as a special channel:
+Cursor movements are exposed as a special channel. Playhtml sends cursor motion through
+its realtime presence layer so cursor rendering can stay responsive without writing
+pointer movement into persistent shared data:
 
 ```js
 const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {

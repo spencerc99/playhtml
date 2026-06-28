@@ -37,7 +37,7 @@ import {
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
-import { createPresenceAPI } from "./presence";
+import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
   findSharedElementsOnPage,
@@ -52,6 +52,10 @@ import {
   refreshPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import {
+  canUseRealtimePresenceTransport,
+  RealtimePresenceTransport,
+} from "./presence-transport";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -755,7 +759,17 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
-  cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+  const cursorPresenceTransport = canUseRealtimePresenceTransport()
+    ? new RealtimePresenceTransport({
+        host: partykitHost,
+        room: currentCursorRoomId,
+      })
+    : undefined;
+  cursorClient = new CursorClientAwareness(
+    providerForCursors,
+    cursorOptions,
+    cursorPresenceTransport,
+  );
 }
 
 function storeResetEpochForRoom(room: string, resetEpoch: number): void {
@@ -1112,6 +1126,9 @@ async function initPlayHTMLOnce({
     getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
     getPlayerIdentity: () =>
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
   });
 
   if (extraCapabilities) {
@@ -1304,6 +1321,10 @@ function createPlayElementData<T extends TagType, TData = any>(
       // Use cursor provider for awareness (matches cursor scope)
       // Fall back to doc provider if cursors are disabled
       const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+      ensureAwarenessIdentity(
+        awarenessProvider.awareness,
+        cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+      );
       const localAwareness =
         awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
