@@ -1108,17 +1108,13 @@ export class PartyServer extends YServer {
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.includes(element.elementId)) return;
-          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
-          try {
-            const applyRequest: ApplySubtreesImmediateRequest = {
-              action: "apply-subtrees-immediate",
-              subtrees: ensureExists(subtreesForNew),
-              sender: this.name,
-              originKind: "source",
-              resetEpoch: currentEpoch ?? null,
-            };
-            await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-          } catch {}
+          await this.sendBridgeApply(consumerRoomId, {
+            action: "apply-subtrees-immediate",
+            subtrees: ensureExists(subtreesForNew),
+            sender: this.name,
+            originKind: "source",
+            resetEpoch: currentEpoch ?? null,
+          });
         })
       );
     } catch {}
@@ -1607,11 +1603,7 @@ export class PartyServer extends YServer {
           console.warn(
             `[Bridge] Ignoring apply-subtrees for transient room ${this.name}: Supabase persistence unavailable.`
           );
-          const response: ApplySubtreesResponse = {
-            ok: true,
-            applied: false,
-            reason: "transient",
-          };
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1631,11 +1623,7 @@ export class PartyServer extends YServer {
           console.warn(
             `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch (sender=${senderResetEpoch}, server=${serverResetEpoch})`
           );
-          const response: ApplySubtreesResponse = {
-            ok: true,
-            applied: false,
-            reason: "stale-epoch",
-          };
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1737,20 +1725,13 @@ export class PartyServer extends YServer {
                 toSend = filteredSubtrees;
                 if (!Object.keys(toSend).length) return;
               }
-              const consumerRoom = await getServerByName(
-                env.Main,
-                consumerRoomId
-              );
-              try {
-                const applyRequest: ApplySubtreesImmediateRequest = {
-                  action: "apply-subtrees-immediate",
-                  subtrees: toSend,
-                  sender: this.name,
-                  originKind: "source",
-                  resetEpoch: currentEpoch ?? null,
-                };
-                await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-              } catch {}
+              await this.sendBridgeApply(consumerRoomId, {
+                action: "apply-subtrees-immediate",
+                subtrees: toSend,
+                sender: this.name,
+                originKind: "source",
+                resetEpoch: currentEpoch ?? null,
+              });
             })
           );
         }
@@ -2129,41 +2110,46 @@ export class PartyServer extends YServer {
     }
   }
 
-  // Send a bridge apply to a peer room, gated by the per-peer circuit breaker.
-  // Skips the send when the peer's circuit is open (it keeps rejecting us), and
-  // records the apply result so a recovered peer reopens and a misconfigured one
-  // stops being stormed. A peer that just tripped logs once so the drop is
-  // visible without re-logging every suppressed flush.
+  // The single outbound chokepoint for bridge applies. Every fan-out path must
+  // route through here so the per-(peer, direction) circuit breaker sees it:
+  // it skips the send when the link's circuit is open (the peer keeps rejecting
+  // us), records the apply result so a recovered peer reopens and a misconfigured
+  // one stops being stormed, and logs once on the open edge. The direction is the
+  // request's originKind, so the two directions to a bidirectional peer are
+  // tracked independently.
   private async sendBridgeApply(
     peerRoomId: string,
     applyRequest: ApplySubtreesImmediateRequest
   ): Promise<void> {
-    if (!this.bridgeHealth.shouldSend(peerRoomId)) {
+    const direction = applyRequest.originKind;
+    if (!this.bridgeHealth.shouldSend(peerRoomId, direction)) {
       return;
     }
+    let applied: boolean;
     try {
       const peerRoom = await getServerByName(env.Main, peerRoomId);
       const res = await peerRoom.fetch(internalRequest("/apply", applyRequest));
-      let applied = true;
-      try {
-        const parsed = (await res.json()) as ApplySubtreesResponse;
-        // Absent `applied` means an older peer that always applies — treat as true.
-        applied = parsed?.applied !== false;
-      } catch {
-        // Unparseable response — treat as a failed apply so a broken peer backs off.
+      if (!res.ok) {
+        // A non-2xx response is a failed apply regardless of body.
         applied = false;
-      }
-      // shouldSend was true on entry, so the circuit transitions to open only if
-      // this result is the one that crosses the threshold. Log that edge once.
-      this.bridgeHealth.recordResult(peerRoomId, applied);
-      if (!applied && !this.bridgeHealth.shouldSend(peerRoomId)) {
-        console.warn(
-          `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId}: peer keeps rejecting applies; pausing sends until it recovers or resubscribes`
-        );
+      } else {
+        try {
+          const parsed = (await res.json()) as ApplySubtreesResponse;
+          // Absent `applied` means an older peer that always applies — treat as true.
+          applied = parsed?.applied !== false;
+        } catch {
+          // Unparseable 2xx body — treat as a failed apply so a broken peer backs off.
+          applied = false;
+        }
       }
     } catch {
-      // Network/dispatch failure also counts against the peer's health.
-      this.bridgeHealth.recordResult(peerRoomId, false);
+      // Network/dispatch failure also counts against the link's health.
+      applied = false;
+    }
+    if (this.bridgeHealth.recordResult(peerRoomId, direction, applied)) {
+      console.warn(
+        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until it recovers or resubscribes`
+      );
     }
   }
 

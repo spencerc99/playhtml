@@ -40,8 +40,6 @@ export interface ApplySubtreesResponse {
   // re-sending on every flush. Optional so older callers reading only `ok`
   // keep working; absence is treated as applied.
   applied?: boolean;
-  // Free-form reason for logging only. Not a typed contract; do not branch on it.
-  reason?: string;
 }
 
 export interface GenericErrorResponse {
