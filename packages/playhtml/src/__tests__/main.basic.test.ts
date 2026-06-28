@@ -1,6 +1,14 @@
 // ABOUTME: Tests basic playhtml element setup and state behavior.
 // ABOUTME: Verifies handler lifecycle, SyncedStore writes, and element cleanup.
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  vi,
+} from "vitest";
 import { playhtml } from "../index";
 
 beforeAll(async () => {
@@ -153,5 +161,22 @@ describe("playhtml basic setup with SyncedStore", () => {
 
     // Verify data is removed from SyncedStore
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
+  });
+
+  it("does not add a mouseleave listener on every can-grow hover", async () => {
+    const el = document.createElement("div");
+    el.id = "grow-hover-listeners";
+    el.setAttribute("can-grow", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-grow");
+
+    const addEventListener = vi.spyOn(el, "addEventListener");
+
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+    expect(
+      addEventListener.mock.calls.filter(([type]) => type === "mouseleave"),
+    ).toHaveLength(0);
   });
 });

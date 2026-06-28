@@ -556,18 +556,32 @@ export const TagTypeToElement: DefaultTagInitializers = {
       setData({ ...data, scale });
     },
     onMount: (eventData) => {
-      eventData.getElement().addEventListener("mouseenter", (e) => {
+      const element = eventData.getElement();
+      let isListeningForKeys = false;
+      const onKeyDownUp = (e: KeyboardEvent) =>
         canGrowCursorHandler(e, eventData);
-        const onKeyDownUp = (e: KeyboardEvent) =>
-          canGrowCursorHandler(e, eventData);
+      const onMouseEnter = (e: MouseEvent) => {
+        canGrowCursorHandler(e, eventData);
+        if (isListeningForKeys) {
+          return;
+        }
+
+        isListeningForKeys = true;
         document.addEventListener("keydown", onKeyDownUp);
         document.addEventListener("keyup", onKeyDownUp);
+      };
+      const onMouseLeave = () => {
+        if (!isListeningForKeys) {
+          return;
+        }
 
-        eventData.getElement().addEventListener("mouseleave", (e) => {
-          document.removeEventListener("keydown", onKeyDownUp);
-          document.removeEventListener("keyup", onKeyDownUp);
-        });
-      });
+        isListeningForKeys = false;
+        document.removeEventListener("keydown", onKeyDownUp);
+        document.removeEventListener("keyup", onKeyDownUp);
+      };
+
+      element.addEventListener("mouseenter", onMouseEnter);
+      element.addEventListener("mouseleave", onMouseLeave);
     },
     resetShortcut: "shiftKey",
   },
