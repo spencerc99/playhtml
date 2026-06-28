@@ -1960,8 +1960,8 @@ function setupPlayElement(
   }
   if (
     ignoreIfAlreadySetup &&
-    Object.keys(elementHandlers || {}).some((tag) =>
-      elementHandlers.get(tag)?.has(element.id),
+    Array.from(elementHandlers.values()).some((handlers) =>
+      handlers.has(element.id),
     )
   ) {
     return;
