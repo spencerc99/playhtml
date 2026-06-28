@@ -8,6 +8,13 @@ export interface GuestbookEntry {
   timestamp: number;
 }
 
+export function appendGuestbookEntry(
+  entries: GuestbookEntry[],
+  entry: GuestbookEntry,
+): void {
+  entries.push(entry);
+}
+
 export function getGuestbookDotColors(entries: GuestbookEntry[]): string[] {
   const sortedEntries = [...entries].sort((a, b) => a.timestamp - b.timestamp);
   const seen = new Set<string>();
