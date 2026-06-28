@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-playhtml ships a first-class React package. This page is an orientation; the rest of the docs show you the React form of each concept inline, next to the vanilla HTML form, so you can pick the shape that fits your codebase.
+playhtml ships a React package. This page is an orientation; the rest of the docs show you the React form of each concept inline, next to the vanilla HTML form, so you can pick the shape that fits your codebase.
 
 ## Install
 
@@ -42,7 +42,7 @@ A new page / route in a multi-page app needs its own provider only if it's a sep
 
 Almost every React element in playhtml is built from one of these.
 
-### `withSharedState` — a hook-flavored HOC
+### `withSharedState`: a hook-flavored HOC
 
 Wrap a component to give it live, shared `data` plus a `setData` callback.
 
@@ -83,7 +83,7 @@ Use the mutator form for counters and other `+/-` updates so each interaction ed
 
 Add `myDefaultAwareness` to the config to get presence-style ephemeral per-user data alongside your persistent data.
 
-### `<CanPlayElement>` — for when you need JSX children, not a wrapper
+### `<CanPlayElement>`: for when you need JSX children, not a wrapper
 
 Same idea, different shape. Useful when the thing you're wrapping is a specific DOM element you want to keep named, or when you want access to `ref`.
 
@@ -108,11 +108,11 @@ import { TagType } from "@playhtml/common";
 
 Every concept page shows both the vanilla and React forms. Pick whichever matches your codebase:
 
-- [Core concepts](/docs/concepts/) — the four primitives
-- [Data essentials](/docs/data/data-essentials/) — `setData` semantics and data shape
-- [Presence](/docs/data/presence/) — ephemeral per-user state, including cursors
-- [Events](/docs/data/events/) — one-off broadcasts
-- [Capabilities](/docs/capabilities/) — every built-in `can-*` attribute
-- [Navigation & SPAs](/docs/advanced/navigation/) — client-side routing with React Router, Next.js, and more
+- [Core concepts](/docs/concepts/): the four primitives
+- [Data essentials](/docs/data/data-essentials/): `setData` semantics and data shape
+- [Presence](/docs/data/presence/): ephemeral per-user state, including cursors
+- [Events](/docs/data/events/): one-off broadcasts
+- [Capabilities](/docs/capabilities/): every built-in `can-*` attribute
+- [Navigation & SPAs](/docs/advanced/navigation/): client-side routing with React Router, Next.js, and more
 
 For the full React component/hook signatures and types, see [React API](/docs/reference/react-api/).

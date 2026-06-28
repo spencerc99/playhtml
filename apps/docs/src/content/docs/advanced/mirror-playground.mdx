@@ -5,15 +5,15 @@ sidebar:
   order: 5
 ---
 
-`can-mirror` is the "everything syncs" capability. Put it on any element and playhtml observes the DOM — input values, checked state, pseudo-class data attributes, attribute changes, child adds/removes — then replays those mutations on every other reader.
+`can-mirror` is the "everything syncs" capability. Put it on any element and playhtml observes the DOM (input values, checked state, pseudo-class data attributes, attribute changes, child adds/removes), then replays those mutations on every other reader.
 
-This page hosts **every edge case we've found useful**, one section each. Open it in two browser windows side by side and poke at each demo — everything should mirror.
+This page hosts **every edge case we've found useful**, one section each. Open it in two browser windows side by side and poke at each demo. Everything should mirror.
 
 Nothing on this page requires custom JavaScript. It's all plain HTML with `can-mirror` on a root element. The docs site's shared `playhtml.init()` picks each one up automatically.
 
 ## :hover
 
-The synced `data-playhtml-hover` attribute lets CSS target the hover state from across the network. Hover over the box in one tab — it turns green in every other tab.
+The synced `data-playhtml-hover` attribute lets CSS target the hover state from across the network. Hover over the box in one tab and it turns green in every other tab.
 
 <div className="ph-mirror-sample">
   <div can-mirror id="pg-mirror-hover" className="pg-hover-box">
@@ -34,7 +34,7 @@ The synced `data-playhtml-hover` attribute lets CSS target the hover state from 
 
 ## :focus
 
-Click the input — the blue outline shows for every client until you blur.
+Click the input and the blue outline shows for every client until you blur.
 
 <div className="ph-mirror-sample">
   <input
@@ -48,7 +48,7 @@ Click the input — the blue outline shows for every client until you blur.
 
 ## Text input
 
-Type — the value replicates.
+Type and the value replicates.
 
 <div className="ph-mirror-sample">
   <input can-mirror id="pg-mirror-text" type="text" placeholder="Type here..." />
@@ -132,7 +132,7 @@ Type — the value replicates.
 
 ## Details / summary
 
-Expand and collapse — the native `open` attribute mirrors automatically.
+Expand and collapse, and the native `open` attribute mirrors automatically.
 
 <div className="ph-mirror-sample">
   <details can-mirror id="pg-mirror-details">
@@ -147,7 +147,7 @@ Expand and collapse — the native `open` attribute mirrors automatically.
 
 ## contenteditable
 
-Type, paste, delete — every mutation lands on every client. Try pressing `Enter` inside the list to add items; delete them by selecting and pressing `Backspace`.
+Type, paste, and delete: every mutation lands on every client. Try pressing `Enter` inside the list to add items; delete them by selecting and pressing `Backspace`.
 
 <div className="ph-mirror-sample">
   <div
@@ -169,14 +169,14 @@ Type, paste, delete — every mutation lands on every client. Try pressing `Ente
     suppressContentEditableWarning
     className="pg-editable pg-editable--list"
   >
-    <li>First item — type to edit, Enter for new line</li>
+    <li>First item: type to edit, Enter for new line</li>
     <li>Second item</li>
   </ul>
 </div>
 
 ## Mixed form inputs
 
-A single `can-mirror` wrapping a form with heterogeneous inputs — all of them sync together.
+A single `can-mirror` wrapping a form with heterogeneous inputs, all of them sync together.
 
 <div className="ph-mirror-sample">
   <div can-mirror id="pg-mirror-mixedform" className="pg-mixed-form">
@@ -212,7 +212,7 @@ el.classList.add("is-flag");
 el.setAttribute("data-you-changed-this", "yes");
 ```
 
-Then open this page in another tab and inspect the element — the class and the custom attribute will be there too.
+Then open this page in another tab and inspect the element. The class and the custom attribute will be there too.
 
 Same trick for programmatic child changes:
 
@@ -223,14 +223,14 @@ li.textContent = "added via console";
 el.appendChild(li);
 ```
 
-Anything a MutationObserver would fire for — attribute additions and removals, childList inserts, characterData changes — can-mirror sends across. That's the whole capability.
+Anything a MutationObserver would fire for (attribute additions and removals, childList inserts, characterData changes) can-mirror sends across.
 
 ## What doesn't mirror (yet)
 
-- **Scroll position** on nested containers — `scrollTop`/`scrollLeft` aren't DOM mutations, so the observer doesn't catch them.
-- **Media playback** — `<video>`/`<audio>` `currentTime` isn't attribute-driven.
-- **Canvas / WebGL** — pixel changes don't emit mutations.
-- **File inputs** — `<input type="file">`'s selected file isn't serializable across the wire.
+- **Scroll position** on nested containers: `scrollTop`/`scrollLeft` aren't DOM mutations, so the observer doesn't catch them.
+- **Media playback**: `<video>`/`<audio>` `currentTime` isn't attribute-driven.
+- **Canvas / WebGL**: pixel changes don't emit mutations.
+- **File inputs**: `<input type="file">`'s selected file isn't serializable across the wire.
 
 For these, use element data with `can-play` and explicitly sync the bit you care about.
 

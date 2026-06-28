@@ -7,7 +7,7 @@ sidebar:
 
 `playhtml.init()` walks the DOM once at startup and wires up every element it finds. Two situations fall outside that single pass:
 
-1. You **create new playhtml elements after init** — a new row in a list, a cloned template, a client-rendered component. The library doesn't know they exist yet.
+1. You **create new playhtml elements after init**: a new row in a list, a cloned template, a client-rendered component. The library doesn't know they exist yet.
 2. You have **many elements of the same kind** that can't each get a hand-written unique id but still need their own slot of synced state.
 
 This page covers both.
@@ -25,13 +25,13 @@ document.body.appendChild(el);
 playhtml.setupPlayElement(el);
 ```
 
-`setupPlayElement(element, options?)` is **idempotent** — pass `{ ignoreIfAlreadySetup: true }` to skip elements that are already wired, which is handy when the same code path can run over both fresh and existing nodes:
+`setupPlayElement(element, options?)` is **idempotent**. Pass `{ ignoreIfAlreadySetup: true }` to skip elements that are already wired, which is handy when the same code path can run over both fresh and existing nodes:
 
 ```js
 playhtml.setupPlayElement(el, { ignoreIfAlreadySetup: true });
 ```
 
-To re-walk the whole DOM (e.g. after injecting a chunk of server-rendered HTML), call `playhtml.setupPlayElements()` — the same pass `init()` runs.
+To re-walk the whole DOM (e.g. after injecting a chunk of server-rendered HTML), call `playhtml.setupPlayElements()`, the same pass `init()` runs.
 
 ### Cleaning up
 
@@ -42,7 +42,7 @@ playhtml.removePlayElement(el);
 el.remove();
 ```
 
-`removePlayElement` only detaches the live handlers — **the element's persisted shared data stays in the room**, so if you re-add an element with the same id it picks up where it left off. To also wipe the saved data, use `deleteElementData(tag, id)`:
+`removePlayElement` only detaches the live handlers. **The element's persisted shared data stays in the room**, so if you re-add an element with the same id it picks up where it left off. To also wipe the saved data, use `deleteElementData(tag, id)`:
 
 ```js
 playhtml.deleteElementData("can-move", "note-42");
@@ -52,13 +52,13 @@ See [Development & data cleanup](/docs/advanced/development/) for inspecting and
 
 ### React
 
-In React you rarely call these directly — mounting a `<CanMoveElement>` (or any capability component) registers the node, and unmounting it calls `removePlayElement` for you. The one place it surfaces is `can-duplicate`, where clones are created imperatively: `CanDuplicateElement` calls `setupPlayElement` on each new clone under the hood. See the [React API reference](/docs/reference/react-api/#other-capability-components).
+In React you rarely call these directly: mounting a `<CanMoveElement>` (or any capability component) registers the node, and unmounting it calls `removePlayElement` for you. The one place it surfaces is `can-duplicate`, where clones are created imperatively: `CanDuplicateElement` calls `setupPlayElement` on each new clone under the hood. See the [React API reference](/docs/reference/react-api/#other-capability-components).
 
 ## Many-of-a-kind elements with `selector-id`
 
-Every playhtml element needs a [stable id](/docs/capabilities/) so collaborators agree on which element owns which state. For a list of structurally identical elements — fridge magnets, reaction buttons, a grid of cells — inventing a unique id for each is tedious and error-prone.
+Every playhtml element needs a [stable id](/docs/capabilities/) so collaborators agree on which element owns which state. For a list of structurally identical elements (fridge magnets, reaction buttons, a grid of cells), inventing a unique id for each is tedious and error-prone.
 
-`selector-id` solves this. Give every element in the group the **same** `selector-id` value (a CSS selector that matches all of them), and playhtml assigns each one a stable id based on **its position among the selector's matches**. The 1st `.magnet` always gets the 1st slot of state, the 2nd gets the 2nd, and so on — consistently for every visitor.
+`selector-id` solves this. Give every element in the group the **same** `selector-id` value (a CSS selector that matches all of them), and playhtml assigns each one a stable id based on **its position among the selector's matches**. The 1st `.magnet` always gets the 1st slot of state, the 2nd gets the 2nd, and so on, consistently for every visitor.
 
 ```html
 <div id="fridge">
@@ -92,4 +92,4 @@ export const FridgeWord = withSharedState(
 );
 ```
 
-Render a `<FridgeWord>` for each word inside `#fridge` and every one gets its own draggable, synced position — no per-word id required.
+Render a `<FridgeWord>` for each word inside `#fridge` and every one gets its own draggable, synced position, with no per-word id required.

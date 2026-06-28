@@ -19,22 +19,22 @@ import { SmileyRow } from '@/components/react/capability-demos/SmileyRow';
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
 :::tip[Every playhtml element needs a stable id]
-The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers** — that's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
+The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers**. That's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
 
-For **many elements that share a selector** — a row of magnets, a list of reactions — give each the same markup and add a single `selector-id` attribute instead of inventing unique ids. playhtml indexes the matches by position, so the N-th `.magnet` always gets the N-th slot of state. See [Dynamic elements](/docs/advanced/dynamic-elements/#many-of-a-kind-elements-with-selector-id).
+For **many elements that share a selector** (a row of magnets, a list of reactions), give each the same markup and add a single `selector-id` attribute instead of inventing unique ids. playhtml indexes the matches by position, so the N-th `.magnet` always gets the N-th slot of state. See [Dynamic elements](/docs/advanced/dynamic-elements/#many-of-a-kind-elements-with-selector-id).
 :::
 
 :::tip[Shift-click to reset]
-The built-in interactive capabilities — `can-move`, `can-spin`, `can-toggle`, and `can-grow` — support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](#resetting-custom-elements) option.
+The built-in interactive capabilities (`can-move`, `can-spin`, `can-toggle`, and `can-grow`) support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](#resetting-custom-elements) option.
 :::
 
 Every section below has the same shape:
 
 - A short description of what the capability does and the kind of state it owns.
-- A live demo you can interact with — open the page in a second tab and watch both update.
+- A live demo you can interact with. Open the page in a second tab and watch both update.
 - The **vanilla HTML** form, and the **React** form. Pick the framework you're shipping in; the reader's choice syncs across every snippet on the page.
 
-This page also runs a few `can-play` demos directly in its margins — a [doodle strip](#play-doodle) below, a [guestbook](#play-guestbook) further down, a [prize wheel](#play-spinner) at the bottom, and a shared [tally on every code block](#play-copy) you copy from. They're discussed properly in the [`can-play`](#can-play) section.
+This page also runs a few `can-play` demos directly in its margins: a [doodle strip](#play-doodle) below, a [guestbook](#play-guestbook) further down, a [prize wheel](#play-spinner) at the bottom, and a shared [tally on every code block](#play-copy) you copy from. They're discussed properly in the [`can-play`](#can-play) section.
 
 <div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
   <div class="ph-canplay-inline__head">
@@ -50,7 +50,7 @@ This page also runs a few `can-play` demos directly in its margins — a [doodle
 
 **What it does.** Drag anywhere. Position persists and syncs.
 
-**Use it for:** drag-and-drop affordances — fridge magnets, game pieces, arrangeable stickers, a puzzle.
+**Use it for:** drag-and-drop affordances such as fridge magnets, game pieces, arrangeable stickers, a puzzle.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-move">
   <MoveHatCatDemo client:only="react" />
@@ -110,10 +110,10 @@ import { CanMoveElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-The **cursor** can go past the container edge — only the element's position is clamped. By default, the keep-visible slice is `max(25% of element size, 60px)` on every edge, so readers always have something to grab. Two knobs let you tune that:
+The **cursor** can go past the container edge; only the element's position is clamped. By default, the keep-visible slice is `max(25% of element size, 60px)` on every edge, so readers always have something to grab. Two knobs let you tune that:
 
-- `can-move-bounds-min-visible` / `boundsMinVisible` — fraction `(0–1)` of the element to keep inside. `1` pins fully inside (strict clamp); `0` drops the fraction constraint entirely.
-- `can-move-bounds-min-visible-px` / `boundsMinVisiblePx` — absolute pixel floor. Useful when an image has transparent padding around its paint; a pure fraction of the layout bbox can let the visible pixels clip into invisible border.
+- `can-move-bounds-min-visible` / `boundsMinVisible`: fraction `(0–1)` of the element to keep inside. `1` pins fully inside (strict clamp); `0` drops the fraction constraint entirely.
+- `can-move-bounds-min-visible-px` / `boundsMinVisiblePx`: absolute pixel floor. Useful when an image has transparent padding around its paint; a pure fraction of the layout bbox can let the visible pixels clip into invisible border.
 
 The effective slice on each axis is `max(fraction × size, pxFloor)`. Set both to `0` to opt fully out of the keep-visible guarantee and let the element slip entirely out of view.
 
@@ -156,7 +156,7 @@ import { CanMoveElement } from "@playhtml/react";
 
 **What it does.** Click to flip an on/off boolean. Persists and syncs.
 
-**Use it for:** shared switches, lamps, "is-this-thing-open" signs, per-element read/unread state. The [playhtml homepage](https://playhtml.fun) uses this on the wordmark letters and the hanging lamp — click either to flip it for everyone.
+**Use it for:** shared switches, lamps, "is-this-thing-open" signs, per-element read/unread state. The [playhtml homepage](https://playhtml.fun) uses this on the wordmark letters and the hanging lamp; click either to flip it for everyone.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-toggle">
   <InteractiveToggleDemo client:only="react" />
@@ -196,7 +196,7 @@ import { CanToggleElement } from "@playhtml/react";
 </CanToggleElement>
 ```
 
-`CanToggleElement` already wires up the click handler — don't add your own `onClick`, or you'll toggle twice per click. Render declaratively from `data`.
+`CanToggleElement` already wires up the click handler. Don't add your own `onClick`, or you'll toggle twice per click. Render declaratively from `data`.
   </TabItem>
 </Tabs>
 
@@ -258,7 +258,7 @@ import { TagType } from "@playhtml/common";
 
 ## can-hover
 
-**What it does.** Shares hover state across everyone on the page. Presence-based, _not_ persistent — when a user leaves, their hover clears.
+**What it does.** Shares hover state across everyone on the page. Presence-based, _not_ persistent: when a user leaves, their hover clears.
 
 **Use it for:** "who's looking at this right now" affordances, social read-receipts, zero-latency shared hover effects.
 
@@ -266,7 +266,7 @@ import { TagType } from "@playhtml/common";
   <HoverCursorColorsDemo client:only="react" />
 </div>
 
-**How it works.** While *anyone* (you or another reader) is hovering the element, playhtml sets a `data-playhtml-hover` attribute on it; when nobody is hovering, the attribute is removed. Style the effect by targeting `[data-playhtml-hover]` instead of the `:hover` pseudo-class — that's the only change from a normal hover style, and it's the same attribute whether you use the vanilla capability or the React component.
+**How it works.** While *anyone* (you or another reader) is hovering the element, playhtml sets a `data-playhtml-hover` attribute on it; when nobody is hovering, the attribute is removed. Style the effect by targeting `[data-playhtml-hover]` instead of the `:hover` pseudo-class. That's the only change from a normal hover style, and it's the same attribute whether you use the vanilla capability or the React component.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -355,7 +355,7 @@ import { TagType } from "@playhtml/common";
 <button id="reset-btn">reset</button>
 ```
 
-By default, clones are inserted right after the template (or the previous clone). Add **`can-duplicate-to`** — an element id or CSS selector — to drop every clone into a specific container instead:
+By default, clones are inserted right after the template (or the previous clone). Add **`can-duplicate-to`** (an element id or CSS selector) to drop every clone into a specific container instead:
 
 ```html
 <button
@@ -394,11 +394,11 @@ function BunnyField() {
 
 ## can-mirror
 
-**What it does.** A meta-capability: `can-mirror` auto-syncs **every attribute, child-node change, and form-state change** on the element. You don't write `defaultData`, `setData`, or an `updateElement` callback — the library observes the DOM for you.
+**What it does.** A meta-capability: `can-mirror` auto-syncs **every attribute, child-node change, and form-state change** on the element. You don't write `defaultData`, `setData`, or an `updateElement` callback; the library observes the DOM for you.
 
 **Use it for:** when the state you want to share _is_ the DOM: a shared textarea, a form, a growing list of children.
 
-### Vignette A — an emoji-only textarea
+### Vignette A: an emoji-only textarea
 
 A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
 
@@ -430,9 +430,9 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 </script>
 ```
 
-### Vignette B — a list you can add children to
+### Vignette B: a list you can add children to
 
-Click "+" to append a new `<li>`. The child addition itself mirrors — new readers see the whole list, not just the latest.
+Click "+" to append a new `<li>`. The child addition itself mirrors, so new readers see the whole list, not just the latest.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
   <div class="ph-canmirror-vignette ph-canmirror-vignette--guestbook" data-can-mirror-vignette="guestbook">
@@ -467,7 +467,7 @@ Click "+" to append a new `<li>`. The child addition itself mirrors — new read
   <span className="ph-composed-card__title">See every can-mirror edge case →</span>
   <span className="ph-composed-card__body">
     Hover, focus, every form input, contenteditable, programmatic attribute
-    changes — one page with a live demo for each. Open in two tabs to watch it
+    changes: one page with a live demo for each. Open in two tabs to watch it
     sync.
   </span>
 </a>
@@ -484,18 +484,18 @@ Click "+" to append a new `<li>`. The child addition itself mirrors — new read
 
 ## can-play
 
-**What it does.** The "build your own capability" escape hatch. You define `defaultData`, `onClick` / `onDrag` / `onMount` handlers, and an `updateElement` callback — playhtml syncs the data and fires your handlers.
+**What it does.** The "build your own capability" escape hatch. You define `defaultData`, `onClick` / `onDrag` / `onMount` handlers, and an `updateElement` callback. playhtml syncs the data and fires your handlers.
 
 **Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
 
 This page is itself a `can-play` showcase. Four examples live in the margins:
 
-- [**Doodle strip**](#play-doodle) — freehand canvas input encoded as a tiny PNG data URL. The shared array caps at 20 via `splice` inside the setData mutator.
-- [**Guestbook**](#play-guestbook) — a growing list of short text entries. Same "cap the array" pattern, different payload.
-- [**Prize wheel**](#play-spinner) — one shared piece of data (the spin seed + target) animates identically on every tab. Every visitor sees the wheel land on the same label.
-- <a href="#play-copy" id="play-copy">**Tally on every code block**</a> — every `<pre>` on this page is a vanilla `can-play` element. Click <code>copy</code> on any snippet and watch a tally tick appear next to the button — readers all over the site share that counter, so popular snippets accumulate marks like a well-loved library book.
+- [**Doodle strip**](#play-doodle): freehand canvas input encoded as a tiny PNG data URL. The shared array caps at 20 via `splice` inside the setData mutator.
+- [**Guestbook**](#play-guestbook): a growing list of short text entries. Same "cap the array" pattern, different payload.
+- [**Prize wheel**](#play-spinner): one shared piece of data (the spin seed + target) animates identically on every tab. Every visitor sees the wheel land on the same label.
+- <a href="#play-copy" id="play-copy">**Tally on every code block**</a>: every `<pre>` on this page is a vanilla `can-play` element. Click <code>copy</code> on any snippet and watch a tally tick appear next to the button. Readers all over the site share that counter, so popular snippets accumulate more marks.
 
-That's four wildly different shapes — short array, blob payload, animation seed, single integer — built on the same primitive. The minimum viable shape is much smaller, though:
+That's four different shapes (short array, blob payload, animation seed, single integer) built on the same primitive. The minimum viable shape is much smaller, though:
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -544,7 +544,7 @@ Deeper material on custom capabilities lives in [Data essentials](/docs/data/dat
 
 ### Resetting custom elements
 
-The built-in interactive capabilities support shift-click to reset (see the tip at the top of this page). Opt your own `can-play` element into the same gesture with `resetShortcut` — a modifier key that, when held while clicking, restores the element's `defaultData` for everyone:
+The built-in interactive capabilities support shift-click to reset (see the tip at the top of this page). Opt your own `can-play` element into the same gesture with `resetShortcut`, a modifier key that, when held while clicking, restores the element's `defaultData` for everyone:
 
 ```js
 el.defaultData = { count: 0 };
@@ -586,7 +586,7 @@ These capabilities are the building blocks. The best way to see them in concert 
   </a>
 </div>
 
-These three are highlighted in the homepage experiments index — the fastest way to feel playhtml at room-scale.
+These three are highlighted in the homepage experiments index, the fastest way to see playhtml at room-scale.
 
 <div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
   <div class="ph-canplay-inline__head">

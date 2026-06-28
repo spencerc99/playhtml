@@ -19,7 +19,7 @@ There are two paths. Pick the one that matches your project.
 
 ### Path A: drop-in script (no build, no module syntax)
 
-The fastest path — no `import`, no `playhtml.init()` call. Add the script tag at the end of your `<body>`, after your interactive elements:
+The fastest path, with no `import` and no `playhtml.init()` call. Add the script tag at the end of your `<body>`, after your interactive elements:
 
 ```html
 <body>
@@ -33,7 +33,7 @@ Give every interactive element a unique `id`. That's how state is keyed and sync
 
 > Why end-of-body? The drop-in script runs `playhtml.init()` immediately, and `init()` scans the DOM for capability attributes (`can-toggle`, `can-move`, etc.) when it runs. Place it after the elements it should find.
 
-> Want options like cursors? Use Path B — the drop-in script calls `playhtml.init({})` with no options.
+> Want options like cursors? Use Path B. The drop-in script calls `playhtml.init({})` with no options.
 
 ### Path B: import + manual init (when you need options or a bundler)
 
@@ -65,7 +65,7 @@ playhtml.init({ cursors: { enabled: true } });
 
 Bundlers usually handle script placement for you; just make sure `init()` runs after your interactive elements are in the DOM (e.g. on `DOMContentLoaded` or after your framework mounts).
 
-Either way, give every interactive element a unique `id` — that's how state is keyed and synced across everyone on the page.
+Either way, give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
 
   </TabItem>
   <TabItem label="React">
@@ -118,17 +118,17 @@ import { TagType } from "@playhtml/common";
 
 ## Try it live
 
-This toggle is shared with everyone reading this page right now. Click it and watch.
+This toggle is shared with everyone reading this page right now. Click it to see it update for all readers.
 
 <InteractiveToggleDemo client:only="react" />
 
 ## Where to next
 
-- [Core concepts](/docs/concepts/) — the four kinds of shared state (element data, page data, presence, events) and when to use each.
-- [Using React](/docs/using-react/) — if your app is a React app, start here; concept pages show React inline.
-- [Capabilities](/docs/capabilities/) — every built-in `can-*` attribute with live demos.
-- [Data essentials](/docs/data/data-essentials/) — shape, update, and clean up `defaultData`.
-- [Presence & cursors](/docs/data/presence/) — multiplayer cursors and ephemeral per-user state.
-- [Shared elements](/docs/advanced/shared-elements/) — cross-page and cross-domain state.
-- [Building with AI](/docs/integrations/building-with-ai/) — Claude Code plugin + a prompt template for any LLM.
-- [API reference](/docs/reference/init-options/) — the full `playhtml.init()` options table and React API types.
+- [Core concepts](/docs/concepts/): the four kinds of shared state (element data, page data, presence, events) and when to use each.
+- [Using React](/docs/using-react/): if your app is a React app, start here; concept pages show React inline.
+- [Capabilities](/docs/capabilities/): every built-in `can-*` attribute with live demos.
+- [Data essentials](/docs/data/data-essentials/): shape, update, and clean up `defaultData`.
+- [Presence & cursors](/docs/data/presence/): multiplayer cursors and ephemeral per-user state.
+- [Shared elements](/docs/advanced/shared-elements/): cross-page and cross-domain state.
+- [Building with AI](/docs/integrations/building-with-ai/): Claude Code plugin + a prompt template for any LLM.
+- [API reference](/docs/reference/init-options/): the full `playhtml.init()` options table and React API types.
