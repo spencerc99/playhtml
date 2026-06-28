@@ -340,12 +340,13 @@ import { TagType } from "@playhtml/common";
   <TabItem label="Vanilla HTML">
 ```html
 <img id="bunny-template" src="/pixel-bunny.png" alt="" />
-<button can-duplicate="#bunny-template" id="clone-btn">clone a bunny</button>
+<button can-duplicate="bunny-template" id="clone-btn">clone a bunny</button>
 
 <script>
   // The "reset" button sweeps every spawned rabbit from shared state.
+  // Clones get an id of the form "bunny-template-<random>", so match on that prefix.
   document.getElementById("reset-btn").addEventListener("click", () => {
-    document.querySelectorAll("[data-duplicate-source='#bunny-template']").forEach((el) => {
+    document.querySelectorAll("[id^='bunny-template-']").forEach((el) => {
       playhtml.deleteElementData("can-duplicate", el.id);
       el.remove();
     });
@@ -358,7 +359,7 @@ By default, clones are inserted right after the template (or the previous clone)
 
 ```html
 <button
-  can-duplicate="#bunny-template"
+  can-duplicate="bunny-template"
   can-duplicate-to="#bunny-pen"
   id="clone-btn"
 >clone a bunny</button>
