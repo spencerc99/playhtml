@@ -586,47 +586,81 @@ let isDevelopmentMode = false;
 // applyConfig). Bootstrap reads everything it needs from here, so config has a
 // single source of truth regardless of which call site declared it.
 let configuredOptions: InitOptions | null = null;
+// True once bootstrap has read config and started connecting. Config is frozen
+// from this point — a later configure()/init(options) warns instead of applying.
+let hasBootstrapped = false;
 
 /**
- * Returns true if `incoming` config conflicts with the already-locked config.
+ * Normalize a config value into a stable, comparable form that captures only
+ * what it actually declares:
+ *  - function-valued options (`room` as a function, `events`, `onError`, cursor
+ *    callbacks) become undefined — closures never compare equal across call
+ *    sites, so comparing them yields false conflicts; the first declaration's
+ *    functions win,
+ *  - object keys are sorted so key order is ignored,
+ *  - a key whose value normalizes to undefined OR to an empty object/array is
+ *    dropped, so an option-less object collapses: `{}`, `{ cursors: {} }`, and
+ *    `{ room: undefined }` all normalize to `{}` ("declares nothing").
+ * Used by both isEmptyConfig and configsConflict so "declares nothing" means
+ * the same thing in both.
+ */
+function normalizeConfig(value: unknown): unknown {
+  if (typeof value === "function") return undefined;
+  if (Array.isArray(value)) {
+    const arr = value.map(normalizeConfig);
+    return arr.length === 0 ? undefined : arr;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      const normalized = normalizeConfig((value as Record<string, unknown>)[key]);
+      if (normalized !== undefined) out[key] = normalized;
+    }
+    return Object.keys(out).length === 0 ? undefined : out;
+  }
+  return value;
+}
+
+/**
+ * Returns true if `incoming` conflicts with the already-locked config.
  *
- * Lenient and directional: only keys that `incoming` actually specifies are
- * checked, and only against `locked`'s value for that same key. So:
+ * Lenient and directional: a conflict requires a key that BOTH sides declare
+ * with different values. So:
  *  - passing NO/empty options (an "ensure running" init()) never conflicts,
  *  - passing the SAME options from another call site never conflicts (the
  *    "declare identical options everywhere" pattern stays quiet),
- *  - a genuine value difference on a key the caller specified DOES conflict.
+ *  - adding a key the locked config never declared is not a conflict (it's
+ *    ignored anyway, since config is locked) — this avoids false positives when
+ *    a later call passes a default-valued option the owner simply omitted,
+ *  - a genuine value difference on a key BOTH sides declared DOES conflict.
  *
- * Function-valued options (`room` as a function, `events`, `onError`, cursor
- * callbacks) are stripped before comparison: closures never compare equal
- * across call sites, so comparing them would yield false conflicts — the first
- * declaration's functions win. Object keys are sorted so key order is ignored.
+ * Function-valued options can't be compared by value (closures never compare
+ * equal), so two functions for the same key are treated as non-conflicting (the
+ * first wins). But a key that's a function on one side and a concrete value on
+ * the other IS a conflict — otherwise a later `room: () => ...` silently
+ * replacing a locked `room: "/x"` would be swallowed with no warning.
  */
 function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
-  // Declared inside so it can't land in a temporal dead zone during this
-  // module's import cycle (a top-level helper referenced here intermittently
-  // resolved as undefined under the test bundler).
-  const serialize = (value: unknown): unknown => {
-    if (typeof value === "function") return undefined;
-    if (Array.isArray(value)) return value.map(serialize);
-    if (value && typeof value === "object") {
-      const out: Record<string, unknown> = {};
-      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-        const s = serialize((value as Record<string, unknown>)[key]);
-        if (s !== undefined) out[key] = s;
-      }
-      return out;
-    }
-    return value;
-  };
-
+  // A function-vs-non-function declaration for the same key is a real
+  // divergence we can detect even though we can't compare the values.
   for (const key of Object.keys(incoming) as (keyof InitOptions)[]) {
-    const incomingVal = serialize(incoming[key]);
-    // A key whose value strips to undefined (e.g. a function-only option)
-    // carries no comparable opinion — skip it.
-    if (incomingVal === undefined) continue;
-    const lockedVal = serialize(locked[key]);
-    if (JSON.stringify(incomingVal) !== JSON.stringify(lockedVal)) {
+    const incomingIsFn = typeof incoming[key] === "function";
+    const lockedIsFn = typeof locked[key] === "function";
+    const lockedDeclares = locked[key] !== undefined;
+    if (incomingIsFn && lockedDeclares && !lockedIsFn) return true;
+    if (lockedIsFn && incoming[key] !== undefined && !incomingIsFn) return true;
+  }
+
+  const normalizedLocked = (normalizeConfig(locked) ?? {}) as Record<string, unknown>;
+  const normalizedIncoming = (normalizeConfig(incoming) ?? {}) as Record<string, unknown>;
+
+  for (const key of Object.keys(normalizedIncoming)) {
+    // Can't conflict on a key the locked config never declared.
+    if (!(key in normalizedLocked)) continue;
+    if (
+      JSON.stringify(normalizedIncoming[key]) !==
+      JSON.stringify(normalizedLocked[key])
+    ) {
       return true;
     }
   }
@@ -635,17 +669,17 @@ function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
 
 /** True if these options declare no config worth locking (an "ensure running"
  * call). Such a call must NOT lock config, so a real configure() can still win
- * before connection. */
+ * before connection. Uses the same normalization as configsConflict, so
+ * `{}`, `{ cursors: {} }`, and `{ room: undefined }` all count as empty. */
 function isEmptyConfig(options: InitOptions): boolean {
-  return Object.values(options).every((v) => v === undefined);
+  return normalizeConfig(options) === undefined;
 }
 
 /**
  * Capture init config into module state. The first caller to supply real config
  * wins and locks it; a later call with conflicting values warns and is ignored.
  * An empty "ensure running" call does NOT lock — config stays open for a later
- * configure(). Bootstrap locks whatever config is current when it starts (see
- * lockConfigForBootstrap), so config can't change once connected.
+ * configure() (until bootstrap connects, after which config can't change).
  */
 function applyConfig(options: InitOptions): void {
   if (configuredOptions) {
@@ -661,12 +695,25 @@ function applyConfig(options: InitOptions): void {
 
   if (isEmptyConfig(options)) return;
 
-  configuredOptions = options;
+  // Real config arriving after connection can't be applied — warn and ignore.
+  if (hasBootstrapped) {
+    console.warn(
+      "[playhtml] Ignoring config passed after playhtml already connected. " +
+        "Declare it before init() — e.g. with playhtml.configure(...) in a script " +
+        "that runs before any component mounts.",
+    );
+    return;
+  }
+
+  // Shallow-copy so a caller that mutates or reuses its options object after
+  // declaring config can't silently change the locked config. cursors is
+  // copied too since it's the most commonly nested-and-mutated option.
+  configuredOptions = { ...options };
   explicitRoomOption = options.room;
-  cachedDefaultRoomOptions = options.defaultRoomOptions ?? {
-    includeSearch: false,
-  };
-  cursorOptionsCache = options.cursors ?? {};
+  cachedDefaultRoomOptions = options.defaultRoomOptions
+    ? { ...options.defaultRoomOptions }
+    : { includeSearch: false };
+  cursorOptionsCache = options.cursors ? { ...options.cursors } : {};
   cachedOnError = options.onError;
   isDevelopmentMode = options.developmentMode ?? false;
 
@@ -682,11 +729,11 @@ function applyConfig(options: InitOptions): void {
   }
 }
 
-/** Lock config at the moment bootstrap starts. If no real config was declared,
- * lock to empty so a configure() that arrives AFTER connection warns rather
- * than silently doing nothing — config genuinely can't change post-connect. */
+/** Mark that bootstrap has begun reading config. After this, config is frozen:
+ * a configure()/init(options) that arrives later warns rather than silently
+ * doing nothing — config genuinely can't change once connected. */
 function lockConfigForBootstrap(): void {
-  if (!configuredOptions) configuredOptions = {};
+  hasBootstrapped = true;
 }
 
 /**
@@ -1801,6 +1848,7 @@ export async function resetPlayHTML(): Promise<void> {
     pendingRoomResetEpoch = null;
     isDevelopmentMode = false;
     configuredOptions = null;
+    hasBootstrapped = false;
   } finally {
     // firstSetup = true (set above) is the canonical "not initialized"
     // flag — runHandleNavigation checks it to skip nav after reset.
