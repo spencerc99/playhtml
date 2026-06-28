@@ -24,7 +24,7 @@ playhtml has four primitives for moving state between readers. Pick by **lifetim
 Two rules that catch most mistakes:
 
 - **If a new reader opening the page should see the state, it's persistent data.** If they shouldn't, it's presence or an event.
-- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync — see [rule 8 below](#8-use-localstorage-for-per-user-preferences).
+- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync; see [rule 8 below](#8-use-localstorage-for-per-user-preferences).
 
 ## Updating data: mutator vs replacement
 
@@ -142,7 +142,7 @@ If someone refreshes the page and expects the state to still be there, it's pers
 
 Syncing on every `mousemove` or `scroll` will flood the socket and eat your PartyKit bill. Three options, in order of preference:
 
-**Use built-in handlers** — `onDrag`, `onMount` already debounce:
+**Use built-in handlers.** `onDrag`, `onMount` already debounce:
 
 ```js
 element.onDrag = (e, { setData }) => {
@@ -160,7 +160,7 @@ element.addEventListener("mousemove", (e) => {
 });
 ```
 
-**Local-state-then-commit** — keep ephemeral state local, sync only on the commit event (mouseup, blur, submit):
+**Local-state-then-commit.** Keep ephemeral state local, sync only on the commit event (mouseup, blur, submit):
 
 ```js
 let localX = data.x;
@@ -198,7 +198,7 @@ For moderated sites with long histories, store only recent items in shared state
 
 ### 6. Store only what needs to sync
 
-UI-only state, loading flags, animation state — none of that belongs in shared data. Use component state (React) or plain variables (vanilla).
+UI-only state, loading flags, animation state: none of that belongs in shared data. Use component state (React) or plain variables (vanilla).
 
 ```js
 // Bad — every reader sees every other reader's hover
@@ -208,11 +208,11 @@ defaultData: { isHovering: false }
 element.addEventListener("mouseenter", () => element.classList.add("hover"));
 ```
 
-If you _do_ want collaborative hover, use [`can-hover`](/docs/capabilities/) — that's literally its reason to exist, and it uses presence (not persistent data) under the hood.
+If you _do_ want collaborative hover, use [`can-hover`](/docs/capabilities/). That's its reason to exist, and it uses presence (not persistent data) internally.
 
 ### 7. Never write shared data from code that re-runs when that data changes
 
-This is the most dangerous mistake on this page, because it doesn't fail on your machine — it fails in production once a few readers connect, and it can grow the shared document until the sync server falls over.
+This is the most dangerous mistake on this page, because it doesn't fail on your machine. It fails in production once a few readers connect, and it can grow the shared document until the sync server falls over.
 
 The trap: a React effect (or any reactive subscription) that **both depends on the shared data and writes to it**.
 
@@ -226,7 +226,7 @@ const Roster = withSharedState({ defaultData: { entries: [] } }, ({ data, setDat
 });
 ```
 
-Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, because the data is a CRDT, **two readers writing concurrently both land** — and with the **replacement form** (`setData({ entries: [...] })`) over an **array**, concurrent writes append rather than overwrite, so the loop never converges to a stable value the guard can catch. A single buggy element like this grew one production room to 1.2 million CRDT operations / 23 MB and took the room offline.
+Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, because the data is a CRDT, **two readers writing concurrently both land**. With the **replacement form** (`setData({ entries: [...] })`) over an **array**, concurrent writes append rather than overwrite, so the loop never converges to a stable value the guard can catch. A single buggy element like this grew one production room to 1.2 million CRDT operations / 23 MB and took the room offline.
 
 **The strongest fix is the data model: store collections that must stay unique as a keyed map, and upsert in place with the mutator form.**
 
@@ -255,7 +255,7 @@ Two reinforcing rules at work here:
 1. **Prefer a keyed map + mutator-form upsert over an array + replacement-form rewrite.** The keyed write is idempotent and merge-safe; the array rewrite is neither. This alone defuses the runaway.
 2. **Still don't depend on the data you write.** Read it through a ref so the effect fires only on the inputs that should trigger a write (the local user's identity), not on every change to the shared collection. Belt-and-suspenders on top of the keyed model.
 
-If you genuinely need an array (order matters and there's no natural key), then you must both (a) read via a ref as above and (b) make the write converge — dedupe by id into a `Map` and write the deduped result — but a keyed map is almost always the better shape.
+If you genuinely need an array (order matters and there's no natural key), then you must both (a) read via a ref as above and (b) make the write converge (dedupe by id into a `Map` and write the deduped result), but a keyed map is almost always the better shape.
 
 The same rule applies to vanilla `updateElement`: never call `setData` from inside `updateElement` (which runs on every data change) without a guard that provably converges. When in doubt, write only from explicit user events, not from reactive callbacks.
 
@@ -283,9 +283,9 @@ onClick: (_e, { setData }) => {
 
 Three mistakes that show up often enough to call out explicitly.
 
-**Syncing UI state** — hover, focus, loading, animation progress. These should be local.
+**Syncing UI state.** Hover, focus, loading, animation progress. These should be local.
 
-**Over-normalizing** — playhtml data is a document, not a relational database. A flat array of message objects beats a `users: {…}` + `messages: {…}` split every time.
+**Over-normalizing.** playhtml data is a document, not a relational database. A flat array of message objects beats a `users: {…}` + `messages: {…}` split every time.
 
 ```js
 // Too normalized for playhtml
@@ -295,9 +295,9 @@ Three mistakes that show up often enough to call out explicitly.
 { messages: [{ id: "m1", author: "Alice", text: "Hi" }] }
 ```
 
-**Unbounded arrays with no cleanup** — any `push` without a matching size check will eventually bite you.
+**Unbounded arrays with no cleanup.** Any `push` without a matching size check will eventually bite you.
 
-**Self-triggering writes** — writing shared data from a reactive callback that depends on that same data. The most damaging anti-pattern here: it survives local testing and only blows up under concurrency in production. See [rule 7](#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes).
+**Self-triggering writes.** Writing shared data from a reactive callback that depends on that same data. The most damaging anti-pattern here: it survives local testing and only blows up under concurrency in production. See [rule 7](#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes).
 
 ## Cleaning up
 
@@ -311,7 +311,7 @@ playhtml.deleteElementData("can-move", elementId);
 
 This removes the SyncedStore entry, observer subscriptions, element handlers, and any legacy globalData entries.
 
-Example — a fridge magnet app deleting words:
+Example, a fridge magnet app deleting words:
 
 ```tsx
 function handleDeleteWord(id: string) {
@@ -371,7 +371,7 @@ When reviewing a new element's data shape:
 - Is this actually shared, or should it be local?
 - Could it be derived from other data instead of stored?
 - Will the arrays grow unbounded?
-- Does any effect/callback write shared data **and** depend on that data? (write loop — see rule 7)
+- Does any effect/callback write shared data **and** depend on that data? (write loop; see rule 7)
 - Am I about to update on a high-frequency DOM event?
 - Is there a built-in `can-*` capability that already does this?
 - Should this live in presence / events instead of persistent data?
