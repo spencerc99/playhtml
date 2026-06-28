@@ -25,15 +25,15 @@ The fastest path — no `import`, no `playhtml.init()` call. Add the script tag 
 <body>
   <button id="my-lamp" can-toggle>lamp</button>
 
-  <script type="module" src="https://unpkg.com/playhtml/init.js"></script>
+  <script type="module" src="https://unpkg.com/playhtml/dist/init.es.js"></script>
 </body>
 ```
 
 Give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
 
-> Why end-of-body? `init.js` runs `playhtml.init()` immediately, and `init()` scans the DOM for capability attributes (`can-toggle`, `can-move`, etc.) when it runs. Place it after the elements it should find.
+> Why end-of-body? The drop-in script runs `playhtml.init()` immediately, and `init()` scans the DOM for capability attributes (`can-toggle`, `can-move`, etc.) when it runs. Place it after the elements it should find.
 
-> Want options like cursors? Use Path B — the drop-in `init.js` calls `playhtml.init({})` with no options.
+> Want options like cursors? Use Path B — the drop-in script calls `playhtml.init({})` with no options.
 
 ### Path B: import + manual init (when you need options or a bundler)
 

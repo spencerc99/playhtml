@@ -123,11 +123,23 @@ function roundToFirstDecimal(n: number): number {
   return Math.round(n * 10) / 10 + 0;
 }
 
+/**
+ * Resolves an attribute value that names another element to that element.
+ * Accepts a bare id (`arena`), an id with leading `#` (`#arena`), or any CSS
+ * selector (`.container`): an id lookup is tried first, then a selector match.
+ */
+function resolveElementRef(raw: string | null | undefined): HTMLElement | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const forId = value.startsWith("#") ? value.slice(1) : value;
+  return (
+    document.getElementById(forId) ??
+    (document.querySelector(value) as HTMLElement | null)
+  );
+}
+
 function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
-  const raw = element.getAttribute(CanMoveBounds)?.trim();
-  if (!raw) return null;
-  const forId = raw.startsWith("#") ? raw.slice(1) : raw;
-  return document.getElementById(forId) ?? document.querySelector(raw);
+  return resolveElementRef(element.getAttribute(CanMoveBounds));
 }
 
 /**
@@ -185,6 +197,10 @@ export type GrowData = {
   maxScale: number;
   isHovering: boolean;
 };
+/**
+ * Optional container for clones: an element id (with or without leading `#`)
+ * or any CSS selector. Defaults to inserting clones after the template.
+ */
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
@@ -562,27 +578,24 @@ export const TagTypeToElement: DefaultTagInitializers = {
     defaultData: [],
     defaultLocalData: [],
     updateElement: ({ data, localData, setLocalData, element }) => {
-      const duplicateElementId = element.getAttribute(TagType.CanDuplicate)!;
-      const elementToDuplicate = document.getElementById(duplicateElementId);
+      const duplicateRef = element.getAttribute(TagType.CanDuplicate)!;
+      const elementToDuplicate = resolveElementRef(duplicateRef);
       let lastElement: HTMLElement | null =
         document.getElementById(localData.slice(-1)?.[0]) ?? null;
       if (!elementToDuplicate) {
         console.error(
-          `Element with id ${duplicateElementId} not found. Cannot duplicate.`,
+          `Element ${duplicateRef} not found. Cannot duplicate.`,
         );
         return;
       }
 
-      const canDuplicateTo = element.getAttribute(CanDuplicateTo);
+      const duplicateToElement = resolveElementRef(
+        element.getAttribute(CanDuplicateTo),
+      );
       function insertDuplicatedElement(newElement: Node) {
-        if (canDuplicateTo) {
-          const duplicateToElement =
-            document.getElementById(canDuplicateTo) ||
-            document.querySelector(canDuplicateTo);
-          if (duplicateToElement) {
-            duplicateToElement.appendChild(newElement);
-            return;
-          }
+        if (duplicateToElement) {
+          duplicateToElement.appendChild(newElement);
+          return;
         }
 
         // By default insert after the latest element inserted (or the element to duplicate if none yet)
@@ -610,9 +623,14 @@ export const TagTypeToElement: DefaultTagInitializers = {
       setLocalData(localData);
     },
     onClick: (_e: MouseEvent, { data, element, setData }) => {
-      const duplicateElementId = element.getAttribute(TagType.CanDuplicate)!;
+      const elementToDuplicate = resolveElementRef(
+        element.getAttribute(TagType.CanDuplicate),
+      );
+      if (!elementToDuplicate) return;
+      // Clone ids are prefixed with the template's own id (not the raw
+      // attribute) so a `#id` or selector value still yields a valid id.
       const newElementId =
-        duplicateElementId + "-" + Math.random().toString(36).substr(2, 9);
+        elementToDuplicate.id + "-" + Math.random().toString(36).substr(2, 9);
 
       setData((draft) => {
         draft.push(newElementId);
@@ -624,7 +642,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
         return false;
       }
 
-      if (!document.getElementById(tagAttribute)) {
+      if (!resolveElementRef(tagAttribute)) {
         console.warn(
           `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`,
         );

@@ -57,13 +57,14 @@ CRITICAL REQUIREMENTS:
 SETUP — Vanilla HTML (can-play with custom logic):
 The ordering rule is strict: assign all the custom properties BEFORE you call playhtml.init().
 
+  import { playhtml } from "https://unpkg.com/playhtml";
+
   const element = document.getElementById("myElement");
 
   element.defaultData = { /* ... */ };
   element.onClick = (e, { data, setData }) => { /* ... */ };
   element.updateElement = ({ data }) => { /* ... */ };
 
-  import { playhtml } from "https://unpkg.com/playhtml";
   playhtml.init();
 
 SETUP — React:
