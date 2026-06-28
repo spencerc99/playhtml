@@ -93,6 +93,35 @@ describe("CursorPresenceStore", () => {
     ]);
   });
 
+  it("prefers an active cursor over identity-only tabs for the same public key", () => {
+    const store = new CursorPresenceStore();
+
+    store.applySync({
+      "conn-1": {
+        identity: alice,
+        cursor: {
+          cursor: { x: 12, y: 34, pointer: "mouse" },
+          page: "/week/1",
+          zone: null,
+          at: 100,
+        },
+      },
+      "conn-2": {
+        identity: alice,
+        page: "/idle",
+      },
+    });
+
+    expect(store.getRemotePresences("pk_self").get(alice.publicKey)).toEqual({
+      cursor: { x: 12, y: 34, pointer: "mouse" },
+      playerIdentity: alice,
+      lastSeen: 100,
+      message: null,
+      page: "/week/1",
+      zone: null,
+    });
+  });
+
   it("coalesces cursor changes to the latest received value", () => {
     const store = new CursorPresenceStore();
     store.applySync({

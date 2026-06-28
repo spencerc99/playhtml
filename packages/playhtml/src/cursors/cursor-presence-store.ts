@@ -10,6 +10,8 @@ import type {
   PresenceSnapshot,
 } from "@playhtml/common";
 import {
+  getNullableString,
+  getOptionalString,
   isCursor,
   isPlayerIdentity,
   isPresenceCursorChannelValue,
@@ -63,18 +65,26 @@ export class CursorPresenceStore {
       const presence = this.getPresenceForConnection(connectionId);
       if (!presence) continue;
       if (presence.playerIdentity.publicKey === localPublicKey) continue;
-      presences.set(presence.playerIdentity.publicKey, presence);
+      const publicKey = presence.playerIdentity.publicKey;
+      const existing = presences.get(publicKey);
+      if (!existing || shouldReplacePresence(existing, presence)) {
+        presences.set(publicKey, presence);
+      }
     }
 
     return presences;
   }
 
   getPresenceByStableId(stableId: string): StoredCursorPresence | null {
+    let bestPresence: StoredCursorPresence | null = null;
     for (const connectionId of Array.from(this.peers.keys()).sort()) {
       const presence = this.getPresenceForConnection(connectionId);
-      if (presence?.playerIdentity.publicKey === stableId) return presence;
+      if (presence?.playerIdentity.publicKey !== stableId) continue;
+      if (!bestPresence || shouldReplacePresence(bestPresence, presence)) {
+        bestPresence = presence;
+      }
     }
-    return null;
+    return bestPresence;
   }
 
   removeExpiredCursors(now: number, maxAgeMs: number): boolean {
@@ -131,13 +141,20 @@ export class CursorPresenceStore {
   }
 }
 
-function getNullableString(value: unknown): string | null {
-  if (value == null) return null;
-  return typeof value === "string" ? value : null;
+function shouldReplacePresence(
+  current: StoredCursorPresence,
+  candidate: StoredCursorPresence,
+): boolean {
+  if (candidate.cursor && !current.cursor) return true;
+  if (!candidate.cursor && current.cursor) return false;
+
+  const currentLastSeen = getFiniteNumber(current.lastSeen);
+  const candidateLastSeen = getFiniteNumber(candidate.lastSeen);
+  return candidateLastSeen > currentLastSeen;
 }
 
-function getOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
+function getFiniteNumber(value: unknown): number {
+  return Number.isFinite(value) ? Number(value) : Number.NEGATIVE_INFINITY;
 }
 
 function isActiveCursorChannel(

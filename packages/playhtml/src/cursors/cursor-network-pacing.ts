@@ -1,9 +1,10 @@
-// ABOUTME: Calculates how often cursor awareness should publish over the network.
+// ABOUTME: Calculates how often cursor presence should publish over the network.
 // ABOUTME: Keeps per-room cursor traffic bounded while small rooms stay at 60Hz.
 
 const MAX_CURSOR_NETWORK_HZ = 60;
-const FULL_RATE_CURSOR_CONNECTIONS = 6;
-const CURSOR_ROOM_FANOUT_BUDGET = 600;
+const CONGESTED_CURSOR_NETWORK_HZ = 30;
+const FULL_RATE_CURSOR_CONNECTIONS = 30;
+const CURSOR_ROOM_FANOUT_BUDGET = 150_000;
 
 export function getCursorNetworkHz(activeCursorCount: number): number {
   const participantCount = Math.max(1, Math.ceil(activeCursorCount));
@@ -13,8 +14,8 @@ export function getCursorNetworkHz(activeCursorCount: number): number {
   }
 
   return Math.min(
-    MAX_CURSOR_NETWORK_HZ,
-    CURSOR_ROOM_FANOUT_BUDGET / participantCount ** 2,
+    CONGESTED_CURSOR_NETWORK_HZ,
+    CURSOR_ROOM_FANOUT_BUDGET / (participantCount * (participantCount - 1)),
   );
 }
 

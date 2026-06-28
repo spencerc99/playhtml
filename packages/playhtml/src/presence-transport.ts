@@ -14,19 +14,8 @@ import {
   isPresenceSnapshot,
 } from "./presence-utils";
 
-export type PresenceSocket = {
-  readyState?: number;
-  send(message: string): boolean | void;
-  close(): void;
-  addEventListener(
-    event: "message" | "open" | "close" | "error",
-    callback: (event: Event | MessageEvent) => void,
-  ): void;
-  removeEventListener(
-    event: "message" | "open" | "close" | "error",
-    callback: (event: Event | MessageEvent) => void,
-  ): void;
-};
+export type PresenceSocket = Pick<PartySocket, "readyState" | "send" | "close"> &
+  Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
 export type PresenceSocketFactory = (
   options: PartySocketOptions,
@@ -44,17 +33,12 @@ export type PresenceJoinInput = {
 };
 
 type PresenceTransportListener = (message: PresenceServerMessage) => void;
-type PresenceTransportStatus = "open" | "close" | "error";
-type PresenceTransportStatusListener = (
-  status: PresenceTransportStatus,
-) => void;
 
 const SOCKET_OPEN_STATE = 1;
 
 export class RealtimePresenceTransport {
   private socket: PresenceSocket;
   private listeners = new Set<PresenceTransportListener>();
-  private statusListeners = new Set<PresenceTransportStatusListener>();
   private latestJoin: PresenceJoinInput | null = null;
   private channelValues = new Map<string, unknown>();
   private onMessage = (event: MessageEvent) => {
@@ -66,13 +50,6 @@ export class RealtimePresenceTransport {
   };
   private onOpen = () => {
     this.flushCurrentState();
-    this.notifyStatus("open");
-  };
-  private onClose = () => {
-    this.notifyStatus("close");
-  };
-  private onError = () => {
-    this.notifyStatus("error");
   };
 
   constructor(options: PresenceTransportOptions) {
@@ -87,8 +64,6 @@ export class RealtimePresenceTransport {
     });
     this.socket.addEventListener("message", this.onMessage as EventListener);
     this.socket.addEventListener("open", this.onOpen);
-    this.socket.addEventListener("close", this.onClose);
-    this.socket.addEventListener("error", this.onError);
   }
 
   join(input: PresenceJoinInput): void {
@@ -124,21 +99,11 @@ export class RealtimePresenceTransport {
     };
   }
 
-  subscribeStatus(listener: PresenceTransportStatusListener): () => void {
-    this.statusListeners.add(listener);
-    return () => {
-      this.statusListeners.delete(listener);
-    };
-  }
-
   destroy(): void {
     this.socket.removeEventListener("message", this.onMessage as EventListener);
     this.socket.removeEventListener("open", this.onOpen);
-    this.socket.removeEventListener("close", this.onClose);
-    this.socket.removeEventListener("error", this.onError);
     this.socket.close();
     this.listeners.clear();
-    this.statusListeners.clear();
   }
 
   private flushCurrentState(): void {
@@ -172,11 +137,6 @@ export class RealtimePresenceTransport {
     );
   }
 
-  private notifyStatus(status: PresenceTransportStatus): void {
-    for (const listener of this.statusListeners) {
-      listener(status);
-    }
-  }
 }
 
 export function canUseRealtimePresenceTransport(): boolean {

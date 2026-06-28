@@ -40,3 +40,12 @@ export function isPresenceRemoves(
       channels.every((channel) => typeof channel === "string"),
   );
 }
+
+export function getNullableString(value: unknown): string | null {
+  if (value == null) return null;
+  return typeof value === "string" ? value : null;
+}
+
+export function getOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}

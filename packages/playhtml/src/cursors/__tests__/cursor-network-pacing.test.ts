@@ -1,4 +1,4 @@
-// ABOUTME: Verifies cursor awareness network pacing changes with room load.
+// ABOUTME: Verifies cursor presence network pacing changes with room load.
 // ABOUTME: Keeps cursor movement ephemeral so shared document data is untouched.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
@@ -77,7 +77,6 @@ function dispatchMouseMove(x: number, y: number) {
 
 function makeFakePresenceTransport() {
   const listeners = new Set<(message: unknown) => void>();
-  const statusListeners = new Set<(status: "open" | "close" | "error") => void>();
   return {
     updates: [] as Array<{ channel: string; value: unknown }>,
     clears: [] as string[],
@@ -94,13 +93,6 @@ function makeFakePresenceTransport() {
     }),
     emit(message: unknown) {
       for (const listener of listeners) listener(message);
-    },
-    subscribeStatus: vi.fn((listener: (status: "open" | "close" | "error") => void) => {
-      statusListeners.add(listener);
-      return () => statusListeners.delete(listener);
-    }),
-    emitStatus(status: "open" | "close" | "error") {
-      for (const listener of statusListeners) listener(status);
     },
     destroy: vi.fn(),
   };
@@ -126,17 +118,17 @@ describe("cursor network pacing", () => {
 
   it("keeps the network interval at 60Hz for small rooms", () => {
     expect(getCursorNetworkIntervalMs(1)).toBeCloseTo(1000 / 60);
-    expect(getCursorNetworkIntervalMs(6)).toBeCloseTo(1000 / 60);
+    expect(getCursorNetworkIntervalMs(30)).toBeCloseTo(1000 / 60);
   });
 
-  it("backs off by fanout after the sixth cursor connection", () => {
-    expect(getCursorNetworkHz(7)).toBeCloseTo(600 / 7 ** 2);
-    expect(getCursorNetworkHz(8)).toBeCloseTo(600 / 8 ** 2);
-    expect(getCursorNetworkHz(12)).toBeCloseTo(600 / 12 ** 2);
-    expect(getCursorNetworkHz(20)).toBeCloseTo(1.5);
+  it("caps sustained room load after small rooms", () => {
+    expect(getCursorNetworkHz(31)).toBeCloseTo(30);
+    expect(getCursorNetworkHz(50)).toBeCloseTo(30);
+    expect(getCursorNetworkHz(100)).toBeCloseTo(150_000 / (100 * 99));
+    expect(getCursorNetworkHz(200)).toBeCloseTo(150_000 / (200 * 199));
   });
 
-  it("does not publish at a 60Hz interval when about twenty cursor connections are active", () => {
+  it("keeps about twenty cursor connections at a 60Hz interval", () => {
     const provider = makeFakeProvider();
     const client = new CursorClientAwareness(provider, {
       enabled: true,
@@ -148,14 +140,6 @@ describe("cursor network pacing", () => {
 
     dispatchMouseMove(10, 20);
     vi.advanceTimersByTime(Math.ceil(1000 / 60));
-
-    expect(provider.awareness.setLocalStateField).toHaveBeenCalledTimes(
-      initialCallCount,
-    );
-
-    vi.advanceTimersByTime(
-      Math.ceil(getCursorNetworkIntervalMs(20) - (1000 / 60)),
-    );
 
     expect(provider.awareness.setLocalStateField).toHaveBeenCalledTimes(
       initialCallCount + 1,
@@ -350,7 +334,7 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("backs off transport-backed cursor publishing when about twenty peers are present", () => {
+  it("backs off transport-backed cursor publishing when about fifty peers are present", () => {
     const provider = makeFakeProvider();
     const transport = makeFakePresenceTransport();
     const client = new CursorClientAwareness(
@@ -362,7 +346,7 @@ describe("cursor network pacing", () => {
       transport as any,
     );
     const peers: Record<string, any> = {};
-    for (let i = 0; i < 19; i++) {
+    for (let i = 0; i < 49; i++) {
       peers[`conn-${i}`] = {
         identity: makeIdentity(
           `remote-${i}`,
@@ -385,7 +369,7 @@ describe("cursor network pacing", () => {
     expect(transport.updates).toHaveLength(0);
 
     vi.advanceTimersByTime(
-      Math.ceil(getCursorNetworkIntervalMs(20) - (1000 / 60)),
+      Math.ceil(getCursorNetworkIntervalMs(50) - (1000 / 60)),
     );
 
     expect(transport.updates).toHaveLength(1);
@@ -541,43 +525,6 @@ describe("cursor network pacing", () => {
       "[playhtml] Presence server rejected message:",
       "bad cursor",
     );
-
-    client.destroy();
-  });
-
-  it("replays join and latest cursor state when the transport opens", () => {
-    const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
-    const identity = makeIdentity("local", "#ff0000");
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: identity,
-      },
-      transport as any,
-    );
-    transport.join.mockClear();
-    transport.updates = [];
-
-    dispatchMouseMove(10, 20);
-    vi.advanceTimersByTime(Math.ceil(1000 / 60));
-    transport.updates = [];
-    transport.emitStatus("open");
-
-    expect(transport.join).toHaveBeenCalledWith({
-      identity,
-      page: "/",
-    });
-    expect(transport.updates).toEqual([
-      {
-        channel: "cursor",
-        value: expect.objectContaining({
-          cursor: { x: 10, y: 20, pointer: "mouse" },
-          page: "/",
-        }),
-      },
-    ]);
 
     client.destroy();
   });

@@ -3,4 +3,4 @@
 "playhtml": patch
 ---
 
-Improve multiplayer cursor resilience by coalescing pointer work per animation frame, adapting cursor publish rates as active cursor load grows, expiring stale cursor positions, and keeping cursor movement out of persistent shared data. Element awareness now also publishes stable player identity metadata before custom awareness fields so presence-only users dedupe by public identity. Shared presence protocol predicates are exported from `@playhtml/common` so clients and servers validate the same shape contracts.
+Move cursor motion onto PlayHTML's realtime presence transport, add shared protocol validation for presence messages, coalesce pointer work per animation frame, adapt cursor publish rates as active room load grows, expire stale cursor positions, and keep cursor movement out of persistent shared data.

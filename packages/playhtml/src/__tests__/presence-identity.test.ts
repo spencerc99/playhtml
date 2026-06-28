@@ -75,15 +75,15 @@ describe("createPresenceAPI identity propagation", () => {
     expect(remote!.playerIdentity).toEqual(remoteIdentity);
   });
 
-  it("prefers cursor-field identity over __playhtml_identity__ for backwards compat", () => {
+  it("prefers __playhtml_identity__ over cursor-field identity", () => {
     const awareness = makeAwareness(1);
     const localIdentity = makeIdentity("pk_local");
 
     const cursorIdentity = makeIdentity("pk_from_cursor");
-    const fallbackIdentity = makeIdentity("pk_from_fallback");
+    const presenceIdentity = makeIdentity("pk_from_presence");
     awareness.states.set(2, {
       __playhtml_cursors__: { playerIdentity: cursorIdentity },
-      [IDENTITY_FIELD]: fallbackIdentity,
+      [IDENTITY_FIELD]: presenceIdentity,
     });
 
     const api = createPresenceAPI({
@@ -93,7 +93,7 @@ describe("createPresenceAPI identity propagation", () => {
 
     const presences = api.getPresences();
     const remote = Array.from(presences.values()).find((p) => !p.isMe);
-    expect(remote!.playerIdentity).toEqual(cursorIdentity);
+    expect(remote!.playerIdentity).toEqual(presenceIdentity);
   });
 
   it("identity write is idempotent across multiple API calls", () => {

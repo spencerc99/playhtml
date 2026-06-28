@@ -120,8 +120,8 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       | undefined;
 
     const playerIdentity =
-      cursorState?.playerIdentity ??
-      (state[IDENTITY_FIELD] as PlayerIdentity | undefined);
+      (state[IDENTITY_FIELD] as PlayerIdentity | undefined) ??
+      cursorState?.playerIdentity;
     const cursor = cursorState?.cursor ?? null;
     const customChannels = (state[PRESENCE_FIELD] as Record<string, unknown>) ?? {};
 

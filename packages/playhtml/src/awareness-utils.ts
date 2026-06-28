@@ -3,8 +3,8 @@
 
 /**
  * Resolves the stable ID for a client's awareness entry.
- * When cursors are enabled, uses playerIdentity.publicKey (stable across sessions).
- * Presence-only clients publish the same publicKey in __playhtml_identity__.
+ * Uses __playhtml_identity__.publicKey when present, so presence and cursor
+ * views share the same identity source across rooms.
  * If neither identity exists, fall back to clientId so anonymous awareness still works.
  */
 export function getStableIdForAwareness(
@@ -18,8 +18,8 @@ export function getStableIdForAwareness(
     | { publicKey?: string }
     | undefined;
   return (
-    cursorData?.playerIdentity?.publicKey ??
     identityData?.publicKey ??
+    cursorData?.playerIdentity?.publicKey ??
     String(clientId)
   );
 }

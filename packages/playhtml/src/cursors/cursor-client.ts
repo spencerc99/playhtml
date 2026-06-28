@@ -44,9 +44,6 @@ type CursorPresenceTransport = {
   update(channel: string, value: unknown): void;
   clear(channel: string): void;
   subscribe(listener: (message: PresenceServerMessage) => void): () => void;
-  subscribeStatus?(
-    listener: (status: "open" | "close" | "error") => void,
-  ): () => void;
   destroy(): void;
 };
 
@@ -463,7 +460,6 @@ export class CursorClientAwareness {
   private coordinateMode: "relative" | "absolute";
   private presenceStore = new CursorPresenceStore();
   private presenceTransportUnsubscribe: (() => void) | null = null;
-  private presenceTransportStatusUnsubscribe: (() => void) | null = null;
   private presenceExpiryInterval: ReturnType<typeof setInterval> | null = null;
   private serverCursorMaxHz: number | null = null;
 
@@ -612,12 +608,6 @@ export class CursorClientAwareness {
   }
 
   private setupPresenceTransportHandling(): void {
-    this.presenceTransportStatusUnsubscribe =
-      this.presenceTransport?.subscribeStatus?.((status) => {
-        if (status === "open") {
-          this.publishPresenceTransportState();
-        }
-      }) ?? null;
     this.publishPresenceTransportState();
     this.presenceTransportUnsubscribe = this.presenceTransport?.subscribe(
       (message) => {
@@ -2210,8 +2200,6 @@ export class CursorClientAwareness {
       }
       this.presenceTransportUnsubscribe?.();
       this.presenceTransportUnsubscribe = null;
-      this.presenceTransportStatusUnsubscribe?.();
-      this.presenceTransportStatusUnsubscribe = null;
       this.presenceTransport.clear("cursor");
       this.presenceTransport.destroy();
     } else {
