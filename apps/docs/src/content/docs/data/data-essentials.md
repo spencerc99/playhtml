@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Every playhtml element owns a piece of shared data. Getting the shape right, writing to it correctly, and cleaning it up when elements go away are the three skills that separate a toy demo from a real feature. This page covers all three.
+Every playhtml element owns a piece of shared data. This page covers how to shape it, write to it correctly, and clean it up when elements go away.
 
 ## When to use which primitive
 
@@ -212,7 +212,7 @@ If you _do_ want collaborative hover, use [`can-hover`](/docs/capabilities/). Th
 
 ### 7. Never write shared data from code that re-runs when that data changes
 
-This is the most dangerous mistake on this page, because it doesn't fail on your machine. It fails in production once a few readers connect, and it can grow the shared document until the sync server falls over.
+This one doesn't fail on your machine. It fails in production once a few readers connect, and it can grow the shared document until the sync server falls over.
 
 The trap: a React effect (or any reactive subscription) that **both depends on the shared data and writes to it**.
 
@@ -297,7 +297,7 @@ Three mistakes that show up often enough to call out explicitly.
 
 **Unbounded arrays with no cleanup.** Any `push` without a matching size check will eventually bite you.
 
-**Self-triggering writes.** Writing shared data from a reactive callback that depends on that same data. The most damaging anti-pattern here: it survives local testing and only blows up under concurrency in production. See [rule 7](#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes).
+**Self-triggering writes.** Writing shared data from a reactive callback that depends on that same data. It survives local testing and only breaks under concurrency in production. See [rule 7](#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes).
 
 ## Cleaning up
 

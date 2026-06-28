@@ -164,10 +164,10 @@ DOCUMENTATION:
 The LLM should push back before writing code if:
 
 - It's unclear whether state should persist or be temporary.
-- Whether it's per-user data or shared across everyone is ambiguous.
+- It's ambiguous whether data is per-user or shared across everyone.
 - Key details are missing (what triggers the change, what gets stored).
 - The requirements contradict each other.
 
-Don't let the assistant guess. playhtml has different patterns for different use cases, and using the right one matters.
+Don't let the assistant guess.
 
 For the canonical setup walkthrough, see [getting started](/docs/getting-started/).
