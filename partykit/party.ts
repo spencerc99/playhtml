@@ -80,6 +80,7 @@ import {
 } from "./resetEpochPolicy";
 import { BridgeHealth } from "./bridgeHealth";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
+import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -1709,8 +1710,13 @@ export class PartyServer extends YServer {
         // even if the pair had previously tripped from a stale-epoch storm.
         this.bridgeHealth.reset(consumerRoomId);
         const sourceResetEpoch = await this.getResetEpoch();
-        const subtrees = requestedIds.length
-          ? this.extractPlaySubtrees(this.document, new Set(requestedIds))
+        const permissions = await this.getSharedPermissions();
+        const permittedIds = getPermittedSharedElementIds(
+          requestedIds,
+          permissions
+        );
+        const subtrees = permittedIds.length
+          ? this.extractPlaySubtrees(this.document, new Set(permittedIds))
           : {};
         const response: SubscribeResponse = {
           ok: true,
@@ -2221,9 +2227,10 @@ export class PartyServer extends YServer {
         subscribers.map(
           async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
             if (!elementIds || !elementIds.length) return;
-            const sharedElementIds = elementIds.filter((id) => {
-              return Boolean(permissions[id]);
-            });
+            const sharedElementIds = getPermittedSharedElementIds(
+              elementIds,
+              permissions
+            );
             const subtrees = this.extractPlaySubtrees(
               yDoc,
               new Set(sharedElementIds)
