@@ -18,6 +18,7 @@ export default defineConfig({
       "@playhtml/common": path.join(root, "packages/common/src"),
       "@playhtml/react": path.join(root, "packages/react/src"),
       playhtml: path.join(root, "packages/playhtml/src/index.ts"),
+      "@moderation": path.join(root, "partykit/moderation.ts"),
       "@extension": path.join(root, "extension/src"),
       "@movement": path.join(root, "extension/website/shared"),
     },

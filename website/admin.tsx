@@ -9,7 +9,15 @@ import {
   createInlineDiffLookup,
   type InlineDiffLookup,
 } from "./utils/adminComparison";
-import { deriveRoomId } from "@playhtml/common";
+import {
+  deriveRoomId,
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "@playhtml/common";
 import { extractRecords, type ModerationRecord } from "@moderation";
 import {
   formatAdminResetSuccess,
@@ -105,12 +113,98 @@ const EnvironmentDisplay: React.FC<{
   );
 };
 
+const StateLeafValue: React.FC<{
+  value: EditableStateLeafValue;
+  className: string;
+  displayText: string;
+  path: StatePathSegment[];
+  data: any;
+  title?: string;
+  onDataChange?: (data: any) => void;
+}> = ({ value, className, displayText, path, data, title, onDataChange }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(formatStateLeafValue(value));
+  const [error, setError] = useState("");
+  const canEdit = Boolean(onDataChange && path.length > 0);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(formatStateLeafValue(value));
+      setError("");
+    }
+  }, [isEditing, value]);
+
+  if (!canEdit) {
+    return (
+      <span className={className} title={title}>
+        {displayText}
+      </span>
+    );
+  }
+
+  const save = () => {
+    const parsed = parseStateLeafValue(draft);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+
+    const result = replaceStateLeafValue(data, path, parsed.value);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    onDataChange?.(result.data);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <span className="json-inline-edit">
+        <input
+          aria-label="Edit state value"
+          className="json-inline-edit-input"
+          value={draft}
+          autoFocus
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              save();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              setIsEditing(false);
+            }
+          }}
+        />
+        {error && <span className="json-inline-edit-error">{error}</span>}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${className} json-leaf-button`}
+      title={title}
+      onClick={() => setIsEditing(true)}
+    >
+      {displayText}
+    </button>
+  );
+};
+
 // JSON Viewer Component
-const JSONViewer: React.FC<{
+export const JSONViewer: React.FC<{
   data: any;
   depth?: number;
   inlineDiff?: InlineDiffLookup["admin"];
-}> = ({ data, depth = 0, inlineDiff }) => {
+  onDataChange?: (data: any) => void;
+}> = ({ data, depth = 0, inlineDiff, onDataChange }) => {
   // Track explicitly toggled items: true = collapsed, false = expanded
   const [toggledItems, setToggledItems] = useState<Map<string, boolean>>(
     new Map()
@@ -146,10 +240,20 @@ const JSONViewer: React.FC<{
   const renderValue = (
     obj: any,
     currentDepth: number = 0,
-    path: string = ""
+    path: string = "",
+    statePath: StatePathSegment[] = []
   ): React.ReactNode => {
     if (obj === null) {
-      return <span className="json-null">null</span>;
+      return (
+        <StateLeafValue
+          value={obj}
+          className="json-null"
+          displayText="null"
+          path={statePath}
+          data={data}
+          onDataChange={onDataChange}
+        />
+      );
     }
 
     if (typeof obj === "string") {
@@ -164,18 +268,45 @@ const JSONViewer: React.FC<{
         : obj;
 
       return (
-        <span className={className} title={title}>
-          "{displayText}"
-        </span>
+        <StateLeafValue
+          value={obj}
+          className={className}
+          displayText={`"${displayText}"`}
+          path={statePath}
+          data={data}
+          title={title}
+          onDataChange={onDataChange}
+        />
       );
     }
 
     if (typeof obj === "number") {
-      return <span className="json-number">{obj}</span>;
+      if (!isEditableStateLeaf(obj)) {
+        return <span className="json-number">{obj}</span>;
+      }
+      return (
+        <StateLeafValue
+          value={obj}
+          className="json-number"
+          displayText={String(obj)}
+          path={statePath}
+          data={data}
+          onDataChange={onDataChange}
+        />
+      );
     }
 
     if (typeof obj === "boolean") {
-      return <span className="json-boolean">{obj.toString()}</span>;
+      return (
+        <StateLeafValue
+          value={obj}
+          className="json-boolean"
+          displayText={obj.toString()}
+          path={statePath}
+          data={data}
+          onDataChange={onDataChange}
+        />
+      );
     }
 
     if (Array.isArray(obj)) {
@@ -216,7 +347,10 @@ const JSONViewer: React.FC<{
                     style={{ marginLeft: "20px" }}
                   >
                     <span className="json-index">{index}:</span>{" "}
-                    {renderValue(item, currentDepth + 1, itemPath)}
+                    {renderValue(item, currentDepth + 1, itemPath, [
+                      ...statePath,
+                      index,
+                    ])}
                   </div>
                 );
               })}
@@ -265,7 +399,10 @@ const JSONViewer: React.FC<{
                   >
                     <span className="json-key">"{key}"</span>
                     <span className="json-colon">:</span>{" "}
-                    {renderValue(obj[key], currentDepth + 1, childPath)}
+                    {renderValue(obj[key], currentDepth + 1, childPath, [
+                      ...statePath,
+                      key,
+                    ])}
                   </div>
                 );
               })}
@@ -768,6 +905,15 @@ const AdminConsole: React.FC = () => {
       return { valid: false, error: msg };
     }
   };
+
+  const editableJsonData = React.useMemo(() => {
+    if (!editableJson.trim()) return null;
+    try {
+      return JSON.parse(editableJson);
+    } catch {
+      return null;
+    }
+  }, [editableJson]);
 
   // Load stored auth on mount and handle browser navigation
   useEffect(() => {
@@ -2863,6 +3009,17 @@ const AdminConsole: React.FC = () => {
                         }}
                       >
                         <strong>JSON Error:</strong> {jsonError}
+                      </div>
+                    )}
+                    {editableJsonData !== null && (
+                      <div className="inline-json-editor-panel">
+                        <JSONViewer
+                          data={editableJsonData}
+                          onDataChange={(nextData) => {
+                            setEditableJson(JSON.stringify(nextData, null, 2));
+                            setJsonError("");
+                          }}
+                        />
                       </div>
                     )}
                     <textarea
