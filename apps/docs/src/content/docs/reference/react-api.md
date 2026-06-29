@@ -404,10 +404,10 @@ Read the local player's cursor color, participant id, and name. Documented on it
 
 ## `TagType`
 
-Re-exported from `@playhtml/common`. Use these as `tagInfo` entries when you want a built-in capability (`can-move`, `can-toggle`, etc.) wired into your component.
+Re-exported from `playhtml`. Use these as `tagInfo` entries when you want a built-in capability (`can-move`, `can-toggle`, etc.) wired into your component.
 
 ```ts
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 TagType.CanPlay;
 TagType.CanMove;

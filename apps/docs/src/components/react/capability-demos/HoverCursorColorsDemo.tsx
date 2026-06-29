@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { playhtml } from "playhtml";
-import type { PlayerIdentity } from "@playhtml/common";
+import type { PlayerIdentity } from "playhtml";
 
 function primaryColor(identity?: PlayerIdentity): string {
   return identity?.playerStyle?.colorPalette?.[0] ?? "#6a6a66";

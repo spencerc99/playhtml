@@ -92,12 +92,15 @@ type StoreShape = {
   // tag -> elementId -> data proxy (value typed at usage sites)
   play: Record<string, Record<string, unknown>>;
 };
+type PlayStore = {
+  readonly play: Partial<Record<string, Record<string, unknown>>>;
+};
 // store/doc/publicSyncedStore are recreated on a room change (recreateStore),
 // so they're reassignable. A fresh doc has no op history — discarding the old
 // one on a room change resets page + element data to the new room with no
 // tombstone synced back (unlike deleting keys from the reused doc, which
 // destroys the original room's persisted data on a round trip).
-let store = syncedStore<StoreShape>({ play: {} });
+let store: PlayStore = syncedStore<StoreShape>({ play: {} });
 let doc = getYjsDoc(store);
 let publicSyncedStore = createReadOnlyStore(store.play);
 
@@ -1575,7 +1578,7 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  syncedStore: ReadOnlyStore<(typeof store)["play"]>;
+  syncedStore: ReadOnlyStore<PlayStore["play"]>;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -2210,9 +2213,25 @@ function removePlayEventListener(type: string, id: string) {
   }
 }
 
-export type {
+export {
   TagType,
+  TagTypeToElement,
+  getIdForElement,
+  CanDuplicateTo,
+  CanMoveBounds,
+  CanMoveBoundsMinVisible,
+  CanMoveBoundsMinVisiblePx,
+} from "@playhtml/common";
+
+export type {
+  ElementAwarenessEventHandlerData,
+  ElementInitializer,
+  PageDataChannel,
   PlayerIdentity,
   Cursor,
   CursorPresence,
+  CursorEvents,
+  CursorPresenceView,
+  PresenceRoom,
+  PresenceView,
 } from "@playhtml/common";
