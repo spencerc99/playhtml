@@ -27,9 +27,23 @@ Out of scope (deferred, but stubbed for easy extension):
 - Intersection-handoff and timed-hop subject strategies
 - Multi-channel / multi-window coordination
 
+## Scope correction (discovered during implementation, 2026-06-29)
+
+The live page renders a SEPARATE component, `LiveTrails`, not `AnimatedTrails`
+(`MovementCanvas.tsx`: `live ? <LiveTrails/> : <AnimatedTrails/>`). The archive
+page uses `AnimatedTrails`. Both share the same SVG structure and both compute
+per-trail `cursorPosition` each frame, so the same camera approach works in
+both — but they are two implementations.
+
+Decision: ship cinematic on the ARCHIVE page only for this first pass (denser
+cursors on a busy historical day make better footage anyway). Wiring the same
+camera into `LiveTrails` is a deferred follow-up once the feel is tuned.
+
 ## Background: how the rendering pipeline works (verified)
 
-- `live.tsx` and `archive.tsx` both render through `MovementCanvas`, which renders `AnimatedTrails`. A single integration in those two files + MovementCanvas + AnimatedTrails covers both pages.
+- `live.tsx` and `archive.tsx` both render through `MovementCanvas`. The archive
+  path renders `AnimatedTrails` (wired for cinematic); the live path renders
+  `LiveTrails` (cinematic deferred — see scope correction above).
 - Trail points are stored as **pixel coordinates** and rendered **directly as SVG user units** — no transformation between data and screen. (`useCursorTrails.ts:222–239`, `trailPrimitives.tsx`.)
   - Viewport mode (default for live/archive): x/y are viewport pixels in `[0, viewportSize.width/height]`.
   - Document-space mode: x/y are absolute document pixels.
