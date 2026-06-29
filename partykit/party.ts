@@ -78,6 +78,7 @@ import {
   isResetEpochStale,
   parseClientResetEpoch,
 } from "./resetEpochPolicy";
+import { BridgeHealth } from "./bridgeHealth";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -169,6 +170,11 @@ export class PartyServer extends YServer {
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly BRIDGE_DEBOUNCE_MS = 500;
+
+  // Per-peer circuit breaker: stops re-sending bridge applies to a peer that
+  // keeps rejecting them (e.g. a misconfigured peer stuck on a stale reset
+  // epoch). In-memory, so a DO reload re-enables every bridge.
+  private bridgeHealth = new BridgeHealth();
 
   // Preserve the same debounce timing as the old y-partykit callback config
   static callbackOptions = {
@@ -1133,17 +1139,13 @@ export class PartyServer extends YServer {
       await Promise.all(
         subscribers.map(async ({ consumerRoomId, elementIds }) => {
           if (!elementIds || !elementIds.includes(element.elementId)) return;
-          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
-          try {
-            const applyRequest: ApplySubtreesImmediateRequest = {
-              action: "apply-subtrees-immediate",
-              subtrees: ensureExists(subtreesForNew),
-              sender: this.name,
-              originKind: "source",
-              resetEpoch: currentEpoch ?? null,
-            };
-            await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-          } catch {}
+          await this.sendBridgeApply(consumerRoomId, {
+            action: "apply-subtrees-immediate",
+            subtrees: ensureExists(subtreesForNew),
+            sender: this.name,
+            originKind: "source",
+            resetEpoch: currentEpoch ?? null,
+          });
         })
       );
     } catch {}
@@ -1629,6 +1631,10 @@ export class PartyServer extends YServer {
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
+        // A resubscribe means a fresh client load on the consumer side. Reopen
+        // its circuit so a genuine new visitor always gets a clean bridge attempt
+        // even if the pair had previously tripped from a stale-epoch storm.
+        this.bridgeHealth.reset(consumerRoomId);
         const response: SubscribeResponse = {
           ok: true,
           subscribed: true,
@@ -1658,7 +1664,7 @@ export class PartyServer extends YServer {
           console.warn(
             `[Bridge] Ignoring apply-subtrees for transient room ${this.name}: Supabase persistence unavailable.`
           );
-          const response: ApplySubtreesResponse = { ok: true };
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1678,7 +1684,7 @@ export class PartyServer extends YServer {
           console.warn(
             `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch (sender=${senderResetEpoch}, server=${serverResetEpoch})`
           );
-          const response: ApplySubtreesResponse = { ok: true };
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1741,7 +1747,9 @@ export class PartyServer extends YServer {
           }
         }
         if (!Object.keys(subtreesToApply).length) {
-          const response: ApplySubtreesResponse = { ok: true };
+          // Nothing to apply (filtered to empty). Not a failure — report applied
+          // so it does not count against the sender's circuit breaker.
+          const response: ApplySubtreesResponse = { ok: true, applied: true };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1778,24 +1786,17 @@ export class PartyServer extends YServer {
                 toSend = filteredSubtrees;
                 if (!Object.keys(toSend).length) return;
               }
-              const consumerRoom = await getServerByName(
-                env.Main,
-                consumerRoomId
-              );
-              try {
-                const applyRequest: ApplySubtreesImmediateRequest = {
-                  action: "apply-subtrees-immediate",
-                  subtrees: toSend,
-                  sender: this.name,
-                  originKind: "source",
-                  resetEpoch: currentEpoch ?? null,
-                };
-                await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-              } catch {}
+              await this.sendBridgeApply(consumerRoomId, {
+                action: "apply-subtrees-immediate",
+                subtrees: toSend,
+                sender: this.name,
+                originKind: "source",
+                resetEpoch: currentEpoch ?? null,
+              });
             })
           );
         }
-        const response: ApplySubtreesResponse = { ok: true };
+        const response: ApplySubtreesResponse = { ok: true, applied: true };
         return new Response(JSON.stringify(response), {
           headers: { "content-type": "application/json" },
         });
@@ -2143,15 +2144,13 @@ export class PartyServer extends YServer {
             new Set(sharedElementIds)
           );
           if (!Object.keys(subtrees).length) return;
-          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
-          const applyRequest: ApplySubtreesImmediateRequest = {
+          await this.sendBridgeApply(consumerRoomId, {
             action: "apply-subtrees-immediate",
             subtrees,
             sender: this.name,
             originKind: "source",
             resetEpoch: currentEpoch ?? null,
-          };
-          await consumerRoom.fetch(internalRequest("/apply", applyRequest));
+          });
         })
       );
     }
@@ -2162,15 +2161,56 @@ export class PartyServer extends YServer {
       if (!elementIds?.length) continue;
       const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
       if (!Object.keys(subtrees).length) continue;
-      const sourceRoom = await getServerByName(env.Main, sourceRoomId);
-      const applyRequest: ApplySubtreesImmediateRequest = {
+      await this.sendBridgeApply(sourceRoomId, {
         action: "apply-subtrees-immediate",
         subtrees,
         sender: this.name,
         originKind: "consumer",
         resetEpoch: currentEpoch ?? null,
-      };
-      await sourceRoom.fetch(internalRequest("/apply", applyRequest));
+      });
+    }
+  }
+
+  // The single outbound chokepoint for bridge applies. Every fan-out path must
+  // route through here so the per-(peer, direction) circuit breaker sees it:
+  // it skips the send when the link's circuit is open (the peer keeps rejecting
+  // us), records the apply result so a recovered peer reopens and a misconfigured
+  // one stops being stormed, and logs once on the open edge. The direction is the
+  // request's originKind, so the two directions to a bidirectional peer are
+  // tracked independently.
+  private async sendBridgeApply(
+    peerRoomId: string,
+    applyRequest: ApplySubtreesImmediateRequest
+  ): Promise<void> {
+    const direction = applyRequest.originKind;
+    if (!this.bridgeHealth.shouldSend(peerRoomId, direction)) {
+      return;
+    }
+    let applied: boolean;
+    try {
+      const peerRoom = await getServerByName(env.Main, peerRoomId);
+      const res = await peerRoom.fetch(internalRequest("/apply", applyRequest));
+      if (!res.ok) {
+        // A non-2xx response is a failed apply regardless of body.
+        applied = false;
+      } else {
+        try {
+          const parsed = (await res.json()) as ApplySubtreesResponse;
+          // Absent `applied` means an older peer that always applies — treat as true.
+          applied = parsed?.applied !== false;
+        } catch {
+          // Unparseable 2xx body — treat as a failed apply so a broken peer backs off.
+          applied = false;
+        }
+      }
+    } catch {
+      // Network/dispatch failure also counts against the link's health.
+      applied = false;
+    }
+    if (this.bridgeHealth.recordResult(peerRoomId, direction, applied)) {
+      console.warn(
+        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until it recovers or resubscribes`
+      );
     }
   }
 
