@@ -2,6 +2,10 @@
 // ABOUTME: Worker base URL + URL-param overrides for experiment settings.
 
 import { parseSpec } from "./utils/settingsSpec";
+import {
+  DEFAULT_CINEMATIC_CONFIG,
+  type CinematicConfig,
+} from "./utils/cinematicCamera";
 
 const DEFAULT_WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 
@@ -151,4 +155,42 @@ export function parseTimeRangeFromUrl():
   if (startMs === undefined || endMs === undefined) return undefined;
   if (endMs <= startMs) return undefined;
   return { startMs, endMs };
+}
+
+/** `?cinematic=1` or `?cinematic=follow` enables cursor-follow cinematic mode.
+ * Optional tuning params layer on top of defaults:
+ *   ?cinemaZoom=0.25        fraction of screen width visible while following
+ *   ?cinemaTransition=3     fly-through seconds between subjects
+ *   ?cinemaLerp=0           center smoothing (0 = pure locked-center)
+ *   ?cinemaVelZoom=0        velocity-aware zoom-out (0 = off)
+ * Returns null when cinematic mode is not requested. */
+export function parseCinematicFromUrl(): CinematicConfig | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("cinematic");
+  const on = raw !== null && raw !== "" && parseBool(raw) !== false;
+  if (!on) return null;
+
+  const zoom = parseNumber(params.get("cinemaZoom"));
+  const transitionS = parseNumber(params.get("cinemaTransition"));
+  const lerp = parseNumber(params.get("cinemaLerp"));
+  const velZoom = parseNumber(params.get("cinemaVelZoom"));
+
+  return {
+    ...DEFAULT_CINEMATIC_CONFIG,
+    mode: "follow",
+    zoom: zoom !== undefined && zoom > 0 ? zoom : DEFAULT_CINEMATIC_CONFIG.zoom,
+    transitionMs:
+      transitionS !== undefined && transitionS > 0
+        ? transitionS * 1000
+        : DEFAULT_CINEMATIC_CONFIG.transitionMs,
+    centerLerp:
+      lerp !== undefined && lerp >= 0
+        ? lerp
+        : DEFAULT_CINEMATIC_CONFIG.centerLerp,
+    velocityZoomOut:
+      velZoom !== undefined && velZoom >= 0
+        ? velZoom
+        : DEFAULT_CINEMATIC_CONFIG.velocityZoomOut,
+  };
 }
