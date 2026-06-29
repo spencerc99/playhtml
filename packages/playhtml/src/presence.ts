@@ -1,7 +1,13 @@
 // ABOUTME: Implements the PresenceAPI — unified per-user presence with named channels.
 // ABOUTME: Wraps a Yjs awareness instance, exposing custom fields alongside cursor/identity data.
 
-import type { PresenceAPI, PresenceView, PlayerIdentity, Cursor } from "@playhtml/common";
+import type {
+  Cursor,
+  CursorPresenceView,
+  PlayerIdentity,
+  PresenceAPI,
+  PresenceView,
+} from "@playhtml/common";
 import { getStableIdForAwareness } from "./awareness-utils";
 
 const PRESENCE_FIELD = "__presence__";
@@ -10,7 +16,7 @@ const IDENTITY_FIELD = "__playhtml_identity__";
 const SYSTEM_FIELDS = new Set(["playerIdentity", "cursor", "isMe"]);
 
 /** Minimal awareness interface matching YPartyKitProvider.awareness */
-interface AwarenessLike {
+export interface AwarenessLike {
   clientID: number;
   getStates(): Map<number, Record<string, unknown>>;
   getLocalState(): Record<string, unknown> | null;
@@ -21,6 +27,10 @@ interface AwarenessLike {
 interface PresenceDeps {
   getAwareness: () => AwarenessLike;
   getPlayerIdentity: () => PlayerIdentity;
+  getCursorPresences?: () => Map<string, CursorPresenceView>;
+  onCursorPresencesChange?: (
+    callback: (presences: Map<string, CursorPresenceView>) => void,
+  ) => () => void;
 }
 
 interface ChannelListener {
@@ -44,9 +54,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
   // boolean) so SPA navigation that rebuilds the provider — and with it the
   // awareness object — re-arms the write on the new awareness.
   function ensureIdentityWritten(): void {
-    const awareness = getAwareness();
-    if (awareness.getLocalState()?.[IDENTITY_FIELD]) return;
-    awareness.setLocalStateField(IDENTITY_FIELD, deps.getPlayerIdentity());
+    ensureAwarenessIdentity(getAwareness(), deps.getPlayerIdentity());
   }
 
   function channelFingerprint(
@@ -112,8 +120,8 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       | undefined;
 
     const playerIdentity =
-      cursorState?.playerIdentity ??
-      (state[IDENTITY_FIELD] as PlayerIdentity | undefined);
+      (state[IDENTITY_FIELD] as PlayerIdentity | undefined) ??
+      cursorState?.playerIdentity;
     const cursor = cursorState?.cursor ?? null;
     const customChannels = (state[PRESENCE_FIELD] as Record<string, unknown>) ?? {};
 
@@ -192,7 +200,28 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       presences.set(mySelfStableId, view);
     }
 
+    mergeCursorPresences(presences, mySelfStableId);
+
     return presences;
+  }
+
+  function mergeCursorPresences(
+    presences: Map<string, PresenceView>,
+    selfStableId: string,
+  ): void {
+    const cursorPresences = deps.getCursorPresences?.();
+    if (!cursorPresences) return;
+
+    for (const [stableId, cursorPresence] of cursorPresences) {
+      const existing = presences.get(stableId);
+      presences.set(stableId, {
+        ...existing,
+        playerIdentity:
+          cursorPresence.playerIdentity ?? existing?.playerIdentity,
+        cursor: cursorPresence.cursor ?? null,
+        isMe: stableId === selfStableId,
+      });
+    }
   }
 
   return {
@@ -223,6 +252,14 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       callback: (presences: Map<string, PresenceView>) => void,
     ): () => void {
       ensureIdentityWritten();
+      if (channel === "cursor" && deps.onCursorPresencesChange) {
+        const unsubscribe = deps.onCursorPresencesChange(() => {
+          callback(buildPresences());
+        });
+        callback(buildPresences());
+        return unsubscribe;
+      }
+
       const id = String(nextListenerId++);
       // Seed lastFingerprint with the current channel state so the listener
       // isn't re-fired redundantly on the next awareness change if nothing
@@ -250,4 +287,12 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
       return deps.getPlayerIdentity();
     },
   };
+}
+
+export function ensureAwarenessIdentity(
+  awareness: AwarenessLike,
+  identity: PlayerIdentity,
+): void {
+  if (awareness.getLocalState()?.[IDENTITY_FIELD]) return;
+  awareness.setLocalStateField(IDENTITY_FIELD, identity);
 }

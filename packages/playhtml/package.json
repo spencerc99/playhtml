@@ -64,6 +64,7 @@
     "@playhtml/common": "workspace:^",
     "@syncedstore/core": "^0.6.0",
     "lit-html": "^3.2.1",
+    "partysocket": "^1.2.0",
     "y-partyserver": "^2.2.0",
     "yjs": "13.6.18"
   }
