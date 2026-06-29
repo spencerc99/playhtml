@@ -9,7 +9,23 @@ import {
   initGlobalFeatures,
   anyGlobalFeatureActive,
 } from "@extension/features/global";
+import browser from "webextension-polyfill";
 import { SealingCeremony } from "@extension/components/sealing/SealingCeremony";
+import {
+  MessageBottle,
+  MESSAGE_BOTTLE_CSS,
+} from "@extension/components/MessageBottle";
+import type { BottleNote } from "@extension/features/BottleManager";
+
+// The bottle's CSS ships as an inline string (the extension injects it into a
+// Shadow root). On the site, inject it into the document once so the directly
+// rendered MessageBottle is styled.
+if (!document.getElementById("message-bottle-css")) {
+  const styleEl = document.createElement("style");
+  styleEl.id = "message-bottle-css";
+  styleEl.textContent = MESSAGE_BOTTLE_CSS;
+  document.head.appendChild(styleEl);
+}
 
 const PLAYER_COLORS = ["#4a9a8a", "#c4724e", "#5b8db8", "#d4b85c", "#8b6b7f"];
 function randomColor() {
@@ -24,7 +40,6 @@ function randomColor() {
 async function bootSocial(): Promise<() => void> {
   // Force the internal-dev override on (shim-backed storage), so experiments
   // run on the site even though their committed FLAGS are off.
-  const browser = (await import("webextension-polyfill")).default;
   await browser.storage.local.set({ internalDevFeaturesEnabled: true });
 
   if (!(await anyGlobalFeatureActive())) {
@@ -44,6 +59,67 @@ async function bootSocial(): Promise<() => void> {
     playerPid: "playground-" + Math.random().toString(36).slice(2, 8),
   });
   return cleanup;
+}
+
+/**
+ * Direct bottle render — no playhtml / realtime. This is the reliable "photo"
+ * target: the real MessageBottle component, click to open/read/seal, instantly,
+ * regardless of network. Controls (text, color, # notes) drive what's shown.
+ */
+function BottlePreview() {
+  const [color, setColor] = useState("#c4724e");
+  const [notes, setNotes] = useState<BottleNote[]>([
+    {
+      text: "if you're reading this, the wifi is back up.",
+      createdAt: Date.now(),
+      createdBy: "anon",
+      authorColor: "#c4724e",
+    },
+  ]);
+  const [key, setKey] = useState(0); // remount to reset the bottle to its sealed state
+
+  useEffect(() => {
+    const colorEl = document.getElementById("bp-color") as HTMLInputElement | null;
+    const textEl = document.getElementById("bp-text") as HTMLTextAreaElement | null;
+    const emptyEl = document.getElementById("bp-empty") as HTMLInputElement | null;
+    const resetBtn = document.getElementById("bp-reset") as HTMLButtonElement | null;
+    const sync = () => {
+      const c = colorEl?.value || "#c4724e";
+      setColor(c);
+      if (emptyEl?.checked) {
+        setNotes([]);
+      } else {
+        setNotes([
+          {
+            text: textEl?.value || "",
+            createdAt: Date.now(),
+            createdBy: "anon",
+            authorColor: c,
+          },
+        ]);
+      }
+      setKey((k) => k + 1);
+    };
+    colorEl?.addEventListener("input", sync);
+    textEl?.addEventListener("input", sync);
+    emptyEl?.addEventListener("change", sync);
+    resetBtn?.addEventListener("click", () => setKey((k) => k + 1));
+    return () => {
+      colorEl?.removeEventListener("input", sync);
+      textEl?.removeEventListener("input", sync);
+      emptyEl?.removeEventListener("change", sync);
+    };
+  }, []);
+
+  return (
+    <MessageBottle
+      key={key}
+      notes={notes}
+      authorColor={color}
+      pageBg="#faf7f2"
+      onSeal={() => {}}
+    />
+  );
 }
 
 function CeremonyTester() {
@@ -124,16 +200,26 @@ function CeremonyTester() {
   );
 }
 
-// --- boot the live social stack, then mount the ceremony tester ---
+// --- mount the direct-render testers first (instant, no network) ---
+const bottleRoot = document.getElementById("bottle-root");
+if (bottleRoot) createRoot(bottleRoot).render(<BottlePreview />);
+
+const ceremonyRoot = document.getElementById("ceremony-root");
+if (ceremonyRoot) createRoot(ceremonyRoot).render(<CeremonyTester />);
+
+// --- boot the live synced social stack in the background (non-blocking) ---
+// The page is fully usable for previewing/photographing the bottle without this;
+// the live satchel + synced bottles are a bonus that needs a PartyKit connection.
 const statusEl = document.getElementById("status");
 bootSocial()
   .then(() => {
-    if (statusEl) statusEl.textContent = "live — satchel is bottom-right; bottles place on this page";
+    if (statusEl)
+      statusEl.textContent =
+        "live — satchel bottom-right; synced bottles place on this page";
   })
   .catch((err) => {
-    console.error("[social-playground] boot failed:", err);
-    if (statusEl) statusEl.textContent = "boot failed — see console";
+    console.error("[social-playground] live boot failed:", err);
+    if (statusEl)
+      statusEl.textContent =
+        "live sync unavailable — direct bottle/ceremony below still work";
   });
-
-const root = document.getElementById("ceremony-root");
-if (root) createRoot(root).render(<CeremonyTester />);

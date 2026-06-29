@@ -90,6 +90,39 @@
         </li>
       </ul>
 
+      <h2>Message bottle (direct render — for photos)</h2>
+      <p>
+        The real <code>MessageBottle</code> component, rendered directly (no
+        sync needed, so it always shows). Click it to open, read, and seal —
+        good for framing a screenshot. Tweak the message, color, or make it an
+        empty prompt bottle, then <strong>reset</strong> to re-seal.
+      </p>
+      <div class="controls">
+        <textarea id="bp-text">if you're reading this, the wifi is back up.</textarea>
+        <input type="color" id="bp-color" value="#c4724e" />
+      </div>
+      <div class="controls">
+        <label style="display: flex; align-items: center; gap: 6px; color: #5c554d">
+          <input type="checkbox" id="bp-empty" /> empty prompt bottle
+        </label>
+        <button id="bp-reset">reset bottle</button>
+      </div>
+      <div
+        id="bottle-stage"
+        style="
+          position: relative;
+          min-height: 240px;
+          margin: 12px 0 8px;
+          border: 1px dashed rgba(90, 78, 65, 0.25);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        "
+      >
+        <div id="bottle-root"></div>
+      </div>
+
       <h2>Sealing ceremony (direct play)</h2>
       <p>
         Play the Three.js sealing ceremony on its own to iterate on it. Drag the
