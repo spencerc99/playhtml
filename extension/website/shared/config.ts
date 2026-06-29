@@ -207,12 +207,14 @@ export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
   return { centerMinutes, radiusMinutes };
 }
 
-/** `?cinematic=1` or `?cinematic=follow` enables cursor-follow cinematic mode.
- * Optional tuning params layer on top of defaults:
- *   ?cinemaZoom=0.25        fraction of screen width visible while following
- *   ?cinemaTransition=3     fly-through seconds between subjects
- *   ?cinemaLerp=0           center smoothing (0 = pure locked-center)
- *   ?cinemaVelZoom=0        velocity-aware zoom-out (0 = off)
+/** `?cinematic=1`/`follow` enables cursor-follow; `?cinematic=reveal` runs the
+ * one-shot scripted pull-back (tight close-up → full canvas). Optional tuning:
+ *   ?cinemaZoom=0.25        follow: fraction of screen width visible
+ *   ?cinemaTransition=3     follow: fly-through seconds between subjects
+ *   ?cinemaLerp=0           follow: center smoothing (0 = pure locked-center)
+ *   ?cinemaVelZoom=0        follow: velocity-aware zoom-out (0 = off)
+ *   ?cinemaReveal=10        reveal: seconds to pull back to full canvas
+ *   ?cinemaStartZoom=0.18   reveal: fraction of screen width at the tightest
  * Returns null when cinematic mode is not requested. */
 export function parseCinematicFromUrl(): CinematicConfig | null {
   if (typeof window === "undefined") return null;
@@ -221,14 +223,17 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
   const on = raw !== null && raw !== "" && parseBool(raw) !== false;
   if (!on) return null;
 
+  const mode = raw === "reveal" ? "reveal" : "follow";
   const zoom = parseNumber(params.get("cinemaZoom"));
   const transitionS = parseNumber(params.get("cinemaTransition"));
   const lerp = parseNumber(params.get("cinemaLerp"));
   const velZoom = parseNumber(params.get("cinemaVelZoom"));
+  const revealS = parseNumber(params.get("cinemaReveal"));
+  const startZoom = parseNumber(params.get("cinemaStartZoom"));
 
   return {
     ...DEFAULT_CINEMATIC_CONFIG,
-    mode: "follow",
+    mode,
     zoom: zoom !== undefined && zoom > 0 ? zoom : DEFAULT_CINEMATIC_CONFIG.zoom,
     transitionMs:
       transitionS !== undefined && transitionS > 0
@@ -242,5 +247,13 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
       velZoom !== undefined && velZoom >= 0
         ? velZoom
         : DEFAULT_CINEMATIC_CONFIG.velocityZoomOut,
+    revealMs:
+      revealS !== undefined && revealS > 0
+        ? revealS * 1000
+        : DEFAULT_CINEMATIC_CONFIG.revealMs,
+    revealStartZoom:
+      startZoom !== undefined && startZoom > 0
+        ? startZoom
+        : DEFAULT_CINEMATIC_CONFIG.revealStartZoom,
   };
 }
