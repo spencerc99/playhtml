@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "online.wewere.presence",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:self",
+      "description": "A user's shareable presence/identity for the \"we were online\" experience. Shared within a permissioned Space rather than broadcast publicly, so participants in a shared context can see each other without the data being globally public.",
+      "record": {
+        "type": "object",
+        "required": ["createdAt"],
+        "properties": {
+          "displayName": { "type": "string", "maxLength": 64 },
+          "colorPalette": {
+            "type": "array",
+            "description": "Hex colors defining the user's cursor/identity palette.",
+            "items": { "type": "string" },
+            "maxLength": 8
+          },
+          "cursorStyle": { "type": "string" },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

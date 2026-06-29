@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "online.wewere.traceSummary",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A privacy-preserving aggregate of one user's browsing activity over a bounded window (typically one day). Raw high-frequency events (cursor, viewport, keyboard) stay in the local/realtime layer; only these summaries are written to the user's PDS. The record key SHOULD be the window start date, e.g. \"2026-06-28\".",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["windowStart", "windowEnd", "domains", "createdAt"],
+        "properties": {
+          "windowStart": { "type": "string", "format": "datetime" },
+          "windowEnd": { "type": "string", "format": "datetime" },
+          "domains": {
+            "type": "array",
+            "description": "Per-domain activity aggregates for the window.",
+            "items": { "type": "ref", "ref": "#domainStat" }
+          },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    },
+    "domainStat": {
+      "type": "object",
+      "required": ["domain", "activeMs"],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Registrable domain, e.g. \"playhtml.fun\".",
+          "maxLength": 512
+        },
+        "activeMs": {
+          "type": "integer",
+          "description": "Foreground/active time on the domain during the window, in milliseconds."
+        },
+        "visits": {
+          "type": "integer",
+          "description": "Number of distinct visits/navigations to the domain in the window."
+        },
+        "hourlyActiveMs": {
+          "type": "array",
+          "description": "24-element array of active milliseconds per local-time hour bucket.",
+          "items": { "type": "integer" },
+          "maxLength": 24
+        }
+      }
+    }
+  }
+}

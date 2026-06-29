@@ -1,0 +1,39 @@
+{
+  "lexicon": 1,
+  "id": "fun.playhtml.element",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "One participant's state for a single interactive element within a playhtml room. The record key SHOULD be a stable hash of (room + elementId) so repeated writes overwrite (last-write-wins) instead of accruing. Fits discrete, last-write-ish capabilities (can-move, can-toggle, can-spin, can-grow); genuinely concurrent collaborative values should stay in the live CRDT layer.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["room", "elementId", "capability", "data", "updatedAt"],
+        "properties": {
+          "room": {
+            "type": "string",
+            "description": "Room id, e.g. \"playhtml.fun\" (domain scope) or \"playhtml.fun-/page\" (path scope).",
+            "maxLength": 2048
+          },
+          "elementId": {
+            "type": "string",
+            "description": "The element's DOM id, unique within the room.",
+            "maxLength": 512
+          },
+          "capability": {
+            "type": "string",
+            "description": "Capability/tag this state belongs to, e.g. \"can-move\", \"can-toggle\", \"can-play\"."
+          },
+          "data": {
+            "type": "unknown",
+            "description": "Capability-specific JSON state for this element (e.g. {\"x\":12,\"y\":40} for can-move)."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

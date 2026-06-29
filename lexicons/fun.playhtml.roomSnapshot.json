@@ -1,0 +1,34 @@
+{
+  "lexicon": 1,
+  "id": "fun.playhtml.roomSnapshot",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An owner-owned materialized snapshot of a playhtml room's shared state. Supports data ownership / export (Option B): the live document is periodically checkpointed into the site owner's repo so they hold a real, portable copy. The record key SHOULD be a stable hash of the room id.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["room", "snapshot", "version", "createdAt"],
+        "properties": {
+          "room": {
+            "type": "string",
+            "description": "Room id this snapshot materializes.",
+            "maxLength": 2048
+          },
+          "snapshot": {
+            "type": "unknown",
+            "description": "Materialized JSON view of the room: { [capability]: { [elementId]: data } }."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Monotonic checkpoint version; higher supersedes lower."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}
