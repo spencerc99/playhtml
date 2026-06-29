@@ -1,5 +1,20 @@
 # @playhtml/common
 
+## 0.7.2
+
+### Patch Changes
+
+- 22dae41: Move cursor motion onto PlayHTML's realtime presence transport, add shared protocol validation for presence messages, coalesce pointer work per animation frame, adapt cursor publish rates as active room load grows, expire stale cursor positions, and keep cursor movement out of persistent shared data.
+- 18d2891: Fix `can-mirror` dropping or corrupting children when an element has multiple identical children or a mix of text and element children.
+
+  The child-list sync matched DOM nodes to stored state by value-equality, so repeated children (e.g. several identical images or list items) were deduplicated into a single entry. Removing one child then emptied the lone entry and wiped every child on connected clients. Child-list mutations now resync from the live DOM by position, preserving order and count.
+
+  Applying remote state also reconciled children strictly by position, which threw when a position's node kind changed (e.g. a text node lining up against element state after a sibling was removed). Mismatched nodes are now replaced rather than updated in place.
+
+  Applying remote state to an element that was emptied remotely now correctly removes its stale children, instead of leaving them in place.
+
+- d7ffb66: `can-duplicate` and `can-duplicate-to` now accept an element id, an id with a leading `#`, or any CSS selector — the same resolution `can-move-bounds` already used. Previously `can-duplicate="#my-template"` silently failed because the value was passed straight to `getElementById`. Clone ids are now derived from the resolved template element's own id, so a selector or `#`-prefixed value still produces valid clone ids.
+
 ## 0.7.1
 
 ### Patch Changes
