@@ -14,7 +14,7 @@ function sanitizeHoldDuration(duration: number | undefined): number | undefined 
   if (duration > MAX_REASONABLE_HOLD_MS) return MIN_HOLD_THRESHOLD_MS;
   return duration;
 }
-import { applyStyleVariations } from "../utils/styleUtils";
+import { applyStyleVariations, roundPathCorners } from "../utils/styleUtils";
 import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
@@ -486,12 +486,17 @@ export function useCursorTrails(
 
       // Apply style variations for organic/chaotic effects
       const seed = trail.points[0]?.x + trail.points[0]?.y || 0;
-      const variedPoints = applyStyleVariationsLocal(
+      const styledPoints = applyStyleVariationsLocal(
         trail.points,
         settings.trailStyle,
         seed,
         settings.chaosIntensity || 1.0,
       );
+      // Round sharp direction-reversals once, so the freehand stroke outline
+      // doesn't pinch into a knot at those corners (most visible when zoomed in
+      // for cinematic capture). Computed here on the fixed path — not per frame
+      // — so already-drawn ink stays put and the live head doesn't lag.
+      const variedPoints = roundPathCorners(styledPoints);
 
       // Calculate click progress along the trail
       const clicksWithProgress = trail.clicks.map((click) => {

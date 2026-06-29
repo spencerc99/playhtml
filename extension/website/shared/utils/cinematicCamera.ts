@@ -141,10 +141,27 @@ export class CinematicCamera {
 
     // FLYING: tween regardless of subject availability; resolve on arrival.
     if (this.state === "flying" && this.flyFrom && this.flyTo) {
+      // The target keeps drawing during the flight. Re-aim flyTo at its LIVE
+      // position each frame (when still active) so the camera flies to where
+      // the subject IS, not where it was when the flight began. Without this,
+      // a fast subject moves on during the ~3s flight: the camera lands on an
+      // empty spot, then snaps to the live position on arrival.
+      if (this.flyTargetIndex !== null) {
+        const liveTarget = byIndex.get(this.flyTargetIndex);
+        if (liveTarget) {
+          this.flyTo = boxAround(
+            { x: liveTarget.x, y: liveTarget.y },
+            this.config.zoom,
+            screenW,
+            screenH,
+          );
+        }
+      }
       const raw = (nowMs - this.flyStartMs) / this.config.transitionMs;
       const t = Math.min(1, Math.max(0, raw));
       const box = lerpBox(this.flyFrom, this.flyTo, ease(t));
       this.lastViewBox = box;
+      this.currentCenter = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
       if (t >= 1) {
         this.state = "following";
         this.subjectIndex = this.flyTargetIndex;
