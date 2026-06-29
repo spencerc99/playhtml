@@ -34,12 +34,6 @@ export interface ExportPermissionsResponse {
 
 export interface ApplySubtreesResponse {
   ok: true;
-  // Whether the receiving room actually applied the subtrees. False when the
-  // apply was rejected (e.g. stale reset epoch) or skipped (transient mode).
-  // The sender uses this to back off a misconfigured bridge pair instead of
-  // re-sending on every flush. Optional so older callers reading only `ok`
-  // keep working; absence is treated as applied.
-  applied?: boolean;
 }
 
 export interface GenericErrorResponse {
