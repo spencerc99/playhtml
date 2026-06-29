@@ -9,8 +9,9 @@ export interface ViewBox {
 }
 
 export interface CinematicConfig {
-  /** Only "follow" is implemented today. */
-  mode: "follow";
+  /** "follow" rides cursors and flies between them; "reveal" runs a one-shot
+   * scripted pull-back from a tight cursor close-up to the full canvas. */
+  mode: "follow" | "reveal";
   /** Fraction of screen width visible while following (0.25 = tight zoom). */
   zoom: number;
   /** Fly-through duration between subjects, ms. */
@@ -19,6 +20,10 @@ export interface CinematicConfig {
   centerLerp: number;
   /** 0 = off. >0 zooms out proportional to cursor speed (px/frame). */
   velocityZoomOut: number;
+  /** reveal mode: ms to pull back from the tight close-up to full canvas. */
+  revealMs: number;
+  /** reveal mode: fraction of screen width visible at the start (tightest). */
+  revealStartZoom: number;
 }
 
 export interface CameraFrame {
@@ -35,6 +40,8 @@ export const DEFAULT_CINEMATIC_CONFIG: CinematicConfig = {
   transitionMs: 3000,
   centerLerp: 0,
   velocityZoomOut: 0,
+  revealMs: 10000,
+  revealStartZoom: 0.18,
 };
 
 type Point = { x: number; y: number };
@@ -88,6 +95,12 @@ export class CinematicCamera {
   // Set by requestNext(); the next tick treats the current subject as done
   // and flies to a fresh one, even mid-draw.
   private forceNext = false;
+  // reveal mode: captured at the first frame that has an active cursor.
+  private revealStartMs = 0;
+  private revealSubjectIndex: number | null = null;
+  // Last known position of the reveal subject, so the camera keeps a sensible
+  // center even after that cursor finishes and drops out of activeTrails.
+  private revealSubjectLast: Point | null = null;
 
   constructor(config: CinematicConfig) {
     this.config = config;
@@ -106,6 +119,9 @@ export class CinematicCamera {
     this.flyTo = null;
     this.flyTargetIndex = null;
     this.forceNext = false;
+    this.revealStartMs = 0;
+    this.revealSubjectIndex = null;
+    this.revealSubjectLast = null;
   }
 
   /** Request an immediate fly-through to a new subject on the next frame,
@@ -137,6 +153,47 @@ export class CinematicCamera {
 
   tick(frame: CameraFrame): ViewBox | null {
     const { activeTrails, screenW, screenH, nowMs } = frame;
+
+    // REVEAL: one-shot scripted pull-back. Lock onto the first cursor that
+    // appears and FOLLOW it while zoomed in; over revealMs ease both the zoom
+    // out to the full canvas AND the center from the live cursor toward the
+    // canvas center, so it lands framed on the whole field.
+    if (this.config.mode === "reveal") {
+      if (this.revealSubjectIndex === null) {
+        // Wait for a cursor to lock onto; until then leave the view untouched.
+        const first = this.selectNextSubject(activeTrails, null);
+        if (first === null) return this.lastViewBox;
+        const s = activeTrails.find((t) => t.index === first)!;
+        this.revealSubjectIndex = first;
+        this.revealSubjectLast = { x: s.x, y: s.y };
+        this.revealStartMs = nowMs;
+      }
+
+      // Track the subject's live position; if it has finished/left, hold its
+      // last known spot.
+      const live = activeTrails.find((t) => t.index === this.revealSubjectIndex);
+      if (live) this.revealSubjectLast = { x: live.x, y: live.y };
+      const subjectCenter = this.revealSubjectLast!;
+
+      const t = Math.min(
+        1,
+        Math.max(0, (nowMs - this.revealStartMs) / this.config.revealMs),
+      );
+      const e = ease(t);
+
+      // Zoom eases from tight (revealStartZoom) to full canvas (1).
+      const zoom = this.config.revealStartZoom + (1 - this.config.revealStartZoom) * e;
+      // Center eases from the live subject to the canvas center.
+      const canvasCenter = { x: screenW / 2, y: screenH / 2 };
+      const center = {
+        x: subjectCenter.x + (canvasCenter.x - subjectCenter.x) * e,
+        y: subjectCenter.y + (canvasCenter.y - subjectCenter.y) * e,
+      };
+      const box = boxAround(center, zoom, screenW, screenH);
+      this.lastViewBox = box;
+      return box;
+    }
+
     const byIndex = new Map(activeTrails.map((t) => [t.index, t]));
 
     // FLYING: tween regardless of subject availability; resolve on arrival.

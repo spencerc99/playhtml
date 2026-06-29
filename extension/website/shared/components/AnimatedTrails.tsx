@@ -306,6 +306,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
+      // Accumulate scaled time per-frame (delta * currentSpeed) instead of
+      // realElapsed * currentSpeed, so animationSpeed can change mid-playback
+      // (e.g. a slow→fast ramp during a cinematic reveal) without teleporting
+      // the replay. At a constant speed this is identical to the old formula.
+      let lastTimestamp: number | null = null;
+      let accumulatedScaled = 0;
 
       const resetPlaybackTrackers = () => {
         activeTrailIndicesRef.current = [];
@@ -338,6 +344,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
       const animate = (timestamp: number) => {
         if (startTime === null) startTime = timestamp;
+        if (lastTimestamp === null) lastTimestamp = timestamp;
 
         // In document space mode, shift the SVG viewBox to match the current
         // scroll position so trails appear glued to the page rather than to
@@ -363,8 +370,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           cameraActiveScratchRef.current.length = 0;
         }
 
-        const realElapsed = timestamp - startTime;
-        const scaledElapsed = realElapsed * animationSpeedRef.current;
+        // Clamp the per-frame delta so a long hidden-tab gap (or a debugger
+        // pause) doesn't accumulate a huge jump when the loop resumes.
+        const frameDelta = Math.min(250, timestamp - lastTimestamp);
+        lastTimestamp = timestamp;
+        accumulatedScaled += frameDelta * animationSpeedRef.current;
+        const scaledElapsed = accumulatedScaled;
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
         // Detect loop wrap

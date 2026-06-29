@@ -747,6 +747,25 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     };
   }, [loading, events.length]);
 
+  // Capture aid (sibling to __movementReady): lets a recording script ramp the
+  // animation speed mid-clip — e.g. a slow, readable opening that then speeds up
+  // to build density during a cinematic reveal. The accumulate-elapsed loop in
+  // AnimatedTrails makes this smooth (no time-jump). No-op in normal usage.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (
+      window as unknown as { __setAnimationSpeed?: (s: number) => void }
+    ).__setAnimationSpeed = (s: number) => {
+      if (Number.isFinite(s) && s > 0) {
+        setSettings((prev) => ({ ...prev, animationSpeed: s }));
+      }
+    };
+    return () => {
+      delete (window as unknown as { __setAnimationSpeed?: unknown })
+        .__setAnimationSpeed;
+    };
+  }, []);
+
   // Track canvas size via ResizeObserver
   useEffect(() => {
     const updateSize = () => {
