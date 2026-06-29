@@ -85,6 +85,9 @@ export class CinematicCamera {
   private flyTo: ViewBox | null = null;
   private flyStartMs = 0;
   private flyTargetIndex: number | null = null;
+  // Set by requestNext(); the next tick treats the current subject as done
+  // and flies to a fresh one, even mid-draw.
+  private forceNext = false;
 
   constructor(config: CinematicConfig) {
     this.config = config;
@@ -102,6 +105,13 @@ export class CinematicCamera {
     this.flyFrom = null;
     this.flyTo = null;
     this.flyTargetIndex = null;
+    this.forceNext = false;
+  }
+
+  /** Request an immediate fly-through to a new subject on the next frame,
+   * without waiting for the current trail to finish. */
+  requestNext(): void {
+    this.forceNext = true;
   }
 
   /** Prefer a trail early in its draw so the camera rides most of it.
@@ -166,15 +176,30 @@ export class CinematicCamera {
     // FOLLOWING.
     const subject =
       this.subjectIndex !== null ? byIndex.get(this.subjectIndex) : undefined;
-    const finishedOrGone = subject === undefined || subject.progress >= 1;
+    const finishedOrGone =
+      subject === undefined || subject.progress >= 1 || this.forceNext;
 
     if (finishedOrGone) {
       // Begin a fly-through to a fresh subject (or hold if none available).
       const next = this.selectNextSubject(activeTrails, this.subjectIndex);
       if (next === null) {
-        // Nothing to fly to; hold the last frame.
+        // Nothing to fly to; keep following the current subject (don't strand
+        // the camera) and clear the request so it isn't stuck pending.
+        this.forceNext = false;
+        if (subject !== undefined) {
+          const box = boxAround(
+            { x: subject.x, y: subject.y },
+            this.config.zoom,
+            screenW,
+            screenH,
+          );
+          this.currentCenter = { x: subject.x, y: subject.y };
+          this.lastViewBox = box;
+          return box;
+        }
         return this.lastViewBox;
       }
+      this.forceNext = false;
       const target = byIndex.get(next)!;
       const targetBox = boxAround(
         { x: target.x, y: target.y },

@@ -224,6 +224,7 @@ const InternetMovement = () => {
   return (
     <>
       <span
+        className="wordmark-signature"
         style={{
           position: "absolute",
           top: 14,

@@ -391,6 +391,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
     parseCinematicFromUrl(),
   );
+  // Bumped by the N key to ask the cinematic camera to swap subjects now.
+  const [cinematicNextSignal, setCinematicNextSignal] = useState(0);
+
+  // While cinematic mode is on, mark the document so page-level chrome (the
+  // "we were online" wordmark rendered outside this component) can hide itself
+  // for a fully bare capture. Cleared when cinematic turns off / unmounts.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("cinematic-active", !!cinematic);
+    return () => document.body.classList.remove("cinematic-active");
+  }, [cinematic]);
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
    * scope the canvas to a specific span for capturing artifacts. */
@@ -637,6 +648,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         setCinematic((prev) =>
           prev ? null : parseCinematicFromUrl() ?? DEFAULT_CINEMATIC_CONFIG,
         );
+        return;
+      }
+
+      // N → swap the cinematic camera to a new cursor immediately.
+      if (e.key === "n" || e.key === "N") {
+        setCinematicNextSignal((n) => n + 1);
         return;
       }
 
@@ -1443,6 +1460,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               settings={trailAnimationSettings}
               frozen={paused}
               cinematic={cinematic}
+              cinematicNextSignal={cinematicNextSignal}
             />
           ))}
 

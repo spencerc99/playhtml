@@ -46,6 +46,8 @@ interface AnimatedTrailsProps {
   // When set, a cursor-follow camera drives the SVG viewBox each frame.
   // Mutually exclusive with documentSpace; cinematic wins.
   cinematic?: CinematicConfig | null;
+  // Increment to ask the cinematic camera to jump to a new subject now.
+  cinematicNextSignal?: number;
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
@@ -75,6 +77,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     windowSize = 50,
     documentSpace = false,
     cinematic = null,
+    cinematicNextSignal = 0,
     soundEngine = null,
     settings,
   }) => {
@@ -179,6 +182,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     useEffect(() => {
       if (cinematic && cameraRef.current) cameraRef.current.setConfig(cinematic);
     }, [cinematic]);
+
+    // When the parent bumps the signal (N key), jump to a new subject now.
+    // Skip the initial 0 so we don't fire a spurious jump on mount.
+    useEffect(() => {
+      if (cinematicNextSignal > 0) cameraRef.current?.requestNext();
+    }, [cinematicNextSignal]);
 
     // Scratch array reused each frame to avoid per-frame allocation.
     const cameraActiveScratchRef = useRef<
@@ -803,6 +812,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
       prevProps.cinematic === nextProps.cinematic &&
+      prevProps.cinematicNextSignal === nextProps.cinematicNextSignal &&
       prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.strokeWidth === nextProps.settings.strokeWidth &&
       prevProps.settings.trailOpacity === nextProps.settings.trailOpacity &&
