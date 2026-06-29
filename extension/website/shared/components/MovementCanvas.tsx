@@ -396,14 +396,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // Bumped by the N key to ask the cinematic camera to swap subjects now.
   const [cinematicNextSignal, setCinematicNextSignal] = useState(0);
 
-  // While cinematic mode is on, mark the document so page-level chrome (the
-  // "we were online" wordmark rendered outside this component) can hide itself
-  // for a fully bare capture. Cleared when cinematic turns off / unmounts.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.body.classList.toggle("cinematic-active", !!cinematic);
-    return () => document.body.classList.remove("cinematic-active");
-  }, [cinematic]);
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
    * scope the canvas to a specific span for capturing artifacts. */
@@ -451,6 +443,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
   const printMode = cleanLevel >= 2; // level 2: also hides metadata pill + DaySelector
+
+  // Mark the document so page-level chrome (the "we were online" wordmark
+  // rendered outside this component) can hide itself for a fully bare capture.
+  // Hidden whenever cinematic mode is on OR clean=2 (print) is requested.
+  // Cleared when neither applies / on unmount.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const bare = !!cinematic || printMode;
+    document.body.classList.toggle("hide-wordmark", bare);
+    return () => document.body.classList.remove("hide-wordmark");
+  }, [cinematic, printMode]);
 
   // Sync filter chip list from prop (parent controls refetching). The
   // parent only re-fetches the events array when the worker-side domain

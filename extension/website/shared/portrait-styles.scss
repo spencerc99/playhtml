@@ -174,9 +174,9 @@ body {
   z-index: 2;
 }
 
-// Cinematic mode is for video capture — hide the page-level wordmark signature
-// so the canvas reads as a bare moving image. MovementCanvas toggles the body
-// class while cinematic is active.
-body.cinematic-active .wordmark-signature {
+// For bare video/image capture (cinematic mode, or clean=2 print level), hide
+// the page-level wordmark signature so the canvas reads as a bare moving image.
+// MovementCanvas toggles this body class.
+body.hide-wordmark .wordmark-signature {
   display: none;
 }
