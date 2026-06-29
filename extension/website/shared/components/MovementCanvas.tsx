@@ -694,6 +694,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         return;
       }
 
+      // S → toggle sound. Works even when the sound button is hidden by clean
+      // mode. The keypress is a user gesture, so the AudioContext resume inside
+      // handleToggleSound satisfies the browser autoplay policy. (Cmd/Ctrl+
+      // Shift+S is handled above as screenshot and returns before reaching here.)
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        handleToggleSound();
+        return;
+      }
+
       const now = Date.now();
       if (e.key === "d" || e.key === "D") {
         if (now - lastDKeyTime < DOUBLE_TAP_THRESHOLD) {
@@ -721,7 +731,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [fetchEvents, handleCapture]);
+  }, [fetchEvents, handleCapture, handleToggleSound]);
 
   // Expose a `window.__movementReady` promise that resolves once data has
   // loaded and the first animation frame has rendered. Used by the
