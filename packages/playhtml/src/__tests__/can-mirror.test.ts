@@ -1,201 +1,555 @@
-// ABOUTME: Reproduction tests for the can-mirror capability, focused on
-// ABOUTME: child add/remove sync between an observing client and a receiving client.
+// ABOUTME: Behavioral test suite for the can-mirror capability, modeling two
+// ABOUTME: clients sharing DOM state (observe -> shared state -> apply on peer).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   canMirrorInitializer,
   type ElementState,
 } from "../../../common/src/canMirror";
 
-// Drive the initializer's onMount with a minimal fake context that records the
-// produced ElementState, the same way ElementHandler would persist it.
-function mountObserver(element: HTMLElement) {
-  let data: ElementState = canMirrorInitializer.defaultData!(element) as any;
-  canMirrorInitializer.onMount!({
-    getElement: () => element,
-    setData: (updater: any) => {
-      if (typeof updater === "function") {
-        updater(data);
-      } else {
-        data = updater;
-      }
-    },
-    setMyAwareness: () => {},
-  } as any);
-  return {
-    getData: () => data,
-  };
-}
-
-// Apply a captured ElementState to a receiving element via updateElement.
-function applyState(element: HTMLElement, data: ElementState) {
-  canMirrorInitializer.updateElement!({ element, data } as any);
-}
+// These tests model two clients sharing one plain state object: a source
+// observes its DOM into shared state, the state crosses the wire, and a sink
+// applies it. This exercises the full observe -> serialize -> apply path with a
+// real MutationObserver and real DOM. It does NOT model Yjs CRDT merge
+// semantics (concurrent writes from multiple clients) — that lives in the
+// runtime, not in canMirror's pure DOM<->state logic, and is out of scope here.
 
 // MutationObserver callbacks are async (microtask). Flush them.
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
-describe("can-mirror child sync with identical children", () => {
-  it("removing the last of several identical children removes only one", async () => {
-    const source = document.createElement("div");
-    source.id = "container";
-    for (let i = 0; i < 3; i++) {
-      const img = document.createElement("img");
-      img.src = "./images/cat.jpg";
-      source.appendChild(img);
-    }
-    document.body.appendChild(source);
+// Deep clone, the way state crosses the wire between clients (it is serialized,
+// never shared by reference).
+const wire = (state: ElementState): ElementState =>
+  JSON.parse(JSON.stringify(state));
 
-    const { getData } = mountObserver(source);
+// A single client: an element with can-mirror mounted. It observes its own DOM
+// (writing to `state`) and can apply incoming remote state to its DOM.
+interface Client {
+  element: HTMLElement;
+  state: ElementState;
+  applyRemote: (incoming: ElementState) => void;
+  setAwareness: (awareness: { hover: boolean; focus: boolean }[]) => void;
+}
 
-    // Remove the last child, mirroring the bug report's removeCat handler.
-    source.removeChild(source.lastChild!);
-    await flush();
+function mountClient(element: HTMLElement): Client {
+  document.body.appendChild(element);
+  const client: Client = {
+    element,
+    state: canMirrorInitializer.defaultData!(element) as ElementState,
+    applyRemote(incoming) {
+      canMirrorInitializer.updateElement!({
+        element,
+        data: incoming,
+      } as any);
+    },
+    setAwareness(awareness) {
+      canMirrorInitializer.updateElementAwareness!({
+        element,
+        awareness,
+      } as any);
+    },
+  };
+  canMirrorInitializer.onMount!({
+    getElement: () => element,
+    setData: (updater: any) => {
+      if (typeof updater === "function") updater(client.state);
+      else client.state = updater;
+    },
+    setMyAwareness: () => {},
+  } as any);
+  return client;
+}
 
-    const data = getData() as any;
-    expect(data.children.length).toBe(2);
+// Build a fresh element from an HTML string for a peer to receive state onto.
+function elementFromHTML(html: string): HTMLElement {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html.trim();
+  return tpl.content.firstElementChild as HTMLElement;
+}
 
-    // Now mirror that state onto a fresh receiving element that still has 3.
-    const receiver = document.createElement("div");
-    receiver.id = "container";
-    for (let i = 0; i < 3; i++) {
-      const img = document.createElement("img");
-      img.src = "./images/cat.jpg";
-      receiver.appendChild(img);
-    }
-    document.body.appendChild(receiver);
+// Source observes its mutations into shared state; sink applies that state.
+// Returns the cloned state that crossed the wire.
+async function sync(source: Client, sink: Client): Promise<ElementState> {
+  await flush();
+  const onWire = wire(source.state);
+  sink.applyRemote(onWire);
+  return onWire;
+}
 
-    applyState(receiver, data);
-    expect(receiver.children.length).toBe(2);
+// Compare two DOM trees by serialized HTML, the user-visible source of truth.
+function expectMirrored(a: HTMLElement, b: HTMLElement) {
+  expect(b.outerHTML).toBe(a.outerHTML);
+}
+
+beforeEach(() => {
+  document.body.innerHTML = "";
+});
+
+describe("can-mirror: attributes", () => {
+  it("mirrors an added attribute", async () => {
+    const source = mountClient(elementFromHTML(`<div id="a"></div>`));
+    const sink = mountClient(elementFromHTML(`<div id="a"></div>`));
+
+    source.element.setAttribute("data-state", "active");
+    await sync(source, sink);
+
+    expect(sink.element.getAttribute("data-state")).toBe("active");
+    expectMirrored(source.element, sink.element);
   });
 
-  it("removing the last child updates the same client's DOM correctly via updateElement", async () => {
-    const el = document.createElement("div");
-    el.id = "container";
-    for (let i = 0; i < 3; i++) {
-      const img = document.createElement("img");
-      img.src = "./images/cat.jpg";
-      el.appendChild(img);
-    }
-    document.body.appendChild(el);
+  it("mirrors a changed attribute value", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a" class="off"></div>`)
+    );
+    const sink = mountClient(elementFromHTML(`<div id="a" class="off"></div>`));
 
-    const { getData } = mountObserver(el);
+    source.element.setAttribute("class", "on");
+    await sync(source, sink);
 
-    el.removeChild(el.lastChild!);
-    await flush();
-
-    // Simulate Yjs echoing the write back to the same client.
-    applyState(el, getData());
-    expect(el.children.length).toBe(2);
+    expect(sink.element.getAttribute("class")).toBe("on");
   });
 
-  it("removing children one at a time stays consistent", async () => {
-    const el = document.createElement("div");
-    el.id = "container";
-    for (let i = 0; i < 3; i++) {
-      const img = document.createElement("img");
-      img.src = "./images/cat.jpg";
-      el.appendChild(img);
-    }
-    document.body.appendChild(el);
+  it("mirrors a removed attribute", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a" data-temp="x"></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="a" data-temp="x"></div>`)
+    );
 
-    const { getData } = mountObserver(el);
+    source.element.removeAttribute("data-temp");
+    await sync(source, sink);
 
-    el.removeChild(el.lastChild!);
-    await flush();
-    expect((getData() as any).children.length).toBe(2);
-
-    el.removeChild(el.lastChild!);
-    await flush();
-    expect((getData() as any).children.length).toBe(1);
+    expect(sink.element.hasAttribute("data-temp")).toBe(false);
   });
 
-  it("adds then removes the last child", async () => {
-    const el = document.createElement("div");
-    el.id = "container";
-    document.body.appendChild(el);
+  it("mirrors the native open attribute on <details>", async () => {
+    const source = mountClient(
+      elementFromHTML(`<details id="d"><summary>x</summary></details>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<details id="d"><summary>x</summary></details>`)
+    );
 
-    const { getData } = mountObserver(el);
+    (source.element as HTMLDetailsElement).open = true;
+    await sync(source, sink);
 
-    // add three identical children, one at a time
-    for (let i = 0; i < 3; i++) {
+    expect((sink.element as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it("does not persist ephemeral hover/focus attributes into shared state", async () => {
+    const source = mountClient(elementFromHTML(`<div id="a"></div>`));
+
+    source.element.setAttribute("data-playhtml-hover", "");
+    source.element.setAttribute("data-playhtml-focus", "");
+    await flush();
+
+    const attrs = (source.state as any).attributes;
+    expect(attrs["data-playhtml-hover"]).toBeUndefined();
+    expect(attrs["data-playhtml-focus"]).toBeUndefined();
+  });
+
+  it("still persists a real attribute changed alongside an ephemeral one", async () => {
+    const source = mountClient(elementFromHTML(`<div id="a"></div>`));
+    const sink = mountClient(elementFromHTML(`<div id="a"></div>`));
+
+    source.element.setAttribute("data-playhtml-hover", "");
+    source.element.setAttribute("data-real", "1");
+    await sync(source, sink);
+
+    expect(sink.element.getAttribute("data-real")).toBe("1");
+    expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
+  });
+});
+
+describe("can-mirror: child add/remove", () => {
+  it("mirrors an added child", async () => {
+    const source = mountClient(elementFromHTML(`<ul id="l"></ul>`));
+    const sink = mountClient(elementFromHTML(`<ul id="l"></ul>`));
+
+    const li = document.createElement("li");
+    li.textContent = "one";
+    source.element.appendChild(li);
+    await sync(source, sink);
+
+    expectMirrored(source.element, sink.element);
+    expect(sink.element.children.length).toBe(1);
+  });
+
+  it("mirrors a removed child", async () => {
+    const source = mountClient(
+      elementFromHTML(`<ul id="l"><li>a</li><li>b</li></ul>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<ul id="l"><li>a</li><li>b</li></ul>`)
+    );
+
+    source.element.removeChild(source.element.lastElementChild!);
+    await sync(source, sink);
+
+    expectMirrored(source.element, sink.element);
+    expect(sink.element.children.length).toBe(1);
+    expect(sink.element.textContent).toBe("a");
+  });
+
+  it("keeps count correct removing the last of identical children", async () => {
+    const html = `<div id="g"><img src="cat.jpg"><img src="cat.jpg"><img src="cat.jpg"></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    source.element.removeChild(source.element.lastChild!);
+    await sync(source, sink);
+
+    expect(sink.element.children.length).toBe(2);
+    expectMirrored(source.element, sink.element);
+  });
+
+  it("adds identical children without deduping them", async () => {
+    const source = mountClient(elementFromHTML(`<div id="g"></div>`));
+    const sink = mountClient(elementFromHTML(`<div id="g"></div>`));
+
+    for (let i = 0; i < 4; i++) {
       const img = document.createElement("img");
-      img.src = "./images/cat.jpg";
-      el.appendChild(img);
+      img.src = "cat.jpg";
+      source.element.appendChild(img);
       await flush();
     }
-    expect((getData() as any).children.length).toBe(3);
 
-    el.removeChild(el.lastChild!);
-    await flush();
-    expect((getData() as any).children.length).toBe(2);
+    expect((source.state as any).children.length).toBe(4);
+    await sync(source, sink);
+    expect(sink.element.children.length).toBe(4);
   });
 
-  it("removing one identical child syncs to a remote client without dropping the rest", async () => {
-    const el = document.createElement("div");
-    el.id = "container";
-    document.body.appendChild(el);
+  it("clearing all children mirrors to an empty element", async () => {
+    const html = `<ul id="l"><li>a</li><li>b</li></ul>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
 
-    const { getData } = mountObserver(el);
+    source.element.innerHTML = "";
+    await sync(source, sink);
 
-    for (let i = 0; i < 3; i++) {
-      const img = document.createElement("img");
-      img.src = "./images/cat.jpg";
-      el.appendChild(img);
-      await flush();
-    }
-
-    el.removeChild(el.lastChild!);
-    await flush();
-
-    // Apply the synced state back to the DOM, as a remote client would.
-    applyState(el, getData());
-    expect(el.children.length).toBe(2);
+    expect(sink.element.children.length).toBe(0);
+    expectMirrored(source.element, sink.element);
   });
 
-  it("preserves order and count with mixed text and element children", async () => {
-    const el = document.createElement("div");
-    el.id = "container";
-    el.appendChild(document.createTextNode("intro "));
-    const a = document.createElement("span");
-    a.textContent = "first";
-    el.appendChild(a);
-    el.appendChild(document.createTextNode(" middle "));
-    const b = document.createElement("span");
-    b.textContent = "second";
-    el.appendChild(b);
-    document.body.appendChild(el);
+  it("mirrors a reordered child list", async () => {
+    const html = `<ul id="l"><li>a</li><li>b</li><li>c</li></ul>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
 
-    const { getData } = mountObserver(el);
+    // Move the first item to the end: a,b,c -> b,c,a
+    source.element.appendChild(source.element.firstElementChild!);
+    await sync(source, sink);
 
-    // Remove the first element child; text nodes and the other element stay.
-    el.removeChild(a);
+    expect(
+      Array.from(sink.element.children).map((c) => c.textContent)
+    ).toEqual(["b", "c", "a"]);
+    expectMirrored(source.element, sink.element);
+  });
+});
+
+describe("can-mirror: mixed text and element children", () => {
+  it("preserves order removing a middle element among text nodes", async () => {
+    const html = `<div id="m">intro <span>first</span> middle <span>second</span></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    const firstSpan = source.element.querySelector("span")!;
+    source.element.removeChild(firstSpan);
+    await sync(source, sink);
+
+    expect(
+      Array.from(sink.element.childNodes).map((n) => n.textContent)
+    ).toEqual(["intro ", " middle ", "second"]);
+    expectMirrored(source.element, sink.element);
+  });
+
+  it("replaces a node whose kind changes at a position", async () => {
+    // Sink starts where DOM/state diverge by node kind at the same index,
+    // forcing the apply path to replace rather than update in place.
+    const source = mountClient(
+      elementFromHTML(`<div id="m"><span>only</span></div>`)
+    );
+    const sink = mountClient(elementFromHTML(`<div id="m">plain text</div>`));
+
+    // Source unchanged; apply its element-child state onto a text-child sink.
+    await sync(source, sink);
+
+    expect(sink.element.children.length).toBe(1);
+    expect(sink.element.firstElementChild!.tagName).toBe("SPAN");
+    expectMirrored(source.element, sink.element);
+  });
+
+  it("replaces an element whose tag changes at a position", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="m"><b>bold</b></div>`)
+    );
+    const sink = mountClient(elementFromHTML(`<div id="m"><i>italic</i></div>`));
+
+    await sync(source, sink);
+
+    expect(sink.element.firstElementChild!.tagName).toBe("B");
+    expectMirrored(source.element, sink.element);
+  });
+});
+
+describe("can-mirror: character data", () => {
+  it("mirrors a text change that surfaces via an input event", async () => {
+    // The observer runs with subtree: false, so a characterData mutation on a
+    // child text node (target = the text node) is not observed directly. It
+    // syncs when the element fires input (e.g. contenteditable), which
+    // re-snapshots the whole subtree.
+    const source = mountClient(
+      elementFromHTML(`<p id="p" contenteditable="true">hello</p>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<p id="p" contenteditable="true">hello</p>`)
+    );
+
+    source.element.firstChild!.textContent = "goodbye";
+    source.element.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.textContent).toBe("goodbye");
+  });
+
+  it("does NOT observe a direct text-child mutation without an input event", async () => {
+    // Documents the subtree: false boundary. A bare text edit on a child node,
+    // with no input event, is invisible to the observer.
+    const source = mountClient(elementFromHTML(`<p id="p">hello</p>`));
+
+    source.element.firstChild!.textContent = "goodbye";
     await flush();
 
-    const data = getData() as any;
-    expect(data.children.map((c: any) => c.textContent ?? c.tagName)).toEqual([
-      "intro ",
-      " middle ",
-      "span",
-    ]);
+    expect((source.state as any).children[0].textContent).toBe("hello");
+  });
+});
 
-    // Mirror onto a fresh receiver built from the original markup.
-    const receiver = document.createElement("div");
-    receiver.appendChild(document.createTextNode("intro "));
-    const ra = document.createElement("span");
-    ra.textContent = "first";
-    receiver.appendChild(ra);
-    receiver.appendChild(document.createTextNode(" middle "));
-    const rb = document.createElement("span");
-    rb.textContent = "second";
-    receiver.appendChild(rb);
-    document.body.appendChild(receiver);
+describe("can-mirror: form state", () => {
+  it("mirrors a checkbox checked toggle", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="c"><input type="checkbox"></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="c"><input type="checkbox"></div>`)
+    );
 
-    applyState(receiver, data);
-    expect(Array.from(receiver.childNodes).map((n) => n.textContent)).toEqual([
-      "intro ",
-      " middle ",
-      "second",
+    const box = source.element.querySelector("input")!;
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("input")!.checked).toBe(true);
+  });
+
+  it("mirrors a text input value", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="t"><input type="text"></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="t"><input type="text"></div>`)
+    );
+
+    const input = source.element.querySelector("input")!;
+    input.value = "typed";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("input")!.value).toBe("typed");
+  });
+
+  it("mirrors a textarea value", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="t"><textarea></textarea></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="t"><textarea></textarea></div>`)
+    );
+
+    const ta = source.element.querySelector("textarea")!;
+    ta.value = "multi\nline";
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("textarea")!.value).toBe("multi\nline");
+  });
+
+  it("mirrors a select selectedIndex", async () => {
+    const html = `<div id="s"><select><option>a</option><option>b</option><option>c</option></select></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    const select = source.element.querySelector("select")!;
+    select.selectedIndex = 2;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("select")!.selectedIndex).toBe(2);
+  });
+
+  it("mirrors a radio selection within a group", async () => {
+    const html = `<div id="r"><input type="radio" name="g" value="x"><input type="radio" name="g" value="y"></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    const radios = source.element.querySelectorAll("input");
+    radios[1].checked = true;
+    radios[1].dispatchEvent(new Event("change", { bubbles: true }));
+    await sync(source, sink);
+
+    const sinkRadios = sink.element.querySelectorAll("input");
+    expect(sinkRadios[0].checked).toBe(false);
+    expect(sinkRadios[1].checked).toBe(true);
+  });
+});
+
+describe("can-mirror: contenteditable", () => {
+  it("mirrors text typed into a contenteditable div", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="e" contenteditable="true">start</div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="e" contenteditable="true">start</div>`)
+    );
+
+    source.element.firstChild!.textContent = "start edited";
+    source.element.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.textContent).toBe("start edited");
+  });
+
+  it("mirrors a new list item added in a contenteditable list", async () => {
+    const html = `<ul id="e" contenteditable="true"><li>one</li></ul>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    const li = document.createElement("li");
+    li.textContent = "two";
+    source.element.appendChild(li);
+    // contenteditable mutations fire input, not just childList.
+    source.element.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(
+      Array.from(sink.element.querySelectorAll("li")).map((l) => l.textContent)
+    ).toEqual(["one", "two"]);
+  });
+});
+
+describe("can-mirror: awareness (hover/focus)", () => {
+  it("shows the hover attribute when any peer is hovering", () => {
+    const client = mountClient(elementFromHTML(`<div id="a"></div>`));
+
+    client.setAwareness([{ hover: true, focus: false }]);
+    expect(client.element.hasAttribute("data-playhtml-hover")).toBe(true);
+
+    client.setAwareness([{ hover: false, focus: false }]);
+    expect(client.element.hasAttribute("data-playhtml-hover")).toBe(false);
+  });
+
+  it("shows the focus attribute when any peer is focused", () => {
+    const client = mountClient(elementFromHTML(`<div id="a"></div>`));
+
+    client.setAwareness([
+      { hover: false, focus: false },
+      { hover: false, focus: true },
     ]);
+    expect(client.element.hasAttribute("data-playhtml-focus")).toBe(true);
+
+    client.setAwareness([{ hover: false, focus: false }]);
+    expect(client.element.hasAttribute("data-playhtml-focus")).toBe(false);
+  });
+});
+
+describe("can-mirror: apply-side robustness", () => {
+  it("is a no-op when incoming state already matches the DOM", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a" class="x">text</div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="a" class="x">text</div>`)
+    );
+
+    const before = sink.element.outerHTML;
+    sink.applyRemote(wire(source.state));
+    expect(sink.element.outerHTML).toBe(before);
+  });
+
+  it("removes an attribute the sink had but the incoming state lacks", async () => {
+    const source = mountClient(elementFromHTML(`<div id="a"></div>`));
+    const sink = mountClient(
+      elementFromHTML(`<div id="a" data-stale="1"></div>`)
+    );
+
+    sink.applyRemote(wire(source.state));
+    expect(sink.element.hasAttribute("data-stale")).toBe(false);
+  });
+
+  it("applies a deeply nested subtree", async () => {
+    const html = `<div id="d"><section><h2>title</h2><p>body</p></section></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(`<div id="d"></div>`));
+
+    sink.applyRemote(wire(source.state));
+    expectMirrored(source.element, sink.element);
+  });
+});
+
+describe("can-mirror: feedback-loop safety", () => {
+  it("applying its own echoed state does not re-trigger the observer", async () => {
+    const source = mountClient(elementFromHTML(`<ul id="l"></ul>`));
+
+    const li = document.createElement("li");
+    li.textContent = "one";
+    source.element.appendChild(li);
+    await flush();
+
+    const stateAfterFirst = wire(source.state);
+
+    // Echo our own write back through updateElement (as the runtime does).
+    source.applyRemote(stateAfterFirst);
+    await flush();
+
+    // The observer must not have appended a duplicate or otherwise mutated
+    // the shared state in response to its own applied update.
+    expect((source.state as any).children.length).toBe(1);
+    expect(source.element.children.length).toBe(1);
+  });
+});
+
+describe("can-mirror: sequential operations stay convergent", () => {
+  it("converges across a series of mixed edits", async () => {
+    const html = `<div id="root" class="card"><h3>Title</h3><ul><li>a</li></ul></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    // 1. attribute change
+    source.element.setAttribute("data-open", "true");
+    await sync(source, sink);
+
+    // 2. add a child to the root
+    const p = document.createElement("p");
+    p.textContent = "note";
+    source.element.appendChild(p);
+    await sync(source, sink);
+
+    // 3. change a nested child's text, then mutate the root. The root-level
+    // mutation re-snapshots the whole subtree, carrying the nested edit along
+    // even though subtree: false means the nested change wasn't observed alone.
+    source.element.querySelector("h3")!.firstChild!.textContent = "New Title";
+    source.element.setAttribute("data-rev", "2");
+    await sync(source, sink);
+
+    // 4. remove the root-level <ul>
+    source.element.removeChild(source.element.querySelector("ul")!);
+    await sync(source, sink);
+
+    expect(sink.element.getAttribute("data-open")).toBe("true");
+    expect(sink.element.getAttribute("data-rev")).toBe("2");
+    expect(sink.element.querySelector("h3")!.textContent).toBe("New Title");
+    expect(sink.element.querySelector("ul")).toBeNull();
+    expect(sink.element.querySelector("p")!.textContent).toBe("note");
+    expectMirrored(source.element, sink.element);
   });
 });

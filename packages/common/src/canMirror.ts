@@ -461,9 +461,10 @@ function updateElementFromState(
     updateAttributesFromState(element as HTMLElement, newState);
     applyFormState(element as HTMLElement, newState.formState);
 
-    if (newState.children.length > 0) {
-      updateChildrenFromState(element as HTMLElement, newState);
-    }
+    // Always reconcile children, even when the target state has none: an
+    // element that was emptied remotely must have its stale DOM children
+    // removed. updateChildrenFromState handles the empty case.
+    updateChildrenFromState(element as HTMLElement, newState);
   }
 }
 
