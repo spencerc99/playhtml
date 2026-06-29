@@ -12,9 +12,6 @@ import { GrowBalloonDemo } from '@/components/react/capability-demos/GrowBalloon
 import { SpinWheelDemo } from '@/components/react/capability-demos/SpinWheelDemo';
 import { HoverCursorColorsDemo } from '@/components/react/capability-demos/HoverCursorColorsDemo';
 import { DuplicateRabbitDemo } from '@/components/react/capability-demos/DuplicateRabbitDemo';
-import { DocsSpinner } from '@/components/react/capability-demos/DocsSpinner';
-import { DocsGuestbook } from '@/components/react/capability-demos/DocsGuestbook';
-import { SmileyRow } from '@/components/react/capability-demos/SmileyRow';
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
@@ -33,18 +30,6 @@ Every section below has the same shape:
 - A short description of what the capability does and the kind of state it owns.
 - A live demo you can interact with. Open the page in a second tab and watch both update.
 - The **vanilla HTML** form, and the **React** form. Pick the framework you're shipping in; the reader's choice syncs across every snippet on the page.
-
-This page also runs a few `can-play` demos directly in its margins: a [doodle strip](#play-doodle) below, a [guestbook](#play-guestbook) further down, a [prize wheel](#play-spinner) at the bottom, and a shared [tally on every code block](#play-copy) you copy from. How to build them is covered in [**Custom elements**](/docs/custom-elements/).
-
-<div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
-  <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · doodle strip</span>
-    <p class="ph-canplay-inline__caption">
-      Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
-    </p>
-  </div>
-  <SmileyRow client:only="react" />
-</div>
 
 ## can-move
 
@@ -398,23 +383,11 @@ A meta-capability that auto-syncs the element's own DOM — every attribute, chi
 
 Full treatment with live demos lives on **[Custom elements → can-mirror](/docs/custom-elements/#can-mirror)**, and the [mirror playground](/docs/advanced/mirror-playground/) walks every edge case (hover, focus, every form input, contenteditable, programmatic attribute changes).
 
-<div id="play-guestbook" class="ph-canplay-inline" data-label="can-play · guestbook">
-  <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · guestbook</span>
-    <p class="ph-canplay-inline__caption">
-      Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
-    </p>
-  </div>
-  <DocsGuestbook client:only="react" />
-</div>
-
 ## can-play
 
 The "build your own capability" escape hatch: you define `defaultData` and how the element renders from it (an imperative `updateElement`, or the newer reactive `view`). It powers custom counters, guestbooks, chat, games, reactions, per-user state, and event broadcasts — anything the built-ins don't cover.
 
-Full guide, with the imperative and reactive `view` forms (vanilla) and `withSharedState` (React) side by side: **[Custom elements](/docs/custom-elements/)**.
-
-This page is itself a `can-play` showcase — the demos in its margins are all `can-play` elements: a [doodle strip](#play-doodle), a [guestbook](#play-guestbook), a [prize wheel](#play-spinner), and a <a href="#play-copy" id="play-copy">tally on every code block</a> you copy from.
+Full guide, with the imperative and reactive `view` forms (vanilla) and `withSharedState` (React) side by side — plus live demos: **[Custom elements](/docs/custom-elements/)**.
 
 ---
 
@@ -441,13 +414,3 @@ These capabilities are the building blocks. The best way to see them in concert 
 </div>
 
 These three are highlighted in the homepage experiments index, the fastest way to see playhtml at room-scale.
-
-<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
-  <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · prize wheel</span>
-    <p class="ph-canplay-inline__caption">
-      Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
-    </p>
-  </div>
-  <DocsSpinner client:only="react" />
-</div>

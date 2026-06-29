@@ -6,6 +6,9 @@ sidebar:
 ---
 
 import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
+import { DocsGuestbook } from "@/components/react/capability-demos/DocsGuestbook";
+import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** data model — a counter, a poll, a guestbook, a chat — you reach for one of these:
 
@@ -21,6 +24,18 @@ Both are shown below with the **Vanilla HTML** and **React** forms side by side 
   doesn't replace anything on this page. Jump to
   [**Reactive view API ↓**](#reactive-view-api-experimental).
 </Aside>
+
+This page runs a few live `can-play` demos in its margins — a doodle strip here, a [guestbook](#play-guestbook) and a [prize wheel](#play-spinner) further down, and a tally on every code block you copy from. Open the page in a second tab to watch them sync.
+
+<div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · doodle strip</span>
+    <p class="ph-canplay-inline__caption">
+      Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
+    </p>
+  </div>
+  <SmileyRow client:only="react" />
+</div>
 
 ## can-play
 
@@ -341,6 +356,16 @@ export const Panel = withSharedState({ defaultData: {} }, () => {
   </TabItem>
 </Tabs>
 
+<div id="play-guestbook" class="ph-canplay-inline" data-label="can-play · guestbook">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · guestbook</span>
+    <p class="ph-canplay-inline__caption">
+      Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
+    </p>
+  </div>
+  <DocsGuestbook client:only="react" />
+</div>
+
 ### Lists
 
 This is where the view API earns its keep — `repeat(items, keyFn, template)` is lit-html's keyed list, versus hand-diffing DOM in `updateElement`. **Key by a stable unique id** (`crypto.randomUUID()`), never an index or timestamp.
@@ -437,6 +462,16 @@ const Note = withSharedState(
 ```
   </TabItem>
 </Tabs>
+
+<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · prize wheel</span>
+    <p class="ph-canplay-inline__caption">
+      Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
+    </p>
+  </div>
+  <DocsSpinner client:only="react" />
+</div>
 
 ### Clock-driven views: `requestUpdate`
 
