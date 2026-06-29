@@ -8,8 +8,8 @@ import "@testing-library/dom";
 import { CanPlayElement } from "../index";
 import { CanMoveElement } from "../elements";
 import playhtml from "../playhtml-singleton";
-import { TagType } from "@playhtml/common";
-import type { ElementAwarenessEventHandlerData } from "@playhtml/common";
+import { TagType } from "playhtml";
+import type { ElementAwarenessEventHandlerData } from "playhtml";
 import { ReactiveOrb } from "../../examples/ReactiveOrb";
 
 describe("CanPlayElement with built-in capabilities", () => {

@@ -3,7 +3,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,

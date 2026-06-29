@@ -219,7 +219,7 @@ import { CanToggleElement } from "@playhtml/react";
   <TabItem label="React">
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement tagInfo={[TagType.CanGrow]} id="balloon" defaultData={{ scale: 1 }}>
   {() => <img src="/water-balloon.png" alt="" />}
@@ -247,7 +247,7 @@ import { TagType } from "@playhtml/common";
   <TabItem label="React">
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement tagInfo={[TagType.CanSpin]} id="wheel" defaultData={{ rotation: 0 }}>
   {() => <img src="/bike-wheel.webp" alt="" />}
@@ -306,7 +306,7 @@ If you want the hover effect to reflect *who* is hovering (e.g. tint the element
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanHover]}

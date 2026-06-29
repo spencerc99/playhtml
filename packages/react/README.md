@@ -7,8 +7,8 @@ A react provider for [`playhtml`](https://github.com/spencerc99/playhtml).
 Install by using your preferred package manager
 
 ```bash
-npm install @playhtml/react # or
-# yarn add @playhtml/react
+npm install playhtml @playhtml/react # or
+# yarn add playhtml @playhtml/react
 ```
 
 ## Compatibility

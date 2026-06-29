@@ -16,7 +16,7 @@ import {
   CursorZoneOptions,
 } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
-import { CursorEvents, CursorPresenceView, PlayerIdentity } from "@playhtml/common";
+import { CursorEvents, CursorPresenceView, PlayerIdentity } from "playhtml";
 
 type PlayProviderCursorContainer = CursorContainer | React.RefObject<HTMLElement>;
 

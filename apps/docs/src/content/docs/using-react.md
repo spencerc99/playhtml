@@ -10,7 +10,7 @@ playhtml ships a React package. This page is an orientation; the rest of the doc
 ## Install
 
 ```bash
-npm install @playhtml/react
+npm install playhtml @playhtml/react
 ```
 
 Compatible with React 16.8 and above, including React 17, 18, and 19.
@@ -89,7 +89,7 @@ Same idea, different shape. Useful when the thing you're wrapping is a specific 
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanToggle]}

@@ -1,6 +1,6 @@
 import React from "react";
 import { CanPlayElement } from "@playhtml/react";
-import { TagType, TagTypeToElement } from "@playhtml/common";
+import { TagType, TagTypeToElement } from "playhtml";
 
 /** Drag horizontally to spin — shared rotation. */
 export function SpinWheelDemo(): React.ReactElement {

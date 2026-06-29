@@ -54,6 +54,7 @@
     "@types/react": "^18.2.48",
     "@vitejs/plugin-react": "^4.0.4",
     "jsdom": "^26.1.0",
+    "playhtml": "workspace:^",
     "react-resizable": "^3.0.5",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
@@ -61,13 +62,11 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
-    "@playhtml/common": "workspace:^",
-    "playhtml": "workspace:^",
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
     "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0"
   },
   "peerDependencies": {
-    "playhtml": "^2.11.0",
+    "playhtml": "workspace:^",
     "react": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0",
     "react-dom": "^16.8.0  || ^17.0.0 || ^18.2.0 || ^19.0.0"
   }
