@@ -25,7 +25,7 @@ export const bottlesExperiment: SocialExperiment = {
       id: "message-bottle",
       tier: "system",
       label: "Message bottle",
-      icon: browser.runtime.getURL("inventory/bottle.png"),
+      icon: browser.runtime.getURL("inventory/bottle.svg"),
       accent: deps.playerColor,
     });
 
