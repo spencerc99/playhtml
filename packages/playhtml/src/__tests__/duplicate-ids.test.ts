@@ -167,4 +167,60 @@ describe("duplicate playhtml element IDs", () => {
     expect(warning!.textContent).toContain("shared-id");
     expect(warning!.textContent).toContain("can-toggle");
   });
+
+  it("edits primitive leaf values through the handler setData path", () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    const setData = vi.fn();
+    const element = document.createElement("div");
+    element.id = "editable-card";
+    element.setAttribute("can-play", "");
+    document.body.append(element);
+
+    setupDevUI({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "editable-card",
+              {
+                element,
+                data: {
+                  title: "hello",
+                  stats: { count: 1, active: false },
+                },
+                defaultData: {
+                  title: "hello",
+                  stats: { count: 0, active: false },
+                },
+                setData,
+              },
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const countValue = Array.from(
+      document.querySelectorAll<HTMLElement>(".ph-json-leaf-value"),
+    ).find((node) => node.textContent === "1");
+
+    countValue!.click();
+    const input = document.querySelector<HTMLInputElement>(
+      ".ph-json-edit-input",
+    )!;
+    input.value = "7";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+
+    expect(setData).toHaveBeenCalledWith({
+      title: "hello",
+      stats: { count: 7, active: false },
+    });
+  });
 });
