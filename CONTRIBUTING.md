@@ -21,19 +21,6 @@ There is future work I'm planning on getting to in the Issues section. If you ha
 
 Bun automatically handles workspace linking, so changes in `common` will be immediately available in `playhtml` and `react` packages without any additional setup. Just run `bun install` at the root to set up the workspace dependencies.
 
-### Package API boundaries
-
-`playhtml` is the public runtime and API boundary for app code. `@playhtml/react` should peer on `playhtml` and import PlayHTML domain symbols from `playhtml`, not from `@playhtml/common`.
-
-`@playhtml/common` exists so packages in this monorepo can share types, constants, and protocol shapes. Do not document `@playhtml/common` imports for app or React users unless we intentionally make that symbol part of a public protocol SDK. If a React-facing symbol lives in `@playhtml/common`, add a curated re-export from `playhtml` instead of making React consumers coordinate three packages.
-
-When touching package boundaries, verify the published shape, not just the workspace shape:
-
-- `@playhtml/react` should not have runtime dependencies on `playhtml` or `@playhtml/common`; `playhtml` belongs in `peerDependencies` and `devDependencies`.
-- `packages/react/vite.config.ts` should externalize `playhtml` so the React bundle uses the app-provided client.
-- Public declaration files should import from package names (`playhtml`, `@playhtml/common`), never monorepo source paths like `../../common/src`.
-- For dependency-boundary changes, run a tarball install simulation before merging: version, build, rewrite workspace deps, `npm pack`, install into a blank consumer, check `npm ls`, inspect the React bundle import, and type-check a small consumer file.
-
 ### Updating docs for package changes
 
 When a change under `packages/` affects user-facing behavior, APIs, attributes, CSS classes, examples, or gotchas, update the matching docs under `apps/docs/` in the same PR. Start with the pages most likely to mention the changed surface: capabilities, getting started, React API reference, data, advanced, and integrations docs.
