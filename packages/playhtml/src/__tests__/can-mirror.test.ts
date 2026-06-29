@@ -2,17 +2,25 @@
 // ABOUTME: clients sharing DOM state (observe -> shared state -> apply on peer).
 
 import { describe, it, expect, beforeEach } from "vitest";
+import * as Y from "yjs";
+import { syncedStore, getYjsDoc } from "@syncedstore/core";
 import {
   canMirrorInitializer,
   type ElementState,
 } from "../../../common/src/canMirror";
 
-// These tests model two clients sharing one plain state object: a source
+// Most tests model two clients sharing one plain state object: a source
 // observes its DOM into shared state, the state crosses the wire, and a sink
 // applies it. This exercises the full observe -> serialize -> apply path with a
-// real MutationObserver and real DOM. It does NOT model Yjs CRDT merge
-// semantics (concurrent writes from multiple clients) — that lives in the
-// runtime, not in canMirror's pure DOM<->state logic, and is out of scope here.
+// real MutationObserver and real DOM. The plain object is faster and keeps the
+// broad behavioral coverage readable.
+//
+// The "CRDT-backed" section at the bottom instead runs each client over a real
+// @syncedstore/core store + Y.Doc, with writes going through
+// doc.transact(() => mutator(proxy)) exactly as the runtime does, and updates
+// merged between docs with Y.applyUpdate. That section exercises the actual
+// CRDT proxy semantics canMirror writes against (only push/splice sync) and
+// true concurrent-edit convergence, which a plain object can't model.
 
 // MutationObserver callbacks are async (microtask). Flush them.
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -551,5 +559,174 @@ describe("can-mirror: sequential operations stay convergent", () => {
     expect(sink.element.querySelector("ul")).toBeNull();
     expect(sink.element.querySelector("p")!.textContent).toBe("note");
     expectMirrored(source.element, sink.element);
+  });
+});
+
+// --- CRDT-backed harness ---
+//
+// Each client owns a real @syncedstore/core store and Y.Doc. canMirror writes
+// through doc.transact(() => mutator(proxy)) — the production path — and we move
+// state between clients with Y.applyUpdate, the real merge. This validates that
+// canMirror's array writes (splice/push only) survive the CRDT and that
+// concurrent edits converge.
+//
+// Critically, the two clients share doc history: one client seeds the data and
+// the other inherits it via an initial sync BEFORE either edits. This mirrors
+// the runtime, where one client creates an element's data and peers receive it
+// before mutating. (Seeding both docs independently would create two distinct
+// CRDT arrays at the same key, and a merge would union them instead of
+// reconciling — a split-brain that never happens in production.)
+
+type StoreShape = { play: Record<string, Record<string, unknown>> };
+const TAG = "can-mirror";
+
+interface CrdtClient {
+  element: HTMLElement;
+  doc: Y.Doc;
+  proxy: () => any;
+  applyState: () => void;
+}
+
+function makeClientDoc() {
+  const store = syncedStore<StoreShape>({ play: {} });
+  const doc = getYjsDoc(store);
+  return { store, doc };
+}
+
+function mountObserver(
+  element: HTMLElement,
+  doc: Y.Doc,
+  proxy: () => any
+): CrdtClient {
+  document.body.appendChild(element);
+  canMirrorInitializer.onMount!({
+    getElement: () => element,
+    setData: (updater: any) => {
+      // canMirror's observer only ever uses the mutator form.
+      doc.transact(() => updater(proxy()));
+    },
+    setMyAwareness: () => {},
+  } as any);
+  return {
+    element,
+    doc,
+    proxy,
+    applyState() {
+      canMirrorInitializer.updateElement!({
+        element,
+        data: wire(proxy()),
+      } as any);
+    },
+  };
+}
+
+// A two-client "room" sharing doc history. Client A seeds the data; client B
+// inherits A's doc state before mounting its own observer, so both edit the
+// same underlying CRDT structures.
+function makeRoom(id: string, elementA: HTMLElement, elementB: HTMLElement) {
+  const a = makeClientDoc();
+  a.store.play[TAG] = {};
+  (a.store.play[TAG] as any)[id] = wire(
+    canMirrorInitializer.defaultData!(elementA) as ElementState
+  );
+  const aProxy = () => (a.store.play[TAG] as any)[id];
+
+  // B inherits A's history (including the play/TAG structure and seed data)
+  // entirely from A's update, so both edit the same underlying CRDT arrays.
+  const b = makeClientDoc();
+  Y.applyUpdate(b.doc, Y.encodeStateAsUpdate(a.doc));
+  const bProxy = () => (b.store.play[TAG] as any)[id];
+
+  return {
+    a: mountObserver(elementA, a.doc, aProxy),
+    b: mountObserver(elementB, b.doc, bProxy),
+  };
+}
+
+// Merge both docs (bidirectional), the steady state after a real sync.
+function mergeDocs(a: CrdtClient, b: CrdtClient) {
+  Y.applyUpdate(b.doc, Y.encodeStateAsUpdate(a.doc));
+  Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc));
+}
+
+describe("can-mirror: CRDT-backed two-client sync", () => {
+  it("propagates a child removal through a real Yjs merge", async () => {
+    const html = `<div id="g"><img src="cat.jpg"><img src="cat.jpg"><img src="cat.jpg"></div>`;
+    const { a, b } = makeRoom("g", elementFromHTML(html), elementFromHTML(html));
+
+    a.element.removeChild(a.element.lastChild!);
+    await flush();
+
+    mergeDocs(a, b);
+    b.applyState();
+
+    expect(b.element.children.length).toBe(2);
+    expect(b.proxy().children.length).toBe(2);
+  });
+
+  it("survives many sequential child mutations without array corruption", async () => {
+    const { a, b } = makeRoom(
+      "g",
+      elementFromHTML(`<ul id="g"></ul>`),
+      elementFromHTML(`<ul id="g"></ul>`)
+    );
+
+    // Add five, remove the middle three one at a time, add two more.
+    for (let i = 0; i < 5; i++) {
+      const li = document.createElement("li");
+      li.textContent = `item ${i}`;
+      a.element.appendChild(li);
+      await flush();
+    }
+    a.element.removeChild(a.element.children[1]);
+    await flush();
+    a.element.removeChild(a.element.children[1]);
+    await flush();
+    a.element.removeChild(a.element.children[1]);
+    await flush();
+    for (let i = 5; i < 7; i++) {
+      const li = document.createElement("li");
+      li.textContent = `item ${i}`;
+      a.element.appendChild(li);
+      await flush();
+    }
+
+    mergeDocs(a, b);
+    b.applyState();
+
+    const labels = (txt: HTMLElement) =>
+      Array.from(txt.querySelectorAll("li")).map((l) => l.textContent);
+    // a started 0..4, removed indices 1,2,3 (items 1,2,3), then added 5,6.
+    expect(labels(a.element)).toEqual(["item 0", "item 4", "item 5", "item 6"]);
+    expect(labels(b.element)).toEqual(labels(a.element));
+    // The CRDT array length must match the DOM — no orphaned/duplicated ops.
+    expect(a.proxy().children.length).toBe(4);
+  });
+
+  it("converges when two clients edit different attributes concurrently", async () => {
+    const html = `<div id="d"></div>`;
+    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+
+    // Concurrent, non-conflicting attribute writes on each client.
+    a.element.setAttribute("data-from-a", "1");
+    b.element.setAttribute("data-from-b", "2");
+    await flush();
+
+    mergeDocs(a, b);
+    a.applyState();
+    b.applyState();
+
+    // Both attributes survive the merge on both clients. Compare attribute
+    // sets, not outerHTML: concurrent writes can serialize attributes in
+    // different orders per client, which is semantically identical in HTML.
+    const attrMap = (el: HTMLElement) =>
+      Object.fromEntries(
+        Array.from(el.attributes).map((at) => [at.name, at.value])
+      );
+    for (const c of [a, b]) {
+      expect(c.element.getAttribute("data-from-a")).toBe("1");
+      expect(c.element.getAttribute("data-from-b")).toBe("2");
+    }
+    expect(attrMap(a.element)).toEqual(attrMap(b.element));
   });
 });
