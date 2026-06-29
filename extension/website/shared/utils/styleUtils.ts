@@ -99,6 +99,27 @@ export function roundPathCorners(
   if (points.length < 3) return points;
 
   const cosThreshold = Math.cos((thresholdDeg * Math.PI) / 180);
+
+  // Fast pre-scan: most trails have no corner sharp enough to round. When that's
+  // the case, return the INPUT array unchanged (same reference) so the caller
+  // can skip the resample step entirely — no allocation, identical geometry.
+  // This keeps the common case as cheap as before the rounding feature existed.
+  let hasSharpCorner = false;
+  for (let i = 1; i < points.length - 1; i++) {
+    const ax = points[i].x - points[i - 1].x;
+    const ay = points[i].y - points[i - 1].y;
+    const bx = points[i + 1].x - points[i].x;
+    const by = points[i + 1].y - points[i].y;
+    const aLen = Math.hypot(ax, ay);
+    const bLen = Math.hypot(bx, by);
+    if (aLen === 0 || bLen === 0) continue;
+    if ((ax * bx + ay * by) / (aLen * bLen) < cosThreshold) {
+      hasSharpCorner = true;
+      break;
+    }
+  }
+  if (!hasSharpCorner) return points;
+
   const out: Array<{ x: number; y: number }> = [points[0]];
 
   for (let i = 1; i < points.length - 1; i++) {
