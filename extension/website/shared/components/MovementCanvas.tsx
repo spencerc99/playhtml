@@ -43,9 +43,14 @@ import {
   parseSettingsFromUrl,
   parseTimeRangeFromUrl,
   parseCleanFromUrl,
+  parseCinematicFromUrl,
 } from "../config";
 import type { DayCounts } from "../types";
 import { DEFAULT_SETTINGS } from "./settingsDefaults";
+import {
+  DEFAULT_CINEMATIC_CONFIG,
+  type CinematicConfig,
+} from "../utils/cinematicCamera";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
@@ -383,6 +388,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
+    parseCinematicFromUrl(),
+  );
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
    * scope the canvas to a specific span for capturing artifacts. */
@@ -620,6 +628,28 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       ) {
         e.preventDefault();
         handleCapture();
+        return;
+      }
+
+      // Shift+C → toggle cinematic (cursor-follow) mode.
+      if (e.shiftKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        setCinematic((prev) =>
+          prev ? null : parseCinematicFromUrl() ?? DEFAULT_CINEMATIC_CONFIG,
+        );
+        return;
+      }
+
+      // Mode switches (stubs for hand-choreographing later).
+      // 3 = cursor-follow (only one implemented). 1 = wide, 2 = activity.
+      if (e.key === "1" || e.key === "2") {
+        console.info(`[cinematic] mode ${e.key} not yet implemented`);
+        return;
+      }
+      if (e.key === "3") {
+        setCinematic(
+          (prev) => prev ?? parseCinematicFromUrl() ?? DEFAULT_CINEMATIC_CONFIG,
+        );
         return;
       }
 
@@ -1412,6 +1442,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
               settings={trailAnimationSettings}
               frozen={paused}
+              cinematic={cinematic}
             />
           ))}
 
