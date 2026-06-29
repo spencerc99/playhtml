@@ -50,9 +50,12 @@
       }
       .controls button:hover { filter: brightness(0.95); }
       .slot-marker {
-        position: absolute; width: 16px; height: 16px; border-radius: 50%;
+        /* fixed (not absolute) so it shares the viewport coordinate space with
+           the ceremony's fixed overlay + fissure — where the dot is is exactly
+           where the card plunges, regardless of page scroll. */
+        position: fixed; width: 16px; height: 16px; border-radius: 50%;
         background: var(--accent); border: 2px solid white;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); cursor: pointer; z-index: 1;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); cursor: pointer; z-index: 3;
       }
       .slot-marker::after {
         content: attr(data-label); position: absolute; top: 22px; left: 50%;
