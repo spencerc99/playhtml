@@ -146,6 +146,8 @@ export const HEADLINE_SPECS: SettingSpec[] = [
     "trails",
   ),
   num("animationSpeed", "animationSpeed", "trails"),
+  num("strokeWidth", "strokeWidth", "trails"),
+  num("trailOpacity", "trailOpacity", "trails"),
   bool("randomizeColors", "randomizeColors"),
 
   // Navigation — view mode is structurally different (timeline vs radial),
