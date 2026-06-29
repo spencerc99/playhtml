@@ -357,6 +357,12 @@ interface MovementCanvasProps {
   dayCounts?: DayCounts;
   selectedDay?: string | null;
   onSelectDay?: (day: string | null) => void;
+  /** Recurring time-of-day filter, owned by the parent so it can drive the
+   * fetch (the archive must fetch the local-midnight window, which a
+   * client-only filter can't request). When omitted, MovementCanvas keeps its
+   * own URL-seeded local state (used by the live page, which has no day fetch). */
+  timeOfDay?: TimeOfDayFilter | null;
+  onSetTimeOfDay?: (tod: TimeOfDayFilter | null) => void;
   /** URL-scope filter chips owned by the parent. Two-way mirrored with
    * `settings.filters` so the parent can decide whether the worker fetch
    * pre-filters by domain. Empty array = no filter. */
@@ -380,6 +386,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   dayCounts,
   selectedDay = null,
   onSelectDay,
+  timeOfDay: timeOfDayProp,
+  onSetTimeOfDay,
   filters: filtersProp,
   onSetFilters,
   activeVisualizations,
@@ -404,9 +412,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   >(() => parseTimeRangeFromUrl() ?? null);
   // Recurring time-of-day window (minutes from local midnight), e.g. the
   // "midnight moment" — within 15 min of 00:00 across every day in the data.
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDayFilter | null>(
+  // Parent-owned when `timeOfDayProp`/`onSetTimeOfDay` are provided (archive,
+  // so the filter can also drive the fetch); otherwise local URL-seeded state
+  // (live page, which has no day fetch to coordinate with).
+  const [localTimeOfDay, setLocalTimeOfDay] = useState<TimeOfDayFilter | null>(
     () => parseTimeOfDayFromUrl() ?? null,
   );
+  const timeOfDay =
+    timeOfDayProp !== undefined ? timeOfDayProp : localTimeOfDay;
+  const setTimeOfDay = onSetTimeOfDay ?? setLocalTimeOfDay;
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
@@ -1593,6 +1607,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           onSelectDay={onSelectDay}
           selectedRange={selectedTimeRange}
           onSelectRange={setSelectedTimeRange}
+          timeOfDay={timeOfDay}
+          onSetTimeOfDay={setTimeOfDay}
           leftOffset={controlsVisible ? 360 : 16}
         />
       )}

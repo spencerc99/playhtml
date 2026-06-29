@@ -52,6 +52,7 @@ const InternetMovement = () => {
   const [selectedDay, setSelectedDay] = useState<string | null>(
     () => parseDayFromUrl() ?? null,
   );
+  const [timeOfDay, setTimeOfDay] = useState(() => parseTimeOfDayFromUrl() ?? null);
   const [filters, setFilters] = useState<FilterChip[]>(() => {
     // URL wins. Otherwise mirror whatever MovementCanvas will load from
     // localStorage on first render — if portrait disagrees on mount, the
@@ -128,6 +129,7 @@ const InternetMovement = () => {
       vizIds: string[],
       domain: string = "",
       forceRefresh = false,
+      tod: ReturnType<typeof parseTimeOfDayFromUrl> | null = null,
     ) => {
       const requiredTypes = deriveRequiredEventTypes(vizIds);
 
@@ -136,8 +138,9 @@ const InternetMovement = () => {
         return;
       }
 
-      // Force refresh when the filter context (day+domain) changed
-      const fetchKey = `${day ?? "all"}|${domain}`;
+      // Force refresh when the filter context (day+domain+time-of-day) changed
+      const todKey = tod ? `${tod.centerMinutes}:${tod.radiusMinutes}` : "none";
+      const fetchKey = `${day ?? "all"}|${domain}|${todKey}`;
       if (fetchKey !== lastFetchKeyRef.current) {
         forceRefresh = true;
         fetchedTypesRef.current = new Set();
@@ -175,7 +178,6 @@ const InternetMovement = () => {
             return r.json();
           });
 
-        const tod = parseTimeOfDayFromUrl();
         let fetched: CollectionEvent[] = [];
         if (day && tod) {
           // Time-of-day capture (e.g. the "midnight moment"): fetch the tight
@@ -250,21 +252,23 @@ const InternetMovement = () => {
     [],
   );
 
-  // When day or server-side domain changes, refetch.
+  // When day, server-side domain, or the time-of-day window changes, refetch.
+  // time-of-day must refetch because the midnight window is fetched server-side
+  // (a tight from/to bracket), not just filtered client-side.
   useEffect(() => {
-    fetchEvents(selectedDay, activeVisualizations, serverDomain);
-  }, [selectedDay, serverDomain]);
+    fetchEvents(selectedDay, activeVisualizations, serverDomain, false, timeOfDay);
+  }, [selectedDay, serverDomain, timeOfDay]);
 
   // When active visualizations change, fetch any missing event types
   useEffect(() => {
-    fetchEvents(selectedDay, activeVisualizations, serverDomain);
+    fetchEvents(selectedDay, activeVisualizations, serverDomain, false, timeOfDay);
   }, [activeVisualizations]);
 
   const handleRefresh = useCallback(() => {
     fetchedTypesRef.current = new Set();
     lastFetchKeyRef.current = "";
-    fetchEvents(selectedDay, activeVisualizations, serverDomain, true);
-  }, [selectedDay, serverDomain, activeVisualizations, fetchEvents]);
+    fetchEvents(selectedDay, activeVisualizations, serverDomain, true, timeOfDay);
+  }, [selectedDay, serverDomain, activeVisualizations, timeOfDay, fetchEvents]);
 
   return (
     <>
@@ -293,6 +297,8 @@ const InternetMovement = () => {
         dayCounts={dayCounts}
         selectedDay={selectedDay}
         onSelectDay={setSelectedDay}
+        timeOfDay={timeOfDay}
+        onSetTimeOfDay={setTimeOfDay}
         filters={filters}
         onSetFilters={setFilters}
         activeVisualizations={activeVisualizations}
