@@ -26,6 +26,7 @@ import {
   type ImperativeTrailHandle,
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
+import { CinematicCamera, type CinematicConfig } from "../utils/cinematicCamera";
 
 // Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
 // alive without spending too much background CPU.
@@ -42,6 +43,9 @@ interface AnimatedTrailsProps {
   // appear glued to the page rather than to the fixed viewport. The overlay
   // container must be position: fixed when using this mode.
   documentSpace?: boolean;
+  // When set, a cursor-follow camera drives the SVG viewBox each frame.
+  // Mutually exclusive with documentSpace; cinematic wins.
+  cinematic?: CinematicConfig | null;
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
@@ -70,6 +74,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     frozen = false,
     windowSize = 50,
     documentSpace = false,
+    cinematic = null,
     soundEngine = null,
     settings,
   }) => {
@@ -161,6 +166,33 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
     const soundEngineRef = useRef(soundEngine);
+
+    const cinematicRef = useRef(cinematic);
+    useEffect(() => {
+      cinematicRef.current = cinematic;
+    }, [cinematic]);
+
+    const cameraRef = useRef<CinematicCamera | null>(null);
+    if (cinematic && cameraRef.current === null) {
+      cameraRef.current = new CinematicCamera(cinematic);
+    }
+    useEffect(() => {
+      if (cinematic && cameraRef.current) cameraRef.current.setConfig(cinematic);
+    }, [cinematic]);
+
+    // Scratch array reused each frame to avoid per-frame allocation.
+    const cameraActiveScratchRef = useRef<
+      Array<{ index: number; x: number; y: number; progress: number }>
+    >([]);
+
+    // Clear the viewBox when cinematic turns off so the view returns to the
+    // full-screen default (no viewBox attribute = 0 0 W H).
+    useEffect(() => {
+      if (!cinematic && svgRef.current) {
+        svgRef.current.removeAttribute("viewBox");
+        cameraRef.current?.reset();
+      }
+    }, [cinematic]);
 
     useEffect(() => {
       soundEngineRef.current = soundEngine;
@@ -301,7 +333,13 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // In document space mode, shift the SVG viewBox to match the current
         // scroll position so trails appear glued to the page rather than to
         // the fixed viewport. Done imperatively here to avoid re-renders.
-        if (documentSpaceRef.current && svgRef.current) {
+        // Cinematic mode owns the viewBox when active (applied after the trail
+        // loop, since it needs the per-frame cursor positions computed below).
+        if (
+          !cinematicRef.current &&
+          documentSpaceRef.current &&
+          svgRef.current
+        ) {
           const scrollX = window.scrollX;
           const scrollY = window.scrollY;
           const vw = window.innerWidth;
@@ -310,6 +348,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             "viewBox",
             `${scrollX} ${scrollY} ${vw} ${vh}`,
           );
+        }
+
+        if (cinematicRef.current) {
+          cameraActiveScratchRef.current.length = 0;
         }
 
         const realElapsed = timestamp - startTime;
@@ -321,6 +363,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           resetPlaybackTrackers();
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
+          cameraRef.current?.reset();
         }
         prevElapsedRef.current = loopedElapsed;
 
@@ -426,6 +469,17 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
           if (result && fade > 0 && result.trailProgress < 1) {
             activePaintOrderIndices.push(idx);
+          }
+
+          if (cinematicRef.current && result && fade > 0) {
+            if (result.trailProgress > 0 && result.trailProgress < 1) {
+              cameraActiveScratchRef.current.push({
+                index: idx,
+                x: result.cursorPosition.x,
+                y: result.cursorPosition.y,
+                progress: result.trailProgress,
+              });
+            }
           }
 
           // Update cursor icon in the separate cursor layer
@@ -567,6 +621,27 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Prune ripples for trails that became invisible
         if (visibilityChanged) {
           scheduleRipplePrune();
+        }
+
+        // Cinematic camera: drive the SVG viewBox from the live cursor
+        // positions collected above. Done here (after the trail loop) so the
+        // camera sees this frame's positions, not the previous frame's.
+        if (cinematicRef.current && svgRef.current) {
+          const camera = cameraRef.current;
+          if (camera) {
+            const vb = camera.tick({
+              screenW: window.innerWidth,
+              screenH: window.innerHeight,
+              nowMs: timestamp,
+              activeTrails: cameraActiveScratchRef.current,
+            });
+            if (vb) {
+              svgRef.current.setAttribute(
+                "viewBox",
+                `${vb.x} ${vb.y} ${vb.w} ${vb.h}`,
+              );
+            }
+          }
         }
 
         scheduleNextFrame();
@@ -727,6 +802,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.frozen === nextProps.frozen &&
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
+      prevProps.cinematic === nextProps.cinematic &&
       prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.strokeWidth === nextProps.settings.strokeWidth &&
       prevProps.settings.trailOpacity === nextProps.settings.trailOpacity &&
