@@ -14,6 +14,11 @@ import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import { DownloadGate } from "./components/DownloadGate";
+import {
+  CHANGELOG_URL,
+  isNavigationPathActive,
+  LIVE_PORTRAIT_URL,
+} from "./navigation";
 import styles from "./App.module.scss";
 
 const ALIVE_INTERNET_ESSAY_URL =
@@ -166,6 +171,7 @@ export default function App() {
   // how many people, and the geographic spread of their timezones.
   const activity = useMemo(() => summarizeActiveLocations(events), [events]);
 
+  const currentPath = window.location.pathname;
 
   return (
     <div className={styles.page}>
@@ -204,6 +210,29 @@ export default function App() {
       </div>
 
       <div className={styles.content}>
+        <nav className={styles.siteNav} aria-label="Site navigation">
+          <a
+            aria-current={
+              isNavigationPathActive(currentPath, LIVE_PORTRAIT_URL)
+                ? "page"
+                : undefined
+            }
+            href={LIVE_PORTRAIT_URL}
+          >
+            live portrait
+          </a>
+          <a
+            aria-current={
+              isNavigationPathActive(currentPath, CHANGELOG_URL)
+                ? "page"
+                : undefined
+            }
+            href={CHANGELOG_URL}
+          >
+            changelog
+          </a>
+        </nav>
+
         <section className={styles.hero}>
           <h1 className={styles.wordmark}>we were online</h1>
           <p className={styles.tagline}>

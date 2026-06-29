@@ -1,19 +1,23 @@
+// ABOUTME: Renders a feature demo for role-based capability permissions.
+// ABOUTME: Cycles sample users through locked and unlocked permission states.
 import { useEffect, useState } from "react";
 import "./Permissions.scss";
+
+type PermissionKey = "silver" | "gold";
 
 interface Permission {
   id: string;
   name: string;
   isLocked: boolean;
   hasKey: boolean;
-  keyType?: "silver" | "gold";
+  keyType?: PermissionKey;
   action: string;
 }
 
 interface User {
   id: string;
   name: string;
-  keys: string[];
+  keys: PermissionKey[];
   color: string;
 }
 
@@ -58,6 +62,8 @@ export function Permissions() {
   const [currentUser, setCurrentUser] = useState(0);
   const [permissionStates, setPermissionStates] = useState(permissions);
   const [attemptingUnlock, setAttemptingUnlock] = useState<string | null>(null);
+  const userHasPermissionKey = (keyType?: PermissionKey) =>
+    !keyType || users[currentUser].keys.includes(keyType);
 
   // Rotate through users
   useEffect(() => {
@@ -71,11 +77,14 @@ export function Permissions() {
   useEffect(() => {
     const user = users[currentUser];
     setPermissionStates((prev) =>
-      prev.map((perm) => ({
-        ...perm,
-        hasKey: user.keys.includes(perm.keyType),
-        isLocked: !user.keys.includes(perm.keyType),
-      }))
+      prev.map((perm) => {
+        const hasKey = !perm.keyType || user.keys.includes(perm.keyType);
+        return {
+          ...perm,
+          hasKey,
+          isLocked: Boolean(perm.keyType && !hasKey),
+        };
+      })
     );
   }, [currentUser]);
 
@@ -83,7 +92,7 @@ export function Permissions() {
     const perm = permissionStates.find((p) => p.id === permId);
     const user = users[currentUser];
 
-    if (perm && perm.isLocked && !user.keys.includes(perm.keyType)) {
+    if (perm && perm.isLocked && !userHasPermissionKey(perm.keyType)) {
       setAttemptingUnlock(permId);
       setTimeout(() => setAttemptingUnlock(null), 1000);
     } else if (perm && !perm.isLocked) {
@@ -94,7 +103,7 @@ export function Permissions() {
     }
   };
 
-  const getKeyIcon = (keyType: string) => {
+  const getKeyIcon = (keyType?: PermissionKey) => {
     switch (keyType) {
       case "silver":
         return "🔵";

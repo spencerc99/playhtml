@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>seal ceremony — iterate</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 40px;
+        background: #fafafa;
+        color: #111;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      h1 {
+        font-weight: 500;
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      p {
+        color: #555;
+        max-width: 600px;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin: 24px 0;
+        flex-wrap: wrap;
+      }
+      .controls textarea {
+        font: inherit;
+        padding: 8px 10px;
+        border: 1px solid #888;
+        border-radius: 2px;
+        min-width: 320px;
+        min-height: 60px;
+      }
+      .controls input[type="color"] {
+        width: 60px;
+        height: 36px;
+        padding: 0;
+      }
+      .controls button {
+        font: inherit;
+        padding: 8px 18px;
+        background: #4a90e2;
+        color: white;
+        border: 1px solid #3a7bc8;
+        border-radius: 2px;
+        cursor: pointer;
+      }
+      .controls button:hover {
+        background: #3a7bc8;
+      }
+      .slot-marker {
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #4a9a8a;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        cursor: pointer;
+        z-index: 1;
+      }
+      .slot-marker::after {
+        content: attr(data-label);
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 11px;
+        color: #555;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>sealing ceremony — direct play</h1>
+    <p>
+      Plays the Three.js sealing ceremony directly so we can iterate with
+      HMR (no extension reload). The slot position is where the dot
+      marker is — drag the marker around to test different slot
+      destinations.
+    </p>
+
+    <div class="controls">
+      <textarea id="msg">if you're reading this, the wifi is back up.</textarea>
+      <input type="color" id="color" value="#4a9a8a" />
+    </div>
+    <div class="controls">
+      <button id="play">play ceremony</button>
+    </div>
+
+    <p style="color: #888; font-size: 13px">
+      For each: pull down from the bottom of the screen to commit (20%
+      of viewport). The fold then auto-plays. After folding, the card
+      flies to the slot dot and plunges into the fissure.
+    </p>
+
+    <!-- Slot marker — represents where the bottle "lives" on the page -->
+    <div
+      class="slot-marker"
+      id="slot"
+      style="left: 70%; top: 70%"
+      data-label="slot (drag me)"
+    ></div>
+
+    <div id="root"></div>
+    <script type="module" src="./bottle-seal-test.tsx"></script>
+  </body>
+</html>

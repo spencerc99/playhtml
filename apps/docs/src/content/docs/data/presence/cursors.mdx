@@ -5,12 +5,14 @@ sidebar:
   order: 3
 ---
 
-Playhtml includes built-in cursor tracking and presence awareness. When enabled, users can see each other's cursors in real-time, along with their colors and names.
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+playhtml can track cursors out of the box. When enabled, visitors see each other's cursors live, along with their colors and names.
 
 ## Basic Setup
 
-### JavaScript
-
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 ```javascript
 import { playhtml } from "playhtml";
 
@@ -20,9 +22,8 @@ playhtml.init({
   }
 });
 ```
-
-### React
-
+  </TabItem>
+  <TabItem label="React">
 ```tsx
 import { PlayProvider } from "@playhtml/react";
 
@@ -36,6 +37,8 @@ import { PlayProvider } from "@playhtml/react";
   {/* your app */}
 </PlayProvider>
 ```
+  </TabItem>
+</Tabs>
 
 ## Configuration Options
 
@@ -96,7 +99,7 @@ cursors: {
 
 **Presence data includes:**
 - `presence.page` - The page path the cursor is on
-- `presence.cursor` - Current cursor position `{ x, y, pointer }`
+- `presence.cursor` - Current cursor position `{ x, y, pointer }`, or `null` when the user is present but not publishing a cursor position
 - `presence.playerIdentity` - User info `{ name, playerStyle: { colorPalette } }`
 - `presence.message` - Chat message (if chat enabled)
 - `presence.lastSeen` - Timestamp
@@ -128,6 +131,8 @@ cursors: {
 
 ```javascript
 getCursorStyle: (presence) => {
+  if (!presence.cursor) return {};
+
   const distance = Math.sqrt(
     Math.pow(presence.cursor.x - myX, 2) +
     Math.pow(presence.cursor.y - myY, 2)
@@ -169,6 +174,12 @@ cursors: {
   // Enable chat
   enableChat: true,
 
+  // Coordinate space cursors are stored and broadcast in
+  coordinateMode: "relative",  // "relative" (default) or "absolute"
+
+  // CSS cursor applied to the page while cursors are active
+  cursorStyle: "none",
+
   // Custom cursor rendering
   onCustomCursorRender: (connectionId, element) => {
     // Return custom element or null for default
@@ -177,12 +188,21 @@ cursors: {
 }
 ```
 
+**`coordinateMode`**: how cursor positions are stored and shared:
+
+- `"relative"` (default): positions are viewport percentages, so a cursor lands on the same _relative_ spot for every viewer regardless of window size. Best for documents and most pages.
+- `"absolute"`: positions are document pixels. Use this when collaborators share an identical fixed-size layout and you want pixel-for-pixel agreement.
+
+For a pannable / zoomable canvas, you usually don't set `coordinateMode` directly. Pass a transformed [`container`](#container) instead, which stores cursors in that container's local space.
+
+**`cursorStyle`**: a CSS `cursor` value applied to the page while cursors are enabled (e.g. `"none"` to hide the native pointer in favor of the rendered one).
+
 ### `container`
 
 Where playhtml mounts cursor DOM (and the cursor stylesheet). Defaults to `document.body`. Two reasons to set it:
 
-1. **Surviving SPA navigation.** If your framework swaps `document.body` on route changes (Astro ViewTransitions, htmx boost, Turbo), pass a container you mark as persistent so cursors don't get blown away. See [navigation](/docs/advanced/navigation/).
-2. **Anchoring cursors to a pannable / zoomable canvas.** If the container has its own CSS `transform` (e.g. you implement pinch-zoom and pan by setting `transform: translate(...) scale(...)` on a wrapper), playhtml stores cursor coordinates in that container's local space — so two viewers with different pan/zoom agree on which content a cursor is hovering. See the next section.
+1. **Surviving SPA navigation.** If your framework swaps `document.body` on route changes (Astro ViewTransitions, htmx boost, Turbo), pass a container you mark as persistent so cursors aren't destroyed. See [navigation](/docs/advanced/navigation/).
+2. **Anchoring cursors to a pannable / zoomable canvas.** If the container has its own CSS `transform` (e.g. you implement pinch-zoom and pan by setting `transform: translate(...) scale(...)` on a wrapper), playhtml stores cursor coordinates in that container's local space, so two viewers with different pan/zoom agree on which content a cursor is hovering. See the next section.
 
 **Type:** `HTMLElement | string | (() => HTMLElement | null) | React.RefObject<HTMLElement>`
 
@@ -202,7 +222,7 @@ playhtml.init({
 When `container` resolves to a non-`document.body` element, playhtml reads its live transform matrix from `getComputedStyle()` on every pointer event:
 
 - **Storage** is the container's local (pre-transform) coordinate space. Two clients with different pan/zoom now agree on cursor positions.
-- **Rendering** mounts cursors inside the container with `position: absolute`. The container's own CSS transform composes them into each viewer's viewport pixels for free — no JavaScript per-frame repositioning, no resize-event nudging.
+- **Rendering** mounts cursors inside the container with `position: absolute`. The container's own CSS transform composes them into each viewer's viewport pixels for free: no JavaScript per-frame repositioning, no resize-event nudging.
 
 ### Requirements
 
@@ -231,7 +251,7 @@ The [`website/fridge.tsx`](https://github.com/spencerc99/playhtml/blob/main/webs
 </PlayProvider>
 ```
 
-The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like — inline `style.transform`, a CSS class, or a CSS variable. playhtml just reads it.
+The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml just reads it.
 
 ## Global Cursor API
 

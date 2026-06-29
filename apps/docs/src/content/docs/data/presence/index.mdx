@@ -5,16 +5,19 @@ sidebar:
   order: 3
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-Presence is playhtml's "who's here right now" layer. Every connected user has an identity, an optional cursor position, and any number of custom named channels you define. None of it persists — when the user disconnects, their presence clears.
+Presence is playhtml's "who's here right now" layer. Every connected user has an identity, an optional cursor position, and any number of custom named channels you define. None of it persists. When the user disconnects, their presence clears.
 
 Reach for presence when the lifetime you want is "while this person is on the page". Reach for [persistent data](/docs/data/data-essentials/) when you want state to survive a reload, and [events](/docs/data/events/) for one-shot signals.
 
 ## The unified API
 
-`playhtml.presence` gives you one view of everyone connected, with both system fields (identity, cursor) and any custom channels you add.
+You get one view of everyone connected, with both system fields (identity, cursor) and any custom channels you add. In vanilla JS that's the `playhtml.presence` object; in React it's the [`usePresence`](/docs/reference/react-api/#usepresence) hook.
 
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 ```js
 // Set (or clear) a custom channel
 playhtml.presence.setMyPresence("status", { text: "focused", emoji: "🎯" });
@@ -35,10 +38,34 @@ const unsub = playhtml.presence.onPresenceChange("status", renderStatusRow);
 // Your own identity
 const me = playhtml.presence.getMyIdentity();
 ```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { usePresence } from "@playhtml/react";
+
+function StatusList() {
+  // presences is the live map (keyed by stable id); setMyPresence writes
+  // your own; myIdentity is your name/colors/publicKey.
+  const { presences, setMyPresence, myIdentity } = usePresence<{ text: string }>("status");
+
+  return (
+    <>
+      <button onClick={() => setMyPresence({ text: "focused" })}>focus</button>
+      {[...presences.values()].map((p) => p.status?.text)}
+    </>
+  );
+}
+```
+
+The hook subscribes and unsubscribes with the component lifecycle. Your channel value lives under the channel name (`p.status`), not flattened onto the view.
+  </TabItem>
+</Tabs>
 
 ### Cursor presence subscribes the same way
 
-Cursor movements update at ~60fps and are exposed as a special channel:
+Cursor movements are exposed as a special channel. Playhtml sends cursor motion through
+its realtime presence layer so cursor rendering can stay responsive without writing
+pointer movement into persistent shared data:
 
 ```js
 const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {
@@ -46,21 +73,23 @@ const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {
 });
 ```
 
-For pixel-accurate cursor rendering (including coordinate conversion across scrolled/zoomed pages), use the cursor system directly — see the [Cursors](/docs/data/presence/cursors/) page.
+For pixel-accurate cursor rendering (including coordinate conversion across scrolled/zoomed pages), use the cursor system directly. See the [Cursors](/docs/data/presence/cursors/) page.
 
 ## Custom channels
 
-Channel names flatten into the top-level `PresenceView`. Pick names that don't collide with the system fields (`playerIdentity`, `cursor`, `isMe`) — collisions are silently dropped.
+Channel names flatten into the top-level `PresenceView`. Pick names that don't collide with the system fields (`playerIdentity`, `cursor`, `isMe`): collisions are silently dropped.
 
 **Common shapes:**
 
-- `status` — `{ text, emoji }` or a tag string for "focused / typing / afk"
-- `focus` — `{ elementId }` to highlight which part of the page someone is looking at
-- `selection` — `{ start, end }` for collaborative text editing
-- `cursor-chat` — a short message shown beside the user's cursor
+- `status`: `{ text, emoji }` or a tag string for "focused / typing / afk"
+- `focus`: `{ elementId }` to highlight which part of the page someone is looking at
+- `selection`: `{ start, end }` for collaborative text editing
+- `cursor-chat`: a short message shown beside the user's cursor
 
 **Setting vs clearing:**
 
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 ```js
 // Set: replace semantics per channel
 playhtml.presence.setMyPresence("status", { text: "typing" });
@@ -68,23 +97,55 @@ playhtml.presence.setMyPresence("status", { text: "typing" });
 // Clear: null
 playhtml.presence.setMyPresence("status", null);
 ```
-
-There's no partial/merge update for a channel — when you call `setMyPresence`, you overwrite that channel's value for your user.
-
-## React usage
-
-Inside a `PlayProvider`, use `usePlayContext` to subscribe.
-
+  </TabItem>
+  <TabItem label="React">
 ```tsx
-import { usePlayContext } from "@playhtml/react";
+const { setMyPresence } = usePresence("status");
 
-function StatusBar() {
-  const { cursors } = usePlayContext();
-  return <div>{cursors.allColors.length} people here</div>;
+// Set: replace semantics per channel
+setMyPresence({ text: "typing" });
+
+// Clear: null
+setMyPresence(null);
+```
+  </TabItem>
+</Tabs>
+
+There's no partial/merge update for a channel. When you call `setMyPresence`, you overwrite that channel's value for your user.
+
+## Isolated presence rooms
+
+The main presence layer tracks everyone in the page's room. When you want a presence channel **scoped to something other than the page** (a lobby, a document, a game table that several pages share), create a separate presence room.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+const room = playhtml.createPresenceRoom("lobby-42");
+
+room.presence.setMyPresence("status", { text: "ready" });
+const unsub = room.presence.onPresenceChange("status", renderLobby);
+
+// When you're done (e.g. the user leaves the lobby), tear it down:
+room.destroy();
+```
+
+`createPresenceRoom(name)` returns a `PresenceRoom` (`{ presence, destroy }`), where `presence` is the same API as `playhtml.presence`, backed by its own connection. Always call `destroy()` when the room is no longer needed; it closes the connection and clears your presence for everyone else.
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { usePresenceRoom } from "@playhtml/react";
+
+function Lobby() {
+  const room = usePresenceRoom("lobby-42");
+  if (!room) return null; // null until joined
+  room.presence.setMyPresence("status", { text: "ready" });
+  return <div>{room.presence.getPresences().size} in the lobby</div>;
 }
 ```
 
-The `cursors` object from `usePlayContext` wraps presence updates with a React-reactive object, so components re-render on identity and color changes without any manual subscription.
+[`usePresenceRoom(name)`](/docs/reference/react-api/#usepresenceroom) joins the room and tears it down for you on unmount.
+  </TabItem>
+</Tabs>
 
 ## Try it live
 
@@ -92,12 +153,12 @@ The `cursors` object from `usePlayContext` wraps presence updates with a React-r
   <OnlineIndicatorDemo client:only="react" />
 </div>
 
-Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab — the dot disappears. This is presence: no persistence, no replay.
+Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab and the dot disappears. This is presence: no persistence, no replay.
 
 > Looking for a "live reactions" bursting button? That's an [event](/docs/data/events/), not presence. The docs for events have a live demo.
 
-## Is presence really what you want?
+## When to use data instead
 
-Presence shines for _ambient awareness_ — the quiet hum of other people existing on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
+Presence is for _ambient awareness_ of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
 
-Not sure which primitive fits? The full decision table — covering element data, page data, presence, cursors, and events — is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+Not sure which primitive fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).

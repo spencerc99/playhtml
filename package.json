@@ -28,7 +28,7 @@
     "version-packages": "changeset version",
     "rewrite-workspace-deps": "bun run scripts/rewrite-workspace-deps.ts",
     "release": "bun run build-packages && bun run rewrite-workspace-deps && changeset publish",
-    "release:snapshot": "bun run build-packages && changeset version --snapshot next && bun run rewrite-workspace-deps && changeset publish --tag next --no-git-tag && git checkout -- .changeset packages/*/package.json packages/*/CHANGELOG.md",
+    "release:snapshot": "bun run build-packages && changeset version --snapshot ${SNAPSHOT_TAG:-next} && bun run rewrite-workspace-deps && changeset publish --tag ${SNAPSHOT_TAG:-next} --no-git-tag && git checkout -- .changeset packages/*/package.json packages/*/CHANGELOG.md",
     "lint": "bunx tsc -p partykit && cd website && bunx tsc && cd .. && for dir in packages/*; do (cd \"$dir\" && bunx tsc); done && cd extension && bunx tsc",
     "load-test": "bun load-test/src/runner.ts",
     "load-test:full": "bun load-test/src/runner.ts --config full-suite",
@@ -37,9 +37,11 @@
     "smoke:partykit:limits": "cd smoke-tests && bun run test:partykit:limits",
     "smoke:partykit:hibernation": "cd smoke-tests && bun run test:partykit:hibernation",
     "smoke:partykit:compaction": "cd smoke-tests && bun run test:partykit:compaction",
+    "smoke:partykit:stale-compaction": "cd smoke-tests && bun run test:partykit:stale-compaction",
     "smoke:partykit:emergency": "cd smoke-tests && bun run test:partykit:emergency",
     "smoke:partykit:transient": "cd smoke-tests && bun run test:partykit:transient",
     "smoke:partykit:soak": "cd smoke-tests && bun run test:partykit:soak",
+    "smoke:partykit:presence-cursor": "cd smoke-tests && bun run test:partykit:presence-cursor",
     "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
   },
   "overrides": {
@@ -55,6 +57,7 @@
     "@types/react-is": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "agentation": "^2.2.1",
+    "ajv": "^8.18.0",
     "glob": "^10.3.10",
     "sass": "^1.62.1",
     "typescript": "^5.0.2",

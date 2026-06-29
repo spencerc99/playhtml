@@ -43,6 +43,10 @@ bun smoke:partykit:limits
 # Verifies empty-room compaction, reset rejection, and fresh reconnect.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:compaction
 
+# Recreates a stale live compaction source while the documents row contains
+# newer data, and verifies automatic compaction leaves the newer row intact.
+SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:stale-compaction
+
 # Verifies connected-room high-watermark compaction.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:emergency
 
@@ -57,6 +61,13 @@ PARTYKIT_HOST=localhost:1999 bun smoke:partykit:transient
 # write-loop / doc-bloat incident). Tunables: PARTYKIT_SOAK_CLIENTS,
 # PARTYKIT_SOAK_UPSERTS_PER_CLIENT, PARTYKIT_SOAK_MAX_STRUCT_ITEMS.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:soak
+
+# Simulates many participants sending cursor-rate traffic through the generic
+# presence transport. Tunables: PARTYKIT_PRESENCE_SOAK_CLIENTS,
+# PARTYKIT_PRESENCE_SOAK_CURSOR_HZ, PARTYKIT_PRESENCE_SOAK_DURATION_MS,
+# PARTYKIT_PRESENCE_SOAK_SETTLE_MS, PARTYKIT_PRESENCE_SOAK_CONNECT_TIMEOUT_MS.
+PARTYKIT_HOST=playhtml-staging.spencerc99.workers.dev \
+  bun smoke:partykit:presence-cursor
 
 # Runs the standard PartyKit checks.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit
@@ -89,10 +100,16 @@ Config:
 - `PARTYKIT_SMOKE_MAX_REQUEST_BYTES`: expected server request-body limit for the limits smoke. Defaults to `16777216`.
 - `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `1000`.
 - `PARTYKIT_SMOKE_NORMAL_MESSAGES`: normal Yjs updates sent quickly before the abusive raw-client cases. Defaults to `420`.
+- `PARTYKIT_PRESENCE_SOAK_CLIENTS`: number of clients for the presence cursor soak. Defaults to `20`.
+- `PARTYKIT_PRESENCE_SOAK_CURSOR_HZ`: cursor updates per client per second for the presence cursor soak. Defaults to `60`.
+- `PARTYKIT_PRESENCE_SOAK_DURATION_MS`: duration for the presence cursor soak. Defaults to `20000`.
+- `PARTYKIT_PRESENCE_SOAK_SETTLE_MS`: wait after sends for final broadcasts. Defaults to `1000`.
+- `PARTYKIT_PRESENCE_SOAK_CONNECT_TIMEOUT_MS`: connection timeout per smoke client. Defaults to `20000`.
 - `SMOKE_ENV_FILE`: optional `.dev.vars` or `.env` file to load before the script reads `ADMIN_TOKEN`.
 - `ADMIN_TOKEN`: required for `test:partykit:compaction`.
 - `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.
 - `PARTYKIT_EMPTY_ROOM_COMPACT_DELAY_MS`: expected server empty-room compaction delay. Defaults to `300000`.
+- `PARTYKIT_STALE_COMPACTION_SETTLE_MS`: extra wait after the empty-room compaction delay for the stale-source smoke. Defaults to `20000`.
 - `PARTYKIT_SKIP_COMPACTION_SETTLE_CHECK=1`: skips the extra no-op alarm wait after reconnect.
 - `PARTYKIT_EMERGENCY_TARGET_RAW_BYTES`: target local raw Y.Doc size for the emergency smoke. Defaults to `120000`.
 - `PARTYKIT_EMERGENCY_BATCH_SIZE`: temp entry batch size while building the emergency smoke doc. Defaults to `2000`.

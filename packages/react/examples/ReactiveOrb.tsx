@@ -1,3 +1,5 @@
+// ABOUTME: Renders a shared click counter orb used by the homepage examples.
+// ABOUTME: Demonstrates persistent React state updates backed by playhtml.
 import { withSharedState } from "@playhtml/react";
 import { formatLargeNumber } from "./utils";
 import "./ReactiveOrb.scss";
@@ -29,7 +31,11 @@ export const ReactiveOrb = withSharedState(
       <div
         id={id}
         className={`floating-orb ${className}`}
-        onClick={() => setData({ clicks: data.clicks + 1 })}
+        onClick={() => {
+          setData((draft) => {
+            draft.clicks += 1;
+          });
+        }}
         style={{
           transform: `scale(${1 + scaleMultiplier})`,
           background: `hsl(${hue}, ${saturation}%, ${lightness}%)`,

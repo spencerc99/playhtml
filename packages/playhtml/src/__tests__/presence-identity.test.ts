@@ -75,15 +75,15 @@ describe("createPresenceAPI identity propagation", () => {
     expect(remote!.playerIdentity).toEqual(remoteIdentity);
   });
 
-  it("prefers cursor-field identity over __playhtml_identity__ for backwards compat", () => {
+  it("prefers __playhtml_identity__ over cursor-field identity", () => {
     const awareness = makeAwareness(1);
     const localIdentity = makeIdentity("pk_local");
 
     const cursorIdentity = makeIdentity("pk_from_cursor");
-    const fallbackIdentity = makeIdentity("pk_from_fallback");
+    const presenceIdentity = makeIdentity("pk_from_presence");
     awareness.states.set(2, {
       __playhtml_cursors__: { playerIdentity: cursorIdentity },
-      [IDENTITY_FIELD]: fallbackIdentity,
+      [IDENTITY_FIELD]: presenceIdentity,
     });
 
     const api = createPresenceAPI({
@@ -93,7 +93,7 @@ describe("createPresenceAPI identity propagation", () => {
 
     const presences = api.getPresences();
     const remote = Array.from(presences.values()).find((p) => !p.isMe);
-    expect(remote!.playerIdentity).toEqual(cursorIdentity);
+    expect(remote!.playerIdentity).toEqual(presenceIdentity);
   });
 
   it("identity write is idempotent across multiple API calls", () => {
@@ -157,5 +157,82 @@ describe("createPresenceAPI identity propagation", () => {
     const remote = Array.from(presences.values()).find((p) => !p.isMe);
     expect(remote).toBeDefined();
     expect(remote!.playerIdentity).toBeUndefined();
+  });
+
+  it("reads cursor channel state from the cursor client snapshot", () => {
+    const awareness = makeAwareness(1);
+    const localIdentity = makeIdentity("pk_local");
+    const remoteIdentity = makeIdentity("pk_remote");
+    let cursorCallback:
+      | ((presences: Map<string, any>) => void)
+      | undefined;
+    let cursorPresences = new Map<string, any>();
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => localIdentity,
+      getCursorPresences: () => cursorPresences,
+      onCursorPresencesChange(callback) {
+        cursorCallback = callback;
+        return () => {
+          cursorCallback = undefined;
+        };
+      },
+    });
+    const snapshots: Array<Map<string, any>> = [];
+
+    const unsubscribe = api.onPresenceChange("cursor", (presences) => {
+      snapshots.push(presences);
+    });
+    cursorPresences = new Map([
+      [
+        "pk_remote",
+        {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          playerIdentity: remoteIdentity,
+        },
+      ],
+    ]);
+    cursorCallback?.(cursorPresences);
+
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1].get("pk_remote")).toMatchObject({
+      cursor: { x: 10, y: 20, pointer: "mouse" },
+      playerIdentity: remoteIdentity,
+      isMe: false,
+    });
+
+    unsubscribe();
+  });
+
+  it("merges cursor transport snapshots with Yjs presence by public key", () => {
+    const awareness = makeAwareness(1);
+    const localIdentity = makeIdentity("pk_local");
+    let cursorPresences = new Map<string, any>();
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => localIdentity,
+      getCursorPresences: () => cursorPresences,
+    });
+
+    api.setMyPresence("status", { text: "here" });
+    cursorPresences = new Map([
+      [
+        "pk_local",
+        {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          playerIdentity: localIdentity,
+        },
+      ],
+    ]);
+
+    const presences = api.getPresences();
+
+    expect(presences.get("1")).toBeUndefined();
+    expect(presences.get("pk_local")).toMatchObject({
+      cursor: { x: 10, y: 20, pointer: "mouse" },
+      isMe: true,
+      playerIdentity: localIdentity,
+      status: { text: "here" },
+    });
   });
 });

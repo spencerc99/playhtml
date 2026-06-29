@@ -21,7 +21,6 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.1",
     "@lezer/highlight": "^1.2.3",
-    "@playhtml/common": "workspace:*",
     "@playhtml/react": "workspace:*",
     "astro": "^6.0.1",
     "lz-string": "^1.5.0",

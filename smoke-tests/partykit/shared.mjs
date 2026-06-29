@@ -74,6 +74,18 @@ export function getPartyWebSocketUrl(host, room) {
   )}`;
 }
 
+export function getPresenceWebSocketUrl(host, room) {
+  const normalizedHost = host.replace(/^(http|https|ws|wss):\/\//, "");
+  const protocol =
+    normalizedHost.startsWith("localhost:") ||
+    normalizedHost.startsWith("127.0.0.1:")
+      ? "ws"
+      : "wss";
+  return `${protocol}://${normalizedHost}/parties/presence/${encodeURIComponent(
+    room
+  )}`;
+}
+
 export function getPartyHttpUrl(host, room) {
   const normalizedHost = host.replace(/^(http|https|ws|wss):\/\//, "");
   const protocol =
@@ -179,7 +191,7 @@ export function waitForProviderStatus(
 
 export async function inspectRoom({ host, room, adminToken }) {
   const response = await fetch(
-    `https://${host}/parties/main/${encodeURIComponent(room)}/admin/inspect`,
+    `${getPartyHttpUrl(host, room)}/admin/inspect`,
     {
       headers: { Authorization: `Bearer ${adminToken}` },
     }

@@ -1,5 +1,41 @@
 # Change Log
 
+## 2.11.1
+
+### Patch Changes
+
+- 22dae41: Move cursor motion onto PlayHTML's realtime presence transport, add shared protocol validation for presence messages, coalesce pointer work per animation frame, adapt cursor publish rates as active room load grows, expire stale cursor positions, and keep cursor movement out of persistent shared data.
+- d7ffb66: `can-duplicate` and `can-duplicate-to` now accept an element id, an id with a leading `#`, or any CSS selector — the same resolution `can-move-bounds` already used. Previously `can-duplicate="#my-template"` silently failed because the value was passed straight to `getElementById`. Clone ids are now derived from the resolved template element's own id, so a selector or `#`-prefixed value still produces valid clone ids.
+- Updated dependencies [22dae41]
+- Updated dependencies [18d2891]
+- Updated dependencies [d7ffb66]
+  - @playhtml/common@0.7.2
+
+## 2.11.0
+
+### Minor Changes
+
+- 60ccf22: `init`'s `room` option now accepts a function (`() => string`), not just a
+  string. A function room is re-invoked on every SPA navigation, so a
+  path-derived room follows the URL the same way the default room does; a static
+  string still stays fixed for the page's lifetime.
+
+  On a room change during SPA navigation, the Yjs doc is now re-initialized so
+  the new room starts clean — page data AND element data reset to the new room,
+  the same as a full page reload. Previously the doc was reused across rooms, so a
+  previous room's data bled into the next one. The doc is discarded and recreated
+  (not deleted from), so no delete tombstone syncs back and destroys the original
+  room's persisted data on a round trip. Same-room navigation (hash changes, a
+  static explicit room, unchanged path) does not reset — data persists across the
+  route change as before.
+
+### Patch Changes
+
+- 60ccf22: Allow passing a function-valued `room` so `handleNavigation()` can recompute it on route changes.
+- 8b0e546: Handle server room-reset messages by reconnecting the current room in place before falling back to a page reload, so admin data restores can update connected clients with less visible disruption.
+- Updated dependencies [9df0417]
+  - @playhtml/common@0.7.1
+
 ## 2.10.1
 
 ### Patch Changes

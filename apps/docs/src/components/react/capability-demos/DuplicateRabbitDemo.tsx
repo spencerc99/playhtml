@@ -1,6 +1,6 @@
 import React from "react";
 import { CanPlayElement } from "@playhtml/react";
-import { TagType, TagTypeToElement, CanDuplicateTo } from "@playhtml/common";
+import { TagType, TagTypeToElement, CanDuplicateTo } from "playhtml";
 import { playhtml } from "playhtml";
 
 const TEMPLATE_ID = "ph-cap-bunny-template";

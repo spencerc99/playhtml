@@ -20,6 +20,10 @@
       {
         "name": "Main",
         "class_name": "PartyServer"
+      },
+      {
+        "name": "Presence",
+        "class_name": "PresenceServer"
       }
     ]
   },
@@ -27,6 +31,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["PartyServer"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["PresenceServer"]
     }
   ],
   "env": {
@@ -48,6 +56,10 @@
           {
             "name": "Main",
             "class_name": "PartyServer"
+          },
+          {
+            "name": "Presence",
+            "class_name": "PresenceServer"
           }
         ]
       },
@@ -55,6 +67,10 @@
         {
           "tag": "v1",
           "new_sqlite_classes": ["PartyServer"]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["PresenceServer"]
         }
       ]
     }

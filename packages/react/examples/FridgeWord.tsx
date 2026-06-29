@@ -1,4 +1,4 @@
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 import { withSharedState } from "@playhtml/react";
 import "./FridgeWord.scss";
 
