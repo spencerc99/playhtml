@@ -5,7 +5,9 @@ sidebar:
   order: 1
 ---
 
-Every playhtml element owns a piece of shared data. This page covers how to shape it, write to it correctly, and clean it up when elements go away.
+Every playhtml element owns a piece of shared data, keyed by the element's `id`. When you change an element, its data updates and syncs to everyone else on the page — the element with the same `id` on their side updates to match. This page covers how to shape that data, write to it correctly, and clean it up when elements go away.
+
+![Two browsers open to the same page. Each interactive element — a lamp with can-toggle, a hat with can-move, a wheel with can-spin, a balloon with can-grow — has its own data object keyed by element id. A change on one page syncs through the playhtml server and the matching element updates on the other page.](/docs/how-playhtml-works.png)
 
 ## When to use which primitive
 
