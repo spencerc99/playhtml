@@ -79,6 +79,7 @@ import {
   parseClientResetEpoch,
 } from "./resetEpochPolicy";
 import { BridgeHealth } from "./bridgeHealth";
+import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -952,6 +953,9 @@ export class PartyServer extends YServer {
   private async subscribeAndHydrate(
     entries: Array<{ sourceRoomId: string; elementIds: string[] }>
   ): Promise<void> {
+    const consumerResetEpoch = await this.getResetEpoch();
+    const sourceResetEpochByRoom = new Map<string, number | null>();
+
     // Subscribe and cache allowedIds per source in sharedReferences
     await Promise.all(
       entries.map(async ({ sourceRoomId, elementIds }) => {
@@ -962,11 +966,65 @@ export class PartyServer extends YServer {
             action: "subscribe",
             consumerRoomId: this.name,
             elementIds,
+            consumerResetEpoch,
           };
-          await sourceRoom.fetch(internalRequest("/subscribe", subscribeRequest));
+          const response = await sourceRoom.fetch(
+            internalRequest("/subscribe", subscribeRequest)
+          );
+          if (!response.ok) return;
+
+          const subscribeResponse =
+            (await response.json()) as SubscribeResponse;
+          sourceResetEpochByRoom.set(
+            sourceRoomId,
+            typeof subscribeResponse.sourceResetEpoch === "number"
+              ? subscribeResponse.sourceResetEpoch
+              : null
+          );
+
+          if (
+            subscribeResponse.subtrees &&
+            Object.keys(subscribeResponse.subtrees).length
+          ) {
+            this.document.transact(
+              () =>
+                this.assignPlaySubtrees(
+                  this.document,
+                  ensureExists(subscribeResponse.subtrees)
+                ),
+              ORIGIN_S2C
+            );
+          }
         } catch {}
       })
     );
+
+    if (!sourceResetEpochByRoom.size) return;
+
+    const sharedReferences = await this.getSharedReferences();
+    let changed = false;
+    const updated = sharedReferences.map((reference) => {
+      if (!sourceResetEpochByRoom.has(reference.sourceRoomId)) {
+        return reference;
+      }
+
+      const sourceResetEpoch = sourceResetEpochByRoom.get(
+        reference.sourceRoomId
+      );
+      if (reference.sourceResetEpoch === sourceResetEpoch) {
+        return reference;
+      }
+
+      changed = true;
+      return {
+        ...reference,
+        sourceResetEpoch,
+      };
+    });
+
+    if (changed) {
+      await this.setSharedReferences(updated);
+    }
   }
 
   // --- Helper: extract subtrees for a set of elementIds from the play map
@@ -1135,18 +1193,22 @@ export class PartyServer extends YServer {
 
       const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
-      const currentEpoch = await this.getResetEpoch();
       await Promise.all(
-        subscribers.map(async ({ consumerRoomId, elementIds }) => {
-          if (!elementIds || !elementIds.includes(element.elementId)) return;
-          await this.sendBridgeApply(consumerRoomId, {
-            action: "apply-subtrees-immediate",
-            subtrees: ensureExists(subtreesForNew),
-            sender: this.name,
-            originKind: "source",
-            resetEpoch: currentEpoch ?? null,
-          });
-        })
+        subscribers.map(
+          async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
+            if (!elementIds || !elementIds.includes(element.elementId)) return;
+            await this.sendBridgeApply(consumerRoomId, {
+              action: "apply-subtrees-immediate",
+              subtrees: ensureExists(subtreesForNew),
+              sender: this.name,
+              originKind: "source",
+              resetEpoch: getBridgeApplyTargetResetEpoch({
+                originKind: "source",
+                consumerResetEpoch,
+              }),
+            });
+          }
+        )
       );
     } catch {}
   }
@@ -1603,12 +1665,21 @@ export class PartyServer extends YServer {
 
       if (isSubscribeRequest(body)) {
         // Called on SOURCE room; registers a consumer room id
-        const { consumerRoomId, elementIds: elementIdsRaw } = body;
+        const {
+          consumerRoomId,
+          elementIds: elementIdsRaw,
+          consumerResetEpoch: consumerResetEpochRaw,
+        } = body;
         const elementIds = Array.isArray(elementIdsRaw)
           ? Array.from(
               new Set(elementIdsRaw.filter((x) => typeof x === "string"))
             )
           : undefined;
+        const consumerResetEpoch =
+          typeof consumerResetEpochRaw === "number" &&
+          Number.isFinite(consumerResetEpochRaw)
+            ? consumerResetEpochRaw
+            : null;
         // IMPORTANT: Do NOT filter out unknown/not-yet-shared ids at subscribe time.
         // Keep the requested ids so that when the source registers those elements later,
         // existing subscribers will start receiving data automatically.
@@ -1621,6 +1692,7 @@ export class PartyServer extends YServer {
           existing.push({
             consumerRoomId,
             elementIds: requestedIds,
+            consumerResetEpoch,
             createdAt: nowIso,
             lastSeen: nowIso,
             leaseMs,
@@ -1628,6 +1700,7 @@ export class PartyServer extends YServer {
         } else {
           // Update elementIds (filtered) and lastSeen
           found.elementIds = requestedIds;
+          found.consumerResetEpoch = consumerResetEpoch;
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
@@ -1635,10 +1708,16 @@ export class PartyServer extends YServer {
         // its circuit so a genuine new visitor always gets a clean bridge attempt
         // even if the pair had previously tripped from a stale-epoch storm.
         this.bridgeHealth.reset(consumerRoomId);
+        const sourceResetEpoch = await this.getResetEpoch();
+        const subtrees = requestedIds.length
+          ? this.extractPlaySubtrees(this.document, new Set(requestedIds))
+          : {};
         const response: SubscribeResponse = {
           ok: true,
           subscribed: true,
           elementIds: requestedIds,
+          sourceResetEpoch,
+          subtrees,
         };
         return new Response(JSON.stringify(response), {
           headers: { "content-type": "application/json" },
@@ -1763,37 +1842,44 @@ export class PartyServer extends YServer {
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
           const subscribers = await this.getSubscribers();
-          const currentEpoch = await this.getResetEpoch();
           await Promise.all(
-            subscribers.map(async ({ consumerRoomId, elementIds }) => {
-              if (sender && consumerRoomId === sender) return;
-              // Per-subscriber filtering by their subscribed elementIds
-              let toSend = subtreesToApply;
-              if (elementIds && elementIds.length) {
-                const allowedElementIds = new Set(elementIds);
-                const filteredSubtrees: Record<
-                  string,
-                  Record<string, any>
-                > = {};
-                Object.entries(subtreesToApply).forEach(([tag, elements]) => {
-                  const kept: Record<string, any> = {};
-                  Object.entries(elements).forEach(([elementId, data]) => {
-                    if (allowedElementIds.has(elementId))
-                      kept[elementId] = data;
+            subscribers.map(
+              async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
+                if (sender && consumerRoomId === sender) return;
+                // Per-subscriber filtering by their subscribed elementIds
+                let toSend = subtreesToApply;
+                if (elementIds && elementIds.length) {
+                  const allowedElementIds = new Set(elementIds);
+                  const filteredSubtrees: Record<
+                    string,
+                    Record<string, any>
+                  > = {};
+                  Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+                    const kept: Record<string, any> = {};
+                    Object.entries(elements).forEach(([elementId, data]) => {
+                      if (allowedElementIds.has(elementId)) {
+                        kept[elementId] = data;
+                      }
+                    });
+                    if (Object.keys(kept).length) {
+                      filteredSubtrees[tag] = kept;
+                    }
                   });
-                  if (Object.keys(kept).length) filteredSubtrees[tag] = kept;
+                  toSend = filteredSubtrees;
+                  if (!Object.keys(toSend).length) return;
+                }
+                await this.sendBridgeApply(consumerRoomId, {
+                  action: "apply-subtrees-immediate",
+                  subtrees: toSend,
+                  sender: this.name,
+                  originKind: "source",
+                  resetEpoch: getBridgeApplyTargetResetEpoch({
+                    originKind: "source",
+                    consumerResetEpoch,
+                  }),
                 });
-                toSend = filteredSubtrees;
-                if (!Object.keys(toSend).length) return;
               }
-              await this.sendBridgeApply(consumerRoomId, {
-                action: "apply-subtrees-immediate",
-                subtrees: toSend,
-                sender: this.name,
-                originKind: "source",
-                resetEpoch: currentEpoch ?? null,
-              });
-            })
+            )
           );
         }
         const response: ApplySubtreesResponse = { ok: true, applied: true };
@@ -2127,37 +2213,40 @@ export class PartyServer extends YServer {
       return;
     }
 
-    const currentEpoch = await this.getResetEpoch();
-
     // Push to subscribers (source -> consumer direction)
     const subscribers = await this.getSubscribers();
     if (subscribers.length) {
       const permissions = await this.getSharedPermissions();
       await Promise.all(
-        subscribers.map(async ({ consumerRoomId, elementIds }) => {
-          if (!elementIds || !elementIds.length) return;
-          const sharedElementIds = elementIds.filter((id) => {
-            return Boolean(permissions[id]);
-          });
-          const subtrees = this.extractPlaySubtrees(
-            yDoc,
-            new Set(sharedElementIds)
-          );
-          if (!Object.keys(subtrees).length) return;
-          await this.sendBridgeApply(consumerRoomId, {
-            action: "apply-subtrees-immediate",
-            subtrees,
-            sender: this.name,
-            originKind: "source",
-            resetEpoch: currentEpoch ?? null,
-          });
-        })
+        subscribers.map(
+          async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
+            if (!elementIds || !elementIds.length) return;
+            const sharedElementIds = elementIds.filter((id) => {
+              return Boolean(permissions[id]);
+            });
+            const subtrees = this.extractPlaySubtrees(
+              yDoc,
+              new Set(sharedElementIds)
+            );
+            if (!Object.keys(subtrees).length) return;
+            await this.sendBridgeApply(consumerRoomId, {
+              action: "apply-subtrees-immediate",
+              subtrees,
+              sender: this.name,
+              originKind: "source",
+              resetEpoch: getBridgeApplyTargetResetEpoch({
+                originKind: "source",
+                consumerResetEpoch,
+              }),
+            });
+          }
+        )
       );
     }
 
     // Push back to sources (consumer -> source direction)
     const refs = await this.getSharedReferences();
-    for (const { sourceRoomId, elementIds } of refs) {
+    for (const { sourceRoomId, elementIds, sourceResetEpoch } of refs) {
       if (!elementIds?.length) continue;
       const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
       if (!Object.keys(subtrees).length) continue;
@@ -2166,7 +2255,10 @@ export class PartyServer extends YServer {
         subtrees,
         sender: this.name,
         originKind: "consumer",
-        resetEpoch: currentEpoch ?? null,
+        resetEpoch: getBridgeApplyTargetResetEpoch({
+          originKind: "consumer",
+          sourceResetEpoch,
+        }),
       });
     }
   }
