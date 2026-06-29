@@ -1,3 +1,6 @@
+// ABOUTME: Defines typed internal HTTP request and response payloads for PartyServer.
+// ABOUTME: Keeps bridge, subscription, and permission request guards in one place.
+
 export interface SubscribeRequest {
   action: "subscribe";
   consumerRoomId: string;
