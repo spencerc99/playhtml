@@ -14,7 +14,11 @@ function sanitizeHoldDuration(duration: number | undefined): number | undefined 
   if (duration > MAX_REASONABLE_HOLD_MS) return MIN_HOLD_THRESHOLD_MS;
   return duration;
 }
-import { applyStyleVariations, roundPathCorners } from "../utils/styleUtils";
+import {
+  applyStyleVariations,
+  roundPathCorners,
+  resampleUniform,
+} from "../utils/styleUtils";
 import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
@@ -495,8 +499,13 @@ export function useCursorTrails(
       // Round sharp direction-reversals once, so the freehand stroke outline
       // doesn't pinch into a knot at those corners (most visible when zoomed in
       // for cinematic capture). Computed here on the fixed path — not per frame
-      // — so already-drawn ink stays put and the live head doesn't lag.
-      const variedPoints = roundPathCorners(styledPoints);
+      // — so already-drawn ink stays put.
+      const roundedPoints = roundPathCorners(styledPoints);
+      // Rounding bunches points near corners, making the points unevenly spaced
+      // by distance. The animator advances the head by INDEX, so uneven spacing
+      // makes the head speed up/slow down (looks like it lags then catches up).
+      // Resample to even arc-length spacing to restore constant head speed.
+      const variedPoints = resampleUniform(roundedPoints, roundedPoints.length);
 
       // Calculate click progress along the trail
       const clicksWithProgress = trail.clicks.map((click) => {

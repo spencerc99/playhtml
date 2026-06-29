@@ -145,6 +145,46 @@ export function roundPathCorners(
 }
 
 /**
+ * Resamples a polyline to points spaced evenly by ARC LENGTH, preserving the
+ * exact first and last points. The trail animator advances the drawing head by
+ * INDEX (progress * pointCount), so if the points are unevenly spaced in
+ * distance the head speeds up and slows down — looking like it lags then
+ * catches up. Corner-rounding bunches points near corners; running this after
+ * it restores constant head speed without changing the path's shape.
+ */
+export function resampleUniform(
+  points: Array<{ x: number; y: number }>,
+  count: number,
+): Array<{ x: number; y: number }> {
+  if (points.length < 2 || count < 2) return points;
+
+  const cum: number[] = [0];
+  for (let i = 1; i < points.length; i++) {
+    cum.push(
+      cum[i - 1] +
+        Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y),
+    );
+  }
+  const total = cum[cum.length - 1];
+  if (total === 0) return points;
+
+  const out: Array<{ x: number; y: number }> = [points[0]];
+  let seg = 1;
+  for (let k = 1; k < count - 1; k++) {
+    const target = (total * k) / (count - 1);
+    while (seg < points.length - 1 && cum[seg] < target) seg++;
+    const segLen = cum[seg] - cum[seg - 1];
+    const t = segLen <= 1e-6 ? 0 : (target - cum[seg - 1]) / segLen;
+    out.push({
+      x: points[seg - 1].x + (points[seg].x - points[seg - 1].x) * t,
+      y: points[seg - 1].y + (points[seg].y - points[seg - 1].y) * t,
+    });
+  }
+  out.push(points[points.length - 1]);
+  return out;
+}
+
+/**
  * Generate a wobbly cursor path between two points
  * Creates an organic, hand-drawn look for connections
  * 
