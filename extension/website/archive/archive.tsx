@@ -14,17 +14,44 @@ import {
   DAILY_COUNTS_URL,
   parseFiltersFromUrl,
   parseVizFromUrl,
+  parseDayFromUrl,
+  parseTimeOfDayFromUrl,
 } from "../shared/config";
 import type { FilterChip } from "../shared/utils/eventUtils";
 
 const EVENTS_URL = RECENT_EVENTS_URL;
+
+/** For a `day` (YYYY-MM-DD) and a recurring time-of-day window (minutes from
+ * LOCAL midnight ± radius), return the absolute UTC `from`/`to` ISO bounds that
+ * bracket that window. The Date(year, month, day, ...) constructor interprets
+ * its args in the viewer's LOCAL timezone, so adding the center/radius minutes
+ * and calling toISOString() yields the correct UTC instants — this is how we
+ * source "local midnight" footage without the day fetch's recency cap clipping
+ * the early-UTC-day midnight events. Pads the window by 1 minute on each side so
+ * the client-side ±radius filter has full coverage at the edges. */
+function midnightWindowBounds(
+  day: string,
+  centerMinutes: number,
+  radiusMinutes: number,
+): { from: string; to: string } {
+  const [y, m, d] = day.split("-").map(Number);
+  const localMidnight = new Date(y, m - 1, d, 0, 0, 0, 0);
+  const pad = 1;
+  const startMin = centerMinutes - radiusMinutes - pad;
+  const endMin = centerMinutes + radiusMinutes + pad;
+  const from = new Date(localMidnight.getTime() + startMin * 60_000);
+  const to = new Date(localMidnight.getTime() + endMin * 60_000);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
 
 const InternetMovement = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(
+    () => parseDayFromUrl() ?? null,
+  );
   const [filters, setFilters] = useState<FilterChip[]>(() => {
     // URL wins. Otherwise mirror whatever MovementCanvas will load from
     // localStorage on first render — if portrait disagrees on mount, the
@@ -148,8 +175,26 @@ const InternetMovement = () => {
             return r.json();
           });
 
+        const tod = parseTimeOfDayFromUrl();
         let fetched: CollectionEvent[] = [];
-        if (day) {
+        if (day && tod) {
+          // Time-of-day capture (e.g. the "midnight moment"): fetch the tight
+          // local time-of-day window directly. A whole-day fetch is recency-
+          // capped and returns the END of the UTC day, never reaching early-
+          // UTC-day instants like local midnight — so we must bracket the
+          // window's exact UTC bounds instead.
+          const { from, to } = midnightWindowBounds(
+            day,
+            tod.centerMinutes,
+            tod.radiusMinutes,
+          );
+          const results = await Promise.all(
+            [...typesToFetch].map((type) =>
+              fetchOne({ limit: "20000", from, to }, type),
+            ),
+          );
+          fetched = results.flat();
+        } else if (day) {
           // Single-day fetch: scope tightly with the original limit.
           const results = await Promise.all(
             [...typesToFetch].map((type) =>

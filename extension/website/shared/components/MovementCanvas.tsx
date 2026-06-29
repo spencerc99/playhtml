@@ -44,6 +44,8 @@ import {
   parseTimeRangeFromUrl,
   parseCleanFromUrl,
   parseCinematicFromUrl,
+  parseTimeOfDayFromUrl,
+  type TimeOfDayFilter,
 } from "../config";
 import type { DayCounts } from "../types";
 import { DEFAULT_SETTINGS } from "./settingsDefaults";
@@ -408,6 +410,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [selectedTimeRange, setSelectedTimeRange] = useState<
     { startMs: number; endMs: number } | null
   >(() => parseTimeRangeFromUrl() ?? null);
+  // Recurring time-of-day window (minutes from local midnight), e.g. the
+  // "midnight moment" — within 15 min of 00:00 across every day in the data.
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDayFilter | null>(
+    () => parseTimeOfDayFromUrl() ?? null,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
@@ -785,10 +792,31 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // important — when no range is active we just pass the events array
   // through untouched.
   const filteredEvents = useMemo(() => {
-    if (!selectedTimeRange) return events;
-    const { startMs, endMs } = selectedTimeRange;
-    return events.filter((e) => e.ts >= startMs && e.ts < endMs);
-  }, [events, selectedTimeRange]);
+    if (!selectedTimeRange && !timeOfDay) return events;
+
+    // Recurring time-of-day test: how far (in minutes, shortest way around the
+    // 24h clock) is an event's LOCAL time-of-day from the window center? Uses
+    // the viewer's local timezone via Date#getHours/getMinutes. Wraparound
+    // matters: a midnight window (center 0) must match both 23:50 and 00:10.
+    const todTest = timeOfDay
+      ? (ts: number) => {
+          const d = new Date(ts);
+          const minutesOfDay = d.getHours() * 60 + d.getMinutes();
+          let diff = Math.abs(minutesOfDay - timeOfDay.centerMinutes);
+          if (diff > 720) diff = 1440 - diff; // shortest distance around the clock
+          return diff <= timeOfDay.radiusMinutes;
+        }
+      : null;
+
+    return events.filter((e) => {
+      if (selectedTimeRange) {
+        if (e.ts < selectedTimeRange.startMs || e.ts >= selectedTimeRange.endMs)
+          return false;
+      }
+      if (todTest && !todTest(e.ts)) return false;
+      return true;
+    });
+  }, [events, selectedTimeRange, timeOfDay]);
 
   // In live mode, accumulate each trail's full point history so trails don't
   // shrink/shift/vanish as their earliest events age off the stream cap. The
