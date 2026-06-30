@@ -488,6 +488,8 @@ Click "+" to append a new `<li>`. The child addition itself mirrors, so new read
 
 **Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
 
+You can combine `can-play` with a built-in on the same element. The custom `defaultData`, event handlers, and `updateElement` you assign on the DOM node belong to `can-play`; the built-in keeps its own data and behavior. For example, `<img can-play can-move id="candle">` can use `can-play` to swap the image between lit/unlit states while `can-move` stores and renders the drag position separately.
+
 This page is itself a `can-play` showcase. Four examples live in the margins:
 
 - [**Doodle strip**](#play-doodle): freehand canvas input encoded as a tiny PNG data URL. The shared array caps at 20 via `splice` inside the setData mutator.
