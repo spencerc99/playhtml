@@ -291,9 +291,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
 
         // Filter by enabled event types
         const s = settingsRef.current;
-        const hasScroll = s.showScrollEvents !== false && animation.scrollEvents.length > 0;
-        const hasResize = s.showResizeEvents !== false && (animation.resizeEvents?.length ?? 0) > 0;
-        const hasZoom = s.showZoomEvents !== false && (animation.zoomEvents?.length ?? 0) > 0;
+        const hasScroll =
+          s.showScrollEvents !== false && animation.scrollEvents.length > 0;
+        const hasResize =
+          s.showResizeEvents !== false &&
+          (animation.resizeEvents?.length ?? 0) > 0;
+        const hasZoom =
+          s.showZoomEvents !== false && (animation.zoomEvents?.length ?? 0) > 0;
         if (!hasScroll && !hasResize && !hasZoom) return;
 
         // Calculate size for this viewport
@@ -326,24 +330,28 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           // whose center is farthest from any currently-active viewport.
           // Cheap (4 samples × N active), keeps placements from clumping.
           const activeCenters = visibleViewports.map((v) => ({
-              cx: v.rect.x + v.rect.width / 2,
-              cy: v.rect.y + v.rect.height / 2,
-            }));
+            cx: v.rect.x + v.rect.width / 2,
+            cy: v.rect.y + v.rect.height / 2,
+          }));
           const NUM_CANDIDATES = 4;
           let best: { x: number; y: number } | null = null;
           let bestScore = -Infinity;
           for (let c = 0; c < NUM_CANDIDATES; c++) {
-            const cx =
-              seededRandom(seed, c * 2) * canvasSize.width;
-            const cy =
-              seededRandom(seed, c * 2 + 1) * canvasSize.height;
+            const cx = seededRandom(seed, c * 2) * canvasSize.width;
+            const cy = seededRandom(seed, c * 2 + 1) * canvasSize.height;
             const x = Math.max(
               -overhangX,
-              Math.min(canvasSize.width - size.width + overhangX, cx - size.width / 2),
+              Math.min(
+                canvasSize.width - size.width + overhangX,
+                cx - size.width / 2,
+              ),
             );
             const y = Math.max(
               -overhangY,
-              Math.min(canvasSize.height - size.height + overhangY, cy - size.height / 2),
+              Math.min(
+                canvasSize.height - size.height + overhangY,
+                cy - size.height / 2,
+              ),
             );
             let nearest = Infinity;
             for (const a of activeCenters) {
@@ -625,8 +633,10 @@ export function buildViewportAnimationTimeline(
   };
 
   for (const event of animation.scrollEvents) includeTimestamp(event.timestamp);
-  for (const event of animation.resizeEvents ?? []) includeTimestamp(event.timestamp);
-  for (const event of animation.zoomEvents ?? []) includeTimestamp(event.timestamp);
+  for (const event of animation.resizeEvents ?? [])
+    includeTimestamp(event.timestamp);
+  for (const event of animation.zoomEvents ?? [])
+    includeTimestamp(event.timestamp);
 
   let minScrollY = 0;
   let maxScrollY = 1;
@@ -869,7 +879,10 @@ const DynamicViewportRect = memo(
     // Page height based on scroll range (bigger range = taller page)
     // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
     const pageMultiplier = 2 + scrollRange * 4;
-    const bgHeight = Math.max(0, Math.min(10000, visualHeight * pageMultiplier));
+    const bgHeight = Math.max(
+      0,
+      Math.min(10000, visualHeight * pageMultiplier),
+    );
     const scrollableHeight = bgHeight - visualHeight;
     const bgOffsetY = scrollY * scrollableHeight;
 
@@ -883,10 +896,13 @@ const DynamicViewportRect = memo(
         : undefined;
 
     // Seeded random for visual variety
-    const localSeededRandom = useCallback((offset: number = 0) => {
-      const x = Math.sin(backgroundSeed + offset * 12.9898) * 43758.5453;
-      return x - Math.floor(x);
-    }, [backgroundSeed]);
+    const localSeededRandom = useCallback(
+      (offset: number = 0) => {
+        const x = Math.sin(backgroundSeed + offset * 12.9898) * 43758.5453;
+        return x - Math.floor(x);
+      },
+      [backgroundSeed],
+    );
 
     // Determine edge tint color (participant color or random RISO color)
     const edgeTintColor = settings.randomizeColors
@@ -905,7 +921,7 @@ const DynamicViewportRect = memo(
       : // A pale, lightly-saturated paper base — kept faint so the splotchy
         // textured overlays (below) carry most of the color rather than this
         // flat fill. Per-window lightness jitter avoids identical panels.
-        colorizeLuminosity(edgeTintColor, baseLuminosity, 0.4);
+        edgeTintColor;
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
 
     // Resize gets a dotted border without changing viewport brightness.
@@ -1047,8 +1063,7 @@ const DynamicViewportRect = memo(
                 const dotX =
                   xPos + localSeededRandom(100 + i + j) * blotchWidth * 0.7;
                 const dotY =
-                  blockY +
-                  localSeededRandom(110 + i + j) * blotchHeight * 0.7;
+                  blockY + localSeededRandom(110 + i + j) * blotchHeight * 0.7;
                 const dotSize = 3 + localSeededRandom(120 + i + j) * 5;
                 return (
                   <circle
@@ -1125,8 +1140,7 @@ const DynamicViewportRect = memo(
                   }
                   y={blockY + localSeededRandom(66 + i + j) * 10}
                   width={
-                    visualWidth *
-                    (0.2 + localSeededRandom(67 + i + j) * 0.15)
+                    visualWidth * (0.2 + localSeededRandom(67 + i + j) * 0.15)
                   }
                   height={15 + localSeededRandom(68 + i + j) * 20}
                   fill={lightFill}
@@ -1146,8 +1160,7 @@ const DynamicViewportRect = memo(
                   x={visualX + visualWidth * 0.1}
                   y={blockY + j * 10}
                   width={
-                    visualWidth *
-                    (0.35 + localSeededRandom(80 + i + j) * 0.4)
+                    visualWidth * (0.35 + localSeededRandom(80 + i + j) * 0.4)
                   }
                   height={2}
                   fill={lightFill}
@@ -1244,7 +1257,14 @@ const DynamicViewportRect = memo(
           </g>
         );
       });
-    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY, viewport.id]);
+    }, [
+      bgHeight,
+      localSeededRandom,
+      visualWidth,
+      visualX,
+      visualY,
+      viewport.id,
+    ]);
 
     const depthLayers = useMemo(() => {
       if (localSeededRandom(300) <= 0.5) return null;
@@ -1445,11 +1465,7 @@ const DynamicViewportRect = memo(
             <feComponentTransfer in="mask" result="rampedMask">
               <feFuncA type="discrete" tableValues="0 0.25 0.5 0.7 0.9 1" />
             </feComponentTransfer>
-            <feComposite
-              in="SourceGraphic"
-              in2="rampedMask"
-              operator="in"
-            />
+            <feComposite in="SourceGraphic" in2="rampedMask" operator="in" />
           </filter>
           {/* Speckle texture filter */}
           <filter
@@ -1596,6 +1612,35 @@ const DynamicViewportRect = memo(
                 opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
               />
 
+              {/* Color mode: splotchy hue wash, rendered HERE (behind the page
+                  bands/blocks/washes that follow) so it tints the background
+                  without obscuring the page-structure content. Two mottle layers
+                  give organic, cloudy patches instead of a flat tint. */}
+              {!mono && (
+                <>
+                  <rect
+                    x={visualX}
+                    y={visualY}
+                    width={visualWidth}
+                    height={bgHeight}
+                    fill={colorShade(edgeTintColor, 40)}
+                    style={{ mixBlendMode: "multiply" }}
+                    opacity={settings.backgroundOpacity * 0.55}
+                    filter={`url(#color-mottle-${viewport.id})`}
+                  />
+                  <rect
+                    x={visualX}
+                    y={visualY}
+                    width={visualWidth}
+                    height={bgHeight}
+                    fill={colorShade(edgeTintColor, 56)}
+                    style={{ mixBlendMode: "multiply" }}
+                    opacity={settings.backgroundOpacity * 0.35}
+                    filter={`url(#speckle-${viewport.id})`}
+                  />
+                </>
+              )}
+
               {/* Content pattern - horizontal bands with varied spacing */}
               <g
                 opacity={
@@ -1622,45 +1667,10 @@ const DynamicViewportRect = memo(
 
               {/* Overlapping depth layers - scattered semi-transparent shapes */}
               {depthLayers && (
-                <g opacity={settings.backgroundOpacity * 0.4}>
-                  {depthLayers}
-                </g>
+                <g opacity={settings.backgroundOpacity * 0.4}>{depthLayers}</g>
               )}
             </g>
           </g>
-
-          {/* Color mode: multiply washes of the window hue over the grayscale
-              content so it reads as a study in that color. Two turbulence-
-              displaced layers at different frequencies give a splotchy, mottled
-              wash (clouds + grain) rather than a flat tint — the displacement
-              filters break up the rectangle into organic patches. */}
-          {!mono && (
-            <>
-              {/* Big organic patches of a deeper shade — the main splotch. */}
-              <rect
-                x={visualX}
-                y={visualY}
-                width={visualWidth}
-                height={visualHeight}
-                fill={colorShade(edgeTintColor, 38)}
-                style={{ mixBlendMode: "multiply" }}
-                opacity={0.6}
-                filter={`url(#color-mottle-${viewport.id})`}
-              />
-              {/* A second mottle pass at a different seed/shade for layered
-                  depth, plus fine speckle tooth. */}
-              <rect
-                x={visualX}
-                y={visualY}
-                width={visualWidth}
-                height={visualHeight}
-                fill={colorShade(edgeTintColor, 55)}
-                style={{ mixBlendMode: "multiply" }}
-                opacity={0.4}
-                filter={`url(#speckle-${viewport.id})`}
-              />
-            </>
-          )}
 
           {/* Abstract pixelated page preview via iframe */}
           {settings.showPagePreview && animation.pageUrl && (
@@ -1805,7 +1815,9 @@ const ViewportTitleBar = memo(
       pageUrl;
     const resolvedFavicon =
       faviconUrl ||
-      (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : undefined);
+      (domain
+        ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+        : undefined);
 
     const clipId = `titlebar-clip-${viewportId}`;
     const washId = `titlebar-wash-${viewportId}`;
@@ -1818,13 +1830,23 @@ const ViewportTitleBar = memo(
           </clipPath>
           <linearGradient id={washId} x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor="rgb(245,240,232)" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="rgb(210,204,193)" stopOpacity="0.85" />
+            <stop
+              offset="100%"
+              stopColor="rgb(210,204,193)"
+              stopOpacity="0.85"
+            />
           </linearGradient>
         </defs>
 
         <g clipPath={`url(#${clipId})`}>
           {/* Base wash */}
-          <rect x={x} y={y} width={width} height={barHeight} fill={`url(#${washId})`} />
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={barHeight}
+            fill={`url(#${washId})`}
+          />
           {/* Subtle paper noise to match the textured aesthetic */}
           <rect
             x={x}
