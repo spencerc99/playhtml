@@ -442,7 +442,7 @@ const TypingBox = memo(
             // Classic inset shadow for input fields
             boxShadow:
               "inset 1px 1px 3px rgba(0, 0, 0, 0.15), 0 1px 0 rgba(255, 255, 255, 0.8)",
-            opacity: settings.textboxOpacity + 0.5, // Make more visible
+            opacity: settings.textboxOpacity, // 0 = transparent, 1 = fully opaque
           }}
         >
           {/* Text content */}

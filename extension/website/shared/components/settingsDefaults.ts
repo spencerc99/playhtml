@@ -58,7 +58,9 @@ export const DEFAULT_SETTINGS = {
   showZoomEvents: true,
   windowScale: 0.5,
   keyboardOverlapFactor: 0.9,
-  textboxOpacity: 0.2,
+  // Direct 0–1 box opacity (0 = transparent, 1 = opaque). ~0.7 keeps boxes
+  // clearly visible by default while leaving headroom to fade them.
+  textboxOpacity: 0.7,
   keyboardMinFontSize: 12,
   keyboardMaxFontSize: 18,
   keyboardShowCaret: true,

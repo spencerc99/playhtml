@@ -1577,7 +1577,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="keyboard-max-concurrent"
               type="range"
               min="1"
-              max="40"
+              max="50"
               step="1"
               value={settings.maxConcurrentTyping}
               onChange={(e) =>
@@ -1653,7 +1653,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="textbox-opacity"
               type="range"
               min="0.05"
-              max="0.5"
+              max="1"
               step="0.05"
               value={settings.textboxOpacity}
               onChange={(e) =>
