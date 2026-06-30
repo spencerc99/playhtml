@@ -321,6 +321,10 @@ let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
 >();
+const mirrorDescendantElementsByRoot = new WeakMap<
+  HTMLElement,
+  Map<string, HTMLElement>
+>();
 let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
   string,
   Array<RegisteredPlayEvent>
@@ -1878,6 +1882,9 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
+    if (tag === TagType.CanMirror) {
+      setupPlayElementDescendants(element);
+    }
   }
 
   // redo this now that we have set it in the mapping.
@@ -1905,6 +1912,9 @@ function applySharedElementDataToHandler(
   try {
     // @ts-ignore private usage intended
     handler.__data = clonePlain(proxy);
+    if (tag === TagType.CanMirror) {
+      setupPlayElementDescendants(handler.element);
+    }
   } finally {
     remoteApplyingKeys.delete(applyKey);
   }
@@ -2026,6 +2036,34 @@ function setupPlayElement(
       .filter((tag) => element.hasAttribute(tag))
       .map((tag) => setupPlayElementForTag(element, tag)),
   );
+}
+
+function setupPlayElementDescendants(element: HTMLElement): void {
+  const descendants = new Set<HTMLElement>();
+  const currentDescendants = new Map<string, HTMLElement>();
+  for (const tag of getTagTypes()) {
+    element.querySelectorAll(`[${tag}]`).forEach((descendant) => {
+      if (isHTMLElement(descendant)) {
+        descendants.add(descendant);
+        const descendantId = getIdForElement(descendant);
+        if (descendantId) {
+          currentDescendants.set(`${tag}:${descendantId}`, descendant);
+        }
+      }
+    });
+  }
+
+  const previousDescendants = mirrorDescendantElementsByRoot.get(element);
+  previousDescendants?.forEach((previousElement, key) => {
+    if (currentDescendants.get(key) !== previousElement) {
+      removePlayElement(previousElement);
+    }
+  });
+
+  descendants.forEach((descendant) => {
+    setupPlayElement(descendant);
+  });
+  mirrorDescendantElementsByRoot.set(element, currentDescendants);
 }
 
 /**
