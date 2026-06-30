@@ -958,10 +958,13 @@ const DynamicViewportRect = memo(
     // full hue saturation so that after the paper-tooth grain and any blending
     // it still reads as a distinct color (not a washed-out near-gray). Per-
     // window lightness jitter keeps panels from looking identical.
-    const bgLuminosity = 0.64 + localSeededRandom(1) * 0.08; // 0.64–0.72
+    // Targets the rich, deep look the cloud-mottle gave (its multiply layers
+    // darkened/saturated the fill); baked into the flat background so it reads
+    // the same without the clouds. Lower lightness + higher saturation.
+    const bgLuminosity = 0.58 + localSeededRandom(1) * 0.07; // 0.58–0.65
     const backgroundColor = mono
       ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
-      : colorizeLuminosity(edgeTintColor, bgLuminosity, 0.78);
+      : colorizeLuminosity(edgeTintColor, bgLuminosity, 0.72);
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
     // In color mode the fill is rendered near-opaque so the warm paper doesn't
     // bleach the hue; monochrome keeps the original translucent paper look.
@@ -1667,6 +1670,36 @@ const DynamicViewportRect = memo(
                   filter="url(#scrollGrain)"
                   opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
                 />
+              )}
+
+              {/* Color mode: splotchy hue mottle over the colored background
+                  (behind the page content). Two multiply layers give organic,
+                  cloudy patches. DISABLED — the bold background color above bakes
+                  in the deep look the mottle gave. Flip `false` to revive the
+                  cloud/speckle texture. */}
+              {false && !mono && (
+                <>
+                  <rect
+                    x={visualX}
+                    y={visualY}
+                    width={visualWidth}
+                    height={bgHeight}
+                    fill={colorShade(edgeTintColor, 40)}
+                    style={{ mixBlendMode: "multiply" }}
+                    opacity={settings.backgroundOpacity * 0.55}
+                    filter={`url(#color-mottle-${viewport.id})`}
+                  />
+                  <rect
+                    x={visualX}
+                    y={visualY}
+                    width={visualWidth}
+                    height={bgHeight}
+                    fill={colorShade(edgeTintColor, 56)}
+                    style={{ mixBlendMode: "multiply" }}
+                    opacity={settings.backgroundOpacity * 0.35}
+                    filter={`url(#speckle-${viewport.id})`}
+                  />
+                </>
               )}
 
               {/* Content pattern - horizontal bands with varied spacing */}
