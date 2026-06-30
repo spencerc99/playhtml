@@ -379,13 +379,13 @@ function BunnyField() {
 
 ## can-mirror
 
-A meta-capability that auto-syncs the element's own DOM — every attribute, child-node change, and form-state change — with no `defaultData` or `updateElement` callback. Use it when the state you want to share _is_ the DOM: a shared textarea, a form, a growing list of children.
+`can-mirror` syncs every change to the element — attributes, child nodes, and form state — to everyone, and saves them. You don't write any data or callbacks; just change the element with normal HTML, CSS, and JavaScript. Use it when the state you want to share is the DOM itself: a shared textarea, a form, a growing list of children.
 
 Full treatment with live demos lives on **[Custom elements → can-mirror](/docs/custom-elements/#can-mirror)**, and the [mirror playground](/docs/advanced/mirror-playground/) walks every edge case (hover, focus, every form input, contenteditable, programmatic attribute changes).
 
 ## can-play
 
-The "build your own capability" escape hatch: you define `defaultData` and how the element renders from it (an imperative `updateElement`, or the newer reactive `view`). It powers custom counters, guestbooks, chat, games, reactions, per-user state, and event broadcasts — anything the built-ins don't cover.
+Build your own capability: you define a shared `data` shape and how the element renders from it (an imperative `updateElement`, or the newer reactive `view`). You control how the data drives the element and which parts persist. Use it for custom counters, guestbooks, chat, games, reactions, per-user state, and event broadcasts — anything the built-ins don't cover.
 
 Full guide, with the imperative and reactive `view` forms (vanilla) and `withSharedState` (React) side by side — plus live demos: **[Custom elements](/docs/custom-elements/)**.
 

@@ -70,6 +70,8 @@ interface ElementInitializer<T, U, V> {
 }
 ```
 
+`defaultData` must be an object (or a function that returns one), not a bare value like `0` or `""`. An object shape lets you add fields later without migrating old data. Use `{ count: 0 }`, not `0`.
+
 A valid initializer provides exactly one update path — `view` **or** `updateElement`. `view` is purely additive; existing `updateElement` capabilities are unchanged.
 
 ## The view context

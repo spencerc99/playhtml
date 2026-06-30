@@ -12,8 +12,8 @@ import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** state — a counter, a poll, a guestbook, a chat — you build a custom element. There are two approaches:
 
-- **`can-mirror`** — no data model at all. The library mirrors the element's own DOM (attributes, children, form state) to everyone, so **the state you share _is_ the DOM**. Drop it on a `<textarea>` or a `<ul>` and you're done.
-- **`can-play`** — you own a piece of shared **`data`** and a callback that updates the DOM when it changes. The general-purpose escape hatch when you need **fine-grained control** over the shape of your state.
+- **`can-mirror`**: The DOM holds the state. All changes to the element are automatically synced (attributes, children, form state). No fine-grained control over what is synced, but very simple to get started because you can just write normal HTML, CSS, and JavaScript to make realtime, persistent changes.
+- **`can-play`**: You define shared data shapes that you use to update how the element shows up and behaves. You have full control over how the data affects what happens, which data should be persisted and which are only needed for real-time interactions.
 
 This page covers both. **Vanilla HTML** has the full range — `can-mirror`, `can-play`, and an experimental reactive `view` API. **React** has a single, declarative path: `withSharedState`. Pick your framework below.
 
@@ -31,15 +31,15 @@ This page runs a few live `can-play` demos in its margins — a doodle strip her
 
 ## Vanilla HTML
 
-In vanilla you have three tools, from least to most code: `can-mirror` (sync the DOM as-is), `can-play` (own a `data` model and update the DOM imperatively), and the experimental reactive `view` API (render the DOM declaratively from state).
+Vanilla has three tools, from least code to most: `can-mirror` syncs the DOM as-is, `can-play` gives you a `data` model that you update the DOM from, and the experimental reactive `view` API renders the DOM from that data for you.
 
 ### can-mirror
 
-**What it does.** A meta-capability: `can-mirror` auto-syncs **every attribute, child-node change, and form-state change** on the element. You don't write `defaultData`, `setData`, or an `updateElement` callback; the library observes the DOM for you.
+`can-mirror` syncs every change to the element — attributes, child nodes, and form state — to everyone, and saves them. You don't write any data or callbacks. Just add `can-mirror` and an `id`, then change the element with normal HTML, CSS, and JavaScript.
 
-**Use it for:** when the state you want to share _is_ the DOM — a shared textarea, a form, a growing list of children.
+Use it when the state you want to share is the DOM itself: a shared textarea, a form, or a growing list of children.
 
-#### Vignette A: an emoji-only textarea
+#### Example: an emoji-only textarea
 
 A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
 
@@ -71,7 +71,7 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 </script>
 ```
 
-#### Vignette B: a list you can add children to
+#### Example: a list you can add children to
 
 Click "+" to append a new `<li>`. The child addition itself mirrors, so new readers see the whole list, not just the latest.
 
