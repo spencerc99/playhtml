@@ -302,7 +302,7 @@ import { CanHoverElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-If you want the hover effect to reflect *who* is hovering (e.g. tint the element with each viewer's cursor color) rather than a plain on/off, read the hover roster off awareness with a custom `can-play` element:
+If you want the hover effect to reflect *who* is hovering (e.g. tint the element with each viewer's cursor color) rather than a plain on/off, read the hover roster off element awareness. Awareness is presence scoped to one element, so it clears when readers leave and does not persist:
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
@@ -572,7 +572,7 @@ These capabilities are the building blocks. The best way to see them in concert 
   <a class="ph-composed-card" href="https://playhtml.fun/experiments/4/" target="_blank" rel="noopener">
     <span class="ph-composed-card__kicker">EXPERIMENT · 04</span>
     <span class="ph-composed-card__title">Every color</span>
-    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + per-user awareness + an ever-growing shared palette.</span>
+    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + element awareness + an ever-growing shared palette.</span>
   </a>
   <a class="ph-composed-card" href="https://playhtml.fun/fridge" target="_blank" rel="noopener">
     <span class="ph-composed-card__kicker">COMMUNITY · FRIDGE</span>

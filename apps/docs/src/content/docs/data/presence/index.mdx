@@ -12,6 +12,8 @@ Presence is playhtml's "who's here right now" layer. Every connected user has an
 
 Reach for presence when the lifetime you want is "while this person is on the page". Reach for [persistent data](/docs/data/data-essentials/) when you want state to survive a reload, and [events](/docs/data/events/) for one-shot signals.
 
+Element APIs use the word **awareness** for presence scoped to one element. `myDefaultAwareness`, `awareness`, and `setMyAwareness` are still ephemeral per-user state; they just belong to a specific element instead of the page-level `playhtml.presence` object.
+
 ## The unified API
 
 You get one view of everyone connected, with both system fields (identity, cursor) and any custom channels you add. In vanilla JS that's the `playhtml.presence` object; in React it's the [`usePresence`](/docs/reference/react-api/#usepresence) hook.
@@ -113,6 +115,47 @@ setMyPresence(null);
 
 There's no partial/merge update for a channel. When you call `setMyPresence`, you overwrite that channel's value for your user.
 
+## Element awareness
+
+Use page-level presence when the signal belongs to the room: online status, cursor position, lobby readiness, or a typing indicator that several parts of the page may read. Use element awareness when the signal only matters for one playhtml element, like "who has joined this widget" or "which color is this reader contributing here".
+
+In vanilla `can-play`, element awareness appears on the element handler data:
+
+```html
+<button can-play id="presence-count">0 readers here</button>
+
+<script>
+  const element = document.getElementById("presence-count");
+  element.defaultData = {};
+  element.myDefaultAwareness = { color: "#3b82f6" };
+  element.updateElement = () => {};
+  element.onClick = (_event, { setMyAwareness }) => {
+    setMyAwareness({ color: "#f97316" });
+  };
+  element.updateElementAwareness = ({ element, awareness }) => {
+    const label = awareness.length === 1 ? "reader" : "readers";
+    element.textContent = `${awareness.length} ${label} here`;
+  };
+</script>
+```
+
+In React, the same fields are available from `withSharedState` and `<CanPlayElement>` render props:
+
+```tsx
+<CanPlayElement id="presence-count" defaultData={{}} myDefaultAwareness="#3b82f6">
+  {({ awareness, setMyAwareness }) => {
+    const label = awareness.length === 1 ? "reader" : "readers";
+    return (
+      <button onClick={() => setMyAwareness("#f97316")}>
+        {awareness.length} {label} here
+      </button>
+    );
+  }}
+</CanPlayElement>
+```
+
+Awareness has the same lifetime as presence: it clears when the user leaves, and a late visitor does not replay it.
+
 ## Isolated presence rooms
 
 The main presence layer tracks everyone in the page's room. When you want a presence channel **scoped to something other than the page** (a lobby, a document, a game table that several pages share), create a separate presence room.
@@ -159,6 +202,6 @@ Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watc
 
 ## When to use data instead
 
-Presence is for _ambient awareness_ of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
+Presence is for the live sense of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
 
-Not sure which primitive fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+Not sure which primitive fits? The full decision table, covering element data, page data, presence, element awareness, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
