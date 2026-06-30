@@ -78,6 +78,9 @@ import {
   isResetEpochStale,
   parseClientResetEpoch,
 } from "./resetEpochPolicy";
+import { BridgeHealth } from "./bridgeHealth";
+import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
+import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -169,6 +172,11 @@ export class PartyServer extends YServer {
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly BRIDGE_DEBOUNCE_MS = 500;
+
+  // Per-peer circuit breaker: stops re-sending bridge applies to a peer that
+  // keeps rejecting them (e.g. a misconfigured peer stuck on a stale reset
+  // epoch). In-memory, so a DO reload re-enables every bridge.
+  private bridgeHealth = new BridgeHealth();
 
   // Preserve the same debounce timing as the old y-partykit callback config
   static callbackOptions = {
@@ -946,6 +954,9 @@ export class PartyServer extends YServer {
   private async subscribeAndHydrate(
     entries: Array<{ sourceRoomId: string; elementIds: string[] }>
   ): Promise<void> {
+    const consumerResetEpoch = await this.getResetEpoch();
+    const sourceResetEpochByRoom = new Map<string, number | null>();
+
     // Subscribe and cache allowedIds per source in sharedReferences
     await Promise.all(
       entries.map(async ({ sourceRoomId, elementIds }) => {
@@ -956,11 +967,65 @@ export class PartyServer extends YServer {
             action: "subscribe",
             consumerRoomId: this.name,
             elementIds,
+            consumerResetEpoch,
           };
-          await sourceRoom.fetch(internalRequest("/subscribe", subscribeRequest));
+          const response = await sourceRoom.fetch(
+            internalRequest("/subscribe", subscribeRequest)
+          );
+          if (!response.ok) return;
+
+          const subscribeResponse =
+            (await response.json()) as SubscribeResponse;
+          sourceResetEpochByRoom.set(
+            sourceRoomId,
+            typeof subscribeResponse.sourceResetEpoch === "number"
+              ? subscribeResponse.sourceResetEpoch
+              : null
+          );
+
+          if (
+            subscribeResponse.subtrees &&
+            Object.keys(subscribeResponse.subtrees).length
+          ) {
+            this.document.transact(
+              () =>
+                this.assignPlaySubtrees(
+                  this.document,
+                  ensureExists(subscribeResponse.subtrees)
+                ),
+              ORIGIN_S2C
+            );
+          }
         } catch {}
       })
     );
+
+    if (!sourceResetEpochByRoom.size) return;
+
+    const sharedReferences = await this.getSharedReferences();
+    let changed = false;
+    const updated = sharedReferences.map((reference) => {
+      if (!sourceResetEpochByRoom.has(reference.sourceRoomId)) {
+        return reference;
+      }
+
+      const sourceResetEpoch = sourceResetEpochByRoom.get(
+        reference.sourceRoomId
+      );
+      if (reference.sourceResetEpoch === sourceResetEpoch) {
+        return reference;
+      }
+
+      changed = true;
+      return {
+        ...reference,
+        sourceResetEpoch,
+      };
+    });
+
+    if (changed) {
+      await this.setSharedReferences(updated);
+    }
   }
 
   // --- Helper: extract subtrees for a set of elementIds from the play map
@@ -1129,22 +1194,22 @@ export class PartyServer extends YServer {
 
       const subscribers = await this.getSubscribers();
       if (!subscribers.length) return;
-      const currentEpoch = await this.getResetEpoch();
       await Promise.all(
-        subscribers.map(async ({ consumerRoomId, elementIds }) => {
-          if (!elementIds || !elementIds.includes(element.elementId)) return;
-          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
-          try {
-            const applyRequest: ApplySubtreesImmediateRequest = {
+        subscribers.map(
+          async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
+            if (!elementIds || !elementIds.includes(element.elementId)) return;
+            await this.sendBridgeApply(consumerRoomId, {
               action: "apply-subtrees-immediate",
               subtrees: ensureExists(subtreesForNew),
               sender: this.name,
               originKind: "source",
-              resetEpoch: currentEpoch ?? null,
-            };
-            await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-          } catch {}
-        })
+              resetEpoch: getBridgeApplyTargetResetEpoch({
+                originKind: "source",
+                consumerResetEpoch,
+              }),
+            });
+          }
+        )
       );
     } catch {}
   }
@@ -1601,12 +1666,21 @@ export class PartyServer extends YServer {
 
       if (isSubscribeRequest(body)) {
         // Called on SOURCE room; registers a consumer room id
-        const { consumerRoomId, elementIds: elementIdsRaw } = body;
+        const {
+          consumerRoomId,
+          elementIds: elementIdsRaw,
+          consumerResetEpoch: consumerResetEpochRaw,
+        } = body;
         const elementIds = Array.isArray(elementIdsRaw)
           ? Array.from(
               new Set(elementIdsRaw.filter((x) => typeof x === "string"))
             )
           : undefined;
+        const consumerResetEpoch =
+          typeof consumerResetEpochRaw === "number" &&
+          Number.isFinite(consumerResetEpochRaw)
+            ? consumerResetEpochRaw
+            : null;
         // IMPORTANT: Do NOT filter out unknown/not-yet-shared ids at subscribe time.
         // Keep the requested ids so that when the source registers those elements later,
         // existing subscribers will start receiving data automatically.
@@ -1619,6 +1693,7 @@ export class PartyServer extends YServer {
           existing.push({
             consumerRoomId,
             elementIds: requestedIds,
+            consumerResetEpoch,
             createdAt: nowIso,
             lastSeen: nowIso,
             leaseMs,
@@ -1626,13 +1701,29 @@ export class PartyServer extends YServer {
         } else {
           // Update elementIds (filtered) and lastSeen
           found.elementIds = requestedIds;
+          found.consumerResetEpoch = consumerResetEpoch;
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
+        // A resubscribe means a fresh client load on the consumer side. Reopen
+        // its circuit so a genuine new visitor always gets a clean bridge attempt
+        // even if the pair had previously tripped from a stale-epoch storm.
+        this.bridgeHealth.reset(consumerRoomId);
+        const sourceResetEpoch = await this.getResetEpoch();
+        const permissions = await this.getSharedPermissions();
+        const permittedIds = getPermittedSharedElementIds(
+          requestedIds,
+          permissions
+        );
+        const subtrees = permittedIds.length
+          ? this.extractPlaySubtrees(this.document, new Set(permittedIds))
+          : {};
         const response: SubscribeResponse = {
           ok: true,
           subscribed: true,
           elementIds: requestedIds,
+          sourceResetEpoch,
+          subtrees,
         };
         return new Response(JSON.stringify(response), {
           headers: { "content-type": "application/json" },
@@ -1658,7 +1749,7 @@ export class PartyServer extends YServer {
           console.warn(
             `[Bridge] Ignoring apply-subtrees for transient room ${this.name}: Supabase persistence unavailable.`
           );
-          const response: ApplySubtreesResponse = { ok: true };
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1678,7 +1769,7 @@ export class PartyServer extends YServer {
           console.warn(
             `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch (sender=${senderResetEpoch}, server=${serverResetEpoch})`
           );
-          const response: ApplySubtreesResponse = { ok: true };
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1741,7 +1832,9 @@ export class PartyServer extends YServer {
           }
         }
         if (!Object.keys(subtreesToApply).length) {
-          const response: ApplySubtreesResponse = { ok: true };
+          // Nothing to apply (filtered to empty). Not a failure — report applied
+          // so it does not count against the sender's circuit breaker.
+          const response: ApplySubtreesResponse = { ok: true, applied: true };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
@@ -1755,47 +1848,47 @@ export class PartyServer extends YServer {
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
           const subscribers = await this.getSubscribers();
-          const currentEpoch = await this.getResetEpoch();
           await Promise.all(
-            subscribers.map(async ({ consumerRoomId, elementIds }) => {
-              if (sender && consumerRoomId === sender) return;
-              // Per-subscriber filtering by their subscribed elementIds
-              let toSend = subtreesToApply;
-              if (elementIds && elementIds.length) {
-                const allowedElementIds = new Set(elementIds);
-                const filteredSubtrees: Record<
-                  string,
-                  Record<string, any>
-                > = {};
-                Object.entries(subtreesToApply).forEach(([tag, elements]) => {
-                  const kept: Record<string, any> = {};
-                  Object.entries(elements).forEach(([elementId, data]) => {
-                    if (allowedElementIds.has(elementId))
-                      kept[elementId] = data;
+            subscribers.map(
+              async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
+                if (sender && consumerRoomId === sender) return;
+                // Per-subscriber filtering by their subscribed elementIds
+                let toSend = subtreesToApply;
+                if (elementIds && elementIds.length) {
+                  const allowedElementIds = new Set(elementIds);
+                  const filteredSubtrees: Record<
+                    string,
+                    Record<string, any>
+                  > = {};
+                  Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+                    const kept: Record<string, any> = {};
+                    Object.entries(elements).forEach(([elementId, data]) => {
+                      if (allowedElementIds.has(elementId)) {
+                        kept[elementId] = data;
+                      }
+                    });
+                    if (Object.keys(kept).length) {
+                      filteredSubtrees[tag] = kept;
+                    }
                   });
-                  if (Object.keys(kept).length) filteredSubtrees[tag] = kept;
-                });
-                toSend = filteredSubtrees;
-                if (!Object.keys(toSend).length) return;
-              }
-              const consumerRoom = await getServerByName(
-                env.Main,
-                consumerRoomId
-              );
-              try {
-                const applyRequest: ApplySubtreesImmediateRequest = {
+                  toSend = filteredSubtrees;
+                  if (!Object.keys(toSend).length) return;
+                }
+                await this.sendBridgeApply(consumerRoomId, {
                   action: "apply-subtrees-immediate",
                   subtrees: toSend,
                   sender: this.name,
                   originKind: "source",
-                  resetEpoch: currentEpoch ?? null,
-                };
-                await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-              } catch {}
-            })
+                  resetEpoch: getBridgeApplyTargetResetEpoch({
+                    originKind: "source",
+                    consumerResetEpoch,
+                  }),
+                });
+              }
+            )
           );
         }
-        const response: ApplySubtreesResponse = { ok: true };
+        const response: ApplySubtreesResponse = { ok: true, applied: true };
         return new Response(JSON.stringify(response), {
           headers: { "content-type": "application/json" },
         });
@@ -2126,51 +2219,97 @@ export class PartyServer extends YServer {
       return;
     }
 
-    const currentEpoch = await this.getResetEpoch();
-
     // Push to subscribers (source -> consumer direction)
     const subscribers = await this.getSubscribers();
     if (subscribers.length) {
       const permissions = await this.getSharedPermissions();
       await Promise.all(
-        subscribers.map(async ({ consumerRoomId, elementIds }) => {
-          if (!elementIds || !elementIds.length) return;
-          const sharedElementIds = elementIds.filter((id) => {
-            return Boolean(permissions[id]);
-          });
-          const subtrees = this.extractPlaySubtrees(
-            yDoc,
-            new Set(sharedElementIds)
-          );
-          if (!Object.keys(subtrees).length) return;
-          const consumerRoom = await getServerByName(env.Main, consumerRoomId);
-          const applyRequest: ApplySubtreesImmediateRequest = {
-            action: "apply-subtrees-immediate",
-            subtrees,
-            sender: this.name,
-            originKind: "source",
-            resetEpoch: currentEpoch ?? null,
-          };
-          await consumerRoom.fetch(internalRequest("/apply", applyRequest));
-        })
+        subscribers.map(
+          async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
+            if (!elementIds || !elementIds.length) return;
+            const sharedElementIds = getPermittedSharedElementIds(
+              elementIds,
+              permissions
+            );
+            const subtrees = this.extractPlaySubtrees(
+              yDoc,
+              new Set(sharedElementIds)
+            );
+            if (!Object.keys(subtrees).length) return;
+            await this.sendBridgeApply(consumerRoomId, {
+              action: "apply-subtrees-immediate",
+              subtrees,
+              sender: this.name,
+              originKind: "source",
+              resetEpoch: getBridgeApplyTargetResetEpoch({
+                originKind: "source",
+                consumerResetEpoch,
+              }),
+            });
+          }
+        )
       );
     }
 
     // Push back to sources (consumer -> source direction)
     const refs = await this.getSharedReferences();
-    for (const { sourceRoomId, elementIds } of refs) {
+    for (const { sourceRoomId, elementIds, sourceResetEpoch } of refs) {
       if (!elementIds?.length) continue;
       const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
       if (!Object.keys(subtrees).length) continue;
-      const sourceRoom = await getServerByName(env.Main, sourceRoomId);
-      const applyRequest: ApplySubtreesImmediateRequest = {
+      await this.sendBridgeApply(sourceRoomId, {
         action: "apply-subtrees-immediate",
         subtrees,
         sender: this.name,
         originKind: "consumer",
-        resetEpoch: currentEpoch ?? null,
-      };
-      await sourceRoom.fetch(internalRequest("/apply", applyRequest));
+        resetEpoch: getBridgeApplyTargetResetEpoch({
+          originKind: "consumer",
+          sourceResetEpoch,
+        }),
+      });
+    }
+  }
+
+  // The single outbound chokepoint for bridge applies. Every fan-out path must
+  // route through here so the per-(peer, direction) circuit breaker sees it:
+  // it skips the send when the link's circuit is open (the peer keeps rejecting
+  // us), records the apply result so a recovered peer reopens and a misconfigured
+  // one stops being stormed, and logs once on the open edge. The direction is the
+  // request's originKind, so the two directions to a bidirectional peer are
+  // tracked independently.
+  private async sendBridgeApply(
+    peerRoomId: string,
+    applyRequest: ApplySubtreesImmediateRequest
+  ): Promise<void> {
+    const direction = applyRequest.originKind;
+    if (!this.bridgeHealth.shouldSend(peerRoomId, direction)) {
+      return;
+    }
+    let applied: boolean;
+    try {
+      const peerRoom = await getServerByName(env.Main, peerRoomId);
+      const res = await peerRoom.fetch(internalRequest("/apply", applyRequest));
+      if (!res.ok) {
+        // A non-2xx response is a failed apply regardless of body.
+        applied = false;
+      } else {
+        try {
+          const parsed = (await res.json()) as ApplySubtreesResponse;
+          // Absent `applied` means an older peer that always applies — treat as true.
+          applied = parsed?.applied !== false;
+        } catch {
+          // Unparseable 2xx body — treat as a failed apply so a broken peer backs off.
+          applied = false;
+        }
+      }
+    } catch {
+      // Network/dispatch failure also counts against the link's health.
+      applied = false;
+    }
+    if (this.bridgeHealth.recordResult(peerRoomId, direction, applied)) {
+      console.warn(
+        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until it recovers or resubscribes`
+      );
     }
   }
 

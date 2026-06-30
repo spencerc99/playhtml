@@ -1,0 +1,66 @@
+// ABOUTME: Per-peer circuit breaker for shared-element bridge fan-out.
+// ABOUTME: Stops re-sending to a peer that keeps rejecting applies (e.g. a
+// ABOUTME: misconfigured source stuck on a stale reset epoch) until it recovers.
+
+// A misconfigured bridge pair (most commonly a source stuck on a stale reset
+// epoch) gets every apply rejected. Without a breaker the sender re-fans-out on
+// every document update, producing a retry storm against every peer. After this
+// many consecutive rejected applies to the same (peer, direction), the sender
+// stops sending on that link until the streak is reset.
+export const BRIDGE_CIRCUIT_OPEN_THRESHOLD = 5;
+
+// A room can be both a source and a consumer to the same peer (bidirectional
+// share), so health is tracked per direction as well as per peer — otherwise a
+// success in one direction would clear the other direction's reject streak.
+export type BridgeDirection = "source" | "consumer";
+
+function linkKey(peerRoomId: string, direction: BridgeDirection): string {
+  return `${direction} ${peerRoomId}`;
+}
+
+// Tracks consecutive rejected applies per (peer room, direction). In-memory
+// only: a Durable Object reload (which produces a fresh, correct reset epoch)
+// naturally drops this state and re-enables every bridge. reset() additionally
+// reopens a peer early when it resubscribes (a new page load on the consumer
+// side).
+export class BridgeHealth {
+  private consecutiveRejectsByLink = new Map<string, number>();
+
+  // Whether the sender should attempt a send on this link right now.
+  shouldSend(peerRoomId: string, direction: BridgeDirection): boolean {
+    const key = linkKey(peerRoomId, direction);
+    const rejects = this.consecutiveRejectsByLink.get(key) ?? 0;
+    return rejects < BRIDGE_CIRCUIT_OPEN_THRESHOLD;
+  }
+
+  // Record the outcome of an apply on this link. `applied === true` clears the
+  // reject streak; a rejected apply increments it toward the circuit threshold.
+  // Returns true only on the result that crosses the threshold (the open edge),
+  // so the caller can log the trip exactly once.
+  recordResult(
+    peerRoomId: string,
+    direction: BridgeDirection,
+    applied: boolean
+  ): boolean {
+    const key = linkKey(peerRoomId, direction);
+    if (applied) {
+      this.consecutiveRejectsByLink.delete(key);
+      return false;
+    }
+    const before = this.consecutiveRejectsByLink.get(key) ?? 0;
+    const after = before + 1;
+    this.consecutiveRejectsByLink.set(key, after);
+    return (
+      before < BRIDGE_CIRCUIT_OPEN_THRESHOLD &&
+      after >= BRIDGE_CIRCUIT_OPEN_THRESHOLD
+    );
+  }
+
+  // Reopen a peer's circuit in both directions. Called when a consumer
+  // resubscribes (a fresh page load), so a genuine new client always gets a
+  // clean attempt even if the link had previously tripped.
+  reset(peerRoomId: string): void {
+    this.consecutiveRejectsByLink.delete(linkKey(peerRoomId, "source"));
+    this.consecutiveRejectsByLink.delete(linkKey(peerRoomId, "consumer"));
+  }
+}

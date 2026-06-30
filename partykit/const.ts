@@ -58,6 +58,7 @@ export const ORIGIN_C2S = "__bridge_c2s__";
 export type Subscriber = {
   consumerRoomId: string;
   elementIds?: string[];
+  consumerResetEpoch?: number | null;
   createdAt?: string;
   lastSeen?: string;
   leaseMs?: number;
@@ -66,6 +67,7 @@ export type Subscriber = {
 export type SharedRefEntry = {
   sourceRoomId: string;
   elementIds: string[];
+  sourceResetEpoch?: number | null;
   lastSeen?: string;
 };
 
