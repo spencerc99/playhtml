@@ -954,14 +954,20 @@ const DynamicViewportRect = memo(
 
     const baseLuminosity = 0.85 + localSeededRandom(1) * 0.15;
     const colorValue = Math.round(baseLuminosity * 255);
-    // Color mode: a clearly-tinted pastel window background (mid-light + decent
-    // saturation so it reads as colored against the warm paper, not near-white).
-    // Per-window lightness jitter keeps panels from looking identical.
-    const bgLuminosity = 0.66 + localSeededRandom(1) * 0.12; // 0.66–0.78
+    // Color mode: a BOLD, clearly-colored window background. Mid lightness +
+    // full hue saturation so that after the paper-tooth grain and any blending
+    // it still reads as a distinct color (not a washed-out near-gray). Per-
+    // window lightness jitter keeps panels from looking identical.
+    const bgLuminosity = 0.55 + localSeededRandom(1) * 0.1; // 0.55–0.65
     const backgroundColor = mono
       ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
-      : colorizeLuminosity(edgeTintColor, bgLuminosity, 0.55);
+      : colorizeLuminosity(edgeTintColor, bgLuminosity, 1);
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
+    // In color mode the fill is rendered near-opaque so the warm paper doesn't
+    // bleach the hue; monochrome keeps the original translucent paper look.
+    const bgRenderOpacity = mono
+      ? settings.backgroundOpacity * opacityVariation
+      : Math.min(1, settings.backgroundOpacity + 0.25) * opacityVariation;
 
     // Resize gets a dotted border without changing viewport brightness.
     // Neutral soft gray in both modes — a colored outline is too much once the
@@ -1637,7 +1643,9 @@ const DynamicViewportRect = memo(
         <g clipPath={`url(#viewport-clip-${viewport.id})`}>
           <g transform={zoomTransform || undefined}>
             <g transform={scrolledContentTransform}>
-              {/* Background */}
+              {/* Background — near-opaque + full-saturation hue in color mode so
+                  the paper doesn't bleach the color; paper-tooth grain via the
+                  scrollNoise filter gives texture. */}
               <rect
                 x={visualX}
                 y={visualY}
@@ -1645,17 +1653,21 @@ const DynamicViewportRect = memo(
                 height={bgHeight}
                 fill={backgroundColor}
                 filter="url(#scrollNoise)"
-                opacity={settings.backgroundOpacity * opacityVariation}
+                opacity={bgRenderOpacity}
               />
-              <rect
-                x={visualX}
-                y={visualY}
-                width={visualWidth}
-                height={bgHeight}
-                fill="#000"
-                filter="url(#scrollGrain)"
-                opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
-              />
+              {/* Extra black-noise grain — only in monochrome, where the bg is
+                  pale paper. In color mode it just grays out the hue, so skip. */}
+              {mono && (
+                <rect
+                  x={visualX}
+                  y={visualY}
+                  width={visualWidth}
+                  height={bgHeight}
+                  fill="#000"
+                  filter="url(#scrollGrain)"
+                  opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
+                />
+              )}
 
               {/* Content pattern - horizontal bands with varied spacing */}
               <g
