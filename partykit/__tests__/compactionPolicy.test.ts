@@ -128,11 +128,13 @@ describe("shouldCheckEmergencyCompaction", () => {
 });
 
 describe("shouldCompactBeforePersist", () => {
-  it("checks large autosave candidates only when compaction is allowed", () => {
+  it("checks large autosave candidates only when compaction is allowed after cooldown", () => {
     expect(
       shouldCompactBeforePersist({
         allowCompaction: true,
         documentSize: 999,
+        nextCheckAt: null,
+        now: 5_000,
         thresholdBytes: 1_000,
       })
     ).toBe(false);
@@ -141,6 +143,8 @@ describe("shouldCompactBeforePersist", () => {
       shouldCompactBeforePersist({
         allowCompaction: true,
         documentSize: 1_000,
+        nextCheckAt: null,
+        now: 5_000,
         thresholdBytes: 1_000,
       })
     ).toBe(true);
@@ -149,6 +153,18 @@ describe("shouldCompactBeforePersist", () => {
       shouldCompactBeforePersist({
         allowCompaction: false,
         documentSize: 1_000,
+        nextCheckAt: null,
+        now: 5_000,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldCompactBeforePersist({
+        allowCompaction: true,
+        documentSize: 1_000,
+        nextCheckAt: 6_000,
+        now: 5_000,
         thresholdBytes: 1_000,
       })
     ).toBe(false);

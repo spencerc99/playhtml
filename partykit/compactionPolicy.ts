@@ -84,13 +84,25 @@ export function shouldCheckEmergencyCompaction({
 export function shouldCompactBeforePersist({
   allowCompaction,
   documentSize,
+  nextCheckAt,
+  now,
   thresholdBytes,
 }: {
   allowCompaction: boolean;
   documentSize: number;
+  nextCheckAt: number | null;
+  now: number;
   thresholdBytes: number;
 }): boolean {
-  return allowCompaction && documentSize >= thresholdBytes;
+  return (
+    allowCompaction &&
+    shouldCheckEmergencyCompaction({
+      documentSize,
+      thresholdBytes,
+      nextCheckAt,
+      now,
+    })
+  );
 }
 
 // A connected-room emergency reset is disruptive because clients must reload

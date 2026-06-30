@@ -1437,11 +1437,13 @@ export class PartyServer extends YServer {
     activeConnectionCount,
     documentBase64,
     documentSize,
+    recheckAfter,
     thresholdBytes,
   }: {
     activeConnectionCount: number;
     documentBase64: string;
     documentSize: number;
+    recheckAfter: number;
     thresholdBytes: number;
   }): Promise<boolean> {
     const compactedDocument = this.buildCompactedDocument(
@@ -1449,9 +1451,10 @@ export class PartyServer extends YServer {
       documentBase64
     );
     if (compactedDocument === null) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
       console.warn(
         `[PartyServer] Autosave compaction skipped for room=${this.name}: document has no play data, ` +
-          `documentBytes=${documentSize}, thresholdBytes=${thresholdBytes}`
+          `documentBytes=${documentSize}, thresholdBytes=${thresholdBytes}, nextCheckAt=${recheckAfter}`
       );
       return false;
     }
@@ -1463,10 +1466,11 @@ export class PartyServer extends YServer {
         thresholdBytes,
       })
     ) {
+      await this.setEmergencyCompactCheckAfter(recheckAfter);
       console.warn(
         `[PartyServer] Autosave compaction skipped for room=${this.name}: ` +
           `${documentSize} -> ${compactedDocument.afterSize} bytes, ` +
-          `thresholdBytes=${thresholdBytes}. Autosave will continue.`
+          `thresholdBytes=${thresholdBytes}, nextCheckAt=${recheckAfter}. Autosave will continue.`
       );
       return false;
     }
@@ -1566,21 +1570,31 @@ export class PartyServer extends YServer {
     const persistedDocumentCompactBytes =
       this.getPersistedDocumentCompactBytes();
     if (
-      shouldCompactBeforePersist({
+      allowCompaction &&
+      documentSize >= persistedDocumentCompactBytes
+    ) {
+      const now = Date.now();
+      const nextCompactionCheckAt = await this.getEmergencyCompactCheckAfter();
+      const shouldCheckCompaction = shouldCompactBeforePersist({
         allowCompaction,
         documentSize,
+        nextCheckAt: nextCompactionCheckAt,
+        now,
         thresholdBytes: persistedDocumentCompactBytes,
-      })
-    ) {
+      });
+
       try {
-        const compacted = await this.maybeCompactAutosaveCandidate({
-          activeConnectionCount,
-          documentBase64,
-          documentSize,
-          thresholdBytes: persistedDocumentCompactBytes,
-        });
-        if (compacted) {
-          return true;
+        if (shouldCheckCompaction) {
+          const compacted = await this.maybeCompactAutosaveCandidate({
+            activeConnectionCount,
+            documentBase64,
+            documentSize,
+            recheckAfter: now + this.getEmergencyCompactRecheckDelayMs(),
+            thresholdBytes: persistedDocumentCompactBytes,
+          });
+          if (compacted) {
+            return true;
+          }
         }
       } catch (error) {
         console.error(
