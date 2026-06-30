@@ -7,9 +7,10 @@ sidebar:
 
 import { Aside } from "@astrojs/starlight/components";
 import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
+import { DocsCounter } from "@/components/react/capability-demos/DocsCounter";
 import { DocsGuestbook } from "@/components/react/capability-demos/DocsGuestbook";
 import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
-import { LampToggleDemo } from "@/components/react/LampToggleDemo";
+import { InteractiveToggleDemo } from "@/components/react/InteractiveToggleDemo";
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** state — a counter, a poll, a guestbook, a chat — you build a custom element. There are two approaches:
@@ -144,35 +145,46 @@ Most capability tags can share the same element. Each tag keeps its own data and
 
 `setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
 
+<div id="play-counter" class="ph-canplay-inline" data-label="can-play · counter">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · counter</span>
+    <p class="ph-canplay-inline__caption">
+      Click to add one. The count is shared — everyone reading this page bumps the same number.
+    </p>
+  </div>
+  <DocsCounter client:only="react" />
+</div>
+
 #### State to style
 
 `updateElement` runs on every change, so the simplest pattern is "read `data`, set a class or style."
 
 ```html
-<img id="lamp" can-play src="/lamp.png" class="lamp" />
+<button id="switch" can-play>off</button>
 
 <script type="module">
   import { playhtml } from "playhtml";
 
-  const el = document.getElementById("lamp");
+  const el = document.getElementById("switch");
   el.defaultData = { on: false };
   el.onClick = (_e, { setData }) => setData((d) => { d.on = !d.on; });
   el.updateElement = ({ element, data }) => {
     element.classList.toggle("on", data.on);
+    element.textContent = data.on ? "on" : "off";
   };
 
   playhtml.init();
 </script>
 ```
 
-<div id="play-lamp" class="ph-canplay-inline" data-label="can-play · lamp">
+<div id="play-toggle" class="ph-canplay-inline" data-label="can-play · toggle">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · lamp</span>
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · toggle</span>
     <p class="ph-canplay-inline__caption">
-      Click the lamp to toggle it on/off for everyone.
+      Click to flip it on/off for everyone.
     </p>
   </div>
-  <LampToggleDemo client:only="react" />
+  <InteractiveToggleDemo client:only="react" />
 </div>
 
 #### Presence and per-user state
@@ -430,24 +442,27 @@ export const Counter = withSharedState(
 
 `setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
 
+[▶ Live demo ↑](#play-counter)
+
 ### State to style
 
 The component re-renders on every change, so the simplest pattern is "read `data`, set a class or style."
 
 ```tsx
-export const Lamp = withSharedState(
+export const Switch = withSharedState(
   { defaultData: { on: false } },
   ({ data, setData }) => (
-    <img
-      className={data.on ? "lamp on" : "lamp"}
-      src="/lamp.png"
+    <button
+      className={data.on ? "is-on" : "is-off"}
       onClick={() => setData((d) => { d.on = !d.on; })}
-    />
+    >
+      {data.on ? "on" : "off"}
+    </button>
   ),
 );
 ```
 
-[▶ Live demo ↑](#play-lamp)
+[▶ Live demo ↑](#play-toggle)
 
 ### Local UI state
 
