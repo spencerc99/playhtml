@@ -513,10 +513,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       >
         <defs>
           <filter id="scrollNoise">
-            {/* Paper-grain noise composited OVER the source fill (not replacing
-                it) so a colored background rect keeps its color and just gains a
-                subtle textured tooth. Previously this replaced the source with
-                grayscale noise, which silently hid any fill color. */}
+            {/* Paper-tooth grain that modulates the BRIGHTNESS of the colored
+                fill (not black dots on top): generate fine grayscale noise,
+                opaque, then MULTIPLY it onto the source so the color keeps its
+                hue but gains light/dark grain. The noise is biased bright so it
+                mostly lightens (paper tooth) with occasional darker speckle.
+                Replacing the source with noise — the old behavior — silently hid
+                the fill color entirely. */}
             <feTurbulence
               type="fractalNoise"
               baseFrequency="0.9"
@@ -524,24 +527,28 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
               stitchTiles="stitch"
               result="noise"
             />
-            {/* Keep only a faint dark grain (low alpha) from the noise. */}
-            <feColorMatrix
-              in="noise"
-              type="matrix"
-              values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.12 0"
-              result="grain"
-            />
-            {/* Clip the grain to the source shape and lay it over the fill. */}
+            {/* Desaturate to grayscale and compress to a bright range
+                (~0.7–1.0) so multiply gives a subtle tooth, not heavy darkening.
+                Force alpha to 1 so it's a full grayscale image to multiply. */}
+            <feColorMatrix in="noise" type="saturate" values="0" result="gray" />
+            <feComponentTransfer in="gray" result="toothMap">
+              <feFuncR type="linear" slope="0.32" intercept="0.68" />
+              <feFuncG type="linear" slope="0.32" intercept="0.68" />
+              <feFuncB type="linear" slope="0.32" intercept="0.68" />
+              <feFuncA type="linear" slope="0" intercept="1" />
+            </feComponentTransfer>
             <feComposite
-              in="grain"
+              in="toothMap"
               in2="SourceGraphic"
-              operator="in"
-              result="clippedGrain"
+              operator="arithmetic"
+              k1="1"
+              k2="0"
+              k3="0"
+              k4="0"
+              result="multiplied"
             />
-            <feMerge>
-              <feMergeNode in="SourceGraphic" />
-              <feMergeNode in="clippedGrain" />
-            </feMerge>
+            {/* Clip back to the source shape (the grayscale rect is full-bleed). */}
+            <feComposite in="multiplied" in2="SourceGraphic" operator="in" />
           </filter>
           <filter id="scrollGrain">
             <feTurbulence
