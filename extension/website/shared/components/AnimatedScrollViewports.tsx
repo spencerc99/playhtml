@@ -1128,26 +1128,6 @@ const DynamicViewportRect = memo(
                   opacity={0.12}
                   filter={`url(#speckle-${viewport.id})`}
                 />
-
-                {/* Scattered light dots for texture variation */}
-                {[0, 1, 2].map((j) => {
-                  const dotX =
-                    xPos + localSeededRandom(100 + i + j) * blotchWidth * 0.7;
-                  const dotY =
-                    blockY +
-                    localSeededRandom(110 + i + j) * blotchHeight * 0.7;
-                  const dotSize = 3 + localSeededRandom(120 + i + j) * 5;
-                  return (
-                    <circle
-                      key={`dot-${j}`}
-                      cx={dotX + blotchWidth * 0.15}
-                      cy={dotY + blotchHeight * 0.15}
-                      r={dotSize}
-                      fill="white"
-                      opacity={0.1 + localSeededRandom(130 + i + j) * 0.15}
-                    />
-                  );
-                })}
               </g>
             );
           } else if (isMediumBlock) {
@@ -1177,11 +1157,12 @@ const DynamicViewportRect = memo(
           }
 
           // Light content blocks (most common) - varied layouts. In color mode
-          // we roll across only the content variants (1–4), skipping the empty
-          // whitespace one so the window stays busy with structure.
+          // we roll across only the content variants (1–5), skipping the empty
+          // whitespace one so the window stays busy with structure. Variant 5
+          // is circular page elements (avatars/buttons/media).
           const layoutVariant = mono
-            ? Math.floor(localSeededRandom(56 + i) * 5)
-            : 1 + Math.floor(localSeededRandom(56 + i) * 4);
+            ? Math.floor(localSeededRandom(56 + i) * 6)
+            : 1 + Math.floor(localSeededRandom(56 + i) * 5);
 
           if (layoutVariant === 0) {
             // Empty/whitespace - adds breathing room
@@ -1241,6 +1222,45 @@ const DynamicViewportRect = memo(
                     fill={lightFill}
                     opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
                   />
+                ))}
+              </g>
+            );
+          } else if (layoutVariant === 4) {
+            // Circular page elements (avatars / buttons / media thumbnails) —
+            // a row of larger circles, sometimes paired with a short text line
+            // beside them. Replaces the old tiny scattered specks with
+            // intentional round shapes.
+            const count = 1 + Math.floor(localSeededRandom(82 + i) * 3); // 1–3
+            const radius = 8 + localSeededRandom(83 + i) * 14; // 8–22px
+            const gap = radius * 2 + 8 + localSeededRandom(84 + i) * 14;
+            const startX = visualX + visualWidth * 0.1 + radius;
+            const cy = blockY + radius;
+            const withText = localSeededRandom(85 + i) > 0.5;
+            return (
+              <g key={`block-${i}`}>
+                {Array.from({ length: count }, (_, j) => (
+                  <g key={`circle-${j}`}>
+                    <circle
+                      cx={startX + j * gap}
+                      cy={cy}
+                      r={radius}
+                      fill={lightFill}
+                      opacity={0.32 + localSeededRandom(86 + i + j) * 0.12}
+                    />
+                    {withText && (
+                      <rect
+                        x={startX + j * gap + radius + 6}
+                        y={cy - 2}
+                        width={
+                          visualWidth * (0.12 + localSeededRandom(87 + i + j) * 0.12)
+                        }
+                        height={3}
+                        fill={lightFill}
+                        opacity={0.22}
+                        rx={1.5}
+                      />
+                    )}
+                  </g>
                 ))}
               </g>
             );
