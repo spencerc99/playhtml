@@ -429,3 +429,51 @@ describe("handle writes before binding", () => {
     warnSpy.mockRestore();
   });
 });
+
+describe("rail 2: final-review fixes", () => {
+  it("runs onMount cleanup for view elements pruned on navigation (no rAF leak)", async () => {
+    const el = document.createElement("div");
+    el.id = "nav-leak";
+    document.body.appendChild(el);
+
+    const cleanup = vi.fn();
+    playhtml.register("nav-leak", {
+      defaultData: {},
+      view: () => html`<span>x</span>`,
+      onMount: () => cleanup,
+    });
+    await tick();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    // Element leaves the DOM (e.g. SPA route swap) then navigation prunes it.
+    el.remove();
+    await playhtml.handleNavigation();
+    await tick();
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(playhtml.elementHandlers.get("can-play")?.has("nav-leak")).toBe(false);
+  });
+
+  it("drops updateElement when a view is also present on the shared binding path", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const el = document.createElement("div");
+    el.id = "view-plus-update";
+    el.setAttribute("can-play", "");
+    // Simulate React props / extraCapabilities carrying BOTH (bypasses
+    // register()'s validateViewInitializer).
+    const updateElement = vi.fn();
+    (el as any).defaultData = {};
+    (el as any).view = () => html`<span class="v">v</span>`;
+    (el as any).updateElement = updateElement;
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+    await tick();
+
+    expect(el.querySelector(".v")).not.toBeNull(); // view rendered
+    expect(updateElement).not.toHaveBeenCalled(); // updateElement dropped
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("mutually exclusive"),
+    );
+    errorSpy.mockRestore();
+  });
+});

@@ -47,26 +47,13 @@ export default defineConfig({
       fileName: (format) => `react-playhtml.${format}.js`,
     },
     rollupOptions: {
-      // Externalize peer/runtime deps so the React package doesn't re-bundle
-      // the entire playhtml core (and with it yjs, syncedstore, and lit-html).
-      // Consumers already install `playhtml` via peerDependencies; it's resolved
-      // at their build time. This keeps lit-html out of @playhtml/react.
-      external: [
-        "react",
-        "react-dom",
-        "react/jsx-runtime",
-        "playhtml",
-        "@playhtml/common",
-        "classnames",
-      ],
+      external: ["playhtml", "react", "react-dom", "react/jsx-runtime"],
       output: {
         globals: {
           playhtml: "playhtml",
           "react-dom": "ReactDom",
           react: "React",
           "react/jsx-runtime": "ReactJsxRuntime",
-          "@playhtml/common": "playhtmlCommon",
-          classnames: "classNames",
         },
       },
     },

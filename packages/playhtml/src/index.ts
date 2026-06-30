@@ -936,6 +936,10 @@ async function runHandleNavigation(): Promise<void> {
     for (const [id, handler] of [...map.entries()]) {
       const el = (handler as { element?: HTMLElement }).element;
       if (!el || !el.isConnected) {
+        // Run onMount cleanup (rAF loops, timers, listeners) and disconnect the
+        // descendant observer before dropping the handler — otherwise a
+        // view element's clock loop keeps ticking forever after navigation.
+        (handler as { destroy?: () => void }).destroy?.();
         map.delete(id);
       }
     }
@@ -2377,7 +2381,16 @@ function setupViewDescendants(root: HTMLElement): void {
       isHTMLElement,
     );
     for (const el of els) {
-      if (el === root || !el.id) continue;
+      if (el === root) continue;
+      if (!el.id) {
+        if (isDevelopmentMode) {
+          console.warn(
+            `[playhtml] a view rendered a "${tag}" element with no id; it won't bind. ` +
+              `Give capability children a stable, unique id (key keyed lists by it).`,
+          );
+        }
+        continue;
+      }
       present.set(`${tag}:${el.id}`, el);
       const existing = elementHandlers.get(tag)?.get(el.id);
       if (existing) {

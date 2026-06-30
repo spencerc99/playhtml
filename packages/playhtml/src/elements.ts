@@ -168,6 +168,18 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.view = view;
     this.devMode = devMode;
 
+    // `view` and `updateElement` are mutually exclusive. register/define throw
+    // on this, but React props / extraCapabilities reach this shared path
+    // without that check, so enforce it here: `view` wins and `updateElement`
+    // is dropped (with a diagnostic) instead of silently ignored.
+    if (view && this.updateElement) {
+      console.error(
+        `[playhtml] "${element.id}" provides both \`view\` and \`updateElement\`. ` +
+          `They are mutually exclusive — \`view\` is used and \`updateElement\` is ignored.`,
+      );
+      this.updateElement = undefined;
+    }
+
     // In view mode, element-level event handlers are not wired — interactions
     // belong in the template (@click, etc.). Enforce the mutual exclusion here
     // (the shared binding path) so React props / extraCapabilities can't
