@@ -46,6 +46,12 @@ export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
 export const DEFAULT_MAX_REQUEST_BYTES = (() => {
   return 1024 * 1024 * 16;
 })();
+export const DEFAULT_MAX_WEBSOCKET_MESSAGE_BYTES = (() => {
+  return 1024 * 1024 * 8;
+})();
+export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
+  return 1024 * 1024 * 8;
+})();
 export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
 })();

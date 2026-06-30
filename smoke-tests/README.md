@@ -98,6 +98,7 @@ Config:
 
 - `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
 - `PARTYKIT_SMOKE_MAX_REQUEST_BYTES`: expected server request-body limit for the limits smoke. Defaults to `16777216`.
+- `PARTYKIT_SMOKE_MAX_WEBSOCKET_MESSAGE_BYTES`: expected server WebSocket message limit for the limits smoke. Defaults to `8388608`.
 - `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `1000`.
 - `PARTYKIT_SMOKE_NORMAL_MESSAGES`: normal Yjs updates sent quickly before the abusive raw-client cases. Defaults to `420`.
 - `PARTYKIT_PRESENCE_SOAK_CLIENTS`: number of clients for the presence cursor soak. Defaults to `20`.

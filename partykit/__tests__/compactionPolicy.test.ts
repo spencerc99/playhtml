@@ -5,6 +5,7 @@ import {
   getNextAlarmTime,
   getCompactionCommitDecision,
   isCompactionAutosave,
+  shouldCompactBeforePersist,
   shouldCheckEmergencyCompaction,
   shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
@@ -123,6 +124,34 @@ describe("shouldCheckEmergencyCompaction", () => {
         now: 5_000,
       })
     ).toBe(true);
+  });
+});
+
+describe("shouldCompactBeforePersist", () => {
+  it("checks large autosave candidates only when compaction is allowed", () => {
+    expect(
+      shouldCompactBeforePersist({
+        allowCompaction: true,
+        documentSize: 999,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldCompactBeforePersist({
+        allowCompaction: true,
+        documentSize: 1_000,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldCompactBeforePersist({
+        allowCompaction: false,
+        documentSize: 1_000,
+        thresholdBytes: 1_000,
+      })
+    ).toBe(false);
   });
 });
 

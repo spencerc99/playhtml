@@ -4,6 +4,7 @@ export type ServerLimits = {
   maxMessagesPerWindow: number;
   messageRateWindowMs: number;
   maxRequestBytes: number;
+  maxWebSocketMessageBytes: number;
   documentWarningBytes: number;
 };
 
@@ -12,11 +13,19 @@ export type MessageLimitState = {
   messageCount: number;
 };
 
-export type LimitViolation = {
-  kind: "message-rate";
-  closeCode: 1008;
-  reason: "Message Rate Limit Exceeded";
-};
+export type LimitViolation =
+  | {
+      kind: "message-rate";
+      closeCode: 1008;
+      reason: "Message Rate Limit Exceeded";
+    }
+  | {
+      kind: "message-size";
+      closeCode: 1009;
+      reason: "Message Too Large";
+    };
+
+export type WebSocketMessagePayload = string | ArrayBuffer | ArrayBufferView;
 
 const DURABLE_OBJECT_OVERLOAD_MESSAGE =
   "Durable Object is overloaded.";
@@ -54,6 +63,70 @@ export function checkMessageRate({
   }
 
   return { state: nextState, violation: null };
+}
+
+function getInitialMessageLimitState(now: number): MessageLimitState {
+  return { windowStartedAt: now, messageCount: 0 };
+}
+
+function getUtf8ByteLength(value: string): number {
+  let size = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const codePoint = value.codePointAt(i);
+    if (codePoint === undefined) continue;
+
+    if (codePoint > 0xffff) {
+      i += 1;
+    }
+
+    if (codePoint <= 0x7f) {
+      size += 1;
+    } else if (codePoint <= 0x7ff) {
+      size += 2;
+    } else if (codePoint <= 0xffff) {
+      size += 3;
+    } else {
+      size += 4;
+    }
+  }
+
+  return size;
+}
+
+export function getWebSocketMessageSizeBytes(
+  message: WebSocketMessagePayload
+): number {
+  if (typeof message === "string") {
+    return getUtf8ByteLength(message);
+  }
+
+  return message.byteLength;
+}
+
+export function checkWebSocketMessage({
+  limits,
+  messageSizeBytes,
+  now,
+  state,
+}: {
+  limits: ServerLimits;
+  messageSizeBytes: number;
+  now: number;
+  state: MessageLimitState | undefined;
+}): { state: MessageLimitState; violation: LimitViolation | null } {
+  if (messageSizeBytes > limits.maxWebSocketMessageBytes) {
+    return {
+      state: state ?? getInitialMessageLimitState(now),
+      violation: {
+        kind: "message-size",
+        closeCode: 1009,
+        reason: "Message Too Large",
+      },
+    };
+  }
+
+  return checkMessageRate({ limits, now, state });
 }
 
 export function shouldAcceptRequestBody(

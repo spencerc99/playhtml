@@ -30,8 +30,10 @@ import {
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_DOCUMENT_WARNING_BYTES,
   DEFAULT_MAX_REQUEST_BYTES,
+  DEFAULT_MAX_WEBSOCKET_MESSAGE_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
+  DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -52,12 +54,14 @@ import {
   isApplySubtreesImmediateRequest,
 } from "./request";
 import {
-  checkMessageRate,
+  checkWebSocketMessage,
+  getWebSocketMessageSizeBytes,
   isDurableObjectOverloadError,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type MessageLimitState,
   type ServerLimits,
+  type WebSocketMessagePayload,
 } from "./serverLimits";
 import {
   getSourceRoomId,
@@ -69,6 +73,7 @@ import {
   getCompactionCommitDecision,
   getNextAlarmTime,
   isCompactionAutosave,
+  shouldCompactBeforePersist,
   shouldCheckEmergencyCompaction,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
@@ -284,6 +289,13 @@ export class PartyServer extends YServer {
     );
   }
 
+  private getPersistedDocumentCompactBytes(): number {
+    return readPositiveNumberEnv(
+      "PERSISTED_DOCUMENT_COMPACT_BYTES",
+      DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES
+    );
+  }
+
   private getServerLimits(): ServerLimits {
     return {
       maxMessagesPerWindow: readPositiveNumberEnv(
@@ -298,6 +310,10 @@ export class PartyServer extends YServer {
         "MAX_REQUEST_BYTES",
         DEFAULT_MAX_REQUEST_BYTES
       ),
+      maxWebSocketMessageBytes: readPositiveNumberEnv(
+        "MAX_WEBSOCKET_MESSAGE_BYTES",
+        DEFAULT_MAX_WEBSOCKET_MESSAGE_BYTES
+      ),
       documentWarningBytes: readPositiveNumberEnv(
         "DOCUMENT_WARNING_BYTES",
         DEFAULT_DOCUMENT_WARNING_BYTES
@@ -305,11 +321,16 @@ export class PartyServer extends YServer {
     };
   }
 
-  private checkConnectionMessageRate(connection: Party.Connection) {
+  private checkConnectionMessageLimits(
+    connection: Party.Connection,
+    message: WebSocketMessagePayload
+  ) {
     const limitConnection =
       connection as Party.Connection<PartyServerConnectionState>;
-    const decision = checkMessageRate({
+    const messageSizeBytes = getWebSocketMessageSizeBytes(message);
+    const decision = checkWebSocketMessage({
       limits: this.getServerLimits(),
+      messageSizeBytes,
       now: Date.now(),
       state: limitConnection.state?.[MESSAGE_LIMIT_STATE_KEY],
     });
@@ -323,7 +344,7 @@ export class PartyServer extends YServer {
       };
     });
 
-    return { violation: decision.violation };
+    return { violation: decision.violation, messageSizeBytes };
   }
 
   private getSupabaseLoadTimeoutMs(): number {
@@ -445,13 +466,16 @@ export class PartyServer extends YServer {
     return isCompactionAutosave(documentBase64, compactionSnapshot);
   }
 
-  private buildCompactedDocument(doc: Y.Doc): CompactedDocument | null {
+  private buildCompactedDocument(
+    doc: Y.Doc,
+    sourceDocumentBase64?: string
+  ): CompactedDocument | null {
     const currentPlayData = docToJson(doc);
     if (!currentPlayData) {
       return null;
     }
 
-    const sourceBase64 = encodeDocToBase64(doc);
+    const sourceBase64 = sourceDocumentBase64 ?? encodeDocToBase64(doc);
     const beforeSize = sourceBase64.length;
     const resetEpoch = Date.now();
     const compactDoc = jsonToDoc(currentPlayData);
@@ -488,6 +512,20 @@ export class PartyServer extends YServer {
     }
 
     return typeof data?.document === "string" ? data.document : null;
+  }
+
+  private async saveDocumentBase64(documentBase64: string): Promise<void> {
+    const { error } = await supabase.from("documents").upsert(
+      {
+        name: this.name,
+        document: documentBase64,
+      },
+      { onConflict: "name" }
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
   }
 
   private async commitCompactedDocument({
@@ -536,18 +574,7 @@ export class PartyServer extends YServer {
       }
 
       await this.setResetEpoch(compactedDocument.resetEpoch);
-
-      const { error } = await supabase.from("documents").upsert(
-        {
-          name: this.name,
-          document: compactedDocument.base64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (error) {
-        throw new Error(error.message);
-      }
+      await this.saveDocumentBase64(compactedDocument.base64);
 
       documentSaved = true;
       this.markDocumentPersisted(compactedDocument.base64);
@@ -565,6 +592,51 @@ export class PartyServer extends YServer {
       if (autosavePaused) {
         this.isSkippingSave = false;
       }
+    }
+  }
+
+  private async commitAutosaveCompactedDocument({
+    activeConnectionCount,
+    compactedDocument,
+    documentSize,
+  }: {
+    activeConnectionCount: number;
+    compactedDocument: CompactedDocument;
+    documentSize: number;
+  }): Promise<void> {
+    const rollbackResetEpoch = await this.getResetEpoch();
+    let documentSaved = false;
+
+    try {
+      this.isSkippingSave = true;
+      await this.setResetEpoch(compactedDocument.resetEpoch);
+      await this.saveDocumentBase64(compactedDocument.base64);
+
+      documentSaved = true;
+      this.markDocumentPersisted(compactedDocument.base64);
+      this.compactionAutosaveSnapshot = compactedDocument.base64;
+      replaceDocFromSnapshot(this.document, compactedDocument.base64);
+      await this.clearEmptyRoomCompactAfter();
+      this.broadcastCustomMessage(
+        this.getRoomResetMessage(compactedDocument.resetEpoch)
+      );
+
+      const closedCount = this.closeConnections("Room Compacted");
+      console.log(
+        `[PartyServer] Autosave compacted room before persistence: room=${this.name}, ` +
+          `${documentSize} -> ${compactedDocument.afterSize} bytes ` +
+          `(${((1 - compactedDocument.afterSize / documentSize) * 100).toFixed(1)}% reduction), ` +
+          `resetEpoch=${compactedDocument.resetEpoch}, ` +
+          `activeConnections=${activeConnectionCount}, closed=${closedCount}`
+      );
+    } catch (error) {
+      if (!documentSaved) {
+        await this.restoreResetEpoch(rollbackResetEpoch);
+      }
+      this.compactionAutosaveSnapshot = null;
+      throw error;
+    } finally {
+      this.isSkippingSave = false;
     }
   }
 
@@ -1233,11 +1305,15 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     message: Party.WSMessage
   ): Promise<void> {
-    const limitResult = this.checkConnectionMessageRate(connection);
+    const limitResult = this.checkConnectionMessageLimits(
+      connection,
+      message as WebSocketMessagePayload
+    );
     if (limitResult.violation) {
       console.warn(
         `[PartyServer] Closing connection for ${limitResult.violation.kind}: ` +
           `connectionId=${connection.id}, ` +
+          `messageBytes=${limitResult.messageSizeBytes}, ` +
           `documentBytes=${this.lastKnownDocumentBytes}`
       );
       connection.close(
@@ -1373,6 +1449,52 @@ export class PartyServer extends YServer {
     await this.persistLiveDocument({ allowCompaction: true });
   }
 
+  private async maybeCompactAutosaveCandidate({
+    activeConnectionCount,
+    documentBase64,
+    documentSize,
+    thresholdBytes,
+  }: {
+    activeConnectionCount: number;
+    documentBase64: string;
+    documentSize: number;
+    thresholdBytes: number;
+  }): Promise<boolean> {
+    const compactedDocument = this.buildCompactedDocument(
+      this.document,
+      documentBase64
+    );
+    if (compactedDocument === null) {
+      console.warn(
+        `[PartyServer] Autosave compaction skipped for room=${this.name}: document has no play data, ` +
+          `documentBytes=${documentSize}, thresholdBytes=${thresholdBytes}`
+      );
+      return false;
+    }
+
+    if (
+      !shouldUseEmergencyCompactedDocument({
+        beforeSize: documentSize,
+        afterSize: compactedDocument.afterSize,
+        thresholdBytes,
+      })
+    ) {
+      console.warn(
+        `[PartyServer] Autosave compaction skipped for room=${this.name}: ` +
+          `${documentSize} -> ${compactedDocument.afterSize} bytes, ` +
+          `thresholdBytes=${thresholdBytes}. Autosave will continue.`
+      );
+      return false;
+    }
+
+    await this.commitAutosaveCompactedDocument({
+      activeConnectionCount,
+      compactedDocument,
+      documentSize,
+    });
+    return true;
+  }
+
   private async persistLiveDocument({
     allowCompaction,
   }: PersistLiveDocumentOptions): Promise<boolean> {
@@ -1431,6 +1553,13 @@ export class PartyServer extends YServer {
 
     this.lastKnownDocumentBytes = documentSize;
 
+    if (this.consumeCompactionAutosave(documentBase64)) {
+      console.log(
+        `[PartyServer] Compaction autosave completed: room=${this.name}`
+      );
+      return true;
+    }
+
     const serverLimits = this.getServerLimits();
     if (
       !this.hasWarnedDocumentSize &&
@@ -1450,16 +1579,37 @@ export class PartyServer extends YServer {
       `[PartyServer] Autosave: room=${this.name}, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(2)} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
     );
 
-    // Save the document to the database
-    const { data: _data, error } = await supabase.from("documents").upsert(
-      {
-        name: this.name,
-        document: documentBase64,
-      },
-      { onConflict: "name" }
-    );
+    const persistedDocumentCompactBytes =
+      this.getPersistedDocumentCompactBytes();
+    if (
+      shouldCompactBeforePersist({
+        allowCompaction,
+        documentSize,
+        thresholdBytes: persistedDocumentCompactBytes,
+      })
+    ) {
+      try {
+        const compacted = await this.maybeCompactAutosaveCandidate({
+          activeConnectionCount,
+          documentBase64,
+          documentSize,
+          thresholdBytes: persistedDocumentCompactBytes,
+        });
+        if (compacted) {
+          return true;
+        }
+      } catch (error) {
+        console.error(
+          `[PartyServer] AUTOSAVE COMPACTION FAILED for room ${this.name}:`,
+          error
+        );
+        return false;
+      }
+    }
 
-    if (error) {
+    try {
+      await this.saveDocumentBase64(documentBase64);
+    } catch (error) {
       console.error(
         `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
         error
@@ -1467,13 +1617,6 @@ export class PartyServer extends YServer {
       return false;
     }
     this.markDocumentPersisted(documentBase64);
-
-    if (this.consumeCompactionAutosave(documentBase64)) {
-      console.log(
-        `[PartyServer] Compaction autosave completed: room=${this.name}`
-      );
-      return true;
-    }
 
     if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
