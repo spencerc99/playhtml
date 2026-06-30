@@ -512,49 +512,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
       >
         <defs>
-          <filter id="scrollNoise">
-            {/* Paper-tooth grain that modulates the BRIGHTNESS of the colored
-                fill (not black dots on top): generate fine grayscale noise,
-                opaque, then MULTIPLY it onto the source so the color keeps its
-                hue but gains light/dark grain. The noise is biased bright so it
-                mostly lightens (paper tooth) with occasional darker speckle.
-                Replacing the source with noise — the old behavior — silently hid
-                the fill color entirely. */}
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.9"
-              numOctaves="3"
-              stitchTiles="stitch"
-              result="noise"
-            />
-            {/* Desaturate to grayscale and compress to a bright range
-                (~0.7–1.0) so multiply gives a subtle tooth, not heavy darkening.
-                Force alpha to 1 so it's a full grayscale image to multiply. */}
-            <feColorMatrix
-              in="noise"
-              type="saturate"
-              values="0"
-              result="gray"
-            />
-            <feComponentTransfer in="gray" result="toothMap">
-              <feFuncR type="linear" slope="0.32" intercept="0.68" />
-              <feFuncG type="linear" slope="0.32" intercept="0.68" />
-              <feFuncB type="linear" slope="0.32" intercept="0.68" />
-              <feFuncA type="linear" slope="0" intercept="1" />
-            </feComponentTransfer>
-            <feComposite
-              in="toothMap"
-              in2="SourceGraphic"
-              operator="arithmetic"
-              k1="1"
-              k2="0"
-              k3="0"
-              k4="0"
-              result="multiplied"
-            />
-            {/* Clip back to the source shape (the grayscale rect is full-bleed). */}
-            <feComposite in="multiplied" in2="SourceGraphic" operator="in" />
-          </filter>
           <filter id="scrollGrain">
             <feTurbulence
               type="turbulence"
@@ -567,6 +524,37 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
               <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
             </feComponentTransfer>
           </filter>
+
+          {/* Shared, STATIC paper-grain tile. The turbulence is computed ONCE
+              into a small 220px tile and then GPU-tiled across every window —
+              replacing the old per-window, per-frame `scrollNoise` feTurbulence
+              over the full (huge) background rect, which was ~half the 4K paint
+              cost for a barely-visible effect. Multiply-blended where used so it
+              modulates the colored fill's brightness (the paper tooth). */}
+          <filter id="grainTileFilter" x="0" y="0" width="100%" height="100%">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.9"
+              numOctaves="3"
+              stitchTiles="stitch"
+              result="n"
+            />
+            <feColorMatrix in="n" type="saturate" values="0" result="g" />
+            <feComponentTransfer in="g">
+              <feFuncR type="linear" slope="0.3" intercept="0.7" />
+              <feFuncG type="linear" slope="0.3" intercept="0.7" />
+              <feFuncB type="linear" slope="0.3" intercept="0.7" />
+              <feFuncA type="linear" slope="0" intercept="1" />
+            </feComponentTransfer>
+          </filter>
+          <pattern
+            id="paperGrain"
+            patternUnits="userSpaceOnUse"
+            width="220"
+            height="220"
+          >
+            <rect width="220" height="220" filter="url(#grainTileFilter)" />
+          </pattern>
         </defs>
 
         {activeViewports.map((viewport) => {
@@ -966,7 +954,6 @@ const DynamicViewportRect = memo(
     // Targets the rich, deep look the cloud-mottle gave (its multiply layers
     // darkened/saturated the fill); baked into the flat background so it reads
     // the same without the clouds. Lower lightness + higher saturation.
-    const bgLuminosity = 0.58 + localSeededRandom(1) * 0.07; // 0.58–0.65
     const backgroundColor = mono
       ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
       : edgeTintColor;
@@ -1034,26 +1021,42 @@ const DynamicViewportRect = memo(
     const circleElements = useMemo(() => {
       if (mono) return null;
       const slotHeight = 130;
-      return Array.from({ length: Math.ceil(bgHeight / slotHeight) }, (_, i) => {
-        if (localSeededRandom(420 + i) < 0.55) return null; // ~45% of slots
-        const radius = 7 + localSeededRandom(421 + i) * 16; // 7–23px
-        const cx =
-          visualX + radius + localSeededRandom(422 + i) * (visualWidth - radius * 2);
-        const cy =
-          visualY + i * slotHeight + radius + localSeededRandom(423 + i) * (slotHeight - radius * 2);
-        const lum = 0.45 + localSeededRandom(424 + i) * 0.3;
-        return (
-          <circle
-            key={`circle-${i}`}
-            cx={cx}
-            cy={cy}
-            r={radius}
-            fill={contentFill(lum)}
-            opacity={0.28 + localSeededRandom(425 + i) * 0.18}
-          />
-        );
-      });
-    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY, contentFill, mono]);
+      return Array.from(
+        { length: Math.ceil(bgHeight / slotHeight) },
+        (_, i) => {
+          if (localSeededRandom(420 + i) < 0.55) return null; // ~45% of slots
+          const radius = 7 + localSeededRandom(421 + i) * 16; // 7–23px
+          const cx =
+            visualX +
+            radius +
+            localSeededRandom(422 + i) * (visualWidth - radius * 2);
+          const cy =
+            visualY +
+            i * slotHeight +
+            radius +
+            localSeededRandom(423 + i) * (slotHeight - radius * 2);
+          const lum = 0.45 + localSeededRandom(424 + i) * 0.3;
+          return (
+            <circle
+              key={`circle-${i}`}
+              cx={cx}
+              cy={cy}
+              r={radius}
+              fill={contentFill(lum)}
+              opacity={0.28 + localSeededRandom(425 + i) * 0.18}
+            />
+          );
+        },
+      );
+    }, [
+      bgHeight,
+      localSeededRandom,
+      visualWidth,
+      visualX,
+      visualY,
+      contentFill,
+      mono,
+    ]);
 
     const contentBlocks = useMemo(() => {
       if (!hasContentBlocks) return null;
@@ -1679,15 +1682,25 @@ const DynamicViewportRect = memo(
           <g transform={zoomTransform || undefined}>
             <g transform={scrolledContentTransform}>
               {/* Background — near-opaque + full-saturation hue in color mode so
-                  the paper doesn't bleach the color; paper-tooth grain via the
-                  scrollNoise filter gives texture. */}
+                  the paper doesn't bleach the color. */}
               <rect
                 x={visualX}
                 y={visualY}
                 width={visualWidth}
                 height={bgHeight}
                 fill={backgroundColor}
-                filter="url(#scrollNoise)"
+                opacity={bgRenderOpacity}
+              />
+              {/* Paper-tooth grain: the cheap shared static tile, multiplied
+                  over the fill so it modulates brightness (replaces the costly
+                  per-window per-frame scrollNoise feTurbulence). */}
+              <rect
+                x={visualX}
+                y={visualY}
+                width={visualWidth}
+                height={bgHeight}
+                fill="url(#paperGrain)"
+                style={{ mixBlendMode: "multiply" }}
                 opacity={bgRenderOpacity}
               />
               {/* Extra black-noise grain — only in monochrome, where the bg is
