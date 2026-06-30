@@ -1375,8 +1375,10 @@ function isCorrectElementInitializer(
 ): tagInfo is ElementInitializer {
   return (
     tagInfo != null &&
-    // Any non-undefined default is valid — objects, functions, and primitives
-    // (e.g. `defaultData: 0` or `""`), which views commonly use.
+    // Just require a default to exist here — this guard is shared by the
+    // built-ins (whose defaults are objects/arrays) and the function form
+    // `defaultData: (el) => …`. The new can-play/view API additionally requires
+    // an object default; see validateViewInitializer.
     tagInfo.defaultData !== undefined &&
     // A valid initializer needs an update path: either the imperative
     // `updateElement` or the declarative `view`.
@@ -2233,6 +2235,19 @@ function validateViewInitializer(name: string, init: ElementInitializer): void {
   if (!init.view && !init.updateElement) {
     throw new Error(
       `[playhtml] "${name}" must define either \`view\` or \`updateElement\`.`,
+    );
+  }
+  // Shared data must be an object (or a factory returning one), never a bare
+  // primitive. An object shape stays robust as the data evolves — you can add
+  // fields without a migration, where `defaultData: 0` can't grow.
+  if (
+    init.defaultData !== undefined &&
+    typeof init.defaultData !== "function" &&
+    (typeof init.defaultData !== "object" || init.defaultData === null)
+  ) {
+    throw new Error(
+      `[playhtml] "${name}" has a non-object \`defaultData\`. Use an object ` +
+        `(e.g. \`{ count: 0 }\`) so the shape can grow without a data migration.`,
     );
   }
 }

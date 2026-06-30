@@ -400,20 +400,33 @@ describe("rail 2: define + composition", () => {
   });
 });
 
-describe("primitive defaultData", () => {
-  it("accepts a primitive defaultData and renders it", async () => {
+describe("object defaultData enforcement", () => {
+  it("rejects a primitive defaultData so the shape can evolve", () => {
     const el = document.createElement("div");
     el.id = "primitive";
     document.body.appendChild(el);
 
-    const handle = playhtml.register<number>("primitive", {
-      defaultData: 0,
-      view: ({ data }) => html`<span class="n">${data}</span>`,
+    expect(() =>
+      playhtml.register<number>("primitive", {
+        defaultData: 0,
+        view: ({ data }) => html`<span class="n">${data}</span>`,
+      }),
+    ).toThrow(/non-object `defaultData`/);
+  });
+
+  it("accepts an object defaultData", async () => {
+    const el = document.createElement("div");
+    el.id = "object-default";
+    document.body.appendChild(el);
+
+    const handle = playhtml.register<{ n: number }>("object-default", {
+      defaultData: { n: 0 },
+      view: ({ data }) => html`<span class="n">${data.n}</span>`,
     });
     await tick();
 
     expect(el.querySelector(".n")!.textContent).toBe("0");
-    expect(handle.getData()).toBe(0);
+    expect(handle.getData()).toEqual({ n: 0 });
   });
 });
 

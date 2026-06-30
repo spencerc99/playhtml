@@ -112,16 +112,24 @@ defaultData: {
 
 ### 2. Don't store computed or derived values
 
-Compute them in your `view` (vanilla) or the render function (React). Storing them means they go stale whenever the source changes and you forget.
+Compute them when you render — in `updateElement` or `view` (vanilla), or the render function (React). Storing them means they go stale whenever the source changes and you forget.
 
 ```js
-// Good — derive in the view
+// Good — derive at render time. Either vanilla form works:
+
+// imperative — updateElement
+defaultData: { count: 5 }
+updateElement: ({ element, data }) => {
+  element.textContent = `${data.count} (${data.count % 2 === 0 ? "even" : "odd"})`;
+}
+
+// reactive — view
 defaultData: { count: 5 }
 view: ({ data }) => html`
   ${data.count} (${data.count % 2 === 0 ? "even" : "odd"})
 `
 
-// Avoid
+// Avoid — storing the derived value
 defaultData: { count: 5, isEven: false }
 ```
 
