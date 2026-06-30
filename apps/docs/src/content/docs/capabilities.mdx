@@ -490,6 +490,8 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
 
 **Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
 
+Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
+
 This page is itself a `can-play` showcase. Four examples live in the margins:
 
 - [**Doodle strip**](#play-doodle): freehand canvas input encoded as a tiny PNG data URL. The shared array caps at 20 via `splice` inside the setData mutator.

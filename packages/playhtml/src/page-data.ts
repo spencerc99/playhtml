@@ -131,18 +131,19 @@ export function createPageDataChannel<T>(
       // default into a fresh value and attachObserver re-attaches the deep
       // observer, wired to this channel's preserved listener set — so the
       // handle keeps both writing AND notifying after the reset.
-      let currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
-      if (!currentProxy) {
+      let currentProxy = getProxy(PAGE_TAG, name) as T | null | undefined;
+      if (currentProxy == null) {
         currentProxy = ensureProxy<T>(PAGE_TAG, name, defaultValue) as T;
         attachObserver();
       }
+      const proxy = currentProxy;
       if (typeof data === "function") {
         doc().transact(() => {
-          (data as (draft: T) => void)(currentProxy);
+          (data as (draft: T) => void)(proxy);
         });
       } else {
         doc().transact(() => {
-          deepReplaceIntoProxy(currentProxy, data);
+          deepReplaceIntoProxy(proxy, data);
         });
       }
     },

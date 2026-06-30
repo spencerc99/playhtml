@@ -51,6 +51,38 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["foo"]).toEqual({ on: false });
   });
 
+  it("keeps can-play element props scoped when combined with can-move", async () => {
+    const el = document.createElement("img");
+    el.id = "composed-candle";
+    el.setAttribute("can-play", "");
+    el.setAttribute("can-move", "");
+    (el as any).defaultData = { on: true };
+    (el as any).onClick = (_event: MouseEvent, { data, setData }: any) => {
+      setData({ on: !data.on });
+    };
+    (el as any).updateElement = ({ element, data }: any) => {
+      element.setAttribute("data-lit", String(data.on));
+    };
+    document.body.appendChild(el);
+
+    playhtml.setupPlayElement(el);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const playHandler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("composed-candle");
+    const moveHandler = playhtml
+      .elementHandlers!.get("can-move")!
+      .get("composed-candle");
+
+    expect(playHandler).toBeTruthy();
+    expect(moveHandler).toBeTruthy();
+    expect(playHandler!.data).toEqual({ on: true });
+    expect(moveHandler!.data).toEqual({ x: 0, y: 0 });
+    expect(el.getAttribute("data-lit")).toBe("true");
+    expect(el.style.transform).toBe("translate(0px, 0px)");
+  });
+
   it("handles awareness changes per element (no updateElementAwareness)", async () => {
     const el = document.createElement("div");
     el.id = "bar";

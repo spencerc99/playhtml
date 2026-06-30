@@ -306,7 +306,7 @@ function ensureElementProxy<TData = unknown>(
   const tagMap = proxyByTagAndId.get(tag)!;
   if (!tagMap.has(elementId)) {
     store.play[tag] ??= {};
-    const tagRecord = store.play[tag];
+    const tagRecord = store.play[tag]!;
     if (tagRecord[elementId] === undefined) {
       // Always clone to avoid reusing the same object reference across multiple elements,
       // which SyncedStore forbids ("reassigning object that already occurs in the tree").
@@ -1392,20 +1392,31 @@ function getCustomElementProps(element: HTMLElement) {
   return props;
 }
 
+function shouldReadElementPropsForTag(
+  tag: TagType | string,
+  element: HTMLElement,
+): boolean {
+  return tag === TagType.CanPlay || !element.hasAttribute(TagType.CanPlay);
+}
+
 function getElementInitializerInfoForElement(
   tag: TagType | string,
   element: HTMLElement,
 ) {
-  const customProps = getCustomElementProps(element);
-
   if (tag === TagType.CanPlay) {
     // For can-play, all properties come from the DOM element
+    const customProps = getCustomElementProps(element);
     return customProps as Required<Omit<ElementInitializer, "additionalSetup">>;
   }
 
   const builtIn = capabilitiesToInitializer[tag];
   if (!builtIn) return undefined;
 
+  if (!shouldReadElementPropsForTag(tag, element)) {
+    return builtIn;
+  }
+
+  const customProps = getCustomElementProps(element);
   // Merge: built-in defaults overridden by any custom properties on the element
   return { ...builtIn, ...customProps };
 }
@@ -1772,7 +1783,9 @@ function isElementValidForTag(
   element: HTMLElement,
   tag: TagType | string,
 ): boolean {
-  const customValidator = (element as any).isValidElementForTag;
+  const customValidator = shouldReadElementPropsForTag(tag, element)
+    ? (element as any).isValidElementForTag
+    : undefined;
   if (typeof customValidator === "function") {
     return customValidator(element);
   }
@@ -2151,10 +2164,11 @@ function deleteElementData(tag: string, elementId: string): void {
   }
 
   // 2. Remove from SyncedStore
-  if (store.play[tag] && elementId in store.play[tag]) {
+  const tagRecord = store.play[tag];
+  if (tagRecord && elementId in tagRecord) {
     try {
       doc.transact(() => {
-        delete store.play[tag]![elementId];
+        delete tagRecord[elementId];
       });
     } catch (error) {
       console.warn(
