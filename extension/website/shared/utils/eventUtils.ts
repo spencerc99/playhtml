@@ -50,15 +50,29 @@ export function parseColorToHsl(
     };
   }
 
-  // Handle hex strings
-  let hex = color.replace("#", "");
-  if (hex.length === 3)
-    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-  if (hex.length !== 6) return null;
+  let r: number;
+  let g: number;
+  let b: number;
 
-  const r = parseInt(hex.slice(0, 2), 16) / 255;
-  const g = parseInt(hex.slice(2, 4), 16) / 255;
-  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  // Handle rgb()/rgba() strings (e.g. RISO_COLORS like "rgb(0, 120, 191)").
+  const rgbMatch = color.match(
+    /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/,
+  );
+  if (rgbMatch) {
+    r = parseFloat(rgbMatch[1]) / 255;
+    g = parseFloat(rgbMatch[2]) / 255;
+    b = parseFloat(rgbMatch[3]) / 255;
+  } else {
+    // Handle hex strings
+    let hex = color.replace("#", "");
+    if (hex.length === 3)
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    if (hex.length !== 6) return null;
+
+    r = parseInt(hex.slice(0, 2), 16) / 255;
+    g = parseInt(hex.slice(2, 4), 16) / 255;
+    b = parseInt(hex.slice(4, 6), 16) / 255;
+  }
 
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);

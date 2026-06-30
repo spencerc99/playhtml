@@ -1153,6 +1153,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       keyboardAnimationSpeed: settings.keyboardAnimationSpeed,
       keyboardLegibilityPct: settings.keyboardLegibilityPct,
       maxConcurrentTyping: settings.maxConcurrentTyping,
+      trailVisualStyle: settings.trailVisualStyle,
+      randomizeColors: settings.randomizeColors,
     }),
     [
       settings.animationSpeed,
@@ -1161,6 +1163,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.keyboardAnimationSpeed,
       settings.keyboardLegibilityPct,
       settings.maxConcurrentTyping,
+      settings.trailVisualStyle,
+      settings.randomizeColors,
     ],
   );
 
@@ -1178,6 +1182,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       windowScale: settings.windowScale,
       windowBleed: settings.windowBleed,
       showTitleBar: settings.showTitleBar,
+      trailVisualStyle: settings.trailVisualStyle,
     }),
     [
       settings.scrollSpeed,
@@ -1192,6 +1197,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.windowScale,
       settings.windowBleed,
       settings.showTitleBar,
+      settings.trailVisualStyle,
     ],
   );
 

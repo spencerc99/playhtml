@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
 import { RISO_COLORS, extractDomain } from "../utils/eventUtils";
+import { isMonochromeStyle, colorWash, colorShade } from "../utils/colorStyle";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -39,6 +40,7 @@ interface AnimatedScrollViewportsProps {
     windowScale?: number;
     windowBleed?: number;
     showTitleBar?: boolean;
+    trailVisualStyle?: string;
   };
   // Live URL → metadata lookup. Read at render time so title bars update as
   // navigation events stream in, even for viewports that were added before
@@ -754,6 +756,7 @@ const DynamicViewportRect = memo(
       showResizeEvents?: boolean;
       showZoomEvents?: boolean;
       showTitleBar?: boolean;
+      trailVisualStyle?: string;
     };
     livePageTitle?: string;
     liveFaviconUrl?: string;
@@ -885,15 +888,25 @@ const DynamicViewportRect = memo(
       ? RISO_COLORS[Math.floor(localSeededRandom(20) * RISO_COLORS.length)]
       : animation.color;
 
+    // Color mode washes the whole window in the participant hue so the inner
+    // (grayscale) content reads as a study in that color; monochrome keeps the
+    // original near-white paper look.
+    const mono = isMonochromeStyle(settings.trailVisualStyle);
+
     const baseLuminosity = 0.85 + localSeededRandom(1) * 0.15;
     const colorValue = Math.round(baseLuminosity * 255);
-    const backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
+    const backgroundColor = mono
+      ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
+      : // Lightened wash so even dark cursor hues stay a readable light "page".
+        colorWash(edgeTintColor, 0.9, 32);
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
 
     // Resize gets a dotted border without changing viewport brightness.
     const borderStrokeWidth = 2;
     const borderDashArray = isActivelyResizing ? "2 2" : "none";
-    const borderColor = `rgb(180, 180, 180)`;
+    const borderColor = mono
+      ? `rgb(180, 180, 180)`
+      : colorWash(edgeTintColor, 0.6, 0);
 
     // Content pattern variation based on seed
     const bandSpacing = Math.max(1, 60 + localSeededRandom(15) * 80); // 60-140px spacing
@@ -1297,11 +1310,15 @@ const DynamicViewportRect = memo(
     const thumbHeight = Math.round(36 - normalizedRange * 30);
     const thumbTravel = trackHeight - thumbHeight;
 
-    // Scrollbar colors (monochrome)
-    const scrollbarTrackColor = `rgb(200, 200, 200)`;
+    // Scrollbar colors — tinted to the window hue in color mode.
+    const scrollbarTrackColor = mono
+      ? `rgb(200, 200, 200)`
+      : colorWash(edgeTintColor, 0.3, 20);
     const scrollbarThumbLuminosity = 0.4 + localSeededRandom(21) * 0.2; // 0.4-0.6
     const scrollbarThumbColorValue = Math.round(scrollbarThumbLuminosity * 255);
-    const scrollbarThumbColor = `rgb(${scrollbarThumbColorValue}, ${scrollbarThumbColorValue}, ${scrollbarThumbColorValue})`;
+    const scrollbarThumbColor = mono
+      ? `rgb(${scrollbarThumbColorValue}, ${scrollbarThumbColorValue}, ${scrollbarThumbColorValue})`
+      : colorShade(edgeTintColor, 45);
 
     const debug = useDebugHover();
     const showDebug = () => {
@@ -1571,6 +1588,22 @@ const DynamicViewportRect = memo(
               )}
             </g>
           </g>
+
+          {/* Color mode: multiply a wash of the window hue over all the
+              grayscale content so the bands/blocks/washes read as a study in
+              that color (tying the window to the participant's cursor hue).
+              Multiply keeps darks dark and tints the lights toward the hue. */}
+          {!mono && (
+            <rect
+              x={visualX}
+              y={visualY}
+              width={visualWidth}
+              height={visualHeight}
+              fill={colorWash(edgeTintColor, 1, 8)}
+              style={{ mixBlendMode: "multiply" }}
+              opacity={0.55}
+            />
+          )}
 
           {/* Abstract pixelated page preview via iframe */}
           {settings.showPagePreview && animation.pageUrl && (

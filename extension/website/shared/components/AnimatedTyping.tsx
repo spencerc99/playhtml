@@ -4,6 +4,13 @@ import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import { TypingState, TypingAction, ActiveTyping } from "../types";
 import { useDebugHover } from "./DebugHover";
 import { redactWithLegibility } from "@extension/utils/keyboardRedaction";
+import { RISO_COLORS } from "../utils/eventUtils";
+import {
+  isMonochromeStyle,
+  colorWash,
+  colorShade,
+  readableTextLightness,
+} from "../utils/colorStyle";
 
 interface TypingSettings {
   animationSpeed: number;
@@ -16,6 +23,10 @@ interface TypingSettings {
    * until an existing one finishes. Completed sessions still linger via the
    * COMPLETED_TYPING_VISIBLE_COUNT tail. */
   maxConcurrentTyping: number;
+  /** Cursor renderer style — "monochrome" → ink text on paper; otherwise the
+   * letters take the participant's vibrant color (matching their cursor). */
+  trailVisualStyle?: string;
+  randomizeColors?: boolean;
 }
 
 interface AnimatedTypingProps {
@@ -52,6 +63,15 @@ export interface TypingPlaybackSchedule {
 function seededRandom(seed: number): number {
   const x = Math.sin(seed) * 43758.5453;
   return x - Math.floor(x);
+}
+
+// Stable hash of a typing id, for picking a consistent RISO color per box.
+function hashTypingId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) | 0;
+  }
+  return h;
 }
 
 // Calculate character reveal time with natural variations
@@ -322,7 +342,18 @@ const TypingBox = memo(
       fontSize,
       positionOffset,
       style,
+      color,
     } = typing;
+
+    const mono = isMonochromeStyle(settings.trailVisualStyle);
+    // In color mode, the letters take the participant's vibrant hue (the same
+    // color as their cursor) and the box gets a faint wash of it. randomizeColors
+    // swaps in a RISO color, keyed stably off the typing id so it doesn't flicker.
+    const vizColor = settings.randomizeColors
+      ? RISO_COLORS[
+          Math.abs(hashTypingId(typing.id)) % RISO_COLORS.length
+        ]
+      : color;
 
     // Map border style code to CSS border style
     const getBorderStyle = (code: number | undefined): string => {
@@ -345,23 +376,31 @@ const TypingBox = memo(
     const borderRadius = style?.br !== undefined ? `${style.br}px` : "3px";
     const borderStyle = getBorderStyle(style?.bs);
 
-    // Handle background color with minimum brightness for visibility
+    // Background + text color. Monochrome keeps the classic light-input look;
+    // color mode washes the box faintly in the participant hue and colors the
+    // letters that same hue (darkened to stay legible on the wash).
     let backgroundColor: string;
     let textColor: string;
+    let borderColor: string;
 
-    if (style?.bg !== undefined) {
-      // Apply minimum luminosity of 0.85 to ensure visibility (even dark inputs stay light enough to see)
-      const luminosity = Math.max(0.85, style.bg);
-      const colorValue = Math.round(luminosity * 255);
-      backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
-
-      // Invert text color based on background luminosity
-      // If background is dark (< 0.5), use very light text for readability; otherwise dark text
+    if (mono) {
+      if (style?.bg !== undefined) {
+        // Apply minimum luminosity of 0.85 to ensure visibility (even dark inputs stay light enough to see)
+        const luminosity = Math.max(0.85, style.bg);
+        const colorValue = Math.round(luminosity * 255);
+        backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
+      } else {
+        backgroundColor = "#fefefe";
+      }
       textColor = "#222";
+      borderColor = "#999";
     } else {
-      // Default light background with dark text
-      backgroundColor = "#fefefe";
-      textColor = "#222";
+      // Faint wash of the hue, lightened so dark cursor colors still read as a
+      // light input rather than a saturated panel. Letters + border take a
+      // readable shade of the same hue.
+      backgroundColor = colorWash(vizColor, 0.16, 30);
+      textColor = colorShade(vizColor, readableTextLightness(vizColor));
+      borderColor = colorWash(vizColor, 0.55, 0);
     }
 
     return (
@@ -385,7 +424,7 @@ const TypingBox = memo(
             width: `${textboxSize.width}px`,
             minHeight: `${textboxSize.height}px`,
             maxHeight: "500px", // Cap to prevent extremely tall boxes
-            border: `2px ${borderStyle} #999`,
+            border: `2px ${borderStyle} ${borderColor}`,
             borderRadius,
             backgroundColor,
             padding: "8px 10px",
@@ -427,9 +466,13 @@ const TypingBox = memo(
     return (
       prev.typing.currentText === next.typing.currentText &&
       prev.typing.showCaret === next.typing.showCaret &&
+      prev.typing.color === next.typing.color &&
       prev.settings.textboxOpacity === next.settings.textboxOpacity &&
       prev.settings.keyboardShowCaret === next.settings.keyboardShowCaret &&
-      prev.settings.keyboardLegibilityPct === next.settings.keyboardLegibilityPct
+      prev.settings.keyboardLegibilityPct ===
+        next.settings.keyboardLegibilityPct &&
+      prev.settings.trailVisualStyle === next.settings.trailVisualStyle &&
+      prev.settings.randomizeColors === next.settings.randomizeColors
     );
   },
 );

@@ -97,6 +97,7 @@ function enumSpec<T extends string>(
 const TRAIL_STYLES = ["straight", "smooth", "organic", "chaotic"] as const;
 const TRAIL_ANIMATION_MODES = ["natural", "stagger"] as const;
 const NAVIGATION_VIEW_MODES = ["timeline", "radial"] as const;
+const TRAIL_VISUAL_STYLES = ["color", "monochrome"] as const;
 
 /** The small set of settings whose URL representation should stay
  * readable / hand-editable. Everything else rides in the `?s=` blob.
@@ -139,6 +140,8 @@ export const HEADLINE_SPECS: SettingSpec[] = [
 
   // Trails — the knobs that visibly change what the trail looks like.
   enumSpec("trailStyle", "trailStyle", TRAIL_STYLES, "trails"),
+  // Color vs monochrome — drives cursors AND the window/typing visualizations.
+  enumSpec("trailVisualStyle", "trailVisualStyle", TRAIL_VISUAL_STYLES),
   enumSpec(
     "trailAnimationMode",
     "trailAnimationMode",
