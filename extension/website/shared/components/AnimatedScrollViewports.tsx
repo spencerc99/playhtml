@@ -958,10 +958,10 @@ const DynamicViewportRect = memo(
     // full hue saturation so that after the paper-tooth grain and any blending
     // it still reads as a distinct color (not a washed-out near-gray). Per-
     // window lightness jitter keeps panels from looking identical.
-    const bgLuminosity = 0.55 + localSeededRandom(1) * 0.1; // 0.55–0.65
+    const bgLuminosity = 0.64 + localSeededRandom(1) * 0.08; // 0.64–0.72
     const backgroundColor = mono
       ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
-      : colorizeLuminosity(edgeTintColor, bgLuminosity, 1);
+      : colorizeLuminosity(edgeTintColor, bgLuminosity, 0.78);
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
     // In color mode the fill is rendered near-opaque so the warm paper doesn't
     // bleach the hue; monochrome keeps the original translucent paper look.
