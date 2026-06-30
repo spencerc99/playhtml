@@ -81,30 +81,6 @@ export function shouldCheckEmergencyCompaction({
   return nextCheckAt === null || nextCheckAt <= now;
 }
 
-export function shouldCompactBeforePersist({
-  allowCompaction,
-  documentSize,
-  nextCheckAt,
-  now,
-  thresholdBytes,
-}: {
-  allowCompaction: boolean;
-  documentSize: number;
-  nextCheckAt: number | null;
-  now: number;
-  thresholdBytes: number;
-}): boolean {
-  return (
-    allowCompaction &&
-    shouldCheckEmergencyCompaction({
-      documentSize,
-      thresholdBytes,
-      nextCheckAt,
-      now,
-    })
-  );
-}
-
 // A connected-room emergency reset is disruptive because clients must reload
 // into a fresh Yjs history. Do it only when the compacted snapshot either gets
 // back under the high-watermark threshold or saves at least 25% of that

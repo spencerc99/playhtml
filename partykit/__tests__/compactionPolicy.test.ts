@@ -6,7 +6,6 @@ import {
   getNextAlarmTime,
   getCompactionCommitDecision,
   isCompactionAutosave,
-  shouldCompactBeforePersist,
   shouldCheckEmergencyCompaction,
   shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
@@ -128,54 +127,12 @@ describe("shouldCheckEmergencyCompaction", () => {
   });
 });
 
-describe("shouldCompactBeforePersist", () => {
+describe("STORAGE_KEYS", () => {
   it("uses a cooldown independent from connected-room emergency compaction", () => {
     expect(STORAGE_KEYS.persistedDocumentCompactCheckAfter).toBeDefined();
     expect(STORAGE_KEYS.persistedDocumentCompactCheckAfter).not.toBe(
       STORAGE_KEYS.emergencyCompactCheckAfter
     );
-  });
-
-  it("checks large autosave candidates only when compaction is allowed after cooldown", () => {
-    expect(
-      shouldCompactBeforePersist({
-        allowCompaction: true,
-        documentSize: 999,
-        nextCheckAt: null,
-        now: 5_000,
-        thresholdBytes: 1_000,
-      })
-    ).toBe(false);
-
-    expect(
-      shouldCompactBeforePersist({
-        allowCompaction: true,
-        documentSize: 1_000,
-        nextCheckAt: null,
-        now: 5_000,
-        thresholdBytes: 1_000,
-      })
-    ).toBe(true);
-
-    expect(
-      shouldCompactBeforePersist({
-        allowCompaction: false,
-        documentSize: 1_000,
-        nextCheckAt: null,
-        now: 5_000,
-        thresholdBytes: 1_000,
-      })
-    ).toBe(false);
-
-    expect(
-      shouldCompactBeforePersist({
-        allowCompaction: true,
-        documentSize: 1_000,
-        nextCheckAt: 6_000,
-        now: 5_000,
-        thresholdBytes: 1_000,
-      })
-    ).toBe(false);
   });
 });
 
