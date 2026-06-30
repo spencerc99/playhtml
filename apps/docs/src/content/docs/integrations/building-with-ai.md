@@ -91,8 +91,9 @@ SETUP — React:
 
 DATA TYPES (choose the right one):
 1. Persistent data (defaultData): State that syncs and persists (position, count, messages, etc.)
-2. Awareness: Temporary presence data (which users are online, their colors, cursor positions)
-3. Events: One-time triggers (confetti, notifications, animations) — use dispatchPlayEvent/registerPlayEventListener
+2. Presence: Temporary per-user state (which users are online, their colors, cursor positions)
+3. Element awareness: Presence scoped to one element (who is hovering this card, this user's color in this widget)
+4. Events: One-time triggers (confetti, notifications, animations) — use dispatchPlayEvent/registerPlayEventListener
 
 KEY APIs:
 
@@ -110,7 +111,7 @@ Vanilla HTML (register + view):
 
 React (withSharedState):
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
-- For awareness: { myDefaultAwareness: value } in config, use setMyAwareness
+- For element awareness: { myDefaultAwareness: value } in config, use setMyAwareness
 - For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
 - For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
 
@@ -155,7 +156,7 @@ DATA PERFORMANCE TIPS:
 - Keep data shapes simple and flat (avoid deep nesting)
 - Don't store computed/derived values — calculate them in the view / render function
 - Use events for ephemeral actions (confetti, notifications), not persistent data
-- Use awareness for temporary presence, not defaultData
+- Use presence or element awareness for temporary per-user state, not defaultData
 - Don't update data on high-frequency events (mousemove, scroll) — debounce
 - For growing lists (messages, history), consider limiting size or implementing cleanup
 - Store only what needs to sync — use component state for UI-only state
@@ -163,7 +164,7 @@ DATA PERFORMANCE TIPS:
 
 INSTRUCTIONS:
 - If the behavior description is unclear, ASK clarifying questions before implementing
-- Choose the right data type (persistent vs awareness vs events)
+- Choose the right data type (persistent data, presence or element awareness, or events)
 - Provide complete, working code
 - Include all necessary imports and setup
 

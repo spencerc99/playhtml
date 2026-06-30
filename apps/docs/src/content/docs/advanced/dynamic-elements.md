@@ -79,7 +79,7 @@ Because the id is derived from order-of-appearance, `selector-id` fits **fixed, 
 Pass `selector-id` straight through to the rendered element. This pattern powers the fridge-magnets demo, where each `FridgeWord` is the same component rendered many times:
 
 ```tsx
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 import { withSharedState } from "@playhtml/react";
 
 export const FridgeWord = withSharedState(

@@ -1,5 +1,22 @@
 # Change Log
 
+## 2.11.2
+
+### Patch Changes
+
+- 95ace2b: Keep the React bindings connected to the app-provided playhtml runtime so package managers do not install a separate nested playhtml client for React wrappers, and expose the shared React-facing API through playhtml so React consumers only depend on one compatibility boundary.
+
+## 2.11.1
+
+### Patch Changes
+
+- 22dae41: Move cursor motion onto PlayHTML's realtime presence transport, add shared protocol validation for presence messages, coalesce pointer work per animation frame, adapt cursor publish rates as active room load grows, expire stale cursor positions, and keep cursor movement out of persistent shared data.
+- d7ffb66: `can-duplicate` and `can-duplicate-to` now accept an element id, an id with a leading `#`, or any CSS selector — the same resolution `can-move-bounds` already used. Previously `can-duplicate="#my-template"` silently failed because the value was passed straight to `getElementById`. Clone ids are now derived from the resolved template element's own id, so a selector or `#`-prefixed value still produces valid clone ids.
+- Updated dependencies [22dae41]
+- Updated dependencies [18d2891]
+- Updated dependencies [d7ffb66]
+  - @playhtml/common@0.7.2
+
 ## 2.11.0
 
 ### Minor Changes
