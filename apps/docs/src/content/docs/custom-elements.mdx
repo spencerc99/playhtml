@@ -43,6 +43,8 @@ You give the element a `defaultData`, handlers like `onClick`, and an `updateEle
 
 In **vanilla**, set those properties on the element before `playhtml.init()` runs. In **React**, `withSharedState` wraps a component and hands it `data` + `setData`.
 
+Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
+
 ### A click counter
 
 <Tabs syncKey="framework">
@@ -248,6 +250,8 @@ Click "+" to append a new `<li>`. The child addition itself mirrors, so new read
   );
 ">add entry</button>
 ```
+
+If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically.
 
 :::note[Experimental]
 `can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.

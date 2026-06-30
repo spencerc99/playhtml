@@ -52,6 +52,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   // (e.g. mount points for `define`d capabilities). Driven by descendantObserver.
   onAfterRender?: (element: HTMLElement) => void;
   private descendantObserver?: MutationObserver;
+  private dataUpdateListeners = new Set<() => void>();
 
   // event handlers
   onClick?: (
@@ -287,6 +288,13 @@ export class ElementHandler<T = any, U = any, V = any> {
     return this._data;
   }
 
+  onDataUpdate(listener: () => void): () => void {
+    this.dataUpdateListeners.add(listener);
+    return () => {
+      this.dataUpdateListeners.delete(listener);
+    };
+  }
+
   setLocalData(localData: U | ((draft: U) => void)): void {
     // setLocalData re-renders in view mode, so calling it during render would
     // recurse infinitely. Reject it like setData.
@@ -315,6 +323,9 @@ export class ElementHandler<T = any, U = any, V = any> {
   set __data(data: T) {
     this._data = data;
     this.render();
+    for (const listener of this.dataUpdateListeners) {
+      listener();
+    }
   }
 
   /**
