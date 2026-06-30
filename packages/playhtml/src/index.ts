@@ -2147,7 +2147,7 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
   id: string;
   /** The bound DOM element, or null until it exists and binds. */
   getElement(): HTMLElement | null;
-  /** Read-only snapshot of shared data. Mutating it does nothing — write via setData. */
+  /** Current shared data. Do not mutate it directly — mutations are not synced and may corrupt state; write via setData. */
   getData(): T | undefined;
   setData(next: T | ((draft: T) => void)): void;
   setLocalData(next: U | ((draft: U) => void)): void;
