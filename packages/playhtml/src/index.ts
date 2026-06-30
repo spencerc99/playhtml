@@ -1878,6 +1878,9 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
+    if (tag === TagType.CanMirror) {
+      setupPlayElementDescendants(element);
+    }
   }
 
   // redo this now that we have set it in the mapping.
@@ -1905,6 +1908,9 @@ function applySharedElementDataToHandler(
   try {
     // @ts-ignore private usage intended
     handler.__data = clonePlain(proxy);
+    if (tag === TagType.CanMirror) {
+      setupPlayElementDescendants(handler.element);
+    }
   } finally {
     remoteApplyingKeys.delete(applyKey);
   }
@@ -2026,6 +2032,21 @@ function setupPlayElement(
       .filter((tag) => element.hasAttribute(tag))
       .map((tag) => setupPlayElementForTag(element, tag)),
   );
+}
+
+function setupPlayElementDescendants(element: HTMLElement): void {
+  const descendants = new Set<HTMLElement>();
+  for (const tag of getTagTypes()) {
+    element.querySelectorAll(`[${tag}]`).forEach((descendant) => {
+      if (isHTMLElement(descendant)) {
+        descendants.add(descendant);
+      }
+    });
+  }
+
+  descendants.forEach((descendant) => {
+    setupPlayElement(descendant);
+  });
 }
 
 /**

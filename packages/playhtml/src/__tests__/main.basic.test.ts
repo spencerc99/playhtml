@@ -154,4 +154,49 @@ describe("playhtml basic setup with SyncedStore", () => {
     // Verify data is removed from SyncedStore
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
   });
+
+  it("sets up mirrored descendants with playhtml capabilities", async () => {
+    const mirror = document.createElement("div");
+    mirror.id = "runtime-mirror";
+    mirror.setAttribute("can-mirror", "");
+    document.body.appendChild(mirror);
+    await playhtml.setupPlayElementForTag(mirror, "can-mirror");
+
+    const handler = playhtml.elementHandlers!
+      .get("can-mirror")!
+      .get("runtime-mirror")!;
+    handler.setData({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "runtime-mirror",
+        "can-mirror": "",
+      },
+      children: [
+        {
+          nodeType: "HTMLElement",
+          tagName: "div",
+          attributes: {
+            id: "mirrored-chair",
+            "can-toggle": "",
+            "can-spin": "",
+          },
+          children: [],
+        },
+      ],
+    });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    const chair = document.getElementById("mirrored-chair")!;
+    expect(chair).toBeTruthy();
+    expect(
+      playhtml.elementHandlers!.get("can-toggle")!.get("mirrored-chair")!
+        .element,
+    ).toBe(chair);
+    expect(
+      playhtml.elementHandlers!.get("can-spin")!.get("mirrored-chair")!
+        .element,
+    ).toBe(chair);
+  });
 });

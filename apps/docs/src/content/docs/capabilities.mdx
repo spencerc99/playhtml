@@ -458,6 +458,8 @@ Click "+" to append a new `<li>`. The child addition itself mirrors, so new read
 ">add entry</button>
 ```
 
+If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically.
+
 :::note[Experimental]
 `can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.
 :::
