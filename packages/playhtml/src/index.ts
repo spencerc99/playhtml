@@ -321,6 +321,10 @@ let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
 >();
+const mirrorDescendantElementsByRoot = new WeakMap<
+  HTMLElement,
+  Map<string, HTMLElement>
+>();
 let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
   string,
   Array<RegisteredPlayEvent>
@@ -2036,17 +2040,30 @@ function setupPlayElement(
 
 function setupPlayElementDescendants(element: HTMLElement): void {
   const descendants = new Set<HTMLElement>();
+  const currentDescendants = new Map<string, HTMLElement>();
   for (const tag of getTagTypes()) {
     element.querySelectorAll(`[${tag}]`).forEach((descendant) => {
       if (isHTMLElement(descendant)) {
         descendants.add(descendant);
+        const descendantId = getIdForElement(descendant);
+        if (descendantId) {
+          currentDescendants.set(`${tag}:${descendantId}`, descendant);
+        }
       }
     });
   }
 
+  const previousDescendants = mirrorDescendantElementsByRoot.get(element);
+  previousDescendants?.forEach((previousElement, key) => {
+    if (currentDescendants.get(key) !== previousElement) {
+      removePlayElement(previousElement);
+    }
+  });
+
   descendants.forEach((descendant) => {
     setupPlayElement(descendant);
   });
+  mirrorDescendantElementsByRoot.set(element, currentDescendants);
 }
 
 /**

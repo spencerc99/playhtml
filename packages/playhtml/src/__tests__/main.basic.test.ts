@@ -210,6 +210,7 @@ describe("playhtml basic setup with SyncedStore", () => {
         },
       ],
     });
+
     await waitForCondition(
       () =>
         document.getElementById("chair-example") !== null &&
@@ -232,5 +233,60 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(
       playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
     ).toBe(mirroredChair);
+
+    handler.setData({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "musicalChairs4",
+        "can-mirror": "",
+      },
+      children: [],
+    });
+    await waitForCondition(
+      () =>
+        document.getElementById("chair-example") === null &&
+        !playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        !playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+      "Expected can-mirror to unregister the removed chair",
+    );
+
+    handler.setData({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "musicalChairs4",
+        "can-mirror": "",
+      },
+      children: [
+        {
+          nodeType: "HTMLElement",
+          tagName: "div",
+          attributes: {
+            id: "chair-example",
+            class: "chair",
+            "can-toggle": "",
+            "can-spin": "",
+          },
+          children: [],
+        },
+      ],
+    });
+    await waitForCondition(
+      () =>
+        document.getElementById("chair-example") !== null &&
+        playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+      "Expected can-mirror to register the re-added chair",
+    );
+
+    const readdedChair = document.getElementById("chair-example")!;
+    expect(
+      playhtml.elementHandlers!.get("can-toggle")!.get("chair-example")!
+        .element,
+    ).toBe(readdedChair);
+    expect(
+      playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
+    ).toBe(readdedChair);
   });
 });
