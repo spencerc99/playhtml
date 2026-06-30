@@ -8,9 +8,9 @@ sidebar:
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-Presence is playhtml's "who's here right now" layer. Every connected user has an identity, an optional cursor position, and any number of custom named channels you define. None of it persists. When the user disconnects, their presence clears.
+Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
 
-Reach for presence when the lifetime you want is "while this person is on the page". Reach for [persistent data](/docs/data/data-essentials/) when you want state to survive a reload, and [events](/docs/data/events/) for one-shot signals.
+When you want things to stay after refreshing, use [persistent data](/docs/data/data-essentials/) and use [events](/docs/data/events/) for real-time events that don't rely on updating data. 
 
 Element APIs use the word **awareness** for presence scoped to one element. `myDefaultAwareness`, `awareness`, and `setMyAwareness` are still ephemeral per-user state; they just belong to a specific element instead of the page-level `playhtml.presence` object.
 
@@ -65,9 +65,7 @@ The hook subscribes and unsubscribes with the component lifecycle. Your channel 
 
 ### Cursor presence subscribes the same way
 
-Cursor movements are exposed as a special channel. Playhtml sends cursor motion through
-its realtime presence layer so cursor rendering can stay responsive without writing
-pointer movement into persistent shared data:
+Cursor movements are included as a special example of this presence.
 
 ```js
 const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {
