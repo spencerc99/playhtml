@@ -37,6 +37,24 @@ export function colorShade(color: string, lightness: number): string {
   return `hsl(${hsl.h}, ${s}%, ${l}%)`;
 }
 
+/** Re-hues a grayscale value into the participant color, PRESERVING the
+ * grayscale's lightness so all the existing texture/contrast (turbulence,
+ * speckle, gradient washes) carries through as splotchy color instead of a flat
+ * wash. `lum` is the original 0..1 grayscale luminosity; `satScale` (0..1)
+ * blends from gray (0) toward the hue's full saturation (1) so highlights can
+ * stay paper-pale while mid/shadow tones saturate. */
+export function colorizeLuminosity(
+  color: string,
+  lum: number,
+  satScale = 1,
+): string {
+  const hsl = parseColorToHsl(color);
+  const l = Math.max(0, Math.min(100, lum * 100));
+  if (!hsl) return `hsl(0, 0%, ${l}%)`;
+  const s = Math.max(0, Math.min(100, hsl.s * satScale));
+  return `hsl(${hsl.h}, ${s}%, ${l}%)`;
+}
+
 /** Readable text lightness for `color` on the warm paper bg: light hues get a
  * darker text shade, already-dark hues get a mid shade. */
 export function readableTextLightness(color: string): number {

@@ -10,7 +10,12 @@ import React, {
 } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
 import { RISO_COLORS, extractDomain } from "../utils/eventUtils";
-import { isMonochromeStyle, colorWash, colorShade } from "../utils/colorStyle";
+import {
+  isMonochromeStyle,
+  colorWash,
+  colorShade,
+  colorizeLuminosity,
+} from "../utils/colorStyle";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -897,8 +902,10 @@ const DynamicViewportRect = memo(
     const colorValue = Math.round(baseLuminosity * 255);
     const backgroundColor = mono
       ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
-      : // Lightened wash so even dark cursor hues stay a readable light "page".
-        colorWash(edgeTintColor, 0.9, 32);
+      : // A pale, lightly-saturated paper base — kept faint so the splotchy
+        // textured overlays (below) carry most of the color rather than this
+        // flat fill. Per-window lightness jitter avoids identical panels.
+        colorizeLuminosity(edgeTintColor, baseLuminosity, 0.4);
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
 
     // Resize gets a dotted border without changing viewport brightness.
@@ -1411,6 +1418,39 @@ const DynamicViewportRect = memo(
               yChannelSelector="G"
             />
           </filter>
+          {/* Color-mottle filter: turns a solid fill into organic, splotchy
+              patches by using high-contrast fractal noise as the alpha. Low
+              frequency = big blobs; the discrete alpha ramp makes hard-edged
+              patches (paint-soak look) rather than a smooth gradient. */}
+          <filter
+            id={`color-mottle-${viewport.id}`}
+            x="-10%"
+            y="-10%"
+            width="120%"
+            height="120%"
+          >
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.012 0.018"
+              numOctaves="4"
+              seed={backgroundSeed + 37}
+              result="blobs"
+            />
+            <feColorMatrix
+              in="blobs"
+              type="matrix"
+              values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.6 -0.5"
+              result="mask"
+            />
+            <feComponentTransfer in="mask" result="rampedMask">
+              <feFuncA type="discrete" tableValues="0 0.25 0.5 0.7 0.9 1" />
+            </feComponentTransfer>
+            <feComposite
+              in="SourceGraphic"
+              in2="rampedMask"
+              operator="in"
+            />
+          </filter>
           {/* Speckle texture filter */}
           <filter
             id={`speckle-${viewport.id}`}
@@ -1589,20 +1629,37 @@ const DynamicViewportRect = memo(
             </g>
           </g>
 
-          {/* Color mode: multiply a wash of the window hue over all the
-              grayscale content so the bands/blocks/washes read as a study in
-              that color (tying the window to the participant's cursor hue).
-              Multiply keeps darks dark and tints the lights toward the hue. */}
+          {/* Color mode: multiply washes of the window hue over the grayscale
+              content so it reads as a study in that color. Two turbulence-
+              displaced layers at different frequencies give a splotchy, mottled
+              wash (clouds + grain) rather than a flat tint — the displacement
+              filters break up the rectangle into organic patches. */}
           {!mono && (
-            <rect
-              x={visualX}
-              y={visualY}
-              width={visualWidth}
-              height={visualHeight}
-              fill={colorWash(edgeTintColor, 1, 8)}
-              style={{ mixBlendMode: "multiply" }}
-              opacity={0.55}
-            />
+            <>
+              {/* Big organic patches of a deeper shade — the main splotch. */}
+              <rect
+                x={visualX}
+                y={visualY}
+                width={visualWidth}
+                height={visualHeight}
+                fill={colorShade(edgeTintColor, 38)}
+                style={{ mixBlendMode: "multiply" }}
+                opacity={0.6}
+                filter={`url(#color-mottle-${viewport.id})`}
+              />
+              {/* A second mottle pass at a different seed/shade for layered
+                  depth, plus fine speckle tooth. */}
+              <rect
+                x={visualX}
+                y={visualY}
+                width={visualWidth}
+                height={visualHeight}
+                fill={colorShade(edgeTintColor, 55)}
+                style={{ mixBlendMode: "multiply" }}
+                opacity={0.4}
+                filter={`url(#speckle-${viewport.id})`}
+              />
+            </>
           )}
 
           {/* Abstract pixelated page preview via iframe */}

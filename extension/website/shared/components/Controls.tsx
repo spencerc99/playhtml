@@ -828,6 +828,28 @@ export const Controls: React.FC<ControlsProps> = memo(
           selectedTimeRange={selectedTimeRange ?? null}
         />
 
+        {/* Visual Style (color vs monochrome) — top-level since it drives the
+            cursors AND the window/typing visualizations, not just trails. */}
+        <div className="control-group" style={{ marginBottom: "12px" }}>
+          <label htmlFor="trail-visual-style">Visual Style</label>
+          <select
+            id="trail-visual-style"
+            value={settings.trailVisualStyle ?? "color"}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                trailVisualStyle: e.target.value,
+              }))
+            }
+          >
+            {TRAIL_RENDERERS.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Randomize Colors at the very top */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
           <label htmlFor="randomize-colors">
@@ -1042,23 +1064,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           expanded={!!expandedSections["cursorSettings"]}
           onToggle={() => toggleSection("cursorSettings")}
         >
-          <div className="control-group">
-            <label htmlFor="trail-visual-style">Visual Style</label>
-            <select
-              id="trail-visual-style"
-              value={settings.trailVisualStyle ?? "color"}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  trailVisualStyle: e.target.value,
-                }))
-              }
-            >
-              {TRAIL_RENDERERS.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
           {/* Appearance settings */}
           <div className="control-group">
             <label htmlFor="trail-opacity">Trail Opacity</label>
