@@ -30,7 +30,6 @@ import {
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_DOCUMENT_WARNING_BYTES,
   DEFAULT_MAX_REQUEST_BYTES,
-  DEFAULT_MAX_WEBSOCKET_MESSAGE_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
   DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES,
@@ -54,14 +53,12 @@ import {
   isApplySubtreesImmediateRequest,
 } from "./request";
 import {
-  checkWebSocketMessage,
-  getWebSocketMessageSizeBytes,
+  checkMessageRate,
   isDurableObjectOverloadError,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type MessageLimitState,
   type ServerLimits,
-  type WebSocketMessagePayload,
 } from "./serverLimits";
 import {
   getSourceRoomId,
@@ -310,10 +307,6 @@ export class PartyServer extends YServer {
         "MAX_REQUEST_BYTES",
         DEFAULT_MAX_REQUEST_BYTES
       ),
-      maxWebSocketMessageBytes: readPositiveNumberEnv(
-        "MAX_WEBSOCKET_MESSAGE_BYTES",
-        DEFAULT_MAX_WEBSOCKET_MESSAGE_BYTES
-      ),
       documentWarningBytes: readPositiveNumberEnv(
         "DOCUMENT_WARNING_BYTES",
         DEFAULT_DOCUMENT_WARNING_BYTES
@@ -321,16 +314,11 @@ export class PartyServer extends YServer {
     };
   }
 
-  private checkConnectionMessageLimits(
-    connection: Party.Connection,
-    message: WebSocketMessagePayload
-  ) {
+  private checkConnectionMessageRate(connection: Party.Connection) {
     const limitConnection =
       connection as Party.Connection<PartyServerConnectionState>;
-    const messageSizeBytes = getWebSocketMessageSizeBytes(message);
-    const decision = checkWebSocketMessage({
+    const decision = checkMessageRate({
       limits: this.getServerLimits(),
-      messageSizeBytes,
       now: Date.now(),
       state: limitConnection.state?.[MESSAGE_LIMIT_STATE_KEY],
     });
@@ -344,7 +332,7 @@ export class PartyServer extends YServer {
       };
     });
 
-    return { violation: decision.violation, messageSizeBytes };
+    return { violation: decision.violation };
   }
 
   private getSupabaseLoadTimeoutMs(): number {
@@ -1305,15 +1293,11 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     message: Party.WSMessage
   ): Promise<void> {
-    const limitResult = this.checkConnectionMessageLimits(
-      connection,
-      message as WebSocketMessagePayload
-    );
+    const limitResult = this.checkConnectionMessageRate(connection);
     if (limitResult.violation) {
       console.warn(
         `[PartyServer] Closing connection for ${limitResult.violation.kind}: ` +
           `connectionId=${connection.id}, ` +
-          `messageBytes=${limitResult.messageSizeBytes}, ` +
           `documentBytes=${this.lastKnownDocumentBytes}`
       );
       connection.close(

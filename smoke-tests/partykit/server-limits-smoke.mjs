@@ -17,15 +17,10 @@ const host = getHost();
 const stamp = Date.now();
 const normalRoom = `codex-server-limits-normal-${stamp}`;
 const oversizedRequestRoom = `codex-server-limits-request-${stamp}`;
-const oversizedMessageRoom = `codex-server-limits-message-${stamp}`;
 const rateRoom = `codex-server-limits-rate-${stamp}`;
 const maxRequestBytes = getNumberEnv(
   "PARTYKIT_SMOKE_MAX_REQUEST_BYTES",
   1024 * 1024 * 16
-);
-const maxWebSocketMessageBytes = getNumberEnv(
-  "PARTYKIT_SMOKE_MAX_WEBSOCKET_MESSAGE_BYTES",
-  1024 * 1024 * 8
 );
 const messageRateLimit = getNumberEnv(
   "PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT",
@@ -273,25 +268,6 @@ async function runOversizedRequestCase() {
   console.log(`oversized request: status=${response.status} body=${text}`);
 }
 
-async function runOversizedMessageCase() {
-  const ws = openRawRoom(oversizedMessageRoom);
-  await waitForOpen(ws, "oversized-message raw client");
-
-  const closePromise = waitForClose(ws, "oversized-message raw client");
-  ws.send(new Uint8Array(maxWebSocketMessageBytes + 1));
-
-  const closeEvent = await closePromise;
-  assertClose(
-    closeEvent,
-    1009,
-    "Message Too Large",
-    "oversized-message raw client"
-  );
-  console.log(
-    `oversized-message raw client: closed code=${closeEvent.code} reason=${closeEvent.reason}`
-  );
-}
-
 async function runRateLimitCase() {
   const ws = openRawRoom(rateRoom);
   await waitForOpen(ws, "rate-limit raw client");
@@ -316,11 +292,9 @@ async function runRateLimitCase() {
 console.log(`host=${host}`);
 console.log(`normalRoom=${normalRoom}`);
 console.log(`maxRequestBytes=${maxRequestBytes}`);
-console.log(`maxWebSocketMessageBytes=${maxWebSocketMessageBytes}`);
 console.log(`messageRateLimit=${messageRateLimit}`);
 console.log(`normalTrafficMessages=${normalTrafficMessages}`);
 await runNormalTrafficCase();
 await runOversizedRequestCase();
-await runOversizedMessageCase();
 await runRateLimitCase();
 console.log("server limits smoke passed");

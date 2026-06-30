@@ -3,9 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { DEFAULT_MESSAGE_RATE_LIMIT } from "../const";
 import {
-  checkWebSocketMessage,
   checkMessageRate,
-  getWebSocketMessageSizeBytes,
   isDurableObjectOverloadError,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
@@ -16,7 +14,6 @@ const limits: ServerLimits = {
   maxMessagesPerWindow: 2,
   messageRateWindowMs: 1_000,
   maxRequestBytes: 20,
-  maxWebSocketMessageBytes: 8,
   documentWarningBytes: 30,
 };
 
@@ -77,40 +74,15 @@ describe("checkMessageRate", () => {
     expect(second.state).toEqual({ windowStartedAt: 2_000, messageCount: 1 });
   });
 
-  it("rejects oversized WebSocket messages before rate limiting", () => {
-    const result = checkWebSocketMessage({
+  it("does not reject messages by byte size before rate limiting", () => {
+    const result = checkMessageRate({
       limits,
-      messageSizeBytes: 9,
-      now: 1_000,
-      state: undefined,
-    });
-
-    expect(result.violation).toEqual({
-      kind: "message-size",
-      closeCode: 1009,
-      reason: "Message Too Large",
-    });
-  });
-
-  it("allows WebSocket messages at the configured byte limit", () => {
-    const result = checkWebSocketMessage({
-      limits,
-      messageSizeBytes: 8,
       now: 1_000,
       state: undefined,
     });
 
     expect(result.violation).toBe(null);
     expect(result.state).toEqual({ windowStartedAt: 1_000, messageCount: 1 });
-  });
-
-  it("counts UTF-8 bytes for text WebSocket messages without allocating encoded buffers", () => {
-    const view = new Uint8Array([0, 1, 2, 3, 4]).subarray(1, 4);
-
-    expect(getWebSocketMessageSizeBytes("abcd")).toBe(4);
-    expect(getWebSocketMessageSizeBytes("\u{1f600}")).toBe(4);
-    expect(getWebSocketMessageSizeBytes(view)).toBe(3);
-    expect(getWebSocketMessageSizeBytes(new ArrayBuffer(5))).toBe(5);
   });
 
   it("does not reject ordinary messages just because the document is near its limit", () => {
@@ -139,6 +111,15 @@ describe("checkMessageRate", () => {
       expect(result.violation).toBe(null);
       state = result.state;
     }
+  });
+});
+
+describe("WebSocket payload limits", () => {
+  it("does not expose an app-level message-size guard", async () => {
+    const limitsModule = await import("../serverLimits");
+
+    expect("checkWebSocketMessage" in limitsModule).toBe(false);
+    expect("getWebSocketMessageSizeBytes" in limitsModule).toBe(false);
   });
 });
 
