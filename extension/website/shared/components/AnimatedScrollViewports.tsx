@@ -530,7 +530,12 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             {/* Desaturate to grayscale and compress to a bright range
                 (~0.7–1.0) so multiply gives a subtle tooth, not heavy darkening.
                 Force alpha to 1 so it's a full grayscale image to multiply. */}
-            <feColorMatrix in="noise" type="saturate" values="0" result="gray" />
+            <feColorMatrix
+              in="noise"
+              type="saturate"
+              values="0"
+              result="gray"
+            />
             <feComponentTransfer in="gray" result="toothMap">
               <feFuncR type="linear" slope="0.32" intercept="0.68" />
               <feFuncG type="linear" slope="0.32" intercept="0.68" />
@@ -964,7 +969,7 @@ const DynamicViewportRect = memo(
     const bgLuminosity = 0.58 + localSeededRandom(1) * 0.07; // 0.58–0.65
     const backgroundColor = mono
       ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
-      : colorizeLuminosity(edgeTintColor, bgLuminosity, 0.72);
+      : edgeTintColor;
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
     // In color mode the fill is rendered near-opaque so the warm paper doesn't
     // bleach the hue; monochrome keeps the original translucent paper look.
@@ -979,9 +984,17 @@ const DynamicViewportRect = memo(
     const borderDashArray = isActivelyResizing ? "2 2" : "none";
     const borderColor = `rgb(180, 180, 180)`;
 
-    // Content pattern variation based on seed
-    const bandSpacing = Math.max(1, 60 + localSeededRandom(15) * 80); // 60-140px spacing
-    const hasContentBlocks = localSeededRandom(16) > 0.4; // 60% chance of content blocks
+    // Content pattern variation based on seed. Denser in color mode so the
+    // content blocks scatter more structure across the flat color fill (added
+    // variation/texture), tuned via a single multiplier.
+    const contentDensity = mono ? 1 : 1.8;
+    const bandSpacing = Math.max(
+      1,
+      (60 + localSeededRandom(15) * 80) / contentDensity,
+    ); // tighter bands in color mode
+    // Always show content blocks in color mode (they're what break up the
+    // color); keep the 60% chance in monochrome.
+    const hasContentBlocks = mono ? localSeededRandom(16) > 0.4 : true;
 
     const bandRects = useMemo(
       () =>
@@ -1017,231 +1030,242 @@ const DynamicViewportRect = memo(
     const contentBlocks = useMemo(() => {
       if (!hasContentBlocks) return null;
 
-      return Array.from({ length: Math.ceil(bgHeight / 180) }, (_, i) => {
-        const blockY = visualY + i * 180 + 30;
-        const sectionSeed = localSeededRandom(50 + i);
+      // Tighter vertical spacing in color mode = more blocks scattered through
+      // the window, adding variation over the flat color.
+      const blockSpacing = mono ? 180 : 110;
+      return Array.from(
+        { length: Math.ceil(bgHeight / blockSpacing) },
+        (_, i) => {
+          const blockY = visualY + i * blockSpacing + 30;
+          const sectionSeed = localSeededRandom(50 + i);
 
-        // Determine section type: 70% light content, 20% medium, 10% dark accent
-        const isDarkAccent = sectionSeed < 0.1;
-        const isMediumBlock = sectionSeed >= 0.1 && sectionSeed < 0.3;
+          // Determine section type: 70% light content, 20% medium, 10% dark accent
+          const isDarkAccent = sectionSeed < 0.1;
+          const isMediumBlock = sectionSeed >= 0.1 && sectionSeed < 0.3;
 
-        // Light content colors (most common)
-        const lightLuminosity = 0.55 + localSeededRandom(51 + i) * 0.25; // 0.55-0.8
-        const lightFill = contentFill(lightLuminosity);
+          // Light content colors (most common)
+          const lightLuminosity = 0.55 + localSeededRandom(51 + i) * 0.25; // 0.55-0.8
+          const lightFill = contentFill(lightLuminosity);
 
-        // Dark accent colors (rare, dramatic) — saturate more so they read.
-        const darkLuminosity = 0.08 + localSeededRandom(52 + i) * 0.2; // 0.08-0.28
-        const darkFill = contentFill(darkLuminosity, 0.9);
+          // Dark accent colors (rare, dramatic) — saturate more so they read.
+          const darkLuminosity = 0.08 + localSeededRandom(52 + i) * 0.2; // 0.08-0.28
+          const darkFill = contentFill(darkLuminosity, 0.9);
 
-        if (isDarkAccent) {
-          // Atmospheric dark accent with gradient layers (cohesive with wash effects)
-          const isLeft = localSeededRandom(63 + i) > 0.5;
-          const blotchHeight = 60 + localSeededRandom(64 + i) * 80;
-          const blotchWidth =
-            visualWidth * (0.4 + localSeededRandom(65 + i) * 0.3);
-          const xPos = isLeft
-            ? visualX + visualWidth * 0.02
-            : visualX + visualWidth - blotchWidth - visualWidth * 0.02;
+          if (isDarkAccent) {
+            // Atmospheric dark accent with gradient layers (cohesive with wash effects)
+            const isLeft = localSeededRandom(63 + i) > 0.5;
+            const blotchHeight = 60 + localSeededRandom(64 + i) * 80;
+            const blotchWidth =
+              visualWidth * (0.4 + localSeededRandom(65 + i) * 0.3);
+            const xPos = isLeft
+              ? visualX + visualWidth * 0.02
+              : visualX + visualWidth - blotchWidth - visualWidth * 0.02;
 
-          // Choose gradient direction based on position
-          const gradientId = isLeft
-            ? `wash-horizontal-${viewport.id}`
-            : `wash-reverse-${viewport.id}`;
-          const altGradientId =
-            localSeededRandom(66 + i) > 0.5
-              ? `wash-diagonal-${viewport.id}`
-              : `wash-vertical-${viewport.id}`;
+            // Choose gradient direction based on position
+            const gradientId = isLeft
+              ? `wash-horizontal-${viewport.id}`
+              : `wash-reverse-${viewport.id}`;
+            const altGradientId =
+              localSeededRandom(66 + i) > 0.5
+                ? `wash-diagonal-${viewport.id}`
+                : `wash-vertical-${viewport.id}`;
 
-          return (
-            <g key={`block-${i}`}>
-              {/* Outermost layer - soft, large, lighter */}
-              <g filter={`url(#ink-wash-${viewport.id})`}>
+            return (
+              <g key={`block-${i}`}>
+                {/* Outermost layer - soft, large, lighter */}
+                <g filter={`url(#ink-wash-${viewport.id})`}>
+                  <rect
+                    x={xPos - blotchWidth * 0.1}
+                    y={blockY - blotchHeight * 0.1}
+                    width={blotchWidth * 1.2}
+                    height={blotchHeight * 1.2}
+                    fill={`url(#${gradientId})`}
+                    opacity={0.4}
+                  />
+                </g>
+
+                {/* Middle layer - medium size, uses alt gradient */}
+                <g filter={`url(#ink-wash-${viewport.id})`}>
+                  <rect
+                    x={xPos + blotchWidth * 0.05}
+                    y={blockY + blotchHeight * 0.08}
+                    width={blotchWidth * 0.85}
+                    height={blotchHeight * 0.8}
+                    fill={`url(#${altGradientId})`}
+                    opacity={0.55}
+                  />
+                </g>
+
+                {/* Core layer - smallest, darkest solid for depth */}
+                <g filter={`url(#ink-wash-${viewport.id})`}>
+                  <rect
+                    x={xPos + blotchWidth * 0.15}
+                    y={blockY + blotchHeight * 0.2}
+                    width={blotchWidth * 0.55}
+                    height={blotchHeight * 0.5}
+                    fill={darkFill}
+                    opacity={0.7}
+                  />
+                </g>
+
+                {/* Accent gradient overlay - adds color variation */}
+                <rect
+                  x={xPos}
+                  y={blockY}
+                  width={blotchWidth}
+                  height={blotchHeight}
+                  fill={`url(#${isLeft ? "wash-diagonal-" : "wash-reverse-"}${viewport.id})`}
+                  opacity={0.25}
+                />
+
+                {/* Speckle texture across all layers */}
                 <rect
                   x={xPos - blotchWidth * 0.1}
                   y={blockY - blotchHeight * 0.1}
                   width={blotchWidth * 1.2}
                   height={blotchHeight * 1.2}
-                  fill={`url(#${gradientId})`}
-                  opacity={0.4}
+                  fill="white"
+                  opacity={0.12}
+                  filter={`url(#speckle-${viewport.id})`}
                 />
+
+                {/* Scattered light dots for texture variation */}
+                {[0, 1, 2].map((j) => {
+                  const dotX =
+                    xPos + localSeededRandom(100 + i + j) * blotchWidth * 0.7;
+                  const dotY =
+                    blockY +
+                    localSeededRandom(110 + i + j) * blotchHeight * 0.7;
+                  const dotSize = 3 + localSeededRandom(120 + i + j) * 5;
+                  return (
+                    <circle
+                      key={`dot-${j}`}
+                      cx={dotX + blotchWidth * 0.15}
+                      cy={dotY + blotchHeight * 0.15}
+                      r={dotSize}
+                      fill="white"
+                      opacity={0.1 + localSeededRandom(130 + i + j) * 0.15}
+                    />
+                  );
+                })}
               </g>
+            );
+          } else if (isMediumBlock) {
+            // Medium-toned block - single block, simple
+            const mediumLuminosity = 0.4 + localSeededRandom(55 + i) * 0.2;
+            const mediumFill = contentFill(mediumLuminosity);
+            const blockHeight = 25 + localSeededRandom(61 + i) * 35;
+            const isLeft = localSeededRandom(62 + i) > 0.5;
 
-              {/* Middle layer - medium size, uses alt gradient */}
-              <g filter={`url(#ink-wash-${viewport.id})`}>
+            return (
+              <g key={`block-${i}`}>
                 <rect
-                  x={xPos + blotchWidth * 0.05}
-                  y={blockY + blotchHeight * 0.08}
-                  width={blotchWidth * 0.85}
-                  height={blotchHeight * 0.8}
-                  fill={`url(#${altGradientId})`}
-                  opacity={0.55}
-                />
-              </g>
-
-              {/* Core layer - smallest, darkest solid for depth */}
-              <g filter={`url(#ink-wash-${viewport.id})`}>
-                <rect
-                  x={xPos + blotchWidth * 0.15}
-                  y={blockY + blotchHeight * 0.2}
-                  width={blotchWidth * 0.55}
-                  height={blotchHeight * 0.5}
-                  fill={darkFill}
-                  opacity={0.7}
-                />
-              </g>
-
-              {/* Accent gradient overlay - adds color variation */}
-              <rect
-                x={xPos}
-                y={blockY}
-                width={blotchWidth}
-                height={blotchHeight}
-                fill={`url(#${isLeft ? "wash-diagonal-" : "wash-reverse-"}${viewport.id})`}
-                opacity={0.25}
-              />
-
-              {/* Speckle texture across all layers */}
-              <rect
-                x={xPos - blotchWidth * 0.1}
-                y={blockY - blotchHeight * 0.1}
-                width={blotchWidth * 1.2}
-                height={blotchHeight * 1.2}
-                fill="white"
-                opacity={0.12}
-                filter={`url(#speckle-${viewport.id})`}
-              />
-
-              {/* Scattered light dots for texture variation */}
-              {[0, 1, 2].map((j) => {
-                const dotX =
-                  xPos + localSeededRandom(100 + i + j) * blotchWidth * 0.7;
-                const dotY =
-                  blockY + localSeededRandom(110 + i + j) * blotchHeight * 0.7;
-                const dotSize = 3 + localSeededRandom(120 + i + j) * 5;
-                return (
-                  <circle
-                    key={`dot-${j}`}
-                    cx={dotX + blotchWidth * 0.15}
-                    cy={dotY + blotchHeight * 0.15}
-                    r={dotSize}
-                    fill="white"
-                    opacity={0.1 + localSeededRandom(130 + i + j) * 0.15}
-                  />
-                );
-              })}
-            </g>
-          );
-        } else if (isMediumBlock) {
-          // Medium-toned block - single block, simple
-          const mediumLuminosity = 0.4 + localSeededRandom(55 + i) * 0.2;
-          const mediumFill = contentFill(mediumLuminosity);
-          const blockHeight = 25 + localSeededRandom(61 + i) * 35;
-          const isLeft = localSeededRandom(62 + i) > 0.5;
-
-          return (
-            <g key={`block-${i}`}>
-              <rect
-                x={
-                  isLeft
-                    ? visualX + visualWidth * 0.08
-                    : visualX + visualWidth * 0.45
-                }
-                y={blockY}
-                width={visualWidth * 0.47}
-                height={blockHeight}
-                fill={mediumFill}
-                opacity={0.35}
-                rx={2}
-              />
-            </g>
-          );
-        }
-
-        // Light content blocks (most common) - varied layouts, sparse
-        const layoutVariant = Math.floor(localSeededRandom(56 + i) * 5);
-
-        if (layoutVariant === 0) {
-          // Empty/whitespace - adds breathing room
-          return <g key={`block-${i}`} />;
-        } else if (layoutVariant === 1) {
-          // Single wide block
-          return (
-            <g key={`block-${i}`}>
-              <rect
-                x={visualX + visualWidth * 0.1}
-                y={blockY}
-                width={visualWidth * 0.7}
-                height={20 + localSeededRandom(60 + i) * 30}
-                fill={lightFill}
-                opacity={0.28}
-                rx={2}
-              />
-            </g>
-          );
-        } else if (layoutVariant === 2) {
-          // Two scattered rectangles (reduced from 3)
-          return (
-            <g key={`block-${i}`}>
-              {[0, 1].map((j) => (
-                <rect
-                  key={`sub-${j}`}
                   x={
-                    visualX +
-                    visualWidth * (0.08 + j * 0.45) +
-                    localSeededRandom(65 + i + j) * 15
+                    isLeft
+                      ? visualX + visualWidth * 0.08
+                      : visualX + visualWidth * 0.45
                   }
-                  y={blockY + localSeededRandom(66 + i + j) * 10}
-                  width={
-                    visualWidth * (0.2 + localSeededRandom(67 + i + j) * 0.15)
-                  }
-                  height={15 + localSeededRandom(68 + i + j) * 20}
-                  fill={lightFill}
-                  opacity={0.25 + localSeededRandom(69 + i + j) * 0.1}
+                  y={blockY}
+                  width={visualWidth * 0.47}
+                  height={blockHeight}
+                  fill={mediumFill}
+                  opacity={0.35}
                   rx={2}
                 />
-              ))}
-            </g>
-          );
-        } else if (layoutVariant === 3) {
-          // Two text-like lines (reduced from 4)
+              </g>
+            );
+          }
+
+          // Light content blocks (most common) - varied layouts. In color mode
+          // we roll across only the content variants (1–4), skipping the empty
+          // whitespace one so the window stays busy with structure.
+          const layoutVariant = mono
+            ? Math.floor(localSeededRandom(56 + i) * 5)
+            : 1 + Math.floor(localSeededRandom(56 + i) * 4);
+
+          if (layoutVariant === 0) {
+            // Empty/whitespace - adds breathing room
+            return <g key={`block-${i}`} />;
+          } else if (layoutVariant === 1) {
+            // Single wide block
+            return (
+              <g key={`block-${i}`}>
+                <rect
+                  x={visualX + visualWidth * 0.1}
+                  y={blockY}
+                  width={visualWidth * 0.7}
+                  height={20 + localSeededRandom(60 + i) * 30}
+                  fill={lightFill}
+                  opacity={0.28}
+                  rx={2}
+                />
+              </g>
+            );
+          } else if (layoutVariant === 2) {
+            // Two scattered rectangles (reduced from 3)
+            return (
+              <g key={`block-${i}`}>
+                {[0, 1].map((j) => (
+                  <rect
+                    key={`sub-${j}`}
+                    x={
+                      visualX +
+                      visualWidth * (0.08 + j * 0.45) +
+                      localSeededRandom(65 + i + j) * 15
+                    }
+                    y={blockY + localSeededRandom(66 + i + j) * 10}
+                    width={
+                      visualWidth * (0.2 + localSeededRandom(67 + i + j) * 0.15)
+                    }
+                    height={15 + localSeededRandom(68 + i + j) * 20}
+                    fill={lightFill}
+                    opacity={0.25 + localSeededRandom(69 + i + j) * 0.1}
+                    rx={2}
+                  />
+                ))}
+              </g>
+            );
+          } else if (layoutVariant === 3) {
+            // Two text-like lines (reduced from 4)
+            return (
+              <g key={`block-${i}`}>
+                {[0, 1].map((j) => (
+                  <rect
+                    key={`line-${j}`}
+                    x={visualX + visualWidth * 0.1}
+                    y={blockY + j * 10}
+                    width={
+                      visualWidth * (0.35 + localSeededRandom(80 + i + j) * 0.4)
+                    }
+                    height={2}
+                    fill={lightFill}
+                    opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
+                  />
+                ))}
+              </g>
+            );
+          }
+
+          // Single side block (simplified from image + text)
+          const isLeft = localSeededRandom(57 + i) > 0.5;
+          const blockX = isLeft
+            ? visualX + visualWidth * 0.08
+            : visualX + visualWidth * 0.5;
           return (
             <g key={`block-${i}`}>
-              {[0, 1].map((j) => (
-                <rect
-                  key={`line-${j}`}
-                  x={visualX + visualWidth * 0.1}
-                  y={blockY + j * 10}
-                  width={
-                    visualWidth * (0.35 + localSeededRandom(80 + i + j) * 0.4)
-                  }
-                  height={2}
-                  fill={lightFill}
-                  opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
-                />
-              ))}
+              <rect
+                x={blockX}
+                y={blockY}
+                width={visualWidth * 0.42}
+                height={30 + localSeededRandom(58 + i) * 25}
+                fill={lightFill}
+                opacity={0.3}
+                rx={3}
+              />
             </g>
           );
-        }
-
-        // Single side block (simplified from image + text)
-        const isLeft = localSeededRandom(57 + i) > 0.5;
-        const blockX = isLeft
-          ? visualX + visualWidth * 0.08
-          : visualX + visualWidth * 0.5;
-        return (
-          <g key={`block-${i}`}>
-            <rect
-              x={blockX}
-              y={blockY}
-              width={visualWidth * 0.42}
-              height={30 + localSeededRandom(58 + i) * 25}
-              fill={lightFill}
-              opacity={0.3}
-              rx={3}
-            />
-          </g>
-        );
-      });
+        },
+      );
     }, [
       bgHeight,
       hasContentBlocks,
