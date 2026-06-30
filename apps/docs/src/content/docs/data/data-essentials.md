@@ -18,7 +18,7 @@ playhtml has four primitives for moving state between readers. Pick by **lifetim
 | A toggle, position, count, or any state tied to one element | [Element data](/docs/data/data-essentials/) (`defaultData` / `can-play`) | Yes | One element |
 | A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`) | Yes | One page |
 | "Who is connected right now?" / "How many readers?" | [Presence](/docs/data/presence/) (`playhtml.presence.getPresences()`) | No | Per-user |
-| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) | No | Per-user |
+| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) or element awareness | No | Per-user |
 | "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) | No | Per-user |
 | Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
 | "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
@@ -135,7 +135,7 @@ playhtml gives you three places to put state. Use the one that matches the lifet
 | Type | Survives reload | Use for |
 |---|---|---|
 | Persistent (`defaultData`) | Yes | Positions, counts, messages, settings, toggles |
-| Presence / awareness | No | Who's online, typing indicators, colors, per-user cursor data |
+| Presence, including element awareness | No | Who's online, typing indicators, colors, per-user cursor data |
 | Events | No (fire once) | Confetti bursts, notifications, chimes |
 
 If someone refreshes the page and expects the state to still be there, it's persistent data. If a new reader opening the page for the first time should _not_ see a historical replay, it's presence or an event.

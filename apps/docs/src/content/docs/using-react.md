@@ -81,7 +81,7 @@ export const ReactionView = withSharedState(
 
 Use the mutator form for counters and other `+/-` updates so each interaction edits the draft value at write time.
 
-Add `myDefaultAwareness` to the config to get presence-style ephemeral per-user data alongside your persistent data.
+Add `myDefaultAwareness` to the config to get element awareness: ephemeral per-user presence scoped to this element, alongside its persistent data.
 
 ### `<CanPlayElement>`: for when you need JSX children, not a wrapper
 
