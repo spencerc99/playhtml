@@ -272,6 +272,24 @@ export class PartyServer extends YServer {
     );
   }
 
+  private async getPersistedDocumentCompactCheckAfter(): Promise<
+    number | null
+  > {
+    const value = await this.ctx.storage.get(
+      STORAGE_KEYS.persistedDocumentCompactCheckAfter
+    );
+    return typeof value === "number" ? value : null;
+  }
+
+  private async setPersistedDocumentCompactCheckAfter(
+    timestamp: number
+  ): Promise<void> {
+    await this.ctx.storage.put(
+      STORAGE_KEYS.persistedDocumentCompactCheckAfter,
+      timestamp
+    );
+  }
+
   private getEmergencyCompactCheckBytes(): number {
     return readPositiveNumberEnv(
       "EMERGENCY_COMPACT_CHECK_BYTES",
@@ -1451,7 +1469,7 @@ export class PartyServer extends YServer {
       documentBase64
     );
     if (compactedDocument === null) {
-      await this.setEmergencyCompactCheckAfter(recheckAfter);
+      await this.setPersistedDocumentCompactCheckAfter(recheckAfter);
       console.warn(
         `[PartyServer] Autosave compaction skipped for room=${this.name}: document has no play data, ` +
           `documentBytes=${documentSize}, thresholdBytes=${thresholdBytes}, nextCheckAt=${recheckAfter}`
@@ -1466,7 +1484,7 @@ export class PartyServer extends YServer {
         thresholdBytes,
       })
     ) {
-      await this.setEmergencyCompactCheckAfter(recheckAfter);
+      await this.setPersistedDocumentCompactCheckAfter(recheckAfter);
       console.warn(
         `[PartyServer] Autosave compaction skipped for room=${this.name}: ` +
           `${documentSize} -> ${compactedDocument.afterSize} bytes, ` +
@@ -1569,12 +1587,10 @@ export class PartyServer extends YServer {
 
     const persistedDocumentCompactBytes =
       this.getPersistedDocumentCompactBytes();
-    if (
-      allowCompaction &&
-      documentSize >= persistedDocumentCompactBytes
-    ) {
+    if (allowCompaction) {
       const now = Date.now();
-      const nextCompactionCheckAt = await this.getEmergencyCompactCheckAfter();
+      const nextCompactionCheckAt =
+        await this.getPersistedDocumentCompactCheckAfter();
       const shouldCheckCompaction = shouldCompactBeforePersist({
         allowCompaction,
         documentSize,
