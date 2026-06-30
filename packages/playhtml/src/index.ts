@@ -19,6 +19,7 @@ import {
 } from "@playhtml/common";
 import {
   listSharedElements as devListSharedElements,
+  shouldAllowDataResetControls,
   teardownDevUI,
   setupDevUI,
 } from "./development";
@@ -443,12 +444,33 @@ export interface InitOptions<T = unknown> {
   /**
    * If true, will render some helpful development UI.
    */
-  developmentMode?: boolean;
+  developmentMode?: boolean | DevelopmentModeOptions;
 
   /**
    * Cursor tracking and proximity detection configuration
    */
   cursors?: CursorOptions;
+}
+
+export interface DevelopmentModeOptions {
+  allowDataReset?: boolean;
+}
+
+function getDevelopmentModeOptions(
+  developmentMode: InitOptions["developmentMode"],
+): { enabled: boolean; allowDataReset: boolean } {
+  if (developmentMode === true) {
+    return { enabled: true, allowDataReset: false };
+  }
+
+  if (developmentMode && typeof developmentMode === "object") {
+    return {
+      enabled: true,
+      allowDataReset: developmentMode.allowDataReset === true,
+    };
+  }
+
+  return { enabled: false, allowDataReset: false };
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -1053,7 +1075,8 @@ async function initPlayHTMLOnce({
   const inputRoom = resolveExplicitRoom() ?? getDefaultRoom(defaultRoomOptions);
   cursorOptionsCache = cursors;
   cachedOnError = onError;
-  isDevelopmentMode = developmentMode;
+  const developmentOptions = getDevelopmentModeOptions(developmentMode);
+  isDevelopmentMode = developmentOptions.enabled;
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -1155,8 +1178,12 @@ async function initPlayHTMLOnce({
   playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
   document.head.appendChild(playStyles);
 
-  if (developmentMode) {
-    setupDevUI(playhtml);
+  if (developmentOptions.enabled) {
+    setupDevUI(playhtml, {
+      allowDataReset: shouldAllowDataResetControls(
+        developmentOptions.allowDataReset,
+      ),
+    });
   }
   // TODO: expose a way to activate the dev tools UI on any page at runtime
   // (e.g. window.playhtml.showDevTools()) so it can be triggered from the

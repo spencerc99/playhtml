@@ -1,7 +1,11 @@
 // ABOUTME: Verifies playhtml reports duplicate element IDs during setup.
 // ABOUTME: Covers live registration diagnostics and dev UI conflict grouping.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listDuplicatePlayElements, setupDevUI } from "../development";
+import {
+  listDuplicatePlayElements,
+  setupDevUI,
+  shouldAllowDataResetControls,
+} from "../development";
 import { playhtml, resetPlayHTML } from "../index";
 
 describe("duplicate playhtml element IDs", () => {
@@ -166,5 +170,101 @@ describe("duplicate playhtml element IDs", () => {
     expect(warning!.textContent).toContain("Duplicate playhtml IDs");
     expect(warning!.textContent).toContain("shared-id");
     expect(warning!.textContent).toContain("can-toggle");
+  });
+
+  it("does not render shared data mutation controls in dev tools", () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("button");
+    element.id = "safe-button";
+    element.setAttribute("can-toggle", "");
+    document.body.append(element);
+
+    setupDevUI({
+      elementHandlers: new Map([
+        [
+          "can-toggle",
+          new Map([
+            [
+              "safe-button",
+              {
+                element,
+                data: { on: false },
+                defaultData: { on: false },
+                setData: vi.fn(),
+              },
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+
+    expect(document.querySelector(".ph-reset-btn")).toBeNull();
+    expect(document.querySelector(".ph-tree-reset")).toBeNull();
+  });
+
+  it("allows data reset controls on local and hosted development hosts", () => {
+    expect(shouldAllowDataResetControls(true, "localhost")).toBe(true);
+    expect(shouldAllowDataResetControls(true, "127.0.0.1")).toBe(true);
+    expect(shouldAllowDataResetControls(true, "project.glitch.me")).toBe(true);
+    expect(shouldAllowDataResetControls(true, "app.replit.dev")).toBe(true);
+    expect(shouldAllowDataResetControls(true, "preview.csb.app")).toBe(true);
+  });
+
+  it("blocks data reset controls without explicit opt-in or on production-looking hosts", () => {
+    expect(shouldAllowDataResetControls(false, "project.glitch.me")).toBe(false);
+    expect(shouldAllowDataResetControls(true, "example.com")).toBe(false);
+    expect(shouldAllowDataResetControls(true, "playhtml.fun")).toBe(false);
+    expect(shouldAllowDataResetControls(true, "site.pages.dev")).toBe(false);
+    expect(shouldAllowDataResetControls(true, "app.vercel.app")).toBe(false);
+  });
+
+  it("renders reset all when data reset controls are allowed", () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const element = document.createElement("button");
+    element.id = "resettable-button";
+    element.setAttribute("can-toggle", "");
+    document.body.append(element);
+
+    const setData = vi.fn();
+    const defaultData = { on: false };
+
+    setupDevUI(
+      {
+        elementHandlers: new Map([
+          [
+            "can-toggle",
+            new Map([
+              [
+                "resettable-button",
+                {
+                  element,
+                  data: { on: true },
+                  defaultData,
+                  setData,
+                },
+              ],
+            ]),
+          ],
+        ]),
+        cursorClient: null,
+        roomId: "test-room",
+        host: "localhost:1999",
+      } as any,
+      { allowDataReset: true },
+    );
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    document.querySelector<HTMLElement>(".ph-reset-btn")!.click();
+
+    expect(setData).toHaveBeenCalledWith(defaultData);
+    expect(document.querySelector(".ph-tree-reset")).toBeNull();
   });
 });

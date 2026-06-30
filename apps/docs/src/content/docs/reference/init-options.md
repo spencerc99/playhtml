@@ -115,7 +115,7 @@ playhtml.init({
 
 ## `developmentMode`
 
-**Type:** `boolean` &nbsp; **Default:** `false`
+**Type:** `boolean | { allowDataReset?: boolean }` &nbsp; **Default:** `false`
 
 Enable the in-page devtools panel. Shows element inspector, live data tree, connection status, and tag-type badges, modeled after RollerCoaster Tycoon's inspect UI. Useful while debugging.
 
@@ -123,8 +123,18 @@ Enable the in-page devtools panel. Shows element inspector, live data tree, conn
 playhtml.init({ developmentMode: true });
 ```
 
+The data inspector is read-only by default. To show a reset-all control on local or known hosted-development domains, explicitly opt in:
+
+```js
+playhtml.init({
+  developmentMode: {
+    allowDataReset: true,
+  },
+});
+```
+
 :::note
-Turn this on in development builds, not production. A dedicated guide covering the devtools is planned.
+`allowDataReset` is a convenience for trusted development pages. If the reset control appears on a page, every visitor to that page can use it.
 :::
 
 ## `cursors`
