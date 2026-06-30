@@ -32,6 +32,7 @@ import {
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
+  DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -111,12 +112,23 @@ type CompactedDocument = {
 
 type CommitCompactedDocumentOptions = {
   compactedDocument: CompactedDocument;
+  validatePersistedSource?: boolean;
   beforeCommit?: () => Promise<boolean>;
   afterReplace?: () => Promise<void>;
 };
 
 type PersistLiveDocumentOptions = {
   allowCompaction: boolean;
+};
+
+type UsefulCompactedDocumentOptions = {
+  sourceBase64?: string;
+  documentSize: number;
+  thresholdBytes: number;
+  recheckAfter: number;
+  setRecheckAfter: (timestamp: number) => Promise<void>;
+  onMissingPlayData?: () => void;
+  onNotUseful: (compactedDocument: CompactedDocument) => void;
 };
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
@@ -278,6 +290,24 @@ export class PartyServer extends YServer {
     );
   }
 
+  private async getPersistedDocumentCompactCheckAfter(): Promise<
+    number | null
+  > {
+    const value = await this.ctx.storage.get(
+      STORAGE_KEYS.persistedDocumentCompactCheckAfter
+    );
+    return typeof value === "number" ? value : null;
+  }
+
+  private async setPersistedDocumentCompactCheckAfter(
+    timestamp: number
+  ): Promise<void> {
+    await this.ctx.storage.put(
+      STORAGE_KEYS.persistedDocumentCompactCheckAfter,
+      timestamp
+    );
+  }
+
   private getEmergencyCompactCheckBytes(): number {
     return readPositiveNumberEnv(
       "EMERGENCY_COMPACT_CHECK_BYTES",
@@ -289,6 +319,13 @@ export class PartyServer extends YServer {
     return readPositiveNumberEnv(
       "EMERGENCY_COMPACT_RECHECK_DELAY_MS",
       DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS
+    );
+  }
+
+  private getPersistedDocumentCompactBytes(): number {
+    return readPositiveNumberEnv(
+      "PERSISTED_DOCUMENT_COMPACT_BYTES",
+      DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES
     );
   }
 
@@ -453,13 +490,16 @@ export class PartyServer extends YServer {
     return isCompactionAutosave(documentBase64, compactionSnapshot);
   }
 
-  private buildCompactedDocument(doc: Y.Doc): CompactedDocument | null {
+  private buildCompactedDocument(
+    doc: Y.Doc,
+    sourceDocumentBase64?: string
+  ): CompactedDocument | null {
     const currentPlayData = docToJson(doc);
     if (!currentPlayData) {
       return null;
     }
 
-    const sourceBase64 = encodeDocToBase64(doc);
+    const sourceBase64 = sourceDocumentBase64 ?? encodeDocToBase64(doc);
     const beforeSize = sourceBase64.length;
     const resetEpoch = Date.now();
     const compactDoc = jsonToDoc(currentPlayData);
@@ -498,42 +538,60 @@ export class PartyServer extends YServer {
     return typeof data?.document === "string" ? data.document : null;
   }
 
+  private async saveDocumentBase64(documentBase64: string): Promise<void> {
+    const { error } = await supabase.from("documents").upsert(
+      {
+        name: this.name,
+        document: documentBase64,
+      },
+      { onConflict: "name" }
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
   private async commitCompactedDocument({
     compactedDocument,
+    validatePersistedSource = true,
     beforeCommit,
     afterReplace,
   }: CommitCompactedDocumentOptions): Promise<boolean> {
     const rollbackResetEpoch = await this.getResetEpoch();
-    let documentSaved = false;
+    let liveDocumentReplaced = false;
     let autosavePaused = false;
 
     try {
-      const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
-      const sourceContainsPersistedDocument =
-        persistedDocumentBase64 !== null &&
-        documentContainsSnapshot(
-          compactedDocument.sourceBase64,
-          persistedDocumentBase64
-        );
-      const commitDecision = getCompactionCommitDecision({
-        sourceDocumentBase64: compactedDocument.sourceBase64,
-        persistedDocumentBase64,
-        sourceContainsPersistedDocument,
-      });
+      if (validatePersistedSource) {
+        const persistedDocumentBase64 =
+          await this.getPersistedDocumentBase64();
+        const sourceContainsPersistedDocument =
+          persistedDocumentBase64 !== null &&
+          documentContainsSnapshot(
+            compactedDocument.sourceBase64,
+            persistedDocumentBase64
+          );
+        const commitDecision = getCompactionCommitDecision({
+          sourceDocumentBase64: compactedDocument.sourceBase64,
+          persistedDocumentBase64,
+          sourceContainsPersistedDocument,
+        });
 
-      if (commitDecision.kind === "persist-live-document") {
-        console.warn(
-          `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
-        );
-        await this.persistLiveDocument({ allowCompaction: false });
-        return false;
-      }
+        if (commitDecision.kind === "persist-live-document") {
+          console.warn(
+            `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
+          );
+          await this.persistLiveDocument({ allowCompaction: false });
+          return false;
+        }
 
-      if (commitDecision.kind === "skip-compaction") {
-        console.warn(
-          `[PartyServer] Compaction skipped for room=${this.name}: persisted document has updates missing from live source`
-        );
-        return false;
+        if (commitDecision.kind === "skip-compaction") {
+          console.warn(
+            `[PartyServer] Compaction skipped for room=${this.name}: persisted document has updates missing from live source`
+          );
+          return false;
+        }
       }
 
       this.isSkippingSave = true;
@@ -544,27 +602,16 @@ export class PartyServer extends YServer {
       }
 
       await this.setResetEpoch(compactedDocument.resetEpoch);
+      await this.saveDocumentBase64(compactedDocument.base64);
 
-      const { error } = await supabase.from("documents").upsert(
-        {
-          name: this.name,
-          document: compactedDocument.base64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      documentSaved = true;
-      this.markDocumentPersisted(compactedDocument.base64);
       this.compactionAutosaveSnapshot = compactedDocument.base64;
       replaceDocFromSnapshot(this.document, compactedDocument.base64);
+      liveDocumentReplaced = true;
+      this.markDocumentPersisted(compactedDocument.base64);
       await afterReplace?.();
       return true;
     } catch (error) {
-      if (!documentSaved) {
+      if (!liveDocumentReplaced) {
         await this.restoreResetEpoch(rollbackResetEpoch);
       }
       this.compactionAutosaveSnapshot = null;
@@ -1438,6 +1485,100 @@ export class PartyServer extends YServer {
     await this.persistLiveDocument({ allowCompaction: true });
   }
 
+  private async getUsefulCompactedDocument({
+    sourceBase64,
+    documentSize,
+    thresholdBytes,
+    recheckAfter,
+    setRecheckAfter,
+    onMissingPlayData,
+    onNotUseful,
+  }: UsefulCompactedDocumentOptions): Promise<CompactedDocument | null> {
+    const compactedDocument = this.buildCompactedDocument(
+      this.document,
+      sourceBase64
+    );
+    if (compactedDocument === null) {
+      await setRecheckAfter(recheckAfter);
+      onMissingPlayData?.();
+      return null;
+    }
+
+    if (
+      !shouldUseEmergencyCompactedDocument({
+        beforeSize: documentSize,
+        afterSize: compactedDocument.afterSize,
+        thresholdBytes,
+      })
+    ) {
+      await setRecheckAfter(recheckAfter);
+      onNotUseful(compactedDocument);
+      return null;
+    }
+
+    return compactedDocument;
+  }
+
+  private async maybeCompactAutosaveCandidate({
+    activeConnectionCount,
+    documentBase64,
+    documentSize,
+    recheckAfter,
+    thresholdBytes,
+  }: {
+    activeConnectionCount: number;
+    documentBase64: string;
+    documentSize: number;
+    recheckAfter: number;
+    thresholdBytes: number;
+  }): Promise<boolean> {
+    const compactedDocument = await this.getUsefulCompactedDocument({
+      sourceBase64: documentBase64,
+      documentSize,
+      thresholdBytes,
+      recheckAfter,
+      setRecheckAfter: (timestamp) =>
+        this.setPersistedDocumentCompactCheckAfter(timestamp),
+      onMissingPlayData: () => {
+        console.warn(
+          `[PartyServer] Autosave compaction skipped for room=${this.name}: document has no play data, ` +
+            `documentBytes=${documentSize}, thresholdBytes=${thresholdBytes}, nextCheckAt=${recheckAfter}`
+        );
+      },
+      onNotUseful: (candidate) => {
+        console.warn(
+          `[PartyServer] Autosave compaction skipped for room=${this.name}: ` +
+            `${documentSize} -> ${candidate.afterSize} bytes, ` +
+            `thresholdBytes=${thresholdBytes}, nextCheckAt=${recheckAfter}. Autosave will continue.`
+        );
+      },
+    });
+    if (compactedDocument === null) {
+      return false;
+    }
+
+    await this.commitCompactedDocument({
+      compactedDocument,
+      validatePersistedSource: false,
+      afterReplace: async () => {
+        await this.clearEmptyRoomCompactAfter();
+        this.broadcastCustomMessage(
+          this.getRoomResetMessage(compactedDocument.resetEpoch)
+        );
+
+        const closedCount = this.closeConnections("Room Compacted");
+        console.log(
+          `[PartyServer] Autosave compacted room before persistence: room=${this.name}, ` +
+            `${documentSize} -> ${compactedDocument.afterSize} bytes ` +
+            `(${((1 - compactedDocument.afterSize / documentSize) * 100).toFixed(1)}% reduction), ` +
+            `resetEpoch=${compactedDocument.resetEpoch}, ` +
+            `activeConnections=${activeConnectionCount}, closed=${closedCount}`
+        );
+      },
+    });
+    return true;
+  }
+
   private async persistLiveDocument({
     allowCompaction,
   }: PersistLiveDocumentOptions): Promise<boolean> {
@@ -1496,6 +1637,13 @@ export class PartyServer extends YServer {
 
     this.lastKnownDocumentBytes = documentSize;
 
+    if (this.consumeCompactionAutosave(documentBase64)) {
+      console.log(
+        `[PartyServer] Compaction autosave completed: room=${this.name}`
+      );
+      return true;
+    }
+
     const serverLimits = this.getServerLimits();
     if (
       !this.hasWarnedDocumentSize &&
@@ -1515,16 +1663,44 @@ export class PartyServer extends YServer {
       `[PartyServer] Autosave: room=${this.name}, size=${documentSize} bytes (${(documentSize / 1024 / 1024).toFixed(2)} MB), resetEpoch=${docResetEpoch ?? serverResetEpoch ?? "none"}`
     );
 
-    // Save the document to the database
-    const { data: _data, error } = await supabase.from("documents").upsert(
-      {
-        name: this.name,
-        document: documentBase64,
-      },
-      { onConflict: "name" }
-    );
+    const persistedDocumentCompactBytes =
+      this.getPersistedDocumentCompactBytes();
+    if (allowCompaction) {
+      const now = Date.now();
+      const nextCompactionCheckAt =
+        await this.getPersistedDocumentCompactCheckAfter();
+      const shouldCheckCompaction = shouldCheckEmergencyCompaction({
+        documentSize,
+        nextCheckAt: nextCompactionCheckAt,
+        now,
+        thresholdBytes: persistedDocumentCompactBytes,
+      });
 
-    if (error) {
+      try {
+        if (shouldCheckCompaction) {
+          const compacted = await this.maybeCompactAutosaveCandidate({
+            activeConnectionCount,
+            documentBase64,
+            documentSize,
+            recheckAfter: now + this.getEmergencyCompactRecheckDelayMs(),
+            thresholdBytes: persistedDocumentCompactBytes,
+          });
+          if (compacted) {
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[PartyServer] AUTOSAVE COMPACTION FAILED for room ${this.name}:`,
+          error
+        );
+        return false;
+      }
+    }
+
+    try {
+      await this.saveDocumentBase64(documentBase64);
+    } catch (error) {
       console.error(
         `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
         error
@@ -1532,13 +1708,6 @@ export class PartyServer extends YServer {
       return false;
     }
     this.markDocumentPersisted(documentBase64);
-
-    if (this.consumeCompactionAutosave(documentBase64)) {
-      console.log(
-        `[PartyServer] Compaction autosave completed: room=${this.name}`
-      );
-      return true;
-    }
 
     if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
@@ -1592,23 +1761,19 @@ export class PartyServer extends YServer {
     // while clients are connected can merge stale client history back into the
     // room. If compaction is not useful, the cooldown prevents every later
     // autosave of a naturally large document from rebuilding the whole Y.Doc.
-    const compactedDocument = this.buildCompactedDocument(this.document);
+    const compactedDocument = await this.getUsefulCompactedDocument({
+      documentSize,
+      thresholdBytes,
+      recheckAfter,
+      setRecheckAfter: (timestamp) =>
+        this.setEmergencyCompactCheckAfter(timestamp),
+      onNotUseful: (candidate) => {
+        console.log(
+          `[PartyServer] Emergency compaction skipped: room=${this.name}, ${documentSize} -> ${candidate.afterSize} bytes, nextCheckAt=${recheckAfter}`
+        );
+      },
+    });
     if (compactedDocument === null) {
-      await this.setEmergencyCompactCheckAfter(recheckAfter);
-      return false;
-    }
-
-    if (
-      !shouldUseEmergencyCompactedDocument({
-        beforeSize: documentSize,
-        afterSize: compactedDocument.afterSize,
-        thresholdBytes,
-      })
-    ) {
-      await this.setEmergencyCompactCheckAfter(recheckAfter);
-      console.log(
-        `[PartyServer] Emergency compaction skipped: room=${this.name}, ${documentSize} -> ${compactedDocument.afterSize} bytes, nextCheckAt=${recheckAfter}`
-      );
       return false;
     }
 
