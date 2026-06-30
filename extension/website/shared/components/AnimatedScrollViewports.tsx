@@ -1027,6 +1027,34 @@ const DynamicViewportRect = memo(
       ],
     );
 
+    // Circular page elements (avatars / buttons / media) — scattered
+    // individually throughout the window at varied positions, NOT lined up in a
+    // row, so they read as round elements interspersed through a page. Only in
+    // color mode; sparse (each slot rolls a chance to actually place one).
+    const circleElements = useMemo(() => {
+      if (mono) return null;
+      const slotHeight = 130;
+      return Array.from({ length: Math.ceil(bgHeight / slotHeight) }, (_, i) => {
+        if (localSeededRandom(420 + i) < 0.55) return null; // ~45% of slots
+        const radius = 7 + localSeededRandom(421 + i) * 16; // 7–23px
+        const cx =
+          visualX + radius + localSeededRandom(422 + i) * (visualWidth - radius * 2);
+        const cy =
+          visualY + i * slotHeight + radius + localSeededRandom(423 + i) * (slotHeight - radius * 2);
+        const lum = 0.45 + localSeededRandom(424 + i) * 0.3;
+        return (
+          <circle
+            key={`circle-${i}`}
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill={contentFill(lum)}
+            opacity={0.28 + localSeededRandom(425 + i) * 0.18}
+          />
+        );
+      });
+    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY, contentFill, mono]);
+
     const contentBlocks = useMemo(() => {
       if (!hasContentBlocks) return null;
 
@@ -1157,12 +1185,11 @@ const DynamicViewportRect = memo(
           }
 
           // Light content blocks (most common) - varied layouts. In color mode
-          // we roll across only the content variants (1–5), skipping the empty
-          // whitespace one so the window stays busy with structure. Variant 5
-          // is circular page elements (avatars/buttons/media).
+          // we roll across only the content variants (1–4), skipping the empty
+          // whitespace one so the window stays busy with structure.
           const layoutVariant = mono
-            ? Math.floor(localSeededRandom(56 + i) * 6)
-            : 1 + Math.floor(localSeededRandom(56 + i) * 5);
+            ? Math.floor(localSeededRandom(56 + i) * 5)
+            : 1 + Math.floor(localSeededRandom(56 + i) * 4);
 
           if (layoutVariant === 0) {
             // Empty/whitespace - adds breathing room
@@ -1222,45 +1249,6 @@ const DynamicViewportRect = memo(
                     fill={lightFill}
                     opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
                   />
-                ))}
-              </g>
-            );
-          } else if (layoutVariant === 4) {
-            // Circular page elements (avatars / buttons / media thumbnails) —
-            // a row of larger circles, sometimes paired with a short text line
-            // beside them. Replaces the old tiny scattered specks with
-            // intentional round shapes.
-            const count = 1 + Math.floor(localSeededRandom(82 + i) * 3); // 1–3
-            const radius = 8 + localSeededRandom(83 + i) * 14; // 8–22px
-            const gap = radius * 2 + 8 + localSeededRandom(84 + i) * 14;
-            const startX = visualX + visualWidth * 0.1 + radius;
-            const cy = blockY + radius;
-            const withText = localSeededRandom(85 + i) > 0.5;
-            return (
-              <g key={`block-${i}`}>
-                {Array.from({ length: count }, (_, j) => (
-                  <g key={`circle-${j}`}>
-                    <circle
-                      cx={startX + j * gap}
-                      cy={cy}
-                      r={radius}
-                      fill={lightFill}
-                      opacity={0.32 + localSeededRandom(86 + i + j) * 0.12}
-                    />
-                    {withText && (
-                      <rect
-                        x={startX + j * gap + radius + 6}
-                        y={cy - 2}
-                        width={
-                          visualWidth * (0.12 + localSeededRandom(87 + i + j) * 0.12)
-                        }
-                        height={3}
-                        fill={lightFill}
-                        opacity={0.22}
-                        rx={1.5}
-                      />
-                    )}
-                  </g>
                 ))}
               </g>
             );
@@ -1760,6 +1748,13 @@ const DynamicViewportRect = memo(
               {contentBlocks && (
                 <g opacity={settings.backgroundOpacity * 0.5}>
                   {contentBlocks}
+                </g>
+              )}
+
+              {/* Circular page elements scattered through the window */}
+              {circleElements && (
+                <g opacity={settings.backgroundOpacity * 0.6}>
+                  {circleElements}
                 </g>
               )}
 
