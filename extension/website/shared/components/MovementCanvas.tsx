@@ -943,6 +943,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       keyboardRandomizeOrder: settings.keyboardRandomizeOrder,
       maxConcurrentTyping: settings.maxConcurrentTyping,
       keyboardSizeCap: settings.keyboardSizeCap,
+      keyboardMaxAspect: settings.keyboardMaxAspect,
     }),
     [
       settings.filters,
@@ -954,6 +955,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.keyboardRandomizeOrder,
       settings.maxConcurrentTyping,
       settings.keyboardSizeCap,
+      settings.keyboardMaxAspect,
     ],
   );
 

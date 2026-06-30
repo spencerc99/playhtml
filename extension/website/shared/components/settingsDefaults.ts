@@ -80,6 +80,12 @@ export const DEFAULT_SETTINGS = {
   // pages or ChatGPT containers may span the canvas). 0.5 is a good
   // balance for most cases. Smaller = tighter.
   keyboardSizeCap: 0.5,
+  // Max height:width ratio for a typing box. Boxes taller than this get
+  // WIDENED (not shortened) so a narrow input holding lots of text doesn't
+  // render as an ugly super-narrow column. Keeps size variety — only the
+  // extreme narrow-vertical case is corrected. Higher = allows taller/narrower
+  // boxes (more variety, more risk of slivers); ~2.2 kills only the worst.
+  keyboardMaxAspect: 2.2,
   navigationWindowOpacity: 0.9,
   navigationEdgeOpacity: 0.2,
   navigationScrollSpeed: 80,

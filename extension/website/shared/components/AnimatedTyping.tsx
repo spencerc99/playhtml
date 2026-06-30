@@ -422,8 +422,12 @@ const TypingBox = memo(
           style={{
             position: "relative",
             width: `${textboxSize.width}px`,
-            minHeight: `${textboxSize.height}px`,
-            maxHeight: "500px", // Cap to prevent extremely tall boxes
+            // Box is sized to its computed height (which the hook fits to the
+            // text AND caps to the max aspect ratio). maxHeight = that height so
+            // content can't balloon the box into a tall narrow column — extra
+            // text scrolls within it instead. Capped at 500px as a safety net.
+            height: `${textboxSize.height}px`,
+            maxHeight: `${Math.min(500, textboxSize.height)}px`,
             border: `2px ${borderStyle} ${borderColor}`,
             borderRadius,
             backgroundColor,

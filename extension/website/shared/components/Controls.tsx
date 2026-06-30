@@ -1629,6 +1629,25 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="keyboard-max-aspect">Max Tallness</label>
+            <input
+              id="keyboard-max-aspect"
+              type="range"
+              min="1.2"
+              max="5"
+              step="0.1"
+              value={settings.keyboardMaxAspect ?? 2.2}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  keyboardMaxAspect: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.keyboardMaxAspect ?? 2.2).toFixed(1)}×</span>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="textbox-opacity">Textbox Opacity</label>
             <input
               id="textbox-opacity"
