@@ -383,22 +383,25 @@ const TypingBox = memo(
     let textColor: string;
     let borderColor: string;
 
+    // textboxOpacity drives the box-fill alpha directly (0.5 = washed, 1 =
+    // solid) rather than scaling the whole element, so turning it up makes the
+    // box more OPAQUE instead of just less faint over its own baseline.
+    const fillAlpha = settings.textboxOpacity;
     if (mono) {
+      let colorValue = 254; // #fefefe
       if (style?.bg !== undefined) {
         // Apply minimum luminosity of 0.85 to ensure visibility (even dark inputs stay light enough to see)
         const luminosity = Math.max(0.85, style.bg);
-        const colorValue = Math.round(luminosity * 255);
-        backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
-      } else {
-        backgroundColor = "#fefefe";
+        colorValue = Math.round(luminosity * 255);
       }
+      backgroundColor = `rgba(${colorValue}, ${colorValue}, ${colorValue}, ${fillAlpha})`;
       textColor = "#222";
       borderColor = "#999";
     } else {
-      // Faint wash of the hue, lightened so dark cursor colors still read as a
-      // light input rather than a saturated panel. Letters + border take a
-      // readable shade of the same hue.
-      backgroundColor = colorWash(vizColor, 0.16, 30);
+      // Wash of the hue, lightened so dark cursor colors still read as a light
+      // input rather than a saturated panel. Letters + border take a readable
+      // shade of the same hue.
+      backgroundColor = colorWash(vizColor, fillAlpha, 30);
       textColor = colorShade(vizColor, readableTextLightness(vizColor));
       borderColor = colorWash(vizColor, 0.55, 0);
     }
@@ -442,7 +445,6 @@ const TypingBox = memo(
             // Classic inset shadow for input fields
             boxShadow:
               "inset 1px 1px 3px rgba(0, 0, 0, 0.15), 0 1px 0 rgba(255, 255, 255, 0.8)",
-            opacity: settings.textboxOpacity, // 0 = transparent, 1 = fully opaque
           }}
         >
           {/* Text content */}

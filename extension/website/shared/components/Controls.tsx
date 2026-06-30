@@ -1652,7 +1652,7 @@ export const Controls: React.FC<ControlsProps> = memo(
             <input
               id="textbox-opacity"
               type="range"
-              min="0.05"
+              min="0.5"
               max="1"
               step="0.05"
               value={settings.textboxOpacity}
