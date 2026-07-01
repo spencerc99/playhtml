@@ -318,8 +318,8 @@ header.header {
 .ph-wordmark__letter:hover {
   transform: translateY(-1px);
 }
-/* playhtml adds the `clicked` class when a can-toggle element is toggled on */
-.ph-wordmark__letter.clicked {
+/* playhtml adds the `toggled` class when a can-toggle element is toggled on */
+.ph-wordmark__letter.toggled {
   color: var(--ph-mustard);
   text-shadow: 0 0 0.6rem rgba(232, 166, 58, 0.55),
     0 0 1.6rem rgba(232, 166, 58, 0.25);

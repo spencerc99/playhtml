@@ -57,7 +57,14 @@ import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
 const Counter = withSharedState(
   { defaultData: { count: 0 } },
   ({ data, setData, ref }) => (
-    <button ref={ref} onClick={() => setData({ count: data.count + 1 })}>
+    <button
+      ref={ref}
+      onClick={() => {
+        setData((draft) => {
+          draft.count += 1;
+        });
+      }}
+    >
       {data.count}
     </button>
   )
@@ -71,11 +78,38 @@ const Counter = withSharedState(
 ## setData — Two Forms
 
 ```javascript
-// Value form: replaces ALL data (spread to preserve other fields!)
-setData({ ...data, count: data.count + 1 });
-
-// Mutator form: modify in place (preferred for arrays/nested)
+// Mutator form: edit the current shared draft.
+// Use this for increments, arrays, nested fields, and keyed collections.
+setData((draft) => { draft.count += 1; });
 setData((draft) => { draft.items.push(newItem); });
+setData((draft) => { draft.settings.theme = "dark"; });
+setData((draft) => { draft.byUser[userId] = value; });
+
+// Replacement form: replaces ALL data.
+// Use only when intentionally replacing the whole stored value.
+setData({ on: true });
+setData({ x: e.clientX, y: e.clientY });
+```
+
+Avoid replacement writes that rebuild from rendered data:
+
+```javascript
+// Bad for counters: can overwrite newer synced counts.
+setData({ count: data.count + 1 });
+
+// Bad for appends: concurrent appends compete over one replacement.
+setData({ messages: [...data.messages, message] });
+```
+
+For bounded lists, push and cap in the same mutator:
+
+```javascript
+setData((draft) => {
+  draft.messages.push(message);
+  if (draft.messages.length > 100) {
+    draft.messages.splice(0, draft.messages.length - 100);
+  }
+});
 ```
 
 ## NEVER write shared data from code that re-runs when that data changes
@@ -134,7 +168,7 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 2. **Missing `id`**: No id = no sync. Silent failure.
 3. **Wrong data type**: Awareness for persistent data (disappears on disconnect) or defaultData for ephemeral presence (leaves stale data). Refer to the Data Types table.
 4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` don't sync correctly.
-5. **Value form loses fields**: `setData({ x: 5 })` erases `y`. Always spread: `setData({ ...data, x: 5 })` or use mutator form.
+5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/awareness.
    - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.

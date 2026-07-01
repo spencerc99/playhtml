@@ -29,18 +29,18 @@ function trailState(): TrailState {
 
 describe("computeTrailFrame", () => {
   it("returns null before the trail starts", () => {
-    expect(computeTrailFrame(trailState(), -10)).toBeNull();
+    expect(computeTrailFrame(trailState(), -10, 4)).toBeNull();
   });
 
   it("marks the trail finished at/after its duration", () => {
-    const frame = computeTrailFrame(trailState(), 1000);
+    const frame = computeTrailFrame(trailState(), 1000, 4);
     expect(frame).not.toBeNull();
     expect(frame!.isFinished).toBe(true);
     expect(frame!.trailProgress).toBe(1);
   });
 
   it("is mid-progress halfway through", () => {
-    const frame = computeTrailFrame(trailState(), 500);
+    const frame = computeTrailFrame(trailState(), 500, 4);
     expect(frame).not.toBeNull();
     expect(frame!.isFinished).toBe(false);
     expect(frame!.trailProgress).toBeGreaterThan(0);

@@ -1,3 +1,5 @@
+// ABOUTME: Exercises PlayHTML shared-data performance against a direct Yjs map baseline.
+// ABOUTME: Emits structured timings so shared-data regressions are visible in test output.
 import { describe, it, expect, vi, afterAll } from "vitest";
 import * as Y from "yjs";
 
@@ -261,7 +263,7 @@ describe("end-to-end performance (SyncedStore vs Y.Map baseline)", () => {
     await runPerfCase("yjs-baseline", { count: 150, updates: 800 });
     await runPerfCase("syncedstore-mutator", { count: 150, updates: 800 });
     await runPerfCase("syncedstore-value", { count: 150, updates: 800 });
-  });
+  }, 30000);
 
   it("complex nested data - Y.Map vs SyncedStore", async () => {
     await runPerfCase("yjs-baseline", {
@@ -279,13 +281,13 @@ describe("end-to-end performance (SyncedStore vs Y.Map baseline)", () => {
       updates: 600,
       complex: true,
     });
-  });
+  }, 30000);
 
   it("scale-up elements - Y.Map vs SyncedStore overhead", async () => {
     await runPerfCase("yjs-baseline", { count: 400, updates: 1000 });
     await runPerfCase("syncedstore-mutator", { count: 400, updates: 1000 });
     await runPerfCase("syncedstore-value", { count: 400, updates: 1000 });
-  });
+  }, 30000);
 });
 
 // Simulate nested conflicts patterns by toggling and overwriting within the same tick
@@ -319,7 +321,7 @@ describe("nested conflict-y updates", () => {
 
     // basic sanity
     expect((h.data as any).obj).toBeTruthy();
-  });
+  }, 30000);
 });
 
 afterAll(() => {

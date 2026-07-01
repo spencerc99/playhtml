@@ -262,7 +262,7 @@ function getCanPlayData(elementId?: string): MoveData | undefined {
   return playhtml?.syncedStore?.["can-play"]?.[elementId];
 }
 
-const FridgeWord = withSharedState<MoveData, any, Props>(
+const FridgeWord = withSharedState<MoveData, MoveLocalData, Props>(
   (props: Props) => {
     // Check for "can-play" data to migrate to "can-move" (reverse migration)
     const canPlayData = getCanPlayData(props.id);
@@ -270,11 +270,11 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
     const initialX =
       canPlayData && (canPlayData.x !== 0 || canPlayData.y !== 0)
         ? canPlayData.x
-        : props.x ?? 0;
+        : (props.x ?? 0);
     const initialY =
       canPlayData && (canPlayData.x !== 0 || canPlayData.y !== 0)
         ? canPlayData.y
-        : props.y ?? 0;
+        : (props.y ?? 0);
 
     return {
       // Use can-move tag to store data under "can-move" instead of "can-play"
@@ -339,7 +339,7 @@ const FridgeWord = withSharedState<MoveData, any, Props>(
                   border: "2px dotted red",
                 }
               : {}),
-          }}
+          } as React.CSSProperties}
         >
           {word}
           {deleteMode ? (
@@ -434,7 +434,7 @@ const Words = [
   "moon",
 ];
 
-const MaxWords = 3000;
+const MaxWords = 5000;
 const MaxWordLength = 40;
 
 interface ToolboxProps {
@@ -1080,8 +1080,8 @@ const AdminSettings = ({
           type="checkbox"
           checked={data.showDefaultWords}
           onChange={(e) =>
-            setData((d) => {
-              d.showDefaultWords = e.target.checked;
+            setData({
+              showDefaultWords: e.target.checked,
             })
           }
         />
@@ -1137,7 +1137,7 @@ const FridgeWordsContent = withSharedState(
       >
         Finding the words...
       </div>
-    ) : props.hasError ? (
+    ) : hasError ? (
       <div
         style={{
           position: "absolute",

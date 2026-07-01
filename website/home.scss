@@ -637,7 +637,7 @@ code {
 // For react examples
 
 .hoverBox {
-  &.hovering {
+  &[data-playhtml-hover] {
     box-shadow: 0px 0px 30px 10px rgb(245, 169, 15) !important;
     background: rgb(245 169 15 / 80%);
   }

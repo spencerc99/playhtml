@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import { usePresenceRoom } from "@playhtml/react";
-import type { PresenceView } from "@playhtml/common";
+import type { PresenceView } from "playhtml";
 
 interface Props {
   roomName?: string;

@@ -1,7 +1,9 @@
+// ABOUTME: Exposes the core React bindings for playhtml components.
+// ABOUTME: Registers can-play elements and shared-state helpers for React apps.
 // TODO: idk why but this is not getting registered otherwise??
-import React from "react";
+import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "@playhtml/common";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -13,6 +15,51 @@ import type {
   ReactElementEventHandlerData,
 } from "./utils";
 import { PlayContext } from "./PlayProvider";
+
+// Structural equality used to decide whether a sync actually changed React
+// state. Capability data can arrive as a fresh object/array reference on every
+// sync (e.g. a Yjs collection snapshot for can-duplicate), so a reference check
+// would mark every sync as a change and drive an infinite render loop. Compare
+// by value instead and bail when nothing changed.
+function isDeepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  ) {
+    return false;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    return a.every((item, i) => isDeepEqual(item, b[i]));
+  }
+  // Maps have no enumerable own keys, so the Object.keys path below would treat
+  // any two Maps as equal and drop real updates (e.g. awarenessByStableId).
+  if (a instanceof Map || b instanceof Map) {
+    if (!(a instanceof Map) || !(b instanceof Map) || a.size !== b.size) {
+      return false;
+    }
+    for (const [key, value] of a) {
+      if (!b.has(key) || !isDeepEqual(value, b.get(key))) return false;
+    }
+    return true;
+  }
+  const aKeys = Object.keys(a as Record<string, unknown>);
+  const bKeys = Object.keys(b as Record<string, unknown>);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(b, key) &&
+      isDeepEqual(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key]
+      )
+  );
+}
 
 // Loading configuration options for React components
 export interface LoadingOptions {
@@ -161,10 +208,25 @@ export function CanPlayElement<T extends object, V = any>({
     | undefined;
 
   const syncReactState = (handlerData: ElementAwarenessEventHandlerData) => {
-    setData(handlerData.data);
-    setAwareness(handlerData.awareness);
-    setAwarenessByStableId(handlerData.awarenessByStableId);
-    setMyAwareness(handlerData.myAwareness);
+    // Bail when the synced value matches current state. The handler can hand us
+    // a fresh reference for unchanged data, and setting it would re-render and
+    // re-run the setup effect, looping forever for reference-unstable data.
+    setData((prev) =>
+      isDeepEqual(prev, handlerData.data) ? prev : (handlerData.data as T)
+    );
+    setAwareness((prev) =>
+      isDeepEqual(prev, handlerData.awareness) ? prev : handlerData.awareness
+    );
+    setAwarenessByStableId((prev) =>
+      isDeepEqual(prev, handlerData.awarenessByStableId)
+        ? prev
+        : handlerData.awarenessByStableId
+    );
+    setMyAwareness((prev) =>
+      isDeepEqual(prev, handlerData.myAwareness)
+        ? prev
+        : handlerData.myAwareness
+    );
   };
 
   const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
@@ -195,7 +257,9 @@ export function CanPlayElement<T extends object, V = any>({
 
       // Setup the element, which will handle data-source discovery if needed
       try {
-        playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+        playhtml.setupPlayElement(ref.current, {
+          ignoreIfAlreadySetup: true,
+        });
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
 
@@ -207,13 +271,18 @@ export function CanPlayElement<T extends object, V = any>({
         }
       }
     }
+  });
+
+  useEffect(() => {
+    const mountedElement = ref.current;
+
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!ref.current || !playhtml.elementHandlers) return;
-      playhtml.removePlayElement(ref.current);
+      if (!mountedElement || !playhtml.elementHandlers) return;
+      playhtml.removePlayElement(mountedElement);
     };
-  }, [elementProps, ref.current]);
+  }, []);
   const renderedChildren = children({
     // @ts-ignore
     data,

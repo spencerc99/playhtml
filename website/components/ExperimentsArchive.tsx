@@ -572,7 +572,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
       (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
 
-        if (!hasSynced || !dispatchPlayEvent) return;
+        if (!hasSynced) return;
 
         const availableExperiments = experiments.filter(
           (experiment) => experiment.href,
@@ -662,12 +662,10 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
           </span>
           <button
             type="button"
-            disabled={!hasSynced || !dispatchPlayEvent}
+            disabled={!hasSynced}
             onClick={handleRandomExperiment}
           >
-            {hasSynced && dispatchPlayEvent
-              ? "random experiment"
-              : "syncing..."}
+            {hasSynced ? "random experiment" : "syncing..."}
           </button>
         </div>
       </section>

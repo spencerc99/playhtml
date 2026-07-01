@@ -18,3 +18,30 @@ export function isResetEpochStale(
     (candidateEpoch === null || candidateEpoch < serverEpoch)
   );
 }
+
+export type AutosaveResetEpochDecision =
+  | { kind: "save" }
+  | { kind: "skip"; reason: string }
+  | { kind: "promote-server-epoch"; resetEpoch: number };
+
+export function getAutosaveResetEpochDecision(
+  docResetEpoch: number | null,
+  serverResetEpoch: number | null
+): AutosaveResetEpochDecision {
+  if (isResetEpochStale(docResetEpoch, serverResetEpoch)) {
+    const reason =
+      docResetEpoch === null
+        ? `doc reset epoch missing while server epoch=${serverResetEpoch}`
+        : `doc reset epoch ${docResetEpoch} < server epoch ${serverResetEpoch}`;
+    return { kind: "skip", reason };
+  }
+
+  if (
+    docResetEpoch !== null &&
+    (serverResetEpoch === null || docResetEpoch > serverResetEpoch)
+  ) {
+    return { kind: "promote-server-epoch", resetEpoch: docResetEpoch };
+  }
+
+  return { kind: "save" };
+}

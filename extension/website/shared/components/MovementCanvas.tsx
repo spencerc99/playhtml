@@ -49,6 +49,8 @@ import { DEFAULT_SETTINGS } from "./settingsDefaults";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
+const EMPTY_EVENTS: CollectionEvent[] = [];
+
 const READOUT_WRAPPER_STYLE: React.CSSProperties = {
   position: "absolute",
   top: "20px",
@@ -754,6 +756,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     maxGroups: 60,
     evictIdsRef,
   });
+  const activeTrailEvents = hasCursorViz ? trailEvents : EMPTY_EVENTS;
+  const activeTypingEvents = showTyping ? filteredEvents : EMPTY_EVENTS;
+  const activeScrollingEvents = showScrolling ? filteredEvents : EMPTY_EVENTS;
+  const activeNavigationEvents = showNavigation ? filteredEvents : EMPTY_EVENTS;
 
   const cursorSettings = useMemo(
     () => ({
@@ -794,7 +800,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-  } = useCursorTrails(trailEvents, viewportSize, cursorSettings);
+  } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
 
   // Recent activity (live mode) from the raw event stream, not the capped drawn
   // trails: how many people + the geographic spread of their timezones.
@@ -834,7 +840,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     typingStates,
     timeBounds: keyboardTimeBounds,
     cycleDuration: keyboardCycleDuration,
-  } = useKeyboardTyping(filteredEvents, viewportSize, keyboardSettings);
+  } = useKeyboardTyping(activeTypingEvents, viewportSize, keyboardSettings);
 
   const timeRange = useMemo(() => {
     const allMins: number[] = [];
@@ -873,6 +879,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   ]);
 
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
+    if (!showClicks) {
+      return { scheduledClicks: [], clickCycleDuration: 0 };
+    }
+
     const clickColorRenderer = getTrailRenderer(
       settings.trailVisualStyle ?? "color",
     );
@@ -932,6 +942,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     return { scheduledClicks: normalized, clickCycleDuration };
   }, [
     trailStates,
+    showClicks,
     settings.clickMinDuration,
     settings.clickMaxDuration,
     settings.clickMaxGapMs,
@@ -948,7 +959,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
-    useViewportScroll(filteredEvents, viewportSize, viewportSettings);
+    useViewportScroll(activeScrollingEvents, viewportSize, viewportSettings);
 
   // For viewports whose URL has no captured title (no navigation event), ask
   // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
@@ -983,7 +994,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { timelineState } = useNavigationTimeline(
-    filteredEvents,
+    activeNavigationEvents,
     navigationTimelineSettings,
   );
 
@@ -1009,7 +1020,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { radialState } = useNavigationRadial(
-    filteredEvents,
+    activeNavigationEvents,
     navigationRadialSettings,
   );
 

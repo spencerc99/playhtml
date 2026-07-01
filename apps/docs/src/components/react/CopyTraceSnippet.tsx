@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CanPlayElement } from '@playhtml/react';
-import { TagType } from '@playhtml/common';
+import { TagType } from 'playhtml';
 
 type Props = {
   id: string;

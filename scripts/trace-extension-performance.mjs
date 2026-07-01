@@ -358,8 +358,10 @@ async function runOne({
   logPhase("browser launched");
 
   let timeoutId;
+  let timedOut = false;
   const timeout = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
+      timedOut = true;
       context.close().catch(() => {});
       reject(
         new Error(`${label} run ${runIndex} timed out after ${timeoutMs}ms`),
@@ -371,7 +373,9 @@ async function runOne({
     return await Promise.race([runTraceScenario(), timeout]);
   } finally {
     clearTimeout(timeoutId);
-    await context.close().catch(() => {});
+    if (!timedOut) {
+      await context.close().catch(() => {});
+    }
     await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
   }
 

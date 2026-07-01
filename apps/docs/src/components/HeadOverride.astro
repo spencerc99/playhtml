@@ -18,29 +18,29 @@ const { head } = Astro.locals.starlightRoute;
   // it initialises before playhtml.init awaits window.load.
   import '../scripts/enhance-code-blocks';
 
-  // Defer playhtml.init() until after the document is idle so every React
-  // island (`client:load`) has a chance to hydrate and stamp its `can-*`
-  // attributes into the DOM. If we init eagerly at module-execution time,
-  // the WebSocket handshake goes out with `sharedElements=[]` and the server
-  // misses the initial snapshot for React-driven elements. Vanilla elements
-  // (the wordmark `can-toggle` letters) are already in the DOM at this point,
-  // so they still get picked up correctly.
-  function boot() {
-    void playhtml.init({
-      cursors: {
-        enabled: true,
-        // Domain-wide cursor room so the header presence HUD counts ALL readers
-        // across the docs site, and cursors follow you between /docs/* pages
-        // without losing awareness. The per-page shared-data room still keys on
-        // the pathname via the main room — only cursor awareness is widened.
-        room: "domain",
-      },
-    });
-  }
-  if (document.readyState === 'complete') {
-    // Next microtask — lets React's client:load hydrators flush first.
-    queueMicrotask(boot);
-  } else {
-    window.addEventListener('load', () => queueMicrotask(boot), { once: true });
-  }
+  // Initialise playhtml synchronously, here, before any island hydrates.
+  //
+  // The React islands on these pages render @playhtml/react `standalone`
+  // components, which call `playhtml.init()` (with NO options) when they mount.
+  // init() is first-call-wins, so whichever call runs first decides the config.
+  // This <head> script evaluates while the page is still parsing — before the
+  // <body> islands hydrate — so initialising here (not deferred to window.load)
+  // guarantees OUR config (cursors on, domain-wide room) wins the race. When the
+  // defer was in place, an island could win and silently drop the cursor config,
+  // so cursors/presence appeared only on some loads.
+  //
+  // Eager init is safe here: these pages have no live `shared`/`data-source`
+  // elements (those appear only inside fenced code samples), so there's no
+  // initial shared-element snapshot to miss. Island `can-*` elements register
+  // themselves when they mount, independent of when init() runs.
+  void playhtml.init({
+    cursors: {
+      enabled: true,
+      // Domain-wide cursor room so the header presence HUD counts ALL readers
+      // across the docs site, and cursors follow you between /docs/* pages
+      // without losing awareness. The per-page shared-data room still keys on
+      // the pathname via the main room — only cursor awareness is widened.
+      room: "domain",
+    },
+  });
 </script>

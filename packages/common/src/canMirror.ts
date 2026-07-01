@@ -326,36 +326,23 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
     return;
   }
 
-  if (mutation.removedNodes.length) {
-    mutation.removedNodes.forEach((node) => {
-      if (!isValidNode(node)) {
-        return;
-      }
-      const nodeState = constructInitialState(node);
-      const indexToRemove = state.children.findIndex((child) =>
-        areStatesEqual(child, nodeState)
-      );
-      if (indexToRemove === -1) {
-        return;
-      }
-
-      state.children.splice(indexToRemove, 1);
-    });
+  // Resync the children array from the live DOM by position. The mutation's
+  // added/removed nodes can't be matched back to state entries by value,
+  // because identical children (e.g. repeated <img> tiles) are
+  // indistinguishable — value-matching would dedupe them and drop the wrong
+  // entry. The DOM after the mutation is the source of truth for order and
+  // count, so rebuild from it. splice() is the only Yjs-proxy-safe way to
+  // replace array contents in place.
+  if (!(mutation.target instanceof HTMLElement)) {
+    return;
   }
-
-  if (mutation.addedNodes.length) {
-    mutation.addedNodes.forEach((node: Node) => {
-      if (!isValidNode(node)) {
-        return;
-      }
-      const nodeState = constructInitialState(node);
-      if (state.children.find((child) => areStatesEqual(child, nodeState))) {
-        return;
-      }
-
-      state.children.push(nodeState);
-    });
-  }
+  const newChildren: ElementState[] = [];
+  mutation.target.childNodes.forEach((child) => {
+    if (isValidNode(child)) {
+      newChildren.push(constructInitialState(child));
+    }
+  });
+  state.children.splice(0, state.children.length, ...newChildren);
 }
 
 function updateCharacterData(state: ElementState, mutation: MutationRecord) {
@@ -474,9 +461,10 @@ function updateElementFromState(
     updateAttributesFromState(element as HTMLElement, newState);
     applyFormState(element as HTMLElement, newState.formState);
 
-    if (newState.children.length > 0) {
-      updateChildrenFromState(element as HTMLElement, newState);
-    }
+    // Always reconcile children, even when the target state has none: an
+    // element that was emptied remotely must have its stale DOM children
+    // removed. updateChildrenFromState handles the empty case.
+    updateChildrenFromState(element as HTMLElement, newState);
   }
 }
 
@@ -515,28 +503,51 @@ function updateAttributesFromState(
   });
 }
 
+function createNodeForState(state: ElementState): HTMLElement | Text {
+  return state.nodeType === NodeType.Text
+    ? document.createTextNode(state.textContent)
+    : document.createElement(state.tagName);
+}
+
+// A DOM node can be updated in place from a state entry only if they are the
+// same kind of node — same nodeType, and for elements the same tag. Otherwise
+// the node must be replaced, because updating an element's attributes against
+// text state (or vice versa) is meaningless and throws.
+function canUpdateInPlace(node: HTMLElement | Text, state: ElementState) {
+  if (state.nodeType === NodeType.Text) {
+    return node instanceof Text;
+  }
+  return (
+    node instanceof HTMLElement &&
+    node.tagName.toLowerCase() === state.tagName
+  );
+}
+
 function updateChildrenFromState(
   element: HTMLElement,
   state: HTMLElementState
 ) {
   const domChildren = Array.from(element.childNodes).filter(isValidNode);
 
-  // Update existing children in place by position
+  // Reconcile existing children in place by position, replacing any whose
+  // kind no longer matches the target state.
   const commonLen = Math.min(domChildren.length, state.children.length);
   for (let i = 0; i < commonLen; i++) {
-    updateElementFromState(
-      domChildren[i] as HTMLElement | Text,
-      state.children[i]
-    );
+    const domChild = domChildren[i] as HTMLElement | Text;
+    const childState = state.children[i];
+    if (canUpdateInPlace(domChild, childState)) {
+      updateElementFromState(domChild, childState);
+    } else {
+      const replacement = createNodeForState(childState);
+      element.replaceChild(replacement, domChild);
+      updateElementFromState(replacement, childState);
+    }
   }
 
   // Append any extra children from state
   for (let i = commonLen; i < state.children.length; i++) {
     const childState = state.children[i];
-    const newChild =
-      childState.nodeType === NodeType.Text
-        ? document.createTextNode(childState.textContent)
-        : document.createElement(childState.tagName);
+    const newChild = createNodeForState(childState);
     element.appendChild(newChild);
     updateElementFromState(newChild, childState);
   }

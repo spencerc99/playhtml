@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How playhtml works</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --surface: #ffffff;
+    --page: #f5f0e8;
+    --text: #3d3833;
+    --text-muted: #8a8279;
+    --border: #e3ddd2;
+    --server: #534ab7;
+    --server-bg: #eeedfe;
+    --server-border: #cecbf6;
+    --accent: #1d9e75;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  #capture {
+    width: 840px;
+    padding: 40px;
+    background: var(--bg);
+  }
+  .server {
+    width: 320px;
+    margin: 0 auto 8px;
+    background: var(--server-bg);
+    border: 1px solid var(--server-border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    text-align: center;
+  }
+  .server h2 { font-size: 18px; font-weight: 600; color: var(--server); }
+  .server p { font-size: 13px; color: #7f77dd; margin-top: 3px; }
+
+  .flow {
+    position: relative;
+    height: 104px;
+  }
+  .flow svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .flow-label {
+    position: absolute;
+    top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .flow-label.up { left: 56px; }
+  .flow-label.down { right: 56px; }
+
+  .pages {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .page {
+    background: var(--page);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+  }
+  .page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 14px;
+  }
+  .page-head h3 { font-size: 16px; font-weight: 600; }
+  .page-head .who { font-size: 13px; color: var(--text-muted); }
+
+  .el {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .el + .el { margin-top: 12px; }
+  .el-art {
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .el-art img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .el-meta { min-width: 0; }
+  .el-id { font-size: 15px; font-weight: 600; }
+  .el-cap {
+    font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .el-data {
+    font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+  <div id="capture">
+    <div class="server">
+      <h2>playhtml server</h2>
+      <p>stores + syncs by element id</p>
+    </div>
+    <script>
+      var base = location.href.replace(/[^/]*$/, "");
+      addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll("img").forEach(function (img) {
+          var src = img.getAttribute("src");
+          if (src && src[0] === "/") img.setAttribute("src", base + src.slice(1));
+        });
+      });
+    </script>
+
+    <div class="flow">
+      <span class="flow-label up">change syncs up</span>
+      <span class="flow-label down">server pushes to all</span>
+      <svg viewBox="0 0 840 104" preserveAspectRatio="none">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#8a8279" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+        <path d="M150 104 L150 66 L360 66 L360 2" fill="none" stroke="#8a8279" stroke-width="1.5" marker-end="url(#ar)"/>
+        <path d="M480 2 L480 66 L690 66 L690 104" fill="none" stroke="#8a8279" stroke-width="1.5" marker-end="url(#ar)"/>
+      </svg>
+    </div>
+
+    <div class="pages">
+      <div class="page">
+        <div class="page-head"><h3>Your page</h3><span class="who">user A</span></div>
+        <div class="el">
+          <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#lamp</div>
+            <div class="el-cap">can-toggle</div>
+            <div class="el-data">{ on: true }</div>
+          </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><img src="/yankees-hat.png" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#hat</div>
+            <div class="el-cap">can-move</div>
+            <div class="el-data">{ x: 120, y: 40 }</div>
+          </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><img src="/bike-wheel.webp" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#wheel</div>
+            <div class="el-cap">can-spin</div>
+            <div class="el-data">{ rotation: 90 }</div>
+          </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><img src="/water-balloon.png" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#balloon</div>
+            <div class="el-cap">can-grow</div>
+            <div class="el-data">{ scale: 1.5 }</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page">
+        <div class="page-head"><h3>Someone else's page</h3><span class="who">user B</span></div>
+        <div class="el">
+          <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#lamp</div>
+            <div class="el-cap">can-toggle</div>
+            <div class="el-data">{ on: true }</div>
+          </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><img src="/yankees-hat.png" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#hat</div>
+            <div class="el-cap">can-move</div>
+            <div class="el-data">{ x: 120, y: 40 }</div>
+          </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><img src="/bike-wheel.webp" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#wheel</div>
+            <div class="el-cap">can-spin</div>
+            <div class="el-data">{ rotation: 90 }</div>
+          </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><img src="/water-balloon.png" alt="" /></div>
+          <div class="el-meta">
+            <div class="el-id">#balloon</div>
+            <div class="el-cap">can-grow</div>
+            <div class="el-data">{ scale: 1.5 }</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

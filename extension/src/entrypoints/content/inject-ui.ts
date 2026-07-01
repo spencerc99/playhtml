@@ -60,6 +60,16 @@ export interface InjectedReactUI {
   render: (props: Record<string, unknown>) => void;
   /** Unmount the component and remove the host element from the page. */
   destroy: () => void;
+  /**
+   * The element React renders into, inside the shadow root.
+   */
+  container: Element;
+  /**
+   * Sibling element to `container` inside the shadow root, NOT managed by
+   * React. Use this as a portal target for modals/overlays that need to
+   * escape the main component tree but stay inside the shadow's CSS scope.
+   */
+  portal: Element;
 }
 
 /**
@@ -76,6 +86,12 @@ export function injectShadowReact<P extends Record<string, unknown>>(
   const container = document.createElement("div");
   shadow.appendChild(container);
 
+  // Sibling portal node — React doesn't manage this, so child components
+  // can safely portal into it (e.g. a modal that needs to escape the main
+  // component tree but stay inside the shadow root's CSS scope).
+  const portal = document.createElement("div");
+  shadow.appendChild(portal);
+
   const root: Root = createRoot(container);
   root.render(createElement(component, props));
 
@@ -87,5 +103,7 @@ export function injectShadowReact<P extends Record<string, unknown>>(
       root.unmount();
       host.remove();
     },
+    container,
+    portal,
   };
 }

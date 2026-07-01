@@ -1,3 +1,6 @@
+// ABOUTME: Converts PlayHTML Y.Doc state to and from persisted database snapshots.
+// ABOUTME: Provides reset metadata and snapshot relationship helpers for PartyServer.
+
 /**
  * Shared utilities for working with Y.Doc and PlayHTML data structures.
  * These functions ensure consistent conversion between Y.Doc, SyncedStore proxies,
@@ -154,6 +157,32 @@ export function getDocResetEpoch(doc: Y.Doc): number | null {
 export function encodeDocToBase64(doc: Y.Doc): string {
   const content = Y.encodeStateAsUpdate(doc);
   return Buffer.from(content).toString("base64");
+}
+
+function updateHasContent(update: Uint8Array): boolean {
+  const decoded = Y.decodeUpdate(update);
+  return decoded.structs.length > 0 || decoded.ds.clients.size > 0;
+}
+
+/**
+ * Returns whether `documentBase64` contains every Yjs update from
+ * `snapshotBase64`.
+ */
+export function documentContainsSnapshot(
+  documentBase64: string,
+  snapshotBase64: string
+): boolean {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, new Uint8Array(Buffer.from(documentBase64, "base64")));
+
+  const snapshot = new Y.Doc();
+  Y.applyUpdate(snapshot, new Uint8Array(Buffer.from(snapshotBase64, "base64")));
+
+  const missingFromDocument = Y.encodeStateAsUpdate(
+    snapshot,
+    Y.encodeStateVector(doc)
+  );
+  return !updateHasContent(missingFromDocument);
 }
 
 /**

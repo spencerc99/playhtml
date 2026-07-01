@@ -12,10 +12,19 @@ const DB_NAME = "collection_events_db";
 const DB_VERSION = 9;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
+const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 const UPLOAD_STATE_PENDING = "pending";
 const UPLOAD_STATE_UPLOADED = "uploaded";
+const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
+  "cursor",
+  "navigation",
+  "viewport",
+  "keyboard",
+];
+const STORAGE_SIZE_SAMPLE_LIMIT = 200;
 
 type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
+type StatsBackfillState = "running" | "complete";
 
 interface StoredCollectionEvent extends CollectionEvent {
   uploaded?: boolean;
@@ -27,6 +36,7 @@ const GLOBAL_STATS_KEY = "__global__";
 
 export interface QueryOptions {
   type?: CollectionEventType;
+  types?: CollectionEventType[];
   limit?: number;
   startTs?: number;
   endTs?: number;
@@ -137,6 +147,10 @@ export class LocalEventStore {
   private db: IDBDatabase | null = null;
   private isInitialized = false;
   private initPromise: Promise<void> | null = null;
+  private statsBackfillPromise: Promise<void> | null = null;
+  private statsBackfillComplete = false;
+  private eventsPendingStatsAfterBackfill: CollectionEvent[] = [];
+  private eventIdsPendingStatsAfterBackfill = new Set<string>();
 
   constructor() {
     this.init().catch(console.error);
@@ -168,10 +182,6 @@ export class LocalEventStore {
         }
         this.initPromise = null;
         resolve();
-        // Backfill session stats in the background (non-blocking)
-        this.backfillSessionStats().catch((e) =>
-          console.error("[LocalEventStore] Session stats backfill failed:", e),
-        );
       };
 
       request.onupgradeneeded = (event) => {
@@ -263,8 +273,7 @@ export class LocalEventStore {
         // v6: create domain_stats store (keyPath: "domain")
         // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
         // v8: force rebuild to populate page-level + global aggregates added after v7
-        // v9: force rebuild to populate storageSizeBytes in aggregates
-        if (oldVersion < 9) {
+        if (oldVersion < 8) {
           if (db.objectStoreNames.contains(STATS_STORE_NAME)) {
             db.deleteObjectStore(STATS_STORE_NAME);
           }
@@ -272,6 +281,8 @@ export class LocalEventStore {
           if (VERBOSE) {
             console.log("[LocalEventStore] Created domain_stats store (keyPath: key)");
           }
+        } else if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
+          db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
         }
 
         if (oldVersion < 9) {
@@ -317,6 +328,136 @@ export class LocalEventStore {
     }
   }
 
+  private async ensureSessionStatsBackfilled(): Promise<void> {
+    if (this.statsBackfillComplete) return;
+
+    if (!this.statsBackfillPromise) {
+      this.statsBackfillPromise = this.backfillSessionStats()
+        .then(() => this.flushEventsPendingStatsAfterBackfill())
+        .then(() => this.writeStatsBackfillState("complete"))
+        .then(() => {
+          this.statsBackfillComplete = true;
+        })
+        .finally(() => {
+          this.statsBackfillPromise = null;
+        });
+    }
+
+    return this.statsBackfillPromise;
+  }
+
+  private async canUpdateStatsIncrementally(): Promise<boolean> {
+    if (this.statsBackfillComplete) return true;
+    if (this.statsBackfillPromise) return false;
+
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [STORE_NAME, STATS_STORE_NAME],
+        "readonly",
+      );
+      const eventStore = transaction.objectStore(STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const eventCountRequest = eventStore.count();
+      const statsCountRequest = statsStore.count();
+      const stateRequest = statsStore.get(STATS_BACKFILL_STATE_KEY);
+      let eventCount = 0;
+      let statsCount = 0;
+      let state: StatsBackfillState | null = null;
+      let pendingRequests = 3;
+
+      const complete = () => {
+        pendingRequests--;
+        if (pendingRequests > 0) return;
+
+        const canUpdate =
+          state === "complete" ||
+          (state === null && (statsCount > 0 || eventCount === 0));
+        if (canUpdate) {
+          this.statsBackfillComplete = true;
+        }
+        resolve(canUpdate);
+      };
+
+      eventCountRequest.onsuccess = () => {
+        eventCount = eventCountRequest.result;
+        complete();
+      };
+      statsCountRequest.onsuccess = () => {
+        statsCount = statsCountRequest.result;
+        complete();
+      };
+      stateRequest.onsuccess = () => {
+        const result = stateRequest.result as
+          | { state?: StatsBackfillState }
+          | undefined;
+        state =
+          result?.state === "running" || result?.state === "complete"
+            ? result.state
+            : null;
+        complete();
+      };
+      eventCountRequest.onerror = () => reject(eventCountRequest.error);
+      statsCountRequest.onerror = () => reject(statsCountRequest.error);
+      stateRequest.onerror = () => reject(stateRequest.error);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  async ensureHistoricalStats(): Promise<void> {
+    await this.ensureInitialized();
+    await this.ensureSessionStatsBackfilled();
+  }
+
+  private queueEventsForStatsAfterBackfill(events: CollectionEvent[]): void {
+    for (const event of events) {
+      if (this.eventIdsPendingStatsAfterBackfill.has(event.id)) continue;
+      this.eventIdsPendingStatsAfterBackfill.add(event.id);
+      this.eventsPendingStatsAfterBackfill.push(event);
+    }
+  }
+
+  private removeEventsQueuedForStatsAfterBackfill(events: CollectionEvent[]): void {
+    const idsToRemove = new Set(events.map((event) => event.id));
+    this.eventsPendingStatsAfterBackfill =
+      this.eventsPendingStatsAfterBackfill.filter((event) => {
+        if (!idsToRemove.has(event.id)) return true;
+        this.eventIdsPendingStatsAfterBackfill.delete(event.id);
+        return false;
+      });
+  }
+
+  private async flushEventsPendingStatsAfterBackfill(): Promise<void> {
+    while (this.eventsPendingStatsAfterBackfill.length > 0) {
+      const events = this.eventsPendingStatsAfterBackfill;
+      this.eventsPendingStatsAfterBackfill = [];
+      this.eventIdsPendingStatsAfterBackfill.clear();
+
+      await this.updateDomainStats(
+        events,
+        LocalEventStore.groupEventsByDomain(events),
+      );
+    }
+  }
+
+  private async writeStatsBackfillState(state: StatsBackfillState): Promise<void> {
+    if (!this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction([STATS_STORE_NAME], "readwrite");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      statsStore.put({
+        key: STATS_BACKFILL_STATE_KEY,
+        state,
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
   /**
    * One-time backfill: compute session aggregates from existing navigation events.
    * Skips if domain_stats already has data (idempotent).
@@ -324,16 +465,50 @@ export class LocalEventStore {
   private async backfillSessionStats(): Promise<void> {
     if (!this.db) return;
 
-    // Check if backfill already ran (any row in domain_stats means it did)
-    const hasData = await new Promise<boolean>((resolve, reject) => {
+    const backfillState = await new Promise<{
+      state: StatsBackfillState | null;
+      statsCount: number;
+    }>((resolve, reject) => {
       const tx = this.db!.transaction([STATS_STORE_NAME], "readonly");
       const store = tx.objectStore(STATS_STORE_NAME);
       const countReq = store.count();
-      countReq.onsuccess = () => resolve(countReq.result > 0);
+      const stateReq = store.get(STATS_BACKFILL_STATE_KEY);
+      let statsCount = 0;
+      let state: StatsBackfillState | null = null;
+      let pendingRequests = 2;
+
+      const complete = () => {
+        pendingRequests--;
+        if (pendingRequests > 0) return;
+        resolve({ state, statsCount });
+      };
+
+      countReq.onsuccess = () => {
+        statsCount = countReq.result;
+        complete();
+      };
+      stateReq.onsuccess = () => {
+        const result = stateReq.result as
+          | { state?: StatsBackfillState }
+          | undefined;
+        state =
+          result?.state === "running" || result?.state === "complete"
+            ? result.state
+            : null;
+        complete();
+      };
       countReq.onerror = () => reject(countReq.error);
+      stateReq.onerror = () => reject(stateReq.error);
     });
 
-    if (hasData) return;
+    if (
+      backfillState.state === "complete" ||
+      (backfillState.state === null && backfillState.statsCount > 0)
+    ) {
+      return;
+    }
+
+    await this.writeStatsBackfillState("running");
 
     if (VERBOSE) {
       console.log("[LocalEventStore] Starting domain stats backfill...");
@@ -349,7 +524,10 @@ export class LocalEventStore {
       req.onsuccess = () => {
         const cursor = req.result;
         if (cursor) {
-          events.push(cursor.value as CollectionEvent);
+          const evt = cursor.value as CollectionEvent;
+          if (!this.eventIdsPendingStatsAfterBackfill.has(evt.id)) {
+            events.push(evt);
+          }
           cursor.continue();
         } else {
           resolve(events);
@@ -391,6 +569,7 @@ export class LocalEventStore {
     // Compute and write aggregates
     const tx = this.db!.transaction([STATS_STORE_NAME], "readwrite");
     const statsStore = tx.objectStore(STATS_STORE_NAME);
+    statsStore.clear();
 
     for (const [key, { domain, events }] of keyToEvents) {
       const agg = LocalEventStore.emptyAggregate(key, domain);
@@ -399,6 +578,10 @@ export class LocalEventStore {
       LocalEventStore.applyEventsToAggregate(agg, events);
       statsStore.put(agg);
     }
+    statsStore.put({
+      key: STATS_BACKFILL_STATE_KEY,
+      state: "running",
+    });
 
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -589,6 +772,7 @@ export class LocalEventStore {
     normalizedUrl?: string,
   ): Promise<DomainStatsAggregate | null> {
     await this.ensureInitialized();
+    await this.ensureSessionStatsBackfilled();
 
     const key = normalizedUrl
       ? pageStatsKey(domain, normalizedUrl)
@@ -614,6 +798,7 @@ export class LocalEventStore {
    */
   async getGlobalStats(): Promise<DomainStatsAggregate | null> {
     await this.ensureInitialized();
+    await this.ensureSessionStatsBackfilled();
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -637,6 +822,7 @@ export class LocalEventStore {
    */
   async getPageStats(domain: string): Promise<DomainStatsAggregate[]> {
     await this.ensureInitialized();
+    await this.ensureSessionStatsBackfilled();
 
     const prefix = `${domain}::`;
     return new Promise((resolve, reject) => {
@@ -672,9 +858,14 @@ export class LocalEventStore {
       domain: string;
       eventCount: number;
       lastVisit: number;
+      firstVisit: number;
+      totalTimeMs: number;
+      uniquePageCount: number;
+      eventCounts: Record<string, number>;
     }>
   > {
     await this.ensureInitialized();
+    await this.ensureSessionStatsBackfilled();
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -682,42 +873,47 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const domainIndex = store.index("domain");
-
-      const domainMap = new Map<string, { count: number; lastVisit: number }>();
-
-      // Walk the domain index — entries are grouped by key so this is efficient
-      const request = domainIndex.openCursor();
+      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const request = statsStore.openCursor();
+      const domains: Array<{
+        domain: string;
+        eventCount: number;
+        lastVisit: number;
+        firstVisit: number;
+        totalTimeMs: number;
+        uniquePageCount: number;
+        eventCounts: Record<string, number>;
+      }> = [];
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
-          const domain = evt.domain || extractDomain(evt.meta.url);
-
-          if (domain) {
-            const existing = domainMap.get(domain);
-            if (existing) {
-              existing.count++;
-              existing.lastVisit = Math.max(existing.lastVisit, evt.ts);
-            } else {
-              domainMap.set(domain, { count: 1, lastVisit: evt.ts });
-            }
+          const aggregate = cursor.value as DomainStatsAggregate;
+          if (
+            aggregate.key !== GLOBAL_STATS_KEY &&
+            aggregate.domain &&
+            !aggregate.key.includes("::")
+          ) {
+            const eventCounts = aggregate.eventsByType ?? {};
+            const eventCount = Object.values(eventCounts).reduce(
+              (sum, count) => sum + count,
+              0,
+            );
+            domains.push({
+              domain: aggregate.domain,
+              eventCount,
+              lastVisit: aggregate.lastVisit,
+              firstVisit: aggregate.firstVisit,
+              totalTimeMs: aggregate.totalTimeMs,
+              uniquePageCount: aggregate.uniqueUrls?.length ?? 0,
+              eventCounts,
+            });
           }
 
           cursor.continue();
         } else {
-          const domains = Array.from(domainMap.entries()).map(
-            ([domain, data]) => ({
-              domain,
-              eventCount: data.count,
-              lastVisit: data.lastVisit,
-            }),
-          );
-
           domains.sort((a, b) => b.lastVisit - a.lastVisit);
           resolve(domains);
         }
@@ -728,7 +924,7 @@ export class LocalEventStore {
   }
 
   /**
-   * Get storage usage stats
+   * Get retained raw-event storage stats.
    */
   async getStorageStats(): Promise<StorageStats> {
     await this.ensureInitialized();
@@ -739,27 +935,91 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STATS_STORE_NAME], "readonly");
-      const statsStore = transaction.objectStore(STATS_STORE_NAME);
-      const request = statsStore.get(GLOBAL_STATS_KEY);
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const tsIndex = store.index("ts");
+      const typeIndex = store.index("type");
+      const countsByType: Record<string, number> = {};
+      let totalEvents = 0;
+      let oldestEvent = 0;
+      let newestEvent = 0;
+      let sampleCount = 0;
+      let sampleSizeBytes = 0;
+      let pendingRequests = 4 + COLLECTION_EVENT_TYPES.length;
+      let settled = false;
 
-      request.onsuccess = () => {
-        const aggregate = request.result as DomainStatsAggregate | undefined;
-        const countsByType = aggregate?.eventsByType ?? {};
-        const totalEvents = Object.values(countsByType).reduce(
-          (sum, count) => sum + count,
-          0,
-        );
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+
+      const complete = () => {
+        pendingRequests--;
+        if (pendingRequests > 0 || settled) return;
+
+        settled = true;
         resolve({
           totalEvents,
-          estimatedSizeBytes: aggregate?.storageSizeBytes ?? 0,
-          oldestEvent: aggregate?.firstVisit ?? 0,
-          newestEvent: aggregate?.lastVisit ?? 0,
+          estimatedSizeBytes:
+            sampleCount > 0
+              ? Math.round((sampleSizeBytes / sampleCount) * totalEvents)
+              : 0,
+          oldestEvent,
+          newestEvent,
           countsByType,
         });
       };
 
-      request.onerror = () => reject(request.error);
+      const countRequest = store.count();
+      countRequest.onsuccess = () => {
+        totalEvents = countRequest.result;
+        complete();
+      };
+      countRequest.onerror = () => fail(countRequest.error);
+
+      const oldestRequest = tsIndex.openCursor();
+      oldestRequest.onsuccess = () => {
+        oldestEvent =
+          (oldestRequest.result?.value as StoredCollectionEvent | undefined)?.ts ?? 0;
+        complete();
+      };
+      oldestRequest.onerror = () => fail(oldestRequest.error);
+
+      const newestRequest = tsIndex.openCursor(null, "prev");
+      newestRequest.onsuccess = () => {
+        newestEvent =
+          (newestRequest.result?.value as StoredCollectionEvent | undefined)?.ts ?? 0;
+        complete();
+      };
+      newestRequest.onerror = () => fail(newestRequest.error);
+
+      const sampleRequest = store.openCursor();
+      sampleRequest.onsuccess = () => {
+        const cursor = sampleRequest.result;
+        if (cursor && sampleCount < STORAGE_SIZE_SAMPLE_LIMIT) {
+          sampleCount++;
+          sampleSizeBytes += JSON.stringify(cursor.value).length;
+          cursor.continue();
+          return;
+        }
+
+        complete();
+      };
+      sampleRequest.onerror = () => fail(sampleRequest.error);
+
+      for (const eventType of COLLECTION_EVENT_TYPES) {
+        const typeCountRequest = typeIndex.count(IDBKeyRange.only(eventType));
+        typeCountRequest.onsuccess = () => {
+          if (typeCountRequest.result > 0) {
+            countsByType[eventType] = typeCountRequest.result;
+          }
+          complete();
+        };
+        typeCountRequest.onerror = () => fail(typeCountRequest.error);
+      }
+
+      transaction.onerror = () => fail(transaction.error);
     });
   }
 
@@ -796,6 +1056,7 @@ export class LocalEventStore {
       const request = tsIndex.openCursor(range, direction);
 
       const events: CollectionEvent[] = [];
+      const typeSet = options.types ? new Set(options.types) : null;
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
@@ -805,6 +1066,7 @@ export class LocalEventStore {
           let include = true;
 
           if (options.type && evt.type !== options.type) include = false;
+          if (typeSet && !typeSet.has(evt.type)) include = false;
 
           if (include) {
             events.push(toCollectionEvent(evt));
@@ -924,8 +1186,8 @@ export class LocalEventStore {
 
     if (events.length === 0) return;
 
-    // Group events by domain for stats updates
-    const eventsByDomain = new Map<string, CollectionEvent[]>();
+    const canUpdateStats = await this.canUpdateStatsIncrementally();
+
     const storedEvents: StoredCollectionEvent[] = [];
     for (const event of events) {
       const storedEvent = prepareStoredEvent(event);
@@ -937,38 +1199,52 @@ export class LocalEventStore {
           storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
         }
       }
-      if (storedEvent.domain) {
-        if (!eventsByDomain.has(storedEvent.domain)) {
-          eventsByDomain.set(storedEvent.domain, []);
-        }
-        eventsByDomain.get(storedEvent.domain)!.push(storedEvent);
-      }
       storedEvents.push(storedEvent);
+    }
+    const eventsForStats = storedEvents.map(toCollectionEvent);
+    const eventsByDomain = LocalEventStore.groupEventsByDomain(eventsForStats);
+
+    if (!canUpdateStats) {
+      this.queueEventsForStatsAfterBackfill(eventsForStats);
     }
 
     // Write events to the main store
-    await new Promise<void>((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error("Database not initialized"));
-        return;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+
+        const transaction = this.db.transaction([STORE_NAME], "readwrite");
+        const evtStore = transaction.objectStore(STORE_NAME);
+
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+
+        for (const event of storedEvents) {
+          evtStore.put(event);
+        }
+      });
+    } catch (e) {
+      if (!canUpdateStats) {
+        this.removeEventsQueuedForStatsAfterBackfill(eventsForStats);
       }
+      throw e;
+    }
 
-      const transaction = this.db.transaction([STORE_NAME], "readwrite");
-      const evtStore = transaction.objectStore(STORE_NAME);
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-
-      for (const event of storedEvents) {
-        evtStore.put(event);
-      }
-    });
+    if (!canUpdateStats) {
+      this.ensureSessionStatsBackfilled().catch((e) =>
+        console.error("[LocalEventStore] Session stats backfill failed:", e),
+      );
+      return;
+    }
 
     // Update domain aggregates in a separate transaction so a stats
     // failure never blocks event storage
     if (events.length > 0) {
       try {
-        await this.updateDomainStats(events, eventsByDomain);
+        await this.updateDomainStats(eventsForStats, eventsByDomain);
       } catch (e) {
         console.error("[LocalEventStore] Failed to update domain stats:", e);
       }
@@ -991,6 +1267,20 @@ export class LocalEventStore {
       uniqueUrls: [],
       processedNavIds: [],
     };
+  }
+
+  private static groupEventsByDomain(
+    events: CollectionEvent[],
+  ): Map<string, CollectionEvent[]> {
+    const eventsByDomain = new Map<string, CollectionEvent[]>();
+    for (const event of events) {
+      if (!event.domain) continue;
+      if (!eventsByDomain.has(event.domain)) {
+        eventsByDomain.set(event.domain, []);
+      }
+      eventsByDomain.get(event.domain)!.push(event);
+    }
+    return eventsByDomain;
   }
 
   /**
@@ -1192,10 +1482,6 @@ export class LocalEventStore {
     });
   }
 
-  /**
-   * Prune events older than cutoff timestamp
-   * Returns number of events deleted
-   */
   async clearAll(): Promise<void> {
     await this.ensureInitialized();
 
@@ -1219,63 +1505,59 @@ export class LocalEventStore {
   }
 
   async pruneOlderThan(cutoffTs: number): Promise<number> {
+    return this.pruneUploadedEventsOlderThan(cutoffTs);
+  }
+
+  /**
+   * Prune uploaded events older than cutoff timestamp.
+   * Pending events stay local until a successful upload marks them uploaded.
+   */
+  async pruneUploadedEventsOlderThan(cutoffTs: number): Promise<number> {
     await this.ensureInitialized();
 
-    const deleted = await new Promise<number>((resolve, reject) => {
+    return new Promise<number>((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
         return;
       }
 
-      const transaction = this.db.transaction(
-        [STORE_NAME, STATS_STORE_NAME],
-        "readwrite",
-      );
+      let deleted = 0;
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
-      const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const tsIndex = store.index("ts");
-
-      // Clear domain_stats — will be rebuilt from remaining events
-      statsStore.clear();
-
-      const idsToDelete: string[] = [];
-      const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs));
+      const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs, true));
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
-          idsToDelete.push(evt.id);
-          cursor.continue();
-        } else {
-          for (const id of idsToDelete) {
-            store.delete(id);
+          const evt = cursor.value as StoredCollectionEvent;
+          if (getUploadState(evt) !== UPLOAD_STATE_UPLOADED) {
+            cursor.continue();
+            return;
           }
-          transaction.oncomplete = () => {
-            if (VERBOSE) {
-              console.log(
-                `[LocalEventStore] Pruned ${idsToDelete.length} events older than ${new Date(
-                  cutoffTs,
-                ).toISOString()}`,
-              );
-            }
-            resolve(idsToDelete.length);
+
+          const deleteRequest = cursor.delete();
+          deleteRequest.onsuccess = () => {
+            deleted++;
+            cursor.continue();
           };
+          deleteRequest.onerror = () => reject(deleteRequest.error);
         }
       };
 
       request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => {
+        if (VERBOSE && deleted > 0) {
+          console.log(
+            `[LocalEventStore] Pruned ${deleted} uploaded events older than ${new Date(
+              cutoffTs,
+            ).toISOString()}`,
+          );
+        }
+        resolve(deleted);
+      };
       transaction.onerror = () => reject(transaction.error);
     });
-
-    // Rebuild domain_stats from remaining events
-    if (deleted > 0) {
-      await this.backfillSessionStats().catch((e) =>
-        console.error("[LocalEventStore] Stats rebuild after prune failed:", e),
-      );
-    }
-
-    return deleted;
   }
 }
