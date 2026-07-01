@@ -190,6 +190,22 @@ describe("playhtml basic setup with SyncedStore", () => {
     ).toBe(replacement);
   });
 
+  it("skips already-registered elements when ignoreIfAlreadySetup is true", async () => {
+    const el = document.createElement("div");
+    el.id = "skip-existing";
+    el.setAttribute("can-move", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-move");
+
+    const handler = playhtml.elementHandlers!.get("can-move")!.get("skip-existing")!;
+    const reinitialize = vi.spyOn(handler, "reinitializeElementData");
+
+    playhtml.setupPlayElement(el, { ignoreIfAlreadySetup: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reinitialize).not.toHaveBeenCalled();
+  });
+
   it("deleteElementData cleans up all data and handlers", async () => {
     const el = document.createElement("div");
     el.id = "cleanup-test";
