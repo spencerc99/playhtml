@@ -35,8 +35,10 @@ preview tab can't do reliably.
   recording. Honors `--settings` too.
 - **`encode.sh`** — `.webm` → clean H.264 `.mp4` (no audio), with optional
   upscale and a front-trim. Args: `<in> <out> <W> <H> [crf] [trim_start_sec]`.
-  Pass the same value as `capture.mjs`'s `--wait` for `trim_start_sec` to drop
-  the warm-up lead-in so the clip opens on the blank-page reload.
+  Pass `capture.mjs`'s `--wait` **+ ~1s** for `trim_start_sec` — the reload's
+  blank canvas lands ~0.5s after the reload fires, so trimming exactly at
+  `--wait` leaves a leftover full-scene warm-up frame at the head. The seek is
+  frame-accurate (decode-from-zero), so the trim point is exact.
 
 ## Building the URL
 
@@ -79,17 +81,17 @@ BLOB="<paste the ?s= blob value>"
 NODE_PATH="$REPO_NM" bun recording-tools/capture.mjs \
   --url "http://localhost:5174/archive/?viz=scrolling&s=$BLOB&clean=2&day=2026-06-27" \
   --out /tmp/cap_wide --seconds 50 --width 1920 --height 1080 --wait 12
-bash recording-tools/encode.sh /tmp/cap_wide/*.webm ~/Downloads/windows-wide-4k.mp4 3840 2160 18 12
+bash recording-tools/encode.sh /tmp/cap_wide/*.webm ~/Downloads/windows-wide-4k.mp4 3840 2160 18 13
 
 # Portrait cinematic reveal (10s pull-back)
 NODE_PATH="$REPO_NM" bun recording-tools/capture.mjs \
   --url "http://localhost:5174/archive/?viz=scrolling&s=$BLOB&clean=2&day=2026-06-20&cinematic=reveal&cinemaReveal=10&cinemaStartZoom=0.14" \
   --out /tmp/cap_port --seconds 50 --width 1080 --height 1920 --wait 12
-bash recording-tools/encode.sh /tmp/cap_port/*.webm ~/Downloads/windows-portrait.mp4 1080 1920 18 12
+bash recording-tools/encode.sh /tmp/cap_port/*.webm ~/Downloads/windows-portrait.mp4 1080 1920 18 13
 
 # Cinematic cursor-follow with N-swaps every 10s
 NODE_PATH="$REPO_NM" bun recording-tools/capture.mjs \
   --url "http://localhost:5174/archive/?viz=trails&s=$BLOB&clean=2&day=2026-06-27&cinematic=1&cinemaZoom=0.22" \
   --out /tmp/cap_cine --seconds 45 --swap-every 10 --width 3840 --height 2160 --wait 12
-bash recording-tools/encode.sh /tmp/cap_cine/*.webm ~/Downloads/cursors-cine.mp4 3840 2160 18 12
+bash recording-tools/encode.sh /tmp/cap_cine/*.webm ~/Downloads/cursors-cine.mp4 3840 2160 18 13
 ```

@@ -6,19 +6,25 @@
 # output 4K because 4K capture drops frames on heavy scenes), pass the larger
 # size — flat color fills upscale crisply with lanczos.
 #
-# trim_start_sec drops that many seconds off the front. Playwright records from
-# context creation, so the capture's settle wait (--wait) lands at the head of
-# the .webm as a blank/half-empty lead-in (visible on typing/scroll scenes that
-# populate over time). Pass the same value as --wait to start on a full scene.
+# trim_start_sec drops that many seconds off the front. capture.mjs reloads the
+# page at --wait seconds so the timed window starts on a blank canvas; the
+# warm-up before that reload sits at the head of the .webm. Pass ~1s MORE than
+# --wait here to clear the reload's navigation + re-init latency (the canvas
+# stays on warm-up content for ~0.5s after the reload fires) so the clip opens
+# on the blank page, not a leftover warm-up frame.
+#
+# The seek is placed AFTER -i (accurate/decode-from-zero) on purpose: an input
+# seek (-ss before -i) snaps to the nearest prior keyframe, which on these webms
+# can be ~2s earlier and drags the full warm-up scene into the output.
 #
 #   encode.sh in.webm wide-4k.mp4 3840 2160          # upscale to 4K
 #   encode.sh in.webm portrait.mp4 1080 1920         # native portrait
-#   encode.sh in.webm wide-4k.mp4 3840 2160 18 12    # also trim 12s settle lead-in
+#   encode.sh in.webm wide-4k.mp4 3840 2160 18 13    # trim 13s (--wait 12 + 1s)
 set -euo pipefail
 
 IN="$1"; OUT="$2"; W="$3"; H="$4"; CRF="${5:-18}"; TRIM="${6:-0}"
 
-ffmpeg -y -ss "$TRIM" -i "$IN" \
+ffmpeg -y -i "$IN" -ss "$TRIM" \
   -r 25 -vf "scale=${W}:${H}:flags=lanczos,fps=25" \
   -c:v libx264 -crf "$CRF" -pix_fmt yuv420p -profile:v high \
   -an -movflags +faststart \
