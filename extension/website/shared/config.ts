@@ -2,6 +2,10 @@
 // ABOUTME: Worker base URL + URL-param overrides for experiment settings.
 
 import { parseSpec } from "./utils/settingsSpec";
+import {
+  DEFAULT_CINEMATIC_CONFIG,
+  type CinematicConfig,
+} from "./utils/cinematicCamera";
 
 const DEFAULT_WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 
@@ -151,4 +155,105 @@ export function parseTimeRangeFromUrl():
   if (startMs === undefined || endMs === undefined) return undefined;
   if (endMs <= startMs) return undefined;
   return { startMs, endMs };
+}
+
+/** `?day=YYYY-MM-DD` → the archive day to fetch, or undefined when absent.
+ * Lets a capture URL pin a specific historical day (e.g. to source a past
+ * midnight window) without clicking the calendar. */
+export function parseDayFromUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const raw = new URLSearchParams(window.location.search).get("day");
+  if (raw === null) return undefined;
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : undefined;
+}
+
+/** A recurring time-of-day window, expressed in minutes from local midnight.
+ * Unlike `selectedTimeRange` (one absolute span), this matches the same
+ * time-of-day across EVERY day in the data — e.g. "within 15 min of midnight,
+ * every night." `centerMinutes` is minutes after local 00:00 (so 0 = midnight,
+ * 750 = 12:30pm); `radiusMinutes` is the half-width on either side. */
+export interface TimeOfDayFilter {
+  centerMinutes: number;
+  radiusMinutes: number;
+}
+
+/** Parse `?tod=HH:MM&todRadius=15` into a recurring time-of-day window in LOCAL
+ * time. Returns undefined when `?tod` is absent. `todRadius` defaults to 15.
+ * Accepts `?tod=00:00` or a bare minute count (`?tod=0`). */
+export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  const rawTod = params.get("tod");
+  if (rawTod === null) return undefined;
+
+  let centerMinutes: number | undefined;
+  if (rawTod.includes(":")) {
+    const [hh, mm] = rawTod.split(":");
+    const h = Number(hh);
+    const m = Number(mm);
+    if (Number.isFinite(h) && Number.isFinite(m)) {
+      centerMinutes = ((h * 60 + m) % 1440 + 1440) % 1440;
+    }
+  } else {
+    const n = Number(rawTod);
+    if (Number.isFinite(n)) centerMinutes = ((n % 1440) + 1440) % 1440;
+  }
+  if (centerMinutes === undefined) return undefined;
+
+  const radius = parseNumber(params.get("todRadius"));
+  const radiusMinutes =
+    radius !== undefined && radius > 0 ? Math.min(720, radius) : 15;
+
+  return { centerMinutes, radiusMinutes };
+}
+
+/** `?cinematic=1`/`follow` enables cursor-follow; `?cinematic=reveal` runs the
+ * one-shot scripted pull-back (tight close-up → full canvas). Optional tuning:
+ *   ?cinemaZoom=0.25        follow: fraction of screen width visible
+ *   ?cinemaTransition=3     follow: fly-through seconds between subjects
+ *   ?cinemaLerp=0           follow: center smoothing (0 = pure locked-center)
+ *   ?cinemaVelZoom=0        follow: velocity-aware zoom-out (0 = off)
+ *   ?cinemaReveal=10        reveal: seconds to pull back to full canvas
+ *   ?cinemaStartZoom=0.18   reveal: fraction of screen width at the tightest
+ * Returns null when cinematic mode is not requested. */
+export function parseCinematicFromUrl(): CinematicConfig | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("cinematic");
+  const on = raw !== null && raw !== "" && parseBool(raw) !== false;
+  if (!on) return null;
+
+  const mode = raw === "reveal" ? "reveal" : "follow";
+  const zoom = parseNumber(params.get("cinemaZoom"));
+  const transitionS = parseNumber(params.get("cinemaTransition"));
+  const lerp = parseNumber(params.get("cinemaLerp"));
+  const velZoom = parseNumber(params.get("cinemaVelZoom"));
+  const revealS = parseNumber(params.get("cinemaReveal"));
+  const startZoom = parseNumber(params.get("cinemaStartZoom"));
+
+  return {
+    ...DEFAULT_CINEMATIC_CONFIG,
+    mode,
+    zoom: zoom !== undefined && zoom > 0 ? zoom : DEFAULT_CINEMATIC_CONFIG.zoom,
+    transitionMs:
+      transitionS !== undefined && transitionS > 0
+        ? transitionS * 1000
+        : DEFAULT_CINEMATIC_CONFIG.transitionMs,
+    centerLerp:
+      lerp !== undefined && lerp >= 0
+        ? lerp
+        : DEFAULT_CINEMATIC_CONFIG.centerLerp,
+    velocityZoomOut:
+      velZoom !== undefined && velZoom >= 0
+        ? velZoom
+        : DEFAULT_CINEMATIC_CONFIG.velocityZoomOut,
+    revealMs:
+      revealS !== undefined && revealS > 0
+        ? revealS * 1000
+        : DEFAULT_CINEMATIC_CONFIG.revealMs,
+    revealStartZoom:
+      startZoom !== undefined && startZoom > 0
+        ? startZoom
+        : DEFAULT_CINEMATIC_CONFIG.revealStartZoom,
+  };
 }
