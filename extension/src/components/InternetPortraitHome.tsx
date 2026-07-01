@@ -1,16 +1,16 @@
 // ABOUTME: Main popup home view showing internet portrait status and data collection summary
 // ABOUTME: Entry point for the "we were online" experience
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import browser from "webextension-polyfill";
 import { PlayerIdentityCard } from "./PlayerIdentityCard";
 import type { PlayerIdentity } from "../types";
 import type { CollectorStatus } from "../collectors/types";
-import type { CollectionEvent } from "../collectors/types";
 import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
 import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
+import { PostcardStack } from "../announcements/PostcardStack";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -18,6 +18,7 @@ interface Props {
   onViewHistory: () => void;
   onViewProfile?: () => void;
   onViewBagSettings?: () => void;
+  onViewChangelog: () => void;
 }
 
 interface PortraitStats {
@@ -36,17 +37,11 @@ export function InternetPortraitHome({
   onViewHistory,
   onViewProfile,
   onViewBagSettings,
+  onViewChangelog,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animRef = useRef<number | null>(null);
-  const tRef = useRef<number>(0);
-  const cursorEventsRef = useRef<CollectionEvent[] | null>(null);
-  const [recentCursorEvents, setRecentCursorEvents] = useState<
-    CollectionEvent[] | null
-  >(null);
   const [portraitStats, setPortraitStats] = useState<PortraitStats | null>(
     null,
   );
@@ -69,70 +64,11 @@ export function InternetPortraitHome({
         } else {
           setCollectors(null);
         }
-        // Try to pull recent cursor events for preview (best-effort)
-        try {
-          if (tab.url) {
-            const url = new URL(tab.url);
-            const domain = url.hostname.replace(/^www\./, '');
-            const recent = await browser.runtime.sendMessage({
-              type: "GET_RECENT_EVENTS",
-              domain,
-            });
-            if (recent?.success && Array.isArray(recent.events)) {
-              cursorEventsRef.current = recent.events as CollectionEvent[];
-              setRecentCursorEvents(recent.events as CollectionEvent[]);
-            }
-          }
-        } catch {}
       } catch (e) {
         setError("Collectors unavailable on this page");
       }
     };
     loadStatuses().catch(() => {});
-    // Start canvas animation using recent cursor events if available
-    const draw = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const w = (canvas.width = canvas.clientWidth);
-      const h = (canvas.height = canvas.clientHeight);
-      ctx.fillStyle = "rgba(90,78,65,0.08)";
-      ctx.fillRect(0, 0, w, h);
-
-      const events = cursorEventsRef.current || [];
-      tRef.current += 0.02;
-      const maxPoints = Math.min(50, events.length);
-      const start = Math.max(0, events.length - maxPoints);
-      const points = events.slice(start).map((e) => {
-        const d: any = e.data || {};
-        return { x: (d.x || 0) * w, y: (d.y || 0) * h };
-      });
-
-      ctx.strokeStyle = "rgba(74,154,138,0.7)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let i = 0; i < points.length - 1; i++) {
-        const p = points[i],
-          q = points[i + 1];
-        if (i === 0) ctx.moveTo(p.x, p.y);
-        ctx.lineTo(q.x, q.y);
-      }
-      ctx.stroke();
-
-      const head = points[points.length - 1];
-      if (head) {
-        ctx.beginPath();
-        ctx.arc(head.x, head.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = "#4a9a8a";
-        ctx.fill();
-      }
-      animRef.current = requestAnimationFrame(draw);
-    };
-    animRef.current = requestAnimationFrame(draw);
-    return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-    };
   }, []);
 
   // Load portrait stats for current tab's domain via background store.
@@ -181,6 +117,7 @@ export function InternetPortraitHome({
 
   return (
     <div className="portrait-home">
+      <PostcardStack />
       <header className="portrait-home__header">
         <div className="portrait-home__header-row">
           <h1 className="portrait-home__wordmark">we were online</h1>
@@ -294,6 +231,15 @@ export function InternetPortraitHome({
               }}
             >
               time
+            </button>
+            <button
+              className="portrait-home__nav-link"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewChangelog();
+              }}
+            >
+              changelog
             </button>
           </div>
           {onViewBagSettings && (

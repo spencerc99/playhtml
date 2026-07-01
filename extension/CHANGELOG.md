@@ -1,5 +1,34 @@
 # @playhtml/extension
 
+## 0.1.18 (2026-06-17)
+
+- Reduced background CPU and storage work while collecting browsing activity.
+- Stopped hidden inventory development features from observing and writing on every page.
+- Preserved pending event uploads when upgrading existing local browsing databases.
+- Stored click events sooner to avoid losing them during fast page exits.
+- Cursor trails now render as smooth, hand-drawn ink strokes with tapered ends (perfect-freehand)
+- Fixed the data collection settings panel to show local storage usage and stored event counts.
+
+
+## 0.1.17 (2026-06-01)
+
+- Make the Wikipedia jump portal ignore stale page presence so it only sends you to currently active readers.
+- Keep Wikipedia chat handle article previews in sync after rerolling or changing your name.
+
+
+## 0.1.16 (2026-05-29)
+
+- Wikipedia chat: article-name hovercards now stay on-screen near the viewport edge instead of getting cut off. The reroll affordance is a dice icon, and on real article pages a pin-icon button lets you adopt the article you're reading as your name.
+
+
+## 0.1.15 (2026-05-29)
+
+- Wikipedia chat: a small chat panel on every Wikipedia page lets you talk live with whoever else is reading the same article. Open it from the presence pill or by pressing `/`. You get a random Wikipedia-article name (rerollable); names link to their article and show a hovercard preview on hover. Messages are live-only and never stored.
+- Remote cursors now dim when a person's tab is blurred or hidden, so you can tell who's actively present.
+- Announcements: important updates now surface as a page toast and a dismissible "from spencer" postcard in the popup, so you don't miss new features.
+- Updated the store description to mention the social features (see who's here, Wikipedia chat); added `STORE_LISTING.md` with the full Chrome + Firefox listing copy.
+
+
 ## 0.1.9
 
 ### Patch Changes

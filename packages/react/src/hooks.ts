@@ -1,7 +1,8 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, RefObject } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
@@ -10,7 +11,7 @@ import {
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
-} from "@playhtml/common";
+} from "playhtml";
 import type { CursorZoneOptions } from "playhtml";
 
 function warnPreInit(call: string): void {
@@ -32,7 +33,7 @@ export function useCursorPresences(): Map<string, CursorPresenceView> {
  * own copy of the same element (matched by element id).
  */
 export function useCursorZone(
-  ref: RefObject<HTMLElement | null>,
+  ref: React.RefObject<HTMLElement | null>,
   options?: CursorZoneOptions,
 ): void {
   const { registerCursorZone, unregisterCursorZone } = useContext(PlayContext);
@@ -162,4 +163,28 @@ export function usePresenceRoom(name: string): PresenceRoom | null {
   }, [isLoading, name]);
 
   return room;
+}
+
+/**
+ * Read the local player's identity — cursor color, participant id (PID), and
+ * name — from the playhtml context. Values update reactively: the cursor
+ * client emits a `color` event when identity changes (including when the
+ * "we were online" extension injects its identity via the
+ * `playhtml:configure-identity` event), which re-renders consumers, at which
+ * point the freshly-read `getMyPlayerIdentity()` reflects the new PID.
+ *
+ * `pid` is undefined until cursors have synced. Requires a `PlayProvider`
+ * with `cursors: { enabled: true }`.
+ */
+export function usePlayerIdentity(): {
+  color: string;
+  pid: string | undefined;
+  name: string | undefined;
+} {
+  const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
+  return {
+    color: cursors.color,
+    pid: getMyPlayerIdentity()?.publicKey,
+    name: cursors.name,
+  };
 }

@@ -1,6 +1,7 @@
 // ABOUTME: Styles for the wewere.online homepage
 // ABOUTME: Scrollable layout with fixed trails background, hero section, essay, guestbook
 
+@use "sass:color";
 @use "./styles/variables" as *;
 
 $accent-teal: #4a9a8a;
@@ -23,6 +24,52 @@ $accent-rust: #c4724e;
 .content {
   position: relative;
   z-index: 1;
+}
+
+.siteNav {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  color: $text-muted;
+  backdrop-filter: blur(4px);
+
+  a {
+    color: inherit;
+    position: relative;
+    text-decoration: none;
+    transition: color 0.15s;
+
+    &:hover {
+      color: $accent-teal;
+    }
+
+    &[aria-current="page"] {
+      color: $text;
+
+      &::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -4px;
+        height: 1px;
+        background: rgba($accent-teal, 0.7);
+      }
+    }
+  }
+
+  @media (max-width: 520px) {
+    top: 14px;
+    right: 14px;
+    gap: 12px;
+    font-size: 0.75rem;
+  }
 }
 
 .hero {
@@ -126,17 +173,70 @@ $accent-rust: #c4724e;
   }
 }
 
-.scrollHint {
-  margin-top: 32px;
-  color: $text-muted;
-  animation: scrollBounce 2s ease-in-out infinite;
+.scrollCue {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  width: 72px;
+  height: 48px;
+  color: #3a7d6f;
+  transform: translateX(-50%);
+  opacity: 0.82;
+  pointer-events: none;
+
+  @media (max-width: 480px) {
+    bottom: 18px;
+    width: 64px;
+    height: 42px;
+  }
 }
 
-@keyframes scrollBounce {
+.scrollCueMark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.scrollCueTrail,
+.scrollCueArrow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.scrollCueTrail {
+  stroke: rgba($accent-teal, 0.42);
+  stroke-width: 2;
+  stroke-dasharray: 2 6;
+  animation: scroll-cue-trail 1.8s linear infinite;
+}
+
+.scrollCueArrow {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  animation: scroll-cue-arrow 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrollCueTrail,
+  .scrollCueArrow {
+    animation: none;
+  }
+}
+
+@keyframes scroll-cue-trail {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@keyframes scroll-cue-arrow {
   0%,
   100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(6px);
   }
@@ -191,7 +291,10 @@ $accent-rust: #c4724e;
     margin-bottom: 0.5em;
   }
 
-  p:last-child {
+  // Only zero the bottom margin when the very last paragraph in the essay is
+  // a plain paragraph — not when a marginalia wrapper's lone <p> happens to
+  // be a last-child (e.g. .benchesLine).
+  > p:last-child {
     margin-bottom: 0;
   }
 
@@ -208,12 +311,16 @@ $accent-rust: #c4724e;
     transition: color 0.2s, border-color 0.2s;
 
     &:hover {
-      color: darken($accent-teal, 8%);
+      color: color.adjust($accent-teal, $lightness: -8%);
       border-color: $accent-teal;
     }
   }
 }
 
+// Higher specificity than `.essayBlock p:last-child { margin-bottom: 0 }`,
+// which would otherwise zero out the bottom margin when this line is the last
+// <p> in its marginalia wrapper.
+.essayBlock .benchesLine,
 .benchesLine {
   font-family: $font-wordmark;
   font-weight: 600;
@@ -221,6 +328,10 @@ $accent-rust: #c4724e;
   line-height: 1.4;
   color: $accent-rust;
   margin: 1.5em 0;
+
+  @media (max-width: 768px) {
+    margin: 0.5em 0 0.75em;
+  }
 }
 
 // Marginalia: side content on desktop, inline on mobile
@@ -266,7 +377,7 @@ $accent-rust: #c4724e;
 
   @media (max-width: 768px) {
     align-self: center;
-    margin-bottom: 1.25em;
+    margin-bottom: 0.5em;
   }
 }
 
@@ -313,7 +424,7 @@ $accent-rust: #c4724e;
     transition: color 0.2s, border-color 0.2s;
 
     &:hover {
-      color: darken($accent-teal, 8%);
+      color: color.adjust($accent-teal, $lightness: -8%);
       border-color: $accent-teal;
     }
   }
@@ -349,6 +460,14 @@ $accent-rust: #c4724e;
   margin: 0;
 }
 
+.helpBuildActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
 .helpBuildCta {
   font-family: $font-body;
   font-size: 0.9375rem;
@@ -358,14 +477,52 @@ $accent-rust: #c4724e;
   border-radius: 4px;
   padding: 10px 18px;
   text-decoration: none;
-  margin-top: 6px;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  cursor: pointer;
 
   &:hover {
     background: rgba($accent-rust, 0.08);
     border-color: $accent-rust;
     transform: translateY(-1px);
   }
+}
+
+.helpBuildCtaPrimary {
+  background: rgba($accent-rust, 0.12);
+  border-color: rgba($accent-rust, 0.7);
+  color: #a85f3f;
+  font-weight: 600;
+}
+
+.helpBuildEmailLink {
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  color: $text-muted;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.15s;
+
+  &:hover {
+    color: $text;
+  }
+}
+
+.helpBuildEmailAddr {
+  border-bottom: 1px dotted rgba($text-muted, 0.5);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 // --- Further reading ---
@@ -392,7 +549,7 @@ $accent-rust: #c4724e;
     transition: color 0.2s, border-color 0.2s;
 
     &:hover {
-      color: darken($accent-teal, 8%);
+      color: color.adjust($accent-teal, $lightness: -8%);
       border-color: $accent-teal;
     }
   }

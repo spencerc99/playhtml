@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   // Stores the next time a connected large room should pay the expensive
   // compactability check
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",
+  // Stores the next time autosave should try compacting before persistence
+  persistedDocumentCompactCheckAfter: "persistedDocumentCompactCheckAfter",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
@@ -37,12 +39,33 @@ export const DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES = (() => {
 export const DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS = (() => {
   return 60 * 60 * 1000;
 })();
+export const DEFAULT_MESSAGE_RATE_WINDOW_MS = (() => {
+  return 1000;
+})();
+export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
+  return 1000;
+})();
+export const DEFAULT_MAX_REQUEST_BYTES = (() => {
+  return 1024 * 1024 * 16;
+})();
+// Pre-persist compaction runs before writing oversized autosave candidates so
+// persisted snapshots stay below the startup-risk range seen in live rooms.
+export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
+  return 1024 * 1024 * 8;
+})();
+export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
+  return 1024 * 1024 * 40;
+})();
+export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
+  return 5000;
+})();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 
 export type Subscriber = {
   consumerRoomId: string;
   elementIds?: string[];
+  consumerResetEpoch?: number | null;
   createdAt?: string;
   lastSeen?: string;
   leaseMs?: number;
@@ -51,6 +74,7 @@ export type Subscriber = {
 export type SharedRefEntry = {
   sourceRoomId: string;
   elementIds: string[];
+  sourceResetEpoch?: number | null;
   lastSeen?: string;
 };
 

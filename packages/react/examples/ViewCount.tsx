@@ -1,3 +1,6 @@
+// ABOUTME: Persistent visit counter example built with withSharedState.
+// ABOUTME: Increments the shared view count after initial playhtml sync.
+
 import { useContext, useEffect } from "react";
 import { PlayContext, withSharedState } from "@playhtml/react";
 
@@ -10,7 +13,9 @@ export const ViewCount = withSharedState(
         return;
       }
 
-      setData({ count: data.count + 1 });
+      setData((draft) => {
+        draft.count += 1;
+      });
     }, [hasSynced]);
     return <div id="viewCount">{data.count}</div>;
   }

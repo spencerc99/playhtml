@@ -2,7 +2,7 @@
   "name": "playhtml",
   "title": "playhtml",
   "description": "Create interactive, collaborative html elements with a single attribute",
-  "version": "2.10.0",
+  "version": "2.11.3",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -55,7 +55,7 @@
     "sass": "^1.62.1",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-dts": "^3.0.3",
+    "vite-plugin-dts": "^4.5.4",
     "vitest": "^3.1.1",
     "jsdom": "^26.1.0",
     "happy-dom": "^15.11.6"
@@ -63,6 +63,7 @@
   "dependencies": {
     "@playhtml/common": "workspace:^",
     "@syncedstore/core": "^0.6.0",
+    "partysocket": "^1.2.0",
     "y-partyserver": "^2.2.0",
     "yjs": "13.6.18"
   }

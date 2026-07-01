@@ -6,8 +6,10 @@ import { VERBOSE } from '../config';
 import {
   getValidEventTypes,
   type CollectionEventType,
+  type CollectionEvent,
   type PageMetadataSnapshot,
 } from '@playhtml/extension-types';
+import { broadcastLiveEvents } from '../live/broadcast';
 
 // Rate limiting: max events per request
 const MAX_EVENTS_PER_REQUEST = 500;
@@ -172,7 +174,8 @@ async function persistPageMetadataHistory(
  */
 export async function handleIngest(
   request: Request,
-  env: Env
+  env: Env,
+  ctx: ExecutionContext
 ): Promise<Response> {
   try {
     const body = await request.json();
@@ -277,13 +280,12 @@ export async function handleIngest(
     // Insert into Supabase
     // Use upsert with ignoreDuplicates to handle retries gracefully
     const supabase = createSupabaseClient(env);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('collection_events')
       .upsert(dbEvents, {
         onConflict: 'id',
         ignoreDuplicates: true,
-      })
-      .select('id');
+      });
     
     if (error) {
       // Check if it's a duplicate key error (shouldn't happen with upsert, but just in case)
@@ -317,9 +319,8 @@ export async function handleIngest(
       );
     }
     
-    // Count how many were actually inserted (data.length) vs duplicates
-    const inserted = data?.length || 0;
-    const duplicates = typedEvents.length - inserted;
+    const inserted = typedEvents.length;
+    const duplicates = 0;
 
     // Best effort: persist page metadata history.
     // If table doesn't exist yet, ingest still succeeds and event data remains valid.
@@ -336,6 +337,19 @@ export async function handleIngest(
       console.log(`[Ingest] Inserted ${inserted} new events, ${duplicates} duplicates ignored`);
     }
     
+    // Fan out cursor events to the live stream. Fire-and-forget — must never
+    // affect the ingest result. The cast is sound for cursor events: the live
+    // consumers read cursor position from `data`, and tolerate the optional
+    // `meta` fields (url/vw/vh/tz) being absent.
+    ctx.waitUntil(
+      broadcastLiveEvents(
+        env.LIVE_EVENTS_HUB,
+        env,
+        typedEvents as unknown as CollectionEvent[],
+        Date.now(),
+      ),
+    );
+
     return new Response(
       JSON.stringify({ inserted, duplicates, page_metadata_inserted: pageMetadataInserted }),
       { 

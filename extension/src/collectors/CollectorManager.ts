@@ -224,15 +224,19 @@ export class CollectorManager {
   }
 
   /**
-   * Stop all enabled collectors, flushing any pending buffered events.
-   * Called on beforeunload to avoid losing in-flight debounce/throttle data.
+   * Stop all enabled collectors, then flush buffered events.
+   * Browser unload callers should treat this as best effort.
    */
-  stopAll(): void {
+  async stopAll(): Promise<void> {
+    const stoppingCollectors: BaseCollector<any>[] = [];
     for (const collector of this.collectors.values()) {
       if (collector.isEnabled()) {
         collector.disable();
+        stoppingCollectors.push(collector);
       }
     }
+    await Promise.all(stoppingCollectors.map((collector) => collector.waitForPendingEvents()));
+    await this.eventBuffer.manualFlush();
   }
 
   /**

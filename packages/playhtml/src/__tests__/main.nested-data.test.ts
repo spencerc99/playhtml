@@ -361,4 +361,38 @@ describe("playhtml SyncedStore CRDT behavior", () => {
       });
     }).toThrow();
   });
+
+  it("keyed-map upsert is idempotent — re-writing the same key never duplicates", async () => {
+    // This is the merge-safe pattern for collections that must stay unique by
+    // key (e.g. a participant roster). Modeling entries as a keyed object and
+    // assigning by id means writing the same id N times overwrites rather than
+    // appends — structurally immune to the runaway-append bug that grows the
+    // doc when a write loop fires repeatedly.
+    const tag = "can-mirror";
+    const el = setupSimpleElement(tag, "e-roster");
+    const handler = playhtml.elementHandlers!.get(tag)!.get("e-roster")!;
+
+    // Seed a nested keyed map.
+    handler.setData((draft: any) => {
+      draft.attributes.entries = {};
+    });
+    await waitForSync();
+
+    // Upsert the same key many times — as a write loop would.
+    for (let i = 0; i < 50; i++) {
+      handler.setData((draft: any) => {
+        draft.attributes.entries["pk_a"] = { name: `n${i}` };
+      });
+    }
+    // And a second distinct key once.
+    handler.setData((draft: any) => {
+      draft.attributes.entries["pk_b"] = { name: "b" };
+    });
+    await waitForSync();
+
+    const entries = handler.data.attributes.entries;
+    expect(Object.keys(entries).sort()).toEqual(["pk_a", "pk_b"]);
+    expect(entries["pk_a"]).toEqual({ name: "n49" }); // last write wins
+    expect(entries["pk_b"]).toEqual({ name: "b" });
+  });
 });

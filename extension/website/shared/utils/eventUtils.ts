@@ -1,6 +1,8 @@
 // ABOUTME: Shared utility functions for event processing across all event types
 // ABOUTME: Contains color palette, hashing, and domain extraction helpers
 
+import type { CollectionEvent } from "../types";
+
 // Trail color palette — 8 evenly-spaced HSL hues (45° apart) with warm
 // saturation and constrained lightness. Inspired by minute-faces' time-color
 // mapping: vivid, harmonious, and legible over both light and dark backgrounds.
@@ -240,6 +242,140 @@ export function eventMatchesPath(eventUrl: string, pathFilter: string): boolean 
   if (!path) return false;
   const needle = pathFilter.startsWith("/") ? pathFilter : `/${pathFilter}`;
   return path.startsWith(needle);
+}
+
+/** A single URL-scope filter chip. `domain` is an exact-host match (after
+ * www-stripping), `path` is a prefix match on the URL path. Either field
+ * may be empty: a chip with only `domain` matches any path on that host,
+ * a chip with only `path` matches that path on any host. */
+export interface FilterChip {
+  domain: string;
+  path: string;
+}
+
+/** True when the event's URL matches any chip in the list (OR across chips,
+ * AND inside a chip). An empty list matches everything — that's the
+ * "no filter applied" state. */
+export function eventMatchesAnyFilter(
+  eventUrl: string,
+  filters: readonly FilterChip[] | undefined,
+): boolean {
+  if (!filters || filters.length === 0) return true;
+  const eventDomain = extractDomain(eventUrl || "");
+  for (const f of filters) {
+    if (f.domain && eventDomain !== f.domain) continue;
+    if (!eventMatchesPath(eventUrl, f.path)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Parse a free-form filter string into a `FilterChip`. Accepts full URLs,
+ * hostname/path combos, bare paths, or bare hostnames. The "has a dot
+ * before the first slash" heuristic decides whether the leading segment is
+ * a hostname or part of the path. Strips protocol, `www.`, query, hash.
+ *
+ *   "https://google.com/maps?q=x" → { domain: "google.com", path: "/maps" }
+ *   "google.com/maps"             → { domain: "google.com", path: "/maps" }
+ *   "google.com"                  → { domain: "google.com", path: "" }
+ *   "/maps"                       → { domain: "",           path: "/maps" }
+ *   "maps"                        → { domain: "",           path: "/maps" }
+ *   ""                            → { domain: "",           path: "" }
+ */
+export function parseFilterChip(raw: string): FilterChip {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return { domain: "", path: "" };
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      const domain = u.hostname.replace(/^www\./, "");
+      const path = u.pathname && u.pathname !== "/" ? u.pathname : "";
+      return { domain, path };
+    } catch {
+      /* fall through to manual split */
+    }
+  }
+
+  const cleaned = trimmed.replace(/[?#].*$/, "");
+  const slashIdx = cleaned.indexOf("/");
+  const head = slashIdx === -1 ? cleaned : cleaned.slice(0, slashIdx);
+  const tail = slashIdx === -1 ? "" : cleaned.slice(slashIdx);
+
+  if (head.includes(".")) {
+    return { domain: head.replace(/^www\./, ""), path: tail };
+  }
+
+  if (!cleaned) return { domain: "", path: "" };
+  const path = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return { domain: "", path };
+}
+
+/** Render a chip back to its canonical short-form string. Used by the
+ * metadata pill, share-URL serializer, and the chip UI itself so they all
+ * agree on what a chip "looks like." */
+export function formatFilterChip(chip: FilterChip): string {
+  if (!chip.domain && !chip.path) return "";
+  if (!chip.domain) {
+    return chip.path.startsWith("/") ? chip.path : `/${chip.path}`;
+  }
+  if (!chip.path) return chip.domain;
+  const path = chip.path.startsWith("/") ? chip.path : `/${chip.path}`;
+  return `${chip.domain}${path}`;
+}
+
+/** How recently a participant must have an event to count as "browsing now".
+ * Wide enough to cover the server's ~2-min replay buffer (so the count isn't 0
+ * right after connecting), while still meaning "recent". */
+export const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
+
+export interface ActiveLocations {
+  people: number;
+  timezones: number;
+  continents: number;
+}
+
+/**
+ * Summarize recently-active people and their geographic spread from `meta.tz`
+ * (an IANA zone like "Australia/Adelaide"). `people` reflects true activity from
+ * the raw event stream, NOT the drawn trails, so the readout stays honest even
+ * when the canvas only renders a capped subset of trails (maxGroups).
+ *
+ * The window is anchored to the VIEWER's wall clock (now), not the newest event
+ * timestamp: event `ts` is each client's own `Date.now()`, so a single client
+ * with a fast clock would otherwise shift the window into the future and drop
+ * the real count toward zero. Future-dated events are treated as "now".
+ */
+export function summarizeActiveLocations(
+  events: CollectionEvent[],
+  windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
+  now: number = Date.now(),
+): ActiveLocations {
+  const cutoff = now - windowMs;
+  const pids = new Set<string>();
+  const timezones = new Set<string>();
+  const continents = new Set<string>();
+  for (const e of events) {
+    // Count an event whose ts is within [cutoff, now]; clamp the future so a
+    // skewed-fast client still counts (its events read as "now", not dropped).
+    if (!e.meta?.pid || Math.min(e.ts, now) < cutoff) continue;
+    pids.add(e.meta.pid);
+    const tz = e.meta.tz;
+    if (tz) {
+      timezones.add(tz);
+      // IANA zones are "Continent/City"; the prefix is the broad region.
+      // Skip the non-geographic zones (UTC, GMT, Etc/*) so they don't inflate
+      // the continent count.
+      const region = tz.split("/")[0];
+      if (region && region !== "Etc" && region !== "UTC" && region !== "GMT")
+        continents.add(region);
+    }
+  }
+  return {
+    people: pids.size,
+    timezones: timezones.size,
+    continents: continents.size,
+  };
 }
 
 // Constants used across event processing

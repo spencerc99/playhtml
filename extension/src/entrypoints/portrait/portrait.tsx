@@ -10,7 +10,10 @@ import "@movement/portrait-styles.scss";
 import type { CollectionEvent, DayCounts } from "@movement/types";
 import { MovementCanvas } from "@movement/components/MovementCanvas";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
-import { DEFAULT_ACTIVE_VISUALIZATIONS } from "@movement/components/registry";
+import {
+  DEFAULT_ACTIVE_VISUALIZATIONS,
+  deriveRequiredEventTypes,
+} from "@movement/components/registry";
 import { DomainPortraitExport } from "../../components/DomainPortraitExport";
 import { captureDomPortrait, domainPortraitFilename } from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
@@ -43,6 +46,12 @@ const PortraitPage = () => {
     setError(null);
     try {
       const options: Record<string, unknown> = { limit: 10_000 };
+      const requiredTypes = deriveRequiredEventTypes(activeVisualizations);
+      if (requiredTypes.size === 0) {
+        setEvents([]);
+        return;
+      }
+      options.types = Array.from(requiredTypes);
       if (day) {
         options.startTs = new Date(day + "T00:00:00").getTime();
         options.endTs = new Date(day + "T23:59:59.999").getTime();
@@ -64,7 +73,7 @@ const PortraitPage = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeVisualizations]);
 
   useEffect(() => {
     loadEvents(selectedDay);
@@ -72,14 +81,30 @@ const PortraitPage = () => {
 
   // Fetch accurate per-day event counts (full scan, not capped like events)
   useEffect(() => {
-    browser.runtime.sendMessage({ type: 'GET_DAY_COUNTS' })
+    if (loading) return;
+
+    const run = () => {
+      browser.runtime.sendMessage({ type: 'GET_DAY_COUNTS' })
       .then((res: any) => {
         if (res?.success && res.counts) {
           setDayCounts(new Map(Object.entries(res.counts) as [string, number][]));
         }
       })
       .catch((e: unknown) => console.error('[Portrait] GET_DAY_COUNTS error:', e));
-  }, []);
+    };
+
+    const idle = (window as typeof window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    });
+    if (idle.requestIdleCallback) {
+      const handle = idle.requestIdleCallback(run, { timeout: 2_000 });
+      return () => idle.cancelIdleCallback?.(handle);
+    }
+
+    const handle = window.setTimeout(run, 250);
+    return () => window.clearTimeout(handle);
+  }, [loading]);
 
   // Screen time stats: uses pre-computed global aggregate for unfiltered view,
   // falls back to GET_SCREEN_TIME for day-filtered views.
@@ -200,7 +225,8 @@ const PortraitPage = () => {
     () => ({
       trailOpacity: 0.7,
       randomizeColors: true,
-      domainFilter: "",
+      filters: [],
+      pidFilter: "",
       eventFilter: { move: true, click: true, hold: true, cursor_change: true },
       trailStyle: "chaotic" as const,
       chaosIntensity: 1.0,

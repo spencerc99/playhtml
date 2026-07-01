@@ -1,7 +1,13 @@
 // ABOUTME: Controls panel component for the Internet Movement visualization
 // ABOUTME: Provides UI for adjusting visualization settings and displaying stats
 import React, { useState, useEffect, useRef, memo, useMemo } from "react";
+import { useCombobox } from "downshift";
 import { CollectionEvent, Trail } from "../types";
+import {
+  parseFilterChip,
+  formatFilterChip,
+  type FilterChip,
+} from "../utils/eventUtils";
 import { VISUALIZATIONS } from "./registry";
 import { TRAIL_RENDERERS } from "../styles";
 import { CLICK_DEFAULTS } from "./clickDefaults";
@@ -76,13 +82,15 @@ const ShareConfigSection: React.FC<{
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "ok" | "err">(
     "idle",
   );
+  const [defaultFeedback, setDefaultFeedback] = useState<"idle" | "ok" | "err">(
+    "idle",
+  );
   const [titleDraft, setTitleDraft] = useState("");
   const [saved, setSaved] = useState<SavedConfig[]>(() => loadSavedConfigs());
 
   const buildCurrentUrl = () =>
     buildShareUrl({
       settings,
-      defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
       activeVisualizations,
       selectedTimeRange,
       // Preserve whichever clean tier the page is currently in (set via
@@ -101,12 +109,29 @@ const ShareConfigSection: React.FC<{
     window.setTimeout(() => setCopyFeedback("idle"), 1500);
   };
 
+  /** Persist the current settings to localStorage as the new "bare-visit"
+   * baseline. Loading the portrait page with no URL params will now spread
+   * these settings on top of the hardcoded defaults. Doesn't touch the
+   * shareable URL or the saved-configs list — strictly a personal default. */
+  const onSetAsDefault = () => {
+    try {
+      localStorage.setItem(
+        "internet-movement-settings-v2",
+        JSON.stringify(settings),
+      );
+      setDefaultFeedback("ok");
+    } catch (err) {
+      console.error("Failed to save default settings:", err);
+      setDefaultFeedback("err");
+    }
+    window.setTimeout(() => setDefaultFeedback("idle"), 1500);
+  };
+
   const onSave = () => {
     const title = titleDraft.trim();
     const autoName = buildAutoName({
       activeVisualizations,
-      domainFilter: (settings.domainFilter as string | undefined) ?? "",
-      pathFilter: (settings.pathFilter as string | undefined) ?? "",
+      filters: (settings.filters as { domain: string; path: string }[] | undefined) ?? [],
       pidFilter: (settings.pidFilter as string | undefined) ?? "",
       trailStyle: settings.trailStyle as string | undefined,
       trailStyleIsDefault:
@@ -166,6 +191,31 @@ const ShareConfigSection: React.FC<{
           }}
         >
           {copyLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onSetAsDefault}
+          title="Save current settings as the default for fresh portrait visits (no URL params)"
+          style={{
+            flex: 1,
+            padding: "6px 10px",
+            fontSize: "11px",
+            fontWeight: 600,
+            fontFamily: "'Martian Mono', 'Space Mono', monospace",
+            letterSpacing: "0.5px",
+            textTransform: "uppercase",
+            background: defaultFeedback === "ok" ? "#e6f4f1" : "#faf9f6",
+            color: defaultFeedback === "err" ? "#c4724e" : "#3d3833",
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 3,
+            cursor: "pointer",
+          }}
+        >
+          {defaultFeedback === "ok"
+            ? "Saved!"
+            : defaultFeedback === "err"
+              ? "Save failed"
+              : "Set as Default"}
         </button>
       </div>
 
@@ -255,7 +305,7 @@ const ShareConfigSection: React.FC<{
       {(hasMore || saved.length > 0) && (
         <div style={{ marginTop: 6, textAlign: "right" }}>
           <a
-            href="/portrait/saved.html"
+            href="/archive/saved.html"
             target="_blank"
             rel="noreferrer"
             style={{
@@ -277,133 +327,226 @@ const ShareConfigSection: React.FC<{
   );
 };
 
-/** Split a free-form filter string into `{ domain, pathPrefix }`. Accepts
- * full URLs, hostname/path combos, bare paths, or bare hostnames.
+/** Unified domain + path filter input. Renders existing chips above a
+ * downshift-powered combobox that autocompletes against `availableDomains`
+ * and accepts free-typed `domain[/path]` strings. Multiple chips OR
+ * together at match time (handled in the hooks). Each chip has its own ×
+ * to remove just it; "clear all" wipes the list.
  *
- *   "https://google.com/maps?q=x" → { domain: "google.com", pathPrefix: "/maps" }
- *   "google.com/maps"             → { domain: "google.com", pathPrefix: "/maps" }
- *   "google.com"                  → { domain: "google.com", pathPrefix: "" }
- *   "/maps"                       → { domain: "",           pathPrefix: "/maps" }
- *   "maps"                        → { domain: "",           pathPrefix: "/maps" }
- *
- * The "has a dot before the first slash" heuristic decides whether the
- * leading segment is a hostname or part of the path. Strips protocol,
- * `www.`, query string, and hash. */
-function splitFilterInput(raw: string): { domain: string; pathPrefix: string } {
-  const trimmed = raw.trim();
-  if (!trimmed) return { domain: "", pathPrefix: "" };
-
-  // Try as a real URL first when a protocol is present.
-  if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const u = new URL(trimmed);
-      const domain = u.hostname.replace(/^www\./, "");
-      const pathPrefix = u.pathname && u.pathname !== "/" ? u.pathname : "";
-      return { domain, pathPrefix };
-    } catch {
-      // fall through to manual split
-    }
-  }
-
-  // Strip query/hash for manual cases.
-  const cleaned = trimmed.replace(/[?#].*$/, "");
-  const slashIdx = cleaned.indexOf("/");
-  const head = slashIdx === -1 ? cleaned : cleaned.slice(0, slashIdx);
-  const tail = slashIdx === -1 ? "" : cleaned.slice(slashIdx); // includes "/"
-
-  // Leading segment is a hostname iff it contains a "." (e.g. "google.com").
-  if (head.includes(".")) {
-    const domain = head.replace(/^www\./, "");
-    return { domain, pathPrefix: tail };
-  }
-
-  // No dot in head — treat the whole input as a path. Prepend "/" if missing.
-  if (!cleaned) return { domain: "", pathPrefix: "" };
-  const pathPrefix = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
-  return { domain: "", pathPrefix };
-}
-
-/** Path-filter input with two affordances:
- *   1. Local draft state with a 350ms debounce — typing doesn't thrash
- *      the visualization (every keystroke would otherwise re-run all
- *      hooks and re-fire the worker fetch via the domain-sync chain).
- *   2. Smart split on commit — if the typed/pasted value parses as
- *      `domain[/path]`, the domain part is routed to `setDomainFilter`
- *      and the path remains in `pathFilter`. Pasting `google.com/maps`
- *      fills both fields in one action.
- *
- * Hoisted to module scope alongside CollapsibleSection for the same
- * reason — stable component identity prevents focus loss. */
-const PathFilterInput: React.FC<{
-  pathFilter: string;
-  domainFilter: string;
+ * Hoisted to module scope alongside the other input components so its
+ * identity stays stable across `Controls` re-renders (keystrokes into
+ * inputs otherwise lose focus when the parent rerenders). */
+const FilterChipInput: React.FC<{
+  filters: FilterChip[];
+  availableDomains: string[];
   setSettings: React.Dispatch<React.SetStateAction<any>>;
-}> = ({ pathFilter, domainFilter, setSettings }) => {
-  // Local draft so typing stays responsive even if upstream re-renders.
-  // Initialize from prop and reset whenever the prop changes from outside
-  // (e.g. another control or URL nav).
-  const [draft, setDraft] = useState(pathFilter ?? "");
-  const lastPropRef = useRef(pathFilter ?? "");
-  useEffect(() => {
-    if (pathFilter !== lastPropRef.current) {
-      lastPropRef.current = pathFilter;
-      setDraft(pathFilter ?? "");
-    }
-  }, [pathFilter]);
+}> = ({ filters, availableDomains, setSettings }) => {
+  // Options exclude domains already represented bare (no path). Free-typing
+  // `google.com/maps` is still fine — that's a new chip even if `google.com`
+  // is already chipped.
+  const filteredOptions = useMemo(() => {
+    const bareDomains = new Set(
+      filters.filter((f) => f.domain && !f.path).map((f) => f.domain),
+    );
+    return availableDomains.filter((d) => !bareDomains.has(d));
+  }, [availableDomains, filters]);
 
-  // Debounce-commit: write to settings (which triggers all the downstream
-  // hook re-runs) only after the user pauses typing.
+  const [items, setItems] = useState<string[]>(filteredOptions);
   useEffect(() => {
-    if (draft === (pathFilter ?? "")) return;
-    const t = window.setTimeout(() => {
-      const { domain, pathPrefix } = splitFilterInput(draft);
-      setSettings((s: any) => {
-        // Only set domain when smart-paste extracted one — otherwise
-        // typing into the path field would clobber an already-set domain.
-        const next: any = { ...s, pathFilter: pathPrefix };
-        if (domain) next.domainFilter = domain;
-        return next;
-      });
-      lastPropRef.current = pathPrefix;
-      // Reflect the normalized value in the input (keeps display tidy
-      // when user pasted "https://google.com/maps?q=x" — they'll see
-      // "/maps" after the debounce fires).
-      if (draft !== pathPrefix) setDraft(pathPrefix);
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [draft, pathFilter, setSettings]);
+    setItems(filteredOptions);
+  }, [filteredOptions]);
 
-  const clear = () => {
-    setDraft("");
-    setSettings((s: any) => ({ ...s, pathFilter: "" }));
+  const addChip = (raw: string) => {
+    const chip = parseFilterChip(raw);
+    if (!chip.domain && !chip.path) return;
+    setSettings((s: any) => {
+      const cur: FilterChip[] = Array.isArray(s.filters) ? s.filters : [];
+      // De-dupe: don't add a chip identical to an existing one.
+      const dup = cur.some(
+        (c) => c.domain === chip.domain && c.path === chip.path,
+      );
+      if (dup) return s;
+      return { ...s, filters: [...cur, chip] };
+    });
+  };
+
+  const removeChip = (idx: number) => {
+    setSettings((s: any) => {
+      const cur: FilterChip[] = Array.isArray(s.filters) ? s.filters : [];
+      return { ...s, filters: cur.filter((_, i) => i !== idx) };
+    });
+  };
+
+  const clearAll = () => {
+    setSettings((s: any) => ({ ...s, filters: [] }));
+  };
+
+  const {
+    isOpen,
+    getInputProps,
+    getMenuProps,
+    getItemProps,
+    highlightedIndex,
+    inputValue,
+    setInputValue,
+    closeMenu,
+  } = useCombobox<string>({
+    items,
+    initialInputValue: "",
+    itemToString: (item) => item ?? "",
+    stateReducer: (state, { type, changes }) => {
+      const t = useCombobox.stateChangeTypes;
+      if (type === t.InputClick || type === t.InputFocus) {
+        return { ...changes, isOpen: true };
+      }
+      if (type === t.InputChange) {
+        return {
+          ...changes,
+          highlightedIndex: changes.inputValue ? 0 : -1,
+        };
+      }
+      return changes;
+    },
+    onInputValueChange: ({ inputValue }) => {
+      const q = (inputValue ?? "").toLowerCase();
+      setItems(
+        q
+          ? filteredOptions.filter((d) => d.toLowerCase().includes(q))
+          : filteredOptions,
+      );
+    },
+    onSelectedItemChange: ({ selectedItem }) => {
+      if (selectedItem) {
+        addChip(selectedItem);
+        // Clear the input so the next selection starts fresh.
+        setInputValue("");
+      }
+    },
+  });
+
+  const commitTyped = () => {
+    const trimmed = (inputValue ?? "").trim();
+    if (!trimmed) return;
+    addChip(trimmed);
+    setInputValue("");
   };
 
   return (
     <div className="control-group">
-      <label htmlFor="path-filter">Path Filter</label>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      <label htmlFor="filter-input">Filters</label>
+      {filters.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 6,
+          }}
+        >
+          {filters.map((chip, idx) => (
+            <span
+              key={`${chip.domain}|${chip.path}|${idx}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "2px 6px",
+                background: "#f5f0e8",
+                border: "1px solid rgba(61,56,51,0.18)",
+                borderRadius: 3,
+                fontFamily: "'Martian Mono', monospace",
+                fontSize: 10,
+                color: "#3d3833",
+                maxWidth: "100%",
+                wordBreak: "break-all",
+              }}
+            >
+              <span>{formatFilterChip(chip) || "(empty)"}</span>
+              <button
+                onClick={() => removeChip(idx)}
+                title="Remove this filter"
+                style={{
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  padding: "0 2px",
+                  fontSize: 12,
+                  lineHeight: 1,
+                  color: "#8a8279",
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={clearAll}
+            style={{
+              padding: "2px 6px",
+              fontSize: 10,
+              cursor: "pointer",
+              background: "none",
+              border: "1px dashed rgba(61,56,51,0.25)",
+              borderRadius: 3,
+              color: "#8a8279",
+            }}
+            title="Clear all filters"
+          >
+            clear all
+          </button>
+        </div>
+      )}
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          gap: 6,
+          alignItems: "center",
+        }}
+      >
         <input
-          id="path-filter"
-          type="text"
-          value={draft}
-          placeholder="/maps  or  google.com/maps"
-          onChange={(e) => setDraft(e.target.value)}
+          id="filter-input"
+          {...getInputProps({
+            placeholder: filters.length
+              ? "add another (domain or path)…"
+              : "domain.com  /path  or  domain.com/path",
+            onBlur: commitTyped,
+            onKeyDown: (e) => {
+              if (e.key === "Enter") {
+                const willPickItem =
+                  highlightedIndex >= 0 && highlightedIndex < items.length;
+                if (!willPickItem) {
+                  e.preventDefault();
+                  commitTyped();
+                }
+                closeMenu();
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            },
+          })}
           style={{ flex: 1 }}
         />
-        {(draft || pathFilter) && (
-          <button
-            onClick={clear}
-            style={{
-              padding: "4px 8px",
-              fontSize: "11px",
-              cursor: "pointer",
-            }}
-            title="Clear path filter"
-          >
-            Clear
-          </button>
-        )}
       </div>
+      <ul
+        {...getMenuProps()}
+        className={`domain-filter-menu${isOpen ? " open" : ""}`}
+      >
+        {isOpen &&
+          items.map((item, index) => (
+            <li
+              key={item}
+              {...getItemProps({ item, index })}
+              className={`domain-filter-item${
+                highlightedIndex === index ? " highlighted" : ""
+              }`}
+            >
+              {item}
+            </li>
+          ))}
+        {isOpen && items.length === 0 && (
+          <li className="domain-filter-empty">no matches — press Enter to add typed value</li>
+        )}
+      </ul>
       <div
         style={{
           fontSize: 10,
@@ -412,22 +555,17 @@ const PathFilterInput: React.FC<{
           fontStyle: "italic",
         }}
       >
-        Prefix-matches event URL path. Paste a full URL (e.g.
-        <code>google.com/maps</code>) to fill domain + path together.
-        {domainFilter && !pathFilter ? (
-          <>
-            {" "}Currently scoped to <strong>{domainFilter}</strong>.
-          </>
-        ) : null}
+        Each chip ORs with the others. Type{" "}
+        <code>google.com</code>, <code>/maps</code>, or{" "}
+        <code>google.com/maps</code> — Enter adds it.
       </div>
     </div>
   );
 };
 
 /** Exact-string filter on `event.meta.pid` (the persistent ECDSA-derived
- * player ID). Debounced like PathFilterInput so typing stays responsive
- * even while all the downstream viz hooks re-run on commit. No
- * smart-paste — pids are opaque, no value in trying to split them. */
+ * player ID). Commits on blur or Enter — same pattern as PathFilterInput.
+ * No smart-paste — pids are opaque, no value in trying to split them. */
 const UserFilterInput: React.FC<{
   pidFilter: string;
   setSettings: React.Dispatch<React.SetStateAction<any>>;
@@ -441,21 +579,20 @@ const UserFilterInput: React.FC<{
     }
   }, [pidFilter]);
 
-  useEffect(() => {
-    if (draft === (pidFilter ?? "")) return;
-    const t = window.setTimeout(() => {
-      const trimmed = draft.trim();
-      setSettings((s: any) => ({ ...s, pidFilter: trimmed }));
-      lastPropRef.current = trimmed;
-      if (draft !== trimmed) setDraft(trimmed);
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [draft, pidFilter, setSettings]);
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed === (pidFilter ?? "")) return;
+    setSettings((s: any) => ({ ...s, pidFilter: trimmed }));
+    lastPropRef.current = trimmed;
+    if (draft !== trimmed) setDraft(trimmed);
+  };
 
   const clear = () => {
     setDraft("");
     setSettings((s: any) => ({ ...s, pidFilter: "" }));
   };
+
+  const isDirty = draft.trim() !== (pidFilter ?? "");
 
   return (
     <div className="control-group">
@@ -467,7 +604,23 @@ const UserFilterInput: React.FC<{
           value={draft}
           placeholder="pk_… (player ID)"
           onChange={(e) => setDraft(e.target.value)}
-          style={{ flex: 1, fontFamily: "'Martian Mono', monospace", fontSize: 10 }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === "Escape") {
+              setDraft(pidFilter ?? "");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          style={{
+            flex: 1,
+            fontFamily: "'Martian Mono', monospace",
+            fontSize: 10,
+            background: isDirty ? "#fff8ec" : undefined,
+          }}
         />
         {(draft || pidFilter) && (
           <button
@@ -562,6 +715,15 @@ export const Controls: React.FC<ControlsProps> = memo(
     selectedTimeRange,
     onSelectTimeRange,
   }) => {
+    // Membership check for viz-specific Controls sections. Each viz-tagged
+    // section (Cursor / Click / Keyboard / Scroll / Navigation Settings)
+    // only renders when its viz id is in the active list — surfaces stay
+    // focused on what's actually visible on canvas.
+    const activeVizSet = useMemo(
+      () => new Set(activeVisualizations),
+      [activeVisualizations],
+    );
+
     // All sections expanded by default
     const [expandedSections, setExpandedSections] = useState<
       Record<string, boolean>
@@ -682,6 +844,26 @@ export const Controls: React.FC<ControlsProps> = memo(
               style={{ marginRight: "8px" }}
             />
             Randomize Colors (Test Mode)
+          </label>
+        </div>
+
+        {/* Debug-mode hover toggle — sits next to Randomize so it's easy
+            to flip on/off while inspecting the canvas. */}
+        <div className="control-group" style={{ marginBottom: "12px" }}>
+          <label htmlFor="debug-mode">
+            <input
+              id="debug-mode"
+              type="checkbox"
+              checked={!!settings.debugMode}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  debugMode: e.target.checked,
+                }))
+              }
+              style={{ marginRight: "8px" }}
+            />
+            Debug Mode (hover for details)
           </label>
         </div>
 
@@ -841,48 +1023,9 @@ export const Controls: React.FC<ControlsProps> = memo(
             </div>
           </div>
 
-          <div className="control-group">
-            <label htmlFor="domain-filter">Domain Filter</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <select
-                id="domain-filter"
-                value={settings.domainFilter}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    domainFilter: e.target.value,
-                  }))
-                }
-                style={{ flex: 1 }}
-              >
-                <option value="">All Domains</option>
-                {availableDomains.map((domain) => (
-                  <option key={domain} value={domain}>
-                    {domain}
-                  </option>
-                ))}
-              </select>
-              {settings.domainFilter && (
-                <button
-                  onClick={() =>
-                    setSettings((s: any) => ({ ...s, domainFilter: "" }))
-                  }
-                  style={{
-                    padding: "4px 8px",
-                    fontSize: "11px",
-                    cursor: "pointer",
-                  }}
-                  title="Clear filter"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          <PathFilterInput
-            pathFilter={settings.pathFilter ?? ""}
-            domainFilter={settings.domainFilter ?? ""}
+          <FilterChipInput
+            filters={(settings.filters as FilterChip[] | undefined) ?? []}
+            availableDomains={availableDomains}
             setSettings={setSettings}
           />
 
@@ -892,7 +1035,8 @@ export const Controls: React.FC<ControlsProps> = memo(
           />
         </CollapsibleSection>
 
-        {/* Cursor Settings - merged from Appearance and Animation */}
+        {/* Cursor Settings — only when trails viz is active */}
+        {activeVizSet.has("trails") && (
         <CollapsibleSection
           title="Cursor Settings"
           expanded={!!expandedSections["cursorSettings"]}
@@ -1096,7 +1240,12 @@ export const Controls: React.FC<ControlsProps> = memo(
             </>
           )}
         </CollapsibleSection>
+        )}
 
+        {/* Show whenever cursor ripples can render: trails always draws
+            them inline when the dedicated clicks viz isn't on, so the
+            click-tuning knobs are relevant to both modes. */}
+        {(activeVizSet.has("clicks") || activeVizSet.has("trails")) && (
         <CollapsibleSection
           title="Click Settings"
           expanded={!!expandedSections["clickSettings"]}
@@ -1371,27 +1520,31 @@ export const Controls: React.FC<ControlsProps> = memo(
             <span>{settings.clickOpacity.toFixed(2)}</span>
           </div>
         </CollapsibleSection>
+        )}
 
+        {activeVizSet.has("typing") && (
         <CollapsibleSection
           title="Keyboard Settings"
           expanded={!!expandedSections["keyboard"]}
           onToggle={() => toggleSection("keyboard")}
         >
           <div className="control-group">
-            <label htmlFor="keyboard-display-mode">Display Mode</label>
-            <select
-              id="keyboard-display-mode"
-              value={settings.keyboardDisplayMode ?? "full"}
+            <label htmlFor="keyboard-legibility">Legibility</label>
+            <input
+              id="keyboard-legibility"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={settings.keyboardLegibilityPct}
               onChange={(e) =>
                 setSettings((s: any) => ({
                   ...s,
-                  keyboardDisplayMode: e.target.value as "full" | "abstract",
+                  keyboardLegibilityPct: parseInt(e.target.value, 10),
                 }))
               }
-            >
-              <option value="full">Full (show text)</option>
-              <option value="abstract">Abstract (redacted bars)</option>
-            </select>
+            />
+            <span>{settings.keyboardLegibilityPct}%</span>
           </div>
 
           <div className="control-group">
@@ -1414,6 +1567,25 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="keyboard-max-concurrent">Max Concurrent Typing</label>
+            <input
+              id="keyboard-max-concurrent"
+              type="range"
+              min="1"
+              max="40"
+              step="1"
+              value={settings.maxConcurrentTyping}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  maxConcurrentTyping: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.maxConcurrentTyping}</span>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="keyboard-overlap">Overlap Factor</label>
             <input
               id="keyboard-overlap"
@@ -1430,6 +1602,25 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.keyboardOverlapFactor.toFixed(2)}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="keyboard-size-cap">Max Box Size</label>
+            <input
+              id="keyboard-size-cap"
+              type="range"
+              min="0.15"
+              max="1"
+              step="0.05"
+              value={settings.keyboardSizeCap}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  keyboardSizeCap: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{settings.keyboardSizeCap.toFixed(2)}</span>
           </div>
 
           <div className="control-group">
@@ -1546,7 +1737,9 @@ export const Controls: React.FC<ControlsProps> = memo(
             </label>
           </div>
         </CollapsibleSection>
+        )}
 
+        {activeVizSet.has("scrolling") && (
         <CollapsibleSection
           title="Scroll Animation"
           expanded={!!expandedSections["scroll"]}
@@ -1648,6 +1841,22 @@ export const Controls: React.FC<ControlsProps> = memo(
             <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <input
                 type="checkbox"
+                checked={settings.showTitleBar !== false}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    showTitleBar: e.target.checked,
+                  }))
+                }
+              />
+              Show window title bar
+            </label>
+          </div>
+
+          <div className="control-group">
+            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="checkbox"
                 checked={settings.allowOverlap ?? false}
                 onChange={(e) =>
                   setSettings((s: any) => ({
@@ -1659,6 +1868,28 @@ export const Controls: React.FC<ControlsProps> = memo(
               Allow overlapping windows
             </label>
           </div>
+
+          {settings.allowOverlap && (
+            <div className="control-group">
+              <label>
+                Edge bleed
+                <input
+                  type="range"
+                  min="0"
+                  max="0.9"
+                  step="0.05"
+                  value={settings.windowBleed ?? 0.45}
+                  onChange={(e) =>
+                    setSettings((s: any) => ({
+                      ...s,
+                      windowBleed: parseFloat(e.target.value),
+                    }))
+                  }
+                />
+                <span>{Math.round((settings.windowBleed ?? 0.45) * 100)}%</span>
+              </label>
+            </div>
+          )}
 
           <div className="control-group" style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
             <label style={{ fontSize: "12px", fontWeight: "normal", textTransform: "none" }}>
@@ -1697,7 +1928,9 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
         </CollapsibleSection>
+        )}
 
+        {activeVizSet.has("navigation") && (
         <CollapsibleSection
           title="Navigation"
           expanded={!!expandedSections["navigation"]}
@@ -1975,6 +2208,7 @@ export const Controls: React.FC<ControlsProps> = memo(
             <span>{settings.navigationMinSessionEvents ?? 3}</span>
           </div>
         </CollapsibleSection>
+        )}
 
         <CollapsibleSection
           title="Sound Settings"

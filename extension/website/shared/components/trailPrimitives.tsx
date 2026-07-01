@@ -1,0 +1,398 @@
+// ABOUTME: Low-level cursor-trail rendering primitives shared by the looping and live animators.
+// ABOUTME: One trail's SVG path + cursor, the per-frame geometry, and the finished-trail fade math.
+
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { TrailState } from "../types";
+import {
+  getCursorComponent,
+  getCursorHotspot,
+  getCursorScaleFactor,
+} from "../cursors";
+import { type TrailRenderer } from "../styles/trailRenderers";
+import {
+  buildFreehandPathSegment,
+  type FinishedTrailOrderEntry,
+} from "../utils/trailAnimation";
+
+// How many ms to spend fading a trail out when evicted by windowSize
+export const EVICTION_FADE_MS = 3000;
+
+// Finished trails dim to this opacity over COMPLETION_FADE_MS
+export const COMPLETED_OPACITY = 0.5;
+export const COMPLETION_FADE_MS = 3000;
+
+// How many points to show behind the cursor while drawing
+export const TAIL_LENGTH = 1000;
+
+// Compute visible points and path data for a trail at a given elapsed time.
+// strokeSize is baked into the freehand outline geometry, so the path must be
+// rebuilt whenever it changes.
+export function computeTrailFrame(
+  trailState: TrailState,
+  elapsedTimeMs: number,
+  strokeSize: number,
+  // When provided, the trail's progress (0..1) is used directly instead of
+  // deriving it from `elapsedTimeMs - startOffsetMs`. The live animator passes
+  // this so the frame never depends on `startOffsetMs` matching across the
+  // render boundary (the handle's closure can briefly hold a different
+  // trailState than the caller used to compute elapsed — a stale `startOffsetMs`
+  // would otherwise make this momentarily return null and flicker the trail).
+  progressOverride?: number,
+) {
+  const { trail, startOffsetMs, durationMs, variedPoints } = trailState;
+
+  if (trail.points.length < 2 || variedPoints.length < 2) return null;
+
+  let trailProgress: number;
+  if (progressOverride !== undefined) {
+    trailProgress = Math.min(1, Math.max(0, progressOverride));
+  } else {
+    const trailElapsedMs = elapsedTimeMs - startOffsetMs;
+    if (trailElapsedMs < 0) return null;
+    trailProgress = Math.min(1, trailElapsedMs / durationMs);
+  }
+  const isFinished = trailProgress >= 1;
+
+  const totalVariedPoints = variedPoints.length;
+  const exactVariedPosition = (totalVariedPoints - 1) * trailProgress;
+  const headIndex = Math.floor(exactVariedPosition);
+  const headFraction = exactVariedPosition - headIndex;
+
+  const tailStart = isFinished
+    ? Math.max(0, totalVariedPoints - TAIL_LENGTH)
+    : Math.max(0, headIndex - TAIL_LENGTH + 1);
+  const tailEnd = Math.min(headIndex, totalVariedPoints - 1);
+
+  let interpolatedHead: { x: number; y: number } | undefined;
+  if (!isFinished && headIndex < totalVariedPoints - 1 && headFraction > 0) {
+    const p1 = variedPoints[headIndex];
+    const p2 = variedPoints[headIndex + 1];
+    interpolatedHead = {
+      x: p1.x + (p2.x - p1.x) * headFraction,
+      y: p1.y + (p2.y - p1.y) * headFraction,
+    };
+  }
+
+  const cursorPosition = interpolatedHead ?? variedPoints[tailEnd];
+
+  const pointCount = tailEnd - tailStart + 1 + (interpolatedHead ? 1 : 0);
+  const pathData =
+    pointCount >= 2
+      ? buildFreehandPathSegment(
+          variedPoints,
+          tailStart,
+          tailEnd,
+          strokeSize,
+          isFinished,
+          interpolatedHead,
+        )
+      : "";
+
+  const currentPointIndex = Math.min(
+    Math.floor((trail.points.length - 1) * trailProgress),
+    trail.points.length - 1,
+  );
+
+  return {
+    trailProgress,
+    isFinished,
+    cursorPosition,
+    pathData,
+    cursorType: trail.points[currentPointIndex]?.cursor,
+  };
+}
+
+// Imperatively-updated trail. Renders SVG structure once on mount, then the
+// parent rAF loop updates DOM attributes directly via the ref handle.
+// Path and cursor are rendered as siblings (not nested) so they can live in
+// separate SVG layers — paths below, cursors on top.
+export interface ImperativeTrailHandle {
+  update(
+    elapsedTimeMs: number,
+    trailOpacity: number,
+    strokeWidth: number,
+    evictionFade: number,
+    // Live animator passes 0..1 directly so the frame doesn't depend on this
+    // handle's `trailState.startOffsetMs` matching the caller's.
+    progressOverride?: number,
+  ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
+  getGroup(): SVGGElement | null;
+  hide(): void;
+}
+
+export interface TrailPathProps {
+  trailState: TrailState;
+  fixedMonoStrokeWidth: number;
+  renderer: TrailRenderer;
+}
+
+// Renders only the trail path (no cursor). The parent rAF loop drives updates
+// via the imperative handle.
+export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>(
+  ({ trailState, fixedMonoStrokeWidth, renderer }, ref) => {
+    const groupRef = useRef<SVGGElement>(null);
+    const pathRef = useRef<SVGPathElement>(null);
+    const haloRef = useRef<SVGPathElement>(null);
+    const lastGroupOpacityRef = useRef("");
+    const lastPathDataRef = useRef("");
+    const lastRendererIdRef = useRef("");
+    const lastTrailOpacityRef = useRef<number | null>(null);
+    const lastStrokeWidthRef = useRef<number | null>(null);
+    const lastCursorTypeRef = useRef<string | undefined>(undefined);
+    const lastTrailColorRef = useRef("");
+    const finishedFrameRef = useRef<ReturnType<typeof computeTrailFrame>>(null);
+    const finishedFrameSizeRef = useRef<number | null>(null);
+
+    useEffect(() => {
+      finishedFrameRef.current = null;
+      finishedFrameSizeRef.current = null;
+      lastPathDataRef.current = "";
+      lastRendererIdRef.current = "";
+      lastTrailOpacityRef.current = null;
+      lastStrokeWidthRef.current = null;
+      lastCursorTypeRef.current = undefined;
+      lastTrailColorRef.current = "";
+    }, [trailState]);
+
+    const hideTrail = useCallback(() => {
+      const group = groupRef.current;
+      if (group && lastGroupOpacityRef.current !== "0") {
+        group.setAttribute("opacity", "0");
+        lastGroupOpacityRef.current = "0";
+      }
+    }, []);
+
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        hide: hideTrail,
+        getGroup() {
+          return groupRef.current;
+        },
+        update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, progressOverride) {
+          const group = groupRef.current;
+          if (!group) return null;
+
+          if (evictionFade <= 0) {
+            hideTrail();
+            return null;
+          }
+
+          const strokeSize = renderer.getStrokeSize(
+            strokeWidth,
+            fixedMonoStrokeWidth,
+          );
+
+          const isPastEnd =
+            progressOverride !== undefined
+              ? progressOverride >= 1
+              : elapsedTimeMs - trailState.startOffsetMs >= trailState.durationMs;
+          let frame =
+            isPastEnd && finishedFrameSizeRef.current === strokeSize
+              ? finishedFrameRef.current
+              : null;
+          if (!frame) {
+            frame = computeTrailFrame(
+              trailState,
+              elapsedTimeMs,
+              strokeSize,
+              progressOverride,
+            );
+            if (isPastEnd) {
+              finishedFrameRef.current = frame;
+              finishedFrameSizeRef.current = strokeSize;
+            }
+          }
+
+          if (!frame) {
+            hideTrail();
+            return null;
+          }
+
+          const groupOpacity = String(evictionFade);
+          if (lastGroupOpacityRef.current !== groupOpacity) {
+            group.setAttribute("opacity", groupOpacity);
+            lastGroupOpacityRef.current = groupOpacity;
+          }
+
+          const { pathData, trailProgress, cursorPosition } = frame;
+
+          const pathEl = pathRef.current;
+          if (pathEl) {
+            if (pathData) {
+              if (
+                lastPathDataRef.current !== pathData ||
+                lastRendererIdRef.current !== renderer.id ||
+                lastTrailOpacityRef.current !== trailOpacity ||
+                lastStrokeWidthRef.current !== strokeWidth ||
+                lastCursorTypeRef.current !== frame.cursorType ||
+                lastTrailColorRef.current !== trailState.trail.color
+              ) {
+                renderer.updatePath({
+                  pathEl,
+                  haloEl: haloRef.current,
+                  pathData,
+                  trailOpacity,
+                  strokeWidth,
+                  cursorType: frame.cursorType,
+                  trailProgress,
+                  trailColor: trailState.trail.color,
+                  fixedMonoStrokeWidth,
+                });
+                lastPathDataRef.current = pathData;
+                lastRendererIdRef.current = renderer.id;
+                lastTrailOpacityRef.current = trailOpacity;
+                lastStrokeWidthRef.current = strokeWidth;
+                lastCursorTypeRef.current = frame.cursorType;
+                lastTrailColorRef.current = trailState.trail.color;
+              }
+            } else {
+              pathEl.style.display = "none";
+              if (haloRef.current) haloRef.current.style.display = "none";
+              lastPathDataRef.current = "";
+            }
+          }
+
+          return { trailProgress, cursorPosition };
+        },
+      }),
+      [fixedMonoStrokeWidth, hideTrail, renderer, trailState],
+    );
+
+    const color = trailState.trail.color;
+
+    return (
+      <g ref={groupRef} opacity="0">
+        <path
+          ref={haloRef}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "none" }}
+        />
+        <path ref={pathRef} fill={color} style={{ display: "none" }} />
+      </g>
+    );
+  },
+);
+
+export interface TrailCursorProps {
+  trailState: TrailState;
+  renderer: TrailRenderer;
+}
+
+// Renders only the cursor icon. Positioned imperatively by the parent rAF loop
+// via the ref handle.
+export interface ImperativeTrailCursorHandle {
+  update(
+    cursorPosition: { x: number; y: number },
+    cursorType: string | undefined,
+    isFinished: boolean,
+    trailProgress: number,
+    evictionFade: number,
+  ): void;
+  hide(): void;
+}
+
+export const TrailCursor = React.forwardRef<ImperativeTrailCursorHandle, TrailCursorProps>(
+  ({ trailState, renderer }, ref) => {
+    const cursorGroupRef = useRef<SVGGElement>(null);
+    const cursorVisibleRef = useRef(false);
+    const lastTransformRef = useRef("");
+
+    const [cursorType, setCursorType] = useState<string | undefined>(
+      trailState.trail.points[0]?.cursor,
+    );
+    const CursorComponent = getCursorComponent(cursorType);
+    const cursorSize = 32;
+
+    const hideCursor = useCallback(() => {
+      const cursorGroup = cursorGroupRef.current;
+      if (cursorGroup && cursorVisibleRef.current) {
+        cursorGroup.style.display = "none";
+        cursorVisibleRef.current = false;
+      }
+    }, []);
+
+    React.useImperativeHandle(ref, () => ({
+      hide: hideCursor,
+      update(cursorPosition, newCursorType, isFinished, trailProgress, evictionFade) {
+        const cursorGroup = cursorGroupRef.current;
+        if (!cursorGroup) return;
+
+        if (evictionFade <= 0 || isFinished || trailProgress <= 0) {
+          hideCursor();
+          return;
+        }
+
+        if (!cursorVisibleRef.current) {
+          cursorGroup.style.display = "";
+          cursorVisibleRef.current = true;
+        }
+
+        const transform = `translate(${cursorPosition.x}, ${cursorPosition.y})`;
+        if (lastTransformRef.current !== transform) {
+          cursorGroup.setAttribute("transform", transform);
+          lastTransformRef.current = transform;
+        }
+
+        if (newCursorType !== cursorType) {
+          setCursorType(newCursorType);
+        }
+      },
+    }), [cursorType, hideCursor]);
+
+    const color = renderer.getCursorColor(trailState.trail.color, cursorType);
+
+    // Position the cursor so its hotspot lands at (0,0) — the cursorGroup's
+    // translate then puts that hotspot exactly on the trail head.
+    // Each cursor draws its path at a natural unit scale; the effective
+    // scale applied to the path is (cursorSize / 24) * cursorScaleFactor.
+    const hotspot = getCursorHotspot(cursorType);
+    const cursorScaleFactor = getCursorScaleFactor(cursorType);
+    const effectiveScale = (cursorSize / 24) * cursorScaleFactor;
+    const hotspotOffsetX = -hotspot.x * effectiveScale;
+    const hotspotOffsetY = -hotspot.y * effectiveScale;
+
+    return (
+      <g ref={cursorGroupRef} style={{ display: "none" }}>
+        <g transform={`translate(${hotspotOffsetX}, ${hotspotOffsetY})`}>
+          <CursorComponent color={color} size={cursorSize} />
+        </g>
+      </g>
+    );
+  },
+);
+
+export function computeTrailFade(
+  trailState: TrailState,
+  finishPosition: number,
+  sortedFinishOrder: FinishedTrailOrderEntry[],
+  elapsedTimeMs: number,
+  windowSize: number,
+  finishedCount: number,
+): number {
+  const trailElapsedMs = elapsedTimeMs - trailState.startOffsetMs;
+  if (trailElapsedMs < 0) return 0;
+
+  const trailProgress = Math.min(1, trailElapsedMs / trailState.durationMs);
+  if (trailProgress < 1) return 1;
+
+  const excessCount = Math.max(0, finishedCount - windowSize);
+  if (finishPosition < excessCount) {
+    const displacerIndex = finishPosition + windowSize;
+    const evictedAtMs =
+      displacerIndex < finishedCount
+        ? sortedFinishOrder[displacerIndex].finishedAtMs
+        : elapsedTimeMs;
+    const timeSinceEvicted = elapsedTimeMs - evictedAtMs;
+    return Math.max(
+      0,
+      COMPLETED_OPACITY * (1 - timeSinceEvicted / EVICTION_FADE_MS),
+    );
+  }
+
+  const finishedAtMs = trailState.startOffsetMs + trailState.durationMs;
+  const timeSinceFinished = elapsedTimeMs - finishedAtMs;
+  const fadeFraction = Math.min(1, timeSinceFinished / COMPLETION_FADE_MS);
+  return 1 - fadeFraction * (1 - COMPLETED_OPACITY);
+}

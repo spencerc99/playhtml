@@ -1,6 +1,8 @@
 // ABOUTME: Pure helpers for planning and drawing animated cursor trail frames.
 // ABOUTME: Keeps hot animation-loop calculations testable and allocation-light.
 
+import { getStroke } from "perfect-freehand";
+
 export interface FinishedTrailOrderEntry {
   originalIndex: number;
   finishedAtMs: number;
@@ -20,8 +22,15 @@ export function buildStraightPathSegment(
 ): string {
   if (points.length === 0 || startIndex > endIndex) return "";
 
-  let path = `M ${points[startIndex].x} ${points[startIndex].y}`;
-  for (let i = startIndex + 1; i <= endIndex; i++) {
+  // Clamp to valid bounds — callers occasionally pass indices derived from a
+  // separate progress basis that can run past the array (e.g. a snapshotted
+  // trail whose point count differs from the progress assumption).
+  const lo = Math.max(0, startIndex);
+  const hi = Math.min(endIndex, points.length - 1);
+  if (lo > hi) return "";
+
+  let path = `M ${points[lo].x} ${points[lo].y}`;
+  for (let i = lo + 1; i <= hi; i++) {
     path += ` L ${points[i].x} ${points[i].y}`;
   }
 
@@ -30,6 +39,70 @@ export function buildStraightPathSegment(
   }
 
   return path;
+}
+
+// Tuned for replayed cursor movement: the body stays a uniform width
+// (velocity-based thinning swings too wildly on real cursor data), with
+// explicit tapers at the ends for the hand-drawn feel. Near-zero streamline
+// keeps the live head glued to the cursor icon instead of lagging behind it.
+const FREEHAND_OPTIONS = {
+  thinning: 0,
+  smoothing: 0.5,
+  streamline: 0.05,
+  simulatePressure: false,
+};
+
+// How many px of stroke length each end tapers over
+const END_TAPER = 20;
+
+// Converts a perfect-freehand outline polygon into a closed SVG path,
+// smoothing between outline points with quadratic midpoint curves.
+function getSvgPathFromStroke(outline: number[][]): string {
+  if (outline.length < 3) return "";
+
+  let path = `M ${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)} Q`;
+  for (let i = 0; i < outline.length; i++) {
+    const [x0, y0] = outline[i];
+    const [x1, y1] = outline[(i + 1) % outline.length];
+    path += ` ${x0.toFixed(2)} ${y0.toFixed(2)} ${((x0 + x1) / 2).toFixed(2)} ${((y0 + y1) / 2).toFixed(2)}`;
+  }
+
+  return path + " Z";
+}
+
+// Builds a filled freehand-stroke outline for a window of trail points. The
+// stroke width is baked into the geometry, so the result must be rendered
+// with fill rather than stroke. While the trail is still drawing
+// (isComplete: false) the head gets a blunt round cap instead of the end
+// taper — a taper would slide forward with the head and keep re-shaping
+// already-drawn ink every frame.
+export function buildFreehandPathSegment(
+  points: Array<{ x: number; y: number }>,
+  startIndex: number,
+  endIndex: number,
+  size: number,
+  isComplete: boolean,
+  interpolatedHead?: { x: number; y: number },
+): string {
+  if (points.length === 0 || startIndex > endIndex) return "";
+
+  const inputPoints: Array<{ x: number; y: number }> = [];
+  for (let i = startIndex; i <= endIndex; i++) {
+    inputPoints.push(points[i]);
+  }
+  if (interpolatedHead) {
+    inputPoints.push(interpolatedHead);
+  }
+
+  const outline = getStroke(inputPoints, {
+    ...FREEHAND_OPTIONS,
+    size,
+    last: isComplete,
+    start: { taper: END_TAPER },
+    end: isComplete ? { taper: END_TAPER } : { taper: 0, cap: true },
+  });
+
+  return getSvgPathFromStroke(outline);
 }
 
 export function getFinishedTrailRenderRange(

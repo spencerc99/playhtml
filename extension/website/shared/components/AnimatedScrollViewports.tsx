@@ -1,15 +1,25 @@
 // ABOUTME: Dynamic animated scroll viewport visualization component
 // ABOUTME: Renders viewports on-demand with fade transitions and dynamic space packing
-import React, { useState, useEffect, useRef, memo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  useCallback,
+  useMemo,
+} from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
-import { RISO_COLORS } from "../utils/eventUtils";
+import { RISO_COLORS, extractDomain } from "../utils/eventUtils";
+import { getViewportTitleText } from "../utils/titleText";
 import { PagePreview } from "./PagePreview";
+import { useDebugHover } from "./DebugHover";
 
 // Configuration constants
 const FADE_IN_DURATION = 400; // ms
 const FADE_OUT_DURATION = 600; // ms
 const FADE_OUT_DELAY = 300; // ms after animation ends before starting fade out
 const FILL_CHECK_INTERVAL = 300; // ms between checking for empty spaces
+const FRAME_INTERVAL_MS = 1000 / 30; // Visual update cadence
 const MIN_VIEWPORT_SIZE = 150; // Minimum viewport dimension
 const PACKING_ATTEMPTS = 15; // Number of random positions to try when packing
 const VIEWPORT_MARGIN = 8; // Gap between viewports
@@ -28,7 +38,13 @@ interface AnimatedScrollViewportsProps {
     showResizeEvents?: boolean;
     showZoomEvents?: boolean;
     windowScale?: number;
+    windowBleed?: number;
+    showTitleBar?: boolean;
   };
+  // Live URL → metadata lookup. Read at render time so title bars update as
+  // navigation events stream in, even for viewports that were added before
+  // the metadata for their URL arrived.
+  urlMetadata?: Map<string, { title?: string; favicon?: string }>;
 }
 
 // Generate unique ID for viewports
@@ -188,14 +204,17 @@ const calculateViewportSize = (
 };
 
 export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
-  memo(({ animations, canvasSize, settings }) => {
+  memo(({ animations, canvasSize, settings, urlMetadata }) => {
     const [activeViewports, setActiveViewports] = useState<ActiveViewport[]>(
       [],
     );
+    const [frameTime, setFrameTime] = useState(0);
+    const activeViewportsRef = useRef<ActiveViewport[]>([]);
     const animationQueueRef = useRef<ScrollAnimation[]>([]);
     const queueIndexRef = useRef(0);
-    const animationFrameRef = useRef<number>();
+    const animationFrameRef = useRef<number | null>(null);
     const lastFillCheckRef = useRef(0);
+    const lastFrameUpdateRef = useRef(0);
     const startTimeRef = useRef<number | null>(null);
 
     // Settings ref to avoid re-renders
@@ -203,6 +222,21 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     useEffect(() => {
       settingsRef.current = settings;
     }, [settings]);
+
+    const commitActiveViewports = useCallback(
+      (update: (previous: ActiveViewport[]) => ActiveViewport[]) => {
+        setActiveViewports((previous) => {
+          const next = update(previous);
+          activeViewportsRef.current = next;
+          return next;
+        });
+      },
+      [],
+    );
+
+    useEffect(() => {
+      activeViewportsRef.current = activeViewports;
+    }, [activeViewports]);
 
     // Initialize animation queue when animations change
     useEffect(() => {
@@ -235,11 +269,12 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const tryAddViewport = useCallback(
       (currentTime: number) => {
         const { maxConcurrentScrolls } = settingsRef.current;
+        const visibleViewports = activeViewportsRef.current.filter(
+          (v) => v.phase !== "fade-out",
+        );
 
         // Count non-fading-out viewports
-        const activeCount = activeViewports.filter(
-          (v) => v.phase !== "fade-out",
-        ).length;
+        const activeCount = visibleViewports.length;
 
         if (activeCount >= maxConcurrentScrolls) {
           return; // At capacity
@@ -270,15 +305,56 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         // Find position — skip collision check when overlap is allowed
         let position: { x: number; y: number } | null;
         if (settingsRef.current.allowOverlap) {
-          // Random position, no collision check
-          position = {
-            x: seededRandom(seed, 0) * Math.max(1, canvasSize.width - size.width),
-            y: seededRandom(seed, 1) * Math.max(1, canvasSize.height - size.height),
-          };
+          // Spread viewports across the FULL canvas, not just the rect of
+          // valid top-left positions. Uniform top-left placement biases
+          // coverage toward the middle (since center pixels fall inside more
+          // candidate rects than edge pixels). Sampling the *center*
+          // uniformly across the whole canvas — and allowing each viewport
+          // to hang up to half its size off any edge — gives a flat coverage
+          // distribution that reaches the corners.
+          const overhangFrac = settingsRef.current.windowBleed ?? 0.45;
+          const overhangX = size.width * overhangFrac;
+          const overhangY = size.height * overhangFrac;
+
+          // Coverage-aware tie-break: try a few candidates and pick the one
+          // whose center is farthest from any currently-active viewport.
+          // Cheap (4 samples × N active), keeps placements from clumping.
+          const activeCenters = visibleViewports.map((v) => ({
+              cx: v.rect.x + v.rect.width / 2,
+              cy: v.rect.y + v.rect.height / 2,
+            }));
+          const NUM_CANDIDATES = 4;
+          let best: { x: number; y: number } | null = null;
+          let bestScore = -Infinity;
+          for (let c = 0; c < NUM_CANDIDATES; c++) {
+            const cx =
+              seededRandom(seed, c * 2) * canvasSize.width;
+            const cy =
+              seededRandom(seed, c * 2 + 1) * canvasSize.height;
+            const x = Math.max(
+              -overhangX,
+              Math.min(canvasSize.width - size.width + overhangX, cx - size.width / 2),
+            );
+            const y = Math.max(
+              -overhangY,
+              Math.min(canvasSize.height - size.height + overhangY, cy - size.height / 2),
+            );
+            let nearest = Infinity;
+            for (const a of activeCenters) {
+              const dx = a.cx - (x + size.width / 2);
+              const dy = a.cy - (y + size.height / 2);
+              const d2 = dx * dx + dy * dy;
+              if (d2 < nearest) nearest = d2;
+            }
+            const score = activeCenters.length === 0 ? 0 : nearest;
+            if (score > bestScore) {
+              bestScore = score;
+              best = { x, y };
+            }
+          }
+          position = best;
         } else {
-          const occupiedRects = activeViewports
-            .filter((v) => v.phase !== "fade-out")
-            .map((v) => v.rect);
+          const occupiedRects = visibleViewports.map((v) => v.rect);
           position = findAvailablePosition(
             size.width,
             size.height,
@@ -309,21 +385,24 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           backgroundSeed: seed,
         };
 
-        setActiveViewports((prev) => [...prev, newViewport]);
+        commitActiveViewports((prev) => [...prev, newViewport]);
         console.log(
           `[Scroll Dynamic] Added viewport ${newViewport.id}, now ${
             activeCount + 1
           } active`,
         );
       },
-      [activeViewports, canvasSize, getNextAnimation],
+      [canvasSize, commitActiveViewports, getNextAnimation],
     );
 
     // Update viewport phases based on time
-    const updateViewports = useCallback((currentTime: number) => {
-      setActiveViewports((prev) => {
+    const updateViewports = useCallback(
+      (currentTime: number) => {
+        const currentViewports = activeViewportsRef.current;
+        if (currentViewports.length === 0) return;
+
         let changed = false;
-        const updated = prev.map((viewport) => {
+        const updated = currentViewports.map((viewport) => {
           // Check phase transitions
           if (viewport.phase === "fade-in") {
             const fadeInElapsed = currentTime - viewport.phaseStartTime;
@@ -362,9 +441,12 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           return true;
         });
 
-        return changed ? filtered : prev;
-      });
-    }, []);
+        if (changed) {
+          commitActiveViewports(() => filtered);
+        }
+      },
+      [commitActiveViewports],
+    );
 
     // Main animation loop
     useEffect(() => {
@@ -386,6 +468,11 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           tryAddViewport(currentTime);
         }
 
+        if (currentTime - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
+          lastFrameUpdateRef.current = currentTime;
+          setFrameTime(currentTime);
+        }
+
         animationFrameRef.current = requestAnimationFrame(animate);
       };
 
@@ -398,26 +485,11 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       };
     }, [animations.length, canvasSize.width, updateViewports, tryAddViewport]);
 
-    // Force re-render on each frame for smooth animations
-    const [, setFrame] = useState(0);
-    useEffect(() => {
-      let frameId: number;
-      const tick = () => {
-        setFrame((f) => f + 1);
-        frameId = requestAnimationFrame(tick);
-      };
-      frameId = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(frameId);
-    }, []);
-
     if (animations.length === 0) {
       return null;
     }
 
-    const currentTime =
-      startTimeRef.current !== null
-        ? performance.now() - startTimeRef.current
-        : 0;
+    const currentTime = frameTime;
 
     return (
       <svg
@@ -452,26 +524,110 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           </filter>
         </defs>
 
-        {activeViewports.map((viewport) => (
-          <DynamicViewportRect
-            key={viewport.id}
-            viewport={viewport}
-            currentTime={currentTime}
-            settings={settingsRef.current}
-          />
-        ))}
+        {activeViewports.map((viewport) => {
+          const live = urlMetadata?.get(viewport.animation.pageUrl);
+          return (
+            <DynamicViewportRect
+              key={viewport.id}
+              viewport={viewport}
+              currentTime={currentTime}
+              settings={settingsRef.current}
+              livePageTitle={live?.title}
+              liveFaviconUrl={live?.favicon}
+            />
+          );
+        })}
       </svg>
     );
   });
 
-// Helper functions for animation calculations (unchanged from original)
-function calculateScrollPosition(
-  scrollEvents: Array<{
-    scrollY: number;
-    timestamp: number;
-    viewportWidth: number;
-    viewportHeight: number;
-  }>,
+type ScrollKeyframe = ScrollAnimation["scrollEvents"][number];
+type ResizeKeyframe = NonNullable<ScrollAnimation["resizeEvents"]>[number];
+type ZoomKeyframe = NonNullable<ScrollAnimation["zoomEvents"]>[number];
+
+export interface ViewportAnimationTimeline {
+  hasEvents: boolean;
+  minTime: number;
+  maxTime: number;
+  timeRange: number;
+  minScrollY: number;
+  maxScrollY: number;
+  scrollRange: number;
+}
+
+function findSegmentIndex(
+  events: Array<{ timestamp: number }>,
+  currentTime: number,
+): number {
+  let low = 0;
+  let high = events.length - 1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (events[mid].timestamp <= currentTime) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return Math.max(0, Math.min(high, events.length - 2));
+}
+
+function interpolationProgress(
+  startTimestamp: number,
+  endTimestamp: number,
+  currentTime: number,
+): number {
+  const duration = endTimestamp - startTimestamp;
+  if (duration <= 0) return 1;
+  return (currentTime - startTimestamp) / duration;
+}
+
+export function buildViewportAnimationTimeline(
+  animation: ScrollAnimation,
+): ViewportAnimationTimeline {
+  let minTime = Infinity;
+  let maxTime = -Infinity;
+
+  const includeTimestamp = (timestamp: number) => {
+    minTime = Math.min(minTime, timestamp);
+    maxTime = Math.max(maxTime, timestamp);
+  };
+
+  for (const event of animation.scrollEvents) includeTimestamp(event.timestamp);
+  for (const event of animation.resizeEvents ?? []) includeTimestamp(event.timestamp);
+  for (const event of animation.zoomEvents ?? []) includeTimestamp(event.timestamp);
+
+  let minScrollY = 0;
+  let maxScrollY = 1;
+  let scrollRange = 1;
+
+  if (animation.scrollEvents.length >= 2) {
+    minScrollY = Infinity;
+    maxScrollY = -Infinity;
+    for (const event of animation.scrollEvents) {
+      minScrollY = Math.min(minScrollY, event.scrollY);
+      maxScrollY = Math.max(maxScrollY, event.scrollY);
+    }
+    scrollRange = Math.max(0.1, maxScrollY - minScrollY);
+  }
+
+  const hasEvents = Number.isFinite(minTime) && Number.isFinite(maxTime);
+
+  return {
+    hasEvents,
+    minTime: hasEvents ? minTime : 0,
+    maxTime: hasEvents ? maxTime : 0,
+    timeRange: hasEvents ? maxTime - minTime : 0,
+    minScrollY,
+    maxScrollY,
+    scrollRange,
+  };
+}
+
+export function getScrollPositionAtTime(
+  scrollEvents: ScrollKeyframe[],
   currentTime: number,
 ): { scrollY: number } {
   if (scrollEvents.length === 0) return { scrollY: 0 };
@@ -483,27 +639,22 @@ function calculateScrollPosition(
     return { scrollY: scrollEvents[scrollEvents.length - 1].scrollY };
   }
 
-  for (let i = 0; i < scrollEvents.length - 1; i++) {
-    if (
-      scrollEvents[i].timestamp <= currentTime &&
-      scrollEvents[i + 1].timestamp > currentTime
-    ) {
-      const progress =
-        (currentTime - scrollEvents[i].timestamp) /
-        (scrollEvents[i + 1].timestamp - scrollEvents[i].timestamp);
-      return {
-        scrollY:
-          scrollEvents[i].scrollY +
-          (scrollEvents[i + 1].scrollY - scrollEvents[i].scrollY) * progress,
-      };
-    }
-  }
+  const index = findSegmentIndex(scrollEvents, currentTime);
+  const start = scrollEvents[index];
+  const end = scrollEvents[index + 1];
+  const progress = interpolationProgress(
+    start.timestamp,
+    end.timestamp,
+    currentTime,
+  );
 
-  return { scrollY: scrollEvents[0].scrollY };
+  return {
+    scrollY: start.scrollY + (end.scrollY - start.scrollY) * progress,
+  };
 }
 
-function calculateResizeDimensions(
-  resizeEvents: Array<{ width: number; height: number; timestamp: number }>,
+export function getResizeDimensionsAtTime(
+  resizeEvents: ResizeKeyframe[],
   currentTime: number,
   defaultWidth: number,
   defaultHeight: number,
@@ -520,30 +671,23 @@ function calculateResizeDimensions(
     return { width: last.width, height: last.height };
   }
 
-  for (let i = 0; i < resizeEvents.length - 1; i++) {
-    if (
-      resizeEvents[i].timestamp <= currentTime &&
-      resizeEvents[i + 1].timestamp > currentTime
-    ) {
-      const progress =
-        (currentTime - resizeEvents[i].timestamp) /
-        (resizeEvents[i + 1].timestamp - resizeEvents[i].timestamp);
-      return {
-        width:
-          resizeEvents[i].width +
-          (resizeEvents[i + 1].width - resizeEvents[i].width) * progress,
-        height:
-          resizeEvents[i].height +
-          (resizeEvents[i + 1].height - resizeEvents[i].height) * progress,
-      };
-    }
-  }
+  const index = findSegmentIndex(resizeEvents, currentTime);
+  const start = resizeEvents[index];
+  const end = resizeEvents[index + 1];
+  const progress = interpolationProgress(
+    start.timestamp,
+    end.timestamp,
+    currentTime,
+  );
 
-  return { width: defaultWidth, height: defaultHeight };
+  return {
+    width: start.width + (end.width - start.width) * progress,
+    height: start.height + (end.height - start.height) * progress,
+  };
 }
 
-function calculateZoomLevel(
-  zoomEvents: Array<{ zoom: number; timestamp: number }>,
+export function getZoomLevelAtTime(
+  zoomEvents: ZoomKeyframe[],
   currentTime: number,
 ): number {
   if (zoomEvents.length === 0) return 1.0;
@@ -555,22 +699,16 @@ function calculateZoomLevel(
     return zoomEvents[zoomEvents.length - 1].zoom;
   }
 
-  for (let i = 0; i < zoomEvents.length - 1; i++) {
-    if (
-      zoomEvents[i].timestamp <= currentTime &&
-      zoomEvents[i + 1].timestamp > currentTime
-    ) {
-      const progress =
-        (currentTime - zoomEvents[i].timestamp) /
-        (zoomEvents[i + 1].timestamp - zoomEvents[i].timestamp);
-      return (
-        zoomEvents[i].zoom +
-        (zoomEvents[i + 1].zoom - zoomEvents[i].zoom) * progress
-      );
-    }
-  }
+  const index = findSegmentIndex(zoomEvents, currentTime);
+  const start = zoomEvents[index];
+  const end = zoomEvents[index + 1];
+  const progress = interpolationProgress(
+    start.timestamp,
+    end.timestamp,
+    currentTime,
+  );
 
-  return 1.0;
+  return start.zoom + (end.zoom - start.zoom) * progress;
 }
 
 // Dynamic viewport renderer
@@ -579,6 +717,8 @@ const DynamicViewportRect = memo(
     viewport,
     currentTime,
     settings,
+    livePageTitle,
+    liveFaviconUrl,
   }: {
     viewport: ActiveViewport;
     currentTime: number;
@@ -591,7 +731,10 @@ const DynamicViewportRect = memo(
       showScrollEvents?: boolean;
       showResizeEvents?: boolean;
       showZoomEvents?: boolean;
+      showTitleBar?: boolean;
     };
+    livePageTitle?: string;
+    liveFaviconUrl?: string;
   }) => {
     const {
       animation,
@@ -602,6 +745,10 @@ const DynamicViewportRect = memo(
       durationMs,
       backgroundSeed,
     } = viewport;
+    const timeline = useMemo(
+      () => buildViewportAnimationTimeline(animation),
+      [animation],
+    );
 
     // Calculate opacity based on phase
     let opacity = 1;
@@ -624,52 +771,20 @@ const DynamicViewportRect = memo(
       0,
       (currentTime - animationStartTime) * settings.scrollSpeed,
     );
-    const animProgress = Math.min(1, animElapsed / durationMs);
+    const animProgress =
+      durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);
+    const currentAnimTime =
+      timeline.minTime + animProgress * timeline.timeRange;
+    const scrollRange = timeline.scrollRange;
 
-    // Get the animation's time range
-    const allTimestamps = [
-      ...animation.scrollEvents.map((e) => e.timestamp),
-      ...(animation.resizeEvents?.map((e) => e.timestamp) || []),
-      ...(animation.zoomEvents?.map((e) => e.timestamp) || []),
-    ];
-
-    if (allTimestamps.length === 0) {
-      return null;
-    }
-
-    const minTime = Math.min(...allTimestamps);
-    const maxTime = Math.max(...allTimestamps);
-    const timeRange = maxTime - minTime;
-    const currentAnimTime = minTime + animProgress * timeRange;
-
-    // Calculate scroll range to determine "page length"
-    let scrollRange = 1; // Default: full page
-    let minScrollY = 0;
-    let maxScrollY = 1;
-    if (animation.scrollEvents.length >= 2) {
-      const scrollYValues = animation.scrollEvents.map((e) => e.scrollY);
-      minScrollY = Math.min(...scrollYValues);
-      maxScrollY = Math.max(...scrollYValues);
-      scrollRange = Math.max(0.1, maxScrollY - minScrollY); // At least 10%
-    }
-
-    // Calculate scroll position and check if actively scrolling
+    // Calculate scroll position
     let scrollY = 0;
-    let isActivelyScrolling = false;
     if (animation.scrollEvents.length > 0) {
-      const scrollResult = calculateScrollPosition(
+      const scrollResult = getScrollPositionAtTime(
         animation.scrollEvents,
         currentAnimTime,
       );
       scrollY = scrollResult.scrollY;
-
-      // Check if scroll position is changing (compare to slightly earlier time)
-      const prevTime = Math.max(minTime, currentAnimTime - 50);
-      const prevScroll = calculateScrollPosition(
-        animation.scrollEvents,
-        prevTime,
-      ).scrollY;
-      isActivelyScrolling = Math.abs(scrollY - prevScroll) > 0.001;
     }
 
     // Calculate resize and check if actively resizing
@@ -678,7 +793,7 @@ const DynamicViewportRect = memo(
     let isActivelyResizing = false;
 
     if (animation.resizeEvents && animation.resizeEvents.length > 0) {
-      const resizeData = calculateResizeDimensions(
+      const resizeData = getResizeDimensionsAtTime(
         animation.resizeEvents,
         currentAnimTime,
         animation.startViewportWidth,
@@ -691,8 +806,8 @@ const DynamicViewportRect = memo(
       viewportHeight = resizeData.height * heightScale;
 
       // Check if actively resizing
-      const prevTime = Math.max(minTime, currentAnimTime - 50);
-      const prevResize = calculateResizeDimensions(
+      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
+      const prevResize = getResizeDimensionsAtTime(
         animation.resizeEvents,
         prevTime,
         animation.startViewportWidth,
@@ -707,23 +822,11 @@ const DynamicViewportRect = memo(
     let zoomLevel = 1.0;
     let isActivelyZooming = false;
     if (animation.zoomEvents && animation.zoomEvents.length > 0) {
-      zoomLevel = calculateZoomLevel(
-        animation.zoomEvents.map((e) => ({
-          zoom: e.zoom,
-          timestamp: e.timestamp,
-        })),
-        currentAnimTime,
-      );
+      zoomLevel = getZoomLevelAtTime(animation.zoomEvents, currentAnimTime);
 
       // Check if actively zooming
-      const prevTime = Math.max(minTime, currentAnimTime - 50);
-      const prevZoom = calculateZoomLevel(
-        animation.zoomEvents.map((e) => ({
-          zoom: e.zoom,
-          timestamp: e.timestamp,
-        })),
-        prevTime,
-      );
+      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
+      const prevZoom = getZoomLevelAtTime(animation.zoomEvents, prevTime);
       isActivelyZooming = Math.abs(zoomLevel - prevZoom) > 0.005;
     }
 
@@ -742,16 +845,18 @@ const DynamicViewportRect = memo(
 
     const viewportCenterX = visualX + visualWidth / 2;
     const viewportCenterY = visualY + visualHeight / 2;
+    const scrolledContentTransform =
+      bgOffsetY === 0 ? undefined : `translate(0 ${-bgOffsetY})`;
     const zoomTransform =
       isActivelyZooming && zoomLevel !== 1.0
         ? `translate(${viewportCenterX}, ${viewportCenterY}) scale(${zoomLevel}) translate(${-viewportCenterX}, ${-viewportCenterY})`
         : undefined;
 
     // Seeded random for visual variety
-    const localSeededRandom = (offset: number = 0) => {
+    const localSeededRandom = useCallback((offset: number = 0) => {
       const x = Math.sin(backgroundSeed + offset * 12.9898) * 43758.5453;
       return x - Math.floor(x);
-    };
+    }, [backgroundSeed]);
 
     // Determine edge tint color (participant color or random RISO color)
     const edgeTintColor = settings.randomizeColors
@@ -763,29 +868,403 @@ const DynamicViewportRect = memo(
     const backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
 
-    // Border style based on active animation type
-    let borderStrokeWidth = 2;
-    let borderDashArray = "none";
-    let borderColor = `rgb(180, 180, 180)`; // Default gray
-
-    if (isActivelyZooming) {
-      borderStrokeWidth = 4;
-      borderDashArray = "6 3"; // Dashed for zoom
-      borderColor = edgeTintColor;
-    } else if (isActivelyResizing) {
-      borderStrokeWidth = 4;
-      borderDashArray = "2 2"; // Dotted for resize
-      borderColor = edgeTintColor;
-    } else if (isActivelyScrolling) {
-      borderStrokeWidth = 3;
-      borderDashArray = "none"; // Solid for scroll
-      borderColor = edgeTintColor;
-    }
+    // Resize gets a dotted border without changing viewport brightness.
+    const borderStrokeWidth = 2;
+    const borderDashArray = isActivelyResizing ? "2 2" : "none";
+    const borderColor = `rgb(180, 180, 180)`;
 
     // Content pattern variation based on seed
     const bandSpacing = Math.max(1, 60 + localSeededRandom(15) * 80); // 60-140px spacing
     const hasContentBlocks = localSeededRandom(16) > 0.4; // 60% chance of content blocks
-    const blockPattern = Math.floor(localSeededRandom(17) * 4); // 4 different patterns
+
+    const bandRects = useMemo(
+      () =>
+        Array.from({ length: Math.ceil(bgHeight / bandSpacing) }, (_, i) => {
+          const bandLuminosity = 0.4 + localSeededRandom(8 + i) * 0.2;
+          const bandColorValue = Math.round(bandLuminosity * 255);
+          const bandWidth =
+            visualWidth * (0.3 + localSeededRandom(30 + i) * 0.6); // 30-90% width
+          const bandX =
+            visualX + localSeededRandom(40 + i) * (visualWidth - bandWidth);
+          return (
+            <rect
+              key={`band-${i}`}
+              x={bandX}
+              y={visualY + i * bandSpacing}
+              width={bandWidth}
+              height={2}
+              fill={`rgb(${bandColorValue}, ${bandColorValue}, ${bandColorValue})`}
+              opacity={0.25 + localSeededRandom(9 + i) * 0.15}
+            />
+          );
+        }),
+      [bgHeight, bandSpacing, localSeededRandom, visualWidth, visualX, visualY],
+    );
+
+    const contentBlocks = useMemo(() => {
+      if (!hasContentBlocks) return null;
+
+      return Array.from({ length: Math.ceil(bgHeight / 180) }, (_, i) => {
+        const blockY = visualY + i * 180 + 30;
+        const sectionSeed = localSeededRandom(50 + i);
+
+        // Determine section type: 70% light content, 20% medium, 10% dark accent
+        const isDarkAccent = sectionSeed < 0.1;
+        const isMediumBlock = sectionSeed >= 0.1 && sectionSeed < 0.3;
+
+        // Light content colors (most common)
+        const lightLuminosity = 0.55 + localSeededRandom(51 + i) * 0.25; // 0.55-0.8
+        const lightColorValue = Math.round(lightLuminosity * 255);
+        const lightFill = `rgb(${lightColorValue}, ${lightColorValue}, ${lightColorValue})`;
+
+        // Dark accent colors (rare, dramatic)
+        const darkLuminosity = 0.08 + localSeededRandom(52 + i) * 0.2; // 0.08-0.28
+        const darkColorValue = Math.round(darkLuminosity * 255);
+        const darkFill = `rgb(${darkColorValue}, ${darkColorValue}, ${darkColorValue})`;
+
+        if (isDarkAccent) {
+          // Atmospheric dark accent with gradient layers (cohesive with wash effects)
+          const isLeft = localSeededRandom(63 + i) > 0.5;
+          const blotchHeight = 60 + localSeededRandom(64 + i) * 80;
+          const blotchWidth =
+            visualWidth * (0.4 + localSeededRandom(65 + i) * 0.3);
+          const xPos = isLeft
+            ? visualX + visualWidth * 0.02
+            : visualX + visualWidth - blotchWidth - visualWidth * 0.02;
+
+          // Choose gradient direction based on position
+          const gradientId = isLeft
+            ? `wash-horizontal-${viewport.id}`
+            : `wash-reverse-${viewport.id}`;
+          const altGradientId =
+            localSeededRandom(66 + i) > 0.5
+              ? `wash-diagonal-${viewport.id}`
+              : `wash-vertical-${viewport.id}`;
+
+          return (
+            <g key={`block-${i}`}>
+              {/* Outermost layer - soft, large, lighter */}
+              <g filter={`url(#ink-wash-${viewport.id})`}>
+                <rect
+                  x={xPos - blotchWidth * 0.1}
+                  y={blockY - blotchHeight * 0.1}
+                  width={blotchWidth * 1.2}
+                  height={blotchHeight * 1.2}
+                  fill={`url(#${gradientId})`}
+                  opacity={0.4}
+                />
+              </g>
+
+              {/* Middle layer - medium size, uses alt gradient */}
+              <g filter={`url(#ink-wash-${viewport.id})`}>
+                <rect
+                  x={xPos + blotchWidth * 0.05}
+                  y={blockY + blotchHeight * 0.08}
+                  width={blotchWidth * 0.85}
+                  height={blotchHeight * 0.8}
+                  fill={`url(#${altGradientId})`}
+                  opacity={0.55}
+                />
+              </g>
+
+              {/* Core layer - smallest, darkest solid for depth */}
+              <g filter={`url(#ink-wash-${viewport.id})`}>
+                <rect
+                  x={xPos + blotchWidth * 0.15}
+                  y={blockY + blotchHeight * 0.2}
+                  width={blotchWidth * 0.55}
+                  height={blotchHeight * 0.5}
+                  fill={darkFill}
+                  opacity={0.7}
+                />
+              </g>
+
+              {/* Accent gradient overlay - adds color variation */}
+              <rect
+                x={xPos}
+                y={blockY}
+                width={blotchWidth}
+                height={blotchHeight}
+                fill={`url(#${isLeft ? "wash-diagonal-" : "wash-reverse-"}${viewport.id})`}
+                opacity={0.25}
+              />
+
+              {/* Speckle texture across all layers */}
+              <rect
+                x={xPos - blotchWidth * 0.1}
+                y={blockY - blotchHeight * 0.1}
+                width={blotchWidth * 1.2}
+                height={blotchHeight * 1.2}
+                fill="white"
+                opacity={0.12}
+                filter={`url(#speckle-${viewport.id})`}
+              />
+
+              {/* Scattered light dots for texture variation */}
+              {[0, 1, 2].map((j) => {
+                const dotX =
+                  xPos + localSeededRandom(100 + i + j) * blotchWidth * 0.7;
+                const dotY =
+                  blockY +
+                  localSeededRandom(110 + i + j) * blotchHeight * 0.7;
+                const dotSize = 3 + localSeededRandom(120 + i + j) * 5;
+                return (
+                  <circle
+                    key={`dot-${j}`}
+                    cx={dotX + blotchWidth * 0.15}
+                    cy={dotY + blotchHeight * 0.15}
+                    r={dotSize}
+                    fill="white"
+                    opacity={0.1 + localSeededRandom(130 + i + j) * 0.15}
+                  />
+                );
+              })}
+            </g>
+          );
+        } else if (isMediumBlock) {
+          // Medium-toned block - single block, simple
+          const mediumLuminosity = 0.4 + localSeededRandom(55 + i) * 0.2;
+          const mediumColorValue = Math.round(mediumLuminosity * 255);
+          const mediumFill = `rgb(${mediumColorValue}, ${mediumColorValue}, ${mediumColorValue})`;
+          const blockHeight = 25 + localSeededRandom(61 + i) * 35;
+          const isLeft = localSeededRandom(62 + i) > 0.5;
+
+          return (
+            <g key={`block-${i}`}>
+              <rect
+                x={
+                  isLeft
+                    ? visualX + visualWidth * 0.08
+                    : visualX + visualWidth * 0.45
+                }
+                y={blockY}
+                width={visualWidth * 0.47}
+                height={blockHeight}
+                fill={mediumFill}
+                opacity={0.35}
+                rx={2}
+              />
+            </g>
+          );
+        }
+
+        // Light content blocks (most common) - varied layouts, sparse
+        const layoutVariant = Math.floor(localSeededRandom(56 + i) * 5);
+
+        if (layoutVariant === 0) {
+          // Empty/whitespace - adds breathing room
+          return <g key={`block-${i}`} />;
+        } else if (layoutVariant === 1) {
+          // Single wide block
+          return (
+            <g key={`block-${i}`}>
+              <rect
+                x={visualX + visualWidth * 0.1}
+                y={blockY}
+                width={visualWidth * 0.7}
+                height={20 + localSeededRandom(60 + i) * 30}
+                fill={lightFill}
+                opacity={0.28}
+                rx={2}
+              />
+            </g>
+          );
+        } else if (layoutVariant === 2) {
+          // Two scattered rectangles (reduced from 3)
+          return (
+            <g key={`block-${i}`}>
+              {[0, 1].map((j) => (
+                <rect
+                  key={`sub-${j}`}
+                  x={
+                    visualX +
+                    visualWidth * (0.08 + j * 0.45) +
+                    localSeededRandom(65 + i + j) * 15
+                  }
+                  y={blockY + localSeededRandom(66 + i + j) * 10}
+                  width={
+                    visualWidth *
+                    (0.2 + localSeededRandom(67 + i + j) * 0.15)
+                  }
+                  height={15 + localSeededRandom(68 + i + j) * 20}
+                  fill={lightFill}
+                  opacity={0.25 + localSeededRandom(69 + i + j) * 0.1}
+                  rx={2}
+                />
+              ))}
+            </g>
+          );
+        } else if (layoutVariant === 3) {
+          // Two text-like lines (reduced from 4)
+          return (
+            <g key={`block-${i}`}>
+              {[0, 1].map((j) => (
+                <rect
+                  key={`line-${j}`}
+                  x={visualX + visualWidth * 0.1}
+                  y={blockY + j * 10}
+                  width={
+                    visualWidth *
+                    (0.35 + localSeededRandom(80 + i + j) * 0.4)
+                  }
+                  height={2}
+                  fill={lightFill}
+                  opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
+                />
+              ))}
+            </g>
+          );
+        }
+
+        // Single side block (simplified from image + text)
+        const isLeft = localSeededRandom(57 + i) > 0.5;
+        const blockX = isLeft
+          ? visualX + visualWidth * 0.08
+          : visualX + visualWidth * 0.5;
+        return (
+          <g key={`block-${i}`}>
+            <rect
+              x={blockX}
+              y={blockY}
+              width={visualWidth * 0.42}
+              height={30 + localSeededRandom(58 + i) * 25}
+              fill={lightFill}
+              opacity={0.3}
+              rx={3}
+            />
+          </g>
+        );
+      });
+    }, [
+      bgHeight,
+      hasContentBlocks,
+      localSeededRandom,
+      visualWidth,
+      visualX,
+      visualY,
+      viewport.id,
+    ]);
+
+    const gradientWashes = useMemo(() => {
+      if (localSeededRandom(200) <= 0.4) return null;
+
+      return Array.from({ length: Math.ceil(bgHeight / 350) }, (_, i) => {
+        const washY = visualY + i * 350 + localSeededRandom(201 + i) * 100;
+        const washType = Math.floor(localSeededRandom(202 + i) * 4);
+        const washHeight = 80 + localSeededRandom(203 + i) * 120;
+        const washWidth =
+          visualWidth * (0.5 + localSeededRandom(204 + i) * 0.45);
+        const isLeft = localSeededRandom(205 + i) > 0.5;
+        const washX = isLeft ? visualX : visualX + visualWidth - washWidth;
+
+        // Skip some to keep it sparse
+        if (localSeededRandom(206 + i) < 0.35) return null;
+
+        const gradientId =
+          washType === 0
+            ? `wash-vertical-${viewport.id}`
+            : washType === 1
+              ? `wash-horizontal-${viewport.id}`
+              : washType === 2
+                ? `wash-diagonal-${viewport.id}`
+                : `wash-reverse-${viewport.id}`;
+
+        return (
+          <g key={`wash-${i}`} filter={`url(#ink-wash-${viewport.id})`}>
+            {/* Main gradient wash */}
+            <rect
+              x={washX}
+              y={washY}
+              width={washWidth}
+              height={washHeight}
+              fill={`url(#${gradientId})`}
+              opacity={0.5 + localSeededRandom(207 + i) * 0.3}
+            />
+            {/* Overlapping secondary layer - offset and semi-transparent */}
+            <rect
+              x={washX + (isLeft ? washWidth * 0.15 : -washWidth * 0.15)}
+              y={washY + washHeight * 0.2}
+              width={washWidth * 0.7}
+              height={washHeight * 0.6}
+              fill={`url(#${gradientId})`}
+              opacity={0.35}
+            />
+            {/* Light speckle overlay for texture */}
+            <rect
+              x={washX}
+              y={washY}
+              width={washWidth}
+              height={washHeight}
+              fill="white"
+              opacity={0.1}
+              filter={`url(#speckle-${viewport.id})`}
+            />
+          </g>
+        );
+      });
+    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY, viewport.id]);
+
+    const depthLayers = useMemo(() => {
+      if (localSeededRandom(300) <= 0.5) return null;
+
+      return Array.from({ length: Math.ceil(bgHeight / 280) }, (_, i) => {
+        const layerY = visualY + i * 280 + 60;
+
+        // Skip most to keep sparse
+        if (localSeededRandom(301 + i) < 0.5) return null;
+
+        const baseX = visualX + localSeededRandom(302 + i) * visualWidth * 0.4;
+        const baseWidth =
+          visualWidth * (0.3 + localSeededRandom(303 + i) * 0.35);
+        const baseHeight = 40 + localSeededRandom(304 + i) * 60;
+
+        // Layer colors - varying grays
+        const layer1Lum = 0.3 + localSeededRandom(305 + i) * 0.2;
+        const layer2Lum = 0.45 + localSeededRandom(306 + i) * 0.2;
+        const layer3Lum = 0.6 + localSeededRandom(307 + i) * 0.2;
+
+        return (
+          <g key={`layers-${i}`}>
+            {/* Back layer - largest, lightest */}
+            <rect
+              x={baseX - 10}
+              y={layerY - 8}
+              width={baseWidth + 20}
+              height={baseHeight + 16}
+              fill={`rgb(${Math.round(layer3Lum * 255)}, ${Math.round(
+                layer3Lum * 255,
+              )}, ${Math.round(layer3Lum * 255)})`}
+              opacity={0.25}
+              rx={3}
+            />
+            {/* Middle layer */}
+            <rect
+              x={baseX + 5}
+              y={layerY + 4}
+              width={baseWidth - 5}
+              height={baseHeight - 5}
+              fill={`rgb(${Math.round(layer2Lum * 255)}, ${Math.round(
+                layer2Lum * 255,
+              )}, ${Math.round(layer2Lum * 255)})`}
+              opacity={0.35}
+              rx={2}
+            />
+            {/* Front layer - smallest, darkest */}
+            <rect
+              x={baseX + 15}
+              y={layerY + 12}
+              width={baseWidth - 25}
+              height={baseHeight - 20}
+              fill={`rgb(${Math.round(layer1Lum * 255)}, ${Math.round(
+                layer1Lum * 255,
+              )}, ${Math.round(layer1Lum * 255)})`}
+              opacity={0.45}
+              rx={2}
+            />
+          </g>
+        );
+      });
+    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY]);
 
     // Scrollbar thumb size based on page length (smaller thumb = longer page)
     // Direct mapping: scrollRange 0.1 (short scroll) → 36px, scrollRange 1.0 (full page) → 6px
@@ -802,8 +1281,54 @@ const DynamicViewportRect = memo(
     const scrollbarThumbColorValue = Math.round(scrollbarThumbLuminosity * 255);
     const scrollbarThumbColor = `rgb(${scrollbarThumbColorValue}, ${scrollbarThumbColorValue}, ${scrollbarThumbColorValue})`;
 
+    const debug = useDebugHover();
+    const showDebug = () => {
+      if (!debug.enabled) return;
+      const scrollCount = animation.scrollEvents.length;
+      const resizeCount = animation.resizeEvents?.length ?? 0;
+      const zoomCount = animation.zoomEvents?.length ?? 0;
+      debug.show({
+        kind: "Scroll viewport",
+        id: viewport.id,
+        color: animation.color,
+        title: animation.pageTitle || animation.pageUrl,
+        fields: [
+          { label: "url", value: animation.pageUrl },
+          { label: "scrolls", value: String(scrollCount) },
+          { label: "resizes", value: String(resizeCount) },
+          { label: "zooms", value: String(zoomCount) },
+          {
+            label: "duration",
+            value: `${Math.round((animation.endTime - animation.startTime) / 1000)}s`,
+          },
+          {
+            label: "viewport",
+            value: `${animation.startViewportWidth}×${animation.startViewportHeight}`,
+          },
+          {
+            label: "pid",
+            value: `${animation.participantId.slice(0, 7)}…${animation.participantId.slice(-4)}`,
+          },
+        ],
+      });
+    };
+    const hideDebug = () => {
+      if (!debug.enabled) return;
+      debug.hide(viewport.id);
+    };
+
     return (
-      <g opacity={opacity} style={{ transition: "opacity 0.1s ease-out" }}>
+      <g
+        opacity={opacity}
+        style={{
+          transition: "opacity 0.1s ease-out",
+          pointerEvents: debug.enabled ? "auto" : undefined,
+          cursor: debug.enabled ? "help" : undefined,
+        }}
+        onMouseEnter={debug.enabled ? showDebug : undefined}
+        onMouseMove={debug.enabled ? showDebug : undefined}
+        onMouseLeave={debug.enabled ? hideDebug : undefined}
+      >
         <defs>
           <clipPath id={`viewport-clip-${viewport.id}`}>
             <rect
@@ -971,446 +1496,58 @@ const DynamicViewportRect = memo(
 
         <g clipPath={`url(#viewport-clip-${viewport.id})`}>
           <g transform={zoomTransform || undefined}>
-            {/* Background */}
-            <rect
-              x={visualX}
-              y={visualY - bgOffsetY}
-              width={visualWidth}
-              height={bgHeight}
-              fill={backgroundColor}
-              filter="url(#scrollNoise)"
-              opacity={settings.backgroundOpacity * opacityVariation}
-            />
-            <rect
-              x={visualX}
-              y={visualY - bgOffsetY}
-              width={visualWidth}
-              height={bgHeight}
-              fill="#000"
-              filter="url(#scrollGrain)"
-              opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
-            />
+            <g transform={scrolledContentTransform}>
+              {/* Background */}
+              <rect
+                x={visualX}
+                y={visualY}
+                width={visualWidth}
+                height={bgHeight}
+                fill={backgroundColor}
+                filter="url(#scrollNoise)"
+                opacity={settings.backgroundOpacity * opacityVariation}
+              />
+              <rect
+                x={visualX}
+                y={visualY}
+                width={visualWidth}
+                height={bgHeight}
+                fill="#000"
+                filter="url(#scrollGrain)"
+                opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
+              />
 
-            {/* Content pattern - horizontal bands with varied spacing */}
-            <g
-              opacity={
-                settings.backgroundOpacity * (0.25 + localSeededRandom(7) * 0.1)
-              }
-            >
-              {Array.from(
-                { length: Math.ceil(bgHeight / bandSpacing) },
-                (_, i) => {
-                  const bandLuminosity = 0.4 + localSeededRandom(8 + i) * 0.2;
-                  const bandColorValue = Math.round(bandLuminosity * 255);
-                  const bandWidth =
-                    visualWidth * (0.3 + localSeededRandom(30 + i) * 0.6); // 30-90% width
-                  const bandX =
-                    visualX +
-                    localSeededRandom(40 + i) * (visualWidth - bandWidth);
-                  return (
-                    <rect
-                      key={`band-${i}`}
-                      x={bandX}
-                      y={visualY - bgOffsetY + i * bandSpacing}
-                      width={bandWidth}
-                      height={2}
-                      fill={`rgb(${bandColorValue}, ${bandColorValue}, ${bandColorValue})`}
-                      opacity={0.25 + localSeededRandom(9 + i) * 0.15}
-                    />
-                  );
-                },
+              {/* Content pattern - horizontal bands with varied spacing */}
+              <g
+                opacity={
+                  settings.backgroundOpacity *
+                  (0.25 + localSeededRandom(7) * 0.1)
+                }
+              >
+                {bandRects}
+              </g>
+
+              {/* Content blocks - mostly light/subtle with occasional dark ink accents */}
+              {contentBlocks && (
+                <g opacity={settings.backgroundOpacity * 0.5}>
+                  {contentBlocks}
+                </g>
+              )}
+
+              {/* Gradient washes - occasional large atmospheric areas */}
+              {gradientWashes && (
+                <g opacity={settings.backgroundOpacity * 0.6}>
+                  {gradientWashes}
+                </g>
+              )}
+
+              {/* Overlapping depth layers - scattered semi-transparent shapes */}
+              {depthLayers && (
+                <g opacity={settings.backgroundOpacity * 0.4}>
+                  {depthLayers}
+                </g>
               )}
             </g>
-
-            {/* Content blocks - mostly light/subtle with occasional dark ink accents */}
-            {hasContentBlocks && (
-              <g opacity={settings.backgroundOpacity * 0.5}>
-                {Array.from({ length: Math.ceil(bgHeight / 180) }, (_, i) => {
-                  const blockY = visualY - bgOffsetY + i * 180 + 30;
-                  const sectionSeed = localSeededRandom(50 + i);
-
-                  // Determine section type: 70% light content, 20% medium, 10% dark accent
-                  const isDarkAccent = sectionSeed < 0.1;
-                  const isMediumBlock = sectionSeed >= 0.1 && sectionSeed < 0.3;
-
-                  // Light content colors (most common)
-                  const lightLuminosity =
-                    0.55 + localSeededRandom(51 + i) * 0.25; // 0.55-0.8
-                  const lightColorValue = Math.round(lightLuminosity * 255);
-                  const lightFill = `rgb(${lightColorValue}, ${lightColorValue}, ${lightColorValue})`;
-
-                  // Dark accent colors (rare, dramatic)
-                  const darkLuminosity = 0.08 + localSeededRandom(52 + i) * 0.2; // 0.08-0.28
-                  const darkColorValue = Math.round(darkLuminosity * 255);
-                  const darkFill = `rgb(${darkColorValue}, ${darkColorValue}, ${darkColorValue})`;
-
-                  if (isDarkAccent) {
-                    // Atmospheric dark accent with gradient layers (cohesive with wash effects)
-                    const isLeft = localSeededRandom(63 + i) > 0.5;
-                    const blotchHeight = 60 + localSeededRandom(64 + i) * 80;
-                    const blotchWidth =
-                      visualWidth * (0.4 + localSeededRandom(65 + i) * 0.3);
-                    const xPos = isLeft
-                      ? visualX + visualWidth * 0.02
-                      : visualX +
-                        visualWidth -
-                        blotchWidth -
-                        visualWidth * 0.02;
-
-                    // Choose gradient direction based on position
-                    const gradientId = isLeft
-                      ? `wash-horizontal-${viewport.id}`
-                      : `wash-reverse-${viewport.id}`;
-                    const altGradientId =
-                      localSeededRandom(66 + i) > 0.5
-                        ? `wash-diagonal-${viewport.id}`
-                        : `wash-vertical-${viewport.id}`;
-
-                    return (
-                      <g key={`block-${i}`}>
-                        {/* Outermost layer - soft, large, lighter */}
-                        <g filter={`url(#ink-wash-${viewport.id})`}>
-                          <rect
-                            x={xPos - blotchWidth * 0.1}
-                            y={blockY - blotchHeight * 0.1}
-                            width={blotchWidth * 1.2}
-                            height={blotchHeight * 1.2}
-                            fill={`url(#${gradientId})`}
-                            opacity={0.4}
-                          />
-                        </g>
-
-                        {/* Middle layer - medium size, uses alt gradient */}
-                        <g filter={`url(#ink-wash-${viewport.id})`}>
-                          <rect
-                            x={xPos + blotchWidth * 0.05}
-                            y={blockY + blotchHeight * 0.08}
-                            width={blotchWidth * 0.85}
-                            height={blotchHeight * 0.8}
-                            fill={`url(#${altGradientId})`}
-                            opacity={0.55}
-                          />
-                        </g>
-
-                        {/* Core layer - smallest, darkest solid for depth */}
-                        <g filter={`url(#ink-wash-${viewport.id})`}>
-                          <rect
-                            x={xPos + blotchWidth * 0.15}
-                            y={blockY + blotchHeight * 0.2}
-                            width={blotchWidth * 0.55}
-                            height={blotchHeight * 0.5}
-                            fill={darkFill}
-                            opacity={0.7}
-                          />
-                        </g>
-
-                        {/* Accent gradient overlay - adds color variation */}
-                        <rect
-                          x={xPos}
-                          y={blockY}
-                          width={blotchWidth}
-                          height={blotchHeight}
-                          fill={`url(#${
-                            isLeft ? "wash-diagonal-" : "wash-reverse-"
-                          }${viewport.id})`}
-                          opacity={0.25}
-                        />
-
-                        {/* Speckle texture across all layers */}
-                        <rect
-                          x={xPos - blotchWidth * 0.1}
-                          y={blockY - blotchHeight * 0.1}
-                          width={blotchWidth * 1.2}
-                          height={blotchHeight * 1.2}
-                          fill="white"
-                          opacity={0.12}
-                          filter={`url(#speckle-${viewport.id})`}
-                        />
-
-                        {/* Scattered light dots for texture variation */}
-                        {[0, 1, 2].map((j) => {
-                          const dotX =
-                            xPos +
-                            localSeededRandom(100 + i + j) * blotchWidth * 0.7;
-                          const dotY =
-                            blockY +
-                            localSeededRandom(110 + i + j) * blotchHeight * 0.7;
-                          const dotSize =
-                            3 + localSeededRandom(120 + i + j) * 5;
-                          return (
-                            <circle
-                              key={`dot-${j}`}
-                              cx={dotX + blotchWidth * 0.15}
-                              cy={dotY + blotchHeight * 0.15}
-                              r={dotSize}
-                              fill="white"
-                              opacity={
-                                0.1 + localSeededRandom(130 + i + j) * 0.15
-                              }
-                            />
-                          );
-                        })}
-                      </g>
-                    );
-                  } else if (isMediumBlock) {
-                    // Medium-toned block - single block, simple
-                    const mediumLuminosity =
-                      0.4 + localSeededRandom(55 + i) * 0.2;
-                    const mediumColorValue = Math.round(mediumLuminosity * 255);
-                    const mediumFill = `rgb(${mediumColorValue}, ${mediumColorValue}, ${mediumColorValue})`;
-                    const blockHeight = 25 + localSeededRandom(61 + i) * 35;
-                    const isLeft = localSeededRandom(62 + i) > 0.5;
-
-                    return (
-                      <g key={`block-${i}`}>
-                        <rect
-                          x={
-                            isLeft
-                              ? visualX + visualWidth * 0.08
-                              : visualX + visualWidth * 0.45
-                          }
-                          y={blockY}
-                          width={visualWidth * 0.47}
-                          height={blockHeight}
-                          fill={mediumFill}
-                          opacity={0.35}
-                          rx={2}
-                        />
-                      </g>
-                    );
-                  } else {
-                    // Light content blocks (most common) - varied layouts, sparse
-                    const layoutVariant = Math.floor(
-                      localSeededRandom(56 + i) * 5,
-                    );
-
-                    if (layoutVariant === 0) {
-                      // Empty/whitespace - adds breathing room
-                      return <g key={`block-${i}`} />;
-                    } else if (layoutVariant === 1) {
-                      // Single wide block
-                      return (
-                        <g key={`block-${i}`}>
-                          <rect
-                            x={visualX + visualWidth * 0.1}
-                            y={blockY}
-                            width={visualWidth * 0.7}
-                            height={20 + localSeededRandom(60 + i) * 30}
-                            fill={lightFill}
-                            opacity={0.28}
-                            rx={2}
-                          />
-                        </g>
-                      );
-                    } else if (layoutVariant === 2) {
-                      // Two scattered rectangles (reduced from 3)
-                      return (
-                        <g key={`block-${i}`}>
-                          {[0, 1].map((j) => (
-                            <rect
-                              key={`sub-${j}`}
-                              x={
-                                visualX +
-                                visualWidth * (0.08 + j * 0.45) +
-                                localSeededRandom(65 + i + j) * 15
-                              }
-                              y={blockY + localSeededRandom(66 + i + j) * 10}
-                              width={
-                                visualWidth *
-                                (0.2 + localSeededRandom(67 + i + j) * 0.15)
-                              }
-                              height={15 + localSeededRandom(68 + i + j) * 20}
-                              fill={lightFill}
-                              opacity={
-                                0.25 + localSeededRandom(69 + i + j) * 0.1
-                              }
-                              rx={2}
-                            />
-                          ))}
-                        </g>
-                      );
-                    } else if (layoutVariant === 3) {
-                      // Two text-like lines (reduced from 4)
-                      return (
-                        <g key={`block-${i}`}>
-                          {[0, 1].map((j) => (
-                            <rect
-                              key={`line-${j}`}
-                              x={visualX + visualWidth * 0.1}
-                              y={blockY + j * 10}
-                              width={
-                                visualWidth *
-                                (0.35 + localSeededRandom(80 + i + j) * 0.4)
-                              }
-                              height={2}
-                              fill={lightFill}
-                              opacity={
-                                0.2 + localSeededRandom(81 + i + j) * 0.1
-                              }
-                            />
-                          ))}
-                        </g>
-                      );
-                    } else {
-                      // Single side block (simplified from image + text)
-                      const isLeft = localSeededRandom(57 + i) > 0.5;
-                      const blockX = isLeft
-                        ? visualX + visualWidth * 0.08
-                        : visualX + visualWidth * 0.5;
-                      return (
-                        <g key={`block-${i}`}>
-                          <rect
-                            x={blockX}
-                            y={blockY}
-                            width={visualWidth * 0.42}
-                            height={30 + localSeededRandom(58 + i) * 25}
-                            fill={lightFill}
-                            opacity={0.3}
-                            rx={3}
-                          />
-                        </g>
-                      );
-                    }
-                  }
-                })}
-              </g>
-            )}
-
-            {/* Gradient washes - occasional large atmospheric areas */}
-            {localSeededRandom(200) > 0.4 && (
-              <g opacity={settings.backgroundOpacity * 0.6}>
-                {Array.from({ length: Math.ceil(bgHeight / 350) }, (_, i) => {
-                  const washY =
-                    visualY -
-                    bgOffsetY +
-                    i * 350 +
-                    localSeededRandom(201 + i) * 100;
-                  const washType = Math.floor(localSeededRandom(202 + i) * 4);
-                  const washHeight = 80 + localSeededRandom(203 + i) * 120;
-                  const washWidth =
-                    visualWidth * (0.5 + localSeededRandom(204 + i) * 0.45);
-                  const isLeft = localSeededRandom(205 + i) > 0.5;
-                  const washX = isLeft
-                    ? visualX
-                    : visualX + visualWidth - washWidth;
-
-                  // Skip some to keep it sparse
-                  if (localSeededRandom(206 + i) < 0.35) return null;
-
-                  const gradientId =
-                    washType === 0
-                      ? `wash-vertical-${viewport.id}`
-                      : washType === 1
-                      ? `wash-horizontal-${viewport.id}`
-                      : washType === 2
-                      ? `wash-diagonal-${viewport.id}`
-                      : `wash-reverse-${viewport.id}`;
-
-                  return (
-                    <g
-                      key={`wash-${i}`}
-                      filter={`url(#ink-wash-${viewport.id})`}
-                    >
-                      {/* Main gradient wash */}
-                      <rect
-                        x={washX}
-                        y={washY}
-                        width={washWidth}
-                        height={washHeight}
-                        fill={`url(#${gradientId})`}
-                        opacity={0.5 + localSeededRandom(207 + i) * 0.3}
-                      />
-                      {/* Overlapping secondary layer - offset and semi-transparent */}
-                      <rect
-                        x={
-                          washX +
-                          (isLeft ? washWidth * 0.15 : -washWidth * 0.15)
-                        }
-                        y={washY + washHeight * 0.2}
-                        width={washWidth * 0.7}
-                        height={washHeight * 0.6}
-                        fill={`url(#${gradientId})`}
-                        opacity={0.35}
-                      />
-                      {/* Light speckle overlay for texture */}
-                      <rect
-                        x={washX}
-                        y={washY}
-                        width={washWidth}
-                        height={washHeight}
-                        fill="white"
-                        opacity={0.1}
-                        filter={`url(#speckle-${viewport.id})`}
-                      />
-                    </g>
-                  );
-                })}
-              </g>
-            )}
-
-            {/* Overlapping depth layers - scattered semi-transparent shapes */}
-            {localSeededRandom(300) > 0.5 && (
-              <g opacity={settings.backgroundOpacity * 0.4}>
-                {Array.from({ length: Math.ceil(bgHeight / 280) }, (_, i) => {
-                  const layerY = visualY - bgOffsetY + i * 280 + 60;
-
-                  // Skip most to keep sparse
-                  if (localSeededRandom(301 + i) < 0.5) return null;
-
-                  const baseX =
-                    visualX + localSeededRandom(302 + i) * visualWidth * 0.4;
-                  const baseWidth =
-                    visualWidth * (0.3 + localSeededRandom(303 + i) * 0.35);
-                  const baseHeight = 40 + localSeededRandom(304 + i) * 60;
-
-                  // Layer colors - varying grays
-                  const layer1Lum = 0.3 + localSeededRandom(305 + i) * 0.2;
-                  const layer2Lum = 0.45 + localSeededRandom(306 + i) * 0.2;
-                  const layer3Lum = 0.6 + localSeededRandom(307 + i) * 0.2;
-
-                  return (
-                    <g key={`layers-${i}`}>
-                      {/* Back layer - largest, lightest */}
-                      <rect
-                        x={baseX - 10}
-                        y={layerY - 8}
-                        width={baseWidth + 20}
-                        height={baseHeight + 16}
-                        fill={`rgb(${Math.round(layer3Lum * 255)}, ${Math.round(
-                          layer3Lum * 255,
-                        )}, ${Math.round(layer3Lum * 255)})`}
-                        opacity={0.25}
-                        rx={3}
-                      />
-                      {/* Middle layer */}
-                      <rect
-                        x={baseX + 5}
-                        y={layerY + 4}
-                        width={baseWidth - 5}
-                        height={baseHeight - 5}
-                        fill={`rgb(${Math.round(layer2Lum * 255)}, ${Math.round(
-                          layer2Lum * 255,
-                        )}, ${Math.round(layer2Lum * 255)})`}
-                        opacity={0.35}
-                        rx={2}
-                      />
-                      {/* Front layer - smallest, darkest */}
-                      <rect
-                        x={baseX + 15}
-                        y={layerY + 12}
-                        width={baseWidth - 25}
-                        height={baseHeight - 20}
-                        fill={`rgb(${Math.round(layer1Lum * 255)}, ${Math.round(
-                          layer1Lum * 255,
-                        )}, ${Math.round(layer1Lum * 255)})`}
-                        opacity={0.45}
-                        rx={2}
-                      />
-                    </g>
-                  );
-                })}
-              </g>
-            )}
           </g>
 
           {/* Abstract pixelated page preview via iframe */}
@@ -1457,7 +1594,22 @@ const DynamicViewportRect = memo(
           />
         </g>
 
-        {/* Border with activity-based styling */}
+        {/* Window title bar — favicon + page title, browser-chrome style */}
+        {settings.showTitleBar !== false && (
+          <ViewportTitleBar
+            viewportId={viewport.id}
+            x={visualX}
+            y={visualY}
+            width={visualWidth}
+            height={visualHeight}
+            pageUrl={animation.pageUrl}
+            pageTitle={livePageTitle ?? animation.pageTitle}
+            faviconUrl={liveFaviconUrl ?? animation.faviconUrl}
+            accentColor={edgeTintColor}
+          />
+        )}
+
+        {/* Viewport border */}
         <rect
           x={visualX}
           y={visualY}
@@ -1488,9 +1640,7 @@ const DynamicViewportRect = memo(
               width={4}
               height={thumbHeight}
               fill={scrollbarThumbColor}
-              opacity={
-                isActivelyScrolling ? 0.9 : 0.6 + localSeededRandom(6) * 0.2
-              }
+              opacity={0.6 + localSeededRandom(6) * 0.2}
               rx={2}
             />
           </>
@@ -1499,3 +1649,113 @@ const DynamicViewportRect = memo(
     );
   },
 );
+
+// Renders a thin browser-chrome-style title bar across the top of a viewport.
+// Sized relative to viewport width so it stays legible at any scale.
+const TITLE_BAR_MIN_HEIGHT = 14;
+const TITLE_BAR_MAX_HEIGHT = 22;
+
+const ViewportTitleBar = memo(
+  ({
+    viewportId,
+    x,
+    y,
+    width,
+    height,
+    pageUrl,
+    pageTitle,
+    faviconUrl,
+    accentColor,
+  }: {
+    viewportId: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageUrl: string;
+    pageTitle?: string;
+    faviconUrl?: string;
+    accentColor: string;
+  }) => {
+    const barHeight = Math.max(
+      TITLE_BAR_MIN_HEIGHT,
+      Math.min(TITLE_BAR_MAX_HEIGHT, Math.round(height * 0.075)),
+    );
+    const padX = Math.max(4, Math.round(barHeight * 0.45));
+    const iconSize = Math.max(8, barHeight - 6);
+    const fontSize = Math.max(8, Math.round(barHeight * 0.55));
+
+    const domain = extractDomain(pageUrl);
+    const displayTitle = getViewportTitleText(pageUrl, pageTitle);
+    const resolvedFavicon =
+      faviconUrl ||
+      (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : undefined);
+
+    const clipId = `titlebar-clip-${viewportId}`;
+    const washId = `titlebar-wash-${viewportId}`;
+
+    return (
+      <g pointerEvents="none">
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={x} y={y} width={width} height={barHeight} />
+          </clipPath>
+          <linearGradient id={washId} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="rgb(245,240,232)" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="rgb(210,204,193)" stopOpacity="0.85" />
+          </linearGradient>
+        </defs>
+
+        <g clipPath={`url(#${clipId})`}>
+          {/* Base wash */}
+          <rect x={x} y={y} width={width} height={barHeight} fill={`url(#${washId})`} />
+          {/* Subtle paper noise to match the textured aesthetic */}
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={barHeight}
+            fill="#000"
+            filter="url(#scrollGrain)"
+            opacity={0.08}
+          />
+          {/* Hairline accent across the bottom edge in the participant/RISO color */}
+          <rect
+            x={x}
+            y={y + barHeight - 1}
+            width={width}
+            height={1}
+            fill={accentColor}
+            opacity={0.45}
+          />
+
+          {/* Favicon */}
+          {resolvedFavicon && (
+            <image
+              href={resolvedFavicon}
+              x={x + padX}
+              y={y + (barHeight - iconSize) / 2}
+              width={iconSize}
+              height={iconSize}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          )}
+
+          {/* Title text */}
+          <text
+            x={x + padX + (resolvedFavicon ? iconSize + padX * 0.6 : 0)}
+            y={y + barHeight / 2}
+            fontSize={fontSize}
+            fontFamily="Atkinson Hyperlegible, system-ui, sans-serif"
+            fill="rgb(61, 56, 51)"
+            opacity={0.85}
+            dominantBaseline="central"
+          >
+            {displayTitle}
+          </text>
+        </g>
+      </g>
+    );
+  },
+);
+ViewportTitleBar.displayName = "ViewportTitleBar";

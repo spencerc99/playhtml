@@ -11,6 +11,8 @@ export default defineConfig({
       "@playhtml/react": path.join(__dirname, "packages/react/src"),
       playhtml: path.join(__dirname, "packages/playhtml/src/index.ts"),
       "@extension": path.join(__dirname, "extension/src"),
+      "@moderation": path.join(__dirname, "partykit/moderation.ts"),
+      "@movement": path.join(__dirname, "extension/website/shared"),
     },
   },
   optimizeDeps: {

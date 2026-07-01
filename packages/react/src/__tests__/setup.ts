@@ -114,6 +114,7 @@ resetMockReady();
 vi.stubGlobal("MOCKED_PLAYHTML", mockedPlayhtml);
 
 // Mock playhtml initialization and event functions
-vi.mock("playhtml", () => {
-  return { playhtml: mockedPlayhtml };
+vi.mock("playhtml", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("playhtml")>();
+  return { ...actual, playhtml: mockedPlayhtml };
 });

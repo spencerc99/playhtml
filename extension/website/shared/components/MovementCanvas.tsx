@@ -11,6 +11,8 @@ import React, {
 import { CollectionEvent, Trail } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
+import { LiveTrails } from "./LiveTrails";
+import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
@@ -21,12 +23,21 @@ import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
 import { ActivityStrip } from "./ActivityStrip";
 import { StatsConsole } from "./StatsConsole";
+import { DebugHoverProvider } from "./DebugHover";
 import { useCursorTrails } from "../hooks/useCursorTrails";
+import { useAccumulatedEvents } from "../hooks/useAccumulatedEvents";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
+import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
-import { extractDomain } from "../utils/eventUtils";
+import {
+  extractDomain,
+  formatFilterChip,
+  summarizeActiveLocations,
+  type FilterChip,
+} from "../utils/eventUtils";
+import { buildShareUrl } from "../utils/shareUrl";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   parseSettingsFromUrl,
@@ -37,6 +48,8 @@ import type { DayCounts } from "../types";
 import { DEFAULT_SETTINGS } from "./settingsDefaults";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
+
+const EMPTY_EVENTS: CollectionEvent[] = [];
 
 const READOUT_WRAPPER_STYLE: React.CSSProperties = {
   position: "absolute",
@@ -191,6 +204,13 @@ const SelectedRangeReadout: React.FC<{
   );
 };
 
+/** Stable string-ification of the filter chip list. Used for equality
+ * checks across the parent-sync effects (so we don't push an array up if
+ * it represents the same set) and for `key={}` props that need to remount
+ * a viz when its scope changes. */
+const filtersKey = (cs: FilterChip[]): string =>
+  cs.map((c) => `${c.domain}|${c.path}`).join(",");
+
 /** A player ID is `pk_` + 130 hex chars — too long for a pill or filename.
  * Show `pk_abcd…wxyz` (first 4 + last 4 of the hex portion). Identifiable
  * across runs but visually compact. */
@@ -330,13 +350,19 @@ interface MovementCanvasProps {
   dayCounts?: DayCounts;
   selectedDay?: string | null;
   onSelectDay?: (day: string | null) => void;
-  domainFilter?: string;
-  onSetDomainFilter?: (domain: string) => void;
+  /** URL-scope filter chips owned by the parent. Two-way mirrored with
+   * `settings.filters` so the parent can decide whether the worker fetch
+   * pre-filters by domain. Empty array = no filter. */
+  filters?: FilterChip[];
+  onSetFilters?: (filters: FilterChip[]) => void;
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
+  live?: boolean;
+  /** Live-stream connection status, gates the people-count readout. */
+  connected?: boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -347,11 +373,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   dayCounts,
   selectedDay = null,
   onSelectDay,
-  domainFilter: domainFilterProp,
-  onSetDomainFilter,
+  filters: filtersProp,
+  onSetFilters,
   activeVisualizations,
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
+  live = false,
+  connected = false,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -375,6 +403,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     null,
   );
 
+  /** Pause/play for all the rAF-driven animations. Per-tab session state —
+   * never URL-encoded, never persisted. Toggled by double-tap P or the
+   * top-right pause button. The sound engine pauses alongside the visual
+   * loop so audio doesn't keep ticking against a frozen canvas. */
+  const [paused, setPaused] = useState(false);
+
   /** Demo / clean-presentation mode. Hides the sound toggle and time
    * readouts so the canvas reads as a finished art piece. URL `?clean=1`
    * sets this on load; the "save image" flow flips it on transiently
@@ -392,30 +426,32 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
   const printMode = cleanLevel >= 2; // level 2: also hides metadata pill + DaySelector
 
-  // Sync domain filter from prop (parent controls refetching)
+  // Sync filter chip list from prop (parent controls refetching). The
+  // parent only re-fetches the events array when the worker-side domain
+  // changes; that derivation lives one layer up in archive.tsx.
   useEffect(() => {
-    if (
-      domainFilterProp !== undefined &&
-      domainFilterProp !== settings.domainFilter
-    ) {
-      setSettings((s) => ({ ...s, domainFilter: domainFilterProp }));
+    if (filtersProp === undefined) return;
+    const cur: FilterChip[] = Array.isArray(settings.filters)
+      ? settings.filters
+      : [];
+    if (filtersKey(filtersProp) !== filtersKey(cur)) {
+      setSettings((s: any) => ({ ...s, filters: filtersProp }));
     }
-  }, [domainFilterProp]);
+  }, [filtersProp]);
 
-  // Notify parent when internal domain filter changes so it can refetch.
-  // CRITICAL: only call when the values actually disagree — otherwise on
-  // mount with `prop=""` and `settings.domainFilter="google.com"` (loaded
-  // from localStorage), this would push "google.com" back up while the
-  // sync-from-prop effect simultaneously pushes "" down, creating an
-  // infinite render+fetch loop.
+  // Notify parent when the chip list changes. Same loop guard as before —
+  // only push up when prop and state actually disagree, otherwise the
+  // mount handoff between localStorage-hydrated settings and an empty
+  // prop pings back and forth forever.
   useEffect(() => {
-    if (
-      domainFilterProp !== undefined &&
-      domainFilterProp !== settings.domainFilter
-    ) {
-      onSetDomainFilter?.(settings.domainFilter);
+    if (filtersProp === undefined) return;
+    const cur: FilterChip[] = Array.isArray(settings.filters)
+      ? settings.filters
+      : [];
+    if (filtersKey(filtersProp) !== filtersKey(cur)) {
+      onSetFilters?.(cur);
     }
-  }, [settings.domainFilter]);
+  }, [settings.filters]);
 
   // Manage SoundEngine lifecycle
   useEffect(() => {
@@ -520,38 +556,61 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }
   }, [selectedDay, activeVisualizations]);
 
-  // Only persist settings to localStorage AFTER the user has deliberately
-  // modified them via the Controls panel. We don't want first-load defaults
-  // (or auto-applied changes like domain filter sync) to bake in stale
-  // values that override future default tweaks.
-  const userTouchedSettingsRef = useRef(false);
-  const setSettingsFromControls = useCallback<typeof setSettings>(
-    (update) => {
-      userTouchedSettingsRef.current = true;
-      setSettings(update);
-    },
-    [setSettings],
-  );
+  // The URL is now the source of truth for the current configuration — any
+  // change to settings, viz selection, or the canvas time range is mirrored
+  // into the address bar via `history.replaceState` (see effect below).
+  // Refresh re-parses the URL, so reloading never loses what you were doing.
+  // localStorage is still used, but only as the first-visit baseline for
+  // people who haven't shared/saved a URL — see "Save as default" in the
+  // dev panel for the explicit LS write path.
+  const setSettingsFromControls = setSettings;
 
+  // Debounce the URL rewrite so dragging a slider doesn't thrash the
+  // history entry. `replaceState` is cheap, but skipping calls until input
+  // settles keeps the URL bar visually quiet during interaction.
   useEffect(() => {
-    if (!userTouchedSettingsRef.current) return;
-    try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-    } catch (err) {
-      console.error("Failed to save settings to localStorage:", err);
-    }
-  }, [settings]);
+    if (typeof window === "undefined") return;
+    const timer = window.setTimeout(() => {
+      try {
+        const next = buildShareUrl({
+          settings,
+          activeVisualizations,
+          selectedTimeRange,
+          clean: parseCleanFromUrl(),
+        });
+        // Only call replaceState when the URL actually changes. Avoids
+        // browser-level history-entry churn (some engines coalesce, some
+        // don't) and keeps the DevTools Network tab quiet.
+        if (next !== window.location.href) {
+          window.history.replaceState(null, "", next);
+        }
+      } catch (err) {
+        console.error("Failed to sync URL with settings:", err);
+      }
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [settings, activeVisualizations, selectedTimeRange]);
 
   // Keyboard shortcuts:
   //   double-tap D — toggle controls panel
   //   double-tap R — reload data
+  //   double-tap P — pause / resume all animations
   //   Cmd/Ctrl+Shift+S — save PNG screenshot in clean UI mode
   useEffect(() => {
     let lastDKeyTime = 0;
     let lastRKeyTime = 0;
+    let lastPKeyTime = 0;
     const DOUBLE_TAP_THRESHOLD = 300;
 
     const handleKeyPress = (e: KeyboardEvent) => {
+      // Skip when the user is typing into an input — otherwise double-tap
+      // shortcuts would fire while filling out the filter inputs.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
+        return;
+      }
+
       // Cmd/Ctrl+Shift+S → screenshot. Check this first so the modifier
       // combo never falls through to the bare-S double-tap family below.
       if (
@@ -578,6 +637,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           lastRKeyTime = 0;
         } else {
           lastRKeyTime = now;
+        }
+      } else if (e.key === "p" || e.key === "P") {
+        if (now - lastPKeyTime < DOUBLE_TAP_THRESHOLD) {
+          setPaused((prev) => !prev);
+          lastPKeyTime = 0;
+        } else {
+          lastPKeyTime = now;
         }
       }
     };
@@ -650,18 +716,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     return Array.from(domains).sort();
   }, [events]);
 
-  // Clear domain filter if it's no longer present in available domains
+  // Drop any chips whose domain isn't in `availableDomains` anymore.
+  // Bare-path chips (no domain) survive — they're domain-agnostic.
   useEffect(() => {
-    if (
-      events.length > 0 &&
-      settings.domainFilter &&
-      availableDomains.length > 0 &&
-      !availableDomains.includes(settings.domainFilter)
-    ) {
-      setSettings((s: ReturnType<typeof loadSettings>) => ({
-        ...s,
-        domainFilter: "",
-      }));
+    if (events.length === 0 || availableDomains.length === 0) return;
+    const cur: FilterChip[] = Array.isArray(settings.filters)
+      ? settings.filters
+      : [];
+    if (cur.length === 0) return;
+    const allowed = new Set(availableDomains);
+    const next = cur.filter((c) => !c.domain || allowed.has(c.domain));
+    if (next.length !== cur.length) {
+      setSettings((s: any) => ({ ...s, filters: next }));
     }
   }, [events.length]);
 
@@ -677,30 +743,51 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     return events.filter((e) => e.ts >= startMs && e.ts < endMs);
   }, [events, selectedTimeRange]);
 
+  // In live mode, accumulate each trail's full point history so trails don't
+  // shrink/shift/vanish as their earliest events age off the stream cap. The
+  // archive's event set is fixed, so it bypasses accumulation. A group's events
+  // are freed when its trail has fully faded out (LiveTrails reports the id).
+  const evictIdsRef = useRef<Set<string>>(new Set());
+  const handleTrailsRemoved = useCallback((ids: string[]) => {
+    for (const id of ids) evictIdsRef.current.add(id);
+  }, []);
+  const trailEvents = useAccumulatedEvents(filteredEvents, {
+    enabled: live,
+    maxGroups: 60,
+    evictIdsRef,
+  });
+  const activeTrailEvents = hasCursorViz ? trailEvents : EMPTY_EVENTS;
+  const activeTypingEvents = showTyping ? filteredEvents : EMPTY_EVENTS;
+  const activeScrollingEvents = showScrolling ? filteredEvents : EMPTY_EVENTS;
+  const activeNavigationEvents = showNavigation ? filteredEvents : EMPTY_EVENTS;
+
   const cursorSettings = useMemo(
     () => ({
       randomizeColors: settings.randomizeColors,
-      domainFilter: settings.domainFilter,
-      pathFilter: settings.pathFilter,
+      filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       eventFilter: settings.eventFilter,
       trailStyle: settings.trailStyle,
       chaosIntensity: settings.chaosIntensity,
-      trailAnimationMode: settings.trailAnimationMode,
+      trailAnimationMode: live ? "natural" : settings.trailAnimationMode,
       maxConcurrentTrails: settings.maxConcurrentTrails,
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
       documentSpace: settings.documentSpace,
+      // Live mode collapses each participant+url to one trail so ids stay
+      // unique/stable as the event window slides (the archive shows every
+      // segment). Prevents duplicate React keys and disappearing trails.
+      singleSegmentPerGroup: live,
     }),
     [
       settings.randomizeColors,
-      settings.domainFilter,
-      settings.pathFilter,
+      settings.filters,
       settings.pidFilter,
       settings.eventFilter,
       settings.trailStyle,
       settings.chaosIntensity,
       settings.trailAnimationMode,
+      live,
       settings.maxConcurrentTrails,
       settings.overlapFactor,
       settings.minGapBetweenTrails,
@@ -713,7 +800,47 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-  } = useCursorTrails(filteredEvents, viewportSize, cursorSettings);
+  } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
+
+  // Recent activity (live mode) from the raw event stream, not the capped drawn
+  // trails: how many people + the geographic spread of their timezones.
+  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
+
+  // The keyboard hook is invoked here (before timeRange) because its
+  // cycleDuration feeds the canvas's shared animation cycle. Without this,
+  // a typing-only configuration would loop at cursorCycleDuration (0 →
+  // fallback 60s), forcing the schedule's `% cycleDuration` to wrap many
+  // sessions onto the same offsets.
+  const keyboardSettings = useMemo(
+    () => ({
+      filters: (settings.filters as FilterChip[] | undefined) ?? [],
+      pidFilter: settings.pidFilter,
+      keyboardOverlapFactor: settings.keyboardOverlapFactor,
+      keyboardMinFontSize: settings.keyboardMinFontSize,
+      keyboardMaxFontSize: settings.keyboardMaxFontSize,
+      keyboardPositionRandomness: settings.keyboardPositionRandomness,
+      keyboardRandomizeOrder: settings.keyboardRandomizeOrder,
+      maxConcurrentTyping: settings.maxConcurrentTyping,
+      keyboardSizeCap: settings.keyboardSizeCap,
+    }),
+    [
+      settings.filters,
+      settings.pidFilter,
+      settings.keyboardOverlapFactor,
+      settings.keyboardMinFontSize,
+      settings.keyboardMaxFontSize,
+      settings.keyboardPositionRandomness,
+      settings.keyboardRandomizeOrder,
+      settings.maxConcurrentTyping,
+      settings.keyboardSizeCap,
+    ],
+  );
+
+  const {
+    typingStates,
+    timeBounds: keyboardTimeBounds,
+    cycleDuration: keyboardCycleDuration,
+  } = useKeyboardTyping(activeTypingEvents, viewportSize, keyboardSettings);
 
   const timeRange = useMemo(() => {
     const allMins: number[] = [];
@@ -723,8 +850,19 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       allMins.push(cursorTimeBounds.min);
       allMaxs.push(cursorTimeBounds.max);
     }
+    if (keyboardTimeBounds.min > 0 || keyboardTimeBounds.max > 0) {
+      allMins.push(keyboardTimeBounds.min);
+      allMaxs.push(keyboardTimeBounds.max);
+    }
 
-    const duration = cursorCycleDuration > 0 ? cursorCycleDuration : 60000;
+    // Pick the largest cycle across active vizs so each can fit its
+    // schedule without wrapping. Fall back to one minute when nothing's
+    // active yet.
+    const duration = Math.max(
+      cursorCycleDuration,
+      keyboardCycleDuration,
+      60000,
+    );
 
     if (allMins.length === 0) return { min: 0, max: 0, duration };
 
@@ -733,9 +871,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       max: Math.max(...allMaxs),
       duration,
     };
-  }, [cursorTimeBounds, cursorCycleDuration]);
+  }, [
+    cursorTimeBounds,
+    cursorCycleDuration,
+    keyboardTimeBounds,
+    keyboardCycleDuration,
+  ]);
 
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
+    if (!showClicks) {
+      return { scheduledClicks: [], clickCycleDuration: 0 };
+    }
+
     const clickColorRenderer = getTrailRenderer(
       settings.trailVisualStyle ?? "color",
     );
@@ -795,63 +942,41 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     return { scheduledClicks: normalized, clickCycleDuration };
   }, [
     trailStates,
+    showClicks,
     settings.clickMinDuration,
     settings.clickMaxDuration,
     settings.clickMaxGapMs,
     settings.trailVisualStyle,
   ]);
 
-  const keyboardSettings = useMemo(
-    () => ({
-      domainFilter: settings.domainFilter,
-      pathFilter: settings.pathFilter,
-      pidFilter: settings.pidFilter,
-      keyboardOverlapFactor: settings.keyboardOverlapFactor,
-      keyboardMinFontSize: settings.keyboardMinFontSize,
-      keyboardMaxFontSize: settings.keyboardMaxFontSize,
-      keyboardPositionRandomness: settings.keyboardPositionRandomness,
-      keyboardRandomizeOrder: settings.keyboardRandomizeOrder,
-    }),
-    [
-      settings.domainFilter,
-      settings.pathFilter,
-      settings.pidFilter,
-      settings.keyboardOverlapFactor,
-      settings.keyboardMinFontSize,
-      settings.keyboardMaxFontSize,
-      settings.keyboardPositionRandomness,
-      settings.keyboardRandomizeOrder,
-    ],
-  );
-
-  const { typingStates } = useKeyboardTyping(
-    filteredEvents,
-    viewportSize,
-    keyboardSettings,
-    timeRange.duration,
-    timeRange.min,
-  );
-
   const viewportSettings = useMemo(
     () => ({
-      domainFilter: settings.domainFilter,
-      pathFilter: settings.pathFilter,
+      filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.domainFilter, settings.pathFilter, settings.viewportEventFilter],
+    [settings.filters, settings.pidFilter, settings.viewportEventFilter],
   );
 
-  const { animations: scrollAnimations } = useViewportScroll(
-    filteredEvents,
-    viewportSize,
-    viewportSettings,
+  const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
+    useViewportScroll(activeScrollingEvents, viewportSize, viewportSettings);
+
+  // For viewports whose URL has no captured title (no navigation event), ask
+  // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
+  // for known providers, HTML scrape otherwise). Module-cached, so a given
+  // URL is fetched at most once per page lifetime.
+  const scrollUrls = useMemo(
+    () => scrollAnimations.map((a) => a.pageUrl).filter(Boolean),
+    [scrollAnimations],
+  );
+  const resolvedScrollMetadata = usePageMetaFallback(
+    scrollUrls,
+    scrollUrlMetadata,
   );
 
   const navigationTimelineSettings = useMemo(
     () => ({
-      domainFilter: settings.domainFilter,
-      pathFilter: settings.pathFilter,
+      filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       maxSessions: settings.navigationMaxSessions,
       minSessionEvents: settings.navigationMinSessionEvents,
@@ -859,8 +984,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       canvasHeight: viewportSize.height,
     }),
     [
-      settings.domainFilter,
-      settings.pathFilter,
+      settings.filters,
       settings.pidFilter,
       settings.navigationMaxSessions,
       settings.navigationMinSessionEvents,
@@ -870,14 +994,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { timelineState } = useNavigationTimeline(
-    filteredEvents,
+    activeNavigationEvents,
     navigationTimelineSettings,
   );
 
   const navigationRadialSettings = useMemo(
     () => ({
-      domainFilter: settings.domainFilter,
-      pathFilter: settings.pathFilter,
+      filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       maxSessions: settings.navigationMaxSessions,
       minSessionEvents: settings.navigationMinSessionEvents,
@@ -886,8 +1009,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       segmentByDay: settings.navigationRadialSegmentByDay ?? true,
     }),
     [
-      settings.domainFilter,
-      settings.pathFilter,
+      settings.filters,
       settings.pidFilter,
       settings.navigationMaxSessions,
       settings.navigationMinSessionEvents,
@@ -898,7 +1020,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
 
   const { radialState } = useNavigationRadial(
-    filteredEvents,
+    activeNavigationEvents,
     navigationRadialSettings,
   );
 
@@ -908,14 +1030,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       textboxOpacity: settings.textboxOpacity,
       keyboardShowCaret: settings.keyboardShowCaret,
       keyboardAnimationSpeed: settings.keyboardAnimationSpeed,
-      keyboardDisplayMode: settings.keyboardDisplayMode,
+      keyboardLegibilityPct: settings.keyboardLegibilityPct,
+      maxConcurrentTyping: settings.maxConcurrentTyping,
     }),
     [
       settings.animationSpeed,
       settings.textboxOpacity,
       settings.keyboardShowCaret,
       settings.keyboardAnimationSpeed,
-      settings.keyboardDisplayMode,
+      settings.keyboardLegibilityPct,
+      settings.maxConcurrentTyping,
     ],
   );
 
@@ -931,6 +1055,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       showResizeEvents: settings.showResizeEvents,
       showZoomEvents: settings.showZoomEvents,
       windowScale: settings.windowScale,
+      windowBleed: settings.windowBleed,
+      showTitleBar: settings.showTitleBar,
     }),
     [
       settings.scrollSpeed,
@@ -943,6 +1069,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.showResizeEvents,
       settings.showZoomEvents,
       settings.windowScale,
+      settings.windowBleed,
+      settings.showTitleBar,
     ],
   );
 
@@ -1001,6 +1129,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <DebugHoverProvider enabled={!!settings.debugMode}>
     <div className="internet-movement">
       <Controls
         visible={controlsVisible}
@@ -1036,71 +1165,76 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         />
       )}
 
-      {!printMode && (settings.domainFilter || settings.pathFilter || settings.pidFilter) && (
-        <div
-          style={{
-            position: "absolute",
-            top: "20px",
-            right: "20px",
-            zIndex: 100,
-          }}
-        >
+      {!printMode &&
+        ((settings.filters as FilterChip[] | undefined)?.length || settings.pidFilter) && (
           <div
             style={{
-              position: "relative",
-              padding: "10px 16px",
-              background: "#faf9f6",
-              border: "1px solid rgba(0, 0, 0, 0.12)",
-              boxShadow:
-                "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
-              fontFamily:
-                '"Martian Mono", "Space Mono", "Courier New", monospace',
-              fontSize: "11px",
-              fontWeight: "600",
-              color: "#333",
-              letterSpacing: "0.5px",
-              textTransform: "uppercase",
-              overflow: "hidden",
+              position: "absolute",
+              top: "20px",
+              right: "20px",
+              zIndex: 100,
+              maxWidth: 360,
             }}
           >
-            <svg
+            <div
               style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                opacity: 0.15,
-                pointerEvents: "none",
+                position: "relative",
+                padding: "10px 16px",
+                background: "#faf9f6",
+                border: "1px solid rgba(0, 0, 0, 0.12)",
+                boxShadow:
+                  "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
+                fontFamily:
+                  '"Martian Mono", "Space Mono", "Courier New", monospace',
+                fontSize: "11px",
+                fontWeight: "600",
+                color: "#333",
+                letterSpacing: "0.5px",
+                textTransform: "uppercase",
+                overflow: "hidden",
               }}
             >
-              <filter id="domainNoise">
-                <feTurbulence
-                  type="fractalNoise"
-                  baseFrequency="0.9"
-                  numOctaves="4"
-                />
-                <feColorMatrix type="saturate" values="0" />
-                <feComponentTransfer>
-                  <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
-                </feComponentTransfer>
-              </filter>
-              <rect width="100%" height="100%" filter="url(#domainNoise)" />
-            </svg>
-            <span style={{ position: "relative", zIndex: 1 }}>
-              {settings.domainFilter || settings.pathFilter
-                ? (settings.domainFilter || "*") +
-                  (settings.pathFilter
-                    ? (settings.pathFilter.startsWith("/") ? "" : "/") +
-                      settings.pathFilter
-                    : "")
-                : ""}
-              {settings.pidFilter
-                ? `${settings.domainFilter || settings.pathFilter ? " ~ " : "~"}${shortenPid(settings.pidFilter)}`
-                : ""}
-            </span>
+              <svg
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  opacity: 0.15,
+                  pointerEvents: "none",
+                }}
+              >
+                <filter id="domainNoise">
+                  <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.9"
+                    numOctaves="4"
+                  />
+                  <feColorMatrix type="saturate" values="0" />
+                  <feComponentTransfer>
+                    <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
+                  </feComponentTransfer>
+                </filter>
+                <rect width="100%" height="100%" filter="url(#domainNoise)" />
+              </svg>
+              <span
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  display: "inline-block",
+                  wordBreak: "break-all",
+                }}
+              >
+                {((settings.filters as FilterChip[] | undefined) ?? [])
+                  .map((c) => formatFilterChip(c) || "*")
+                  .join(" | ")}
+                {settings.pidFilter
+                  ? `${(settings.filters as FilterChip[] | undefined)?.length ? " ~ " : "~"}${shortenPid(settings.pidFilter)}`
+                  : ""}
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {!cleanMode && (selectedTimeRange ? (
         <SelectedRangeReadout
@@ -1108,6 +1242,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           endMs={selectedTimeRange.endMs}
         />
       ) : (
+        // The live page shows current "now" via the WordmarkClock instead — this
+        // readout sweeps/loops the buffer's time span, which only makes sense for
+        // the archive (scrubbing through historical time).
+        !live &&
         settings.trailAnimationMode === "natural" &&
         showTrails &&
         timeRange.min > 0 &&
@@ -1119,6 +1257,47 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )
       ))}
+
+      {/* Live people-count, bottom-left. Same plain look as the homepage. */}
+      {!cleanMode && live && (
+        <LiveIndicator
+          connected={connected}
+          peopleCount={activity.people}
+          timezones={activity.timezones}
+          continents={activity.continents}
+          style={{ position: "absolute", bottom: 20, left: 20, zIndex: 100 }}
+        />
+      )}
+
+      {/* Only surface the pause/resume control while paused — when the
+       * canvas is animating, the button adds visual noise without
+       * carrying useful info. Double-tap P always works regardless. */}
+      {!cleanMode && paused && (
+        <button
+          onClick={() => setPaused(false)}
+          title="Resume animations (P P)"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 52,
+            zIndex: 200,
+            padding: 6,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            opacity: 0.9,
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="#3d3833"
+          >
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+        </button>
+      )}
 
       {!cleanMode && (
       <button
@@ -1214,21 +1393,31 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         </svg>
 
-        {showTrails && (
-          <AnimatedTrails
-            key={`trails-${settings.domainFilter}`}
-            trailStates={trailStates}
-            timeRange={timeRange}
-            showClickRipples={!showClicks}
-            windowSize={settings.maxConcurrentTrails * 2}
-            soundEngine={soundEnabled ? soundEngineReady : null}
-            settings={trailAnimationSettings}
-          />
-        )}
+        {showTrails &&
+          (live ? (
+            <LiveTrails
+              key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={trailStates}
+              frozen={paused}
+              onTrailsRemoved={handleTrailsRemoved}
+              settings={trailAnimationSettings}
+            />
+          ) : (
+            <AnimatedTrails
+              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={trailStates}
+              timeRange={timeRange}
+              showClickRipples={!showClicks}
+              windowSize={settings.maxConcurrentTrails * 2}
+              soundEngine={paused || !soundEnabled ? null : soundEngineReady}
+              settings={trailAnimationSettings}
+              frozen={paused}
+            />
+          ))}
 
-        {showClicks && (
+        {showClicks && !paused && (
           <AnimatedClicks
-            key={`clicks-${settings.domainFilter}`}
+            key={`clicks-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
             scheduledClicks={scheduledClicks}
             timeRange={{ duration: clickCycleDuration }}
             soundEngine={soundEnabled ? soundEngineReady : null}
@@ -1249,7 +1438,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showTyping && (
+        {showTyping && !paused && (
           <AnimatedTyping
             typingStates={typingStates}
             timeRange={timeRange}
@@ -1257,15 +1446,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showScrolling && scrollAnimations && scrollAnimations.length > 0 && (
+        {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
           <AnimatedScrollViewports
             animations={scrollAnimations}
             canvasSize={viewportSize}
             settings={scrollSettings}
+            urlMetadata={resolvedScrollMetadata}
           />
         )}
 
         {showNavigation &&
+          !paused &&
           (settings.navigationViewMode ?? "timeline") === "radial" &&
           radialState &&
           radialState.nodes.size > 0 && (
@@ -1289,6 +1480,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           )}
 
         {showNavigation &&
+          !paused &&
           (settings.navigationViewMode ?? "timeline") === "timeline" &&
           timelineState &&
           timelineState.nodes.size > 0 && (
@@ -1302,7 +1494,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         {showFavicons && (
           <FaviconPortrait
             events={filteredEvents}
-            domainFilter={settings.domainFilter}
+            // FaviconPortrait is single-domain by design — surface the
+            // first chip's domain (if any) so a bare `?filter=site.com`
+            // still scopes the favicon grid.
+            domainFilter={
+              ((settings.filters as FilterChip[] | undefined) ?? [])[0]
+                ?.domain ?? ""
+            }
           />
         )}
       </div>
@@ -1330,5 +1528,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         />
       )}
     </div>
+    </DebugHoverProvider>
   );
 };

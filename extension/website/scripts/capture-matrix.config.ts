@@ -19,7 +19,7 @@ export interface CaptureCell {
    *    animationSpeed      number
    *    randomizeColors     true | false
    *    navigationViewMode  "timeline" | "radial"
-   *    keyboardDisplayMode "full" | "abstract"
+   *    keyboardLegibilityPct 0–100
    */
   params: Record<string, string | number | boolean>;
   /** Recording length in ms. Defaults to 15000. */

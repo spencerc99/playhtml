@@ -131,36 +131,52 @@ $mobile-query: "(hover: none) and (pointer: coarse)";
 }
 
 .downloadGroup {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
   justify-content: center;
+  white-space: nowrap;
+  font-family: $font-body;
+  font-size: 0.9375rem;
+  color: $text-muted;
+}
+
+.downloadSurface {
+  background: rgba($bg, 0.74);
+  border: 1.5px solid rgba($text, 0.28);
+  border-radius: 999px;
+  padding: 8px 16px;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 1px 0 rgba($text, 0.06);
 }
 
 .downloadGroupLarge {
-  gap: 16px;
+  font-size: 1.0625rem;
+  padding: 11px 20px;
 }
 
-.downloadButton {
-  font-family: $font-body;
-  font-size: 0.9375rem;
+.downloadLabel {
+  margin-right: 0.45rem;
+}
+
+.downloadItem {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.downloadLink {
   color: $text;
-  background: rgba($bg, 0.7);
-  border: 1.5px solid rgba($text, 0.35);
-  border-radius: 4px;
-  padding: 10px 18px;
-  text-decoration: none;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
-  backdrop-filter: blur(2px);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  transition: color 0.15s;
 
   &:hover {
-    background: rgba($bg, 0.95);
-    border-color: $text;
-    transform: translateY(-1px);
+    color: $accent-teal;
   }
+}
 
-  .downloadGroupLarge & {
-    font-size: 1.0625rem;
-    padding: 14px 24px;
-  }
+.downloadSeparator {
+  color: $text-muted;
+  margin: 0 0.45rem;
 }

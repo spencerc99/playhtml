@@ -132,6 +132,9 @@ export interface TrailRenderer {
   readonly name: string;
   // SVG defs needed by this renderer (filters, gradients, etc.)
   readonly svgDefs?: string;
+  // Width of the freehand outline geometry built for this renderer's trails.
+  // The width is baked into the path data, so it must be known at build time.
+  getStrokeSize(strokeWidth: number, fixedMonoStrokeWidth: number): number;
   // Called per-frame to apply style to the trail path
   updatePath(params: TrailStyleParams): void;
   // Returns the color for the cursor icon
@@ -150,6 +153,7 @@ interface MonochromeStyle {
 
 interface AppliedAttributes {
   d?: string;
+  fill?: string;
   filter?: string;
   opacity?: string;
   stroke?: string;
@@ -213,11 +217,13 @@ function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
 export const colorRenderer: TrailRenderer = {
   id: "color",
   name: "Color",
+  getStrokeSize(strokeWidth) {
+    return strokeWidth;
+  },
   updatePath({ pathEl, haloEl, pathData, trailOpacity, strokeWidth, trailColor }) {
     setPathAttribute(pathEl, "d", pathData);
-    setPathAttribute(pathEl, "stroke", trailColor);
+    setPathAttribute(pathEl, "fill", trailColor);
     setPathAttribute(pathEl, "opacity", String(trailOpacity));
-    setPathAttribute(pathEl, "strokeWidth", String(strokeWidth));
     removePathAttribute(pathEl, "filter");
     pathEl.style.display = "";
 
@@ -228,7 +234,10 @@ export const colorRenderer: TrailRenderer = {
           ? getPlateColor(trailColor, distance)
           : null;
       if (plateColor) {
+        // The trail width is baked into the outline geometry, so the plate
+        // reuses the same path and strokes its edge to extend past the trail.
         setPathAttribute(haloEl, "d", pathData);
+        setPathAttribute(haloEl, "fill", plateColor);
         setPathAttribute(haloEl, "stroke", plateColor);
         setPathAttribute(
           haloEl,
@@ -238,7 +247,7 @@ export const colorRenderer: TrailRenderer = {
         setPathAttribute(
           haloEl,
           "strokeWidth",
-          String(strokeWidth * PLATE_STROKE_MULTIPLIER),
+          String(strokeWidth * (PLATE_STROKE_MULTIPLIER - 1)),
         );
         haloEl.style.display = "";
       } else {
@@ -261,11 +270,13 @@ export const monochromeRenderer: TrailRenderer = {
     <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
     <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
   </filter>`,
-  updatePath({ pathEl, haloEl, pathData, trailOpacity, fixedMonoStrokeWidth }) {
+  getStrokeSize(_strokeWidth, fixedMonoStrokeWidth) {
+    return fixedMonoStrokeWidth;
+  },
+  updatePath({ pathEl, haloEl, pathData, trailOpacity }) {
     setPathAttribute(pathEl, "d", pathData);
-    setPathAttribute(pathEl, "stroke", "#000");
+    setPathAttribute(pathEl, "fill", "#000");
     setPathAttribute(pathEl, "opacity", String(0.8 * trailOpacity));
-    setPathAttribute(pathEl, "strokeWidth", String(fixedMonoStrokeWidth));
     setPathAttribute(pathEl, "filter", "url(#ink-texture)");
     pathEl.style.display = "";
     if (haloEl) haloEl.style.display = "none";

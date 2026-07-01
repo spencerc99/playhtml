@@ -9,6 +9,14 @@ const CHROME_DOWNLOAD_URL =
   'https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc?authuser=0&hl=en';
 const FIREFOX_DOWNLOAD_URL =
   'https://addons.mozilla.org/en-US/firefox/addon/we-were-online/';
+const EDGE_DOWNLOAD_URL =
+  'https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl';
+
+const DOWNLOAD_LINKS = [
+  { browser: 'Chrome', url: CHROME_DOWNLOAD_URL },
+  { browser: 'Firefox', url: FIREFOX_DOWNLOAD_URL },
+  { browser: 'Edge', url: EDGE_DOWNLOAD_URL },
+];
 
 const SUBSCRIBED_KEY = 'wewere.subscribed';
 
@@ -43,26 +51,28 @@ function markSubscribed(): void {
 function DownloadButtons({ size = 'default' }: { size?: 'default' | 'large' }) {
   const className =
     size === 'large'
-      ? `${styles.downloadGroup} ${styles.downloadGroupLarge}`
-      : styles.downloadGroup;
+      ? `${styles.downloadGroup} ${styles.downloadSurface} ${styles.downloadGroupLarge}`
+      : `${styles.downloadGroup} ${styles.downloadSurface}`;
   return (
     <div className={className}>
-      <a
-        href={CHROME_DOWNLOAD_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.downloadButton}
-      >
-        install for Chrome
-      </a>
-      <a
-        href={FIREFOX_DOWNLOAD_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.downloadButton}
-      >
-        install for Firefox
-      </a>
+      <span className={styles.downloadLabel}>install:</span>
+      {DOWNLOAD_LINKS.map(({ browser, url }, index) => (
+        <span key={browser} className={styles.downloadItem}>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.downloadLink}
+          >
+            {browser}
+          </a>
+          {index < DOWNLOAD_LINKS.length - 1 ? (
+            <span className={styles.downloadSeparator} aria-hidden="true">
+              ·
+            </span>
+          ) : null}
+        </span>
+      ))}
     </div>
   );
 }

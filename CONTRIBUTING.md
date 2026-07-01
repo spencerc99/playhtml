@@ -21,6 +21,12 @@ There is future work I'm planning on getting to in the Issues section. If you ha
 
 Bun automatically handles workspace linking, so changes in `common` will be immediately available in `playhtml` and `react` packages without any additional setup. Just run `bun install` at the root to set up the workspace dependencies.
 
+### Updating docs for package changes
+
+When a change under `packages/` affects user-facing behavior, APIs, attributes, CSS classes, examples, or gotchas, update the matching docs under `apps/docs/` in the same PR. Start with the pages most likely to mention the changed surface: capabilities, getting started, React API reference, data, advanced, and integrations docs.
+
+If you checked the docs and no update is needed, call that out in your PR summary so reviewers know it was considered.
+
 ## Release Process
 
 This project uses [Changesets](https://github.com/changesets/changesets) for managing package versions and releases.

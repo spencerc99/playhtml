@@ -5,7 +5,15 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import "@testing-library/dom";
-import { PlayProvider, usePresence, usePageData, usePresenceRoom } from "../index";
+import {
+  PlayProvider,
+  PlayContext,
+  usePresence,
+  usePageData,
+  usePresenceRoom,
+  usePlayerIdentity,
+} from "../index";
+import type { PlayerIdentity } from "playhtml";
 
 describe("usePresence", () => {
   beforeEach(() => {
@@ -150,5 +158,89 @@ describe("usePresenceRoom", () => {
 
     expect(seen[0]).toBe(false);
     await waitFor(() => expect(seen.at(-1)).toBe(true));
+  });
+});
+
+describe("usePlayerIdentity", () => {
+  // The cursor client only exists with a live partykit connection, which the
+  // jsdom test harness intentionally does not mock — so an end-to-end "enable
+  // cursors and read the synced identity" assertion can't run here (that path
+  // is covered by manual browser verification). What this hook actually owns
+  // is the mapping from PlayContext -> { color, pid, name }. We test that real
+  // logic by feeding the hook a known PlayContext value directly.
+  function renderWithContext(value: {
+    color: string;
+    pid: string | undefined;
+    name: string | undefined;
+  }) {
+    let captured: ReturnType<typeof usePlayerIdentity> | null = null;
+    function TestComponent() {
+      captured = usePlayerIdentity();
+      return <div />;
+    }
+    const ctx = {
+      cursors: { allColors: [], color: value.color, name: value.name },
+      getMyPlayerIdentity: () =>
+        value.pid
+          ? ({ publicKey: value.pid } as PlayerIdentity)
+          : null,
+    } as unknown as React.ContextType<typeof PlayContext>;
+    const { rerender } = render(
+      <PlayContext.Provider value={ctx}>
+        <TestComponent />
+      </PlayContext.Provider>,
+    );
+    return { get: () => captured, rerender, TestComponent };
+  }
+
+  it("maps color, pid, and name from context", () => {
+    const { get } = renderWithContext({
+      color: "#123456",
+      pid: "pk_abc",
+      name: "ada",
+    });
+    expect(get()).toEqual({ color: "#123456", pid: "pk_abc", name: "ada" });
+  });
+
+  it("reports undefined pid when identity is absent", () => {
+    const { get } = renderWithContext({
+      color: "",
+      pid: undefined,
+      name: undefined,
+    });
+    expect(get()).toEqual({ color: "", pid: undefined, name: undefined });
+  });
+
+  it("reflects an updated identity (e.g. after extension injection)", () => {
+    let value = { color: "", pid: undefined as string | undefined, name: undefined as string | undefined };
+    let captured: ReturnType<typeof usePlayerIdentity> | null = null;
+    function TestComponent() {
+      captured = usePlayerIdentity();
+      return <div />;
+    }
+    const makeCtx = () =>
+      ({
+        cursors: { allColors: [], color: value.color, name: value.name },
+        getMyPlayerIdentity: () =>
+          value.pid ? ({ publicKey: value.pid } as PlayerIdentity) : null,
+      }) as unknown as React.ContextType<typeof PlayContext>;
+
+    const { rerender } = render(
+      <PlayContext.Provider value={makeCtx()}>
+        <TestComponent />
+      </PlayContext.Provider>,
+    );
+    expect(captured?.pid).toBeUndefined();
+
+    // Simulate the extension merging its identity into the cursor client,
+    // which re-renders consumers with the new color + PID.
+    value = { color: "#ffae00", pid: "pk_injectedtestkey", name: undefined };
+    rerender(
+      <PlayContext.Provider value={makeCtx()}>
+        <TestComponent />
+      </PlayContext.Provider>,
+    );
+    expect(captured?.color.toLowerCase()).toBe("#ffae00");
+    expect(captured?.pid).toBe("pk_injectedtestkey");
   });
 });

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="" />
+
+    <title>html day san francisco 2026</title>
+  </head>
+  <body>
+    <!-- 
+     - FOG rolls in?
+     - sutro tower image / rendering?
+     - sourdough
+     - coffee 
+     - muni / cable cars..
+     - sf startup billboard that you throw stuff on? lol
+     
+    -->
+
+    <div class="event-header">
+      <div class="star"><span class="star-icon" style="">✺</span></div>
+    </div>
+    <div class="event-info">
+      <p>
+        Please join us for
+        <b>HTML Day <span style="color: #fb5b1f">San Francisco</span> 2026</b>
+        to write some HTML in the park!
+      </p>
+      <div class="event-details">
+        <label>Details</label>
+        <p>Aug 8th 1-3PM @ Golden Gate Park (precise location TBD)</p>
+      </div>
+
+      <div class="event-details">
+        <label>Hosts</label>
+        <p>
+          <a href="https://spencer.place/">Spencer Chang</a> &
+          <a href="https://leiac.me/">Leia Chang</a> as part of
+          <a href="https://html.energy">HTML Energy</a>
+        </p>
+      </div>
+      <div class="event-details">
+        <label>What to bring</label>
+        <p>your laptop or something else to write HTML with!</p>
+      </div>
+
+      <!-- TODO: playhtml sign in thing stamp -->
+      <!-- <label>Sign</label> -->
+      <!-- TODO: playhtml submit your website/file -->
+    </div>
+  </body>
+  <script type="module">
+    import { playhtml } from "../../../packages/playhtml/src/index.ts";
+
+    // Initialize with cursor tracking
+    playhtml.init({
+      cursors: {
+        enabled: true,
+        room: "page",
+      },
+    });
+  </script>
+  <style>
+    body {
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+      /* cool dawn sky above the fog sea */
+      background: linear-gradient(
+        180deg,
+        #aebccb 0%,
+        #c6d0da 40%,
+        #dfe4e8 100%
+      );
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* anchor content in the upper region so text clears the fog line */
+      /* padding: 6vh 0 0; */
+    }
+
+    /* the fog sea: fixed band across the bottom, content rises out of it */
+    .fog-sea {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 44vh;
+      z-index: 2; /* above the card body so the card's base submerges into fog */
+      pointer-events: none;
+      overflow: hidden;
+      /* gentle haze near the base; ridges carry the silhouette above it */
+      background: linear-gradient(
+        180deg,
+        rgba(244, 247, 250, 0) 0%,
+        rgba(244, 247, 250, 0) 45%,
+        rgba(247, 249, 251, 0.65) 72%,
+        rgba(250, 251, 252, 1) 100%
+      );
+    }
+
+    /* faint billowy texture over the body so it isn't a flat fill */
+    .fog-sea::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: url("/fog-body.webp");
+      background-size: 160% auto;
+      background-position: center bottom;
+      mix-blend-mode: soft-light;
+      opacity: 0.5;
+      animation: fog-texture-drift 80s linear infinite;
+    }
+
+    /* each ridge is a wide wave silhouette that drifts horizontally */
+    .ridge {
+      position: absolute;
+      left: -25%;
+      width: 150%; /* overscan so the drift never reveals an edge */
+      bottom: 0;
+      will-change: transform;
+    }
+
+    .ridge svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* soft crest shadow so each rolling ridge reads as a distinct body */
+    .ridge path {
+      fill: #f7f9fb;
+      filter: drop-shadow(0 -6px 10px rgba(120, 134, 150, 0.22));
+    }
+
+    .ridge-back {
+      height: 50vh;
+      opacity: 0.7;
+      animation: ridge-drift-a 70s ease-in-out infinite;
+    }
+    .ridge-back path {
+      fill: #e7edf3;
+    }
+
+    .ridge-mid {
+      height: 42vh;
+      opacity: 0.92;
+      animation: ridge-drift-b 52s ease-in-out infinite;
+    }
+    .ridge-mid path {
+      fill: #f1f5f9;
+    }
+
+    .ridge-front {
+      height: 34vh;
+      opacity: 1;
+      animation: ridge-drift-a 38s ease-in-out infinite reverse;
+    }
+    .ridge-front path {
+      fill: #fcfdfe;
+    }
+
+    /* slow undulating drift; two phases so ridges don't move in lockstep */
+    @keyframes ridge-drift-a {
+      0% {
+        transform: translate3d(0, 0, 0);
+      }
+      50% {
+        transform: translate3d(-8%, 6px, 0);
+      }
+      100% {
+        transform: translate3d(0, 0, 0);
+      }
+    }
+    @keyframes ridge-drift-b {
+      0% {
+        transform: translate3d(-6%, 0, 0);
+      }
+      50% {
+        transform: translate3d(2%, -5px, 0);
+      }
+      100% {
+        transform: translate3d(-6%, 0, 0);
+      }
+    }
+
+    @keyframes fog-texture-drift {
+      from {
+        background-position: 0% bottom;
+      }
+      to {
+        background-position: -160% bottom;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ridge,
+      .fog-sea::after {
+        animation: none;
+      }
+    }
+
+    .event-header {
+      position: relative;
+      z-index: 1; /* keep the star above the fog */
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .star-icon {
+      display: inline-block;
+      color: #fb5b1f;
+      filter: blur(3px);
+      margin-top: 3px;
+      font-size: 120px;
+      animation: spin 10s linear infinite;
+    }
+
+    .event-details p {
+      margin-top: 0;
+    }
+
+    /* spinning star animation */
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .event-info {
+      position: relative;
+      z-index: 1; /* above the fog layers */
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 20px 20px 120px; /* extra base submerges into the fog, below the text */
+      text-align: left;
+      line-height: 1.5;
+      font-size: 1.2rem;
+      color: #333;
+      background: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 10px 40px rgba(60, 70, 85, 0.18);
+    }
+
+    .event-info p:first-child {
+      margin-top: 0;
+    }
+
+    label {
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.25em;
+    }
+  </style>
+</html>

@@ -15,7 +15,7 @@
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
+      "invocation_logs": false
     }
   },
   "secrets": {
@@ -26,6 +26,10 @@
       {
         "name": "Main",
         "class_name": "PartyServer"
+      },
+      {
+        "name": "Presence",
+        "class_name": "PresenceServer"
       }
     ]
   },
@@ -33,6 +37,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["PartyServer"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["PresenceServer"]
     }
   ],
   "env": {
@@ -49,7 +57,7 @@
       "observability": {
         "logs": {
           "enabled": true,
-          "invocation_logs": true
+          "invocation_logs": false
         }
       },
       "secrets": {
@@ -60,6 +68,10 @@
           {
             "name": "Main",
             "class_name": "PartyServer"
+          },
+          {
+            "name": "Presence",
+            "class_name": "PresenceServer"
           }
         ]
       },
@@ -67,6 +79,10 @@
         {
           "tag": "v1",
           "new_sqlite_classes": ["PartyServer"]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["PresenceServer"]
         }
       ]
     }

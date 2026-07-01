@@ -72,6 +72,42 @@ describe("ViewportCollector", () => {
 
       removeSpy.mockRestore();
     });
+
+    it("flushes pending scroll before disabling", async () => {
+      collector.enable();
+
+      simulateScroll(0, 100);
+      await advanceTime(250);
+      collector.disable();
+
+      const scrollCalls = emitCallback.mock.calls.filter(
+        (call) => (call[0] as ViewportEventData).event === "scroll"
+      );
+      expect(scrollCalls.length).toBe(1);
+    });
+
+    it("flushes pending zoom before disabling", async () => {
+      collector.enable();
+
+      Object.defineProperty(window, "visualViewport", {
+        value: {
+          scale: 1.5,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        },
+        writable: true,
+        configurable: true,
+      });
+      simulateResize(1024, 768);
+      await advanceTime(500);
+      collector.disable();
+
+      const zoomCalls = emitCallback.mock.calls.filter(
+        (call) => (call[0] as ViewportEventData).event === "zoom"
+      );
+      expect(zoomCalls.length).toBe(1);
+      expect((zoomCalls[0][0] as ViewportEventData).zoom).toBe(1.5);
+    });
   });
 
   describe("scroll events", () => {
@@ -83,7 +119,7 @@ describe("ViewportCollector", () => {
       // scrollY = 616 → normalized = 616 / 1232 ≈ 0.5
       simulateScroll(0, 616);
 
-      await advanceTime(100); // Past throttle (100ms)
+      await advanceTime(500); // Past throttle (500ms)
 
       expect(emitCallback).toHaveBeenCalledTimes(1);
       const call = emitCallback.mock.calls[0][0] as ViewportEventData;
@@ -92,16 +128,16 @@ describe("ViewportCollector", () => {
       expect(call.scrollY).toBeCloseTo(0.5, 2);
     });
 
-    it("throttles scroll events to 100ms", async () => {
+    it("throttles scroll events to 500ms", async () => {
       collector.enable();
 
       simulateScroll(0, 100);
-      await advanceTime(50); // Less than throttle
+      await advanceTime(499); // Less than throttle
 
       expect(emitCallback).not.toHaveBeenCalled();
 
       simulateScroll(0, 200);
-      await advanceTime(60); // Now past 100ms total
+      await advanceTime(1); // Now past 500ms total
 
       expect(emitCallback).toHaveBeenCalledTimes(1);
     });
@@ -111,7 +147,7 @@ describe("ViewportCollector", () => {
 
       // Scroll to top
       simulateScroll(0, 0);
-      await advanceTime(100);
+      await advanceTime(500);
 
       let call = emitCallback.mock.calls[0][0] as ViewportEventData;
       expect(call.scrollY).toBe(0);
@@ -119,7 +155,7 @@ describe("ViewportCollector", () => {
       // Scroll to bottom (max scroll)
       const maxScrollY = 2000 - 768; // 1232
       simulateScroll(0, maxScrollY);
-      await advanceTime(100);
+      await advanceTime(500);
 
       call = emitCallback.mock.calls[1][0] as ViewportEventData;
       expect(call.scrollY).toBeCloseTo(1, 2);
@@ -132,7 +168,7 @@ describe("ViewportCollector", () => {
       Object.defineProperty(document.documentElement, 'scrollWidth', { value: 2000, writable: true, configurable: true });
       simulateScroll(500, 0);
 
-      await advanceTime(100);
+      await advanceTime(500);
 
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as ViewportEventData;
@@ -144,7 +180,7 @@ describe("ViewportCollector", () => {
 
       // Scroll beyond max (should clamp to 1)
       simulateScroll(0, 10000);
-      await advanceTime(100);
+      await advanceTime(500);
 
       const call = emitCallback.mock.calls[0][0] as ViewportEventData;
       expect(call.scrollY).toBeLessThanOrEqual(1);
@@ -156,7 +192,7 @@ describe("ViewportCollector", () => {
       collector.enable();
 
       simulateResize(1280, 1024);
-      await advanceTime(200); // Past debounce (200ms)
+      await advanceTime(1000); // Past debounce (1000ms)
 
       expect(emitCallback).toHaveBeenCalledTimes(1);
       const call = emitCallback.mock.calls[0][0] as ViewportEventData;
@@ -165,16 +201,16 @@ describe("ViewportCollector", () => {
       expect(call.height).toBe(1024);
     });
 
-    it("debounces resize events to 200ms", async () => {
+    it("debounces resize events to 1000ms", async () => {
       collector.enable();
 
       simulateResize(1100, 800);
-      await advanceTime(100); // Less than debounce
+      await advanceTime(999); // Less than debounce
 
       expect(emitCallback).not.toHaveBeenCalled();
 
       simulateResize(1200, 900);
-      await advanceTime(200); // Complete the debounce from second resize
+      await advanceTime(1000); // Complete the debounce from second resize
 
       // Should only emit once (debounced)
       expect(emitCallback).toHaveBeenCalledTimes(1);
@@ -184,16 +220,25 @@ describe("ViewportCollector", () => {
       collector.enable();
 
       simulateResize(1100, 800);
-      await advanceTime(150); // Partway through debounce
+      await advanceTime(750); // Partway through debounce
 
       simulateResize(1200, 900); // New resize cancels previous
-      await advanceTime(200); // Complete new debounce
+      await advanceTime(1000); // Complete new debounce
 
       // Should only emit once with latest dimensions
       expect(emitCallback).toHaveBeenCalledTimes(1);
       const call = emitCallback.mock.calls[0][0] as ViewportEventData;
       expect(call.width).toBe(1200);
       expect(call.height).toBe(900);
+    });
+
+    it("ignores tiny resize changes", async () => {
+      collector.enable();
+
+      simulateResize(1040, 790);
+      await advanceTime(1000);
+
+      expect(emitCallback).not.toHaveBeenCalled();
     });
   });
 
@@ -215,7 +260,7 @@ describe("ViewportCollector", () => {
 
       // Trigger resize (which checks zoom)
       simulateResize(1024, 768);
-      await advanceTime(200); // Wait for resize debounce (200ms)
+      await advanceTime(1000); // Wait for resize debounce (1000ms)
 
       expect(emitCallback).toHaveBeenCalled();
       const zoomCall = emitCallback.mock.calls.find(
@@ -237,7 +282,7 @@ describe("ViewportCollector", () => {
 
       // Zoom stays at 1
       simulateResize(1024, 768);
-      await advanceTime(200); // Wait for resize debounce (200ms)
+      await advanceTime(1000); // Wait for resize debounce (1000ms)
 
       // Should only emit resize, not zoom
       const zoomCalls = emitCallback.mock.calls.filter(
@@ -246,7 +291,7 @@ describe("ViewportCollector", () => {
       expect(zoomCalls.length).toBe(0);
     });
 
-    it("debounces rapid zoom changes within 2 seconds and tracks quantity", async () => {
+    it("emits the settled zoom value after resize debounce", async () => {
       collector.enable();
 
       // First zoom: 1 -> 1.25
@@ -260,17 +305,15 @@ describe("ViewportCollector", () => {
         configurable: true,
       });
       simulateResize(1024, 768);
-      await advanceTime(200); // Wait for resize debounce (200ms)
+      await advanceTime(500); // Still inside the resize debounce window
 
-      // Should emit first zoom
-      let zoomCalls = emitCallback.mock.calls.filter(
-        (call) => (call[0] as ViewportEventData).event === "zoom"
-      );
-      expect(zoomCalls.length).toBe(1);
-      expect((zoomCalls[0][0] as ViewportEventData).quantity).toBe(1);
+      expect(
+        emitCallback.mock.calls.filter(
+          (call) => (call[0] as ViewportEventData).event === "zoom"
+        )
+      ).toHaveLength(0);
 
-      // Second zoom: 1.25 -> 1.5 (within 500ms of first - should be debounced)
-      await advanceTime(300); // 300ms since first zoom
+      // Second zoom: 1.25 -> 1.5 before the debounce settles
       Object.defineProperty(window, "visualViewport", {
         value: {
           scale: 1.5,
@@ -281,33 +324,24 @@ describe("ViewportCollector", () => {
         configurable: true,
       });
       simulateResize(1024, 768);
-      await advanceTime(200); // Wait for resize debounce (200ms)
+      await advanceTime(1000); // Wait for the final resize debounce
 
-      // Third zoom: 1.5 -> 1.75 (within 2s window of first - should still be debounced)
-      await advanceTime(300); // 800ms since first zoom
-      Object.defineProperty(window, "visualViewport", {
-        value: {
-          scale: 1.75,
-          addEventListener: vi.fn(),
-          removeEventListener: vi.fn(),
-        },
-        writable: true,
-        configurable: true,
-      });
-      simulateResize(1024, 768);
-      await advanceTime(200); // Wait for resize debounce (200ms)
-
-      // Still only 1 zoom event (within 2s debounce window)
-      zoomCalls = emitCallback.mock.calls.filter(
+      let zoomCalls = emitCallback.mock.calls.filter(
         (call) => (call[0] as ViewportEventData).event === "zoom"
       );
       expect(zoomCalls.length).toBe(1);
+      const settledZoom = zoomCalls[0][0] as ViewportEventData;
+      expect(settledZoom.zoom).toBe(1.5);
+      expect(settledZoom.previous_zoom).toBe(1);
+      expect(settledZoom.quantity).toBe(2);
+    });
 
-      // Fourth zoom: 1.75 -> 2.0 (after >2s since first zoom - should emit new event)
-      await advanceTime(1500); // Now >2s since first zoom (200+300+200+300+200+1500 = 2700ms)
+    it("ignores zoom changes below five percent", async () => {
+      collector.enable();
+
       Object.defineProperty(window, "visualViewport", {
         value: {
-          scale: 2.0,
+          scale: 1.04,
           addEventListener: vi.fn(),
           removeEventListener: vi.fn(),
         },
@@ -315,19 +349,12 @@ describe("ViewportCollector", () => {
         configurable: true,
       });
       simulateResize(1024, 768);
-      await advanceTime(200); // Wait for resize debounce (200ms)
+      await advanceTime(1000);
 
-      // Should now have 2 zoom events
-      zoomCalls = emitCallback.mock.calls.filter(
+      const zoomCalls = emitCallback.mock.calls.filter(
         (call) => (call[0] as ViewportEventData).event === "zoom"
       );
-      expect(zoomCalls.length).toBe(2);
-
-      // Check the second zoom event has previous_zoom and quantity
-      const secondZoom = zoomCalls[1][0] as ViewportEventData;
-      expect(secondZoom.zoom).toBe(2.0);
-      expect(secondZoom.previous_zoom).toBe(1.75);
-      expect(secondZoom.quantity).toBe(1); // New debounce window
+      expect(zoomCalls.length).toBe(0);
     });
   });
 
@@ -351,11 +378,11 @@ describe("ViewportCollector", () => {
 
       // Scroll
       simulateScroll(0, 100);
-      await advanceTime(100);
+      await advanceTime(500);
 
       // Resize
       simulateResize(1280, 1024);
-      await advanceTime(200);
+      await advanceTime(1000);
 
       // Zoom change
       Object.defineProperty(window, "visualViewport", {
@@ -368,7 +395,7 @@ describe("ViewportCollector", () => {
         configurable: true,
       });
       simulateResize(1280, 1024);
-      await advanceTime(200);
+      await advanceTime(1000);
 
       expect(emitCallback).toHaveBeenCalled();
       const events = emitCallback.mock.calls.map(

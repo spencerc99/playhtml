@@ -1,10 +1,12 @@
-import { syncedStore } from "@syncedstore/core";
+// ABOUTME: Provides authenticated room inspection and maintenance endpoints.
+// ABOUTME: Coordinates database snapshots, client resets, and Supabase persistence safeguards.
 import { Buffer } from "node:buffer";
 import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
 import { PartyServer } from "./party";
-import { docToJson, replaceDocState, encodeDocToBase64 } from "./docUtils";
+import { docToJson, encodeDocToBase64 } from "./docUtils";
+import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 
 function compareKeys(
   obj1: any,
@@ -26,10 +28,10 @@ function compareKeys(
  * AdminHandler provides endpoints for inspecting and managing PlayHTML rooms.
  *
  * Data Flow:
- * - Normal admin edits (save-edited-data, cleanup-orphans) mutate the live Y.Doc directly,
- *   then persist to database. The background autosave will naturally keep DB in sync.
- * - Force-reload-live is an escape hatch for when DB was modified externally (e.g., scripts)
- *   and we need to sync the live doc to match the database state.
+ * - Admin edits load the database snapshot as source of truth, commit a fresh
+ *   snapshot, then reset connected clients onto that snapshot.
+ * - Force-save-live is an escape hatch for persisting the live in-memory doc.
+ * - Force-reload-live syncs the live doc to match the database state.
  * - All Y.Doc conversions use shared utilities in docUtils.ts for consistency.
  */
 export class AdminHandler {
@@ -83,6 +85,12 @@ export class AdminHandler {
       ) {
         return this.handleAdminSaveEditedData(request);
       }
+      if (
+        path.includes("admin/moderation-remove") &&
+        request.method === "POST"
+      ) {
+        return this.handleModerationRemove(request);
+      }
       if (path.includes("admin/cleanup-orphans") && request.method === "POST") {
         return this.handleAdminCleanupOrphans(request);
       }
@@ -119,6 +127,38 @@ export class AdminHandler {
       }
     }
     return null;
+  }
+
+  private checkPersistenceWriteAvailable(): Response | null {
+    return this.context.getPersistenceUnavailableResponse();
+  }
+
+  private async loadDatabasePlayData(): Promise<{
+    play: Record<string, any> | null;
+    documentSize: number;
+  }> {
+    const { data, error } = await supabase
+      .from("documents")
+      .select("document")
+      .eq("name", this.context.name)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data?.document) {
+      return { play: null, documentSize: 0 };
+    }
+
+    const yDoc = new Y.Doc();
+    const buffer = new Uint8Array(Buffer.from(data.document, "base64"));
+    Y.applyUpdate(yDoc, buffer);
+
+    return {
+      play: docToJson(yDoc),
+      documentSize: data.document.length,
+    };
   }
 
   private async handleAdminInspect(request: Request): Promise<Response> {
@@ -389,6 +429,8 @@ export class AdminHandler {
   private async handleAdminForceSaveLive(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       const liveYDoc = this.context.document;
@@ -401,6 +443,7 @@ export class AdminHandler {
         { onConflict: "name" }
       );
       if (error) throw new Error(error.message);
+      this.context.markDocumentPersisted(base64);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -443,10 +486,11 @@ export class AdminHandler {
         );
       }
 
-      // Use the centralized restoreFromSnapshot method without bumping epoch
+      // Force DB -> live is an authoritative admin reset boundary.
       const result = await this.context.restoreFromSnapshot(data.document, {
-        bumpEpoch: false,
+        bumpEpoch: true,
       });
+      this.context.markPersistenceAvailable();
 
       return new Response(
         JSON.stringify({
@@ -454,6 +498,7 @@ export class AdminHandler {
           message: "Live doc reloaded from database",
           documentSize: result.documentSize,
           resetEpoch: result.resetEpoch,
+          closedConnections: result.closedConnections,
         }),
         {
           headers: { "content-type": "application/json" },
@@ -470,13 +515,13 @@ export class AdminHandler {
   }
 
   /**
-   * Save edited JSON data to the live Y.Doc and persist to database.
-   * This mutates the live doc directly, so the background autosave will
-   * naturally persist the same state. No force-reload needed.
+   * Save edited JSON data as the authoritative room snapshot.
    */
   private async handleAdminSaveEditedData(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       const body = (await request.json()) as any;
@@ -492,37 +537,18 @@ export class AdminHandler {
         );
       }
 
-      // Get the live Y.Doc and mutate it directly
-      const liveYDoc = this.context.document;
-
       console.log(`[Admin] Saving edited data for room ${this.context.name}`);
       console.log(
         `[Admin] Edited data keys: ${Object.keys(editedData).length}`
       );
 
-      // Replace live doc state with edited data
-      replaceDocState(liveYDoc, editedData);
+      const result = await this.context.commitAdminPlayData(editedData);
 
-      // Persist immediately to database
-      const base64 = encodeDocToBase64(liveYDoc);
-      console.log(`[Admin] Encoded content length: ${base64.length}`);
-
-      const { error } = await supabase.from("documents").upsert(
-        {
-          name: this.context.name,
-          document: base64,
-        },
-        { onConflict: "name" }
+      console.log(
+        `[Admin] Saved authoritative snapshot and reset ${result.closedConnections} clients`
       );
 
-      if (error) {
-        console.error(`[Admin] Database error:`, error);
-        throw new Error(error.message);
-      }
-
-      console.log(`[Admin] Successfully saved to database and live doc`);
-
-      return new Response(JSON.stringify({ ok: true }), {
+      return new Response(JSON.stringify({ ok: true, ...result }), {
         headers: {
           "content-type": "application/json",
           "Access-Control-Allow-Origin": "*",
@@ -534,6 +560,71 @@ export class AdminHandler {
       return new Response(
         JSON.stringify({
           error: "Failed to save edited data",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  private async handleModerationRemove(request: Request): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
+
+    try {
+      const body = (await request.json()) as { targets?: RemoveTarget[] };
+      const targets = body?.targets;
+      if (!Array.isArray(targets) || targets.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Missing or empty targets array" }),
+          { status: 400, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      const { play } = await this.loadDatabasePlayData();
+      if (!play) {
+        return new Response(
+          JSON.stringify({ error: "Room has no play data" }),
+          { status: 404, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      const result = removeRecordsByTargets(play, targets);
+      let resetResult:
+        | {
+            documentSize: number;
+            resetEpoch: number;
+            closedConnections: number;
+          }
+        | null = null;
+
+      if (result.removed > 0) {
+        resetResult = await this.context.commitAdminPlayData(result.play);
+      }
+
+      return new Response(
+        JSON.stringify({
+          removed: result.removed,
+          skipped: result.skipped,
+          documentSize: resetResult?.documentSize ?? null,
+          resetEpoch: resetResult?.resetEpoch ?? null,
+          closedConnections: resetResult?.closedConnections ?? 0,
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error: unknown) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to remove moderated records",
           message: error instanceof Error ? error.message : String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } }
@@ -606,6 +697,8 @@ export class AdminHandler {
   private async handleAdminCleanupOrphans(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       const body = (await request.json()) as {
@@ -639,16 +732,8 @@ export class AdminHandler {
       }
 
       const activeIdSet = new Set(activeIds);
-
-      // Load the room document
-      const yDoc = this.context.document;
-      const store = syncedStore<{ play: Record<string, any> }>(
-        { play: {} },
-        yDoc
-      );
-
-      // Get all entries for the specified tag
-      const tagData = store.play[tag];
+      const { play } = await this.loadDatabasePlayData();
+      const tagData = play?.[tag];
       if (!tagData || typeof tagData !== "object") {
         return new Response(
           JSON.stringify({
@@ -692,7 +777,6 @@ export class AdminHandler {
         );
       }
 
-      // Remove orphaned entries (mutates live doc directly)
       let removedCount = 0;
       for (const orphanedId of orphanedIds) {
         try {
@@ -706,21 +790,10 @@ export class AdminHandler {
         }
       }
 
-      // Persist the updated live doc to database
-      const base64 = encodeDocToBase64(yDoc);
-      const { error: saveError } = await supabase.from("documents").upsert(
-        {
-          name: this.context.name,
-          document: base64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (saveError) {
-        throw new Error(
-          `Failed to save cleaned document: ${saveError.message}`
-        );
-      }
+      const resetResult =
+        removedCount > 0 && play
+          ? await this.context.commitAdminPlayData(play)
+          : null;
 
       return new Response(
         JSON.stringify({
@@ -731,6 +804,9 @@ export class AdminHandler {
           removed: removedCount,
           orphanedIds,
           message: `Removed ${removedCount} orphaned entries`,
+          documentSize: resetResult?.documentSize ?? null,
+          resetEpoch: resetResult?.resetEpoch ?? null,
+          closedConnections: resetResult?.closedConnections ?? 0,
         }),
         {
           headers: {
@@ -767,6 +843,8 @@ export class AdminHandler {
   private async handleAdminHardReset(request: Request): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     const roomId = this.context.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
@@ -790,6 +868,7 @@ export class AdminHandler {
           sizeReduction,
           sizeReductionPercent: `${sizeReductionPercent}%`,
           resetEpoch: result.resetEpoch,
+          closedConnections: result.closedConnections,
         }),
         {
           headers: {
@@ -836,6 +915,8 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     const roomId = this.context.name;
     console.log(`[Restore Raw] Starting for room: ${roomId}`);
@@ -891,6 +972,7 @@ export class AdminHandler {
           message: "Raw document restored successfully",
           documentSize: result.documentSize,
           resetEpoch: result.resetEpoch,
+          closedConnections: result.closedConnections,
         }),
         {
           headers: {
