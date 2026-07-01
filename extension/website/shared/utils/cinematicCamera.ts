@@ -160,9 +160,20 @@ export class CinematicCamera {
     // canvas center, so it lands framed on the whole field.
     if (this.config.mode === "reveal") {
       if (this.revealSubjectIndex === null) {
-        // Wait for a cursor to lock onto; until then leave the view untouched.
+        // Hold the tight start-zoom on canvas center until the first cursor
+        // appears. Returning the full canvas here instead lets the first trail
+        // draw zoomed-OUT for a few frames, then the lock snaps the camera in —
+        // which reads as the opening cursor drawing once, then restarting under
+        // the zoom. Pre-framing tight means the lock is a small pan, not a jump.
         const first = this.selectNextSubject(activeTrails, null);
-        if (first === null) return this.lastViewBox;
+        if (first === null) {
+          return boxAround(
+            { x: screenW / 2, y: screenH / 2 },
+            this.config.revealStartZoom,
+            screenW,
+            screenH,
+          );
+        }
         const s = activeTrails.find((t) => t.index === first)!;
         this.revealSubjectIndex = first;
         this.revealSubjectLast = { x: s.x, y: s.y };
