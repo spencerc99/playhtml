@@ -252,17 +252,16 @@ const InternetMovement = () => {
     [],
   );
 
-  // When day, server-side domain, or the time-of-day window changes, refetch.
-  // time-of-day must refetch because the midnight window is fetched server-side
-  // (a tight from/to bracket), not just filtered client-side.
+  // Refetch when the day, server-side domain, time-of-day window, or active
+  // visualizations change. time-of-day must refetch because the midnight window
+  // is fetched server-side (a tight from/to bracket), not just filtered
+  // client-side; active-viz changes fetch any missing event types. A single
+  // effect (rather than one per dependency group) so mount fires ONE fetch —
+  // two effects both ran on the first render, and the duplicate fetch's late
+  // resolution rebuilt the trail set and restarted the animation mid-reveal.
   useEffect(() => {
     fetchEvents(selectedDay, activeVisualizations, serverDomain, false, timeOfDay);
-  }, [selectedDay, serverDomain, timeOfDay]);
-
-  // When active visualizations change, fetch any missing event types
-  useEffect(() => {
-    fetchEvents(selectedDay, activeVisualizations, serverDomain, false, timeOfDay);
-  }, [activeVisualizations]);
+  }, [selectedDay, serverDomain, timeOfDay, activeVisualizations]);
 
   const handleRefresh = useCallback(() => {
     fetchedTypesRef.current = new Set();
