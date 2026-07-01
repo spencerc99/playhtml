@@ -4,7 +4,8 @@
 import { chromium } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import type { SceneConfig } from "./scene.js";
+import { createPersonas } from "./personas.js";
+import type { SceneConfig, SceneRuntimeOptions } from "./scene.js";
 
 const EXTENSION_PATH = path.resolve(
   import.meta.dir,
@@ -25,7 +26,25 @@ function parseArgs() {
     noVideo: has("--no-video"),
     headed: has("--headed"),
     port: get("--port"),
+    actors: get("--actors"),
+    duration: get("--duration"),
+    seed: get("--seed"),
+    baseUrl: get("--base-url"),
+    hostUrl: get("--host-url"),
   };
+}
+
+function parsePositiveInteger(value: string | undefined, label: string) {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function defaultBaseUrl(port: string | undefined) {
+  return port ? `http://localhost:${port}` : undefined;
 }
 
 async function createSyncHelpers() {
@@ -129,7 +148,19 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     scene.url = scene.url.replace(/\{port\}/g, scene.port ?? "4321");
   }
 
-  const actorCount = scene.actors ?? 2;
+  const actorCount = parsePositiveInteger(args.actors, "--actors") ?? scene.actors ?? 2;
+  const durationMs =
+    parsePositiveInteger(args.duration, "--duration") ?? scene.durationMs ?? 120_000;
+  const seed = args.seed ?? `${args.scene}-${Date.now()}`;
+  const baseUrl = args.baseUrl ?? scene.baseUrl ?? defaultBaseUrl(args.port);
+  const hostUrl = args.hostUrl ?? scene.hostUrl;
+  const personas = createPersonas(actorCount, seed);
+  const options: SceneRuntimeOptions = {
+    durationMs,
+    seed,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(hostUrl ? { hostUrl } : {}),
+  };
   const viewport = scene.viewport ?? { width: 1280, height: 720 };
   const recordActor = scene.recordActor ?? 0;
   const videoDir = scene.videoDir ?? VIDEO_DIR;
@@ -139,6 +170,10 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   console.log(`Scene: ${args.scene}`);
   console.log(`Actors: ${actorCount}${useCamera ? " + camera" : ""}`);
+  console.log(`Duration: ${durationMs}ms`);
+  console.log(`Seed: ${seed}`);
+  if (baseUrl) console.log(`Base URL: ${baseUrl}`);
+  if (hostUrl) console.log(`Open in your browser: ${hostUrl}`);
   console.log(`Extension: ${scene.extension ? extensionPath : "none"}`);
   console.log(`URL: ${scene.url}`);
   console.log();
@@ -306,7 +341,15 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   try {
-    await scene.run({ pages, contexts, sync, camera: cameraPage ?? undefined, port: scene.port });
+    await scene.run({
+      pages,
+      contexts,
+      sync,
+      camera: cameraPage ?? undefined,
+      port: scene.port,
+      personas,
+      options,
+    });
   } catch (err) {
     console.error("Scene error:", err);
   }
