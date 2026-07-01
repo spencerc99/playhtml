@@ -78,8 +78,8 @@ want to watch or debug the actor browsers directly.
 Reusable pieces live in `src/`:
 
 - `random.ts`: deterministic randomness.
-- `personas.ts`: actor names, colors, and behavior traits.
-- `actions.ts`: human-like Playwright actions.
+- `personas.ts`: actor names, colors, rhythm, motion, and prompt traits.
+- `actions.ts`: human-like Playwright actions, delays, and cursor jitter.
 - `session.ts`: duration and URL helpers.
 - `errors.ts`: fatal browser error collection.
 
@@ -88,9 +88,12 @@ For a fresh behavior request, create a scene that:
 1. builds an isolated room URL from `options.seed`,
 2. seeds each actor identity before navigation,
 3. runs actor loops until `createRunUntil(options.durationMs)` expires,
-4. varies actions with `persona.random.weighted(...)`,
-5. asserts that page-visible state changed,
-6. lets runner error collection fail on fatal page errors.
+4. waits for `persona.rhythm.startDelayMs` before each actor loop,
+5. calls `actions.pauseBeforeAction()` and `actions.betweenActions()` inside
+   loops,
+6. varies actions with `persona.random.weighted(...)`,
+7. asserts that page-visible state changed,
+8. lets runner error collection fail on fatal page errors.
 
 Keep scenes small and page-specific. Put shared browser actions in `src/` only
 after two scenes need the same behavior.

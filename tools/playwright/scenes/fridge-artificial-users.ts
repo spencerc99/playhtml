@@ -173,7 +173,9 @@ export default defineScene({
         const persona = personas[index];
         const actions = createActorActions(page, persona, sync);
 
+        await sync.wait(persona.rhythm.startDelayMs);
         while (runUntil.active()) {
+          await actions.pauseBeforeAction();
           const action = persona.random.weighted([
             { weight: persona.movementStyle === "observer" ? 1 : 3, value: "drag" },
             { weight: persona.curiosity, value: "add" },
@@ -196,6 +198,7 @@ export default defineScene({
               runUntil.remainingMs() / 1000,
             )}s`,
           );
+          await actions.betweenActions();
         }
       }),
     );

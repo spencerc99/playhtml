@@ -61,6 +61,22 @@ async function shareUrl(page: Page, persona: ActorPersona, sync: SyncHelpers) {
   return visible;
 }
 
+function promptStepCount(persona: ActorPersona, min: number, max: number) {
+  const committedMax = Math.max(min, Math.round(max * persona.prompt.commitment));
+  return persona.random.int(min, committedMax);
+}
+
+function offsetPoint(
+  persona: ActorPersona,
+  point: { x: number; y: number },
+  amount: number,
+) {
+  return {
+    x: point.x + persona.random.float(-amount, amount),
+    y: point.y + persona.random.float(-amount, amount),
+  };
+}
+
 async function moveForPrompt(
   page: Page,
   persona: ActorPersona,
@@ -74,14 +90,32 @@ async function moveForPrompt(
   const radius = Math.min(viewport.width, viewport.height) * 0.22;
   const lowerPrompt = prompt.toLowerCase();
 
+  if (!prompt || !persona.random.bool(persona.prompt.attention)) {
+    await actions.wander(persona.movementStyle === "observer" ? 1 : 2);
+    return;
+  }
+
   if (lowerPrompt.includes("circle")) {
-    for (let i = 0; i < 5; i++) {
-      const angle = (Math.PI * 2 * (i + persona.index / 4)) / 5;
-      await actions.moveTo(
-        center.x + Math.cos(angle) * radius,
-        center.y + Math.sin(angle) * radius,
-        650,
+    const steps = promptStepCount(persona, 2, 7);
+    const personalRadius = radius * persona.random.float(0.55, 1.35);
+    const phase = persona.random.float(0, Math.PI * 2);
+    const direction = persona.random.bool(0.5) ? 1 : -1;
+    for (let i = 0; i < steps; i++) {
+      const angle = phase + direction * ((Math.PI * 2 * i) / steps);
+      const target = offsetPoint(
+        persona,
+        {
+          x: center.x + Math.cos(angle) * personalRadius,
+          y: center.y + Math.sin(angle) * personalRadius,
+        },
+        35,
       );
+      await actions.moveTo(
+        target.x,
+        target.y,
+        persona.random.float(480, 1250),
+      );
+      if (persona.random.bool(1 - persona.prompt.commitment)) break;
     }
     return;
   }
@@ -98,22 +132,34 @@ async function moveForPrompt(
   }
 
   if (lowerPrompt.includes("stack")) {
+    const spread = persona.movementStyle === "social" ? 25 : 90;
+    const target = offsetPoint(persona, center, spread);
     await actions.moveTo(
-      center.x + persona.random.float(-25, 25),
-      center.y + persona.random.float(-25, 25),
-      900,
+      target.x,
+      target.y,
+      persona.random.float(650, 1500),
     );
     await actions.idle(800, 1600);
     return;
   }
 
   if (lowerPrompt.includes("zigzag")) {
-    for (let i = 0; i < 5; i++) {
-      await actions.moveTo(
-        160 + i * ((viewport.width - 320) / 4),
-        i % 2 === 0 ? 180 : viewport.height - 180,
-        520,
+    const steps = promptStepCount(persona, 2, 6);
+    const top = persona.random.float(130, 260);
+    const bottom = persona.random.float(viewport.height - 260, viewport.height - 130);
+    const startX = persona.random.float(110, 220);
+    const endX = persona.random.float(viewport.width - 220, viewport.width - 110);
+    for (let i = 0; i < steps; i++) {
+      const progress = steps === 1 ? 1 : i / (steps - 1);
+      const target = offsetPoint(
+        persona,
+        {
+          x: startX + progress * (endX - startX),
+          y: i % 2 === 0 ? top : bottom,
+        },
+        45,
       );
+      await actions.moveTo(target.x, target.y, persona.random.float(420, 900));
     }
     return;
   }
@@ -125,16 +171,21 @@ async function moveForPrompt(
       { x: 110, y: viewport.height - 110 },
       { x: viewport.width - 110, y: viewport.height - 110 },
     ];
-    const corner = corners[persona.index % corners.length];
-    await actions.moveTo(corner.x, corner.y, 900);
+    const corner = persona.random.pick(corners);
+    const target = offsetPoint(persona, corner, 70);
+    await actions.moveTo(target.x, target.y, persona.random.float(700, 1600));
     await actions.idle(900, 1800);
     return;
   }
 
   if (lowerPrompt.includes("rain")) {
     const x = persona.random.float(140, viewport.width - 140);
-    await actions.moveTo(x, 80, 400);
-    await actions.moveTo(x + persona.random.float(-40, 40), viewport.height - 90, 1400);
+    await actions.moveTo(x, persona.random.float(60, 160), 400);
+    await actions.moveTo(
+      x + persona.random.float(-90, 90),
+      viewport.height - persona.random.float(70, 180),
+      persona.random.float(900, 1800),
+    );
     return;
   }
 
@@ -171,23 +222,26 @@ export default defineScene({
       pages.map((page, index) => enterName(page, personas[index], sync)),
     );
 
-    const runUntil = createRunUntil(options.durationMs);
     let sharedUrls = 0;
     if (await shareUrl(pages[0], personas[0], sync)) sharedUrls++;
+    const runUntil = createRunUntil(options.durationMs);
 
     await Promise.all(
       pages.map(async (page, index) => {
         const persona = personas[index];
         const actions = createActorActions(page, persona, sync);
 
+        await sync.wait(persona.rhythm.startDelayMs);
         while (runUntil.active()) {
+          await actions.pauseBeforeAction();
           const instruction =
             (await page.locator(".group-activity .instruction").innerText().catch(() => "")) ||
             "";
+          const promptWeight = persona.random.bool(persona.prompt.attention) ? 4 : 1;
           const action = persona.random.weighted([
-            { weight: 4, value: "move" },
+            { weight: promptWeight, value: "move" },
             { weight: persona.curiosity, value: "share" },
-            { weight: persona.patience, value: "idle" },
+            { weight: 0.5 + persona.patience, value: "idle" },
           ]);
 
           if (action === "share") {
@@ -203,6 +257,7 @@ export default defineScene({
               runUntil.remainingMs() / 1000,
             )}s`,
           );
+          await actions.betweenActions();
         }
       }),
     );
