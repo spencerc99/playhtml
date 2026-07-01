@@ -79,8 +79,14 @@ if (settingsJson) {
   }, overrides);
 }
 
+// First load warms the page: fetches event data, loads fonts, lets the viz
+// initialize. Then we RELOAD so the timed recording window starts on a blank
+// canvas and captures the draw-on from frame zero (data is cached, so the
+// redraw begins immediately). Trim `waitSec` in encoding to drop the warm-up
+// and land the clip's first frame on the blank-page reload.
 await page.goto(url, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(waitSec * 1000);
+await page.reload({ waitUntil: "domcontentloaded" });
 
 if (slow !== null && fast !== null) {
   // Speed ramp: slow, readable opening, then accelerate. Smooth because the
