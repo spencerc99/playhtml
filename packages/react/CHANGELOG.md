@@ -1,5 +1,18 @@
 # Change Log
 
+## 2.0.0
+
+### Patch Changes
+
+- d5b2df3: Fix `useCursorZone` so cleanup unregisters the originally registered zone id and option changes re-register the zone.
+- 94ce0f3: Make `withSharedState` use its configured `id` when a rendered child also provides a different DOM id, clean up changed id bindings, and report id conflicts without repeated or misleading warnings.
+- Updated dependencies [081cc95]
+- Updated dependencies [d0a0bbc]
+- Updated dependencies [c42588c]
+- Updated dependencies [b56ebd7]
+- Updated dependencies [fb2b6d5]
+  - playhtml@2.12.0
+
 ## 1.0.1
 
 ### Patch Changes
