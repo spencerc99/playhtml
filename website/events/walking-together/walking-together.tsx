@@ -8,7 +8,7 @@ import {
 import { useStickyState } from "../../hooks/useStickyState";
 import {
   resolveSession,
-  roomForSession,
+  roomForCurrentPage,
   type SubtitleSegment,
   type WorkshopSession,
 } from "./sessions";
@@ -410,7 +410,7 @@ function Main({ session }: { session: WorkshopSession }) {
   return (
     <PlayProvider
       initOptions={{
-        room: roomForSession(session),
+        room: roomForCurrentPage(session, new URL(window.location.href)),
         cursors: { enabled: true, coordinateMode: "relative" },
       }}
     >
