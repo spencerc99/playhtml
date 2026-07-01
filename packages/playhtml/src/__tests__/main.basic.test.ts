@@ -1,6 +1,6 @@
 // ABOUTME: Tests basic playhtml element setup and state behavior.
 // ABOUTME: Verifies handler lifecycle, SyncedStore writes, and element cleanup.
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from "vitest";
 import { playhtml } from "../index";
 
 async function waitForCondition(
@@ -81,6 +81,37 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(moveHandler!.data).toEqual({ x: 0, y: 0 });
     expect(el.getAttribute("data-lit")).toBe("true");
     expect(el.style.transform).toBe("translate(0px, 0px)");
+  });
+
+  it("skips existing handlers when requested during repeated setup", async () => {
+    const el = document.createElement("div");
+    el.id = "repeat-setup";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = { count: 0 };
+    (el as any).updateElement = () => {};
+    document.body.appendChild(el);
+
+    playhtml.setupPlayElement(el);
+    await waitForCondition(
+      () =>
+        Boolean(
+          playhtml.elementHandlers!.get("can-play")!.get("repeat-setup"),
+        ),
+      "expected can-play handler to be created",
+    );
+
+    const handler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("repeat-setup")!;
+    const reinitialize = vi.spyOn(handler, "reinitializeElementData");
+
+    playhtml.setupPlayElement(el, { ignoreIfAlreadySetup: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reinitialize).not.toHaveBeenCalled();
+    expect(
+      playhtml.elementHandlers!.get("can-play")!.get("repeat-setup"),
+    ).toBe(handler);
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {

@@ -1,7 +1,7 @@
 // ABOUTME: Launches browser contexts, runs a scene, records video.
 // ABOUTME: CLI entry point: bun src/runner.ts --scene <name> [--no-video] [--headless]
 
-import { chromium, type Browser, type BrowserContext } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 import { installErrorCollector } from "./errors.js";
@@ -14,6 +14,7 @@ import {
 import type { SceneConfig, SceneRuntimeOptions } from "./scene.js";
 import {
   computeTrimWindow,
+  createRealtimeVideoRecorder,
   ffmpegIsAvailable,
   ffprobeIsAvailable,
   probeVideo,
@@ -26,6 +27,9 @@ const EXTENSION_PATH = path.resolve(
   "../../../extension/dist/chrome-mv3",
 );
 const VIDEO_DIR = path.resolve(import.meta.dir, "../videos");
+const REALTIME_VIDEO_FRAME_RATE = 60;
+const REALTIME_VIDEO_MIN_FRAME_RATE = 55;
+const VIDEO_TAIL_MS = 1500;
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -73,7 +77,7 @@ async function createSyncHelpers(recording: { markStart: () => void }) {
     markRecordingStart: recording.markStart,
 
     smoothMove: async (
-      page: import("@playwright/test").Page,
+      page: Page,
       targetX: number,
       targetY: number,
       opts?: { steps?: number; duration?: number },
@@ -185,6 +189,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   const extensionPath = scene.extensionPath ?? EXTENSION_PATH;
   const runHeadless = args.headless && !args.headed;
   const browserLaunchMode = chooseBrowserLaunchMode(scene);
+  const useRealtimeVideo = !args.noVideo && ffmpegIsAvailable();
 
   const useCamera = scene.camera ?? false;
 
@@ -197,6 +202,15 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   console.log(`Extension: ${scene.extension ? extensionPath : "none"}`);
   console.log(`Browser mode: ${runHeadless ? "headless" : "headed"}`);
   console.log(`Actor browser process mode: ${browserLaunchMode}`);
+  if (!args.noVideo) {
+    console.log(
+      `Recording mode: ${
+        useRealtimeVideo
+          ? `${REALTIME_VIDEO_FRAME_RATE} fps realtime mp4`
+          : "Playwright video fallback"
+      }`,
+    );
+  }
   console.log(`URL: ${scene.url}`);
   console.log();
 
@@ -226,16 +240,21 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   let videoStartedAtMs: number | undefined;
   let recordingStartedAtMs: number | undefined;
+  let realtimeRecorder: Awaited<ReturnType<typeof createRealtimeVideoRecorder>> | null = null;
   const markRecordingStart = () => {
     if (recordingStartedAtMs !== undefined) return;
     recordingStartedAtMs = Date.now();
+    realtimeRecorder?.start();
     console.log("Recording action window started.");
   };
 
   // Helper to launch a browser context with optional extension and video
   async function launchActor(label: string, record: boolean) {
-    const videoOptions = record ? { recordVideo: { dir: videoDir, size: viewport } } : {};
-    if (record && videoStartedAtMs === undefined) {
+    const recordWithPlaywright = record && !useRealtimeVideo;
+    const videoOptions = recordWithPlaywright
+      ? { recordVideo: { dir: videoDir, size: viewport } }
+      : {};
+    if (recordWithPlaywright && videoStartedAtMs === undefined) {
       videoStartedAtMs = Date.now();
     }
 
@@ -273,7 +292,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   // Launch actor contexts
   const contexts: BrowserContext[] = [];
-  const pages: import("@playwright/test").Page[] = [];
+  const pages: Page[] = [];
   const errorCollectors: ReturnType<typeof installErrorCollector>[] = [];
 
   const recordFromActor = !useCamera && !args.noVideo;
@@ -287,7 +306,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   // Launch camera context (records video, sees all remote cursors)
   let cameraContext: BrowserContext | null = null;
-  let cameraPage: import("@playwright/test").Page | null = null;
+  let cameraPage: Page | null = null;
   if (useCamera && !args.noVideo) {
     console.log("Launching camera...");
     const cam = await launchActor("camera", true);
@@ -381,6 +400,20 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     }
   }
 
+  if (useRealtimeVideo) {
+    const recordPage = cameraPage ?? pages[selectedRecordActor];
+    if (!recordPage) {
+      throw new Error("No page is available for video recording");
+    }
+    realtimeRecorder = await createRealtimeVideoRecorder({
+      page: recordPage,
+      outputPath: path.join(videoDir, `${args.scene}-${Date.now()}.mp4`),
+      frameRate: REALTIME_VIDEO_FRAME_RATE,
+      expectedDurationMs: durationMs + VIDEO_TAIL_MS,
+      jpegQuality: 92,
+    });
+  }
+
   // Run the choreography
   console.log("Running scene...\n");
   const sync = await createSyncHelpers({ markStart: markRecordingStart });
@@ -429,65 +462,99 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   // Save video from camera or selected actor
   if (!args.noVideo) {
-    const recordPage = cameraPage ?? (recordFromActor ? pages[selectedRecordActor] : null);
-    if (!recordPage) { console.log("No video to save"); process.exit(0); }
-    await recordPage.close();
-    const video = recordPage.video();
-    if (video) {
-      const videoPath = await video.path();
-      const timestamp = Date.now();
-      const rawOutputPath = path.join(videoDir, `${args.scene}-${timestamp}-raw.webm`);
-      fs.renameSync(videoPath, rawOutputPath);
-      let savedVideoPath = rawOutputPath;
-      let expectedVideoDurationSeconds: number | undefined;
-
-      const trimWindow =
-        videoStartedAtMs === undefined
-          ? null
-          : computeTrimWindow({
-              videoStartedAtMs,
-              recordingStartedAtMs,
-              sceneDurationMs: durationMs,
-            });
-
-      if (trimWindow && ffmpegIsAvailable()) {
-        const outputPath = path.join(videoDir, `${args.scene}-${timestamp}.mp4`);
-        trimVideo({
-          inputPath: rawOutputPath,
-          outputPath,
-          ...trimWindow,
-        });
-        savedVideoPath = outputPath;
-        expectedVideoDurationSeconds = trimWindow.durationSeconds;
-        console.log(`Raw video saved: ${rawOutputPath}`);
-        console.log(
-          `Video saved: ${outputPath} (${trimWindow.durationSeconds.toFixed(
-            1,
-          )}s action window)`,
-        );
-      } else {
-        if (trimWindow) {
-          console.warn("ffmpeg unavailable; saved untrimmed Playwright video.");
-        }
-        console.log(`Video saved: ${rawOutputPath}`);
+    if (realtimeRecorder) {
+      if (recordingStartedAtMs === undefined) {
+        throw new Error("Scene did not mark the recording action window");
       }
-
-      if (ffprobeIsAvailable()) {
-        const probe = probeVideo(savedVideoPath);
-        console.log(
-          `Video check: ${probe.durationSeconds.toFixed(2)}s, ${probe.frameRate.toFixed(
+      const expectedVideoDurationSeconds = (durationMs + VIDEO_TAIL_MS) / 1000;
+      const probe = await realtimeRecorder.stop();
+      console.log(
+        `Video saved: ${realtimeRecorder.outputPath} (${expectedVideoDurationSeconds.toFixed(
+          1,
+        )}s action window)`,
+      );
+      console.log(
+        `Video check: ${probe.durationSeconds.toFixed(2)}s, ${probe.frameRate.toFixed(
+          2,
+        )} fps, ${probe.frameCount ?? "unknown"} frames`,
+      );
+      if (
+        !videoMatchesExpectedWindow(probe, expectedVideoDurationSeconds, {
+          minFrameRate: REALTIME_VIDEO_MIN_FRAME_RATE,
+        })
+      ) {
+        throw new Error(
+          `Video duration ${probe.durationSeconds.toFixed(
             2,
-          )} fps, ${probe.frameCount ?? "unknown"} frames`,
+          )}s at ${probe.frameRate.toFixed(
+            2,
+          )} fps did not match expected ${expectedVideoDurationSeconds.toFixed(2)}s`,
         );
-        if (
-          expectedVideoDurationSeconds !== undefined &&
-          !videoMatchesExpectedWindow(probe, expectedVideoDurationSeconds)
-        ) {
-          throw new Error(
-            `Video duration ${probe.durationSeconds.toFixed(
-              2,
-            )}s did not match expected ${expectedVideoDurationSeconds.toFixed(2)}s`,
+      }
+    } else {
+      const recordPage = cameraPage ?? (recordFromActor ? pages[selectedRecordActor] : null);
+      if (!recordPage) {
+        console.log("No video to save");
+        process.exit(0);
+      }
+      await recordPage.close();
+      const video = recordPage.video();
+      if (video) {
+        const videoPath = await video.path();
+        const timestamp = Date.now();
+        const rawOutputPath = path.join(videoDir, `${args.scene}-${timestamp}-raw.webm`);
+        fs.renameSync(videoPath, rawOutputPath);
+        let savedVideoPath = rawOutputPath;
+        let expectedVideoDurationSeconds: number | undefined;
+
+        const trimWindow =
+          videoStartedAtMs === undefined
+            ? null
+            : computeTrimWindow({
+                videoStartedAtMs,
+                recordingStartedAtMs,
+                sceneDurationMs: durationMs,
+              });
+
+        if (trimWindow && ffmpegIsAvailable()) {
+          const outputPath = path.join(videoDir, `${args.scene}-${timestamp}.mp4`);
+          trimVideo({
+            inputPath: rawOutputPath,
+            outputPath,
+            ...trimWindow,
+          });
+          savedVideoPath = outputPath;
+          expectedVideoDurationSeconds = trimWindow.durationSeconds;
+          console.log(`Raw video saved: ${rawOutputPath}`);
+          console.log(
+            `Video saved: ${outputPath} (${trimWindow.durationSeconds.toFixed(
+              1,
+            )}s action window)`,
           );
+        } else {
+          if (trimWindow) {
+            console.warn("ffmpeg unavailable; saved untrimmed Playwright video.");
+          }
+          console.log(`Video saved: ${rawOutputPath}`);
+        }
+
+        if (ffprobeIsAvailable()) {
+          const probe = probeVideo(savedVideoPath);
+          console.log(
+            `Video check: ${probe.durationSeconds.toFixed(2)}s, ${probe.frameRate.toFixed(
+              2,
+            )} fps, ${probe.frameCount ?? "unknown"} frames`,
+          );
+          if (
+            expectedVideoDurationSeconds !== undefined &&
+            !videoMatchesExpectedWindow(probe, expectedVideoDurationSeconds)
+          ) {
+            throw new Error(
+              `Video duration ${probe.durationSeconds.toFixed(
+                2,
+              )}s did not match expected ${expectedVideoDurationSeconds.toFixed(2)}s`,
+            );
+          }
         }
       }
     }

@@ -2005,12 +2005,10 @@ function setupPlayElement(
     );
     return;
   }
-  if (
-    ignoreIfAlreadySetup &&
-    Object.keys(elementHandlers || {}).some((tag) =>
-      elementHandlers.get(tag)?.has(element.id),
-    )
-  ) {
+  const existingElementId = isHTMLElement(element)
+    ? getIdForElement(element)
+    : undefined;
+  if (ignoreIfAlreadySetup && existingElementId && hasElementHandler(existingElementId)) {
     return;
   }
 
@@ -2049,6 +2047,13 @@ function setupPlayElement(
       .filter((tag) => element.hasAttribute(tag))
       .map((tag) => setupPlayElementForTag(element, tag)),
   );
+}
+
+function hasElementHandler(elementId: string): boolean {
+  for (const tagElementHandlers of elementHandlers.values()) {
+    if (tagElementHandlers.has(elementId)) return true;
+  }
+  return false;
 }
 
 function setupPlayElementDescendants(element: HTMLElement): void {

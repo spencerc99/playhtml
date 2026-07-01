@@ -20,7 +20,7 @@ export function chooseRecordedActor(
   return index;
 }
 
-export function smoothMoveSteps(durationMs: number, targetFps = 30) {
+export function smoothMoveSteps(durationMs: number, targetFps = 60) {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     throw new Error("durationMs must be positive");
   }

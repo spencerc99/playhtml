@@ -1,7 +1,9 @@
 // ABOUTME: Plans and runs local video post-processing for Playwright recordings.
 // ABOUTME: Produces focused demo clips from the marked action window.
 
-import { spawnSync } from "child_process";
+import { once } from "events";
+import type { Page } from "@playwright/test";
+import { spawn, spawnSync } from "child_process";
 
 export interface VideoTrimInput {
   videoStartedAtMs: number;
@@ -20,10 +22,32 @@ export interface FfmpegTrimInput extends VideoTrimWindow {
   outputPath: string;
 }
 
+export interface RealtimeVideoInput {
+  outputPath: string;
+  frameRate: number;
+  crf?: number;
+}
+
+export interface RealtimeVideoRecorderInput extends RealtimeVideoInput {
+  page: Page;
+  expectedDurationMs: number;
+  jpegQuality?: number;
+}
+
 export interface VideoProbe {
   durationSeconds: number;
   frameRate: number;
   frameCount?: number;
+}
+
+export interface VideoWindowExpectation {
+  toleranceSeconds?: number;
+  minFrameRate?: number;
+}
+
+interface ScreencastFrame {
+  data: string;
+  sessionId: number;
 }
 
 export function computeTrimWindow(input: VideoTrimInput): VideoTrimWindow | null {
@@ -63,6 +87,49 @@ export function buildFfmpegTrimArgs(input: FfmpegTrimInput) {
     "+faststart",
     input.outputPath,
   ];
+}
+
+export function buildRealtimeFfmpegArgs(input: RealtimeVideoInput) {
+  return [
+    "-y",
+    "-f",
+    "image2pipe",
+    "-framerate",
+    String(input.frameRate),
+    "-i",
+    "pipe:0",
+    "-an",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    String(input.crf ?? 14),
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    input.outputPath,
+  ];
+}
+
+export function framesForDuration(durationMs: number, frameRate: number) {
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    throw new Error("durationMs must be non-negative");
+  }
+  if (!Number.isFinite(frameRate) || frameRate <= 0) {
+    throw new Error("frameRate must be positive");
+  }
+  return Math.ceil((durationMs / 1000) * frameRate);
+}
+
+export function frameCopiesForElapsed(
+  elapsedMs: number,
+  frameRate: number,
+  writtenFrames: number,
+) {
+  const expectedFrames = Math.max(1, framesForDuration(elapsedMs, frameRate) + 1);
+  return Math.max(0, expectedFrames - writtenFrames);
 }
 
 export function ffmpegIsAvailable() {
@@ -148,7 +215,155 @@ export function probeVideo(inputPath: string): VideoProbe {
 export function videoMatchesExpectedWindow(
   probe: VideoProbe,
   expectedDurationSeconds: number,
-  toleranceSeconds = 1,
+  expectation: VideoWindowExpectation = {},
 ) {
-  return Math.abs(probe.durationSeconds - expectedDurationSeconds) <= toleranceSeconds;
+  const toleranceSeconds = expectation.toleranceSeconds ?? 1;
+  if (Math.abs(probe.durationSeconds - expectedDurationSeconds) > toleranceSeconds) {
+    return false;
+  }
+  if (
+    expectation.minFrameRate !== undefined &&
+    probe.frameRate < expectation.minFrameRate
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export async function createRealtimeVideoRecorder(
+  input: RealtimeVideoRecorderInput,
+) {
+  const frameRate = input.frameRate;
+  const client = await input.page.context().newCDPSession(input.page);
+  const ffmpeg = spawn("ffmpeg", buildRealtimeFfmpegArgs(input), {
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+
+  let stderr = "";
+  let startedAtMs: number | undefined;
+  let stopped = false;
+  let lastFrame: Buffer | undefined;
+  let writtenFrames = 0;
+  let writeError: unknown;
+  let writeQueue = Promise.resolve();
+
+  ffmpeg.stderr.on("data", (chunk: Buffer) => {
+    stderr = `${stderr}${chunk.toString()}`.slice(-4000);
+  });
+
+  ffmpeg.on("error", (error) => {
+    writeError = error;
+  });
+
+  async function writeBuffer(buffer: Buffer) {
+    if (!ffmpeg.stdin.write(buffer)) {
+      await once(ffmpeg.stdin, "drain");
+    }
+  }
+
+  function enqueueFrame(buffer: Buffer, copies: number) {
+    if (copies < 1) return;
+    writeQueue = writeQueue
+      .then(async () => {
+        for (let i = 0; i < copies; i++) {
+          await writeBuffer(buffer);
+        }
+      })
+      .catch((error) => {
+        writeError = error;
+      });
+  }
+
+  function recordFrame(buffer: Buffer, elapsedMs: number) {
+    if (stopped) return;
+    const boundedElapsedMs = Math.min(elapsedMs, input.expectedDurationMs);
+    const copies = frameCopiesForElapsed(
+      boundedElapsedMs,
+      frameRate,
+      writtenFrames,
+    );
+    if (copies < 1) return;
+    lastFrame = buffer;
+    writtenFrames += copies;
+    enqueueFrame(buffer, copies);
+  }
+
+  async function closeEncoder() {
+    ffmpeg.stdin.end();
+    const [code] = await once(ffmpeg, "close");
+    await client.detach().catch(() => {});
+    if (code !== 0) {
+      throw new Error(`ffmpeg failed while recording video:\n${stderr}`);
+    }
+  }
+
+  client.on("Page.screencastFrame", (frame: ScreencastFrame) => {
+    void client
+      .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
+      .catch(() => {});
+    if (startedAtMs === undefined || stopped) return;
+    recordFrame(Buffer.from(frame.data, "base64"), Date.now() - startedAtMs);
+  });
+
+  await client.send("Page.startScreencast", {
+    format: "jpeg",
+    quality: input.jpegQuality ?? 92,
+    everyNthFrame: 1,
+  });
+
+  return {
+    outputPath: input.outputPath,
+    start() {
+      if (startedAtMs !== undefined) return;
+      startedAtMs = Date.now();
+      void input.page
+        .screenshot({
+          type: "jpeg",
+          quality: input.jpegQuality ?? 92,
+        })
+        .then((buffer) => recordFrame(buffer, 0))
+        .catch((error) => {
+          writeError = error;
+        });
+    },
+    async stop(): Promise<VideoProbe> {
+      stopped = true;
+      await client.send("Page.stopScreencast").catch(() => {});
+
+      const wasStarted = startedAtMs !== undefined;
+      if (wasStarted && lastFrame) {
+        const targetFrames = framesForDuration(input.expectedDurationMs, frameRate);
+        const remainingFrames = Math.max(0, targetFrames - writtenFrames);
+        writtenFrames += remainingFrames;
+        enqueueFrame(lastFrame, remainingFrames);
+      }
+
+      await writeQueue;
+      const pendingWriteError = writeError;
+      let closeError: unknown;
+      try {
+        await closeEncoder();
+      } catch (error) {
+        closeError = error;
+      }
+      if (pendingWriteError) {
+        throw pendingWriteError;
+      }
+      if (!wasStarted) {
+        throw new Error("Recording was never started");
+      }
+      if (closeError) {
+        throw closeError;
+      }
+
+      if (ffprobeIsAvailable()) {
+        return probeVideo(input.outputPath);
+      }
+      return {
+        durationSeconds: writtenFrames / frameRate,
+        frameRate,
+        frameCount: writtenFrames,
+      };
+    },
+  };
 }

@@ -3,8 +3,11 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  buildRealtimeFfmpegArgs,
   buildFfmpegTrimArgs,
   computeTrimWindow,
+  frameCopiesForElapsed,
+  framesForDuration,
   parseFfprobeStream,
   videoMatchesExpectedWindow,
 } from "./video";
@@ -68,6 +71,50 @@ describe("buildFfmpegTrimArgs", () => {
   });
 });
 
+describe("buildRealtimeFfmpegArgs", () => {
+  test("builds a 60 fps pipe encoder command", () => {
+    expect(
+      buildRealtimeFfmpegArgs({
+        outputPath: "/tmp/output.mp4",
+        frameRate: 60,
+        crf: 14,
+      }),
+    ).toEqual([
+      "-y",
+      "-f",
+      "image2pipe",
+      "-framerate",
+      "60",
+      "-i",
+      "pipe:0",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "14",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "/tmp/output.mp4",
+    ]);
+  });
+});
+
+describe("frame timing helpers", () => {
+  test("computes the frame count for a target duration", () => {
+    expect(framesForDuration(31_500, 60)).toBe(1890);
+  });
+
+  test("duplicates sparse screencast frames to preserve real time", () => {
+    expect(frameCopiesForElapsed(0, 60, 0)).toBe(1);
+    expect(frameCopiesForElapsed(1000, 60, 1)).toBe(60);
+    expect(frameCopiesForElapsed(1000, 60, 61)).toBe(0);
+  });
+});
+
 describe("parseFfprobeStream", () => {
   test("parses duration, frame rate, and frame count", () => {
     expect(
@@ -98,6 +145,16 @@ describe("videoMatchesExpectedWindow", () => {
       videoMatchesExpectedWindow(
         { durationSeconds: 73.04, frameRate: 25, frameCount: 1826 },
         31.5,
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects low frame-rate files when high fidelity is required", () => {
+    expect(
+      videoMatchesExpectedWindow(
+        { durationSeconds: 31.52, frameRate: 25, frameCount: 788 },
+        31.5,
+        { minFrameRate: 55 },
       ),
     ).toBe(false);
   });

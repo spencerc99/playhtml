@@ -64,8 +64,9 @@ want to watch or debug the actor browsers directly.
 When a scene sets `camera: true`, the runner records a passive observer page
 instead of an actor page. Scenes can call `sync.markRecordingStart()` after
 setup so the saved demo focuses on the active test window. If `ffmpeg` is
-available locally, the runner saves a trimmed `.mp4` plus the raw Playwright
-`.webm`; otherwise it keeps the raw `.webm`.
+available locally, the runner records that page through Chrome DevTools Protocol
+and writes a 60 fps `.mp4` directly. Otherwise it falls back to Playwright's raw
+`.webm` recorder.
 
 ## Flags
 
@@ -88,7 +89,7 @@ Reusable pieces live in `src/`:
 - `actions.ts`: human-like Playwright actions, delays, and cursor jitter.
 - `runtime.ts`: browser launch mode, recorded actor selection, and movement
   cadence helpers.
-- `video.ts`: local video trim planning and ffmpeg execution.
+- `video.ts`: local video recording, fallback trim planning, and ffmpeg checks.
 - `session.ts`: duration and URL helpers.
 - `errors.ts`: fatal browser error collection.
 

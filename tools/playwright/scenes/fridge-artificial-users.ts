@@ -5,7 +5,7 @@ import { createActorActions } from "../src/actions.js";
 import { defineScene } from "../src/scene.js";
 import { buildSceneUrl, createRunUntil } from "../src/session.js";
 import type { ActorPersona } from "../src/personas.js";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type { SyncHelpers } from "../src/scene.js";
 
 const WORDS = [
@@ -34,6 +34,17 @@ async function seedCursorIdentity(page: Page, persona: ActorPersona) {
   }, identityForPersona(persona));
 }
 
+async function waitForFridgeReady(page: Page) {
+  await page.locator(".fridge-toolbox input[placeholder='New word...']").waitFor({
+    timeout: 20_000,
+  });
+  await page.waitForFunction(
+    () => (window as any).playhtml?.isLoading === false,
+    undefined,
+    { timeout: 20_000 },
+  );
+}
+
 function identityForPersona(persona: ActorPersona) {
   return {
     publicKey: `codex-fridge-${persona.index}`,
@@ -51,7 +62,9 @@ async function addWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
     1000,
     9999,
   )}`;
-  if (!(await actions.moveToLocator(input))) return false;
+  if (!(await actions.moveToLocator(input))) {
+    return null;
+  }
   await input.fill(word);
   await page.waitForFunction(
     () => {
@@ -75,7 +88,61 @@ async function addWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
     .then(() => true)
     .catch(() => false);
   await actions.idle(300, 900);
-  return added;
+  return added ? word : null;
+}
+
+async function dragWordHolder(
+  page: Page,
+  persona: ActorPersona,
+  sync: SyncHelpers,
+  target: Locator,
+) {
+  const box = await target.boundingBox();
+  if (!box) return false;
+  const before = await target.evaluate((element) => {
+    return (element as HTMLElement).style.transform;
+  });
+  const viewport = page.viewportSize();
+  if (!viewport) return false;
+
+  const actions = createActorActions(page, persona, sync);
+  const targetX = clamp(
+    box.x + box.width / 2 + persona.random.float(120, 220),
+    80,
+    viewport.width - 80,
+  );
+  const targetY = clamp(
+    box.y + box.height / 2 + persona.random.float(80, 160),
+    120,
+    viewport.height - 120,
+  );
+  const moved = await actions.dragLocator(target, { x: targetX, y: targetY });
+  if (!moved) return false;
+
+  await page
+    .waitForFunction(
+      ({ beforeTransform }) => {
+        const element = document.querySelector(
+          ".fridgeWordHolder:has(.fridgeWord.custom)",
+        ) as HTMLElement | undefined;
+        return !!element && element.style.transform !== beforeTransform;
+      },
+      { beforeTransform: before },
+      { timeout: 2000 },
+    )
+    .catch(() => {});
+  const after = await target.evaluate((element) => {
+    return (element as HTMLElement).style.transform;
+  });
+  return before !== after;
+}
+
+async function dragFirstCustomWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
+  const target = page
+    .locator(".fridgeWordHolder")
+    .filter({ has: page.locator(".fridgeWord.custom") })
+    .first();
+  return dragWordHolder(page, persona, sync, target);
 }
 
 async function dragWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
@@ -172,25 +239,21 @@ export default defineScene({
 
     await Promise.all(pages.map((page, index) => seedCursorIdentity(page, personas[index])));
     await Promise.all(pages.map((page) => page.goto(url, { waitUntil: "domcontentloaded" })));
-    await Promise.all(
-      pages.map((page) =>
-        page.locator(".fridge-toolbox input[placeholder='New word...']").waitFor({
-          timeout: 20_000,
-        }),
-      ),
-    );
+    await Promise.all(pages.map((page) => waitForFridgeReady(page)));
     if (camera) {
       await camera.goto(url, { waitUntil: "domcontentloaded" });
-      await camera
-        .locator(".fridge-toolbox input[placeholder='New word...']")
-        .waitFor({ timeout: 20_000 });
+      await waitForFridgeReady(camera);
     }
 
     let customWordsAdded = 0;
     let changedDrags = 0;
 
     sync.markRecordingStart();
-    if (await addWord(pages[0], personas[0], sync)) customWordsAdded++;
+    const setupWord = await addWord(pages[0], personas[0], sync);
+    if (setupWord) {
+      customWordsAdded++;
+      if (await dragFirstCustomWord(pages[0], personas[0], sync)) changedDrags++;
+    }
     const runUntil = createRunUntil(options.durationMs);
 
     await Promise.all(

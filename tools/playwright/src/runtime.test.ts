@@ -36,8 +36,8 @@ describe("chooseRecordedActor", () => {
 });
 
 describe("smoothMoveSteps", () => {
-  test("defaults cursor movement to recording-friendly cadence", () => {
-    expect(smoothMoveSteps(1000)).toBe(30);
+  test("defaults cursor movement to 60 fps recording cadence", () => {
+    expect(smoothMoveSteps(1000)).toBe(60);
   });
 
   test("keeps short moves smooth without flooding mouse events", () => {
