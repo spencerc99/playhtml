@@ -1,0 +1,31 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- a rolled message card (matches the on-page mb-capsule: white card, author stripe, tiny text) -->
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1ece2"/>
+    </linearGradient>
+  </defs>
+  <!-- soft contact shadow -->
+  <ellipse cx="60" cy="110" rx="26" ry="5" fill="#5a4e41" opacity="0.18"/>
+  <!-- the rolled card body (portrait, slightly tilted) -->
+  <g transform="rotate(-7 60 60)">
+    <rect x="38" y="14" width="44" height="92" rx="7" fill="url(#paper)" stroke="#7a7167" stroke-width="2.5"/>
+    <!-- top inset shadow (rolled lip) -->
+    <rect x="41" y="17" width="38" height="6" rx="3" fill="#000000" opacity="0.06"/>
+    <!-- author color stripe down the left edge (the "seal" color) -->
+    <rect x="38" y="14" width="9" height="92" rx="4" fill="#c4724e"/>
+    <!-- faint tiny-text lines, evoking the message showing through -->
+    <g stroke="#3a352f" stroke-width="2.4" stroke-linecap="round" opacity="0.5">
+      <line x1="53" y1="26" x2="74" y2="26"/>
+      <line x1="53" y1="34" x2="71" y2="34"/>
+      <line x1="53" y1="42" x2="75" y2="42"/>
+      <line x1="53" y1="50" x2="68" y2="50"/>
+      <line x1="53" y1="58" x2="74" y2="58"/>
+      <line x1="53" y1="66" x2="70" y2="66"/>
+      <line x1="53" y1="74" x2="73" y2="74"/>
+      <line x1="53" y1="82" x2="66" y2="82"/>
+      <line x1="53" y1="90" x2="72" y2="90"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How playhtml works — overview</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --surface: #ffffff;
+    --page: #f5f0e8;
+    --text: #3d3833;
+    --text-muted: #8a8279;
+    --border: #e3ddd2;
+    --persist: #0f6e56;
+    --persist-bg: #e1f5ee;
+    --persist-border: #9fe1cb;
+    --ephem: #b8531f;
+    --ephem-bg: #faece7;
+    --ephem-border: #f0997b;
+    --cursorA: #5b8db8;
+    --cursorB: #c4724e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  #capture { width: 972px; padding: 28px 36px; background: var(--bg); position: relative; }
+
+  .stage { position: relative; height: 486px; }
+
+  .ghost {
+    position: absolute;
+    width: 470px; height: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    opacity: 0.4;
+  }
+  .ghost.g1 { left: 248px; top: 70px; }
+  .ghost.g2 { left: 232px; top: 86px; opacity: 0.55; }
+
+  .page {
+    position: absolute;
+    left: 215px; top: 104px;
+    width: 470px; height: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 6px 22px rgba(61,56,51,0.08);
+  }
+  .browser-bar {
+    height: 38px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 7px;
+    padding: 0 14px;
+  }
+  .browser-bar .d { width: 9px; height: 9px; border-radius: 50%; background: #e3ddd2; }
+  .browser-bar .url {
+    margin-left: 10px; font-size: 12px; color: var(--text-muted);
+    font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+  }
+  .canvas { position: relative; height: calc(100% - 38px); padding: 16px; }
+
+  /* page data — one named value, two different consumers */
+  .views {
+    position: absolute; right: 16px; top: 14px;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--persist); font-weight: 600; font-size: 13px;
+    font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+  }
+  .views .eye { width: 14px; height: 14px; }
+
+  .milestone {
+    position: absolute; left: 16px; bottom: 16px;
+  }
+  .milestone .banner {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--persist-bg);
+    border: 1px solid var(--persist-border);
+    border-radius: 8px;
+    padding: 6px 11px;
+    font-size: 13px; font-weight: 600; color: var(--persist);
+  }
+  .milestone .cond {
+    display: block; margin-top: 5px;
+    font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+    font-size: 11px; color: var(--text-muted);
+  }
+
+  /* element art */
+  .el { position: absolute; }
+  .el img { display: block; object-fit: contain; }
+  .el-lamp { left: 56px; top: 8px; }
+  .el-lamp img { width: 58px; }
+  .el-hat { left: 236px; top: 132px; }
+  .el-hat img { width: 88px; }
+
+  /* presence cursors */
+  .cursor { position: absolute; display: flex; align-items: flex-start; gap: 2px; }
+  .cursor svg { width: 18px; height: 18px; }
+  .cursor .tag {
+    font-size: 11px; font-weight: 600; color: #fff;
+    border-radius: 4px; padding: 1px 6px; margin-top: 12px;
+  }
+  .cursor.a { left: 120px; top: 116px; }
+  .cursor.a .tag { background: var(--cursorA); }
+  .cursor.b { left: 178px; top: 150px; }
+  .cursor.b .tag { background: var(--cursorB); }
+
+  /* events — a one-time pulse radiating from a trigger */
+  .pulse { position: absolute; left: 432px; top: 196px; width: 64px; height: 64px; }
+  .pulse .ring {
+    position: absolute; border-radius: 50%;
+    border: 1.5px solid var(--ephem);
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+  }
+  .pulse .r1 { width: 20px; height: 20px; opacity: 0.9; }
+  .pulse .r2 { width: 40px; height: 40px; opacity: 0.5; }
+  .pulse .r3 { width: 60px; height: 60px; opacity: 0.25; }
+  .pulse .core {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 10px; height: 10px; border-radius: 50%; background: var(--ephem);
+  }
+
+  /* annotation callouts */
+  .note {
+    position: absolute;
+    width: 190px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .note .h { display: flex; align-items: center; gap: 7px; }
+  .note .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+  .note .dot.persist { background: var(--persist); }
+  .note .dot.ephem { background: var(--ephem); }
+  .note .name { font-size: 14px; font-weight: 600; }
+  .note .key {
+    font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+    font-size: 11px; color: var(--text-muted); margin: 3px 0 4px 16px;
+  }
+  .note .desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; margin-left: 16px; }
+
+  .note.n-element { left: 6px; top: 66px; }
+  .note.n-page    { left: 704px; top: 84px; }
+  .note.n-presence{ left: 6px; top: 326px; }
+  .note.n-events  { left: 704px; top: 326px; }
+
+  svg.leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  .legend {
+    display: flex; gap: 24px; justify-content: center;
+    margin-top: 8px; font-size: 12px; color: var(--text-muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .chip { width: 10px; height: 10px; border-radius: 50%; }
+  .legend .chip.persist { background: var(--persist); }
+  .legend .chip.ephem { background: var(--ephem); }
+</style>
+</head>
+<body>
+  <div id="capture">
+    <div class="stage">
+      <div class="ghost g1"></div>
+      <div class="ghost g2"></div>
+
+      <svg class="leaders" viewBox="0 0 900 486">
+        <defs>
+          <marker id="arT" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#5dcaa5" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+          <marker id="arE" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#f0997b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+        <line x1="198" y1="116" x2="284" y2="164" stroke="#5dcaa5" stroke-width="1.4" marker-end="url(#arT)"/>
+
+        <line x1="746" y1="148" x2="710" y2="172" stroke="#5dcaa5" stroke-width="1.4" marker-end="url(#arT)"/>
+        <path d="M600 178 C 470 250 300 320 250 442" fill="none" stroke="#5dcaa5" stroke-width="1.3" stroke-dasharray="5 4" opacity="0.65"/>
+
+        <line x1="198" y1="350" x2="372" y2="300" stroke="#f0997b" stroke-width="1.4" marker-end="url(#arE)"/>
+        <line x1="702" y1="364" x2="702" y2="380" stroke="#f0997b" stroke-width="1.4" marker-end="url(#arE)"/>
+      </svg>
+
+      <div class="page">
+        <div class="browser-bar">
+          <span class="d"></span><span class="d"></span><span class="d"></span>
+          <span class="url">yoursite.com</span>
+        </div>
+        <div class="canvas">
+          <div class="views">
+            <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="#0f6e56" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            1,204 views
+          </div>
+          <div class="milestone">
+            <span class="banner">&#9733; 1,000 views reached</span>
+            <span class="cond">if views &gt; 1000</span>
+          </div>
+
+          <div class="el el-lamp"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
+          <div class="el el-hat"><img src="/yankees-hat.png" alt="" /></div>
+
+          <div class="cursor a">
+            <svg viewBox="0 0 24 24" fill="#5b8db8"><path d="M5 3l14 8-6 1.5L10 19z"/></svg>
+            <span class="tag">mira</span>
+          </div>
+          <div class="cursor b">
+            <svg viewBox="0 0 24 24" fill="#c4724e"><path d="M5 3l14 8-6 1.5L10 19z"/></svg>
+            <span class="tag">you</span>
+          </div>
+
+          <div class="pulse">
+            <span class="ring r3"></span>
+            <span class="ring r2"></span>
+            <span class="ring r1"></span>
+            <span class="core"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="note n-element">
+        <div class="h"><span class="dot persist"></span><span class="name">Element data</span></div>
+        <div class="key">on a specific element</div>
+        <div class="desc">the lamp's on/off, the hat's position. Saved.</div>
+      </div>
+
+      <div class="note n-page">
+        <div class="h"><span class="dot persist"></span><span class="name">Page data</span></div>
+        <div class="key">by name, read anywhere</div>
+        <div class="desc">one value any part of the page can use &mdash; a count, a vote. Saved.</div>
+      </div>
+
+      <div class="note n-presence">
+        <div class="h"><span class="dot ephem"></span><span class="name">Presence</span></div>
+        <div class="key">live, per person</div>
+        <div class="desc">cursors and who's here right now. Not saved.</div>
+      </div>
+
+      <div class="note n-events">
+        <div class="h"><span class="dot ephem"></span><span class="name">Events</span></div>
+        <div class="key">fire once, reaches everyone</div>
+        <div class="desc">a confetti pop or chime that plays, then is gone. Not saved.</div>
+      </div>
+
+      <div style="position:absolute; left:240px; top:18px; width:420px; text-align:center; font-size:12px; color:var(--text-muted); line-height:1.4;">
+        the faded pages are other people on the same url &mdash; everyone shares one room, so your changes show up for them too
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="chip persist"></span> saved &mdash; survives reload</span>
+      <span><span class="chip ephem"></span> live only &mdash; gone when you leave</span>
+    </div>
+  </div>
+</body>
+</html>

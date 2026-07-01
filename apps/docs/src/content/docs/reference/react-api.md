@@ -1,6 +1,6 @@
 ---
 title: "React API"
-description: "Types and signatures for @playhtml/react — PlayProvider, withSharedState, capability components, hooks, and usePlayContext."
+description: "Types and signatures for @playhtml/react: PlayProvider, withSharedState, capability components, hooks, and usePlayContext."
 sidebar:
   order: 2
 ---
@@ -19,7 +19,7 @@ interface PlayProviderProps {
 }
 ```
 
-Everything in `initOptions` maps one-to-one onto the vanilla `playhtml.init()` argument — see the [init options reference](/docs/reference/init-options/).
+Everything in `initOptions` maps one-to-one onto the vanilla `playhtml.init()` argument. See the [init options reference](/docs/reference/init-options/).
 
 `pathname` is optional and only needed for client-side-navigation frameworks (React Router, Next.js, etc.) where the browser Navigation API isn't available. Pass it from your router and playhtml will rebuild rooms + rescan the DOM on pathname changes. See [navigation](/docs/advanced/navigation/) for details.
 
@@ -58,10 +58,10 @@ interface WithSharedStateConfig<T, V> {
 }
 ```
 
-- **`defaultData`** — required. The initial value of `data`. Survives reload.
-- **`myDefaultAwareness`** — optional. Initial value for this user's ephemeral per-user field. Does _not_ persist.
-- **`id`** — optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
-- **`tagInfo`** — optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
+- **`defaultData`**: required. The initial value of `data`. Survives reload.
+- **`myDefaultAwareness`**: optional. Initial value for this user's element awareness. This is ephemeral per-user presence scoped to the element. Does _not_ persist.
+- **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
+- **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
 ### Render-function props
 
@@ -77,6 +77,8 @@ interface ReactElementEventHandlerData<T, V> {
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
+
+`awareness`, `myAwareness`, and `setMyAwareness` are the element-scoped form of [presence](/docs/data/presence/#element-awareness). Use them for live per-user signals tied to this element, not state that should survive reload.
 
 ### Props-dependent config
 
@@ -108,10 +110,11 @@ interface CanPlayElementProps<T, V> {
 }
 ```
 
-- **`id`** — required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
-- **`standalone`** — when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
-- **`loading`** — controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
-- **`dataSource`**, **`shared`**, **`dataSourceReadOnly`** — wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
+- **`id`**: required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
+- **`myDefaultAwareness`**: optional. Initial element awareness for this user. Same lifetime as presence; it clears when the user leaves.
+- **`standalone`**: when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
+- **`loading`**: controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
+- **`dataSource`**, **`shared`**, **`dataSourceReadOnly`**: wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
 
 ```tsx
 <CanPlayElement
@@ -143,9 +146,9 @@ interface CanMoveElementProps {
 }
 ```
 
-- **`bounds`** — id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
-- **`boundsMinVisible`** — fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `0.25`. Use `1` to pin the element fully inside, `0` to drop the fraction constraint entirely.
-- **`boundsMinVisiblePx`** — absolute pixel floor on the keep-visible slice. Default `60`. Useful when an image has transparent padding around its paint — a pure fraction of the layout bbox might otherwise let the visible pixels clip into invisible border.
+- **`bounds`**: id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
+- **`boundsMinVisible`**: fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `0.25`. Use `1` to pin the element fully inside, `0` to drop the fraction constraint entirely.
+- **`boundsMinVisiblePx`**: absolute pixel floor on the keep-visible slice. Default `60`. Useful when an image has transparent padding around its paint, where a pure fraction of the layout bbox might otherwise let the visible pixels clip into invisible border.
 
 The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
 
@@ -164,14 +167,14 @@ import { CanMoveElement } from "@playhtml/react";
 
 ## Other capability components
 
-Each built-in capability has a typed wrapper. All of them accept the shared `dataSource`, `shared`, and `standalone` props (see [Shared data props](#shared-data-props)); the table lists what's unique to each. For the full set of options including `loading` and `dataSourceReadOnly`, use `<CanPlayElement>` or `withSharedState` — the capability wrappers only forward the three props above.
+Each built-in capability has a typed wrapper. All of them accept the shared `dataSource`, `shared`, and `standalone` props (see [Shared data props](#shared-data-props)); the table lists what's unique to each. For the full set of options including `loading` and `dataSourceReadOnly`, use `<CanPlayElement>` or `withSharedState`; the capability wrappers only forward the three props above.
 
 | Component | Capability | Extra props |
 | --- | --- | --- |
-| `<CanToggleElement>` | `can-toggle` | `readOnly?: boolean` — render the toggle read-only (sets `data-source-read-only`). |
-| `<CanSpinElement>` | `can-spin` | — |
-| `<CanGrowElement>` | `can-grow` | — |
-| `<CanHoverElement>` | `can-hover` | — (sets `[data-playhtml-hover]` on its child while any user hovers; style that attribute instead of `:hover`). |
+| `<CanToggleElement>` | `can-toggle` | `readOnly?: boolean`: render the toggle read-only (sets `data-source-read-only`). |
+| `<CanSpinElement>` | `can-spin` | none |
+| `<CanGrowElement>` | `can-grow` | none |
+| `<CanHoverElement>` | `can-hover` | sets `[data-playhtml-hover]` on its child while any user hovers; style that attribute instead of `:hover`. |
 | `<CanDuplicateElement>` | `can-duplicate` | `elementToDuplicate: RefObject<HTMLElement>` (required), `canDuplicateTo?: RefObject<HTMLElement>`. |
 
 `CanDuplicateElement` takes refs rather than selector strings, since React owns the DOM:
@@ -191,7 +194,7 @@ const bin = useRef<HTMLDivElement>(null);
 </>;
 ```
 
-For the live demos of each capability, see the [Capabilities](/docs/capabilities/) page — every section has a React tab.
+For the live demos of each capability, see the [Capabilities](/docs/capabilities/) page. Every section has a React tab.
 
 ## Shared data props
 
@@ -199,7 +202,7 @@ These props let an element participate in [cross-page / cross-site sharing](/doc
 
 | Prop | HTML attribute | Where it works |
 | --- | --- | --- |
-| `shared` | `shared` | `CanPlayElement` and every capability wrapper. Mark this element as a **source** others can subscribe to. `true` → read-write; pass `"read-only"` to publish read-only. |
+| `shared` | `shared` | `CanPlayElement` and every capability wrapper. Mark this element as a **source** others can subscribe to. `true` is read-write; pass `"read-only"` to publish read-only. |
 | `dataSource` | `data-source` | `CanPlayElement` and every capability wrapper. Subscribe to a source as a **consumer**. Format: `"domain[/path]#elementId"`. |
 | `dataSourceReadOnly` | `data-source-read-only` | `CanPlayElement` / `withSharedState` only. Force a consumer to read-only even if the source is read-write. (On `CanToggleElement`, use its `readOnly` prop, which sets the same attribute.) |
 
@@ -217,7 +220,7 @@ These props let an element participate in [cross-page / cross-site sharing](/doc
 
 ## Loading options
 
-`CanPlayElement` and `withSharedState` accept a `loading` prop controlling the affordance shown before the element's first sync from the server (it's hidden or animated so readers don't see a flash of default state). The vanilla equivalents — the `loading-behavior` / `loading-class` / `loading-style` HTML attributes — work on any playhtml element.
+`CanPlayElement` and `withSharedState` accept a `loading` prop controlling the affordance shown before the element's first sync from the server (it's hidden or animated so readers don't see a flash of default state). The vanilla equivalents are the `loading-behavior` / `loading-class` / `loading-style` HTML attributes, which work on any playhtml element.
 
 ```tsx
 interface LoadingOptions {
@@ -227,9 +230,9 @@ interface LoadingOptions {
 }
 ```
 
-- **`behavior`** — `"auto"` (default) picks a reasonable affordance, `"hidden"` keeps the element invisible until synced, `"animate"` shows the loading animation, `"none"` disables the affordance entirely (element renders its default state immediately).
-- **`customClass`** — a CSS class applied while loading, so you can style the placeholder yourself.
-- **`style`** — the built-in loading animation: `"breathing"`, `"pulse"`, `"fade"`, or `"none"`.
+- **`behavior`**: `"auto"` (default) picks a reasonable affordance, `"hidden"` keeps the element invisible until synced, `"animate"` shows the loading animation, `"none"` disables the affordance entirely (element renders its default state immediately).
+- **`customClass`**: a CSS class applied while loading, so you can style the placeholder yourself.
+- **`style`**: the built-in loading animation: `"breathing"`, `"pulse"`, `"fade"`, or `"none"`.
 
 ```tsx
 <CanPlayElement
@@ -262,7 +265,7 @@ interface PlayContextValue {
 }
 ```
 
-Most consumers don't read the raw context — prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`usePlayerIdentity`](/docs/reference/use-player-identity/)) which subscribe and re-render for you.
+Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`usePlayerIdentity`](/docs/reference/use-player-identity/)) which subscribe and re-render for you.
 
 ### `isLoading`
 
@@ -284,7 +287,7 @@ useEffect(() => {
 
 Use a ref guard plus the mutator form for this kind of write, and don't include the field you write in the dependency list.
 
-`hasSynced` is a deprecated alias for `!isLoading` — prefer `isLoading` in new code.
+`hasSynced` is a deprecated alias for `!isLoading`. Prefer `isLoading` in new code.
 
 ### `cursors`
 
@@ -309,7 +312,7 @@ const {
 } = usePlayContext();
 ```
 
-Usually you'll wrap these in a hook to bind a listener to the component's lifecycle — see [Events](/docs/data/events/) for the `useConfetti` pattern.
+Usually you'll wrap these in a hook to bind a listener to the component's lifecycle. See [Events](/docs/data/events/) for the `useConfetti` pattern.
 
 ## Hooks
 
@@ -338,11 +341,11 @@ for (const [, p] of presences) {
 }
 ```
 
-The type parameter is an assertion about your channel's shape — no runtime validation is performed. Note your data lives under the channel key (`p.status`), not flattened onto the view.
+The type parameter is an assertion about your channel's shape; no runtime validation is performed. Note your data lives under the channel key (`p.status`), not flattened onto the view.
 
 ### `usePageData`
 
-Subscribe to a [page-level data channel](/docs/data/page-data/) — persistent state not tied to any element. The shape mirrors `useState`.
+Subscribe to a [page-level data channel](/docs/data/page-data/), persistent state not tied to any element. The shape mirrors `useState`.
 
 ```tsx
 function usePageData<T>(
@@ -360,7 +363,7 @@ setCounter((draft) => { draft.count += 1; });
 
 ### `usePresenceRoom`
 
-Join an isolated [presence room](/docs/data/presence/) with its own awareness, separate from the page's main presence. Returns `null` until synced (and briefly during a room change).
+Join an isolated [presence room](/docs/data/presence/) separate from the page's main presence. Returns `null` until synced (and briefly during a room change).
 
 ```tsx
 function usePresenceRoom(name: string): PresenceRoom | null;
@@ -383,7 +386,7 @@ function useCursorPresences(): Map<string, CursorPresenceView>;
 
 ### `useCursorZone`
 
-Register an element as a cursor zone. When the local user's cursor is inside it, other clients render the cursor positioned relative to their own copy of the same element (matched by element id) — useful for anchoring cursors to a shared widget rather than absolute page coordinates.
+Register an element as a cursor zone. When the local user's cursor is inside it, other clients render the cursor positioned relative to their own copy of the same element (matched by element id). This anchors cursors to a shared widget rather than absolute page coordinates.
 
 ```tsx
 function useCursorZone(
@@ -404,10 +407,10 @@ Read the local player's cursor color, participant id, and name. Documented on it
 
 ## `TagType`
 
-Re-exported from `@playhtml/common`. Use these as `tagInfo` entries when you want a built-in capability (`can-move`, `can-toggle`, etc.) wired into your component.
+Re-exported from `playhtml`. Use these as `tagInfo` entries when you want a built-in capability (`can-move`, `can-toggle`, etc.) wired into your component.
 
 ```ts
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 TagType.CanPlay;
 TagType.CanMove;
@@ -427,6 +430,6 @@ The repo has a collection of runnable React examples at [`packages/react/example
 
 A few things still in flux in the React package:
 
-- **Per-key persistence config.** Currently persistence is a whole-store choice: `setMyAwareness` for ephemeral, `setData` for persistent, no local-only mode. A future `persistenceOptions` object might let you configure per-key (`none` / `local` / `global`).
+- **Per-key persistence config.** Currently persistence is a whole-store choice: `setMyAwareness` for element-scoped presence, `setData` for persistent data, no local-only mode. A future `persistenceOptions` object might let you configure per-key (`none` / `local` / `global`).
 - **`awareness` splitting.** `awareness` currently includes the local user; it may split into `myAwareness` + `othersAwareness` for clarity.
 - **Hook ergonomics.** A pure-hook interface (`useSharedState({ id, defaultData })`) is being evaluated as an alternative to the HOC form. The blocker is that hooks have no natural place to pin a stable `id`.

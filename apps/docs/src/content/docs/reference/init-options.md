@@ -21,11 +21,11 @@ playhtml.init({
 
 **Type:** `string | (() => string)` &nbsp; **Default:** `window.location.pathname + window.location.search`
 
-The room to connect users to — users sharing a room share state. Every room is automatically prefixed with `window.location.hostname` so your rooms can never collide with another site's rooms.
+The room to connect users to. Users sharing a room share state. Every room is automatically prefixed with `window.location.hostname` so your rooms can never collide with another site's rooms.
 
 If you leave this blank, playhtml derives the room from the URL. Two readers on `/docs/capabilities` share state; a reader on `/docs/concepts` is in a different room.
 
-Override it when you want to decouple state from the URL — for example, a site-wide guestbook that should behave the same no matter which page it's embedded on:
+Override it when you want to decouple state from the URL, for example a site-wide guestbook that should behave the same no matter which page it's embedded on:
 
 ```js
 playhtml.init({ room: "global-guestbook" });
@@ -37,7 +37,7 @@ A **string** stays fixed across [client-side navigation](/docs/advanced/navigati
 playhtml.init({ room: () => `notes${window.location.pathname}` });
 ```
 
-When navigation changes the room, the document resets to the new room (page and element data alike) — see [Navigation & SPAs](/docs/advanced/navigation/).
+When navigation changes the room, the document resets to the new room (page and element data alike). See [Navigation & SPAs](/docs/advanced/navigation/).
 
 ## `host`
 
@@ -51,7 +51,7 @@ playhtml.init({
 });
 ```
 
-You're responsible for deploying a compatible PartyKit worker — see the [playhtml repo](https://github.com/spencerc99/playhtml) for the current worker implementation.
+You're responsible for deploying a compatible PartyKit worker. See the [playhtml repo](https://github.com/spencerc99/playhtml) for the current worker implementation.
 
 ## `events`
 
@@ -76,7 +76,7 @@ You can also register events imperatively later with `playhtml.registerPlayEvent
 
 **Type:** `Record<string, ElementInitializer>` &nbsp; **Default:** `undefined`
 
-Ship your own `can-*` capability alongside the built-ins. Most authors never need this — use `can-play` on individual elements first. Reach for `extraCapabilities` when you're packaging a capability you want to reuse across many elements and want the shorter `can-mything` attribute form.
+Ship your own `can-*` capability alongside the built-ins. Most authors never need this; use `can-play` on individual elements first. Reach for `extraCapabilities` when you're packaging a capability you want to reuse across many elements and want the shorter `can-mything` attribute form.
 
 ```js
 playhtml.init({
@@ -117,7 +117,7 @@ playhtml.init({
 
 **Type:** `boolean` &nbsp; **Default:** `false`
 
-Enable the in-page devtools panel. Shows element inspector, live data tree, connection status, and tag-type badges — modeled after RollerCoaster Tycoon's inspect UI. Useful while debugging.
+Enable the in-page devtools panel. Shows element inspector, live data tree, connection status, and tag-type badges, modeled after RollerCoaster Tycoon's inspect UI. Useful while debugging.
 
 ```js
 playhtml.init({ developmentMode: true });
@@ -197,4 +197,4 @@ import { PlayProvider } from "@playhtml/react";
 </PlayProvider>;
 ```
 
-No React-specific options on the provider itself — all config flows through the shared `InitOptions` shape.
+No React-specific options on the provider itself; all config flows through the shared `InitOptions` shape.
