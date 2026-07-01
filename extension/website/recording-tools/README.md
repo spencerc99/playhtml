@@ -27,11 +27,16 @@ preview tab can't do reliably.
 
 - **`capture.mjs`** — records a `.webm`. Flags: `--url --out --seconds --width
   --height --swap-every --slow/--fast/--ramp-at --settings --wait`. See the file
-  header for details.
+  header for details. It loads the page, waits `--wait` seconds to warm up
+  (fetch data, load fonts), then **reloads** so the timed window starts on a
+  blank canvas and captures the draw-on from frame zero. The warm-up lands at
+  the head of the `.webm`; trim it off in `encode.sh` (see below).
 - **`frame.mjs`** — grabs a single PNG frame for quick eyeballing before a full
-  recording.
+  recording. Honors `--settings` too.
 - **`encode.sh`** — `.webm` → clean H.264 `.mp4` (no audio), with optional
-  upscale.
+  upscale and a front-trim. Args: `<in> <out> <W> <H> [crf] [trim_start_sec]`.
+  Pass the same value as `capture.mjs`'s `--wait` for `trim_start_sec` to drop
+  the warm-up lead-in so the clip opens on the blank-page reload.
 
 ## Building the URL
 
@@ -69,20 +74,22 @@ cd extension/website
 REPO_NM="$PWD/node_modules"
 BLOB="<paste the ?s= blob value>"
 
-# Wide windows-only, 1080p → upscaled 4K
+# Wide windows-only, 1080p → upscaled 4K. --wait 12 warms up; trim it in encode
+# (final arg) so the clip opens on the blank-page reload, then draws on.
 NODE_PATH="$REPO_NM" bun recording-tools/capture.mjs \
   --url "http://localhost:5174/archive/?viz=scrolling&s=$BLOB&clean=2&day=2026-06-27" \
-  --out /tmp/cap_wide --seconds 50 --width 1920 --height 1080
-bash recording-tools/encode.sh /tmp/cap_wide/*.webm ~/Downloads/windows-wide-4k.mp4 3840 2160
+  --out /tmp/cap_wide --seconds 50 --width 1920 --height 1080 --wait 12
+bash recording-tools/encode.sh /tmp/cap_wide/*.webm ~/Downloads/windows-wide-4k.mp4 3840 2160 18 12
 
 # Portrait cinematic reveal (10s pull-back)
 NODE_PATH="$REPO_NM" bun recording-tools/capture.mjs \
   --url "http://localhost:5174/archive/?viz=scrolling&s=$BLOB&clean=2&day=2026-06-20&cinematic=reveal&cinemaReveal=10&cinemaStartZoom=0.14" \
-  --out /tmp/cap_port --seconds 50 --width 1080 --height 1920
-bash recording-tools/encode.sh /tmp/cap_port/*.webm ~/Downloads/windows-portrait.mp4 1080 1920
+  --out /tmp/cap_port --seconds 50 --width 1080 --height 1920 --wait 12
+bash recording-tools/encode.sh /tmp/cap_port/*.webm ~/Downloads/windows-portrait.mp4 1080 1920 18 12
 
 # Cinematic cursor-follow with N-swaps every 10s
 NODE_PATH="$REPO_NM" bun recording-tools/capture.mjs \
   --url "http://localhost:5174/archive/?viz=trails&s=$BLOB&clean=2&day=2026-06-27&cinematic=1&cinemaZoom=0.22" \
-  --out /tmp/cap_cine --seconds 45 --swap-every 10 --width 3840 --height 2160
+  --out /tmp/cap_cine --seconds 45 --swap-every 10 --width 3840 --height 2160 --wait 12
+bash recording-tools/encode.sh /tmp/cap_cine/*.webm ~/Downloads/cursors-cine.mp4 3840 2160 18 12
 ```
