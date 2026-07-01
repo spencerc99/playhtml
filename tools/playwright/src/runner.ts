@@ -15,7 +15,10 @@ import type { SceneConfig, SceneRuntimeOptions } from "./scene.js";
 import {
   computeTrimWindow,
   ffmpegIsAvailable,
+  ffprobeIsAvailable,
+  probeVideo,
   trimVideo,
+  videoMatchesExpectedWindow,
 } from "./video.js";
 
 const EXTENSION_PATH = path.resolve(
@@ -435,6 +438,8 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
       const timestamp = Date.now();
       const rawOutputPath = path.join(videoDir, `${args.scene}-${timestamp}-raw.webm`);
       fs.renameSync(videoPath, rawOutputPath);
+      let savedVideoPath = rawOutputPath;
+      let expectedVideoDurationSeconds: number | undefined;
 
       const trimWindow =
         videoStartedAtMs === undefined
@@ -452,6 +457,8 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
           outputPath,
           ...trimWindow,
         });
+        savedVideoPath = outputPath;
+        expectedVideoDurationSeconds = trimWindow.durationSeconds;
         console.log(`Raw video saved: ${rawOutputPath}`);
         console.log(
           `Video saved: ${outputPath} (${trimWindow.durationSeconds.toFixed(
@@ -463,6 +470,25 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
           console.warn("ffmpeg unavailable; saved untrimmed Playwright video.");
         }
         console.log(`Video saved: ${rawOutputPath}`);
+      }
+
+      if (ffprobeIsAvailable()) {
+        const probe = probeVideo(savedVideoPath);
+        console.log(
+          `Video check: ${probe.durationSeconds.toFixed(2)}s, ${probe.frameRate.toFixed(
+            2,
+          )} fps, ${probe.frameCount ?? "unknown"} frames`,
+        );
+        if (
+          expectedVideoDurationSeconds !== undefined &&
+          !videoMatchesExpectedWindow(probe, expectedVideoDurationSeconds)
+        ) {
+          throw new Error(
+            `Video duration ${probe.durationSeconds.toFixed(
+              2,
+            )}s did not match expected ${expectedVideoDurationSeconds.toFixed(2)}s`,
+          );
+        }
       }
     }
   }

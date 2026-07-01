@@ -20,6 +20,12 @@ export interface FfmpegTrimInput extends VideoTrimWindow {
   outputPath: string;
 }
 
+export interface VideoProbe {
+  durationSeconds: number;
+  frameRate: number;
+  frameCount?: number;
+}
+
 export function computeTrimWindow(input: VideoTrimInput): VideoTrimWindow | null {
   if (input.recordingStartedAtMs === undefined) return null;
 
@@ -64,6 +70,11 @@ export function ffmpegIsAvailable() {
   return result.status === 0;
 }
 
+export function ffprobeIsAvailable() {
+  const result = spawnSync("ffprobe", ["-version"], { stdio: "ignore" });
+  return result.status === 0;
+}
+
 export function trimVideo(input: FfmpegTrimInput) {
   const result = spawnSync("ffmpeg", buildFfmpegTrimArgs(input), {
     encoding: "utf8",
@@ -74,4 +85,70 @@ export function trimVideo(input: FfmpegTrimInput) {
       `ffmpeg failed while trimming video:\n${result.stderr || result.stdout}`,
     );
   }
+}
+
+function parseFrameRate(value: string) {
+  const [numeratorText, denominatorText] = value.trim().split("/");
+  const numerator = Number(numeratorText);
+  const denominator = Number(denominatorText ?? "1");
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) {
+    throw new Error(`Invalid frame rate: ${value}`);
+  }
+  return numerator / denominator;
+}
+
+function fieldValue(output: string, field: string) {
+  const match = output.match(new RegExp(`^${field}=([^\\n]+)`, "m"));
+  return match?.[1];
+}
+
+export function parseFfprobeStream(output: string): VideoProbe {
+  const durationText = fieldValue(output, "duration");
+  const frameRateText = fieldValue(output, "avg_frame_rate");
+  if (!durationText || !frameRateText) {
+    throw new Error("ffprobe output is missing duration or frame rate");
+  }
+
+  const frameCountText = fieldValue(output, "nb_read_frames");
+  return {
+    durationSeconds: Number(durationText),
+    frameRate: parseFrameRate(frameRateText),
+    ...(frameCountText ? { frameCount: Number(frameCountText) } : {}),
+  };
+}
+
+export function probeVideo(inputPath: string): VideoProbe {
+  const result = spawnSync(
+    "ffprobe",
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-count_frames",
+      "-show_entries",
+      "stream=duration,avg_frame_rate,nb_read_frames",
+      "-of",
+      "default=nokey=0:noprint_wrappers=1",
+      inputPath,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `ffprobe failed while checking video:\n${result.stderr || result.stdout}`,
+    );
+  }
+  return parseFfprobeStream(result.stdout);
+}
+
+export function videoMatchesExpectedWindow(
+  probe: VideoProbe,
+  expectedDurationSeconds: number,
+  toleranceSeconds = 1,
+) {
+  return Math.abs(probe.durationSeconds - expectedDurationSeconds) <= toleranceSeconds;
 }

@@ -53,13 +53,25 @@ async function addWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
   )}`;
   if (!(await actions.moveToLocator(input))) return false;
   await input.fill(word);
+  await page.waitForFunction(
+    () => {
+      const addButton = Array.from(
+        document.querySelectorAll(".fridge-toolbox button"),
+      ).find((button) => button.textContent?.trim() === "Add") as
+        | HTMLButtonElement
+        | undefined;
+      return !!addButton && !addButton.disabled;
+    },
+    undefined,
+    { timeout: 2500 },
+  );
   await page
     .locator(".fridge-toolbox button", { hasText: "Add" })
     .first()
-    .click();
+    .evaluate((button) => (button as HTMLButtonElement).click());
   const addedWord = page.locator(".fridgeWord.custom", { hasText: word }).first();
   const added = await addedWord
-    .waitFor({ timeout: 2500 })
+    .waitFor({ timeout: 5000 })
     .then(() => true)
     .catch(() => false);
   await actions.idle(300, 900);

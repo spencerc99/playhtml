@@ -5,6 +5,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildFfmpegTrimArgs,
   computeTrimWindow,
+  parseFfprobeStream,
+  videoMatchesExpectedWindow,
 } from "./video";
 
 describe("computeTrimWindow", () => {
@@ -63,5 +65,40 @@ describe("buildFfmpegTrimArgs", () => {
       "+faststart",
       "/tmp/output.mp4",
     ]);
+  });
+});
+
+describe("parseFfprobeStream", () => {
+  test("parses duration, frame rate, and frame count", () => {
+    expect(
+      parseFfprobeStream(`duration=31.520000
+avg_frame_rate=25/1
+nb_read_frames=788
+`),
+    ).toEqual({
+      durationSeconds: 31.52,
+      frameRate: 25,
+      frameCount: 788,
+    });
+  });
+});
+
+describe("videoMatchesExpectedWindow", () => {
+  test("accepts small encoder padding around the expected duration", () => {
+    expect(
+      videoMatchesExpectedWindow(
+        { durationSeconds: 31.52, frameRate: 25, frameCount: 788 },
+        31.5,
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects files that are much longer than the action window", () => {
+    expect(
+      videoMatchesExpectedWindow(
+        { durationSeconds: 73.04, frameRate: 25, frameCount: 1826 },
+        31.5,
+      ),
+    ).toBe(false);
   });
 });
