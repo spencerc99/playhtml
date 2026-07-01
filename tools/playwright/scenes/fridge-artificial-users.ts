@@ -23,6 +23,10 @@ const WORDS = [
   "bright",
 ];
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 async function seedCursorIdentity(page: Page, persona: ActorPersona) {
   await page.addInitScript((identity) => {
     localStorage.setItem("playhtml_player_identity", JSON.stringify(identity));
@@ -43,19 +47,51 @@ function identityForPersona(persona: ActorPersona) {
 async function addWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
   const actions = createActorActions(page, persona, sync);
   const input = page.locator(".fridge-toolbox input[placeholder='New word...']").first();
-  const word = `${persona.random.pick(WORDS)}-${persona.index}`;
+  const word = `${persona.random.pick(WORDS)}-${persona.index}-${persona.random.int(
+    1000,
+    9999,
+  )}`;
   if (!(await actions.typeInto(input, word))) return false;
   await input.press("Enter");
+  const addedWord = page.locator(".fridgeWord.custom", { hasText: word }).first();
+  const added = await addedWord
+    .waitFor({ timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
   await actions.idle(300, 900);
-  return true;
+  return added;
 }
 
 async function dragWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
   const words = page.locator(".fridgeWordHolder");
-  const count = await words.count();
-  if (count === 0) return false;
+  const candidates = await words.evaluateAll((elements) => {
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
 
-  const target = words.nth(persona.random.int(0, Math.min(count - 1, 24)));
+    return elements
+      .map((element, index) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          index,
+          centerX: rect.left + rect.width / 2,
+          centerY: rect.top + rect.height / 2,
+          width: rect.width,
+          height: rect.height,
+          visible:
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.left > 40 &&
+            rect.top > 100 &&
+            rect.right < viewportWidth - 40 &&
+            rect.bottom < viewportHeight - 80,
+        };
+      })
+      .filter((candidate) => candidate.visible);
+  });
+  if (candidates.length === 0) return false;
+
+  const choice = persona.random.pick(candidates);
+  const target = words.nth(choice.index);
   const before = await target.evaluate((element) => {
     return (element as HTMLElement).style.transform;
   });
@@ -63,12 +99,28 @@ async function dragWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
   if (!viewport) return false;
 
   const actions = createActorActions(page, persona, sync);
+  const dx = persona.random.float(-220, 220);
+  const dy = persona.random.float(-160, 160);
+  const targetX = clamp(choice.centerX + dx, 80, viewport.width - 80);
+  const targetY = clamp(choice.centerY + dy, 120, viewport.height - 120);
   const moved = await actions.dragLocator(target, {
-    x: persona.random.float(120, viewport.width - 120),
-    y: persona.random.float(140, viewport.height - 160),
+    x: targetX,
+    y: targetY,
   });
   if (!moved) return false;
 
+  await page
+    .waitForFunction(
+      ({ index, beforeTransform }) => {
+        const element = document.querySelectorAll(".fridgeWordHolder")[index] as
+          | HTMLElement
+          | undefined;
+        return !!element && element.style.transform !== beforeTransform;
+      },
+      { index: choice.index, beforeTransform: before },
+      { timeout: 1500 },
+    )
+    .catch(() => {});
   await actions.idle(250, 800);
   const after = await target.evaluate((element) => {
     return (element as HTMLElement).style.transform;
@@ -149,6 +201,13 @@ export default defineScene({
     );
 
     await sync.wait(1500);
+    await pages[0]
+      .waitForFunction(
+        () => document.querySelectorAll(".fridgeWord.custom").length > 0,
+        undefined,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
     const visibleCustomWords = await pages[0].locator(".fridgeWord.custom").count();
     const remoteCursors = await pages[0].locator(".playhtml-cursor-other").count();
 

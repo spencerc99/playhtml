@@ -40,10 +40,25 @@ async function enterName(page: Page, persona: ActorPersona, sync: SyncHelpers) {
 async function shareUrl(page: Page, persona: ActorPersona, sync: SyncHelpers) {
   const actions = createActorActions(page, persona, sync);
   const input = page.locator(".url-chat form input").first();
-  if (!(await actions.typeInto(input, persona.random.pick(URLS)))) return false;
-  await input.press("Enter");
+  const beforeCount = await page.locator(".url-entry").count();
+  const baseUrl = persona.random.pick(URLS);
+  const separator = baseUrl.includes("?") ? "&" : "?";
+  const url = `${baseUrl}${separator}codex=${persona.index}-${persona.random.int(
+    1000,
+    9999,
+  )}`;
+  if (!(await actions.typeInto(input, url))) return false;
+  await page.locator(".url-chat form button[type='submit']").click();
+  const visible = await page
+    .waitForFunction(
+      (count) => document.querySelectorAll(".url-entry").length > count,
+      beforeCount,
+      { timeout: 3000 },
+    )
+    .then(() => true)
+    .catch(() => false);
   await actions.idle(300, 900);
-  return true;
+  return visible;
 }
 
 async function moveForPrompt(
@@ -158,6 +173,7 @@ export default defineScene({
 
     const runUntil = createRunUntil(options.durationMs);
     let sharedUrls = 0;
+    if (await shareUrl(pages[0], personas[0], sync)) sharedUrls++;
 
     await Promise.all(
       pages.map(async (page, index) => {
@@ -192,6 +208,13 @@ export default defineScene({
     );
 
     await sync.wait(1500);
+    await pages[0]
+      .waitForFunction(
+        () => document.querySelectorAll(".url-entry").length > 0,
+        undefined,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
     const urlEntries = await pages[0].locator(".url-entry").count();
     const remoteCursors = await pages[0].locator(".playhtml-cursor-other").count();
 

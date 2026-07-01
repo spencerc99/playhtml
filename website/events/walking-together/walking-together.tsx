@@ -1,3 +1,5 @@
+// ABOUTME: Runs the walking-together workshop session page.
+// ABOUTME: Coordinates shared URL posting, cursor activity prompts, roster state, and portraits.
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
 import {
@@ -153,7 +155,10 @@ const RosterAdmin = withSharedState(
         // A room persisted before this field existed (e.g. the legacy roster
         // used `entries`) has no `participants` — defaultData only seeds brand
         // new elements. Initialize it before keying in.
-        if (!draft.participants) draft.participants = {};
+        if (!draft.participants) {
+          draft.participants = { [pid]: mine };
+          return;
+        }
         draft.participants[pid] = mine;
       });
     }, [pid, name, color, setData]);
@@ -209,13 +214,14 @@ export const URLChat = withSharedState(
   ({ data, setData }) => {
     const [inputUrl, setInputUrl] = React.useState("");
     const urlListRef = React.useRef<HTMLDivElement>(null);
+    const urls: SharedURL[] = Array.isArray(data.urls) ? data.urls : [];
 
     // Scroll to top (since we're using column-reverse) when new URLs are added
     React.useEffect(() => {
       if (urlListRef.current) {
         urlListRef.current.scrollTop = 0;
       }
-    }, [data.urls]);
+    }, [urls]);
 
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -231,12 +237,14 @@ export const URLChat = withSharedState(
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls = [...urls, newUrl];
+      });
       setInputUrl("");
     };
 
     const copyToClipboard = () => {
-      const text = data.urls
+      const text = urls
         .map(({ userName, url }) => `${userName}: ${url}`)
         .join("\n");
       navigator.clipboard.writeText(text);
@@ -250,7 +258,7 @@ export const URLChat = withSharedState(
             right: 0,
           }}
         >
-          {data.urls.length > 0 && (
+          {urls.length > 0 && (
             <button
               style={{
                 fontSize: "10px",
@@ -263,7 +271,7 @@ export const URLChat = withSharedState(
           )}
         </div>
         <div className="url-list" ref={urlListRef}>
-          {[...data.urls].reverse().map((urlData, i) => (
+          {[...urls].reverse().map((urlData, i) => (
             <div key={i} className="url-entry">
               <span className="timestamp">
                 {new Date(urlData.timestamp).toLocaleTimeString()}
