@@ -10,25 +10,34 @@ const IDENTITY_FIELD = "__playhtml_identity__";
 interface MockAwareness {
   clientID: number;
   states: Map<number, Record<string, unknown>>;
+  listeners: Set<(...args: unknown[]) => void>;
   getStates(): Map<number, Record<string, unknown>>;
   getLocalState(): Record<string, unknown> | null;
   setLocalStateField(field: string, value: unknown): void;
   on(event: string, cb: (...args: unknown[]) => void): void;
+  emitChange(): void;
 }
 
 function makeAwareness(clientID: number): MockAwareness {
   const states = new Map<number, Record<string, unknown>>();
+  const listeners = new Set<(...args: unknown[]) => void>();
   states.set(clientID, {});
   return {
     clientID,
     states,
+    listeners,
     getStates: () => states,
     getLocalState: () => states.get(clientID) ?? null,
     setLocalStateField(field, value) {
       const cur = states.get(clientID) ?? {};
       states.set(clientID, { ...cur, [field]: value });
     },
-    on() {},
+    on(event, cb) {
+      if (event === "change") listeners.add(cb);
+    },
+    emitChange() {
+      for (const listener of listeners) listener();
+    },
   };
 }
 
@@ -140,6 +149,34 @@ describe("createPresenceAPI identity propagation", () => {
 
     api.getPresences();
     expect(awareness.getLocalState()?.[IDENTITY_FIELD]).toEqual(identity);
+  });
+
+  it("re-attaches channel listeners after the awareness provider is rebuilt", () => {
+    let awareness = makeAwareness(1);
+    const identity = makeIdentity("pk_local");
+    const remoteIdentity = makeIdentity("pk_remote");
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => identity,
+    });
+    const received: Array<Map<string, unknown>> = [];
+    const unsub = api.onPresenceChange("status", (presences) => {
+      received.push(presences as Map<string, unknown>);
+    });
+    received.length = 0;
+
+    awareness = makeAwareness(2);
+    api.getPresences();
+    awareness.states.set(3, {
+      [IDENTITY_FIELD]: remoteIdentity,
+      __presence__: { status: { text: "available" } },
+    });
+    awareness.emitChange();
+
+    expect(received).toHaveLength(1);
+    const remote = Array.from(received[0].values()).find((p: any) => !p.isMe) as any;
+    expect(remote.status).toEqual({ text: "available" });
+    unsub();
   });
 
   it("returns playerIdentity undefined for peers with no identity at all", () => {

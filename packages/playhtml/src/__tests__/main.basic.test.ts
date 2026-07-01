@@ -1,6 +1,14 @@
 // ABOUTME: Tests basic playhtml element setup and state behavior.
 // ABOUTME: Verifies handler lifecycle, SyncedStore writes, and element cleanup.
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  vi,
+} from "vitest";
 import { playhtml } from "../index";
 
 async function waitForCondition(
@@ -27,6 +35,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.innerHTML = "";
   });
   afterEach(() => {
+    vi.restoreAllMocks();
     document.body.innerHTML = "";
   });
 
@@ -81,6 +90,22 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(moveHandler!.data).toEqual({ x: 0, y: 0 });
     expect(el.getAttribute("data-lit")).toBe("true");
     expect(el.style.transform).toBe("translate(0px, 0px)");
+  });
+
+  it("reports missing can-play initializer properties", () => {
+    const el = document.createElement("div");
+    el.id = "incomplete-widget";
+    el.setAttribute("can-play", "");
+    document.body.appendChild(el);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    playhtml.setupPlayElement(el);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Missing or invalid initializer properties: defaultData, updateElement or view.",
+      ),
+    );
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {

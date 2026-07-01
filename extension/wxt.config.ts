@@ -14,9 +14,18 @@ export default defineConfig({
     action: {
       default_title: "we were online",
     },
+    commands: {
+      "open-inventory": {
+        suggested_key: {
+          default: "Ctrl+Shift+E", // Windows/Linux (Ctrl+Shift+I is DevTools there)
+          mac: "Command+Shift+I", // free on mac Chrome/Edge/Firefox (DevTools = Cmd+Option+I)
+        },
+        description: "Open the we-were-online inventory at the cursor",
+      },
+    },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css"],
+        resources: ["content-scripts/content.css", "inventory/*"],
         matches: ["<all_urls>"],
       },
     ],

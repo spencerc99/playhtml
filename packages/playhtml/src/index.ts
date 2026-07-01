@@ -1373,17 +1373,35 @@ function createPlayElementData<T extends TagType, TData = any>(
 function isCorrectElementInitializer(
   tagInfo: ElementInitializer | Partial<ElementInitializer> | undefined,
 ): tagInfo is ElementInitializer {
-  return (
-    tagInfo != null &&
-    // Just require a default to exist here — this guard is shared by the
-    // built-ins (whose defaults are objects/arrays) and the function form
-    // `defaultData: (el) => …`. The new can-play/view API additionally requires
-    // an object default; see validateViewInitializer.
-    tagInfo.defaultData !== undefined &&
-    // A valid initializer needs an update path: either the imperative
-    // `updateElement` or the declarative `view`.
-    (tagInfo.updateElement !== undefined || tagInfo.view !== undefined)
-  );
+  return getElementInitializerValidationIssues(tagInfo).length === 0;
+}
+
+function getElementInitializerValidationIssues(
+  tagInfo: ElementInitializer | Partial<ElementInitializer> | undefined,
+): string[] {
+  if (tagInfo == null) {
+    return ["initializer"];
+  }
+
+  const issues: string[] = [];
+  if (
+    tagInfo.defaultData === undefined ||
+    (typeof tagInfo.defaultData !== "object" &&
+      typeof tagInfo.defaultData !== "function")
+  ) {
+    issues.push("defaultData");
+  }
+
+  // A valid initializer needs an update path: the imperative `updateElement`
+  // or the declarative `view`.
+  if (
+    typeof tagInfo.updateElement !== "function" &&
+    typeof tagInfo.view !== "function"
+  ) {
+    issues.push("updateElement or view");
+  }
+
+  return issues;
 }
 
 // Read custom element properties set by CanPlayElement (React) on the DOM node
@@ -1907,8 +1925,10 @@ async function setupPlayElementForTag<T extends TagType | string>(
     element,
   );
   if (!isCorrectElementInitializer(elementInitializerInfo)) {
+    const initializerIssues =
+      getElementInitializerValidationIssues(elementInitializerInfo);
     console.error(
-      `Element ${elementId} does not have proper info to initial a playhtml element. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`,
+      `Element ${elementId} does not have proper info to initialize a playhtml element. Missing or invalid initializer properties: ${initializerIssues.join(", ")}. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`,
     );
     return;
   }
