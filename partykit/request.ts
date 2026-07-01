@@ -1,7 +1,11 @@
+// ABOUTME: Defines typed internal HTTP request and response payloads for PartyServer.
+// ABOUTME: Keeps bridge, subscription, and permission request guards in one place.
+
 export interface SubscribeRequest {
   action: "subscribe";
   consumerRoomId: string;
   elementIds?: string[];
+  consumerResetEpoch?: number | null;
 }
 
 export interface ExportPermissionsRequest {
@@ -26,6 +30,8 @@ export interface SubscribeResponse {
   ok: true;
   subscribed: true;
   elementIds: string[];
+  sourceResetEpoch?: number | null;
+  subtrees?: Record<string, Record<string, any>>;
 }
 
 export interface ExportPermissionsResponse {
@@ -34,6 +40,12 @@ export interface ExportPermissionsResponse {
 
 export interface ApplySubtreesResponse {
   ok: true;
+  // Whether the receiving room actually applied the subtrees. False when the
+  // apply was rejected (e.g. stale reset epoch) or skipped (transient mode).
+  // The sender uses this to back off a misconfigured bridge pair instead of
+  // re-sending on every flush. Optional so older callers reading only `ok`
+  // keep working; absence is treated as applied.
+  applied?: boolean;
 }
 
 export interface GenericErrorResponse {

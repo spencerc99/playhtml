@@ -1,6 +1,7 @@
 // ABOUTME: Verifies pure scheduling and snapshot decisions for PartyServer compaction.
 // ABOUTME: Keeps hibernation-safe compaction rules testable outside Cloudflare runtime.
 import { describe, expect, it } from "bun:test";
+import { STORAGE_KEYS } from "../const";
 import {
   getNextAlarmTime,
   getCompactionCommitDecision,
@@ -123,6 +124,15 @@ describe("shouldCheckEmergencyCompaction", () => {
         now: 5_000,
       })
     ).toBe(true);
+  });
+});
+
+describe("STORAGE_KEYS", () => {
+  it("uses a cooldown independent from connected-room emergency compaction", () => {
+    expect(STORAGE_KEYS.persistedDocumentCompactCheckAfter).toBeDefined();
+    expect(STORAGE_KEYS.persistedDocumentCompactCheckAfter).not.toBe(
+      STORAGE_KEYS.emergencyCompactCheckAfter
+    );
   });
 });
 

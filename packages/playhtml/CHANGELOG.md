@@ -1,5 +1,18 @@
 # Change Log
 
+## 2.11.3
+
+### Patch Changes
+
+- a091c11: Keep `can-play` element properties scoped to `can-play` when an element also uses a built-in capability, so custom state can compose with built-in behavior such as `can-move`.
+- 5e603e5: Set up playhtml capability descendants created by can-mirror state so mirrored dynamic elements become interactive without an extra DOM setup pass.
+
+## 2.11.2
+
+### Patch Changes
+
+- 95ace2b: Keep the React bindings connected to the app-provided playhtml runtime so package managers do not install a separate nested playhtml client for React wrappers, and expose the shared React-facing API through playhtml so React consumers only depend on one compatibility boundary.
+
 ## 2.11.1
 
 ### Patch Changes

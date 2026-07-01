@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  appendGuestbookEntry,
   getGuestbookDotColors,
   getLoopedEntryIndex,
   getRenderedPileCardIndexes,
@@ -107,5 +108,23 @@ describe("getLoopedEntryIndex", () => {
 
   it("keeps the current index when there are no entries", () => {
     expect(getLoopedEntryIndex(0, 0, 1)).toBe(0);
+  });
+});
+
+describe("appendGuestbookEntry", () => {
+  it("adds the new entry to the current draft without replacing existing entries", () => {
+    const draft = [
+      entry("#123456", 1),
+      entry("#abcdef", 2),
+    ];
+    const nextEntry = entry("#4a9a8a", 3);
+
+    appendGuestbookEntry(draft, nextEntry);
+
+    expect(draft).toEqual([
+      entry("#123456", 1),
+      entry("#abcdef", 2),
+      nextEntry,
+    ]);
   });
 });

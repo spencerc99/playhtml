@@ -37,6 +37,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     data: ElementAwarenessEventHandlerData<T, U, V>
   ) => void;
   triggerAwarenessUpdate?: () => void;
+  private dataUpdateListeners = new Set<() => void>();
 
   // event handlers
   onClick?: (
@@ -218,6 +219,13 @@ export class ElementHandler<T = any, U = any, V = any> {
     return this._data;
   }
 
+  onDataUpdate(listener: () => void): () => void {
+    this.dataUpdateListeners.add(listener);
+    return () => {
+      this.dataUpdateListeners.delete(listener);
+    };
+  }
+
   setLocalData(localData: U): void {
     this.localData = localData;
   }
@@ -232,6 +240,9 @@ export class ElementHandler<T = any, U = any, V = any> {
   set __data(data: T) {
     this._data = data;
     this.updateElement(this.getEventHandlerData());
+    for (const listener of this.dataUpdateListeners) {
+      listener();
+    }
   }
 
   updateAwareness(data: V[], byStableId: Map<string, V>) {

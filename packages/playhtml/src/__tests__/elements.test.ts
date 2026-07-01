@@ -61,6 +61,33 @@ describe("ElementHandler", () => {
     expect(handler.data).toEqual({ a: 1 });
   });
 
+  it("notifies data update listeners when internal data changes", () => {
+    const updateElement = vi.fn();
+    const onChange = vi.fn();
+    const onAwarenessChange = vi.fn();
+
+    const handler = new ElementHandler({
+      element,
+      defaultData: { a: 1 },
+      updateElement,
+      onChange,
+      onAwarenessChange,
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    const listener = vi.fn();
+    const unsubscribe = handler.onDataUpdate(listener);
+
+    handler.__data = { a: 2 };
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    handler.__data = { a: 3 };
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it("setDataDebounced delays onChange", async () => {
     vi.useFakeTimers();
     const onChange = vi.fn();

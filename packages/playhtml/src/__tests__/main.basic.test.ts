@@ -1,7 +1,28 @@
 // ABOUTME: Tests basic playhtml element setup and state behavior.
 // ABOUTME: Verifies handler lifecycle, SyncedStore writes, and element cleanup.
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  vi,
+} from "vitest";
 import { playhtml } from "../index";
+
+async function waitForCondition(
+  predicate: () => boolean,
+  message: string,
+): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(message);
+}
 
 beforeAll(async () => {
   // Initialize playhtml with SyncedStore as primary storage
@@ -14,6 +35,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.innerHTML = "";
   });
   afterEach(() => {
+    vi.restoreAllMocks();
     document.body.innerHTML = "";
   });
 
@@ -36,6 +58,54 @@ describe("playhtml basic setup with SyncedStore", () => {
     // Verify data is stored in SyncedStore
     expect(playhtml.syncedStore["can-toggle"]).toBeDefined();
     expect(playhtml.syncedStore["can-toggle"]["foo"]).toEqual({ on: false });
+  });
+
+  it("keeps can-play element props scoped when combined with can-move", async () => {
+    const el = document.createElement("img");
+    el.id = "composed-candle";
+    el.setAttribute("can-play", "");
+    el.setAttribute("can-move", "");
+    (el as any).defaultData = { on: true };
+    (el as any).onClick = (_event: MouseEvent, { data, setData }: any) => {
+      setData({ on: !data.on });
+    };
+    (el as any).updateElement = ({ element, data }: any) => {
+      element.setAttribute("data-lit", String(data.on));
+    };
+    document.body.appendChild(el);
+
+    playhtml.setupPlayElement(el);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const playHandler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("composed-candle");
+    const moveHandler = playhtml
+      .elementHandlers!.get("can-move")!
+      .get("composed-candle");
+
+    expect(playHandler).toBeTruthy();
+    expect(moveHandler).toBeTruthy();
+    expect(playHandler!.data).toEqual({ on: true });
+    expect(moveHandler!.data).toEqual({ x: 0, y: 0 });
+    expect(el.getAttribute("data-lit")).toBe("true");
+    expect(el.style.transform).toBe("translate(0px, 0px)");
+  });
+
+  it("reports missing can-play initializer properties", () => {
+    const el = document.createElement("div");
+    el.id = "incomplete-widget";
+    el.setAttribute("can-play", "");
+    document.body.appendChild(el);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    playhtml.setupPlayElement(el);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Missing or invalid initializer properties: defaultData, updateElement.",
+      ),
+    );
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {
@@ -153,5 +223,127 @@ describe("playhtml basic setup with SyncedStore", () => {
 
     // Verify data is removed from SyncedStore
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
+  });
+
+  it("sets up mirrored chair descendants with playhtml capabilities", async () => {
+    const mirror = document.createElement("div");
+    mirror.id = "musicalChairs4";
+    mirror.setAttribute("can-mirror", "");
+    document.body.appendChild(mirror);
+    await playhtml.setupPlayElementForTag(mirror, "can-mirror");
+
+    const handler = playhtml.elementHandlers!
+      .get("can-mirror")!
+      .get("musicalChairs4")!;
+
+    handler.setData({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "musicalChairs4",
+        "can-mirror": "",
+      },
+      children: [
+        {
+          nodeType: "HTMLElement",
+          tagName: "div",
+          attributes: {
+            id: "chair-example",
+            class: "chair",
+            "can-toggle": "",
+            "can-spin": "",
+          },
+          children: [
+            {
+              nodeType: "HTMLElement",
+              tagName: "img",
+              attributes: {
+                src: "/red-stool.png",
+                alt: "chair",
+              },
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    await waitForCondition(
+      () =>
+        document.getElementById("chair-example") !== null &&
+        playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+      "Expected can-mirror to register the mirrored chair",
+    );
+
+    const mirroredChair = document.getElementById("chair-example")!;
+    expect(mirroredChair).toBeTruthy();
+    expect(mirroredChair.classList.contains("chair")).toBe(true);
+    expect(mirroredChair.querySelector("img")?.getAttribute("src")).toBe(
+      "/red-stool.png",
+    );
+    expect(mirroredChair.querySelector("img")?.alt).toBe("chair");
+    expect(
+      playhtml.elementHandlers!.get("can-toggle")!.get("chair-example")!
+        .element,
+    ).toBe(mirroredChair);
+    expect(
+      playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
+    ).toBe(mirroredChair);
+
+    handler.setData({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "musicalChairs4",
+        "can-mirror": "",
+      },
+      children: [],
+    });
+    await waitForCondition(
+      () =>
+        document.getElementById("chair-example") === null &&
+        !playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        !playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+      "Expected can-mirror to unregister the removed chair",
+    );
+
+    handler.setData({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "musicalChairs4",
+        "can-mirror": "",
+      },
+      children: [
+        {
+          nodeType: "HTMLElement",
+          tagName: "div",
+          attributes: {
+            id: "chair-example",
+            class: "chair",
+            "can-toggle": "",
+            "can-spin": "",
+          },
+          children: [],
+        },
+      ],
+    });
+    await waitForCondition(
+      () =>
+        document.getElementById("chair-example") !== null &&
+        playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+      "Expected can-mirror to register the re-added chair",
+    );
+
+    const readdedChair = document.getElementById("chair-example")!;
+    expect(
+      playhtml.elementHandlers!.get("can-toggle")!.get("chair-example")!
+        .element,
+    ).toBe(readdedChair);
+    expect(
+      playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
+    ).toBe(readdedChair);
   });
 });

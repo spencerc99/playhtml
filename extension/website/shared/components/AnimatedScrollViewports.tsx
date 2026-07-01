@@ -16,6 +16,7 @@ import {
   colorShade,
   colorizeLuminosity,
 } from "../utils/colorStyle";
+import { getViewportTitleText } from "../utils/titleText";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -573,29 +574,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       </svg>
     );
   });
-
-// Best-effort title derivation purely from the URL — used as a fallback when
-// no captured page title is available. Currently handles Wikipedia articles
-// since the article slug IS the title; everything else returns null so the
-// caller can fall through to the domain.
-function deriveTitleFromUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.endsWith("wikipedia.org")) {
-      const m = parsed.pathname.match(/^\/wiki\/(.+)$/);
-      if (m) {
-        const slug = decodeURIComponent(m[1]).replace(/_/g, " ");
-        // Skip namespace pages (Special:, Talk:, User:, Category:, etc.) and
-        // the Main Page — neither is useful as a title-bar label.
-        if (/^[A-Za-z_]+:/.test(slug) || slug === "Main Page") return null;
-        return slug;
-      }
-    }
-  } catch {
-    // ignore malformed URLs
-  }
-  return null;
-}
 
 type ScrollKeyframe = ScrollAnimation["scrollEvents"][number];
 type ResizeKeyframe = NonNullable<ScrollAnimation["resizeEvents"]>[number];
@@ -1927,11 +1905,7 @@ const ViewportTitleBar = memo(
     const fontSize = Math.max(8, Math.round(barHeight * 0.55));
 
     const domain = extractDomain(pageUrl);
-    const displayTitle =
-      (pageTitle && pageTitle.trim()) ||
-      deriveTitleFromUrl(pageUrl) ||
-      domain ||
-      pageUrl;
+    const displayTitle = getViewportTitleText(pageUrl, pageTitle);
     const resolvedFavicon =
       faviconUrl ||
       (domain

@@ -10,7 +10,7 @@ playhtml ships a React package. This page is an orientation; the rest of the doc
 ## Install
 
 ```bash
-npm install @playhtml/react
+npm install playhtml @playhtml/react
 ```
 
 Compatible with React 16.8 and above, including React 17, 18, and 19.
@@ -81,7 +81,7 @@ export const ReactionView = withSharedState(
 
 Use the mutator form for counters and other `+/-` updates so each interaction edits the draft value at write time.
 
-Add `myDefaultAwareness` to the config to get presence-style ephemeral per-user data alongside your persistent data.
+Add `myDefaultAwareness` to the config to get element awareness: ephemeral per-user presence scoped to this element, alongside its persistent data.
 
 ### `<CanPlayElement>`: for when you need JSX children, not a wrapper
 
@@ -89,7 +89,7 @@ Same idea, different shape. Useful when the thing you're wrapping is a specific 
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanToggle]}
