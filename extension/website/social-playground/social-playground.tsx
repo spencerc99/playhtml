@@ -53,6 +53,19 @@ async function bootSocial(): Promise<() => void> {
 
   const cleanups: Array<() => void> = [];
 
+  // The emote wheel rides the cursor layer (Cmd/Ctrl+Shift+E). It only needs the
+  // cursorClient from playhtml.init above, so mount it first — it shouldn't wait
+  // on the satchel/bottles setup. In the extension it's wired into the
+  // cursor-site path for the same reason.
+  if (playhtml.cursorClient) {
+    cleanups.push(
+      initEmotes({
+        presence: playhtml.presence,
+        cursorClient: playhtml.cursorClient,
+      }),
+    );
+  }
+
   if (await anyGlobalFeatureActive()) {
     cleanups.push(
       await initGlobalFeatures({
@@ -64,17 +77,6 @@ async function bootSocial(): Promise<() => void> {
     );
   } else {
     console.warn("[social-playground] no global social experiment active");
-  }
-
-  // The emote wheel rides the cursor layer (Cmd/Ctrl+Shift+E). It lives outside
-  // initGlobalFeatures — in the extension it's wired into the cursor-site path.
-  if (playhtml.cursorClient) {
-    cleanups.push(
-      initEmotes({
-        presence: playhtml.presence,
-        cursorClient: playhtml.cursorClient,
-      }),
-    );
   }
 
   return () => cleanups.forEach((c) => c());

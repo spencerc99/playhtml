@@ -2,6 +2,7 @@
 // ABOUTME: Mirrors ChatEchoRenderer — position from getCursorPresences, rAF reposition, TTL removal.
 
 import { getEmote } from "./emotes";
+import { emoteIconSvg } from "./icons";
 
 export interface CursorSource {
   getCursorPresences(): Map<string, { cursor: { x: number; y: number } | null }>;
@@ -39,7 +40,9 @@ export class EmoteRenderer {
     node.style.animation = `${def.keyframe} ${def.durationMs}ms ease-out`;
     const glyph = document.createElement("span");
     glyph.className = "emote-glyph";
-    glyph.textContent = def.icon;
+    // Played emote uses the same ink icon as the wheel. Markup is static
+    // (composed from icons.ts constants), so innerHTML is safe here.
+    glyph.innerHTML = emoteIconSvg(def.id, 30, "#3d3833", 2.4);
     node.appendChild(glyph);
     this.layer.appendChild(node);
     this.active.push({ pid, isMe, node, expiresAt: Date.now() + def.durationMs });

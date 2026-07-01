@@ -8,20 +8,31 @@ export const EMOTES_CSS = `
   z-index: 2147483645;
   font-family: "Martian Mono", ui-monospace, monospace;
 }
+/* Soft-minimal + ink: a quiet paper disc, no hard border, faint inner guides. */
 .emote-ring {
   position: absolute;
   border-radius: 50%;
   background: #f5f0e8;
-  border: 1px solid rgba(61, 56, 51, 0.18);
-  box-shadow: 0 8px 28px rgba(61, 56, 51, 0.28), 0 2px 6px rgba(61, 56, 51, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(61, 56, 51, 0.1),
+    inset 0 0 0 33px rgba(61, 56, 51, 0),
+    0 10px 30px rgba(61, 56, 51, 0.16);
+}
+/* second faint guide ring, drawn as a pseudo-inset via a radial highlight */
+.emote-ring::after {
+  content: "";
+  position: absolute;
+  inset: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(61, 56, 51, 0.08);
 }
 .emote-item {
   position: absolute;
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  border: 1px solid rgba(61, 56, 51, 0.15);
-  background: #fffdf9;
+  border: none;
+  background: transparent;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -29,25 +40,30 @@ export const EMOTES_CSS = `
   justify-content: center;
   color: #3d3833;
   padding: 0;
-  box-shadow: 0 1px 3px rgba(61, 56, 51, 0.2);
-  transition: transform 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.12s ease, color 0.12s ease;
 }
 .emote-item:hover {
-  transform: scale(1.18);
+  transform: scale(1.16);
   background: #eaf5f2;
-  border-color: #4a9a8a;
-  box-shadow: 0 3px 8px rgba(74, 154, 138, 0.4);
+  color: #0f6e56;
+  box-shadow: 0 0 0 2px #4a9a8a;
 }
 .emote-item .glyph {
-  font-size: 0.9rem;
-  line-height: 1;
-  white-space: pre;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.emote-item .glyph svg {
+  display: block;
 }
 .emote-item .key {
-  opacity: 0.55;
-  font-size: 0.58rem;
-  margin-top: 1px;
+  position: absolute;
+  bottom: -1px;
+  right: 2px;
+  opacity: 0.5;
+  font-size: 0.55rem;
 }
 
 .emote-node {
@@ -57,12 +73,12 @@ export const EMOTES_CSS = `
   transform-origin: top left;
 }
 .emote-glyph {
-  font-family: "Martian Mono", ui-monospace, monospace;
-  font-size: 1.15rem;
-  font-weight: 700;
-  white-space: pre;
-  color: #3d3833;
-  text-shadow: 0 0 3px #faf7f2, 0 0 3px #faf7f2, 0 1px 2px rgba(0, 0, 0, 0.3);
+  display: block;
+  line-height: 0;
+  filter: drop-shadow(0 0 2px #faf7f2) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+}
+.emote-glyph svg {
+  display: block;
 }
 
 @keyframes emote-wheel-open {

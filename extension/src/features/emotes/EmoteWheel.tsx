@@ -3,8 +3,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EMOTES } from "./emotes";
+import { emoteIconSvg } from "./icons";
 
-const MENU_RADIUS = 64;
+const MENU_RADIUS = 74;
+const ICON_PX = 26;
 
 function keyForIndex(i: number): string {
   return i === 9 ? "0" : String(i + 1);
@@ -83,13 +85,19 @@ export function EmoteWheel({
             className="emote-item"
             onClick={() => onSelect(emote.id)}
             style={{
-              left: `${ix - 22}px`,
-              top: `${iy - 22}px`,
+              left: `${ix - 23}px`,
+              top: `${iy - 23}px`,
               animation: `emote-item-pop 0.2s ease-out ${i * 0.03}s both`,
             }}
             title={emote.label}
+            aria-label={emote.label}
           >
-            <span className="glyph">{emote.icon}</span>
+            <span
+              className="glyph"
+              dangerouslySetInnerHTML={{
+                __html: emoteIconSvg(emote.id, ICON_PX, "currentColor"),
+              }}
+            />
             <span className="key">{keyForIndex(i)}</span>
           </button>
         );
