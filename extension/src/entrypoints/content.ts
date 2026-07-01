@@ -42,6 +42,7 @@ export default defineContentScript({
       private playerIdentity: any = null;
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
+      private emoteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
@@ -1113,6 +1114,20 @@ export default defineContentScript({
             });
           } catch (err) {
             console.error("[we-were-online] initCustomSite failed:", err);
+          }
+          // Emote wheel rides the same cursor layer; peers are only present
+          // where cursors are enabled, so it lives inside this block.
+          const cursorClient = playhtml.cursorClient;
+          if (cursorClient) {
+            try {
+              const { initEmotes } = await import("../features/emotes");
+              this.emoteCleanup = initEmotes({
+                presence: playhtml.presence,
+                cursorClient,
+              });
+            } catch (err) {
+              console.error("[we-were-online] initEmotes failed:", err);
+            }
           }
         }
       }
