@@ -219,7 +219,7 @@ import { CanToggleElement } from "@playhtml/react";
   <TabItem label="React">
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement tagInfo={[TagType.CanGrow]} id="balloon" defaultData={{ scale: 1 }}>
   {() => <img src="/water-balloon.png" alt="" />}
@@ -247,7 +247,7 @@ import { TagType } from "@playhtml/common";
   <TabItem label="React">
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement tagInfo={[TagType.CanSpin]} id="wheel" defaultData={{ rotation: 0 }}>
   {() => <img src="/bike-wheel.webp" alt="" />}
@@ -302,11 +302,11 @@ import { CanHoverElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-If you want the hover effect to reflect *who* is hovering (e.g. tint the element with each viewer's cursor color) rather than a plain on/off, read the hover roster off awareness with a custom `can-play` element:
+If you want the hover effect to reflect *who* is hovering (e.g. tint the element with each viewer's cursor color) rather than a plain on/off, read the hover roster off element awareness. Awareness is presence scoped to one element, so it clears when readers leave and does not persist:
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanHover]}
@@ -458,6 +458,8 @@ Click "+" to append a new `<li>`. The child addition itself mirrors, so new read
 ">add entry</button>
 ```
 
+If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically.
+
 :::note[Experimental]
 `can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.
 :::
@@ -487,6 +489,8 @@ Click "+" to append a new `<li>`. The child addition itself mirrors, so new read
 **What it does.** The "build your own capability" escape hatch. You define `defaultData`, `onClick` / `onDrag` / `onMount` handlers, and an `updateElement` callback. playhtml syncs the data and fires your handlers.
 
 **Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
+
+Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
 
 This page is itself a `can-play` showcase. Four examples live in the margins:
 
@@ -572,7 +576,7 @@ These capabilities are the building blocks. The best way to see them in concert 
   <a class="ph-composed-card" href="https://playhtml.fun/experiments/4/" target="_blank" rel="noopener">
     <span class="ph-composed-card__kicker">EXPERIMENT · 04</span>
     <span class="ph-composed-card__title">Every color</span>
-    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + per-user awareness + an ever-growing shared palette.</span>
+    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + element awareness + an ever-growing shared palette.</span>
   </a>
   <a class="ph-composed-card" href="https://playhtml.fun/fridge" target="_blank" rel="noopener">
     <span class="ph-composed-card__kicker">COMMUNITY · FRIDGE</span>

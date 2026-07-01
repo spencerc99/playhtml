@@ -7,7 +7,7 @@ import {
   CanMoveBoundsMinVisiblePx,
   TagTypeToElement,
   TagType,
-} from "@playhtml/common";
+} from "playhtml";
 import * as React from "react";
 import { useEffect, useId, useState } from "react";
 import { CanPlayElement, WithPlayOptionalProps } from ".";

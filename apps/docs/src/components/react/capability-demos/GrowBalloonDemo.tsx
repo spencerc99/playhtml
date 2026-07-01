@@ -1,6 +1,6 @@
 import React from "react";
 import { CanPlayElement } from "@playhtml/react";
-import { TagType, TagTypeToElement } from "@playhtml/common";
+import { TagType, TagTypeToElement } from "playhtml";
 
 /** Click to inflate, Alt-click to deflate — only the balloon scales; hint stays fixed. */
 export function GrowBalloonDemo(): React.ReactElement {

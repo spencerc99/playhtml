@@ -41,7 +41,8 @@ interface ChannelListener {
 
 export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
   const listeners = new Map<string, ChannelListener>();
-  let awarenessListenerAttached = false;
+  const attachedAwarenessObjects = new WeakSet<AwarenessLike>();
+  let currentAwareness: AwarenessLike | null = null;
   let nextListenerId = 0;
 
   function getAwareness(): AwarenessLike {
@@ -87,31 +88,39 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
     return parts.join("|");
   }
 
+  function handleAwarenessChange(): void {
+    if (listeners.size === 0) return;
+    const states = getAwareness().getStates();
+
+    // Cache buildPresences() so multiple listeners in the same event share the result
+    let cachedPresences: Map<string, PresenceView> | null = null;
+    const getPresencesOnce = () => {
+      if (!cachedPresences) cachedPresences = buildPresences();
+      return cachedPresences;
+    };
+
+    for (const listener of listeners.values()) {
+      const fingerprint = channelFingerprint(
+        states as Map<number, Record<string, unknown>>,
+        listener.channel,
+      );
+      if (fingerprint === listener.lastFingerprint) continue;
+      listener.lastFingerprint = fingerprint;
+      listener.callback(getPresencesOnce());
+    }
+  }
+
   function attachAwarenessListener(): void {
-    if (awarenessListenerAttached) return;
-    awarenessListenerAttached = true;
+    const awareness = getAwareness();
+    if (currentAwareness === awareness) return;
+    currentAwareness = awareness;
+    if (attachedAwarenessObjects.has(awareness)) return;
+    attachedAwarenessObjects.add(awareness);
+    awareness.on("change", handleAwarenessChange);
+  }
 
-    getAwareness().on("change", () => {
-      if (listeners.size === 0) return;
-      const states = getAwareness().getStates();
-
-      // Cache buildPresences() so multiple listeners in the same event share the result
-      let cachedPresences: Map<string, PresenceView> | null = null;
-      const getPresencesOnce = () => {
-        if (!cachedPresences) cachedPresences = buildPresences();
-        return cachedPresences;
-      };
-
-      for (const listener of listeners.values()) {
-        const fingerprint = channelFingerprint(
-          states as Map<number, Record<string, unknown>>,
-          listener.channel,
-        );
-        if (fingerprint === listener.lastFingerprint) continue;
-        listener.lastFingerprint = fingerprint;
-        listener.callback(getPresencesOnce());
-      }
-    });
+  function attachAwarenessListenerIfSubscribed(): void {
+    if (listeners.size > 0) attachAwarenessListener();
   }
 
   function buildViewFromState(state: Record<string, unknown>, isMe: boolean): PresenceView {
@@ -227,6 +236,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
   return {
     setMyPresence(channel: string, data: unknown): void {
       ensureIdentityWritten();
+      attachAwarenessListenerIfSubscribed();
       const awareness = getAwareness();
       const currentState = awareness.getLocalState() ?? {};
       const currentPresence = (currentState[PRESENCE_FIELD] as Record<string, unknown>) ?? {};
@@ -244,6 +254,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
 
     getPresences(): Map<string, PresenceView> {
       ensureIdentityWritten();
+      attachAwarenessListenerIfSubscribed();
       return buildPresences();
     },
 

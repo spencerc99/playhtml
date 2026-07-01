@@ -1,7 +1,11 @@
+// ABOUTME: Defines typed internal HTTP request and response payloads for PartyServer.
+// ABOUTME: Keeps bridge, subscription, and permission request guards in one place.
+
 export interface SubscribeRequest {
   action: "subscribe";
   consumerRoomId: string;
   elementIds?: string[];
+  consumerResetEpoch?: number | null;
 }
 
 export interface ExportPermissionsRequest {
@@ -26,6 +30,8 @@ export interface SubscribeResponse {
   ok: true;
   subscribed: true;
   elementIds: string[];
+  sourceResetEpoch?: number | null;
+  subtrees?: Record<string, Record<string, any>>;
 }
 
 export interface ExportPermissionsResponse {

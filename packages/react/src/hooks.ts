@@ -11,7 +11,7 @@ import {
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
-} from "@playhtml/common";
+} from "playhtml";
 import type { CursorZoneOptions } from "playhtml";
 
 function warnPreInit(call: string): void {

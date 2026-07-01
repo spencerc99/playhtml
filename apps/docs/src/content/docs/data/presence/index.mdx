@@ -8,9 +8,11 @@ sidebar:
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-Presence is playhtml's "who's here right now" layer. Every connected user has an identity, an optional cursor position, and any number of custom named channels you define. None of it persists. When the user disconnects, their presence clears.
+Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
 
-Reach for presence when the lifetime you want is "while this person is on the page". Reach for [persistent data](/docs/data/data-essentials/) when you want state to survive a reload, and [events](/docs/data/events/) for one-shot signals.
+When you want things to stay after refreshing, use [persistent data](/docs/data/data-essentials/) and use [events](/docs/data/events/) for real-time events that don't rely on updating data. 
+
+Element APIs use the word **awareness** for presence scoped to one element. `myDefaultAwareness`, `awareness`, and `setMyAwareness` are still ephemeral per-user state; they just belong to a specific element instead of the page-level `playhtml.presence` object.
 
 ## The unified API
 
@@ -63,9 +65,7 @@ The hook subscribes and unsubscribes with the component lifecycle. Your channel 
 
 ### Cursor presence subscribes the same way
 
-Cursor movements are exposed as a special channel. Playhtml sends cursor motion through
-its realtime presence layer so cursor rendering can stay responsive without writing
-pointer movement into persistent shared data:
+Cursor movements are included as a special example of this presence.
 
 ```js
 const unsub = playhtml.presence.onPresenceChange("cursor", (presences) => {
@@ -113,6 +113,47 @@ setMyPresence(null);
 
 There's no partial/merge update for a channel. When you call `setMyPresence`, you overwrite that channel's value for your user.
 
+## Element awareness
+
+Use page-level presence when the signal belongs to the room: online status, cursor position, lobby readiness, or a typing indicator that several parts of the page may read. Use element awareness when the signal only matters for one playhtml element, like "who has joined this widget" or "which color is this reader contributing here".
+
+In vanilla `can-play`, element awareness appears on the element handler data:
+
+```html
+<button can-play id="presence-count">0 readers here</button>
+
+<script>
+  const element = document.getElementById("presence-count");
+  element.defaultData = {};
+  element.myDefaultAwareness = { color: "#3b82f6" };
+  element.updateElement = () => {};
+  element.onClick = (_event, { setMyAwareness }) => {
+    setMyAwareness({ color: "#f97316" });
+  };
+  element.updateElementAwareness = ({ element, awareness }) => {
+    const label = awareness.length === 1 ? "reader" : "readers";
+    element.textContent = `${awareness.length} ${label} here`;
+  };
+</script>
+```
+
+In React, the same fields are available from `withSharedState` and `<CanPlayElement>` render props:
+
+```tsx
+<CanPlayElement id="presence-count" defaultData={{}} myDefaultAwareness="#3b82f6">
+  {({ awareness, setMyAwareness }) => {
+    const label = awareness.length === 1 ? "reader" : "readers";
+    return (
+      <button onClick={() => setMyAwareness("#f97316")}>
+        {awareness.length} {label} here
+      </button>
+    );
+  }}
+</CanPlayElement>
+```
+
+Awareness has the same lifetime as presence: it clears when the user leaves, and a late visitor does not replay it.
+
 ## Isolated presence rooms
 
 The main presence layer tracks everyone in the page's room. When you want a presence channel **scoped to something other than the page** (a lobby, a document, a game table that several pages share), create a separate presence room.
@@ -159,6 +200,6 @@ Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watc
 
 ## When to use data instead
 
-Presence is for _ambient awareness_ of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
+Presence is for the live sense of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
 
-Not sure which primitive fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+Not sure which primitive fits? The full decision table, covering element data, page data, presence, element awareness, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).

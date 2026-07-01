@@ -73,7 +73,7 @@ Either way, give every interactive element a unique `id`. That's how state is ke
 ### Install
 
 ```bash
-npm install @playhtml/react @playhtml/common
+npm install playhtml @playhtml/react
 ```
 
 ### Initialize
@@ -98,7 +98,7 @@ Need more control? Use `CanPlayElement` with a render prop to read and write the
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanToggle]}

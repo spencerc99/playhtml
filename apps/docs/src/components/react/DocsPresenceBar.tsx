@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { playhtml } from '@playhtml/react';
-import type { CursorPresenceView } from '@playhtml/common';
+import type { CursorPresenceView } from 'playhtml';
 
 // Header presence HUD + cursor-color picker.
 //

@@ -59,7 +59,7 @@ interface WithSharedStateConfig<T, V> {
 ```
 
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
-- **`myDefaultAwareness`**: optional. Initial value for this user's ephemeral per-user field. Does _not_ persist.
+- **`myDefaultAwareness`**: optional. Initial value for this user's element awareness. This is ephemeral per-user presence scoped to the element. Does _not_ persist.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
@@ -77,6 +77,8 @@ interface ReactElementEventHandlerData<T, V> {
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
+
+`awareness`, `myAwareness`, and `setMyAwareness` are the element-scoped form of [presence](/docs/data/presence/#element-awareness). Use them for live per-user signals tied to this element, not state that should survive reload.
 
 ### Props-dependent config
 
@@ -109,6 +111,7 @@ interface CanPlayElementProps<T, V> {
 ```
 
 - **`id`**: required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
+- **`myDefaultAwareness`**: optional. Initial element awareness for this user. Same lifetime as presence; it clears when the user leaves.
 - **`standalone`**: when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
 - **`loading`**: controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
 - **`dataSource`**, **`shared`**, **`dataSourceReadOnly`**: wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
@@ -360,7 +363,7 @@ setCounter((draft) => { draft.count += 1; });
 
 ### `usePresenceRoom`
 
-Join an isolated [presence room](/docs/data/presence/) with its own awareness, separate from the page's main presence. Returns `null` until synced (and briefly during a room change).
+Join an isolated [presence room](/docs/data/presence/) separate from the page's main presence. Returns `null` until synced (and briefly during a room change).
 
 ```tsx
 function usePresenceRoom(name: string): PresenceRoom | null;
@@ -404,10 +407,10 @@ Read the local player's cursor color, participant id, and name. Documented on it
 
 ## `TagType`
 
-Re-exported from `@playhtml/common`. Use these as `tagInfo` entries when you want a built-in capability (`can-move`, `can-toggle`, etc.) wired into your component.
+Re-exported from `playhtml`. Use these as `tagInfo` entries when you want a built-in capability (`can-move`, `can-toggle`, etc.) wired into your component.
 
 ```ts
-import { TagType } from "@playhtml/common";
+import { TagType } from "playhtml";
 
 TagType.CanPlay;
 TagType.CanMove;
@@ -427,6 +430,6 @@ The repo has a collection of runnable React examples at [`packages/react/example
 
 A few things still in flux in the React package:
 
-- **Per-key persistence config.** Currently persistence is a whole-store choice: `setMyAwareness` for ephemeral, `setData` for persistent, no local-only mode. A future `persistenceOptions` object might let you configure per-key (`none` / `local` / `global`).
+- **Per-key persistence config.** Currently persistence is a whole-store choice: `setMyAwareness` for element-scoped presence, `setData` for persistent data, no local-only mode. A future `persistenceOptions` object might let you configure per-key (`none` / `local` / `global`).
 - **`awareness` splitting.** `awareness` currently includes the local user; it may split into `myAwareness` + `othersAwareness` for clarity.
 - **Hook ergonomics.** A pure-hook interface (`useSharedState({ id, defaultData })`) is being evaluated as an alternative to the HOC form. The blocker is that hooks have no natural place to pin a stable `id`.
