@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>social playground — we were online</title>
+    <style>
+      :root {
+        --bg: #faf7f2;
+        --text: #3d3833;
+        --muted: #8a8279;
+        --accent: #4a9a8a;
+      }
+      body {
+        margin: 0;
+        padding: 48px 32px 120px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+        line-height: 1.55;
+      }
+      .wrap { max-width: 720px; margin: 0 auto; }
+      h1 { font-family: Lora, Georgia, serif; font-weight: 700; font-size: 28px; margin: 0 0 6px; }
+      .sub { color: var(--muted); font-size: 14px; margin: 0 0 4px; }
+      .status {
+        display: inline-block;
+        font-family: ui-monospace, "Martian Mono", monospace;
+        font-size: 11px;
+        color: var(--accent);
+        background: rgba(74, 154, 138, 0.1);
+        border: 1px solid rgba(74, 154, 138, 0.25);
+        border-radius: 6px;
+        padding: 3px 9px;
+        margin: 14px 0 28px;
+      }
+      h2 { font-family: Lora, Georgia, serif; font-weight: 600; font-size: 18px; margin: 34px 0 8px; }
+      p { color: #5c554d; }
+      .filler p { color: #cfc7ba; }
+      ul { color: #5c554d; }
+      .controls { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; align-items: flex-start; }
+      .controls textarea {
+        font: inherit; padding: 8px 10px; border: 1px solid var(--muted);
+        border-radius: 4px; min-width: 320px; min-height: 56px;
+      }
+      .controls input[type="color"] { width: 56px; height: 36px; padding: 0; border: 1px solid var(--muted); border-radius: 4px; }
+      .controls button {
+        font: inherit; padding: 8px 18px; background: var(--accent);
+        color: #fff; border: none; border-radius: 6px; cursor: pointer;
+      }
+      .controls button:hover { filter: brightness(0.95); }
+      .slot-marker {
+        /* fixed (not absolute) so it shares the viewport coordinate space with
+           the ceremony's fixed overlay + fissure — where the dot is is exactly
+           where the card plunges, regardless of page scroll. */
+        position: fixed; width: 16px; height: 16px; border-radius: 50%;
+        background: var(--accent); border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); cursor: pointer; z-index: 3;
+      }
+      .slot-marker::after {
+        content: attr(data-label); position: absolute; top: 22px; left: 50%;
+        transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap;
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap"
+    />
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>social playground</h1>
+      <p class="sub">
+        Live preview of the extension's on-page social mechanics, running the
+        real components on the site (no extension install needed).
+      </p>
+      <span class="status" id="status">booting…</span>
+
+      <h2>The satchel + bottles (live)</h2>
+      <p>
+        These boot automatically via the extension's real
+        <code>initGlobalFeatures</code>:
+      </p>
+      <ul>
+        <li>
+          <strong>Inventory satchel</strong> — the backpack <em>edge nub</em> on the
+          right. Drag it, click to open the cozy kit, click an item to arm it
+          (it rides next to your cursor). Press <code>Esc</code> to disarm.
+        </li>
+        <li>
+          <strong>Bottles</strong> — a message bottle places itself somewhere on
+          this page (it's a real synced experiment — open it, read/add, seal).
+        </li>
+      </ul>
+
+      <h2>Message bottle (direct render — for photos)</h2>
+      <p>
+        The real <code>MessageBottle</code> component, rendered directly (no
+        sync needed, so it always shows). Click it to open, read, and seal —
+        good for framing a screenshot. Tweak the message, color, or make it an
+        empty prompt bottle, then <strong>reset</strong> to re-seal.
+      </p>
+      <div class="controls">
+        <textarea id="bp-text">if you're reading this, the wifi is back up.</textarea>
+        <input type="color" id="bp-color" value="#c4724e" />
+      </div>
+      <div class="controls">
+        <label style="display: flex; align-items: center; gap: 6px; color: #5c554d">
+          <input type="checkbox" id="bp-empty" /> empty prompt bottle
+        </label>
+        <button id="bp-reset">reset bottle</button>
+      </div>
+      <div
+        id="bottle-stage"
+        style="
+          position: relative;
+          min-height: 240px;
+          margin: 12px 0 8px;
+          border: 1px dashed rgba(90, 78, 65, 0.25);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        "
+      >
+        <div id="bottle-root"></div>
+      </div>
+
+      <h2>Sealing ceremony (direct play)</h2>
+      <p>
+        Play the Three.js sealing ceremony on its own to iterate on it. Drag the
+        slot dot to set where the bottle lands, then play.
+      </p>
+      <div class="controls">
+        <textarea id="msg">if you're reading this, the wifi is back up.</textarea>
+        <input type="color" id="color" value="#c4724e" />
+      </div>
+      <div class="controls">
+        <button id="play">play ceremony</button>
+      </div>
+
+      <h2 class="filler">Some page content</h2>
+      <div class="filler">
+        <p>
+          The quick brown fox jumps over the lazy dog. The quick brown fox jumps
+          over the lazy dog. The quick brown fox jumps over the lazy dog. The
+          quick brown fox jumps over the lazy dog.
+        </p>
+        <p>
+          The quick brown fox jumps over the lazy dog. The quick brown fox jumps
+          over the lazy dog. The quick brown fox jumps over the lazy dog.
+        </p>
+        <p>
+          The quick brown fox jumps over the lazy dog. The quick brown fox jumps
+          over the lazy dog. The quick brown fox jumps over the lazy dog. The
+          quick brown fox jumps over the lazy dog. The quick brown fox jumps over
+          the lazy dog.
+        </p>
+      </div>
+    </div>
+
+    <!-- Slot marker for the ceremony tester -->
+    <div
+      class="slot-marker"
+      id="slot"
+      style="left: 72%; top: 64%"
+      data-label="slot (drag me)"
+    ></div>
+
+    <div id="ceremony-root"></div>
+    <script type="module" src="./social-playground.tsx"></script>
+  </body>
+</html>

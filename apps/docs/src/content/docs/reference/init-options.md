@@ -78,6 +78,8 @@ You can also register events imperatively later with `playhtml.registerPlayEvent
 
 Ship your own `can-*` capability alongside the built-ins. Most authors never need this; use `can-play` on individual elements first. Reach for `extraCapabilities` when you're packaging a capability you want to reuse across many elements and want the shorter `can-mything` attribute form.
 
+`playhtml.define(name, init)` is the runtime equivalent (callable any time, not just at init) and the recommended way to register a reusable capability — and like `register`, its `init` can use a declarative [`view`](/docs/custom-elements/) instead of the imperative `updateElement` / `onClick` shown below.
+
 ```js
 playhtml.init({
   extraCapabilities: {

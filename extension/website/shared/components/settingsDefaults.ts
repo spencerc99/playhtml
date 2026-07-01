@@ -58,7 +58,9 @@ export const DEFAULT_SETTINGS = {
   showZoomEvents: true,
   windowScale: 0.5,
   keyboardOverlapFactor: 0.9,
-  textboxOpacity: 0.2,
+  // Direct 0–1 box opacity (0 = transparent, 1 = opaque). ~0.7 keeps boxes
+  // clearly visible by default while leaving headroom to fade them.
+  textboxOpacity: 0.7,
   keyboardMinFontSize: 12,
   keyboardMaxFontSize: 18,
   keyboardShowCaret: true,
@@ -80,6 +82,12 @@ export const DEFAULT_SETTINGS = {
   // pages or ChatGPT containers may span the canvas). 0.5 is a good
   // balance for most cases. Smaller = tighter.
   keyboardSizeCap: 0.5,
+  // Max height:width ratio for a typing box. Boxes taller than this get
+  // WIDENED (not shortened) so a narrow input holding lots of text doesn't
+  // render as an ugly super-narrow column. Keeps size variety — only the
+  // extreme narrow-vertical case is corrected. Higher = allows taller/narrower
+  // boxes (more variety, more risk of slivers); ~2.2 kills only the worst.
+  keyboardMaxAspect: 2.2,
   navigationWindowOpacity: 0.9,
   navigationEdgeOpacity: 0.2,
   navigationScrollSpeed: 80,
