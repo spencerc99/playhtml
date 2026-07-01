@@ -11,16 +11,17 @@ export const EMOTES_CSS = `
 .emote-ring {
   position: absolute;
   border-radius: 50%;
-  background: rgba(245, 240, 232, 0.85);
-  box-shadow: 0 0 2px 0 rgba(0, 0, 0, 0.25);
+  background: #f5f0e8;
+  border: 1px solid rgba(61, 56, 51, 0.18);
+  box-shadow: 0 8px 28px rgba(61, 56, 51, 0.28), 0 2px 6px rgba(61, 56, 51, 0.18);
 }
 .emote-item {
   position: absolute;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  border: none;
-  background: transparent;
+  border: 1px solid rgba(61, 56, 51, 0.15);
+  background: #fffdf9;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -28,21 +29,25 @@ export const EMOTES_CSS = `
   justify-content: center;
   color: #3d3833;
   padding: 0;
-  transition: transform 0.1s ease, background 0.1s ease;
+  box-shadow: 0 1px 3px rgba(61, 56, 51, 0.2);
+  transition: transform 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
 }
 .emote-item:hover {
-  transform: scale(1.15);
-  background: rgba(74, 154, 138, 0.15);
+  transform: scale(1.18);
+  background: #eaf5f2;
+  border-color: #4a9a8a;
+  box-shadow: 0 3px 8px rgba(74, 154, 138, 0.4);
 }
 .emote-item .glyph {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   line-height: 1;
   white-space: pre;
+  font-weight: 600;
 }
 .emote-item .key {
-  opacity: 0.5;
-  font-size: 0.6rem;
-  margin-top: 2px;
+  opacity: 0.55;
+  font-size: 0.58rem;
+  margin-top: 1px;
 }
 
 .emote-node {
@@ -53,8 +58,11 @@ export const EMOTES_CSS = `
 }
 .emote-glyph {
   font-family: "Martian Mono", ui-monospace, monospace;
-  font-size: 1rem;
+  font-size: 1.15rem;
+  font-weight: 700;
   white-space: pre;
+  color: #3d3833;
+  text-shadow: 0 0 3px #faf7f2, 0 0 3px #faf7f2, 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 @keyframes emote-wheel-open {
