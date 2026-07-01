@@ -3,7 +3,7 @@
 
 # Playwright Artificial Users
 
-This package runs headed Playwright browser actors against real PlayHTML pages.
+This package runs Playwright browser actors against real PlayHTML pages.
 Use it when Spencer wants to test a collaborative page by watching other
 cursors move, type, drag, and share state in real time.
 
@@ -43,7 +43,7 @@ bun tools/playwright/src/runner.ts \
   --actors 4 \
   --duration 120000 \
   --seed fridge-local \
-  --no-video
+  --headless
 ```
 
 ```bash
@@ -53,11 +53,13 @@ bun tools/playwright/src/runner.ts \
   --actors 4 \
   --duration 120000 \
   --seed walking-local \
-  --no-video
+  --headless
 ```
 
 The scene logs the URL to open in a normal browser. Open that same URL to
-interact with the artificial users while they run.
+interact with the artificial users while they run. Use `--headless` for demo
+recordings that should not open actor windows on your desktop. Omit it when you
+want to watch or debug the actor browsers directly.
 
 ## Flags
 
@@ -68,6 +70,7 @@ interact with the artificial users while they run.
 - `--base-url <url>`: page origin for local or deployed targets.
 - `--host-url <url>`: optional URL to print for Spencer when the watch URL
   differs from actor URLs.
+- `--headless`: run actor browsers offscreen while still recording video.
 - `--no-video`: skip recording.
 
 ## Authoring Behavior

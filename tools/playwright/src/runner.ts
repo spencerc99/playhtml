@@ -1,5 +1,5 @@
 // ABOUTME: Launches browser contexts, runs a scene, records video.
-// ABOUTME: CLI entry point: bun src/runner.ts --scene <name> [--no-video] [--headed]
+// ABOUTME: CLI entry point: bun src/runner.ts --scene <name> [--no-video] [--headless]
 
 import { chromium } from "@playwright/test";
 import path from "path";
@@ -25,6 +25,7 @@ function parseArgs() {
   return {
     scene: get("--scene"),
     noVideo: has("--no-video"),
+    headless: has("--headless"),
     headed: has("--headed"),
     port: get("--port"),
     actors: get("--actors"),
@@ -114,7 +115,7 @@ async function run() {
   if (!args.scene) {
     console.log(`
 Usage:
-  bun tools/playwright/src/runner.ts --scene <name> [--no-video] [--headed]
+  bun tools/playwright/src/runner.ts --scene <name> [--no-video] [--headless]
 
 Scenes are defined in tools/playwright/scenes/<name>.ts
     `);
@@ -166,6 +167,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   const recordActor = scene.recordActor ?? 0;
   const videoDir = scene.videoDir ?? VIDEO_DIR;
   const extensionPath = scene.extensionPath ?? EXTENSION_PATH;
+  const runHeadless = args.headless && !args.headed;
 
   const useCamera = scene.camera ?? false;
 
@@ -176,6 +178,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   if (baseUrl) console.log(`Base URL: ${baseUrl}`);
   if (hostUrl) console.log(`Open in your browser: ${hostUrl}`);
   console.log(`Extension: ${scene.extension ? extensionPath : "none"}`);
+  console.log(`Browser mode: ${runHeadless ? "headless" : "headed"}`);
   console.log(`URL: ${scene.url}`);
   console.log();
 
@@ -198,7 +201,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
       );
     }
     const context = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
+      headless: runHeadless,
       args: launchArgs,
       ignoreDefaultArgs: scene.extension
         ? ["--disable-extensions", "--disable-component-extensions-with-background-pages", "--enable-automation"]
