@@ -2,6 +2,7 @@
 // ABOUTME: Verifies interpolation behavior used by the animated viewport renderer.
 import { describe, expect, it } from "vitest";
 import type { ScrollAnimation } from "../../types";
+import { getViewportTitleText } from "../../utils/titleText";
 import {
   buildViewportAnimationTimeline,
   getResizeDimensionsAtTime,
@@ -82,5 +83,51 @@ describe("AnimatedScrollViewports timeline helpers", () => {
 
   it("interpolates zoom levels at a specific time", () => {
     expect(getZoomLevelAtTime(makeAnimation().zoomEvents ?? [], 500)).toBe(1.25);
+  });
+});
+
+describe("AnimatedScrollViewports title text", () => {
+  it("decodes HTML entities before rendering metadata titles", () => {
+    expect(
+      getViewportTitleText(
+        "https://example.com/post",
+        "Spencer&#39;s &amp; Codex &quot;notes&quot;",
+      ),
+    ).toBe("Spencer's & Codex \"notes\"");
+
+    expect(
+      getViewportTitleText(
+        "https://example.com/post",
+        "Spencer&amp;#39;s &amp;amp; Codex",
+      ),
+    ).toBe("Spencer's & Codex");
+
+    expect(
+      getViewportTitleText(
+        "https://example.com/post",
+        "Spencer&apos;s &rsquo;note&rsquo;",
+      ),
+    ).toBe("Spencer's \u2019note\u2019");
+  });
+
+  it("normalizes title whitespace and falls back for blank titles", () => {
+    expect(
+      getViewportTitleText(
+        "https://example.com/post",
+        "\n\t  Spencer&#39;s\u0000   notes  ",
+      ),
+    ).toBe("Spencer's notes");
+
+    expect(getViewportTitleText("https://example.com/post", "&nbsp;")).toBe(
+      "example.com",
+    );
+  });
+
+  it("keeps URL-derived Wikipedia titles readable", () => {
+    expect(
+      getViewportTitleText(
+        "https://en.wikipedia.org/wiki/Spencer%27s_Online_Notes",
+      ),
+    ).toBe("Spencer's Online Notes");
   });
 });

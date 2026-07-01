@@ -4,7 +4,7 @@ import {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
   TagType,
-} from "@playhtml/common";
+} from "playhtml";
 import playhtml from "./playhtml-singleton";
 import * as React from "react";
 

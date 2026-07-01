@@ -13,4 +13,7 @@ export const FLAGS = {
   // it's ready to ship to everyone (with its own safety layers).
   BOTTLES: false,
   QUARANTINE_TAPE: false,
+
+  // Inventory surface (the satchel) + the InventoryAPI. Gates the on-page UI.
+  INVENTORY: true,
 } as const;

@@ -74,12 +74,18 @@ describe("can-duplicate element reference resolution", () => {
 
   it("does not push clone data when the template is missing", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const button = await setupDuplicateButton("does-not-exist", "");
 
     button.click();
     await new Promise((r) => queueMicrotask(r));
 
     expect(document.querySelectorAll("[id^='does-not-exist-']").length).toBe(0);
-    errorSpy.mockRestore();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'can-duplicate element (clone-btn) duplicate element ("does-not-exist") not found.',
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Element does-not-exist not found. Cannot duplicate.",
+    );
   });
 });

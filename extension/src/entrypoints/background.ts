@@ -139,6 +139,21 @@ export default defineBackground(() => {
   // false in extensions regardless of actual protection status (known
   // Chromium issue #357622670), so it's a misleading signal to rely on.
 
+  // Forward the manifest "open-inventory" command to the active tab's content script.
+  // Manifest commands are browser-routed, so this works reliably on every page.
+  // (browser.commands is absent in some environments — e.g. the test runner — so guard it.)
+  browser.commands?.onCommand.addListener(async (command) => {
+    if (command !== 'open-inventory') return
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id != null) {
+      try {
+        await browser.tabs.sendMessage(tab.id, { type: 'wwo:open-inventory' })
+      } catch {
+        // No content script on this page (e.g. chrome:// or the web store) — ignore.
+      }
+    }
+  })
+
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {

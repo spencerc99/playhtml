@@ -12,6 +12,7 @@ import {
 import { withSharedState, usePlayContext } from "@playhtml/react";
 import { containsProfanity } from "@movement/profanity";
 import {
+  appendGuestbookEntry,
   getGuestbookDotColors,
   getLoopedEntryIndex,
   getRenderedPileCardIndexes,
@@ -597,15 +598,14 @@ export const AuraGuestbook = withSharedState(
         return;
       }
       setError("");
-      setData([
-        ...data,
-        {
+      setData((draft) => {
+        appendGuestbookEntry(draft, {
           name: trimmedName || "someone",
           color: cursors.color || "#8a8279",
           message: trimmedMessage,
           timestamp: Date.now(),
-        },
-      ]);
+        });
+      });
       setMessage("");
       setName("");
       setComposing(false);

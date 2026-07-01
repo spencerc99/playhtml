@@ -2,6 +2,7 @@
 // ABOUTME: Covers live registration diagnostics and dev UI conflict grouping.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listDuplicatePlayElements, setupDevUI } from "../development";
+import { ElementHandler } from "../elements";
 import { playhtml, resetPlayHTML } from "../index";
 
 describe("duplicate playhtml element IDs", () => {
@@ -166,5 +167,53 @@ describe("duplicate playhtml element IDs", () => {
     expect(warning!.textContent).toContain("Duplicate playhtml IDs");
     expect(warning!.textContent).toContain("shared-id");
     expect(warning!.textContent).toContain("can-toggle");
+  });
+
+  it("updates the dev tools data tree when handler data changes", async () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "counter";
+    element.setAttribute("can-play", "");
+    document.body.append(element);
+
+    const handler = new ElementHandler({
+      element,
+      defaultData: { count: 0 },
+      data: { count: 0 },
+      defaultLocalData: {},
+      updateElement: () => {},
+      onChange: () => {},
+      onAwarenessChange: () => {},
+      triggerAwarenessUpdate: () => {},
+    } as any);
+
+    setupDevUI({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "counter",
+              handler,
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const dataArea = document.querySelector<HTMLElement>(".ph-data")!;
+
+    expect(dataArea.textContent).toContain("count: 0");
+
+    (handler as any).__data = { count: 1 };
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(dataArea.textContent).toContain("count: 1");
+    expect(dataArea.textContent).not.toContain("count: 0");
   });
 });

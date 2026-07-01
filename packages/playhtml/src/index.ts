@@ -37,7 +37,7 @@ import {
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
-import { createPresenceAPI } from "./presence";
+import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
   findSharedElementsOnPage,
@@ -52,6 +52,10 @@ import {
   refreshPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import {
+  canUseRealtimePresenceTransport,
+  RealtimePresenceTransport,
+} from "./presence-transport";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -88,12 +92,15 @@ type StoreShape = {
   // tag -> elementId -> data proxy (value typed at usage sites)
   play: Record<string, Record<string, unknown>>;
 };
+type PlayStore = {
+  readonly play: Partial<Record<string, Record<string, unknown>>>;
+};
 // store/doc/publicSyncedStore are recreated on a room change (recreateStore),
 // so they're reassignable. A fresh doc has no op history — discarding the old
 // one on a room change resets page + element data to the new room with no
 // tombstone synced back (unlike deleting keys from the reused doc, which
 // destroys the original room's persisted data on a round trip).
-let store = syncedStore<StoreShape>({ play: {} });
+let store: PlayStore = syncedStore<StoreShape>({ play: {} });
 let doc = getYjsDoc(store);
 let publicSyncedStore = createReadOnlyStore(store.play);
 
@@ -299,7 +306,7 @@ function ensureElementProxy<TData = unknown>(
   const tagMap = proxyByTagAndId.get(tag)!;
   if (!tagMap.has(elementId)) {
     store.play[tag] ??= {};
-    const tagRecord = store.play[tag];
+    const tagRecord = store.play[tag]!;
     if (tagRecord[elementId] === undefined) {
       // Always clone to avoid reusing the same object reference across multiple elements,
       // which SyncedStore forbids ("reassigning object that already occurs in the tree").
@@ -313,6 +320,10 @@ function ensureElementProxy<TData = unknown>(
 let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
   string,
   Map<string, ElementHandler>
+>();
+const mirrorDescendantElementsByRoot = new WeakMap<
+  HTMLElement,
+  Map<string, HTMLElement>
 >();
 let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
   string,
@@ -755,7 +766,17 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
-  cursorClient = new CursorClientAwareness(providerForCursors, cursorOptions);
+  const cursorPresenceTransport = canUseRealtimePresenceTransport()
+    ? new RealtimePresenceTransport({
+        host: partykitHost,
+        room: currentCursorRoomId,
+      })
+    : undefined;
+  cursorClient = new CursorClientAwareness(
+    providerForCursors,
+    cursorOptions,
+    cursorPresenceTransport,
+  );
 }
 
 function storeResetEpochForRoom(room: string, resetEpoch: number): void {
@@ -1112,6 +1133,9 @@ async function initPlayHTMLOnce({
     getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
     getPlayerIdentity: () =>
       cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
   });
 
   if (extraCapabilities) {
@@ -1304,6 +1328,10 @@ function createPlayElementData<T extends TagType, TData = any>(
       // Use cursor provider for awareness (matches cursor scope)
       // Fall back to doc provider if cursors are disabled
       const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+      ensureAwarenessIdentity(
+        awarenessProvider.awareness,
+        cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+      );
       const localAwareness =
         awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
@@ -1325,13 +1353,30 @@ function createPlayElementData<T extends TagType, TData = any>(
 function isCorrectElementInitializer(
   tagInfo: ElementInitializer | Partial<ElementInitializer> | undefined,
 ): tagInfo is ElementInitializer {
-  return (
-    tagInfo != null &&
-    tagInfo.defaultData !== undefined &&
-    (typeof tagInfo.defaultData === "object" ||
-      typeof tagInfo.defaultData === "function") &&
-    tagInfo.updateElement !== undefined
-  );
+  return getElementInitializerValidationIssues(tagInfo).length === 0;
+}
+
+function getElementInitializerValidationIssues(
+  tagInfo: ElementInitializer | Partial<ElementInitializer> | undefined,
+): string[] {
+  if (tagInfo == null) {
+    return ["initializer"];
+  }
+
+  const issues: string[] = [];
+  if (
+    tagInfo.defaultData === undefined ||
+    (typeof tagInfo.defaultData !== "object" &&
+      typeof tagInfo.defaultData !== "function")
+  ) {
+    issues.push("defaultData");
+  }
+
+  if (typeof tagInfo.updateElement !== "function") {
+    issues.push("updateElement");
+  }
+
+  return issues;
 }
 
 // Read custom element properties set by CanPlayElement (React) on the DOM node
@@ -1364,20 +1409,31 @@ function getCustomElementProps(element: HTMLElement) {
   return props;
 }
 
+function shouldReadElementPropsForTag(
+  tag: TagType | string,
+  element: HTMLElement,
+): boolean {
+  return tag === TagType.CanPlay || !element.hasAttribute(TagType.CanPlay);
+}
+
 function getElementInitializerInfoForElement(
   tag: TagType | string,
   element: HTMLElement,
 ) {
-  const customProps = getCustomElementProps(element);
-
   if (tag === TagType.CanPlay) {
     // For can-play, all properties come from the DOM element
+    const customProps = getCustomElementProps(element);
     return customProps as Required<Omit<ElementInitializer, "additionalSetup">>;
   }
 
   const builtIn = capabilitiesToInitializer[tag];
   if (!builtIn) return undefined;
 
+  if (!shouldReadElementPropsForTag(tag, element)) {
+    return builtIn;
+  }
+
+  const customProps = getCustomElementProps(element);
   // Merge: built-in defaults overridden by any custom properties on the element
   return { ...builtIn, ...customProps };
 }
@@ -1554,7 +1610,7 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  syncedStore: ReadOnlyStore<(typeof store)["play"]>;
+  syncedStore: ReadOnlyStore<PlayStore["play"]>;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
@@ -1744,7 +1800,9 @@ function isElementValidForTag(
   element: HTMLElement,
   tag: TagType | string,
 ): boolean {
-  const customValidator = (element as any).isValidElementForTag;
+  const customValidator = shouldReadElementPropsForTag(tag, element)
+    ? (element as any).isValidElementForTag
+    : undefined;
   if (typeof customValidator === "function") {
     return customValidator(element);
   }
@@ -1823,8 +1881,10 @@ async function setupPlayElementForTag<T extends TagType | string>(
     element,
   );
   if (!isCorrectElementInitializer(elementInitializerInfo)) {
+    const initializerIssues =
+      getElementInitializerValidationIssues(elementInitializerInfo);
     console.error(
-      `Element ${elementId} does not have proper info to initial a playhtml element. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`,
+      `Element ${elementId} does not have proper info to initialize a playhtml element. Missing or invalid initializer properties: ${initializerIssues.join(", ")}. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`,
     );
     return;
   }
@@ -1854,6 +1914,9 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   } else {
     tagElementHandlers.set(elementId, new ElementHandler(elementData));
+    if (tag === TagType.CanMirror) {
+      setupPlayElementDescendants(element);
+    }
   }
 
   // redo this now that we have set it in the mapping.
@@ -1881,6 +1944,9 @@ function applySharedElementDataToHandler(
   try {
     // @ts-ignore private usage intended
     handler.__data = clonePlain(proxy);
+    if (tag === TagType.CanMirror) {
+      setupPlayElementDescendants(handler.element);
+    }
   } finally {
     remoteApplyingKeys.delete(applyKey);
   }
@@ -2004,6 +2070,34 @@ function setupPlayElement(
   );
 }
 
+function setupPlayElementDescendants(element: HTMLElement): void {
+  const descendants = new Set<HTMLElement>();
+  const currentDescendants = new Map<string, HTMLElement>();
+  for (const tag of getTagTypes()) {
+    element.querySelectorAll(`[${tag}]`).forEach((descendant) => {
+      if (isHTMLElement(descendant)) {
+        descendants.add(descendant);
+        const descendantId = getIdForElement(descendant);
+        if (descendantId) {
+          currentDescendants.set(`${tag}:${descendantId}`, descendant);
+        }
+      }
+    });
+  }
+
+  const previousDescendants = mirrorDescendantElementsByRoot.get(element);
+  previousDescendants?.forEach((previousElement, key) => {
+    if (currentDescendants.get(key) !== previousElement) {
+      removePlayElement(previousElement);
+    }
+  });
+
+  descendants.forEach((descendant) => {
+    setupPlayElement(descendant);
+  });
+  mirrorDescendantElementsByRoot.set(element, currentDescendants);
+}
+
 /**
  * Removes the element handler for a DOM element from local state.
  * This unregisters the element but preserves all shared collaborative data.
@@ -2089,10 +2183,11 @@ function deleteElementData(tag: string, elementId: string): void {
   }
 
   // 2. Remove from SyncedStore
-  if (store.play[tag] && elementId in store.play[tag]) {
+  const tagRecord = store.play[tag];
+  if (tagRecord && elementId in tagRecord) {
     try {
       doc.transact(() => {
-        delete store.play[tag]![elementId];
+        delete tagRecord[elementId];
       });
     } catch (error) {
       console.warn(
@@ -2189,9 +2284,25 @@ function removePlayEventListener(type: string, id: string) {
   }
 }
 
-export type {
+export {
   TagType,
+  TagTypeToElement,
+  getIdForElement,
+  CanDuplicateTo,
+  CanMoveBounds,
+  CanMoveBoundsMinVisible,
+  CanMoveBoundsMinVisiblePx,
+} from "@playhtml/common";
+
+export type {
+  ElementAwarenessEventHandlerData,
+  ElementInitializer,
+  PageDataChannel,
   PlayerIdentity,
   Cursor,
   CursorPresence,
+  CursorEvents,
+  CursorPresenceView,
+  PresenceRoom,
+  PresenceView,
 } from "@playhtml/common";
