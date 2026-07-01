@@ -1,12 +1,22 @@
 // ABOUTME: Launches browser contexts, runs a scene, records video.
 // ABOUTME: CLI entry point: bun src/runner.ts --scene <name> [--no-video] [--headless]
 
-import { chromium } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 import { installErrorCollector } from "./errors.js";
 import { createPersonas } from "./personas.js";
+import {
+  chooseBrowserLaunchMode,
+  chooseRecordedActor,
+  smoothMoveSteps,
+} from "./runtime.js";
 import type { SceneConfig, SceneRuntimeOptions } from "./scene.js";
+import {
+  computeTrimWindow,
+  ffmpegIsAvailable,
+  trimVideo,
+} from "./video.js";
 
 const EXTENSION_PATH = path.resolve(
   import.meta.dir,
@@ -49,13 +59,15 @@ function defaultBaseUrl(port: string | undefined) {
   return port ? `http://localhost:${port}` : undefined;
 }
 
-async function createSyncHelpers() {
+async function createSyncHelpers(recording: { markStart: () => void }) {
   return {
     wait: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
 
     parallel: async (...fns: (() => Promise<void>)[]) => {
       await Promise.all(fns.map((fn) => fn()));
     },
+
+    markRecordingStart: recording.markStart,
 
     smoothMove: async (
       page: import("@playwright/test").Page,
@@ -64,7 +76,7 @@ async function createSyncHelpers() {
       opts?: { steps?: number; duration?: number },
     ) => {
       const duration = opts?.duration ?? 500;
-      const steps = opts?.steps ?? Math.max(15, Math.round(duration / 16));
+      const steps = opts?.steps ?? smoothMoveSteps(duration);
       const stepDelay = duration / steps;
 
       const currentPos = await page.evaluate(() => {
@@ -165,9 +177,11 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   };
   const viewport = scene.viewport ?? { width: 1280, height: 720 };
   const recordActor = scene.recordActor ?? 0;
+  const selectedRecordActor = chooseRecordedActor(actorCount, recordActor);
   const videoDir = scene.videoDir ?? VIDEO_DIR;
   const extensionPath = scene.extensionPath ?? EXTENSION_PATH;
   const runHeadless = args.headless && !args.headed;
+  const browserLaunchMode = chooseBrowserLaunchMode(scene);
 
   const useCamera = scene.camera ?? false;
 
@@ -179,6 +193,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   if (hostUrl) console.log(`Open in your browser: ${hostUrl}`);
   console.log(`Extension: ${scene.extension ? extensionPath : "none"}`);
   console.log(`Browser mode: ${runHeadless ? "headless" : "headed"}`);
+  console.log(`Actor browser process mode: ${browserLaunchMode}`);
   console.log(`URL: ${scene.url}`);
   console.log();
 
@@ -187,29 +202,63 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     fs.mkdirSync(videoDir, { recursive: true });
   }
 
-  // Helper to launch a browser context with optional extension and video
-  async function launchActor(label: string, record: boolean) {
-    const userDataDir = `/tmp/playwright-${label}-${Date.now()}`;
-    const launchArgs = [
-      "--disable-blink-features=AutomationControlled",
-      `--window-size=${viewport.width},${viewport.height}`,
-    ];
-    if (scene.extension) {
-      launchArgs.push(
-        `--disable-extensions-except=${extensionPath}`,
-        `--load-extension=${extensionPath}`,
-      );
-    }
-    const context = await chromium.launchPersistentContext(userDataDir, {
+  const launchArgs = [
+    "--disable-blink-features=AutomationControlled",
+    `--window-size=${viewport.width},${viewport.height}`,
+  ];
+  if (scene.extension) {
+    launchArgs.push(
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+    );
+  }
+
+  let sharedBrowser: Browser | null = null;
+  if (browserLaunchMode === "shared") {
+    sharedBrowser = await chromium.launch({
       headless: runHeadless,
       args: launchArgs,
-      ignoreDefaultArgs: scene.extension
-        ? ["--disable-extensions", "--disable-component-extensions-with-background-pages", "--enable-automation"]
-        : [],
-      viewport,
-      ...(record ? { recordVideo: { dir: videoDir, size: viewport } } : {}),
     });
+  }
+
+  let videoStartedAtMs: number | undefined;
+  let recordingStartedAtMs: number | undefined;
+  const markRecordingStart = () => {
+    if (recordingStartedAtMs !== undefined) return;
+    recordingStartedAtMs = Date.now();
+    console.log("Recording action window started.");
+  };
+
+  // Helper to launch a browser context with optional extension and video
+  async function launchActor(label: string, record: boolean) {
+    const videoOptions = record ? { recordVideo: { dir: videoDir, size: viewport } } : {};
+    if (record && videoStartedAtMs === undefined) {
+      videoStartedAtMs = Date.now();
+    }
+
+    let context: BrowserContext;
+    if (sharedBrowser) {
+      context = await sharedBrowser.newContext({
+        viewport,
+        ...videoOptions,
+      });
+    } else {
+      const userDataDir = `/tmp/playwright-${label}-${Date.now()}`;
+      context = await chromium.launchPersistentContext(userDataDir, {
+        headless: runHeadless,
+        args: launchArgs,
+        ignoreDefaultArgs: scene.extension
+          ? ["--disable-extensions", "--disable-component-extensions-with-background-pages", "--enable-automation"]
+          : [],
+        viewport,
+        ...videoOptions,
+      });
+    }
+
     const page = context.pages()[0] ?? (await context.newPage());
+    if (!page.viewportSize()) {
+      await page.setViewportSize(viewport);
+    }
     await page.evaluate(() => {
       (window as any).__playwrightMousePos = { x: 0, y: 0 };
       document.addEventListener("mousemove", (e) => {
@@ -220,13 +269,13 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   }
 
   // Launch actor contexts
-  const contexts: import("@playwright/test").BrowserContext[] = [];
+  const contexts: BrowserContext[] = [];
   const pages: import("@playwright/test").Page[] = [];
   const errorCollectors: ReturnType<typeof installErrorCollector>[] = [];
 
   const recordFromActor = !useCamera && !args.noVideo;
   for (let i = 0; i < actorCount; i++) {
-    const shouldRecord = recordFromActor && i === 0;
+    const shouldRecord = recordFromActor && i === selectedRecordActor;
     const { context, page } = await launchActor(`actor-${i}`, shouldRecord);
     contexts.push(context);
     pages.push(page);
@@ -234,7 +283,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   }
 
   // Launch camera context (records video, sees all remote cursors)
-  let cameraContext: import("@playwright/test").BrowserContext | null = null;
+  let cameraContext: BrowserContext | null = null;
   let cameraPage: import("@playwright/test").Page | null = null;
   if (useCamera && !args.noVideo) {
     console.log("Launching camera...");
@@ -331,7 +380,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   // Run the choreography
   console.log("Running scene...\n");
-  const sync = await createSyncHelpers();
+  const sync = await createSyncHelpers({ markStart: markRecordingStart });
 
   // Close browser contexts cleanly on SIGINT so WebSockets get their close
   // handshake — avoids "Network connection lost" noise on the server.
@@ -342,6 +391,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     console.log(`\nReceived ${signal}, closing browsers...`);
     const allContexts = [...contexts, ...(cameraContext ? [cameraContext] : [])];
     await Promise.allSettled(allContexts.map((c) => c.close()));
+    if (sharedBrowser) await sharedBrowser.close();
     process.exit(0);
   }
   process.on("SIGINT", () => void shutdown("SIGINT"));
@@ -374,17 +424,46 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
 
   console.log("\nScene complete.");
 
-  // Save video from camera or actor 0
+  // Save video from camera or selected actor
   if (!args.noVideo) {
-    const recordPage = cameraPage ?? (recordFromActor ? pages[0] : null);
+    const recordPage = cameraPage ?? (recordFromActor ? pages[selectedRecordActor] : null);
     if (!recordPage) { console.log("No video to save"); process.exit(0); }
     await recordPage.close();
     const video = recordPage.video();
     if (video) {
       const videoPath = await video.path();
-      const outputPath = path.join(videoDir, `${args.scene}-${Date.now()}.webm`);
-      fs.renameSync(videoPath, outputPath);
-      console.log(`Video saved: ${outputPath}`);
+      const timestamp = Date.now();
+      const rawOutputPath = path.join(videoDir, `${args.scene}-${timestamp}-raw.webm`);
+      fs.renameSync(videoPath, rawOutputPath);
+
+      const trimWindow =
+        videoStartedAtMs === undefined
+          ? null
+          : computeTrimWindow({
+              videoStartedAtMs,
+              recordingStartedAtMs,
+              sceneDurationMs: durationMs,
+            });
+
+      if (trimWindow && ffmpegIsAvailable()) {
+        const outputPath = path.join(videoDir, `${args.scene}-${timestamp}.mp4`);
+        trimVideo({
+          inputPath: rawOutputPath,
+          outputPath,
+          ...trimWindow,
+        });
+        console.log(`Raw video saved: ${rawOutputPath}`);
+        console.log(
+          `Video saved: ${outputPath} (${trimWindow.durationSeconds.toFixed(
+            1,
+          )}s action window)`,
+        );
+      } else {
+        if (trimWindow) {
+          console.warn("ffmpeg unavailable; saved untrimmed Playwright video.");
+        }
+        console.log(`Video saved: ${rawOutputPath}`);
+      }
     }
   }
 
@@ -394,6 +473,9 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   }
   if (cameraContext) {
     await cameraContext.close();
+  }
+  if (sharedBrowser) {
+    await sharedBrowser.close();
   }
 
   if (sceneError) {

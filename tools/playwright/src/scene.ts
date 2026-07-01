@@ -64,6 +64,8 @@ export interface SyncHelpers {
   wait: (ms: number) => Promise<void>;
   // Run actions in parallel across actors
   parallel: (...fns: (() => Promise<void>)[]) => Promise<void>;
+  // Mark the beginning of the recorded action window.
+  markRecordingStart: () => void;
   // Smoothly move cursor from current position to target over duration ms
   smoothMove: (page: Page, x: number, y: number, opts?: { steps?: number; duration?: number }) => Promise<void>;
 }

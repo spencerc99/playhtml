@@ -61,6 +61,12 @@ interact with the artificial users while they run. Use `--headless` for demo
 recordings that should not open actor windows on your desktop. Omit it when you
 want to watch or debug the actor browsers directly.
 
+When a scene sets `camera: true`, the runner records a passive observer page
+instead of an actor page. Scenes can call `sync.markRecordingStart()` after
+setup so the saved demo focuses on the active test window. If `ffmpeg` is
+available locally, the runner saves a trimmed `.mp4` plus the raw Playwright
+`.webm`; otherwise it keeps the raw `.webm`.
+
 ## Flags
 
 - `--scene <name>`: scene file in `scenes/<name>.ts`.
@@ -80,6 +86,9 @@ Reusable pieces live in `src/`:
 - `random.ts`: deterministic randomness.
 - `personas.ts`: actor names, colors, rhythm, motion, and prompt traits.
 - `actions.ts`: human-like Playwright actions, delays, and cursor jitter.
+- `runtime.ts`: browser launch mode, recorded actor selection, and movement
+  cadence helpers.
+- `video.ts`: local video trim planning and ffmpeg execution.
 - `session.ts`: duration and URL helpers.
 - `errors.ts`: fatal browser error collection.
 
@@ -87,13 +96,16 @@ For a fresh behavior request, create a scene that:
 
 1. builds an isolated room URL from `options.seed`,
 2. seeds each actor identity before navigation,
-3. runs actor loops until `createRunUntil(options.durationMs)` expires,
-4. waits for `persona.rhythm.startDelayMs` before each actor loop,
-5. calls `actions.pauseBeforeAction()` and `actions.betweenActions()` inside
+3. navigates `camera` to the same isolated URL when the scene records from an
+   observer,
+4. calls `sync.markRecordingStart()` after setup and before the visible test,
+5. runs actor loops until `createRunUntil(options.durationMs)` expires,
+6. waits for `persona.rhythm.startDelayMs` before each actor loop,
+7. calls `actions.pauseBeforeAction()` and `actions.betweenActions()` inside
    loops,
-6. varies actions with `persona.random.weighted(...)`,
-7. asserts that page-visible state changed,
-8. lets runner error collection fail on fatal page errors.
+8. varies actions with `persona.random.weighted(...)`,
+9. asserts that page-visible state changed,
+10. lets runner error collection fail on fatal page errors.
 
 Keep scenes small and page-specific. Put shared browser actions in `src/` only
 after two scenes need the same behavior.

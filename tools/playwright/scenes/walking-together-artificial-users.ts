@@ -196,11 +196,11 @@ export default defineScene({
   actors: 4,
   extension: false,
   url: "about:blank",
-  camera: false,
+  camera: true,
   viewport: { width: 1280, height: 800 },
   durationMs: 120_000,
 
-  async run({ pages, personas, options, sync }) {
+  async run({ pages, personas, options, sync, camera }) {
     const testRoom = `codex-artificial-users-${options.seed}`;
     const path =
       `/events/walking-together/session.html?session=2026-06-06-byod&testRoom=${encodeURIComponent(
@@ -224,6 +224,14 @@ export default defineScene({
 
     let sharedUrls = 0;
     if (await shareUrl(pages[0], personas[0], sync)) sharedUrls++;
+    if (camera) {
+      await camera.goto(url, { waitUntil: "domcontentloaded" });
+      await camera
+        .locator(".group-activity .instruction")
+        .waitFor({ timeout: 20_000 });
+      await sync.wait(500);
+    }
+    sync.markRecordingStart();
     const runUntil = createRunUntil(options.durationMs);
 
     await Promise.all(

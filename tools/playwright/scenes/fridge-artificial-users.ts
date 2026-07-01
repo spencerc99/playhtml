@@ -51,8 +51,12 @@ async function addWord(page: Page, persona: ActorPersona, sync: SyncHelpers) {
     1000,
     9999,
   )}`;
-  if (!(await actions.typeInto(input, word))) return false;
-  await input.press("Enter");
+  if (!(await actions.moveToLocator(input))) return false;
+  await input.fill(word);
+  await page
+    .locator(".fridge-toolbox button", { hasText: "Add" })
+    .first()
+    .click();
   const addedWord = page.locator(".fridgeWord.custom", { hasText: word }).first();
   const added = await addedWord
     .waitFor({ timeout: 2500 })
@@ -142,11 +146,11 @@ export default defineScene({
   actors: 4,
   extension: false,
   url: "about:blank",
-  camera: false,
+  camera: true,
   viewport: { width: 1280, height: 800 },
   durationMs: 120_000,
 
-  async run({ pages, personas, options, sync }) {
+  async run({ pages, personas, options, sync, camera }) {
     const wall = `codex-artificial-users-${options.seed}`;
     const path = `/fridge?wall=${encodeURIComponent(wall)}`;
     const url = buildSceneUrl(options.baseUrl, path);
@@ -163,10 +167,19 @@ export default defineScene({
         }),
       ),
     );
+    if (camera) {
+      await camera.goto(url, { waitUntil: "domcontentloaded" });
+      await camera
+        .locator(".fridge-toolbox input[placeholder='New word...']")
+        .waitFor({ timeout: 20_000 });
+    }
 
-    const runUntil = createRunUntil(options.durationMs);
     let customWordsAdded = 0;
     let changedDrags = 0;
+
+    sync.markRecordingStart();
+    if (await addWord(pages[0], personas[0], sync)) customWordsAdded++;
+    const runUntil = createRunUntil(options.durationMs);
 
     await Promise.all(
       pages.map(async (page, index) => {
