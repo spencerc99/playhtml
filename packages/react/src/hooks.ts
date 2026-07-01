@@ -41,13 +41,14 @@ export function useCursorZone(
   useEffect(() => {
     const element = ref.current;
     if (!element || !element.id) return;
+    const elementId = element.id;
 
     registerCursorZone(element, options);
 
     return () => {
-      unregisterCursorZone(element.id);
+      unregisterCursorZone(elementId);
     };
-  }, [ref.current, ref.current?.id]);
+  }, [ref, options, registerCursorZone, unregisterCursorZone]);
 }
 
 /**
