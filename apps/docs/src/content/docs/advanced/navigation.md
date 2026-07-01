@@ -1,18 +1,18 @@
 ---
 title: "Navigation & SPAs"
-description: "How playhtml handles client-side navigation — React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo."
+description: "How playhtml handles client-side navigation: React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo."
 sidebar:
   order: 4
 ---
 
-playhtml works out of the box on full-page-reload sites. For single-page apps (SPAs) and frameworks with client-side navigation — React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo — you'll want the patterns on this page so cursors, rooms, and element handlers stay consistent across navigation.
+playhtml works out of the box on full-page-reload sites. For single-page apps (SPAs) and frameworks with client-side navigation (React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo), you'll want the patterns on this page so cursors, rooms, and element handlers stay consistent across navigation.
 
 ## How navigation detection works
 
 playhtml automatically listens for:
 
-- The browser's `navigation` API (`navigation.addEventListener("navigate")`) — fires on pushState, replaceState, and back/forward in Chromium 102+.
-- `popstate` events — fires on back/forward in all browsers.
+- The browser's `navigation` API (`navigation.addEventListener("navigate")`): fires on pushState, replaceState, and back/forward in Chromium 102+.
+- `popstate` events: fires on back/forward in all browsers.
 
 Whenever navigation is detected, playhtml recomputes the room. If it changed, playhtml reconnects to the new room, rescans the DOM for interactive elements, and refreshes cursors. **On a room change the document's data resets to the new room** (see [Room-scoped data](#room-scoped-data-on-navigation) below).
 
@@ -35,9 +35,9 @@ A static string stays fixed across navigation (good for a single shared room). A
 
 ## Room-scoped data on navigation
 
-Data in playhtml — both element data (`can-move`, `can-toggle`, …) and page data (`createPageData`) — is scoped to the room. When navigation **changes the room**, the document re-initializes so the new room starts from a clean state: the old room's data does not carry over, and your code re-creates / re-registers it for the new room exactly as on a fresh page load.
+Data in playhtml, both element data (`can-move`, `can-toggle`, …) and page data (`createPageData`), is scoped to the room. When navigation **changes the room**, the document re-initializes so the new room starts from a clean state: the old room's data does not carry over, and your code re-creates / re-registers it for the new room exactly as on a fresh page load.
 
-When navigation does **not** change the room — a hash change, a static explicit room, or a path that maps to the same room — nothing resets and data persists across the route change.
+When navigation does **not** change the room (a hash change, a static explicit room, or a path that maps to the same room), nothing resets and data persists across the route change.
 
 This reset discards the in-memory document and rebuilds it; it never deletes from the previous room, so a previous room's persisted data is never modified by navigating away and back.
 
@@ -141,8 +141,8 @@ The default auto-detection handles this because Astro fires `popstate`. You only
 
 ## Events
 
-- `playhtml:navigated` — fires on `document` after each successful navigation handling, with `event.detail.room` set to the current room ID.
+- `playhtml:navigated`: fires on `document` after each successful navigation handling, with `event.detail.room` set to the current room ID.
 
 ## Handles held across navigation
 
-A `createPageData` handle you keep across a room-changing navigation stays usable: it reads the new room's data (its default until re-seeded), its `setData` still writes, and its `onUpdate` keeps firing. You don't have to re-create channels on navigation, though doing so is also fine — a re-created channel and a surviving handle for the same name share one live channel in the new room.
+A `createPageData` handle you keep across a room-changing navigation stays usable: it reads the new room's data (its default until re-seeded), its `setData` still writes, and its `onUpdate` keeps firing. You don't have to re-create channels on navigation, though doing so is also fine: a re-created channel and a surviving handle for the same name share one live channel in the new room.

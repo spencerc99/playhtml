@@ -1,12 +1,17 @@
-// ABOUTME: Initializes social experiments that run on every page (bottles, quarantine tape, …).
-// ABOUTME: Each experiment runs if its FLAG is on for everyone, OR the user has internal dev features enabled.
+// ABOUTME: Initializes inventory + social experiments that run on every page.
+// ABOUTME: Inventory is built first so deps.inventory exists when each experiment's init registers items.
 
 import browser from "webextension-polyfill";
 import { FLAGS } from "../flags";
 import { SOCIAL_EXPERIMENTS } from "./social/registry";
 import type { GlobalFeatureDeps } from "./social/types";
+import { InventoryManager } from "./inventory/InventoryManager";
+import { initInventorySurface } from "./inventory";
 
 export type { GlobalFeatureDeps } from "./social/types";
+
+/** Deps the caller supplies — everything in GlobalFeatureDeps except `inventory`, which we build here. */
+type CallerDeps = Omit<GlobalFeatureDeps, "inventory">;
 
 /**
  * Dev override: when a developer has toggled internal dev features on
@@ -42,10 +47,19 @@ export async function anyGlobalFeatureActive(): Promise<boolean> {
 }
 
 export async function initGlobalFeatures(
-  deps: GlobalFeatureDeps,
+  caller: CallerDeps,
 ): Promise<() => void> {
   const cleanups: (() => void)[] = [];
   const devEnabled = await internalDevFeaturesEnabled();
+
+  const manager = new InventoryManager();
+  try {
+    await manager.load();
+  } catch (err) {
+    // A storage read failure must not take down the social experiments; continue with an empty held store.
+    console.error("[we-were-online] inventory load failed, continuing with empty held store:", err);
+  }
+  const deps: GlobalFeatureDeps = { ...caller, inventory: manager.api };
 
   for (const exp of SOCIAL_EXPERIMENTS) {
     if (!isExperimentActive(exp, devEnabled)) continue;
@@ -55,6 +69,11 @@ export async function initGlobalFeatures(
     } catch (err) {
       console.error(`[we-were-online] social experiment "${exp.id}" failed:`, err);
     }
+  }
+
+  // Mount the satchel surface only if inventory is enabled and at least one item registered.
+  if (FLAGS.INVENTORY && manager.api.list().length > 0) {
+    cleanups.push(initInventorySurface(deps));
   }
 
   return () => {

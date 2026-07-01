@@ -1,3 +1,5 @@
+// ABOUTME: Tracks local and remote cursor awareness for collaborative pages.
+// ABOUTME: Renders ephemeral cursor presence without writing shared document data.
 import type YProvider from "y-partyserver/provider";
 import {
   CursorPresence,
@@ -5,7 +7,9 @@ import {
   CursorZonePosition,
   PlayerIdentity,
   Cursor,
+  type PresenceServerMessage,
   generatePersistentPlayerIdentity,
+  MAX_PRESENCE_PAGE_LENGTH,
   PROXIMITY_THRESHOLD,
   PLAYER_IDENTITY_STORAGE_KEY,
   CursorEvents,
@@ -15,6 +19,11 @@ import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
+import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
+import {
+  CURSOR_PRESENCE_MAX_AGE_MS,
+  CursorPresenceStore,
+} from "./cursor-presence-store";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -24,6 +33,18 @@ const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 export type ValidCursorPresence = CursorPresence & {
   cursor: NonNullable<CursorPresence["cursor"]>;
   playerIdentity: PlayerIdentity;
+};
+
+type RemoteCursorPresence = CursorPresence & {
+  playerIdentity: PlayerIdentity;
+};
+
+type CursorPresenceTransport = {
+  join(input: { identity: PlayerIdentity; page?: string }): void;
+  update(channel: string, value: unknown): void;
+  clear(channel: string): void;
+  subscribe(listener: (message: PresenceServerMessage) => void): () => void;
+  destroy(): void;
 };
 
 /** Returns primary color from player identity; throws if missing (no default). */
@@ -363,6 +384,49 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   return cursorStyle.slice(5, closeQuote);
 }
 
+function getPresencePage(): string | undefined {
+  const page = window.location.pathname;
+  return page.length <= MAX_PRESENCE_PAGE_LENGTH ? page : undefined;
+}
+
+function isSafeCursorImageUrl(pointer: string): boolean {
+  if (
+    pointer.trim() !== pointer ||
+    /["'<>\s\u0000-\u001f\u007f]/.test(pointer)
+  ) {
+    return false;
+  }
+  try {
+    const url = new URL(pointer, window.location.href);
+    if (url.protocol === "http:" || url.protocol === "https:") return true;
+    if (url.protocol !== "data:") return false;
+    return /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,/i.test(pointer);
+  } catch {
+    return false;
+  }
+}
+
+function escapeSvgAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function getSvgPaint(value: string): string {
+  const trimmed = value.trim();
+  if (
+    /^#[0-9a-fA-F]{3,8}$/.test(trimmed) ||
+    /^rgba?\([0-9.,%\s]+\)$/.test(trimmed) ||
+    /^hsla?\([0-9.,%\s]+\)$/.test(trimmed) ||
+    /^[a-zA-Z]+$/.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return "black";
+}
+
 export class CursorClientAwareness {
   private cursors: Map<string, HTMLElement> = new Map();
   private cursorAnimators: Map<string, SpringAnimator> = new Map(); // Spring animators for each cursor
@@ -370,8 +434,16 @@ export class CursorClientAwareness {
   private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
   private playerIdentity: PlayerIdentity;
-  private updateThrottled: boolean = false;
+  private awarenessUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastUpdate: number = 0;
+  private pointerFrame: number | null = null;
+  private pendingPointerSample: {
+    clientX: number;
+    clientY: number;
+    input: "mouse" | "touch";
+  } | null = null;
+  private cursorEventCleanups: Array<() => void> = [];
+  private ownCursorSvgCache: { color: string; svg: string } | null = null;
   private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
@@ -380,11 +452,16 @@ export class CursorClientAwareness {
   private chat: CursorChat | null = null;
   private currentMessage: string | null = null;
   private otherUsersWithMessages: Set<string> = new Set();
+  private lastSentMessage: string | null = null;
   private cursorPresenceChangeCallbacks = new Map<
     string,
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
+  private presenceStore = new CursorPresenceStore();
+  private presenceTransportUnsubscribe: (() => void) | null = null;
+  private presenceExpiryInterval: ReturnType<typeof setInterval> | null = null;
+  private serverCursorMaxHz: number | null = null;
 
   // When the cursor container is a non-body element with a CSS transform,
   // cursors are stored and rendered in container-local coordinates. The
@@ -479,7 +556,8 @@ export class CursorClientAwareness {
 
   constructor(
     private provider: YProvider,
-    private options: CursorOptions = {}
+    private options: CursorOptions = {},
+    private presenceTransport?: CursorPresenceTransport,
   ) {
     this.playerIdentity =
       options.playerIdentity || generatePersistentPlayerIdentity();
@@ -503,12 +581,17 @@ export class CursorClientAwareness {
   private initialize(): void {
     this.addCursorStyles();
     this.setupCursorTracking();
-    this.setupAwarenessHandling();
+    if (this.presenceTransport) {
+      this.setupPresenceTransportHandling();
+    } else {
+      this.setupAwarenessHandling();
+    }
 
     // Set initial cursor style (throws if identity has no primary color)
     document.documentElement.style.cursor = getCursorStyleForUser(
       getPrimaryColor(this.playerIdentity),
     );
+    this.refreshPresenceTransportColors();
   }
 
   private setupAwarenessHandling(): void {
@@ -522,6 +605,104 @@ export class CursorClientAwareness {
     this.updateCursorAwareness();
     // Then, sync existing states (including ours) into local structures
     this.syncExistingAwareness();
+  }
+
+  private setupPresenceTransportHandling(): void {
+    this.publishPresenceTransportState();
+    this.presenceTransportUnsubscribe = this.presenceTransport?.subscribe(
+      (message) => {
+        this.handlePresenceTransportMessage(message);
+      },
+    ) ?? null;
+    this.startPresenceExpiryTimer();
+  }
+
+  private handlePresenceTransportMessage(message: PresenceServerMessage): void {
+    if (message.type === "presence-sync") {
+      this.presenceStore.applySync(message.peers);
+    } else if (message.type === "presence-changes") {
+      this.presenceStore.applyChanges(message);
+    } else if (message.type === "presence-rate") {
+      this.handlePresenceRate(message.channel, message.hz);
+      return;
+    } else if (message.type === "presence-error") {
+      console.warn(
+        "[playhtml] Presence server rejected message:",
+        message.message,
+      );
+      return;
+    } else {
+      return;
+    }
+
+    this.removeExpiredPresenceCursors();
+    this.renderPresenceStore();
+  }
+
+  private handlePresenceRate(channel: string, hz: number): void {
+    if (channel !== "cursor") return;
+    if (!Number.isFinite(hz) || hz <= 0) return;
+    this.serverCursorMaxHz = hz;
+  }
+
+  private startPresenceExpiryTimer(): void {
+    if (this.presenceExpiryInterval !== null) return;
+    this.presenceExpiryInterval = setInterval(() => {
+      if (this.removeExpiredPresenceCursors()) {
+        this.renderPresenceStore();
+      }
+    }, 1000);
+  }
+
+  private removeExpiredPresenceCursors(): boolean {
+    if (!this.presenceTransport) return false;
+    return this.presenceStore.removeExpiredCursors(
+      Date.now(),
+      CURSOR_PRESENCE_MAX_AGE_MS,
+    );
+  }
+
+  private renderPresenceStore(): void {
+    const activeStableIds = new Set<string>();
+
+    for (const [stableId, presence] of this.cursorPresenceEntries()) {
+      activeStableIds.add(stableId);
+      if (presence.cursor) {
+        this.updateCursor(stableId, {
+          ...presence,
+          cursor: presence.cursor,
+        });
+      } else {
+        this.removeCursor(stableId);
+      }
+      if (presence.message) {
+        this.otherUsersWithMessages.add(stableId);
+      } else {
+        this.otherUsersWithMessages.delete(stableId);
+      }
+    }
+
+    for (const stableId of Array.from(this.cursors.keys())) {
+      if (!activeStableIds.has(stableId)) {
+        this.otherUsersWithMessages.delete(stableId);
+        this.removeCursor(stableId);
+      }
+    }
+
+    this.rebuildSpatialGrid();
+    this.refreshPresenceTransportColors();
+    this.updateChatCTA();
+    this.checkProximityOptimized();
+    this.notifyCursorPresenceListeners();
+  }
+
+  private refreshPresenceTransportColors(): void {
+    this.allPlayerColors.clear();
+    this.allPlayerColors.add(getPrimaryColor(this.playerIdentity));
+    for (const [, presence] of this.cursorPresenceEntries()) {
+      this.allPlayerColors.add(getPrimaryColor(presence.playerIdentity));
+    }
+    this.updateGlobalColors();
   }
 
   private syncExistingAwareness(): void {
@@ -594,15 +775,10 @@ export class CursorClientAwareness {
     this.rebuildSpatialGrid();
 
     this.allPlayerColors.clear();
-    states.forEach((clientState, clientId) => {
-      const valid = getValidCursorPresence(
-        clientState as Record<string, unknown>,
-        clientId,
-      );
-      if (valid) {
-        this.allPlayerColors.add(getPrimaryColor(valid.playerIdentity));
-      }
-    });
+    this.allPlayerColors.add(getPrimaryColor(this.playerIdentity));
+    for (const [, presence] of this.cursorPresenceEntries()) {
+      this.allPlayerColors.add(getPrimaryColor(presence.playerIdentity));
+    }
 
     this.updateGlobalColors();
     this.updateChatCTA();
@@ -618,36 +794,88 @@ export class CursorClientAwareness {
     return false;
   }
 
-  private rebuildSpatialGrid(): void {
-    this.spatialGrid.clear();
+  private *cursorPresenceEntries(options: {
+    includeLocalAwareness?: boolean;
+  } = {}): Iterable<[string, RemoteCursorPresence]> {
+    if (this.presenceTransport) {
+      const presences = this.presenceStore.getRemotePresences(
+        this.playerIdentity.publicKey,
+      );
+      for (const [stableId, presence] of presences) {
+        yield [stableId, presence];
+      }
+      return;
+    }
 
     const states = this.provider.awareness.getStates();
     const myClientId = this.provider.awareness.clientID;
     const myPublicKey = this.playerIdentity.publicKey;
 
-    states.forEach((clientState, clientId) => {
-      if (clientId === myClientId) return;
-
+    for (const [clientId, state] of states) {
       const stableId = getStableIdForAwareness(
-        clientState as Record<string, unknown>,
+        state as Record<string, unknown>,
         clientId,
       );
-      if (stableId === myPublicKey) return;
+      if (
+        !options.includeLocalAwareness &&
+        (clientId === myClientId || stableId === myPublicKey)
+      ) {
+        continue;
+      }
 
       const valid = getValidCursorPresence(
-        clientState as Record<string, unknown>,
+        state as Record<string, unknown>,
         clientId,
       );
-      if (!valid) return;
+      if (!valid) continue;
+      yield [stableId, valid];
+    }
+  }
 
-      const clientCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
+  private *activeCursorPresenceEntries(options: {
+    freshOnly?: boolean;
+    now?: number;
+  } = {}): Iterable<[string, ValidCursorPresence]> {
+    const now = options.now ?? Date.now();
+    for (const [stableId, presence] of this.cursorPresenceEntries()) {
+      if (!presence.cursor) continue;
+      if (options.freshOnly && !this.isFreshCursorPresence(presence, now)) {
+        continue;
+      }
+      yield [
+        stableId,
+        {
+          ...presence,
+          cursor: presence.cursor,
+        },
+      ];
+    }
+  }
+
+  private isFreshCursorPresence(
+    presence: RemoteCursorPresence,
+    now: number,
+  ): boolean {
+    if (!this.presenceTransport) return true;
+    if (!Number.isFinite(presence.lastSeen)) return false;
+    return now - Number(presence.lastSeen) <= CURSOR_PRESENCE_MAX_AGE_MS;
+  }
+
+  private rebuildSpatialGrid(): void {
+    this.spatialGrid.clear();
+
+    for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
+      const clientCoords = this.storageToClient(
+        presence.cursor.x,
+        presence.cursor.y,
+      );
       this.spatialGrid.insert({
         id: stableId,
         x: clientCoords.x,
         y: clientCoords.y,
-        data: valid,
+        data: presence,
       });
-    });
+    }
   }
 
   private checkProximityOptimized(): void {
@@ -874,27 +1102,85 @@ export class CursorClientAwareness {
     return bestZone;
   }
 
-  private setupCursorTracking(): void {
-    const updateCursor = (e: MouseEvent) => {
-      let pointer = "mouse";
-      const element = document.elementFromPoint(e.clientX, e.clientY);
+  private getOwnCursorSvg(): string {
+    const color = getPrimaryColor(this.playerIdentity);
+    if (this.ownCursorSvgCache?.color !== color) {
+      this.ownCursorSvgCache = {
+        color,
+        svg: encodeSVG(getSvgForCursor(color)),
+      };
+    }
+    return this.ownCursorSvgCache.svg;
+  }
+
+  private addCursorEventListener(
+    target: EventTarget,
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: AddEventListenerOptions | boolean,
+  ): void {
+    target.addEventListener(type, listener, options);
+    this.cursorEventCleanups.push(() => {
+      target.removeEventListener(type, listener, options);
+    });
+  }
+
+  private requestPointerFrame(callback: FrameRequestCallback): number {
+    if (typeof window.requestAnimationFrame === "function") {
+      return window.requestAnimationFrame(callback);
+    }
+    return window.setTimeout(() => callback(performance.now()), 1000 / 60);
+  }
+
+  private cancelPointerFrame(frame: number): void {
+    if (typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(frame);
+    } else {
+      window.clearTimeout(frame);
+    }
+  }
+
+  private queuePointerSample(
+    clientX: number,
+    clientY: number,
+    input: "mouse" | "touch",
+  ): void {
+    this.pendingPointerSample = { clientX, clientY, input };
+
+    if (this.pointerFrame !== null) return;
+    this.pointerFrame = this.requestPointerFrame(() => {
+      this.pointerFrame = null;
+      const sample = this.pendingPointerSample;
+      this.pendingPointerSample = null;
+      if (sample) {
+        this.processPointerSample(sample);
+      }
+    });
+  }
+
+  private processPointerSample(sample: {
+    clientX: number;
+    clientY: number;
+    input: "mouse" | "touch";
+  }): void {
+    let pointer: string = sample.input;
+
+    if (sample.input === "mouse") {
+      pointer = "mouse";
+      const element = document.elementFromPoint(sample.clientX, sample.clientY);
 
       if (element) {
         const style = window.getComputedStyle(element);
         const maybeCustomCursor = extractUrlFromCursorStyle(style.cursor);
 
-        if (maybeCustomCursor) {
-          const ourCursorSvg = encodeSVG(
-            getSvgForCursor(getPrimaryColor(this.playerIdentity)),
-          );
-
-          if (!maybeCustomCursor.includes(ourCursorSvg)) {
-            pointer = maybeCustomCursor;
-          }
+        if (
+          maybeCustomCursor &&
+          !maybeCustomCursor.includes(this.getOwnCursorSvg())
+        ) {
+          pointer = maybeCustomCursor;
         }
       }
 
-      // Show/hide our own cursor based on pointer type (like cursor-party)
       if (pointer === "mouse") {
         document.documentElement.style.cursor = getCursorStyleForUser(
           getPrimaryColor(this.playerIdentity),
@@ -902,36 +1188,30 @@ export class CursorClientAwareness {
       } else {
         document.documentElement.style.cursor = "auto";
       }
+    }
 
-      // Convert to storage coordinates based on mode
-      const storageCoords = this.clientToStorage(e.clientX, e.clientY);
-      this.currentCursor = {
-        x: storageCoords.x,
-        y: storageCoords.y,
-        pointer,
-      };
-      this.currentZone = this.hitTestZones(e.clientX, e.clientY);
-      this.throttledUpdateCursorAwareness();
+    const storageCoords = this.clientToStorage(sample.clientX, sample.clientY);
+    this.currentCursor = {
+      x: storageCoords.x,
+      y: storageCoords.y,
+      pointer,
+    };
+    this.currentZone = this.hitTestZones(sample.clientX, sample.clientY);
+    this.scheduleCursorAwarenessUpdate();
+    this.updateAllCursorVisibility();
+  }
 
-      // Update visibility of all other cursors when our cursor moves
-      this.updateAllCursorVisibility();
+  private setupCursorTracking(): void {
+    const updateCursor = (event: Event) => {
+      const e = event as MouseEvent;
+      this.queuePointerSample(e.clientX, e.clientY, "mouse");
     };
 
-    const updateTouchCursor = (e: TouchEvent) => {
+    const updateTouchCursor = (event: Event) => {
+      const e = event as TouchEvent;
       const touch = e.touches[0];
       if (touch) {
-        // Convert to storage coordinates based on mode
-        const storageCoords = this.clientToStorage(touch.clientX, touch.clientY);
-        this.currentCursor = {
-          x: storageCoords.x,
-          y: storageCoords.y,
-          pointer: "touch",
-        };
-        this.currentZone = this.hitTestZones(touch.clientX, touch.clientY);
-        this.throttledUpdateCursorAwareness();
-
-        // Update visibility of all other cursors when our cursor moves
-        this.updateAllCursorVisibility();
+        this.queuePointerSample(touch.clientX, touch.clientY, "touch");
       }
     };
 
@@ -940,14 +1220,16 @@ export class CursorClientAwareness {
       // Same rationale as mouseleave: switching apps shouldn't remove presence.
     };
 
-    document.addEventListener("mousemove", updateCursor);
-    document.addEventListener("touchmove", updateTouchCursor);
-    document.addEventListener("touchend", handleTouchEnd);
+    this.addCursorEventListener(document, "mousemove", updateCursor);
+    this.addCursorEventListener(document, "touchmove", updateTouchCursor, {
+      passive: true,
+    });
+    this.addCursorEventListener(document, "touchend", handleTouchEnd);
 
     // When mouse leaves the window, keep presence alive but stop updating position.
     // The cursor freezes at its last known position for other clients.
     // TODO: consider displaying inactive cursors differently (faded, grayed out, etc.)
-    document.addEventListener("mouseleave", () => {
+    this.addCursorEventListener(document, "mouseleave", () => {
       this.showAllCursors();
     });
 
@@ -963,24 +1245,30 @@ export class CursorClientAwareness {
         this.repositionAllCursors();
       });
     };
-    window.addEventListener("scroll", repositionOnViewportChange, {
+    this.addCursorEventListener(window, "scroll", repositionOnViewportChange, {
       passive: true,
     });
-    window.addEventListener("resize", repositionOnViewportChange);
+    this.addCursorEventListener(window, "resize", repositionOnViewportChange);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener(
+      this.addCursorEventListener(
+        window.visualViewport,
         "scroll",
         repositionOnViewportChange,
       );
-      window.visualViewport.addEventListener(
+      this.addCursorEventListener(
+        window.visualViewport,
         "resize",
         repositionOnViewportChange,
       );
     }
 
     // Clean up presence when the page is actually closed/navigated away
-    window.addEventListener("beforeunload", () => {
-      this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    this.addCursorEventListener(window, "beforeunload", () => {
+      if (this.presenceTransport) {
+        this.presenceTransport.clear("cursor");
+      } else {
+        this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+      }
     });
   }
 
@@ -990,101 +1278,151 @@ export class CursorClientAwareness {
   // position:absolute and the browser handles scroll — only zone cursors
   // need re-resolution (getBoundingClientRect changes on scroll).
   private repositionAllCursors(): void {
-    const states = this.provider.awareness.getStates();
-    const localClientId = this.provider.awareness.clientID;
-    const myPublicKey = this.playerIdentity.publicKey;
-
-    for (const [numericId, state] of states) {
-      const stableId = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        numericId,
-      );
-      if (numericId === localClientId) continue;
-      if (stableId === myPublicKey) continue;
-
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        numericId,
-      );
-      if (!valid?.cursor) continue;
-
-      const animator = this.cursorAnimators.get(stableId);
-      if (!animator) continue;
-
-      // For cursors in a zone, re-resolve from the zone element's current
-      // bounding rect so the cursor tracks the element after scroll/resize.
-      if (valid.zone) {
-        const zoneEntry = this.zones.get(valid.zone.zoneId);
-        if (zoneEntry && document.contains(zoneEntry.element)) {
-          const rect = zoneEntry.element.getBoundingClientRect();
-          const cursorEl = this.cursors.get(stableId);
-          const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
-          const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
-          const zoneViewportX = rect.left + valid.zone.relX * rect.width - offsetX;
-          const zoneViewportY = rect.top + valid.zone.relY * rect.height - offsetY;
-          if (this.coordinateMode === "absolute") {
-            animator.snapTo({
-              x: zoneViewportX + window.scrollX,
-              y: zoneViewportY + window.scrollY,
-            });
-          } else {
-            animator.snapTo({ x: zoneViewportX, y: zoneViewportY });
-          }
-          continue;
-        }
-        // Zone not found locally: fall through
-      }
-
-      // In absolute mode, non-zone cursors use position:absolute with
-      // document coords — the browser handles scroll, nothing to do.
-      // With a transformed cursor container, cursors are also positioned
-      // absolutely (in container-local coords) and the parent's CSS
-      // transform composes them into viewport pixels for free.
-      if (this.coordinateMode === "absolute" || this.getContainerMatrix()) continue;
-
-      const targetCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
-      animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
+    for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
+      this.snapCursorToPresence(stableId, presence);
     }
 
     this.updateAllCursorVisibility();
   }
 
-  private throttledUpdateCursorAwareness(): void {
-    if (this.updateThrottled) return;
+  private snapCursorToPresence(
+    stableId: string,
+    presence: ValidCursorPresence,
+  ): void {
+    const animator = this.cursorAnimators.get(stableId);
+    if (!animator) return;
 
-    this.updateThrottled = true;
+    // For cursors in a zone, re-resolve from the zone element's current
+    // bounding rect so the cursor tracks the element after scroll/resize.
+    if (presence.zone) {
+      const zoneEntry = this.zones.get(presence.zone.zoneId);
+      if (zoneEntry && document.contains(zoneEntry.element)) {
+        const rect = zoneEntry.element.getBoundingClientRect();
+        const cursorEl = this.cursors.get(stableId);
+        const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
+        const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
+        const zoneViewportX = rect.left + presence.zone.relX * rect.width - offsetX;
+        const zoneViewportY = rect.top + presence.zone.relY * rect.height - offsetY;
+        if (this.coordinateMode === "absolute") {
+          animator.snapTo({
+            x: zoneViewportX + window.scrollX,
+            y: zoneViewportY + window.scrollY,
+          });
+        } else {
+          animator.snapTo({ x: zoneViewportX, y: zoneViewportY });
+        }
+        return;
+      }
+    }
+
+    // In absolute mode, non-zone cursors use position:absolute with document
+    // coords, so the browser handles scroll. With a transformed cursor
+    // container, the parent's CSS transform composes the cursor position.
+    if (this.coordinateMode === "absolute" || this.getContainerMatrix()) return;
+
+    const targetCoords = this.storageToClient(
+      presence.cursor.x,
+      presence.cursor.y,
+    );
+    animator.snapTo({ x: targetCoords.x, y: targetCoords.y });
+  }
+
+  private getActiveCursorConnectionCount(): number {
+    const localCount = this.currentCursor ? 1 : 0;
+    let remoteCount = 0;
+    for (const _presence of this.activeCursorPresenceEntries({
+      freshOnly: true,
+    })) {
+      remoteCount++;
+    }
+
+    return Math.max(1, localCount + remoteCount);
+  }
+
+  private scheduleCursorAwarenessUpdate(): void {
+    if (this.awarenessUpdateTimeout !== null) return;
+
     const now = performance.now();
     const elapsed = now - this.lastUpdate;
-    const targetInterval = 1000 / 60; // 60fps
+    const targetInterval = getCursorNetworkIntervalMs(
+      this.getActiveCursorConnectionCount(),
+    );
+    const serverInterval = this.serverCursorMaxHz
+      ? 1000 / this.serverCursorMaxHz
+      : 0;
+    const effectiveTargetInterval = Math.max(targetInterval, serverInterval);
 
-    if (elapsed >= targetInterval) {
+    if (elapsed >= effectiveTargetInterval) {
       this.updateCursorAwareness();
-      this.lastUpdate = now;
-      this.updateThrottled = false;
     } else {
-      setTimeout(() => {
+      this.awarenessUpdateTimeout = setTimeout(() => {
+        this.awarenessUpdateTimeout = null;
         this.updateCursorAwareness();
-        this.lastUpdate = performance.now();
-        this.updateThrottled = false;
-      }, targetInterval - elapsed);
+      }, effectiveTargetInterval - elapsed);
     }
   }
 
   private updateCursorAwareness(): void {
+    if (this.awarenessUpdateTimeout !== null) {
+      clearTimeout(this.awarenessUpdateTimeout);
+      this.awarenessUpdateTimeout = null;
+    }
+
+    const lastSeen = Date.now();
     const cursorPresence: CursorPresence = {
       cursor: this.currentCursor,
       playerIdentity: this.playerIdentity,
-      lastSeen: Date.now(),
+      lastSeen,
       message: this.currentMessage,
-      page: window.location.pathname,
+      page: getPresencePage(),
       zone: this.currentZone,
     };
+
+    if (this.presenceTransport) {
+      this.presenceTransport.update("cursor", {
+        cursor: cursorPresence.cursor,
+        page: cursorPresence.page,
+        zone: cursorPresence.zone,
+        at: lastSeen,
+      });
+      if (this.currentMessage !== this.lastSentMessage) {
+        this.presenceTransport.update("message", this.currentMessage);
+        this.lastSentMessage = this.currentMessage;
+      }
+      this.lastUpdate = performance.now();
+      this.checkProximityOptimized();
+      this.notifyCursorPresenceListeners();
+      return;
+    }
 
     // Set cursor data in awareness using reserved field
     this.provider.awareness.setLocalStateField(
       CURSOR_AWARENESS_FIELD,
       cursorPresence,
     );
+    this.lastUpdate = performance.now();
+  }
+
+  private publishPresenceTransportState(): void {
+    if (!this.presenceTransport) return;
+
+    const page = getPresencePage();
+    this.presenceTransport.join({
+      identity: this.playerIdentity,
+      page,
+    });
+    if (this.currentCursor) {
+      this.presenceTransport.update("cursor", {
+        cursor: this.currentCursor,
+        page,
+        zone: this.currentZone,
+        at: Date.now(),
+      });
+    }
+    if (this.currentMessage !== null || this.lastSentMessage !== null) {
+      this.presenceTransport.update("message", this.currentMessage);
+      this.lastSentMessage = this.currentMessage;
+    }
   }
 
   private getContainer(): HTMLElement {
@@ -1127,18 +1465,8 @@ export class CursorClientAwareness {
   }
 
   private findAwarenessByStableId(stableId: string): ValidCursorPresence | null {
-    const states = this.provider.awareness.getStates();
-    for (const [clientId, state] of states) {
-      const sid = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (sid !== stableId) continue;
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (valid) return valid;
+    for (const [sid, presence] of this.activeCursorPresenceEntries()) {
+      if (sid === stableId) return presence;
     }
     return null;
   }
@@ -1339,7 +1667,7 @@ export class CursorClientAwareness {
       }
     }
 
-    const color = getPrimaryColor(playerIdentity);
+    const color = getSvgPaint(getPrimaryColor(playerIdentity));
 
     // Render different cursor based on pointer type
     switch (pointer) {
@@ -1350,7 +1678,9 @@ export class CursorClientAwareness {
         element.innerHTML = this.getTouchCursorSVG(color);
         break;
       default:
-        element.innerHTML = this.getCustomCursorSVG(color, pointer);
+        element.innerHTML = isSafeCursorImageUrl(pointer)
+          ? this.getCustomCursorSVG(color, pointer)
+          : this.getMouseCursorSVG(color);
         break;
     }
 
@@ -1387,7 +1717,7 @@ export class CursorClientAwareness {
           />
           <path
             d="m6.431 17 1.765-.941-2.775-5.202h3.604l-8.025-8.043v11.188l2.53-2.442z"
-            fill="${fill}"
+            fill="${escapeSvgAttribute(fill)}"
           />
         </g>
       </svg>
@@ -1406,7 +1736,7 @@ export class CursorClientAwareness {
         <g fill="none" fillRule="evenodd" transform="translate(9 8)">
           <path
             d="m3.8852309 13.5522788c.15029277.1354048.25406355.2326609.57471053.5372549.31406586.2983172.46594413.439273.60482646.5572091.05791893.0487853.10729946.1792495.12686364.3731628.01609788.1595565.01049553.3375341-.0090192.5090254-.00674888.0593077-.01325791.1020883-.01698742.1224696-.04186639.2287942.13249226.4401222.36507344.4424801.20929712.0021219.37056581.00472.79741331.0123273.10679864.0019014.10679864.0019014.21395196.0037648 1.16029156.0199598 1.75290683.01448 2.1782236-.039003.45462139-.05716.92282087-.6061887 1.32754658-1.2951218.3429437.6096032.818651 1.2048784 1.2990136 1.282277.1525992.0243739.3372104.0319365.5511764.0270146.1595258-.0036697.328349-.0141847.4987188-.0294071.1284742-.0114791.2308379-.0230173.2919821-.0309462.2259121-.0292954.3737346-.2515956.31337-.4712558-.0130388-.0474468-.0339905-.1345046-.0551176-.2441066-.0244927-.1270617-.0421932-.2511642-.0502379-.3642189-.0051002-.0716765-.0061057-.1365707-.0028638-.1926702.0056365-.097781.007395-.1525378.0101327-.2790463.0010457-.0470941.0010457-.0470941.0024433-.0883088.0052898-.134881.0234093-.2629524.0820463-.5422232.0251901-.1212103.1472903-.3531692.3395862-.6402332.0572734-.0854992.1198813-.1747825.1869659-.2669588.127207-.1747861.2641214-.3514011.4010853-.5204043.0820457-.1012383.1454717-.1769623.1807968-.2180763.2962199-.424403.6120842-1.1191696.7281396-1.5253635.111416-.3904017.2005405-1.10937558.2553074-1.81604479.0300143-.40088807.0411211-.72405394.0411211-1.23097561.0000507-.08891816.0000507-.08891816.0002032-.16234685.0002858-.12025251.0003032-.16573976-.0000887-.22195195-.0010706-.15358041-.0055478-.30580145-.0203882-.6940256-.0319191-.81365149-.4778003-1.3396911-1.1348711-1.44115781-.5589865-.08632026-1.2393839.37795756-1.2393839.37795756s-.1514404-.5228127-.2537197-.6842075c-.1661957-.25934741-.5941748-.58982828-.9213451-.65421118-.3365014-.0653413-.7354024-.05811592-1.1017193.00667481-.3207944.05740454-.64034865.34382687-.82518751.65277182-.13223727.22039488-.00786932-.01169164-.14013104-.2396787-.1830552-.31402315-.60932935-.59522407-1.01524567-.67822294-.34396352-.07112559-.73801897-.04403625-1.09795562.06293793-.46304125.13836397-.53675291.49073282-.55516748.38984626-.06158674-.3382385-.06727482-.3160095-.105656-.55729603-.14258072-.89527436-.30213161-1.51473549-.54406219-2.05528331.01391678.0310773-.08860981-.20214701-.12592279-.28256779-.06461002-.13925416-.12910532-.2652956-.19999629-.38652204-.21850342-.37364978-.46891278-.65340904-.7830908-.81233894-.54561037-.27629378-1.3634177-.14183064-1.75105565.31064856-.38495968.44966797-.4491432 1.20149287-.3521966 2.13184003.03702376.36121263.16678627 1.02066144.28444961 1.50812387.04160602.1691894.07805979.32348903.14491578.60851331.01149723.04848415.01149723.04848415.02309483.09698036.05172236.21571896.09707607.39320067.15122332.5879629-.00568154-.02030261.09701461.344086.11888835.42472961.00727686.02691587.00727686.02691587.01448296.05395339.04082856.15377935.08074083.31959314.14309954.5963099.03412572.1521447.06742545.31468601.09999775.48699018.08883553.46993091.089274.37207374.00375852.27186198-.05907319-.06922522-.11463055-.13209255-.16830659-.19003644-.09976937-.10770214-.19148509-.19677225-.2785569-.2678141-.6343975-.51905295-1.02312991-.74839425-1.55681885-.79878106-.87541567-.08410158-1.70619803.53426712-1.83111632 1.36882761-.07682697.51169638-.05207639.74723271.18463583 1.19942735.13026223.24432805.35060714.53942202.76172732 1.04735429.02515953.031068.02515953.031068.05030428.06206416.50464537.62186746.55962098.69095396.67961467.86473786.32435479.4706845 1.1139501 1.8221455 1.25748612 2.0035872z"
-            fill="${fill}"
+            fill="${escapeSvgAttribute(fill)}"
           />
           <path
             d="m1.68266944 9.2716401c-.02488625-.03067752-.02488625-.03067752-.04970567-.06132555-.37729166-.46613768-.58418002-.74321015-.68156241-.9258495-.15281729-.29195235-.1611316-.37107459-.10605794-.73788601.06473349-.43247455.53181583-.78013371 1.01829549-.73339767.33660502.03178017.63068475.20527903 1.15339692.63295262.0565942.04617564.12482853.1124417.20288232.19670163.04616569.04983637.09513192.10524534.14800114.16720042.0794093.0930562.34702847.42052231.30761424.37286894.05814283.06991619.09971852.12407704.14721655.19045018.0941062.13434104.14705111.20894642.21874992.30454484-.0336171-.04487143.21473082.29843305.26732159.34863333.27859812.26593456.68203289.04195871.65675979-.31244785-.00421914-.05916537-.01812774-.12308431-.04717934-.23466885-.11487425-.81923739-.15505751-1.08218312-.24678252-1.56739907-.03407352-.18024544-.06905328-.35098727-.10521102-.5121905-.06435409-.28557213-.10635725-.46007245-.14994794-.62425526-.00774801-.02907063-.00774801-.02907063-.01552357-.05783095-.02300644-.08481964-.12725123-.45470311-.12030828-.42989063-.05134381-.18468043-.0945453-.35373996-.14431997-.56133562-.01130896-.04728909-.01130896-.04728909-.02259904-.09489949-.06649254-.28350912-.10387999-.44176072-.14606063-.6132721-.10998732-.45567652-.23425389-1.08719519-.2671036-1.40768017-.07546665-.72422018-.02339381-1.33418457.17582284-1.56688778.15554834-.1815673.59641015-.25405339.84271752-.12932486.16107512.0814814.32204278.26131571.47435101.521769.05764302.09857191.11172763.20426801.16708381.32357735.0335256.07225783.13292567.29837003.12172905.27336705.21032209.46992469.354801 1.03086841.48791736 1.86671535.03939531.24766201.08813662.52823537.15063928.87150416.01857903.10178746.01857903.10178746.03722922.20314381.30139226 1.63533599.27933797 1.51139381.28367122 1.64182468.01580667.47578071.71810567.4869267.74900255.01188722.00979855-.15065269.00630989-.2851661-.01107827-.67146517-.00245496-.05465243-.00245496-.05465243-.00481877-.10910149-.01521525-.35590459-.01433687-.56066672.00670546-.67705709.03834708-.21223125.22887-.4499778.40434754-.50241339.24641865-.07323589.51640341-.09179599.73269877-.04707051.20703808.0423346.44864736.20171736.51796318.32062499.08353628.14399789.15516008.36337367.21006107.63530456.04431149.21947986.07480439.45493493.0962536.70624261.00667352.0781897.01103024.13859819.01772256.23854675.00285005.04183594.00285005.04183594.00568968.07635213.00160285.01731471.00160285.01731471.00551199.04467336.00303535.01917374.00303535.01917374.01734216.06773608.00727602.13782339.00727602.13782339.56081544.18893151.16530264-.19982737.16530264-.19982737.16077268-.23486454.02708074-.1183491.04365279-.250265.06727822-.49813693.01508098-.16112409.02268576-.24033521.03157416-.32249887.036794-.34012028.0835164-.55621578.140511-.65120691.0707148-.11819408.3197845-.28280909.4314962-.30279961.2805348-.04961763.5886064-.0551978.8264635-.00901194.1077347.021202.3705429.22413969.4327499.32121002.1277282.20156171.2519621.8513817.3219188 1.49611734-.0110122.04228902-.0110122.04228902.1607163.28760404.5903408-.06730286.5903408-.06730286.5737568-.17389206.0155734-.03799147.0279666-.08191522.0455068-.15013809.0421947-.1597068.0701719-.25243998.1118273-.35635899.0288165-.07188915.0591935-.13335501.0903398-.18227881.120675-.18992919.4330876-.31896311.7070596-.2766556.2942545.0454396.4817569.26665023.4998934.72896761.0145423.38042999.0188438.52667972.0198445.67022961.0003693.0529684.0003531.09548963.0000723.21509672-.0001536.07391241-.0001536.07391241-.000205.16397385 0 .48892448-.010469.79353263-.0389535 1.17400348-.0506294.653266-.1361064 1.34281542-.228649 1.66708482-.094456.330596-.3764591.9508823-.5997469 1.2734975-.0158389.0153017-.0838055.0964468-.1706932.2036597-.1445918.1784155-.2892331.364998-.4248114.5512865-.0725632.099704-.140705.1968792-.2036767.2908847-.2436695.3637558-.4000227.6607868-.4506249.9042828-.0664376.3164194-.0901813.4842425-.0973169.666189-.0017426.0515155-.0017426.0515155-.0028439.1014735-.0025547.1180556-.0040857.165727-.0090621.2520573-.0052398.0906702-.0037444.1871795.0035093.2891187.0103883.145992.0000001.3454812.0000001.3454812s-.1266332-.0118299-.2678551-.0085813c-.1725177.0039685-.3159859-.0019087-.4151297-.0177442-.143046-.0230487-.5293508-.5064503-.7271506-.8830611-.3022704-.5764228-1.03604858-.5484427-1.33684295-.0394061-.27130191.4618137-.65965243.9172085-.77493336.9317029-.37460536.047106-.95471158.0524702-2.07175566.0332544-.10679478-.0018572-.10679478-.0018572-.21348729-.0037567-.42889761-.0076439-.41241496.0647655-.40363307-.0124079.02506967-.2203068.02222332-.1790312.00000011-.3992999-.03726222-.36933-.15125405-.6704984-.38877094-.8705429-.12286946-.1043424-.26983033-.2407345-.56500741-.5211097-.33722428-.3203411-.44283686-.4193233-.57299128-.5337266l-.80130455-.8907189c-.08795856-.1124788-.86002339-1.4339349-1.21248613-1.9454077-.13710846-.19857111-.18839645-.26302343-.71461353-.9114734zm9.50873056.0037599v3.459c0 .5.75.5.75 0v-3.459c0-.5-.75-.5-.75 0zm-2.03159602-.00057241.016 3.47300001c.00230346.4999947.7522955.4965395.74999204-.0034552l-.016-3.47299999c-.00230346-.4999947-.7522955-.49653951-.74999204.00345518zm-1.20911102 3.45357381-.021-3.42599996c-.00306475-.4999906-.75305066-.49539349-.74998592.00459712l.021 3.42600004c.00306475.4999906.75305066.4953935.74998592-.0045972z"
@@ -1424,10 +1754,10 @@ export class CursorClientAwareness {
         viewBox="0 0 32 32"
         width="32"
         xmlns="http://www.w3.org/2000/svg"
-        style="filter: drop-shadow(0 0 0.25rem ${fill}); pointer-events: none;"
+        style="filter: drop-shadow(0 0 0.25rem ${escapeSvgAttribute(fill)}); pointer-events: none;"
       >
         <g fill="none" fillRule="evenodd" transform="translate(9 8)">
-          <image href="${pointer}" width="32" height="32"></image>
+          <image href="${escapeSvgAttribute(pointer)}" width="32" height="32"></image>
         </g>
       </svg>
     `;
@@ -1496,8 +1826,11 @@ export class CursorClientAwareness {
         }
         const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
         self.playerIdentity.playerStyle.colorPalette[0] = newColor;
+        self.ownCursorSvgCache = null;
         self.savePlayerIdentityToStorage();
         document.documentElement.style.cursor = getCursorStyleForUser(newColor);
+        self.publishPlayerIdentity();
+        self.refreshPresenceTransportColors();
         if (oldColor !== newColor) {
           self.emitGlobalEvent("color", newColor);
         }
@@ -1509,6 +1842,7 @@ export class CursorClientAwareness {
         const oldName = self.playerIdentity.name;
         self.playerIdentity.name = newName;
         self.savePlayerIdentityToStorage();
+        self.publishPlayerIdentity();
         if (oldName !== newName) {
           self.emitGlobalEvent("name", newName);
         }
@@ -1770,10 +2104,13 @@ export class CursorClientAwareness {
       const prevColor = getPrimaryColor(this.playerIdentity);
       const prevName = this.playerIdentity?.name;
       this.playerIdentity = options.playerIdentity;
+      this.ownCursorSvgCache = null;
       this.savePlayerIdentityToStorage();
-      // Re-broadcast awareness with new identity and update local cursor style
+      // Publish identity and update local cursor style.
       const nextColor = getPrimaryColor(this.playerIdentity);
       document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+      this.publishPlayerIdentity();
+      this.refreshPresenceTransportColors();
       this.updateCursorAwareness();
       // Emit color/name events so subscribers (e.g. the React context behind
       // usePlayerIdentity) react to identity injected through configure() —
@@ -1786,6 +2123,10 @@ export class CursorClientAwareness {
         this.emitGlobalEvent("name", nextName);
       }
     }
+  }
+
+  private publishPlayerIdentity(): void {
+    this.presenceTransport?.update("identity", this.playerIdentity);
   }
 
   registerZone(element: HTMLElement, options?: CursorZoneOptions): void {
@@ -1814,6 +2155,20 @@ export class CursorClientAwareness {
   }
 
   destroy(): void {
+    this.cursorEventCleanups.forEach((cleanup) => cleanup());
+    this.cursorEventCleanups = [];
+
+    if (this.pointerFrame !== null) {
+      this.cancelPointerFrame(this.pointerFrame);
+      this.pointerFrame = null;
+    }
+    this.pendingPointerSample = null;
+
+    if (this.awarenessUpdateTimeout !== null) {
+      clearTimeout(this.awarenessUpdateTimeout);
+      this.awarenessUpdateTimeout = null;
+    }
+
     // Clean up cursors
     this.cursors.forEach((element) => element.remove());
     this.cursors.clear();
@@ -1838,8 +2193,18 @@ export class CursorClientAwareness {
       this.chat.destroy();
     }
 
-    // Remove awareness data
-    this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    if (this.presenceTransport) {
+      if (this.presenceExpiryInterval !== null) {
+        clearInterval(this.presenceExpiryInterval);
+        this.presenceExpiryInterval = null;
+      }
+      this.presenceTransportUnsubscribe?.();
+      this.presenceTransportUnsubscribe = null;
+      this.presenceTransport.clear("cursor");
+      this.presenceTransport.destroy();
+    } else {
+      this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
+    }
   }
 
   // Debug method to inspect spatial partitioning efficiency
@@ -1902,34 +2267,48 @@ export class CursorClientAwareness {
   // to client pixel coordinates so consumers can use them directly for CSS left/top.
   getCursorPresences(): Map<string, CursorPresenceView> {
     const presences = new Map<string, CursorPresenceView>();
-    const states = this.provider.awareness.getStates();
 
-    states.forEach((state, clientId) => {
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (!valid) return;
+    if (this.presenceTransport) {
+      const page = getPresencePage();
+      const localCoords = this.currentCursor
+        ? this.storageToClient(this.currentCursor.x, this.currentCursor.y)
+        : null;
+      presences.set(this.playerIdentity.publicKey, {
+        cursor: localCoords && this.currentCursor
+          ? {
+              x: localCoords.x,
+              y: localCoords.y,
+              pointer: this.currentCursor.pointer,
+            }
+          : null,
+        playerIdentity: this.playerIdentity,
+        zone: this.currentZone,
+        page,
+      });
+    }
 
-      const stableId = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      const clientCoords = this.storageToClient(valid.cursor.x, valid.cursor.y);
+    for (const [stableId, presence] of this.cursorPresenceEntries({
+      includeLocalAwareness: !this.presenceTransport,
+    })) {
+      const clientCoords = presence.cursor
+        ? this.storageToClient(presence.cursor.x, presence.cursor.y)
+        : null;
       presences.set(stableId, {
-        cursor: {
-          x: clientCoords.x,
-          y: clientCoords.y,
-          pointer: valid.cursor.pointer,
-        },
-        playerIdentity: valid.playerIdentity,
-        zone: valid.zone,
+        cursor: clientCoords && presence.cursor
+          ? {
+              x: clientCoords.x,
+              y: clientCoords.y,
+              pointer: presence.cursor.pointer,
+            }
+          : null,
+        playerIdentity: presence.playerIdentity,
+        zone: presence.zone,
         // Expose the reader's pathname so consumers can group presences by
         // page — e.g. a docs sidebar can show "who is reading which page"
         // without maintaining a parallel room-per-page structure.
-        page: valid.page,
+        page: presence.page,
       });
-    });
+    }
 
     return presences;
   }

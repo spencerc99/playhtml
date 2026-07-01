@@ -13,7 +13,7 @@ import {
   usePresenceRoom,
   usePlayerIdentity,
 } from "../index";
-import type { PlayerIdentity } from "@playhtml/common";
+import type { PlayerIdentity } from "playhtml";
 
 describe("usePresence", () => {
   beforeEach(() => {

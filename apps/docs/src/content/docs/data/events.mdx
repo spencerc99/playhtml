@@ -1,6 +1,6 @@
 ---
 title: "Events"
-description: "Broadcast one-off signals with dispatchPlayEvent — no persisted data."
+description: "Broadcast one-off signals with dispatchPlayEvent, no persisted data."
 sidebar:
   order: 4
 ---
@@ -48,7 +48,7 @@ document.querySelector("#celebrate").addEventListener("click", () => {
 });
 ```
 
-`events` in the init options is an object keyed by a local name (the key) — `type` is the wire identifier every client must agree on.
+`events` in the init options is an object keyed by a local name (the key). `type` is the wire identifier every client must agree on.
   </TabItem>
   <TabItem label="React">
 Events live on the `PlayContext`. Register a listener inside an effect; dispatch whenever:
@@ -76,7 +76,7 @@ function ConfettiButton() {
 }
 ```
 
-Always return the cleanup in the effect — if the component unmounts and you don't remove the listener, you'll accumulate duplicates on every remount.
+Always return the cleanup in the effect. If the component unmounts and you don't remove the listener, you'll accumulate duplicates on every remount.
   </TabItem>
 </Tabs>
 
@@ -109,13 +109,13 @@ Keep the payload small and JSON-serializable. Events aren't a replacement for sh
 
 ## Try it live
 
-Click the hydrant. It dispatches a `"rain"` event — clouds drift across the top of the page for anyone reading this page right now. Try it in two tabs.
+Click the hydrant. It dispatches a `"rain"` event, and clouds drift across the top of the page for anyone reading this page right now. Try it in two tabs.
 
 <div className="ph-demo-slot" data-label="EVENTS — rain">
   <RainSprinklerDemo client:only="react" />
 </div>
 
-Same primitive, different shape: each click below sends a short-lived emoji burst. No state, no persistence — exactly the "live reactions" pattern from video calls.
+Same primitive, different shape: each click below sends a short-lived emoji burst. No state, no persistence: exactly the "live reactions" pattern from video calls.
 
 <div className="ph-demo-slot" data-label="EVENTS — live reactions">
   <LiveReactionsDemo client:only="react" />
@@ -126,10 +126,10 @@ Same primitive, different shape: each click below sends a short-lived emoji burs
 - **Not for state.** If you find yourself dispatching the same event every time a reader connects so they "catch up," that's shared data, not an event. Move it to element or page data.
 - **No ordering guarantees.** If two readers dispatch at the same moment, clients can observe them in either order. Design the listener so order doesn't matter.
 - **Keep listeners idempotent where possible.** In dev mode, React 18's strict-mode double-invoke can register + remove listeners twice. Idempotent handlers (they can run twice without harm) are easier to reason about.
-- **Side effects only.** The `onEvent` callback should do something visible — animate, play a sound, nudge the DOM. If you want to update shared state in response, use element/page data and let its observer fire a side effect on change.
+- **Side effects only.** The `onEvent` callback should do something visible: animate, play a sound, nudge the DOM. If you want to update shared state in response, use element/page data and let its observer fire a side effect on change.
 
 ## Related
 
-- [Data essentials](/docs/data/data-essentials/) — the three data types, and when events are the wrong tool
-- [Presence](/docs/data/presence/) — for "who's here" instead of "someone just did this"
-- [`playhtml.init()` options](/docs/reference/init-options/#events) — the full `events` config reference
+- [Data essentials](/docs/data/data-essentials/): the three data types, and when events are the wrong tool
+- [Presence](/docs/data/presence/): for "who's here" instead of "someone just did this"
+- [`playhtml.init()` options](/docs/reference/init-options/#events): the full `events` config reference

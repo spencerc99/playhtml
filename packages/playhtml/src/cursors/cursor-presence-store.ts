@@ -1,0 +1,170 @@
+// ABOUTME: Converts generic realtime presence channels into cursor presence state.
+// ABOUTME: Collapses per-connection socket state into stable player identities.
+
+import type {
+  Cursor,
+  CursorPresence,
+  CursorZonePosition,
+  PlayerIdentity,
+  PresenceChangesMessage,
+  PresenceSnapshot,
+} from "@playhtml/common";
+import {
+  getNullableString,
+  getOptionalString,
+  isCursor,
+  isPlayerIdentity,
+  isPresenceCursorChannelValue,
+} from "../presence-utils";
+
+type PeerChannels = Record<string, unknown>;
+
+export const CURSOR_PRESENCE_MAX_AGE_MS = 30_000;
+
+export type StoredCursorPresence = CursorPresence & {
+  cursor: Cursor | null;
+  playerIdentity: PlayerIdentity;
+};
+
+export class CursorPresenceStore {
+  private peers = new Map<string, PeerChannels>();
+
+  applySync(snapshot: PresenceSnapshot): void {
+    this.peers.clear();
+    for (const [connectionId, channels] of Object.entries(snapshot)) {
+      this.peers.set(connectionId, { ...channels });
+    }
+  }
+
+  applyChanges(message: PresenceChangesMessage): void {
+    for (const [connectionId, channels] of Object.entries(message.updates)) {
+      const peer = this.peers.get(connectionId) ?? {};
+      this.peers.set(connectionId, peer);
+      for (const [channel, value] of Object.entries(channels)) {
+        peer[channel] = value;
+      }
+    }
+
+    for (const [connectionId, channels] of Object.entries(message.removes)) {
+      const peer = this.peers.get(connectionId);
+      if (!peer) continue;
+      for (const channel of channels) {
+        delete peer[channel];
+      }
+      if (Object.keys(peer).length === 0) {
+        this.peers.delete(connectionId);
+      }
+    }
+  }
+
+  getRemotePresences(localPublicKey: string): Map<string, StoredCursorPresence> {
+    const presences = new Map<string, StoredCursorPresence>();
+    const connectionIds = Array.from(this.peers.keys()).sort();
+
+    for (const connectionId of connectionIds) {
+      const presence = this.getPresenceForConnection(connectionId);
+      if (!presence) continue;
+      if (presence.playerIdentity.publicKey === localPublicKey) continue;
+      const publicKey = presence.playerIdentity.publicKey;
+      const existing = presences.get(publicKey);
+      if (!existing || shouldReplacePresence(existing, presence)) {
+        presences.set(publicKey, presence);
+      }
+    }
+
+    return presences;
+  }
+
+  getPresenceByStableId(stableId: string): StoredCursorPresence | null {
+    let bestPresence: StoredCursorPresence | null = null;
+    for (const connectionId of Array.from(this.peers.keys()).sort()) {
+      const presence = this.getPresenceForConnection(connectionId);
+      if (presence?.playerIdentity.publicKey !== stableId) continue;
+      if (!bestPresence || shouldReplacePresence(bestPresence, presence)) {
+        bestPresence = presence;
+      }
+    }
+    return bestPresence;
+  }
+
+  removeExpiredCursors(now: number, maxAgeMs: number): boolean {
+    let changed = false;
+
+    for (const [connectionId, channels] of this.peers) {
+      if (!("cursor" in channels)) continue;
+      if (isActiveCursorChannel(channels.cursor, now, maxAgeMs)) continue;
+
+      delete channels.cursor;
+      changed = true;
+      if (Object.keys(channels).length === 0) {
+        this.peers.delete(connectionId);
+      }
+    }
+
+    return changed;
+  }
+
+  private getPresenceForConnection(
+    connectionId: string,
+  ): StoredCursorPresence | null {
+    const channels = this.peers.get(connectionId);
+    if (!channels) return null;
+
+    const identity = channels.identity;
+    if (!isPlayerIdentity(identity)) return null;
+
+    const cursorChannel = channels.cursor;
+    let cursor: Cursor | null = null;
+    let lastSeen: number | undefined;
+    let page = getOptionalString(channels.page);
+    let zone: CursorZonePosition | null = null;
+
+    if (cursorChannel !== undefined) {
+      if (!isPresenceCursorChannelValue(cursorChannel)) return null;
+      if (cursorChannel.cursor !== null) {
+        if (!isCursor(cursorChannel.cursor)) return null;
+        cursor = cursorChannel.cursor;
+      }
+      lastSeen = cursorChannel.at;
+      page = cursorChannel.page ?? page;
+      zone = cursorChannel.zone ?? null;
+    }
+
+    return {
+      cursor,
+      playerIdentity: identity,
+      lastSeen,
+      message: getNullableString(channels.message),
+      page,
+      zone,
+    };
+  }
+}
+
+function shouldReplacePresence(
+  current: StoredCursorPresence,
+  candidate: StoredCursorPresence,
+): boolean {
+  if (candidate.cursor && !current.cursor) return true;
+  if (!candidate.cursor && current.cursor) return false;
+
+  const currentLastSeen = getFiniteNumber(current.lastSeen);
+  const candidateLastSeen = getFiniteNumber(candidate.lastSeen);
+  return candidateLastSeen > currentLastSeen;
+}
+
+function getFiniteNumber(value: unknown): number {
+  return Number.isFinite(value) ? Number(value) : Number.NEGATIVE_INFINITY;
+}
+
+function isActiveCursorChannel(
+  value: unknown,
+  now: number,
+  maxAgeMs: number,
+): boolean {
+  if (!isPresenceCursorChannelValue(value)) return false;
+  if (value.cursor === null) return false;
+  if (!isCursor(value.cursor)) return false;
+  if (!Number.isFinite(value.at)) return false;
+  return now - Number(value.at) <= maxAgeMs;
+}
