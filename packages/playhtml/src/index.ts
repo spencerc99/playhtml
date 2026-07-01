@@ -940,6 +940,10 @@ async function runHandleNavigation(): Promise<void> {
     for (const [id, handler] of [...map.entries()]) {
       const el = (handler as { element?: HTMLElement }).element;
       if (!el || !el.isConnected) {
+        // Run onMount cleanup (rAF loops, timers, listeners) and disconnect the
+        // descendant observer before dropping the handler — otherwise a
+        // view element's clock loop keeps ticking forever after navigation.
+        (handler as { destroy?: () => void }).destroy?.();
         map.delete(id);
       }
     }
@@ -1297,6 +1301,7 @@ function createPlayElementData<T extends TagType, TData = any>(
 
   const elementData: ElementData = {
     ...tagInfo,
+    devMode: isDevelopmentMode,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
     awareness:
@@ -1315,7 +1320,22 @@ function createPlayElementData<T extends TagType, TData = any>(
         // Mutator form support: onChange can accept function(draft)
         // Batch all nested mutations into a single Yjs transaction to coalesce events
         doc.transact(() => {
-          newData(dataProxy);
+          const returned = (newData as (draft: unknown) => unknown)(dataProxy);
+          // Only warn when the return looks like an intended *replacement*
+          // snapshot (an object/array). Terse arrows like `d => d.count++` or
+          // `d => (d.x = 1)` return a number/boolean as a side effect of a
+          // valid in-place mutation — warning on those is just noise.
+          if (
+            isDevelopmentMode &&
+            returned !== undefined &&
+            typeof returned === "object"
+          ) {
+            console.warn(
+              `[playhtml] A setData() mutator for "${elementId}" returned an object. ` +
+                `Mutators must mutate the draft in place (e.g. \`d => { d.count++ }\`); ` +
+                `the return value is ignored. To replace the whole snapshot, pass a value instead of a function.`,
+            );
+          }
         });
       } else {
         // Value form: replace snapshot semantics
@@ -1372,8 +1392,13 @@ function getElementInitializerValidationIssues(
     issues.push("defaultData");
   }
 
-  if (typeof tagInfo.updateElement !== "function") {
-    issues.push("updateElement");
+  // A valid initializer needs an update path: the imperative `updateElement`
+  // or the declarative `view`.
+  if (
+    typeof tagInfo.updateElement !== "function" &&
+    typeof tagInfo.view !== "function"
+  ) {
+    issues.push("updateElement or view");
   }
 
   return issues;
@@ -1388,6 +1413,7 @@ function getCustomElementProps(element: HTMLElement) {
     "defaultLocalData",
     "myDefaultAwareness",
     "updateElement",
+    "view",
     "updateElementAwareness",
     "onDrag",
     "onDragStart",
@@ -1514,6 +1540,15 @@ function setupElements(): void {
     return;
   }
 
+  // Stamp any registrations made before init() onto their elements so the
+  // can-play scan below picks them up.
+  for (const [id, init] of pendingRegistrations) {
+    const el = document.getElementById(id);
+    if (el && isHTMLElement(el)) {
+      stampRegistrationOntoElement(el, init);
+    }
+  }
+
   for (const tag of getTagTypes()) {
     const tagElements: HTMLElement[] = Array.from(
       document.querySelectorAll(`[${tag}]`),
@@ -1610,6 +1645,12 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
+  /** @experimental View API — register a custom element by id. */
+  register: typeof registerPlayElement;
+  /** @experimental View API — register a reusable capability by attribute name. */
+  define: typeof definePlayCapability;
+  /** @experimental View API — get a handle for a bound element. */
+  getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
   eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
@@ -1740,6 +1781,9 @@ export const playhtml: PlayHTMLComponents = {
   removePlayElement,
   deleteElementData,
   setupPlayElementForTag,
+  register: registerPlayElement,
+  define: definePlayCapability,
+  getHandle: createPlayElementHandle,
   get syncedStore() {
     return publicSyncedStore;
   },
@@ -1913,7 +1957,16 @@ async function setupPlayElementForTag<T extends TagType | string>(
     attachSyncedStoreObserver(tag as string, elementId);
     return;
   } else {
-    tagElementHandlers.set(elementId, new ElementHandler(elementData));
+    const handler = new ElementHandler(elementData);
+    tagElementHandlers.set(elementId, handler);
+    // View handlers can emit capability descendants (mount points for
+    // `define`d capabilities / `register`ed ids). Bind the current children and
+    // re-bind only when the subtree's child structure changes (observer-driven,
+    // so a ticking view doesn't re-scan every frame).
+    if (elementInitializerInfo.view) {
+      handler.onAfterRender = setupViewDescendants;
+      handler.observeDescendants();
+    }
     if (tag === TagType.CanMirror) {
       setupPlayElementDescendants(element);
     }
@@ -2038,6 +2091,12 @@ function setupPlayElement(
     return;
   }
 
+  // If this element was registered via register() before it existed, stamp its
+  // initializer on now so the can-play branch below picks it up.
+  if (element.id && pendingRegistrations.has(element.id)) {
+    stampRegistrationOntoElement(element, pendingRegistrations.get(element.id)!);
+  }
+
   // Check for data-source attribute and handle dynamic discovery
   if (element.hasAttribute("data-source")) {
     handleNewSharedReference(element);
@@ -2139,9 +2198,315 @@ function removePlayElement(element: Element | null) {
       clearTimeout(timerId);
       sharedHydrationTimers.delete(key);
     }
+    // Run onMount cleanup (rAF loops, timers, event listeners) and disconnect
+    // the descendant observer so view elements don't leak after removal.
+    handler.destroy?.();
     tagElementHandler.delete(elementId);
   }
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Programmatic registration (`register` / `define`) + `view`
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Handle returned by `playhtml.register`, and by `playhtml.getHandle` for any
+ * bound element. Reads/writes resolve the live handler lazily, so a handle
+ * obtained before the element binds still works once it does.
+ *
+ * @experimental Part of the new view API; subject to change in a future minor.
+ */
+export interface PlayElementHandle<T = any, U = any, V = any> {
+  id: string;
+  /** The bound DOM element, or null until it exists and binds. */
+  getElement(): HTMLElement | null;
+  /** Current shared data. Do not mutate it directly — mutations are not synced and may corrupt state; write via setData. */
+  getData(): T | undefined;
+  setData(next: T | ((draft: T) => void)): void;
+  setLocalData(next: U | ((draft: U) => void)): void;
+  setMyAwareness(next: V): void;
+  /** Re-run the view now (for clock-driven views). No-op without a view. */
+  requestUpdate(): void;
+  /** Detach the handler (shared data is preserved) and drop the registration. */
+  unregister(): void;
+}
+
+// elementId -> initializer, pending until both the definition and the DOM
+// element exist (upgrade semantics, like customElements.define).
+const pendingRegistrations = new Map<string, ElementInitializer>();
+
+/**
+ * Enforces the `view` invariants: a `view` cannot coexist with the imperative
+ * `updateElement` or with element-level event handlers, and an initializer
+ * must provide at least one update path.
+ */
+function validateViewInitializer(name: string, init: ElementInitializer): void {
+  if (init.view && init.updateElement) {
+    throw new Error(
+      `[playhtml] "${name}" defines both \`view\` and \`updateElement\`. They are mutually exclusive — pick one.`,
+    );
+  }
+  if (init.view && (init.onClick || init.onDrag || init.onDragStart)) {
+    throw new Error(
+      `[playhtml] "${name}" defines \`view\` alongside an element event handler (onClick/onDrag/onDragStart). ` +
+        `In view mode, attach events inside the template (e.g. \`@click=\${...}\`) instead.`,
+    );
+  }
+  if (!init.view && !init.updateElement) {
+    throw new Error(
+      `[playhtml] "${name}" must define either \`view\` or \`updateElement\`.`,
+    );
+  }
+  // Shared data must be an object (or a factory returning one), never a bare
+  // primitive. An object shape stays robust as the data evolves — you can add
+  // fields without a migration, where `defaultData: 0` can't grow.
+  if (
+    init.defaultData !== undefined &&
+    typeof init.defaultData !== "function" &&
+    (typeof init.defaultData !== "object" || init.defaultData === null)
+  ) {
+    throw new Error(
+      `[playhtml] "${name}" has a non-object \`defaultData\`. Use an object ` +
+        `(e.g. \`{ count: 0 }\`) so the shape can grow without a data migration.`,
+    );
+  }
+}
+
+/** Stamps a registration's initializer fields onto its element as props. */
+function stampRegistrationOntoElement(
+  element: HTMLElement,
+  init: ElementInitializer,
+): void {
+  Object.assign(element, init);
+  if (!element.hasAttribute(TagType.CanPlay)) {
+    element.setAttribute(TagType.CanPlay, "");
+  }
+}
+
+/** Applies a pending registration if its element exists and we've synced. */
+function applyPendingRegistration(elementId: string): void {
+  if (!hasSynced) return;
+  const init = pendingRegistrations.get(elementId);
+  if (!init) return;
+  const element = document.getElementById(elementId);
+  if (!element || !isHTMLElement(element)) return;
+  stampRegistrationOntoElement(element, init);
+  void setupPlayElementForTag(element, TagType.CanPlay);
+}
+
+/**
+ * Finds the live handler for an element id. An element can carry several
+ * capabilities at once, all sharing one id, so pass the capability tag (e.g.
+ * "can-toggle") to disambiguate. Without a tag, prefers the can-play handler
+ * and otherwise returns the first match.
+ */
+function findHandlerForElementId(
+  elementId: string,
+  tag?: string,
+): ElementHandler | undefined {
+  if (tag !== undefined) {
+    return elementHandlers.get(tag)?.get(elementId);
+  }
+  const canPlay = elementHandlers.get(TagType.CanPlay)?.get(elementId);
+  if (canPlay) return canPlay;
+  for (const [, map] of elementHandlers) {
+    const handler = map.get(elementId);
+    if (handler) return handler;
+  }
+  return undefined;
+}
+
+/**
+ * Emits a development-only warning when a handle write lands on an element
+ * that has not bound yet (wrong id, or the element does not exist). Writes are
+ * dropped silently otherwise; reads stay quiet.
+ */
+function warnUnboundHandleWrite(method: string, elementId: string): void {
+  if (!isDevelopmentMode) return;
+  console.warn(
+    `[playhtml] ${method}("${elementId}") — no bound element with that id yet; the write was dropped. ` +
+      `Register/add the element first, or check the id.`,
+  );
+}
+
+function createPlayElementHandle(
+  elementId: string,
+  tag?: string,
+): PlayElementHandle {
+  return {
+    id: elementId,
+    getElement: () => document.getElementById(elementId),
+    getData: () => findHandlerForElementId(elementId, tag)?.data,
+    setData: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setData", elementId);
+      handler.setData(next);
+    },
+    setLocalData: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setLocalData", elementId);
+      handler.setLocalData(next);
+    },
+    setMyAwareness: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setMyAwareness", elementId);
+      handler.setMyAwareness(next);
+    },
+    requestUpdate: () => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("requestUpdate", elementId);
+      handler.requestUpdate();
+    },
+    unregister: () => {
+      pendingRegistrations.delete(elementId);
+      const el = document.getElementById(elementId);
+      if (el) removePlayElement(el);
+    },
+  };
+}
+
+/**
+ * Registers a `view`/`updateElement` initializer for a single element by id.
+ * Callable before or after `init()` and before or after the element exists;
+ * binding happens once both are present. Returns a handle for reads/writes
+ * from outside the view (e.g. form submit handlers).
+ *
+ * @experimental New view API; signature may change in a future minor release.
+ */
+function registerPlayElement<T = any, U = any, V = any>(
+  elementId: string,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V> {
+  validateViewInitializer(elementId, init as ElementInitializer);
+  pendingRegistrations.set(elementId, init as ElementInitializer);
+  applyPendingRegistration(elementId);
+  if (isDevelopmentMode && hasSynced && !document.getElementById(elementId)) {
+    console.warn(
+      `[playhtml] register("${elementId}") — no element with that id is in the DOM yet. ` +
+        `It will bind automatically when the element appears.`,
+    );
+  }
+  // register always binds via can-play, so scope the handle to that tag.
+  return createPlayElementHandle(
+    elementId,
+    TagType.CanPlay,
+  ) as PlayElementHandle<T, U, V>;
+}
+
+/**
+ * Registers a reusable capability under an attribute name (e.g. "can-note").
+ * Every element carrying that attribute gets the capability — including ones
+ * added to the DOM later. The imperative counterpart of
+ * `init({ extraCapabilities })`.
+ *
+ * @param capabilityName - The attribute name elements use to opt in (used in an
+ *   attribute selector, e.g. `[can-note]`).
+ * @experimental New view API; signature may change in a future minor release.
+ */
+function definePlayCapability<T = any, U = any, V = any>(
+  capabilityName: string,
+  init: ElementInitializer<T, U, V>,
+): void {
+  if (capabilityName === PAGE_TAG) {
+    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
+  }
+  if (capabilityName === TagType.CanPlay) {
+    throw new Error(
+      `[playhtml] "${TagType.CanPlay}" is reserved — use register(id, init) for single elements.`,
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {
+    throw new Error(
+      `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
+    );
+  }
+  validateViewInitializer(capabilityName, init as ElementInitializer);
+  capabilitiesToInitializer[capabilityName] = init as ElementInitializer;
+  // Upgrade any elements already on the page (no-op before init()).
+  if (hasSynced) {
+    const els = Array.from(
+      document.querySelectorAll(`[${capabilityName}]`),
+    ).filter(isHTMLElement);
+    void Promise.all(
+      els.map((el) => setupPlayElementForTag(el, capabilityName)),
+    );
+  }
+}
+
+/**
+ * After a view renders, reconcile the capability descendants it produced —
+ * mount points for `define`d capabilities or `register`ed ids. This is what
+ * makes data-driven lists of collaborative children (e.g. a chat list
+ * rendering `<div can-chat>` per room) work. Driven by a MutationObserver on
+ * the view root (see ElementHandler.observeDescendants), so it runs when the
+ * child structure changes — not on every render.
+ *
+ * Reconciliation, not just binding: newly-present descendants are bound, and
+ * descendants this root previously bound that are now gone (a keyed list item
+ * was removed) are torn down via removePlayElement — which runs their onMount
+ * cleanup and disconnects their observers, so churning lists don't leak
+ * handlers pointing at detached DOM. Shared data is preserved.
+ */
+const viewDescendants = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
+
+function setupViewDescendants(root: HTMLElement): void {
+  // Stamp pending single-element registrations onto matching descendants.
+  for (const [id, init] of pendingRegistrations) {
+    if (id === root.id) continue;
+    const el = document.getElementById(id);
+    if (el && root.contains(el) && isHTMLElement(el)) {
+      stampRegistrationOntoElement(el, init);
+    }
+  }
+  // Capability descendants present in this render, keyed by `tag:id`. The scan
+  // is subtree-wide, so each view-root tracks its full descendant set
+  // (including nested ones) — teardown below covers every depth.
+  const present = new Map<string, HTMLElement>();
+  for (const tag of getTagTypes()) {
+    const els = Array.from(root.querySelectorAll(`[${tag}]`)).filter(
+      isHTMLElement,
+    );
+    for (const el of els) {
+      if (el === root) continue;
+      if (!el.id) {
+        if (isDevelopmentMode) {
+          console.warn(
+            `[playhtml] a view rendered a "${tag}" element with no id; it won't bind. ` +
+              `Give capability children a stable, unique id (key keyed lists by it).`,
+          );
+        }
+        continue;
+      }
+      present.set(`${tag}:${el.id}`, el);
+      const existing = elementHandlers.get(tag)?.get(el.id);
+      if (existing) {
+        if (existing.element === el) continue; // already bound to this node
+        // Same id, different node: a keyed list reused the id on a fresh DOM
+        // node (lit-html replaced the old one). If the old node is detached,
+        // tear its handler down so the new node can bind — otherwise
+        // setupPlayElementForTag would reject it as a duplicate id and the new
+        // node would silently never bind.
+        if (!existing.element.isConnected) {
+          removePlayElement(existing.element);
+        }
+      }
+      void setupPlayElementForTag(el, tag);
+    }
+  }
+  // Tear down descendants this root bound previously that are gone now.
+  const previous = viewDescendants.get(root);
+  if (previous) {
+    for (const [key, el] of previous) {
+      if (!present.has(key)) {
+        // removePlayElement runs the handler's destroy() (onMount cleanup +
+        // observer disconnect) and preserves the shared data.
+        removePlayElement(el);
+      }
+    }
+  }
+  viewDescendants.set(root, present);
+}
+
 
 /**
  * Completely deletes all shared collaborative data for an element.
@@ -2306,3 +2671,12 @@ export type {
   PresenceRoom,
   PresenceView,
 } from "@playhtml/common";
+
+// Re-export a curated subset of lit-html for `view` authoring, so
+// script-tag and module users can `import { html, repeat } from "playhtml"`.
+// Intentionally NO `unsafeHTML` — auto-escaping of interpolated values is a
+// core safety property of the view API.
+export { html, svg, nothing } from "lit-html";
+export { repeat } from "lit-html/directives/repeat.js";
+export { classMap } from "lit-html/directives/class-map.js";
+export { styleMap } from "lit-html/directives/style-map.js";

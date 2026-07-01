@@ -103,7 +103,7 @@ describe("playhtml basic setup with SyncedStore", () => {
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Missing or invalid initializer properties: defaultData, updateElement.",
+        "Missing or invalid initializer properties: defaultData, updateElement or view.",
       ),
     );
   });
