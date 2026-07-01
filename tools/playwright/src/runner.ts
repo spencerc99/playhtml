@@ -4,6 +4,7 @@
 import { chromium } from "@playwright/test";
 import path from "path";
 import fs from "fs";
+import { installErrorCollector } from "./errors.js";
 import { createPersonas } from "./personas.js";
 import type { SceneConfig, SceneRuntimeOptions } from "./scene.js";
 
@@ -218,6 +219,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   // Launch actor contexts
   const contexts: import("@playwright/test").BrowserContext[] = [];
   const pages: import("@playwright/test").Page[] = [];
+  const errorCollectors: ReturnType<typeof installErrorCollector>[] = [];
 
   const recordFromActor = !useCamera && !args.noVideo;
   for (let i = 0; i < actorCount; i++) {
@@ -225,6 +227,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     const { context, page } = await launchActor(`actor-${i}`, shouldRecord);
     contexts.push(context);
     pages.push(page);
+    errorCollectors.push(installErrorCollector(page, `Actor ${i}`));
   }
 
   // Launch camera context (records video, sees all remote cursors)
@@ -235,6 +238,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     const cam = await launchActor("camera", true);
     cameraContext = cam.context;
     cameraPage = cam.page;
+    errorCollectors.push(installErrorCollector(cameraPage, "Camera"));
   }
 
   // Navigate all actors + camera to the starting URL
@@ -340,6 +344,7 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+  let sceneError: unknown;
   try {
     await scene.run({
       pages,
@@ -352,6 +357,16 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
     });
   } catch (err) {
     console.error("Scene error:", err);
+    sceneError = err;
+  }
+
+  for (const collector of errorCollectors) {
+    try {
+      collector.assertClean();
+    } catch (err) {
+      sceneError ??= err;
+      console.error(err);
+    }
   }
 
   console.log("\nScene complete.");
@@ -377,6 +392,13 @@ Scenes are defined in tools/playwright/scenes/<name>.ts
   if (cameraContext) {
     await cameraContext.close();
   }
+
+  if (sceneError) {
+    throw sceneError;
+  }
 }
 
-run().catch(console.error);
+run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
