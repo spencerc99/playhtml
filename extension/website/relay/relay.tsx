@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
 } from "react";
 import ReactDOM from "react-dom/client";
 import { AnimatedTrails } from "../shared/components/AnimatedTrails";
@@ -25,6 +26,96 @@ const MAX_POOL_EVENTS = 100000;
 const DOMAIN_FILTER_KEY = "relay-domain-filter";
 const EDGE_MARGIN_FRACTION = 0.02;
 const MAX_TRAIL_LENGTH_KPX_MAX = 30;
+const DOT_CLEARANCE_PX = 30;
+
+interface JunctionDot {
+  x: number;
+  y: number;
+  /** Timeline offset at which the relay reaches this dot. */
+  fillMs: number;
+}
+
+/** Connect-the-dots layer: every junction is visible up front as a hollow
+ * numbered dot, and fills in the moment the relay cursor arrives. Runs its
+ * own clock with the same accumulation math as AnimatedTrails (delta times
+ * current speed, looped over the cycle) so the two stay in step; give it the
+ * same key as the animator so both clocks reset together. */
+const DotsLayer = ({
+  dots,
+  durationMs,
+  speed,
+  showNumbers,
+}: {
+  dots: JunctionDot[];
+  durationMs: number;
+  speed: number;
+  showNumbers: boolean;
+}) => {
+  const [filledCount, setFilledCount] = useState(0);
+  const speedRef = useRef(speed);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+
+  useEffect(() => {
+    let frame: number;
+    let last: number | null = null;
+    let accumulated = 0;
+    const tick = (timestamp: number) => {
+      if (last === null) last = timestamp;
+      accumulated += Math.min(250, timestamp - last) * speedRef.current;
+      last = timestamp;
+      const elapsed = accumulated % durationMs;
+      let count = 0;
+      while (count < dots.length && dots[count].fillMs <= elapsed) count++;
+      setFilledCount((prev) => (prev === count ? prev : count));
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [dots, durationMs]);
+
+  return (
+    <svg
+      width="100%"
+      height="100%"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        pointerEvents: "none",
+      }}
+    >
+      {dots.map((dot, index) => {
+        const filled = index < filledCount;
+        return (
+          <g key={index}>
+            <circle
+              cx={dot.x}
+              cy={dot.y}
+              r={filled ? 6 : 4.5}
+              fill={filled ? "#3d3833" : "#faf7f2"}
+              stroke={filled ? "#3d3833" : "#8a8279"}
+              strokeWidth={1.5}
+              style={{ transition: "r 150ms ease, fill 150ms ease" }}
+            />
+            {showNumbers && (
+              <text
+                x={dot.x + 9}
+                y={dot.y - 7}
+                fontFamily="'Martian Mono', monospace"
+                fontSize={9}
+                fill={filled ? "#3d3833" : "#8a8279"}
+              >
+                {index + 1}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
 
 const styles = {
   page: {
@@ -117,6 +208,10 @@ const TrailRelay = () => {
   const [kNearest, setKNearest] = useState(3);
   const [maxTrailLengthKPx, setMaxTrailLengthKPx] = useState(8);
   const [edgeFilter, setEdgeFilter] = useState(true);
+  const [showDots, setShowDots] = useState(true);
+  const [showNumbers, setShowNumbers] = useState(true);
+  const [avoidDots, setAvoidDots] = useState(true);
+  const [beatMs, setBeatMs] = useState(400);
   const [seed, setSeed] = useState(1);
   const [strokeWidth, setStrokeWidth] = useState(5);
   const [animationSpeed, setAnimationSpeed] = useState(1);
@@ -172,6 +267,7 @@ const TrailRelay = () => {
           maxTrailLengthKPx >= MAX_TRAIL_LENGTH_KPX_MAX
             ? Infinity
             : maxTrailLengthKPx * 1000,
+        dotClearancePx: avoidDots ? DOT_CLEARANCE_PX : 0,
         canvasSize: viewportSize,
         random: mulberry32(seed),
       }),
@@ -183,6 +279,7 @@ const TrailRelay = () => {
       kNearest,
       maxTrailLengthKPx,
       edgeFilter,
+      avoidDots,
       viewportSize,
       seed,
     ],
@@ -217,11 +314,47 @@ const TrailRelay = () => {
         pxPerSecond,
         minDurationMs: 500,
         maxDurationMs: 8000,
-        gapMs: 150,
+        gapMs: beatMs,
         overlap: 0,
         restMs: 3000,
       }),
-    [chained, pxPerSecond],
+    [chained, pxPerSecond, beatMs],
+  );
+
+  // Junction dots: the seed's origin plus every trail's arrival point, each
+  // stamped with the timeline offset at which the relay reaches it.
+  const junctionDots = useMemo((): JunctionDot[] => {
+    const list: JunctionDot[] = [];
+    sequence.trailStates.forEach((state, index) => {
+      if (index === 0) {
+        const origin = state.variedPoints[0];
+        list.push({ x: origin.x, y: origin.y, fillMs: state.startOffsetMs });
+      }
+      const end = state.variedPoints[state.variedPoints.length - 1];
+      list.push({
+        x: end.x,
+        y: end.y,
+        fillMs: state.startOffsetMs + state.durationMs,
+      });
+    });
+    return list;
+  }, [sequence]);
+
+  // A synthetic click at the very end of each trail gives every handoff the
+  // same ripple a real click gets — the "connected a dot" moment.
+  const playbackTrailStates = useMemo(
+    () =>
+      sequence.trailStates.map((state) => {
+        const end = state.variedPoints[state.variedPoints.length - 1];
+        return {
+          ...state,
+          clicksWithProgress: [
+            ...state.clicksWithProgress,
+            { x: end.x, y: end.y, ts: 0, progress: 0.999 },
+          ],
+        };
+      }),
+    [sequence],
   );
 
   const timeRange = useMemo(
@@ -280,19 +413,34 @@ const TrailRelay = () => {
           : "") +
         (deepening ? ` — deepening pool (${events.length} events)...` : "");
 
+  // One key for both the animator and the dots layer so their clocks reset
+  // together whenever the chain or pacing changes.
+  const playbackKey = `${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${avoidDots}-${beatMs}-${trailStyle}-${domainFilter}`;
+
   return (
     <div style={styles.page}>
       {!chromeHidden && <div style={styles.title}>trail relay</div>}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
 
       {!loading && !error && sequence.trailStates.length > 0 && (
-        <AnimatedTrails
-          key={`${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${trailStyle}-${domainFilter}`}
-          trailStates={sequence.trailStates}
-          timeRange={timeRange}
-          windowSize={sequence.trailStates.length}
-          settings={animationSettings}
-        />
+        <>
+          <AnimatedTrails
+            key={playbackKey}
+            trailStates={playbackTrailStates}
+            timeRange={timeRange}
+            windowSize={playbackTrailStates.length}
+            settings={animationSettings}
+          />
+          {showDots && (
+            <DotsLayer
+              key={`dots-${playbackKey}`}
+              dots={junctionDots}
+              durationMs={timeRange.duration}
+              speed={animationSpeed}
+              showNumbers={showNumbers}
+            />
+          )}
+        </>
       )}
 
       {!chromeHidden && (
@@ -411,6 +559,49 @@ const TrailRelay = () => {
               <option value="organic">organic</option>
               <option value="chaotic">chaotic</option>
             </select>
+          </div>
+          <div style={styles.row}>
+            <span>beat: {beatMs}ms</span>
+            <input
+              type="range"
+              min={0}
+              max={1500}
+              step={50}
+              value={beatMs}
+              onChange={(e) => setBeatMs(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          <div style={styles.row}>
+            <label>
+              <input
+                type="checkbox"
+                checked={showDots}
+                onChange={(e) => setShowDots(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              dots
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={showNumbers}
+                onChange={(e) => setShowNumbers(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              numbers
+            </label>
+          </div>
+          <div style={styles.row}>
+            <label>
+              <input
+                type="checkbox"
+                checked={avoidDots}
+                onChange={(e) => setAvoidDots(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              avoid crossing dots
+            </label>
           </div>
           <div style={styles.row}>
             <label>

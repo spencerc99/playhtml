@@ -22,6 +22,10 @@ export interface ChainOptions {
   /** Exclude trails whose drawn path length exceeds this many pixels. Use
    * Infinity to disable the filter. */
   maxTrailLengthPx: number;
+  /** Connect-the-dots legibility: prefer candidates whose path stays at least
+   * this far from every already-placed junction dot (and whose endpoint
+   * doesn't crowd one). 0 disables. */
+  dotClearancePx: number;
   canvasSize: { width: number; height: number };
   random: () => number;
 }
@@ -36,6 +40,36 @@ export function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** How many already-placed dots a candidate's path passes through, plus one
+ * if its endpoint would crowd an existing dot. The dot it connects from is
+ * expected to be touched and is skipped. Points are stride-sampled so long
+ * trails stay cheap to check. */
+function countDotViolations(
+  points: Array<{ x: number; y: number }>,
+  dots: Array<{ x: number; y: number }>,
+  connecting: { x: number; y: number },
+  clearancePx: number,
+): number {
+  const stride = Math.max(1, Math.floor(points.length / 100));
+  let violations = 0;
+  for (const dot of dots) {
+    if (dot === connecting) continue;
+    for (let i = 0; i < points.length; i += stride) {
+      if (
+        Math.hypot(points[i].x - dot.x, points[i].y - dot.y) < clearancePx
+      ) {
+        violations++;
+        break;
+      }
+    }
+  }
+  const end = points[points.length - 1];
+  for (const dot of dots) {
+    if (Math.hypot(end.x - dot.x, end.y - dot.y) < clearancePx) violations++;
+  }
+  return violations;
 }
 
 function endsNearEdge(
@@ -83,6 +117,7 @@ export function chainTrailStates(
     candidates[seedIndex].variedPoints[
       candidates[seedIndex].variedPoints.length - 1
     ];
+  const dots = [candidates[seedIndex].variedPoints[0], currentEnd];
 
   while (
     chain.length < options.maxTrails &&
@@ -103,13 +138,33 @@ export function chainTrailStates(
       .sort((a, b) => a.distance - b.distance);
 
     const k = Math.min(options.kNearest, byDistance.length);
-    const picked = byDistance[Math.floor(options.random() * k)].index;
+    let pool = byDistance.slice(0, k);
+    if (options.dotClearancePx > 0) {
+      const scored = pool.map((entry) => ({
+        ...entry,
+        violations: countDotViolations(
+          candidates[entry.index].variedPoints,
+          dots,
+          currentEnd,
+          options.dotClearancePx,
+        ),
+      }));
+      const clear = scored.filter((entry) => entry.violations === 0);
+      // All k nearest cross existing dots: take the least-offending one
+      // rather than stalling the chain.
+      pool =
+        clear.length > 0
+          ? clear
+          : [scored.reduce((a, b) => (b.violations < a.violations ? b : a))];
+    }
+    const picked = pool[Math.floor(options.random() * pool.length)].index;
     unused.delete(picked);
 
     const next = candidates[picked];
     chain.push(next);
     totalDistance += pathLength(next.variedPoints);
     currentEnd = next.variedPoints[next.variedPoints.length - 1];
+    dots.push(currentEnd);
   }
 
   return chain;
