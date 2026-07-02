@@ -26,7 +26,6 @@ const MAX_POOL_EVENTS = 100000;
 const DOMAIN_FILTER_KEY = "relay-domain-filter";
 const EDGE_MARGIN_FRACTION = 0.02;
 const MAX_TRAIL_LENGTH_KPX_MAX = 30;
-const DOT_CLEARANCE_PX = 30;
 
 interface JunctionDot {
   x: number;
@@ -210,7 +209,7 @@ const TrailRelay = () => {
   const [edgeFilter, setEdgeFilter] = useState(true);
   const [showDots, setShowDots] = useState(true);
   const [showNumbers, setShowNumbers] = useState(true);
-  const [avoidDots, setAvoidDots] = useState(true);
+  const [minHopDistancePx, setMinHopDistancePx] = useState(150);
   const [beatMs, setBeatMs] = useState(400);
   const [seed, setSeed] = useState(1);
   const [strokeWidth, setStrokeWidth] = useState(5);
@@ -267,7 +266,7 @@ const TrailRelay = () => {
           maxTrailLengthKPx >= MAX_TRAIL_LENGTH_KPX_MAX
             ? Infinity
             : maxTrailLengthKPx * 1000,
-        dotClearancePx: avoidDots ? DOT_CLEARANCE_PX : 0,
+        minHopDistancePx,
         canvasSize: viewportSize,
         random: mulberry32(seed),
       }),
@@ -279,7 +278,7 @@ const TrailRelay = () => {
       kNearest,
       maxTrailLengthKPx,
       edgeFilter,
-      avoidDots,
+      minHopDistancePx,
       viewportSize,
       seed,
     ],
@@ -415,7 +414,7 @@ const TrailRelay = () => {
 
   // One key for both the animator and the dots layer so their clocks reset
   // together whenever the chain or pacing changes.
-  const playbackKey = `${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${avoidDots}-${beatMs}-${trailStyle}-${domainFilter}`;
+  const playbackKey = `${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${minHopDistancePx}-${beatMs}-${trailStyle}-${domainFilter}`;
 
   return (
     <div style={styles.page}>
@@ -593,15 +592,16 @@ const TrailRelay = () => {
             </label>
           </div>
           <div style={styles.row}>
-            <label>
-              <input
-                type="checkbox"
-                checked={avoidDots}
-                onChange={(e) => setAvoidDots(e.target.checked)}
-                style={{ marginRight: 6 }}
-              />
-              avoid crossing dots
-            </label>
+            <span>min hop: {minHopDistancePx}px</span>
+            <input
+              type="range"
+              min={0}
+              max={400}
+              step={10}
+              value={minHopDistancePx}
+              onChange={(e) => setMinHopDistancePx(Number(e.target.value))}
+              style={styles.slider}
+            />
           </div>
           <div style={styles.row}>
             <label>

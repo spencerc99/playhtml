@@ -22,11 +22,11 @@ export interface ChainOptions {
   /** Exclude trails whose drawn path length exceeds this many pixels. Use
    * Infinity to disable the filter. */
   maxTrailLengthPx: number;
-  /** Connect-the-dots legibility: prefer candidates whose path stays at least
-   * this far from every dot the chain has yet to pass through — the origin
-   * and endpoint of every trail still unused in the pool (and whose own
-   * endpoint doesn't crowd one of those future junctions). 0 disables. */
-  dotClearancePx: number;
+  /** Connect-the-dots legibility: require the next origin to be at least this
+   * far from the current endpoint, so consecutive dots don't bunch up. If no
+   * unused trail's origin clears the floor, the single closest one is used
+   * rather than stalling the chain. 0 disables. */
+  minHopDistancePx: number;
   canvasSize: { width: number; height: number };
   random: () => number;
 }
@@ -41,36 +41,6 @@ export function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-/** How many upcoming dots a candidate's path passes through, plus one if its
- * own endpoint would crowd an upcoming dot. `dots` are the origin/endpoint of
- * every OTHER trail still unused after this candidate is picked — the future
- * junctions the chain hasn't reached yet, not ones it already placed. The
- * dot the candidate connects FROM is excluded by the caller building `dots`.
- * Points are stride-sampled so long trails stay cheap to check. */
-function countDotViolations(
-  points: Array<{ x: number; y: number }>,
-  dots: Array<{ x: number; y: number }>,
-  clearancePx: number,
-): number {
-  const stride = Math.max(1, Math.floor(points.length / 100));
-  let violations = 0;
-  for (const dot of dots) {
-    for (let i = 0; i < points.length; i += stride) {
-      if (
-        Math.hypot(points[i].x - dot.x, points[i].y - dot.y) < clearancePx
-      ) {
-        violations++;
-        break;
-      }
-    }
-  }
-  const end = points[points.length - 1];
-  for (const dot of dots) {
-    if (Math.hypot(end.x - dot.x, end.y - dot.y) < clearancePx) violations++;
-  }
-  return violations;
 }
 
 function endsNearEdge(
@@ -137,36 +107,17 @@ export function chainTrailStates(
       })
       .sort((a, b) => a.distance - b.distance);
 
-    const k = Math.min(options.kNearest, byDistance.length);
-    let pool = byDistance.slice(0, k);
-    if (options.dotClearancePx > 0) {
-      const scored = pool.map((entry) => {
-        // Future junctions: origin + endpoint of every OTHER trail still
-        // unused once this candidate is picked — not history, the field of
-        // dots the chain still has left to route through.
-        const futureDots: Array<{ x: number; y: number }> = [];
-        for (const otherIndex of unused) {
-          if (otherIndex === entry.index) continue;
-          const points = candidates[otherIndex].variedPoints;
-          futureDots.push(points[0], points[points.length - 1]);
-        }
-        return {
-          ...entry,
-          violations: countDotViolations(
-            candidates[entry.index].variedPoints,
-            futureDots,
-            options.dotClearancePx,
-          ),
-        };
-      });
-      const clear = scored.filter((entry) => entry.violations === 0);
-      // All k nearest cross upcoming dots: take the least-offending one
-      // rather than stalling the chain.
-      pool =
-        clear.length > 0
-          ? clear
-          : [scored.reduce((a, b) => (b.violations < a.violations ? b : a))];
-    }
+    // Consecutive dots shouldn't bunch up: only consider origins that clear
+    // the minimum hop distance. If nothing clears it (e.g. a sparse pool),
+    // fall back to the single closest rather than stalling the chain.
+    const eligible =
+      options.minHopDistancePx > 0
+        ? byDistance.filter((entry) => entry.distance >= options.minHopDistancePx)
+        : byDistance;
+    const pool =
+      eligible.length > 0
+        ? eligible.slice(0, options.kNearest)
+        : byDistance.slice(0, 1);
     const picked = pool[Math.floor(options.random() * pool.length)].index;
     unused.delete(picked);
 
