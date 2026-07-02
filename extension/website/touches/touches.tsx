@@ -1,11 +1,6 @@
 // ABOUTME: Cursor touches experiment — replays trails on their real timestamps and
 // ABOUTME: marks every moment two cursors touched with a two-color gradient burst
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import {
   useCursorTrails,
@@ -84,9 +79,9 @@ const CursorTouches = () => {
     MAX_POOL_EVENTS,
   );
 
-  const [touchRadius, setTouchRadius] = useState(40);
-  const [speed, setSpeed] = useState(20);
-  const [afterglowSec, setAfterglowSec] = useState(4);
+  const [touchRadius, setTouchRadius] = useState(20);
+  const [speed, setSpeed] = useState(1);
+  const [afterglowSec, setAfterglowSec] = useState(2);
   const [showCursors, setShowCursors] = useState(true);
   const [samePersonOk, setSamePersonOk] = useState(false);
 

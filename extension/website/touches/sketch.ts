@@ -29,6 +29,7 @@ export interface SketchSettings {
 const BURST_LIFE_MS = 1600;
 const BURST_MAX_RADIUS = 90;
 const CURSOR_TAIL_MS = 700;
+const MARK_RADIUS = 11;
 
 interface Burst {
   touch: CursorTouch;
@@ -49,13 +50,49 @@ export function createTouchesSketch(
     let playElapsed = 0;
     let nextTouchIndex = 0;
     let bursts: Burst[] = [];
+    // Every touch leaves a permanent mark here so the canvas stays inhabited
+    // for the rest of the cycle; one image() blit per frame regardless of
+    // how many marks have accumulated.
+    let marks: p5.Graphics;
+
+    // Small settled pinwheel stamped at the moment of contact — the burst
+    // blooms around it and fades, the mark stays.
+    const stampMark = (touch: CursorTouch) => {
+      const ctx = marks.drawingContext as CanvasRenderingContext2D;
+      const colorA = p.color(touch.colorA);
+      const colorB = p.color(touch.colorB);
+      const conic = ctx.createConicGradient(0, touch.x, touch.y);
+      const wedges = 6;
+      for (let i = 0; i <= wedges; i++) {
+        const c = i % 2 === 0 ? colorA : colorB;
+        c.setAlpha(110);
+        conic.addColorStop(i / wedges, c.toString());
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(touch.x, touch.y, MARK_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = conic;
+      ctx.fill();
+      ctx.restore();
+
+      const mixed = p.lerpColor(colorA, colorB, 0.5);
+      mixed.setAlpha(160);
+      marks.noFill();
+      marks.stroke(mixed);
+      marks.strokeWeight(1.5);
+      marks.circle(touch.x, touch.y, MARK_RADIUS * 2);
+    };
 
     p.setup = () => {
       p.createCanvas(container.clientWidth, container.clientHeight);
+      marks = p.createGraphics(container.clientWidth, container.clientHeight);
     };
 
     p.windowResized = () => {
       p.resizeCanvas(container.clientWidth, container.clientHeight);
+      marks = p.createGraphics(container.clientWidth, container.clientHeight);
+      // Restore the marks the cycle has already passed through.
+      for (let i = 0; i < nextTouchIndex; i++) stampMark(data.touches[i]);
     };
 
     const drawCursor = (trail: Trail, realTs: number) => {
@@ -186,15 +223,18 @@ export function createTouchesSketch(
         playElapsed = playElapsed % data.totalMs;
         nextTouchIndex = 0;
         bursts = [];
+        marks.clear();
       }
 
       const realTs = playToReal(data.segments, playElapsed);
       p.background(250, 247, 242);
+      p.image(marks, 0, 0);
 
       while (
         nextTouchIndex < touchPlayTimes.length &&
         touchPlayTimes[nextTouchIndex] <= playElapsed
       ) {
+        stampMark(data.touches[nextTouchIndex]);
         bursts.push({
           touch: data.touches[nextTouchIndex],
           startPlayMs: touchPlayTimes[nextTouchIndex],
