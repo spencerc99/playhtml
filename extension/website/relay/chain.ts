@@ -23,8 +23,9 @@ export interface ChainOptions {
    * Infinity to disable the filter. */
   maxTrailLengthPx: number;
   /** Connect-the-dots legibility: prefer candidates whose path stays at least
-   * this far from every already-placed junction dot (and whose endpoint
-   * doesn't crowd one). 0 disables. */
+   * this far from every dot the chain has yet to pass through — the origin
+   * and endpoint of every trail still unused in the pool (and whose own
+   * endpoint doesn't crowd one of those future junctions). 0 disables. */
   dotClearancePx: number;
   canvasSize: { width: number; height: number };
   random: () => number;
@@ -42,20 +43,20 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-/** How many already-placed dots a candidate's path passes through, plus one
- * if its endpoint would crowd an existing dot. The dot it connects from is
- * expected to be touched and is skipped. Points are stride-sampled so long
- * trails stay cheap to check. */
+/** How many upcoming dots a candidate's path passes through, plus one if its
+ * own endpoint would crowd an upcoming dot. `dots` are the origin/endpoint of
+ * every OTHER trail still unused after this candidate is picked — the future
+ * junctions the chain hasn't reached yet, not ones it already placed. The
+ * dot the candidate connects FROM is excluded by the caller building `dots`.
+ * Points are stride-sampled so long trails stay cheap to check. */
 function countDotViolations(
   points: Array<{ x: number; y: number }>,
   dots: Array<{ x: number; y: number }>,
-  connecting: { x: number; y: number },
   clearancePx: number,
 ): number {
   const stride = Math.max(1, Math.floor(points.length / 100));
   let violations = 0;
   for (const dot of dots) {
-    if (dot === connecting) continue;
     for (let i = 0; i < points.length; i += stride) {
       if (
         Math.hypot(points[i].x - dot.x, points[i].y - dot.y) < clearancePx
@@ -117,7 +118,6 @@ export function chainTrailStates(
     candidates[seedIndex].variedPoints[
       candidates[seedIndex].variedPoints.length - 1
     ];
-  const dots = [candidates[seedIndex].variedPoints[0], currentEnd];
 
   while (
     chain.length < options.maxTrails &&
@@ -140,17 +140,27 @@ export function chainTrailStates(
     const k = Math.min(options.kNearest, byDistance.length);
     let pool = byDistance.slice(0, k);
     if (options.dotClearancePx > 0) {
-      const scored = pool.map((entry) => ({
-        ...entry,
-        violations: countDotViolations(
-          candidates[entry.index].variedPoints,
-          dots,
-          currentEnd,
-          options.dotClearancePx,
-        ),
-      }));
+      const scored = pool.map((entry) => {
+        // Future junctions: origin + endpoint of every OTHER trail still
+        // unused once this candidate is picked — not history, the field of
+        // dots the chain still has left to route through.
+        const futureDots: Array<{ x: number; y: number }> = [];
+        for (const otherIndex of unused) {
+          if (otherIndex === entry.index) continue;
+          const points = candidates[otherIndex].variedPoints;
+          futureDots.push(points[0], points[points.length - 1]);
+        }
+        return {
+          ...entry,
+          violations: countDotViolations(
+            candidates[entry.index].variedPoints,
+            futureDots,
+            options.dotClearancePx,
+          ),
+        };
+      });
       const clear = scored.filter((entry) => entry.violations === 0);
-      // All k nearest cross existing dots: take the least-offending one
+      // All k nearest cross upcoming dots: take the least-offending one
       // rather than stalling the chain.
       pool =
         clear.length > 0
@@ -164,7 +174,6 @@ export function chainTrailStates(
     chain.push(next);
     totalDistance += pathLength(next.variedPoints);
     currentEnd = next.variedPoints[next.variedPoints.length - 1];
-    dots.push(currentEnd);
   }
 
   return chain;
