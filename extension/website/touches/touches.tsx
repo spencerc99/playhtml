@@ -10,6 +10,16 @@ import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
 import { createTouchesSketch, SketchSettings } from "./sketch";
+import { createTouchesSketchGlsl } from "./sketchGlsl";
+import { createTouchesSketchPinwheel } from "./sketchPinwheel";
+
+type Renderer = "glsl" | "nebula" | "pinwheel";
+
+const SKETCH_CREATORS: Record<Renderer, typeof createTouchesSketch> = {
+  glsl: createTouchesSketchGlsl,
+  nebula: createTouchesSketch,
+  pinwheel: createTouchesSketchPinwheel,
+};
 
 const MAX_POOL_EVENTS = 100000;
 const TIMELINE_PAD_MS = 1500;
@@ -85,6 +95,7 @@ const CursorTouches = () => {
   const [showCursors, setShowCursors] = useState(true);
   const [samePersonOk, setSamePersonOk] = useState(false);
   const [night, setNight] = useState(true);
+  const [renderer, setRenderer] = useState<Renderer>("glsl");
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -147,7 +158,7 @@ const CursorTouches = () => {
 
   useEffect(() => {
     if (!hostRef.current || trails.length === 0) return;
-    const instance = createTouchesSketch(
+    const instance = SKETCH_CREATORS[renderer](
       {
         trails,
         touches,
@@ -158,7 +169,7 @@ const CursorTouches = () => {
       hostRef.current,
     );
     return () => instance.remove();
-  }, [trails, touches, timeline]);
+  }, [trails, touches, timeline, renderer]);
 
   const statusText = loading
     ? "loading cursor events..."
@@ -182,6 +193,26 @@ const CursorTouches = () => {
 
       {!chromeHidden && (
         <div style={styles.panel}>
+          <div style={styles.row}>
+            <span>renderer</span>
+            <select
+              value={renderer}
+              onChange={(e) => setRenderer(e.target.value as Renderer)}
+              style={{
+                width: 110,
+                padding: "4px 6px",
+                border: "1px solid #e0dbd4",
+                background: "#faf7f2",
+                fontFamily: "'Martian Mono', monospace",
+                fontSize: "10px",
+                color: "#3d3833",
+              }}
+            >
+              <option value="glsl">glsl (webgl)</option>
+              <option value="nebula">nebula (2d)</option>
+              <option value="pinwheel">pinwheel (2d)</option>
+            </select>
+          </div>
           <div style={styles.row}>
             <span>radius: {touchRadius}px</span>
             <input
