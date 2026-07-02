@@ -22,11 +22,13 @@ export interface ChainOptions {
   /** Exclude trails whose drawn path length exceeds this many pixels. Use
    * Infinity to disable the filter. */
   maxTrailLengthPx: number;
-  /** Connect-the-dots legibility: require the next origin to be at least this
-   * far from the current endpoint, so consecutive dots don't bunch up. If no
-   * unused trail's origin clears the floor, the single closest one is used
-   * rather than stalling the chain. 0 disables. */
-  minHopDistancePx: number;
+  /** Connect-the-dots legibility: require each trail's arrival point (the
+   * next dot) to land at least this far from the current dot, so sequential
+   * dots don't bunch up. Origins still connect nearest-first — the relay
+   * always picks up right where it left off. If no unused trail's endpoint
+   * clears the floor, the closest-origin one is used rather than stalling.
+   * 0 disables. */
+  minDotDistancePx: number;
   canvasSize: { width: number; height: number };
   random: () => number;
 }
@@ -107,12 +109,21 @@ export function chainTrailStates(
       })
       .sort((a, b) => a.distance - b.distance);
 
-    // Consecutive dots shouldn't bunch up: only consider origins that clear
-    // the minimum hop distance. If nothing clears it (e.g. a sparse pool),
-    // fall back to the single closest rather than stalling the chain.
+    // Sequential dots shouldn't bunch up: a candidate must ARRIVE far enough
+    // from the current dot (its endpoint becomes the next dot), while its
+    // origin stays nearest-first so the relay picks up where it left off.
+    // If nothing clears the floor, fall back to the closest-origin candidate
+    // rather than stalling the chain.
     const eligible =
-      options.minHopDistancePx > 0
-        ? byDistance.filter((entry) => entry.distance >= options.minHopDistancePx)
+      options.minDotDistancePx > 0
+        ? byDistance.filter((entry) => {
+            const points = candidates[entry.index].variedPoints;
+            const end = points[points.length - 1];
+            return (
+              Math.hypot(end.x - currentEnd.x, end.y - currentEnd.y) >=
+              options.minDotDistancePx
+            );
+          })
         : byDistance;
     const pool =
       eligible.length > 0

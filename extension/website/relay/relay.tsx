@@ -202,22 +202,22 @@ const TrailRelay = () => {
   );
 
   const [capMode, setCapMode] = useState<"trails" | "distance">("trails");
-  const [maxTrails, setMaxTrails] = useState(20);
+  const [maxTrails, setMaxTrails] = useState(9);
   const [maxDistanceKPx, setMaxDistanceKPx] = useState(50);
   const [kNearest, setKNearest] = useState(3);
   const [maxTrailLengthKPx, setMaxTrailLengthKPx] = useState(8);
   const [edgeFilter, setEdgeFilter] = useState(true);
   const [showDots, setShowDots] = useState(true);
   const [showNumbers, setShowNumbers] = useState(true);
-  const [minHopDistancePx, setMinHopDistancePx] = useState(150);
+  const [minDotDistancePx, setMinDotDistancePx] = useState(150);
   const [beatMs, setBeatMs] = useState(400);
   const [seed, setSeed] = useState(1);
   const [strokeWidth, setStrokeWidth] = useState(5);
   const [animationSpeed, setAnimationSpeed] = useState(1);
-  const [pxPerSecond, setPxPerSecond] = useState(900);
+  const [pxPerSecond, setPxPerSecond] = useState(600);
   const [trailStyle, setTrailStyle] = useState<
     "straight" | "smooth" | "organic" | "chaotic"
-  >("smooth");
+  >("chaotic");
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -266,7 +266,7 @@ const TrailRelay = () => {
           maxTrailLengthKPx >= MAX_TRAIL_LENGTH_KPX_MAX
             ? Infinity
             : maxTrailLengthKPx * 1000,
-        minHopDistancePx,
+        minDotDistancePx,
         canvasSize: viewportSize,
         random: mulberry32(seed),
       }),
@@ -278,7 +278,7 @@ const TrailRelay = () => {
       kNearest,
       maxTrailLengthKPx,
       edgeFilter,
-      minHopDistancePx,
+      minDotDistancePx,
       viewportSize,
       seed,
     ],
@@ -414,7 +414,7 @@ const TrailRelay = () => {
 
   // One key for both the animator and the dots layer so their clocks reset
   // together whenever the chain or pacing changes.
-  const playbackKey = `${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${minHopDistancePx}-${beatMs}-${trailStyle}-${domainFilter}`;
+  const playbackKey = `${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${minDotDistancePx}-${beatMs}-${trailStyle}-${domainFilter}`;
 
   return (
     <div style={styles.page}>
@@ -592,14 +592,14 @@ const TrailRelay = () => {
             </label>
           </div>
           <div style={styles.row}>
-            <span>min hop: {minHopDistancePx}px</span>
+            <span>dot spacing: {minDotDistancePx}px</span>
             <input
               type="range"
               min={0}
               max={400}
               step={10}
-              value={minHopDistancePx}
-              onChange={(e) => setMinHopDistancePx(Number(e.target.value))}
+              value={minDotDistancePx}
+              onChange={(e) => setMinDotDistancePx(Number(e.target.value))}
               style={styles.slider}
             />
           </div>
