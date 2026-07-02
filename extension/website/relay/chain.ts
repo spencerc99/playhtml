@@ -2,9 +2,15 @@
 // ABOUTME: Picks each next trail by sampling among the k origins nearest the current endpoint
 
 import { TrailState } from "../shared/types";
+import { pathLength } from "../shared/utils/trailSequence";
 
 export interface ChainOptions {
+  /** Stop once the chain holds this many trails. Use Infinity when capping
+   * by distance instead. */
   maxTrails: number;
+  /** Stop once the chain's total drawn path length reaches this many pixels.
+   * Use Infinity when capping by trail count instead. */
+  maxDistancePx: number;
   /** Sample uniformly among this many nearest origins instead of always the
    * single nearest — keeps the chain wandering instead of ping-ponging inside
    * an endpoint cluster. */
@@ -68,12 +74,17 @@ export function chainTrailStates(
   unused.delete(seedIndex);
 
   const chain = [candidates[seedIndex]];
+  let totalDistance = pathLength(candidates[seedIndex].variedPoints);
   let currentEnd =
     candidates[seedIndex].variedPoints[
       candidates[seedIndex].variedPoints.length - 1
     ];
 
-  while (chain.length < options.maxTrails && unused.size > 0) {
+  while (
+    chain.length < options.maxTrails &&
+    totalDistance < options.maxDistancePx &&
+    unused.size > 0
+  ) {
     const byDistance = Array.from(unused)
       .map((index) => {
         const origin = candidates[index].variedPoints[0];
@@ -93,6 +104,7 @@ export function chainTrailStates(
 
     const next = candidates[picked];
     chain.push(next);
+    totalDistance += pathLength(next.variedPoints);
     currentEnd = next.variedPoints[next.variedPoints.length - 1];
   }
 

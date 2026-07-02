@@ -14,7 +14,10 @@ import {
 } from "../shared/hooks/useCursorTrails";
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { DEFAULT_SETTINGS } from "../shared/components/settingsDefaults";
-import { scheduleTrailSequence } from "../shared/utils/trailSequence";
+import {
+  pathLength,
+  scheduleTrailSequence,
+} from "../shared/utils/trailSequence";
 import { chainTrailStates, mulberry32 } from "./chain";
 
 const MAX_POOL_EVENTS = 100000;
@@ -105,7 +108,9 @@ const TrailRelay = () => {
     MAX_POOL_EVENTS,
   );
 
+  const [capMode, setCapMode] = useState<"trails" | "distance">("trails");
   const [maxTrails, setMaxTrails] = useState(20);
+  const [maxDistanceKPx, setMaxDistanceKPx] = useState(50);
   const [kNearest, setKNearest] = useState(3);
   const [edgeFilter, setEdgeFilter] = useState(true);
   const [seed, setSeed] = useState(1);
@@ -154,30 +159,47 @@ const TrailRelay = () => {
   const chained = useMemo(
     () =>
       chainTrailStates(trailStates, {
-        maxTrails,
+        maxTrails: capMode === "trails" ? maxTrails : Infinity,
+        maxDistancePx:
+          capMode === "distance" ? maxDistanceKPx * 1000 : Infinity,
         kNearest,
         edgeMarginFraction: edgeFilter ? EDGE_MARGIN_FRACTION : null,
         canvasSize: viewportSize,
         random: mulberry32(seed),
       }),
-    [trailStates, maxTrails, kNearest, edgeFilter, viewportSize, seed],
+    [
+      trailStates,
+      capMode,
+      maxTrails,
+      maxDistanceKPx,
+      kNearest,
+      edgeFilter,
+      viewportSize,
+      seed,
+    ],
   );
 
-  // Handoff tightness: distance from each trail's endpoint to the next
-  // trail's origin. The number to watch when tuning pool depth and k.
-  const hopStats = useMemo(() => {
-    if (chained.length < 2) return null;
-    let total = 0;
-    let max = 0;
+  // Handoff tightness (endpoint-to-next-origin gaps) plus total drawn
+  // distance — the numbers to watch when tuning pool depth, k, and caps.
+  const chainStats = useMemo(() => {
+    if (chained.length === 0) return null;
+    let gapTotal = 0;
+    let gapMax = 0;
+    let drawn = pathLength(chained[0].variedPoints);
     for (let i = 1; i < chained.length; i++) {
       const prev = chained[i - 1].variedPoints;
       const end = prev[prev.length - 1];
       const origin = chained[i].variedPoints[0];
       const hop = Math.hypot(origin.x - end.x, origin.y - end.y);
-      total += hop;
-      if (hop > max) max = hop;
+      gapTotal += hop;
+      if (hop > gapMax) gapMax = hop;
+      drawn += pathLength(chained[i].variedPoints);
     }
-    return { avg: total / (chained.length - 1), max };
+    return {
+      gapAvg: chained.length > 1 ? gapTotal / (chained.length - 1) : 0,
+      gapMax,
+      drawnPx: drawn,
+    };
   }, [chained]);
 
   const sequence = useMemo(
@@ -235,13 +257,17 @@ const TrailRelay = () => {
     [domainDraft],
   );
 
+  const capText =
+    capMode === "trails"
+      ? `${chained.length}/${maxTrails} trails`
+      : `${chained.length} trails, ${Math.round((chainStats?.drawnPx ?? 0) / 1000)}k/${maxDistanceKPx}k px drawn`;
   const statusText = loading
     ? "loading cursor events..."
     : error
       ? error
-      : `${chained.length}/${maxTrails} trails chained from ${trailStates.length} available` +
-        (hopStats
-          ? ` — handoff gap avg ${Math.round(hopStats.avg)}px, max ${Math.round(hopStats.max)}px`
+      : `${capText} chained from ${trailStates.length} available` +
+        (chainStats && chained.length > 1
+          ? ` — handoff gap avg ${Math.round(chainStats.gapAvg)}px, max ${Math.round(chainStats.gapMax)}px`
           : "") +
         (deepening ? ` — deepening pool (${events.length} events)...` : "");
 
@@ -252,7 +278,7 @@ const TrailRelay = () => {
 
       {!loading && !error && sequence.trailStates.length > 0 && (
         <AnimatedTrails
-          key={`${seed}-${maxTrails}-${kNearest}-${edgeFilter}-${trailStyle}-${domainFilter}`}
+          key={`${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${edgeFilter}-${trailStyle}-${domainFilter}`}
           trailStates={sequence.trailStates}
           timeRange={timeRange}
           windowSize={sequence.trailStates.length}
@@ -262,16 +288,42 @@ const TrailRelay = () => {
 
       <div style={styles.panel}>
         <div style={styles.row}>
-          <span>trails: {maxTrails}</span>
-          <input
-            type="range"
-            min={2}
-            max={100}
-            value={maxTrails}
-            onChange={(e) => setMaxTrails(Number(e.target.value))}
-            style={styles.slider}
-          />
+          <span>cap by</span>
+          <select
+            value={capMode}
+            onChange={(e) => setCapMode(e.target.value as typeof capMode)}
+            style={styles.input}
+          >
+            <option value="trails">trail count</option>
+            <option value="distance">distance drawn</option>
+          </select>
         </div>
+        {capMode === "trails" ? (
+          <div style={styles.row}>
+            <span>trails: {maxTrails}</span>
+            <input
+              type="range"
+              min={2}
+              max={100}
+              value={maxTrails}
+              onChange={(e) => setMaxTrails(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+        ) : (
+          <div style={styles.row}>
+            <span>distance: {maxDistanceKPx}k</span>
+            <input
+              type="range"
+              min={5}
+              max={300}
+              step={5}
+              value={maxDistanceKPx}
+              onChange={(e) => setMaxDistanceKPx(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+        )}
         <div style={styles.row}>
           <span>k nearest: {kNearest}</span>
           <input
