@@ -24,14 +24,15 @@ export interface CanMoveBoundsProps {
   bounds?: string;
   /**
    * Fraction (0–1) of the element that must stay inside `bounds`. Default
-   * 0.25. `1` pins fully inside, `0` drops the fraction constraint (pixel
-   * floor still applies unless also zeroed).
+   * 1 keeps the full element inside; lower values allow explicit partial
+   * overhang. `0` drops the fraction constraint (pixel floor still applies
+   * unless also zeroed).
    */
   boundsMinVisible?: number;
   /**
-   * Absolute pixel floor on the keep-visible slice (default 60). The
-   * effective slice is `max(boundsMinVisible × size, boundsMinVisiblePx)`.
-   * Useful when an image has transparent padding around its paint.
+   * Absolute pixel floor on the keep-visible slice (default 60). Applies when
+   * `boundsMinVisible` allows partial overhang. The effective slice is
+   * `max(boundsMinVisible × size, boundsMinVisiblePx)`.
    */
   boundsMinVisiblePx?: number;
 }

@@ -188,11 +188,10 @@ function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Fraction of the element that must stay inside the bounds container so a
- * reader can still grab it. Clamped to [0, 1]. Default 0.25 = a quarter of
- * the element remains visible / draggable on every edge.
+ * Fraction of the element that must stay inside the bounds container.
+ * Clamped to [0, 1]. Default 1 = the whole element remains inside.
  */
-const DEFAULT_MIN_VISIBLE_FRACTION = 0.25;
+const DEFAULT_MIN_VISIBLE_FRACTION = 1;
 
 /**
  * Absolute pixel floor on the keep-visible slice. This handles the case
@@ -227,6 +226,19 @@ function keepVisibleSlice(
   return Math.min(size, Math.max(size * fraction, pxFloor));
 }
 
+function getMoveBoundsBasePosition(
+  element: HTMLElement,
+  boundsRoot: HTMLElement,
+  data: MoveData,
+): { x: number; y: number } {
+  const elementRect = element.getBoundingClientRect();
+  const boundsRect = boundsRoot.getBoundingClientRect();
+  return {
+    x: elementRect.left - boundsRect.left - boundsRoot.clientLeft - data.x,
+    y: elementRect.top - boundsRect.top - boundsRoot.clientTop - data.y,
+  };
+}
+
 /**
  * Custom Capabilities data types
  */
@@ -249,23 +261,22 @@ export type GrowData = {
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
- * `can-move` clamps the element's position so at least some of it stays inside.
- * The cursor itself is unconstrained — you can drag past the edge — the
- * element just stops when it would slip too far out to be grabbable.
+ * `can-move` clamps the element's position inside it. The cursor itself is
+ * unconstrained — you can drag past the edge — the element just stops at the
+ * bounds.
  */
 export const CanMoveBounds = "can-move-bounds";
 /**
  * Fraction (0–1) of the element that must remain inside `can-move-bounds`.
- * Defaults to 0.25 (quarter of the element stays visible on every edge).
- * Use 0 to let the element slip fully out of view, 1 to keep it entirely
- * inside the container (the original clamp behavior).
+ * Defaults to 1 (the whole element stays inside on every edge). Lower values
+ * allow explicit partial overhang; use 0 to let the element slip fully out of
+ * view when the pixel floor is also 0.
  */
 export const CanMoveBoundsMinVisible = "can-move-bounds-min-visible";
 /**
- * Absolute pixel floor on the keep-visible slice. Defaults to 60px. Useful
- * when an image has transparent padding around its paint — a pure fraction
- * of the layout bbox would let the visible pixels slip out of bounds. The
- * effective slice is `max(minVisible × size, minVisiblePx)`.
+ * Absolute pixel floor on the keep-visible slice. Defaults to 60px and applies
+ * when `can-move-bounds-min-visible` allows partial overhang. The effective
+ * slice is `max(minVisible × size, minVisiblePx)`, capped at the element size.
  */
 export const CanMoveBoundsMinVisiblePx = "can-move-bounds-min-visible-px";
 
@@ -463,23 +474,20 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       const boundsRoot = getMoveBoundsRoot(element);
       if (boundsRoot) {
-        // Allow the element to hang off the container's edges as long as
-        // enough of it is still inside — a reader needs something to grab
-        // to drag it back. The keep-visible slice is
-        // max(minVisible × size, minVisiblePx) so an image with
-        // transparent padding doesn't end up with its visible paint
-        // outside the bounds. The cursor itself is not clamped; only the
-        // element's persisted translate is.
+        // The cursor itself is not clamped; only the element's persisted
+        // translate is. Lower min-visible values can opt into partial
+        // overhang while keeping a visible slice inside the bounds.
         const minVisible = getMinVisibleFraction(element);
         const minVisiblePx = getMinVisiblePx(element);
         const w = element.offsetWidth;
         const h = element.offsetHeight;
+        const basePosition = getMoveBoundsBasePosition(element, boundsRoot, data);
         const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
         const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
-        const minX = -(w - keepX);
-        const maxX = boundsRoot.clientWidth - keepX;
-        const minY = -(h - keepY);
-        const maxY = boundsRoot.clientHeight - keepY;
+        const minX = keepX - w - basePosition.x;
+        const maxX = boundsRoot.clientWidth - keepX - basePosition.x;
+        const minY = keepY - h - basePosition.y;
+        const maxY = boundsRoot.clientHeight - keepY - basePosition.y;
         // If the container is narrower than the keep-visible slice, the
         // min/max can invert. Fall back to pinning at 0 in that case so the
         // element doesn't shoot off into negative space.
