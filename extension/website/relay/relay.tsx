@@ -7,18 +7,17 @@ import React, {
   useCallback,
 } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent } from "../shared/types";
 import { AnimatedTrails } from "../shared/components/AnimatedTrails";
 import {
   useCursorTrails,
   CursorTrailSettings,
 } from "../shared/hooks/useCursorTrails";
+import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { DEFAULT_SETTINGS } from "../shared/components/settingsDefaults";
-import { RECENT_EVENTS_URL } from "../shared/config";
 import { scheduleTrailSequence } from "../shared/utils/trailSequence";
 import { chainTrailStates, mulberry32 } from "./chain";
 
-const FETCH_LIMIT = 20000;
+const MAX_POOL_EVENTS = 100000;
 const DOMAIN_FILTER_KEY = "relay-domain-filter";
 const EDGE_MARGIN_FRACTION = 0.02;
 
@@ -97,15 +96,14 @@ const styles = {
 };
 
 const TrailRelay = () => {
-  const [events, setEvents] = useState<CollectionEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [domainFilter, setDomainFilter] = useState<string>(
     () => localStorage.getItem(DOMAIN_FILTER_KEY) ?? "",
   );
   const [domainDraft, setDomainDraft] = useState(domainFilter);
+  const { events, loading, deepening, error } = useCursorEventPool(
+    domainFilter,
+    MAX_POOL_EVENTS,
+  );
 
   const [maxTrails, setMaxTrails] = useState(20);
   const [kNearest, setKNearest] = useState(3);
@@ -133,66 +131,6 @@ const TrailRelay = () => {
   useEffect(() => {
     localStorage.setItem(DOMAIN_FILTER_KEY, domainFilter);
   }, [domainFilter]);
-
-  const fetchPage = useCallback(
-    async (domain: string, beforeTs?: number): Promise<CollectionEvent[]> => {
-      const params = new URLSearchParams({
-        type: "cursor",
-        limit: String(FETCH_LIMIT),
-      });
-      if (domain) params.set("domain", domain);
-      if (beforeTs) params.set("to", new Date(beforeTs - 1).toISOString());
-
-      const response = await fetch(`${RECENT_EVENTS_URL}?${params}`);
-      if (!response.ok)
-        throw new Error(`Failed to fetch cursor events: ${response.status}`);
-      return response.json();
-    },
-    [],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setHasMore(true);
-
-    fetchPage(domainFilter)
-      .then((data) => {
-        if (!cancelled) {
-          setEvents(data);
-          if (data.length < FETCH_LIMIT) setHasMore(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to fetch");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [domainFilter, fetchPage]);
-
-  // Deepen the candidate pool with the next page of older events. More
-  // trails means the nearest available origin is closer — tighter handoffs.
-  const handleLoadOlder = useCallback(() => {
-    if (loadingOlder || !hasMore || events.length === 0) return;
-    setLoadingOlder(true);
-    const oldestTs = Math.min(...events.map((e) => e.ts));
-    fetchPage(domainFilter, oldestTs)
-      .then((data) => {
-        if (data.length < FETCH_LIMIT) setHasMore(false);
-        if (data.length > 0) setEvents((prev) => [...prev, ...data]);
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : "Failed to fetch"),
-      )
-      .finally(() => setLoadingOlder(false));
-  }, [loadingOlder, hasMore, events, domainFilter, fetchPage]);
 
   const cursorSettings: CursorTrailSettings = useMemo(
     () => ({
@@ -304,7 +242,8 @@ const TrailRelay = () => {
       : `${chained.length}/${maxTrails} trails chained from ${trailStates.length} available` +
         (hopStats
           ? ` — handoff gap avg ${Math.round(hopStats.avg)}px, max ${Math.round(hopStats.max)}px`
-          : "");
+          : "") +
+        (deepening ? ` — deepening pool (${events.length} events)...` : "");
 
   return (
     <div style={styles.page}>
@@ -416,19 +355,7 @@ const TrailRelay = () => {
             style={styles.input}
           />
         </form>
-        <div style={{ ...styles.row, justifyContent: "space-between" }}>
-          <button
-            style={{
-              ...styles.button,
-              background: "#f5f0e8",
-              color: "#3d3833",
-              opacity: hasMore && !loadingOlder ? 1 : 0.4,
-            }}
-            onClick={handleLoadOlder}
-            disabled={!hasMore || loadingOlder}
-          >
-            {loadingOlder ? "loading..." : "more trails"}
-          </button>
+        <div style={{ ...styles.row, justifyContent: "flex-end" }}>
           <button style={styles.button} onClick={handleReshuffle}>
             reshuffle
           </button>

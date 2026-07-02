@@ -186,6 +186,77 @@ function smoothPoints(points: Point[]): Point[] {
   return out;
 }
 
+const IN_PLACE_MIN_RUN_POINTS = 4;
+
+/** In-place mode: nothing is moved or bent. Trails stay exactly where they
+ * happened; only the runs of consecutive points falling inside the image's
+ * dilated edge corridor are kept, so the image emerges purely from movement
+ * that really passed through those places. Fidelity is limited by how much
+ * of the pool happens to overlap the image. */
+export function inPlaceTrails(
+  trails: LibraryItem[],
+  mask: Uint8Array,
+  maskWidth: number,
+  maskHeight: number,
+  toImagePoint: (p: Point) => Point,
+  maxStrokes: number,
+): Trail[] {
+  const isInside = (p: Point): boolean => {
+    const ip = toImagePoint(p);
+    const ix = Math.round(ip.x);
+    const iy = Math.round(ip.y);
+    return (
+      ix >= 0 &&
+      iy >= 0 &&
+      ix < maskWidth &&
+      iy < maskHeight &&
+      mask[iy * maskWidth + ix] === 1
+    );
+  };
+
+  // Archived points are sparsely sampled, so two consecutive in-corridor
+  // points can chord straight across the image interior (both ends on the
+  // rim, line through the middle). A run only continues if the segment
+  // between the points stays inside too.
+  const segmentInside = (a: Point, b: Point): boolean => {
+    for (const t of [0.25, 0.5, 0.75]) {
+      if (!isInside({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }))
+        return false;
+    }
+    return true;
+  };
+
+  const segments: Array<{ points: Point[]; color: string }> = [];
+
+  for (const trail of trails) {
+    let run: Point[] = [];
+    const flush = () => {
+      if (run.length >= IN_PLACE_MIN_RUN_POINTS) {
+        segments.push({ points: run, color: trail.color });
+      }
+      run = [];
+    };
+    for (const p of trail.points) {
+      if (!isInside(p)) {
+        flush();
+        continue;
+      }
+      if (run.length > 0 && !segmentInside(run[run.length - 1], p)) {
+        flush();
+      }
+      run.push(p);
+    }
+    flush();
+  }
+
+  segments.sort((a, b) => pathLength(b.points) - pathLength(a.points));
+  return segments
+    .slice(0, maxStrokes)
+    .map((segment, index) =>
+      makeTrail(segment.points, segment.color, `inplace-${index}`),
+    );
+}
+
 function pathLength(points: Point[]): number {
   let length = 0;
   for (let i = 1; i < points.length; i++) {

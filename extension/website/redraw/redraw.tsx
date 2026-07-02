@@ -7,26 +7,26 @@ import React, {
   useCallback,
 } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent, TrailState } from "../shared/types";
+import { TrailState } from "../shared/types";
 import { AnimatedTrails } from "../shared/components/AnimatedTrails";
 import {
   useCursorTrails,
   CursorTrailSettings,
 } from "../shared/hooks/useCursorTrails";
+import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { DEFAULT_SETTINGS } from "../shared/components/settingsDefaults";
-import { RECENT_EVENTS_URL } from "../shared/config";
 import { scheduleTrailSequence } from "../shared/utils/trailSequence";
-import { extractStrokes, loadImageData, Point } from "./image";
-import { LibraryItem, mosaicTrails, warpTrails } from "./draw";
+import { dilateMask, extractStrokes, loadImageData, Point } from "./image";
+import { LibraryItem, inPlaceTrails, mosaicTrails, warpTrails } from "./draw";
 
-const FETCH_LIMIT = 20000;
+const MAX_POOL_EVENTS = 100000;
 const IMAGE_MAX_SIZE = 640;
 const LIBRARY_CHUNK_POINTS = 120;
 const LIBRARY_MIN_CHUNK_POINTS = 8;
 const LIBRARY_MAX_ITEMS = 1500;
 const CANVAS_FIT = 0.85;
 
-type Mode = "mosaic" | "warp";
+type Mode = "mosaic" | "warp" | "inplace";
 
 const styles = {
   page: {
@@ -107,8 +107,10 @@ const styles = {
 };
 
 const CursorRedraw = () => {
-  const [events, setEvents] = useState<CollectionEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { events, loading, deepening, error: poolError } = useCursorEventPool(
+    "",
+    MAX_POOL_EVENTS,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const [image, setImage] = useState<{
@@ -121,6 +123,7 @@ const CursorRedraw = () => {
   const [maxStrokes, setMaxStrokes] = useState(160);
   const [allowRotation, setAllowRotation] = useState(false);
   const [warpStrength, setWarpStrength] = useState(0.85);
+  const [corridor, setCorridor] = useState(8);
   const [strokeWidth, setStrokeWidth] = useState(3.5);
   const [pxPerSecond, setPxPerSecond] = useState(1400);
   const [overlap, setOverlap] = useState(0.85);
@@ -136,33 +139,6 @@ const CursorRedraw = () => {
       setViewportSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const params = new URLSearchParams({
-      type: "cursor",
-      limit: String(FETCH_LIMIT),
-    });
-    fetch(`${RECENT_EVENTS_URL}?${params}`)
-      .then((response) => {
-        if (!response.ok)
-          throw new Error(`Failed to fetch cursor events: ${response.status}`);
-        return response.json();
-      })
-      .then((data: CollectionEvent[]) => {
-        if (!cancelled) setEvents(data);
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to fetch");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const handleFile = useCallback((file: File) => {
@@ -263,13 +239,60 @@ const CursorRedraw = () => {
     return { strokes: imageStrokes.strokes.map((s) => s.map(toCanvas)) };
   }, [imageStrokes, fit]);
 
+  // Full untransformed trails at their real viewport positions, for the
+  // in-place mode (chunked library items would artificially split segments).
+  const fullTrails = useMemo(
+    (): LibraryItem[] =>
+      trailStates.map((state) => ({
+        points: state.trail.points.map((p) => ({ x: p.x, y: p.y })),
+        color: state.trail.color,
+        id: state.trail.id,
+      })),
+    [trailStates],
+  );
+
+  const corridorMask = useMemo(() => {
+    if (!imageStrokes || mode !== "inplace") return null;
+    return dilateMask(
+      imageStrokes.edgeMask,
+      imageStrokes.width,
+      imageStrokes.height,
+      corridor,
+    );
+  }, [imageStrokes, mode, corridor]);
+
   const drawnTrails = useMemo(() => {
     if (!canvasStrokes || library.length === 0) return [];
     if (mode === "mosaic") {
       return mosaicTrails(canvasStrokes.strokes, library, allowRotation);
     }
-    return warpTrails(canvasStrokes.strokes, library, warpStrength);
-  }, [canvasStrokes, library, mode, allowRotation, warpStrength]);
+    if (mode === "warp") {
+      return warpTrails(canvasStrokes.strokes, library, warpStrength);
+    }
+    if (!corridorMask || !imageStrokes || !fit) return [];
+    return inPlaceTrails(
+      fullTrails,
+      corridorMask,
+      imageStrokes.width,
+      imageStrokes.height,
+      (p) => ({
+        x: (p.x - fit.offsetX) / fit.scale,
+        y: (p.y - fit.offsetY) / fit.scale,
+      }),
+      maxStrokes,
+    );
+  }, [
+    canvasStrokes,
+    library,
+    mode,
+    allowRotation,
+    warpStrength,
+    corridorMask,
+    imageStrokes,
+    fit,
+    fullTrails,
+    maxStrokes,
+  ]);
 
   const sequence = useMemo(() => {
     const items = drawnTrails.map((trail) => ({
@@ -317,13 +340,15 @@ const CursorRedraw = () => {
     [strokeWidth],
   );
 
+  const displayError = poolError ?? error;
   const statusText = loading
     ? "loading cursor events..."
-    : error
-      ? error
-      : !image
-        ? `${library.length} gestures in the library`
-        : `${drawnTrails.length} strokes from ${library.length} gestures`;
+    : displayError
+      ? displayError
+      : (!image
+          ? `${library.length} gestures in the library`
+          : `${drawnTrails.length} strokes from ${library.length} gestures`) +
+        (deepening ? ` — deepening pool (${events.length} events)...` : "");
 
   return (
     <div style={styles.page}>
@@ -354,7 +379,7 @@ const CursorRedraw = () => {
 
       {sequence.trailStates.length > 0 && (
         <AnimatedTrails
-          key={`${mode}-${threshold}-${maxStrokes}-${allowRotation}-${warpStrength}-${image?.objectUrl}`}
+          key={`${mode}-${threshold}-${maxStrokes}-${allowRotation}-${warpStrength}-${corridor}-${image?.objectUrl}`}
           trailStates={sequence.trailStates}
           timeRange={timeRange}
           windowSize={sequence.trailStates.length}
@@ -376,6 +401,12 @@ const CursorRedraw = () => {
             onClick={() => setMode("warp")}
           >
             warp
+          </button>
+          <button
+            style={styles.modeButton(mode === "inplace")}
+            onClick={() => setMode("inplace")}
+          >
+            in place
           </button>
         </div>
         <div style={styles.row}>
@@ -436,6 +467,19 @@ const CursorRedraw = () => {
               step={0.05}
               value={warpStrength}
               onChange={(e) => setWarpStrength(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+        )}
+        {mode === "inplace" && (
+          <div style={styles.row}>
+            <span>corridor: {corridor}px</span>
+            <input
+              type="range"
+              min={2}
+              max={24}
+              value={corridor}
+              onChange={(e) => setCorridor(Number(e.target.value))}
               style={styles.slider}
             />
           </div>

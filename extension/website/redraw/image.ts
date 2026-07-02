@@ -9,6 +9,8 @@ export interface Point {
 export interface ImageStrokes {
   /** Polylines in image-pixel coordinates, longest first. */
   strokes: Point[][];
+  /** Binary edge map (1 = edge pixel), image-sized, for the in-place mode. */
+  edgeMask: Uint8Array;
   width: number;
   height: number;
 }
@@ -140,7 +142,50 @@ export function extractStrokes(
   }
 
   strokes.sort((a, b) => b.length - a.length);
-  return { strokes: strokes.slice(0, maxStrokes), width, height };
+  return {
+    strokes: strokes.slice(0, maxStrokes),
+    edgeMask: edge,
+    width,
+    height,
+  };
+}
+
+/** Dilate a binary mask by `radius` pixels (Chebyshev distance), so a mask of
+ * thin edges becomes a corridor trails can fall inside. Row + column prefix
+ * sums keep it O(width * height) regardless of radius. */
+export function dilateMask(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  radius: number,
+): Uint8Array {
+  const horizontal = new Uint8Array(width * height);
+  const rowPrefix = new Int32Array(width + 1);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      rowPrefix[x + 1] = rowPrefix[x] + mask[row + x];
+    }
+    for (let x = 0; x < width; x++) {
+      const lo = Math.max(0, x - radius);
+      const hi = Math.min(width - 1, x + radius);
+      horizontal[row + x] = rowPrefix[hi + 1] - rowPrefix[lo] > 0 ? 1 : 0;
+    }
+  }
+
+  const out = new Uint8Array(width * height);
+  const colPrefix = new Int32Array(height + 1);
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      colPrefix[y + 1] = colPrefix[y] + horizontal[y * width + x];
+    }
+    for (let y = 0; y < height; y++) {
+      const lo = Math.max(0, y - radius);
+      const hi = Math.min(height - 1, y + radius);
+      out[y * width + x] = colPrefix[hi + 1] - colPrefix[lo] > 0 ? 1 : 0;
+    }
+  }
+  return out;
 }
 
 /** Load a File into ImageData, downscaled so its longest side is maxSize. */
