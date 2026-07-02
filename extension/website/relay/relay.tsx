@@ -99,6 +99,8 @@ const styles = {
 const TrailRelay = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [domainFilter, setDomainFilter] = useState<string>(
     () => localStorage.getItem(DOMAIN_FILTER_KEY) ?? "",
@@ -132,25 +134,35 @@ const TrailRelay = () => {
     localStorage.setItem(DOMAIN_FILTER_KEY, domainFilter);
   }, [domainFilter]);
 
+  const fetchPage = useCallback(
+    async (domain: string, beforeTs?: number): Promise<CollectionEvent[]> => {
+      const params = new URLSearchParams({
+        type: "cursor",
+        limit: String(FETCH_LIMIT),
+      });
+      if (domain) params.set("domain", domain);
+      if (beforeTs) params.set("to", new Date(beforeTs - 1).toISOString());
+
+      const response = await fetch(`${RECENT_EVENTS_URL}?${params}`);
+      if (!response.ok)
+        throw new Error(`Failed to fetch cursor events: ${response.status}`);
+      return response.json();
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setHasMore(true);
 
-    const params = new URLSearchParams({
-      type: "cursor",
-      limit: String(FETCH_LIMIT),
-    });
-    if (domainFilter) params.set("domain", domainFilter);
-
-    fetch(`${RECENT_EVENTS_URL}?${params}`)
-      .then((response) => {
-        if (!response.ok)
-          throw new Error(`Failed to fetch cursor events: ${response.status}`);
-        return response.json();
-      })
-      .then((data: CollectionEvent[]) => {
-        if (!cancelled) setEvents(data);
+    fetchPage(domainFilter)
+      .then((data) => {
+        if (!cancelled) {
+          setEvents(data);
+          if (data.length < FETCH_LIMIT) setHasMore(false);
+        }
       })
       .catch((err) => {
         if (!cancelled)
@@ -163,7 +175,24 @@ const TrailRelay = () => {
     return () => {
       cancelled = true;
     };
-  }, [domainFilter]);
+  }, [domainFilter, fetchPage]);
+
+  // Deepen the candidate pool with the next page of older events. More
+  // trails means the nearest available origin is closer — tighter handoffs.
+  const handleLoadOlder = useCallback(() => {
+    if (loadingOlder || !hasMore || events.length === 0) return;
+    setLoadingOlder(true);
+    const oldestTs = Math.min(...events.map((e) => e.ts));
+    fetchPage(domainFilter, oldestTs)
+      .then((data) => {
+        if (data.length < FETCH_LIMIT) setHasMore(false);
+        if (data.length > 0) setEvents((prev) => [...prev, ...data]);
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Failed to fetch"),
+      )
+      .finally(() => setLoadingOlder(false));
+  }, [loadingOlder, hasMore, events, domainFilter, fetchPage]);
 
   const cursorSettings: CursorTrailSettings = useMemo(
     () => ({
@@ -195,6 +224,23 @@ const TrailRelay = () => {
       }),
     [trailStates, maxTrails, kNearest, edgeFilter, viewportSize, seed],
   );
+
+  // Handoff tightness: distance from each trail's endpoint to the next
+  // trail's origin. The number to watch when tuning pool depth and k.
+  const hopStats = useMemo(() => {
+    if (chained.length < 2) return null;
+    let total = 0;
+    let max = 0;
+    for (let i = 1; i < chained.length; i++) {
+      const prev = chained[i - 1].variedPoints;
+      const end = prev[prev.length - 1];
+      const origin = chained[i].variedPoints[0];
+      const hop = Math.hypot(origin.x - end.x, origin.y - end.y);
+      total += hop;
+      if (hop > max) max = hop;
+    }
+    return { avg: total / (chained.length - 1), max };
+  }, [chained]);
 
   const sequence = useMemo(
     () =>
@@ -255,7 +301,10 @@ const TrailRelay = () => {
     ? "loading cursor events..."
     : error
       ? error
-      : `${chained.length}/${maxTrails} trails chained from ${trailStates.length} available`;
+      : `${chained.length}/${maxTrails} trails chained from ${trailStates.length} available` +
+        (hopStats
+          ? ` — handoff gap avg ${Math.round(hopStats.avg)}px, max ${Math.round(hopStats.max)}px`
+          : "");
 
   return (
     <div style={styles.page}>
@@ -367,7 +416,19 @@ const TrailRelay = () => {
             style={styles.input}
           />
         </form>
-        <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+        <div style={{ ...styles.row, justifyContent: "space-between" }}>
+          <button
+            style={{
+              ...styles.button,
+              background: "#f5f0e8",
+              color: "#3d3833",
+              opacity: hasMore && !loadingOlder ? 1 : 0.4,
+            }}
+            onClick={handleLoadOlder}
+            disabled={!hasMore || loadingOlder}
+          >
+            {loadingOlder ? "loading..." : "more trails"}
+          </button>
           <button style={styles.button} onClick={handleReshuffle}>
             reshuffle
           </button>
