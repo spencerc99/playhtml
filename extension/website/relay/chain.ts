@@ -29,6 +29,9 @@ export interface ChainOptions {
    * clears the floor, the closest-origin one is used rather than stalling.
    * 0 disables. */
   minDotDistancePx: number;
+  /** No dot may land within this distance of ANY earlier dot, regardless of
+   * sequence — overlapping junctions read as a single dot. 0 disables. */
+  minDotSeparationPx: number;
   canvasSize: { width: number; height: number };
   random: () => number;
 }
@@ -80,8 +83,26 @@ export function chainTrailStates(
   });
   if (candidates.length === 0) return [];
 
+  // The seed contributes the first TWO dots (its origin and its end), so its
+  // net displacement must clear the same floors every later hop does.
+  const seedFloor = Math.max(
+    options.minDotDistancePx,
+    options.minDotSeparationPx,
+  );
+  const seedPool = candidates
+    .map((_, index) => index)
+    .filter((index) => {
+      if (seedFloor <= 0) return true;
+      const points = candidates[index].variedPoints;
+      const origin = points[0];
+      const end = points[points.length - 1];
+      return Math.hypot(end.x - origin.x, end.y - origin.y) >= seedFloor;
+    });
+  const seedIndex =
+    seedPool.length > 0
+      ? seedPool[Math.floor(options.random() * seedPool.length)]
+      : Math.floor(options.random() * candidates.length);
   const unused = new Set(candidates.map((_, index) => index));
-  const seedIndex = Math.floor(options.random() * candidates.length);
   unused.delete(seedIndex);
 
   const chain = [candidates[seedIndex]];
@@ -90,6 +111,7 @@ export function chainTrailStates(
     candidates[seedIndex].variedPoints[
       candidates[seedIndex].variedPoints.length - 1
     ];
+  const dots = [candidates[seedIndex].variedPoints[0], currentEnd];
 
   while (
     chain.length < options.maxTrails &&
@@ -109,22 +131,33 @@ export function chainTrailStates(
       })
       .sort((a, b) => a.distance - b.distance);
 
-    // Sequential dots shouldn't bunch up: a candidate must ARRIVE far enough
-    // from the current dot (its endpoint becomes the next dot), while its
-    // origin stays nearest-first so the relay picks up where it left off.
-    // If nothing clears the floor, fall back to the closest-origin candidate
+    // A candidate must ARRIVE far enough from the current dot (its endpoint
+    // becomes the next dot) and clear of EVERY earlier dot, while its origin
+    // stays nearest-first so the relay picks up where it left off. If
+    // nothing clears the floors, fall back to the closest-origin candidate
     // rather than stalling the chain.
-    const eligible =
-      options.minDotDistancePx > 0
-        ? byDistance.filter((entry) => {
-            const points = candidates[entry.index].variedPoints;
-            const end = points[points.length - 1];
-            return (
-              Math.hypot(end.x - currentEnd.x, end.y - currentEnd.y) >=
-              options.minDotDistancePx
-            );
-          })
-        : byDistance;
+    const eligible = byDistance.filter((entry) => {
+      const points = candidates[entry.index].variedPoints;
+      const end = points[points.length - 1];
+      if (
+        options.minDotDistancePx > 0 &&
+        Math.hypot(end.x - currentEnd.x, end.y - currentEnd.y) <
+          options.minDotDistancePx
+      ) {
+        return false;
+      }
+      if (options.minDotSeparationPx > 0) {
+        for (const dot of dots) {
+          if (
+            Math.hypot(end.x - dot.x, end.y - dot.y) <
+            options.minDotSeparationPx
+          ) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
     const pool =
       eligible.length > 0
         ? eligible.slice(0, options.kNearest)
@@ -136,6 +169,7 @@ export function chainTrailStates(
     chain.push(next);
     totalDistance += pathLength(next.variedPoints);
     currentEnd = next.variedPoints[next.variedPoints.length - 1];
+    dots.push(currentEnd);
   }
 
   return chain;

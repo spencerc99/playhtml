@@ -25,6 +25,7 @@ import { chainTrailStates, mulberry32 } from "./chain";
 const MAX_POOL_EVENTS = 100000;
 const DOMAIN_FILTER_KEY = "relay-domain-filter";
 const EDGE_MARGIN_FRACTION = 0.02;
+const DOT_SEPARATION_PX = 30;
 const MAX_TRAIL_LENGTH_KPX_MAX = 30;
 
 interface JunctionDot {
@@ -267,6 +268,7 @@ const TrailRelay = () => {
             ? Infinity
             : maxTrailLengthKPx * 1000,
         minDotDistancePx,
+        minDotSeparationPx: DOT_SEPARATION_PX,
         canvasSize: viewportSize,
         random: mulberry32(seed),
       }),
