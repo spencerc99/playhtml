@@ -19,6 +19,9 @@ export interface ChainOptions {
    * edge — people leaving toward the tab bar pile endpoints up there. Null
    * disables the filter. */
   edgeMarginFraction: number | null;
+  /** Exclude trails whose drawn path length exceeds this many pixels. Use
+   * Infinity to disable the filter. */
+  maxTrailLengthPx: number;
   canvasSize: { width: number; height: number };
   random: () => number;
 }
@@ -65,6 +68,7 @@ export function chainTrailStates(
         return false;
       }
     }
+    if (pathLength(state.variedPoints) > options.maxTrailLengthPx) return false;
     return true;
   });
   if (candidates.length === 0) return [];

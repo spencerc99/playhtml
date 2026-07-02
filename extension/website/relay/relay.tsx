@@ -13,6 +13,7 @@ import {
   CursorTrailSettings,
 } from "../shared/hooks/useCursorTrails";
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
+import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { DEFAULT_SETTINGS } from "../shared/components/settingsDefaults";
 import {
   pathLength,
@@ -23,6 +24,7 @@ import { chainTrailStates, mulberry32 } from "./chain";
 const MAX_POOL_EVENTS = 100000;
 const DOMAIN_FILTER_KEY = "relay-domain-filter";
 const EDGE_MARGIN_FRACTION = 0.02;
+const MAX_TRAIL_LENGTH_KPX_MAX = 30;
 
 const styles = {
   page: {
@@ -99,6 +101,7 @@ const styles = {
 };
 
 const TrailRelay = () => {
+  const chromeHidden = useChromeToggle();
   const [domainFilter, setDomainFilter] = useState<string>(
     () => localStorage.getItem(DOMAIN_FILTER_KEY) ?? "",
   );
@@ -112,6 +115,7 @@ const TrailRelay = () => {
   const [maxTrails, setMaxTrails] = useState(20);
   const [maxDistanceKPx, setMaxDistanceKPx] = useState(50);
   const [kNearest, setKNearest] = useState(3);
+  const [maxTrailLengthKPx, setMaxTrailLengthKPx] = useState(8);
   const [edgeFilter, setEdgeFilter] = useState(true);
   const [seed, setSeed] = useState(1);
   const [strokeWidth, setStrokeWidth] = useState(5);
@@ -164,6 +168,10 @@ const TrailRelay = () => {
           capMode === "distance" ? maxDistanceKPx * 1000 : Infinity,
         kNearest,
         edgeMarginFraction: edgeFilter ? EDGE_MARGIN_FRACTION : null,
+        maxTrailLengthPx:
+          maxTrailLengthKPx >= MAX_TRAIL_LENGTH_KPX_MAX
+            ? Infinity
+            : maxTrailLengthKPx * 1000,
         canvasSize: viewportSize,
         random: mulberry32(seed),
       }),
@@ -173,6 +181,7 @@ const TrailRelay = () => {
       maxTrails,
       maxDistanceKPx,
       kNearest,
+      maxTrailLengthKPx,
       edgeFilter,
       viewportSize,
       seed,
@@ -273,12 +282,12 @@ const TrailRelay = () => {
 
   return (
     <div style={styles.page}>
-      <div style={styles.title}>trail relay</div>
-      <div style={styles.status}>{statusText}</div>
+      {!chromeHidden && <div style={styles.title}>trail relay</div>}
+      {!chromeHidden && <div style={styles.status}>{statusText}</div>}
 
       {!loading && !error && sequence.trailStates.length > 0 && (
         <AnimatedTrails
-          key={`${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${edgeFilter}-${trailStyle}-${domainFilter}`}
+          key={`${seed}-${capMode}-${maxTrails}-${maxDistanceKPx}-${kNearest}-${maxTrailLengthKPx}-${edgeFilter}-${trailStyle}-${domainFilter}`}
           trailStates={sequence.trailStates}
           timeRange={timeRange}
           windowSize={sequence.trailStates.length}
@@ -286,133 +295,151 @@ const TrailRelay = () => {
         />
       )}
 
-      <div style={styles.panel}>
-        <div style={styles.row}>
-          <span>cap by</span>
-          <select
-            value={capMode}
-            onChange={(e) => setCapMode(e.target.value as typeof capMode)}
-            style={styles.input}
-          >
-            <option value="trails">trail count</option>
-            <option value="distance">distance drawn</option>
-          </select>
-        </div>
-        {capMode === "trails" ? (
+      {!chromeHidden && (
+        <div style={styles.panel}>
           <div style={styles.row}>
-            <span>trails: {maxTrails}</span>
+            <span>cap by</span>
+            <select
+              value={capMode}
+              onChange={(e) => setCapMode(e.target.value as typeof capMode)}
+              style={styles.input}
+            >
+              <option value="trails">trail count</option>
+              <option value="distance">distance drawn</option>
+            </select>
+          </div>
+          {capMode === "trails" ? (
+            <div style={styles.row}>
+              <span>trails: {maxTrails}</span>
+              <input
+                type="range"
+                min={2}
+                max={100}
+                value={maxTrails}
+                onChange={(e) => setMaxTrails(Number(e.target.value))}
+                style={styles.slider}
+              />
+            </div>
+          ) : (
+            <div style={styles.row}>
+              <span>distance: {maxDistanceKPx}k</span>
+              <input
+                type="range"
+                min={5}
+                max={300}
+                step={5}
+                value={maxDistanceKPx}
+                onChange={(e) => setMaxDistanceKPx(Number(e.target.value))}
+                style={styles.slider}
+              />
+            </div>
+          )}
+          <div style={styles.row}>
+            <span>k nearest: {kNearest}</span>
             <input
               type="range"
-              min={2}
-              max={100}
-              value={maxTrails}
-              onChange={(e) => setMaxTrails(Number(e.target.value))}
+              min={1}
+              max={8}
+              value={kNearest}
+              onChange={(e) => setKNearest(Number(e.target.value))}
               style={styles.slider}
             />
           </div>
-        ) : (
           <div style={styles.row}>
-            <span>distance: {maxDistanceKPx}k</span>
+            <span>
+              max trail:{" "}
+              {maxTrailLengthKPx >= MAX_TRAIL_LENGTH_KPX_MAX
+                ? "off"
+                : `${maxTrailLengthKPx}k`}
+            </span>
             <input
               type="range"
-              min={5}
-              max={300}
-              step={5}
-              value={maxDistanceKPx}
-              onChange={(e) => setMaxDistanceKPx(Number(e.target.value))}
+              min={1}
+              max={MAX_TRAIL_LENGTH_KPX_MAX}
+              value={maxTrailLengthKPx}
+              onChange={(e) => setMaxTrailLengthKPx(Number(e.target.value))}
               style={styles.slider}
             />
           </div>
-        )}
-        <div style={styles.row}>
-          <span>k nearest: {kNearest}</span>
-          <input
-            type="range"
-            min={1}
-            max={8}
-            value={kNearest}
-            onChange={(e) => setKNearest(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>speed: {animationSpeed.toFixed(1)}x</span>
-          <input
-            type="range"
-            min={0.2}
-            max={4}
-            step={0.1}
-            value={animationSpeed}
-            onChange={(e) => setAnimationSpeed(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>pace: {pxPerSecond}px/s</span>
-          <input
-            type="range"
-            min={200}
-            max={3000}
-            step={100}
-            value={pxPerSecond}
-            onChange={(e) => setPxPerSecond(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>stroke: {strokeWidth}</span>
-          <input
-            type="range"
-            min={1}
-            max={14}
-            step={0.5}
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>style</span>
-          <select
-            value={trailStyle}
-            onChange={(e) =>
-              setTrailStyle(e.target.value as typeof trailStyle)
-            }
-            style={styles.input}
-          >
-            <option value="straight">straight</option>
-            <option value="smooth">smooth</option>
-            <option value="organic">organic</option>
-            <option value="chaotic">chaotic</option>
-          </select>
-        </div>
-        <div style={styles.row}>
-          <label>
+          <div style={styles.row}>
+            <span>speed: {animationSpeed.toFixed(1)}x</span>
             <input
-              type="checkbox"
-              checked={edgeFilter}
-              onChange={(e) => setEdgeFilter(e.target.checked)}
-              style={{ marginRight: 6 }}
+              type="range"
+              min={0.2}
+              max={4}
+              step={0.1}
+              value={animationSpeed}
+              onChange={(e) => setAnimationSpeed(Number(e.target.value))}
+              style={styles.slider}
             />
-            skip edge exits
-          </label>
+          </div>
+          <div style={styles.row}>
+            <span>pace: {pxPerSecond}px/s</span>
+            <input
+              type="range"
+              min={200}
+              max={3000}
+              step={100}
+              value={pxPerSecond}
+              onChange={(e) => setPxPerSecond(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          <div style={styles.row}>
+            <span>stroke: {strokeWidth}</span>
+            <input
+              type="range"
+              min={1}
+              max={14}
+              step={0.5}
+              value={strokeWidth}
+              onChange={(e) => setStrokeWidth(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          <div style={styles.row}>
+            <span>style</span>
+            <select
+              value={trailStyle}
+              onChange={(e) =>
+                setTrailStyle(e.target.value as typeof trailStyle)
+              }
+              style={styles.input}
+            >
+              <option value="straight">straight</option>
+              <option value="smooth">smooth</option>
+              <option value="organic">organic</option>
+              <option value="chaotic">chaotic</option>
+            </select>
+          </div>
+          <div style={styles.row}>
+            <label>
+              <input
+                type="checkbox"
+                checked={edgeFilter}
+                onChange={(e) => setEdgeFilter(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              skip edge exits
+            </label>
+          </div>
+          <form style={styles.row} onSubmit={handleDomainSubmit}>
+            <span>domain</span>
+            <input
+              type="text"
+              value={domainDraft}
+              placeholder="all domains"
+              onChange={(e) => setDomainDraft(e.target.value)}
+              style={styles.input}
+            />
+          </form>
+          <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+            <button style={styles.button} onClick={handleReshuffle}>
+              reshuffle
+            </button>
+          </div>
         </div>
-        <form style={styles.row} onSubmit={handleDomainSubmit}>
-          <span>domain</span>
-          <input
-            type="text"
-            value={domainDraft}
-            placeholder="all domains"
-            onChange={(e) => setDomainDraft(e.target.value)}
-            style={styles.input}
-          />
-        </form>
-        <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-          <button style={styles.button} onClick={handleReshuffle}>
-            reshuffle
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

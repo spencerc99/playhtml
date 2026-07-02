@@ -14,6 +14,7 @@ import {
   CursorTrailSettings,
 } from "../shared/hooks/useCursorTrails";
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
+import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { DEFAULT_SETTINGS } from "../shared/components/settingsDefaults";
 import { scheduleTrailSequence } from "../shared/utils/trailSequence";
 import { dilateMask, extractStrokes, loadImageData, Point } from "./image";
@@ -107,6 +108,7 @@ const styles = {
 };
 
 const CursorRedraw = () => {
+  const chromeHidden = useChromeToggle();
   const { events, loading, deepening, error: poolError } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
@@ -352,8 +354,8 @@ const CursorRedraw = () => {
 
   return (
     <div style={styles.page}>
-      <div style={styles.title}>cursor redraw</div>
-      <div style={styles.status}>{statusText}</div>
+      {!chromeHidden && <div style={styles.title}>cursor redraw</div>}
+      {!chromeHidden && <div style={styles.status}>{statusText}</div>}
 
       {!image && !loading && (
         <div style={styles.dropPrompt}>
@@ -388,150 +390,152 @@ const CursorRedraw = () => {
         />
       )}
 
-      <div style={styles.panel}>
-        <div style={{ ...styles.row, gap: 6 }}>
-          <button
-            style={styles.modeButton(mode === "mosaic")}
-            onClick={() => setMode("mosaic")}
-          >
-            mosaic
-          </button>
-          <button
-            style={styles.modeButton(mode === "warp")}
-            onClick={() => setMode("warp")}
-          >
-            warp
-          </button>
-          <button
-            style={styles.modeButton(mode === "inplace")}
-            onClick={() => setMode("inplace")}
-          >
-            in place
-          </button>
-        </div>
-        <div style={styles.row}>
-          <span>image</span>
-          <input
-            type="file"
-            accept="image/*"
-            style={{ width: 130, fontSize: 9 }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>edges: {threshold}</span>
-          <input
-            type="range"
-            min={20}
-            max={200}
-            value={threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>strokes: {maxStrokes}</span>
-          <input
-            type="range"
-            min={20}
-            max={400}
-            step={10}
-            value={maxStrokes}
-            onChange={(e) => setMaxStrokes(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        {mode === "mosaic" && (
+      {!chromeHidden && (
+        <div style={styles.panel}>
+          <div style={{ ...styles.row, gap: 6 }}>
+            <button
+              style={styles.modeButton(mode === "mosaic")}
+              onClick={() => setMode("mosaic")}
+            >
+              mosaic
+            </button>
+            <button
+              style={styles.modeButton(mode === "warp")}
+              onClick={() => setMode("warp")}
+            >
+              warp
+            </button>
+            <button
+              style={styles.modeButton(mode === "inplace")}
+              onClick={() => setMode("inplace")}
+            >
+              in place
+            </button>
+          </div>
+          <div style={styles.row}>
+            <span>image</span>
+            <input
+              type="file"
+              accept="image/*"
+              style={{ width: 130, fontSize: 9 }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFile(file);
+              }}
+            />
+          </div>
+          <div style={styles.row}>
+            <span>edges: {threshold}</span>
+            <input
+              type="range"
+              min={20}
+              max={200}
+              value={threshold}
+              onChange={(e) => setThreshold(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          <div style={styles.row}>
+            <span>strokes: {maxStrokes}</span>
+            <input
+              type="range"
+              min={20}
+              max={400}
+              step={10}
+              value={maxStrokes}
+              onChange={(e) => setMaxStrokes(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          {mode === "mosaic" && (
+            <div style={styles.row}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allowRotation}
+                  onChange={(e) => setAllowRotation(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                allow rotation
+              </label>
+            </div>
+          )}
+          {mode === "warp" && (
+            <div style={styles.row}>
+              <span>strength: {warpStrength.toFixed(2)}</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={warpStrength}
+                onChange={(e) => setWarpStrength(Number(e.target.value))}
+                style={styles.slider}
+              />
+            </div>
+          )}
+          {mode === "inplace" && (
+            <div style={styles.row}>
+              <span>corridor: {corridor}px</span>
+              <input
+                type="range"
+                min={2}
+                max={24}
+                value={corridor}
+                onChange={(e) => setCorridor(Number(e.target.value))}
+                style={styles.slider}
+              />
+            </div>
+          )}
+          <div style={styles.row}>
+            <span>pace: {pxPerSecond}px/s</span>
+            <input
+              type="range"
+              min={400}
+              max={4000}
+              step={100}
+              value={pxPerSecond}
+              onChange={(e) => setPxPerSecond(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          <div style={styles.row}>
+            <span>overlap: {overlap.toFixed(2)}</span>
+            <input
+              type="range"
+              min={0}
+              max={0.98}
+              step={0.02}
+              value={overlap}
+              onChange={(e) => setOverlap(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+          <div style={styles.row}>
+            <span>stroke: {strokeWidth}</span>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              step={0.5}
+              value={strokeWidth}
+              onChange={(e) => setStrokeWidth(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
           <div style={styles.row}>
             <label>
               <input
                 type="checkbox"
-                checked={allowRotation}
-                onChange={(e) => setAllowRotation(e.target.checked)}
+                checked={showUnderlay}
+                onChange={(e) => setShowUnderlay(e.target.checked)}
                 style={{ marginRight: 6 }}
               />
-              allow rotation
+              show image underlay
             </label>
           </div>
-        )}
-        {mode === "warp" && (
-          <div style={styles.row}>
-            <span>strength: {warpStrength.toFixed(2)}</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={warpStrength}
-              onChange={(e) => setWarpStrength(Number(e.target.value))}
-              style={styles.slider}
-            />
-          </div>
-        )}
-        {mode === "inplace" && (
-          <div style={styles.row}>
-            <span>corridor: {corridor}px</span>
-            <input
-              type="range"
-              min={2}
-              max={24}
-              value={corridor}
-              onChange={(e) => setCorridor(Number(e.target.value))}
-              style={styles.slider}
-            />
-          </div>
-        )}
-        <div style={styles.row}>
-          <span>pace: {pxPerSecond}px/s</span>
-          <input
-            type="range"
-            min={400}
-            max={4000}
-            step={100}
-            value={pxPerSecond}
-            onChange={(e) => setPxPerSecond(Number(e.target.value))}
-            style={styles.slider}
-          />
         </div>
-        <div style={styles.row}>
-          <span>overlap: {overlap.toFixed(2)}</span>
-          <input
-            type="range"
-            min={0}
-            max={0.98}
-            step={0.02}
-            value={overlap}
-            onChange={(e) => setOverlap(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <span>stroke: {strokeWidth}</span>
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={0.5}
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(Number(e.target.value))}
-            style={styles.slider}
-          />
-        </div>
-        <div style={styles.row}>
-          <label>
-            <input
-              type="checkbox"
-              checked={showUnderlay}
-              onChange={(e) => setShowUnderlay(e.target.checked)}
-              style={{ marginRight: 6 }}
-            />
-            show image underlay
-          </label>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
