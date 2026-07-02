@@ -84,6 +84,7 @@ const CursorTouches = () => {
   const [afterglowSec, setAfterglowSec] = useState(2);
   const [showCursors, setShowCursors] = useState(true);
   const [samePersonOk, setSamePersonOk] = useState(false);
+  const [night, setNight] = useState(true);
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -131,14 +132,16 @@ const CursorTouches = () => {
     speed,
     afterglowMs: afterglowSec * 1000,
     showCursors,
+    night,
   });
   useEffect(() => {
     settingsRef.current = {
       speed,
       afterglowMs: afterglowSec * 1000,
       showCursors,
+      night,
     };
-  }, [speed, afterglowSec, showCursors]);
+  }, [speed, afterglowSec, showCursors, night]);
 
   const hostRef = useRef<HTMLDivElement>(null);
 
@@ -166,9 +169,15 @@ const CursorTouches = () => {
         (deepening ? ` — deepening pool (${events.length} events)...` : "");
 
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, background: night ? "#100d13" : "#faf7f2" }}>
       <div ref={hostRef} style={styles.canvasHost} />
-      {!chromeHidden && <div style={styles.title}>cursor touches</div>}
+      {!chromeHidden && (
+        <div
+          style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}
+        >
+          cursor touches
+        </div>
+      )}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
 
       {!chromeHidden && (
@@ -225,6 +234,17 @@ const CursorTouches = () => {
                 style={{ marginRight: 6 }}
               />
               same person ok
+            </label>
+          </div>
+          <div style={styles.row}>
+            <label>
+              <input
+                type="checkbox"
+                checked={night}
+                onChange={(e) => setNight(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              night
             </label>
           </div>
         </div>
