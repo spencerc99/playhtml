@@ -1,0 +1,100 @@
+// ABOUTME: Greedy end-to-origin chaining of cursor trails for the relay experiment
+// ABOUTME: Picks each next trail by sampling among the k origins nearest the current endpoint
+
+import { TrailState } from "../shared/types";
+
+export interface ChainOptions {
+  maxTrails: number;
+  /** Sample uniformly among this many nearest origins instead of always the
+   * single nearest — keeps the chain wandering instead of ping-ponging inside
+   * an endpoint cluster. */
+  kNearest: number;
+  /** Exclude trails whose endpoint lies within this fraction of the canvas
+   * edge — people leaving toward the tab bar pile endpoints up there. Null
+   * disables the filter. */
+  edgeMarginFraction: number | null;
+  canvasSize: { width: number; height: number };
+  random: () => number;
+}
+
+/** Deterministic PRNG so a given seed always yields the same chain. */
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function endsNearEdge(
+  point: { x: number; y: number },
+  size: { width: number; height: number },
+  marginFraction: number,
+): boolean {
+  const marginX = size.width * marginFraction;
+  const marginY = size.height * marginFraction;
+  return (
+    point.x < marginX ||
+    point.x > size.width - marginX ||
+    point.y < marginY ||
+    point.y > size.height - marginY
+  );
+}
+
+/** Orders trails into a relay: starting from a random seed trail, repeatedly
+ * appends an unused trail whose origin is near the current endpoint, until
+ * maxTrails is reached or the pool runs out. */
+export function chainTrailStates(
+  states: TrailState[],
+  options: ChainOptions,
+): TrailState[] {
+  const candidates = states.filter((state) => {
+    if (state.variedPoints.length < 2) return false;
+    if (options.edgeMarginFraction !== null) {
+      const last = state.variedPoints[state.variedPoints.length - 1];
+      if (endsNearEdge(last, options.canvasSize, options.edgeMarginFraction)) {
+        return false;
+      }
+    }
+    return true;
+  });
+  if (candidates.length === 0) return [];
+
+  const unused = new Set(candidates.map((_, index) => index));
+  const seedIndex = Math.floor(options.random() * candidates.length);
+  unused.delete(seedIndex);
+
+  const chain = [candidates[seedIndex]];
+  let currentEnd =
+    candidates[seedIndex].variedPoints[
+      candidates[seedIndex].variedPoints.length - 1
+    ];
+
+  while (chain.length < options.maxTrails && unused.size > 0) {
+    const byDistance = Array.from(unused)
+      .map((index) => {
+        const origin = candidates[index].variedPoints[0];
+        return {
+          index,
+          distance: Math.hypot(
+            origin.x - currentEnd.x,
+            origin.y - currentEnd.y,
+          ),
+        };
+      })
+      .sort((a, b) => a.distance - b.distance);
+
+    const k = Math.min(options.kNearest, byDistance.length);
+    const picked = byDistance[Math.floor(options.random() * k)].index;
+    unused.delete(picked);
+
+    const next = candidates[picked];
+    chain.push(next);
+    currentEnd = next.variedPoints[next.variedPoints.length - 1];
+  }
+
+  return chain;
+}
