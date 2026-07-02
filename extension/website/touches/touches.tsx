@@ -155,6 +155,10 @@ const CursorTouches = () => {
   }, [speed, afterglowSec, showCursors, night]);
 
   const hostRef = useRef<HTMLDivElement>(null);
+  // The replayed moment's real date/time, written imperatively from the
+  // sketch clock so it updates every frame without React re-renders.
+  const timeReadoutRef = useRef<HTMLDivElement>(null);
+  const lastTimeTextRef = useRef("");
 
   useEffect(() => {
     if (!hostRef.current || trails.length === 0) return;
@@ -167,6 +171,22 @@ const CursorTouches = () => {
       },
       settingsRef,
       hostRef.current,
+      (realTs) => {
+        const text = new Date(realTs)
+          .toLocaleString(undefined, {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+          })
+          .toLowerCase();
+        if (text !== lastTimeTextRef.current && timeReadoutRef.current) {
+          lastTimeTextRef.current = text;
+          timeReadoutRef.current.textContent = text;
+        }
+      },
     );
     return () => instance.remove();
   }, [trails, touches, timeline, renderer]);
@@ -190,6 +210,19 @@ const CursorTouches = () => {
         </div>
       )}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
+      <div
+        ref={timeReadoutRef}
+        style={{
+          position: "fixed",
+          bottom: 16,
+          left: 20,
+          fontFamily: "'Martian Mono', monospace",
+          fontSize: "10px",
+          color: "#8a8279",
+          zIndex: 10,
+          pointerEvents: "none",
+        }}
+      />
 
       {!chromeHidden && (
         <div style={styles.panel}>

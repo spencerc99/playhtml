@@ -29,6 +29,7 @@ export function createTouchesSketchPinwheel(
   data: SketchData,
   settingsRef: { current: SketchSettings },
   container: HTMLElement,
+  onTime?: (realTs: number) => void,
 ): p5 {
   const touchPlayTimes = data.touches.map((touch) =>
     realToPlay(data.segments, touch.ts),
@@ -215,6 +216,7 @@ export function createTouchesSketchPinwheel(
       }
 
       const realTs = playToReal(data.segments, playElapsed);
+      onTime?.(realTs);
       p.background(250, 247, 242);
       p.image(marks, 0, 0);
 

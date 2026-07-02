@@ -128,6 +128,7 @@ export function createTouchesSketchGlsl(
   data: SketchData,
   settingsRef: { current: SketchSettings },
   container: HTMLElement,
+  onTime?: (realTs: number) => void,
 ): p5 {
   const touchPlayTimes = data.touches.map((touch) =>
     realToPlay(data.segments, touch.ts),
@@ -291,6 +292,7 @@ export function createTouchesSketchGlsl(
       }
 
       const realTs = playToReal(data.segments, playElapsed);
+      onTime?.(realTs);
       // Remnants blit with normal blending — additive stacking of a
       // thousand marks whites out the dense center.
       p.image(marks, -p.width / 2, -p.height / 2, p.width, p.height);

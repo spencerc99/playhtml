@@ -48,6 +48,7 @@ export function createTouchesSketch(
   data: SketchData,
   settingsRef: { current: SketchSettings },
   container: HTMLElement,
+  onTime?: (realTs: number) => void,
 ): p5 {
   const touchPlayTimes = data.touches.map((touch) =>
     realToPlay(data.segments, touch.ts),
@@ -387,6 +388,7 @@ export function createTouchesSketch(
       }
 
       const realTs = playToReal(data.segments, playElapsed);
+      onTime?.(realTs);
       p.background(bg[0], bg[1], bg[2]);
       p.image(marks, 0, 0);
 
