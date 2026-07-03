@@ -320,8 +320,8 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // Verify the original element ID was preserved and new attribute was added
     expect(handler.data.attributes.id).toBe("new-id");
     expect(handler.data.attributes["data-test"]).toBe("test-value");
-    // Should still have the playhtml class
-    expect(handler.data.attributes.class).toContain("__playhtml-element");
+    expect(el.classList.contains("__playhtml-element")).toBe(true);
+    expect(handler.data.attributes.class).toBeUndefined();
   });
 
   it("throws helpful errors for unsupported CRDT array operations", async () => {

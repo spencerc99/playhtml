@@ -221,7 +221,9 @@ export function removeRecordsByTargets(
       continue;
     }
     const indices = deletionsByPath.get(record.path) ?? [];
-    indices.push(record.index);
+    if (!indices.includes(record.index)) {
+      indices.push(record.index);
+    }
     deletionsByPath.set(record.path, indices);
   }
 

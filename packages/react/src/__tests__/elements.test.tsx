@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render } from "@testing-library/react";
 import { fireEvent } from "@testing-library/dom";
 import "@testing-library/dom";
-import { CanPlayElement } from "../index";
+import { CanPlayElement, withSharedState } from "../index";
 import { CanMoveElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "playhtml";
@@ -449,6 +449,115 @@ describe("CanPlayElement with built-in capabilities", () => {
         setMyAwareness: vi.fn(),
       }),
     ).not.toThrow();
+  });
+
+  it("uses the withSharedState id instead of a conflicting child id", () => {
+    const SharedElement = withSharedState(
+      { id: "configured-id", defaultData: { count: 0 } },
+      ({ data }) => <div id="child-id">{data.count}</div>,
+    );
+
+    const { container } = render(<SharedElement />);
+
+    expect(container.querySelector("#configured-id")).toBeTruthy();
+    expect(container.querySelector("#child-id")).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('id="configured-id"'),
+    );
+  });
+
+  it("removes the previous binding before registering a changed configured id", () => {
+    const setupIds: string[] = [];
+    const removeIds: string[] = [];
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation((element) => {
+      setupIds.push((element as HTMLElement).id);
+    });
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation((element) => {
+      removeIds.push((element as HTMLElement).id);
+    });
+
+    const SharedElement = withSharedState(
+      ({ sharedId }: { sharedId: string }) => ({
+        id: sharedId,
+        defaultData: { count: 0 },
+      }),
+      ({ data }) => <div id="child-id">{data.count}</div>,
+    );
+
+    const { rerender } = render(<SharedElement sharedId="first-id" />);
+
+    rerender(<SharedElement sharedId="second-id" />);
+
+    expect(setupIds).toEqual(["first-id", "second-id"]);
+    expect(removeIds).toEqual(["first-id"]);
+  });
+
+  it("reports the data-source binding id when id conflict uses dataSource", () => {
+    const SharedElement = withSharedState(
+      {
+        id: "configured-id",
+        dataSource: "/room#source-id",
+        defaultData: { count: 0 },
+      },
+      ({ data }) => <div id="child-id">{data.count}</div>,
+    );
+
+    render(<SharedElement />);
+
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('data-source="/room#source-id"'),
+    );
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('source-id'),
+    );
+    expect(console.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('Using id="configured-id" for shared state.'),
+    );
+  });
+
+  it("warns when an empty configured id is provided", () => {
+    const SharedElement = withSharedState(
+      { id: "", defaultData: { count: 0 } },
+      ({ data }) => <div id="child-id">{data.count}</div>,
+    );
+
+    const { container } = render(<SharedElement />);
+
+    expect(container.querySelector("#child-id")).toBeTruthy();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("empty id"),
+    );
+  });
+
+  it("logs each id conflict warning once per conflict", () => {
+    const SharedElement = withSharedState(
+      { id: "configured-id", defaultData: { count: 0 } },
+      ({ data }) => <div id="child-id">{data.count}</div>,
+    );
+
+    const { container } = render(<SharedElement />);
+    const element = container.querySelector("#configured-id") as HTMLElement;
+
+    act(() => {
+      (element as any).updateElement({
+        data: { count: 1 },
+        awareness: [],
+        awarenessByStableId: new Map(),
+        myAwareness: undefined,
+        element,
+        localData: undefined,
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setMyAwareness: vi.fn(),
+      });
+    });
+
+    const conflictWarnings = vi
+      .mocked(console.warn)
+      .mock.calls.filter(([message]) =>
+        String(message).includes('child element has id="child-id"'),
+      );
+    expect(conflictWarnings).toHaveLength(1);
   });
 
   it("increments ReactiveOrb clicks through the current shared data", () => {

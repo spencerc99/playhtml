@@ -4,6 +4,15 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 
+const EXPORT_PAGE_SIZE = 1000;
+
+interface ExportRequestBody {
+  type?: string;
+  startDate?: string;
+  endDate?: string;
+  name?: string;
+}
+
 /**
  * POST /events/export
  * Export edition data to JSON format
@@ -29,7 +38,7 @@ export async function handleExport(
   }
   
   try {
-    const body = await request.json();
+    const body = await request.json() as ExportRequestBody;
     const { type, startDate, endDate, name } = body;
     
     if (!type || !startDate || !endDate) {
@@ -41,21 +50,40 @@ export async function handleExport(
     
     const supabase = createSupabaseClient(env);
     
-    // Query events in date range
-    const { data, error, count } = await supabase
-      .from('collection_events')
-      .select('*', { count: 'exact' })
-      .eq('type', type)
-      .gte('ts', startDate)
-      .lt('ts', endDate)
-      .order('ts', { ascending: true });
+    const data = [];
+    let count = 0;
+    let offset = 0;
     
-    if (error) {
-      console.error('Supabase export error:', error);
-      return new Response(
-        JSON.stringify({ error: 'Failed to export events', details: error.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+    while (true) {
+      const { data: pageData, error, count: pageCount } = await supabase
+        .from('collection_events')
+        .select('*', { count: 'exact' })
+        .eq('type', type)
+        .gte('ts', startDate)
+        .lt('ts', endDate)
+        .order('ts', { ascending: true })
+        .range(offset, offset + EXPORT_PAGE_SIZE - 1);
+      
+      if (error) {
+        console.error('Supabase export error:', error);
+        return new Response(
+          JSON.stringify({ error: 'Failed to export events', details: error.message }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const rows = pageData || [];
+      data.push(...rows);
+      
+      if (typeof pageCount === 'number') {
+        count = pageCount;
+      }
+      
+      if (rows.length < EXPORT_PAGE_SIZE || (count > 0 && data.length >= count)) {
+        break;
+      }
+      
+      offset += EXPORT_PAGE_SIZE;
     }
     
     // Get unique participants

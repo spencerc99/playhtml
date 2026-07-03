@@ -4,8 +4,10 @@ import { describe, expect, it } from "bun:test";
 import { STORAGE_KEYS } from "../const";
 import {
   getNextAlarmTime,
+  getPrunedBridgeLeases,
   getCompactionCommitDecision,
   isCompactionAutosave,
+  shouldSetAlarm,
   shouldCheckEmergencyCompaction,
   shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
@@ -224,5 +226,117 @@ describe("getNextAlarmTime", () => {
         pruneIntervalMs: 10_000,
       })
     ).toBe(11_000);
+  });
+});
+
+describe("shouldSetAlarm", () => {
+  it("repairs missing and stale alarms", () => {
+    expect(
+      shouldSetAlarm({
+        previousAlarm: null,
+        nextAlarm: 20_000,
+        now: 10_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldSetAlarm({
+        previousAlarm: 9_000,
+        nextAlarm: 20_000,
+        now: 10_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldSetAlarm({
+        previousAlarm: 30_000,
+        nextAlarm: 20_000,
+        now: 10_000,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldSetAlarm({
+        previousAlarm: 15_000,
+        nextAlarm: 20_000,
+        now: 10_000,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("getPrunedBridgeLeases", () => {
+  it("removes expired leases", () => {
+    const subscribers = getPrunedBridgeLeases({
+      leases: [
+        {
+          consumerRoomId: "fresh-consumer",
+          elementIds: ["lamp"],
+          createdAt: "2026-07-03T09:00:00.000Z",
+          lastSeen: "2026-07-03T09:00:00.000Z",
+        },
+        {
+          consumerRoomId: "expired-consumer",
+          elementIds: ["lamp"],
+          createdAt: "2026-07-01T09:00:00.000Z",
+          lastSeen: "2026-07-01T09:00:00.000Z",
+        },
+      ],
+      now: Date.parse("2026-07-03T10:00:00.000Z"),
+      leaseMs: 12 * 60 * 60 * 1000,
+    });
+    const sharedReferences = getPrunedBridgeLeases({
+      leases: [
+        {
+          sourceRoomId: "fresh-source",
+          elementIds: ["lamp"],
+          lastSeen: "2026-07-03T09:00:00.000Z",
+        },
+        {
+          sourceRoomId: "expired-source",
+          elementIds: ["lamp"],
+          lastSeen: "2026-07-01T09:00:00.000Z",
+        },
+      ],
+      now: Date.parse("2026-07-03T10:00:00.000Z"),
+      leaseMs: 12 * 60 * 60 * 1000,
+    });
+
+    expect(subscribers.map((subscriber) => subscriber.consumerRoomId)).toEqual([
+      "fresh-consumer",
+    ]);
+    expect(sharedReferences.map((reference) => reference.sourceRoomId)).toEqual([
+      "fresh-source",
+    ]);
+  });
+
+  it("keeps timestamp-less bridge leases", () => {
+    const subscribers = getPrunedBridgeLeases({
+      leases: [
+        {
+          consumerRoomId: "timestampless-consumer",
+          elementIds: ["lamp"],
+        },
+      ],
+      now: Date.parse("2026-07-03T10:00:00.000Z"),
+      leaseMs: 12 * 60 * 60 * 1000,
+    });
+    const sharedReferences = getPrunedBridgeLeases({
+      leases: [
+        {
+          sourceRoomId: "timestampless-source",
+          elementIds: ["lamp"],
+        },
+      ],
+      now: Date.parse("2026-07-03T10:00:00.000Z"),
+      leaseMs: 12 * 60 * 60 * 1000,
+    });
+
+    expect(subscribers.map((subscriber) => subscriber.consumerRoomId)).toEqual([
+      "timestampless-consumer",
+    ]);
+    expect(sharedReferences.map((reference) => reference.sourceRoomId)).toEqual([
+      "timestampless-source",
+    ]);
   });
 });
