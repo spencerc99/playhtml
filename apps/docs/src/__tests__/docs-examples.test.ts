@@ -1,7 +1,7 @@
 // ABOUTME: Renders real vanilla docs snippets with the live library and asserts behavior.
 // ABOUTME: A broken copy-paste example in the docs fails CI here instead of silently shipping.
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { playhtml } from "../index";
+import { playhtml } from "playhtml";
 import {
   vanillaSnippets,
   extractSnippets,

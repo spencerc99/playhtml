@@ -7,6 +7,7 @@
     "dev": "astro dev --port 4321",
     "start": "astro dev",
     "build": "astro build",
+    "test": "vitest run --no-typecheck",
     "preview": "astro preview",
     "astro": "astro"
   },

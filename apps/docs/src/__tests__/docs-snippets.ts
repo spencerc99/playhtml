@@ -6,12 +6,7 @@ import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// Docs content lives outside this package; reach it by relative path so the
-// tests read the SAME files shipped to readers (no copy to drift from).
-export const DOCS_CONTENT_DIR = path.resolve(
-  here,
-  "../../../../apps/docs/src/content/docs",
-);
+export const DOCS_CONTENT_DIR = path.resolve(here, "../content/docs");
 
 export interface DocsSnippet {
   /** Fence language tag, e.g. "html", "js", "tsx". */
