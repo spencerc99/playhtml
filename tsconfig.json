@@ -24,7 +24,8 @@
       "@playhtml/react": ["packages/react/src"],
       "@playhtml/common": ["packages/common/src"],
       "@extension/*": ["extension/src/*"],
-      "@moderation": ["partykit/moderation.ts"]
+      "@moderation": ["partykit/moderation.ts"],
+      "@movement/*": ["extension/website/shared/*"]
     }
   },
   "include": [],
