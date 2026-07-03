@@ -285,9 +285,9 @@ export function createTouchesSketch(
     };
 
     /** One hand cursor, centered at (x, y), rotated toward the clasp and
-     * optionally mirrored — the full experiment 7 model: color fill, black
-     * outline, and the three finger-crease lines that make it read as a
-     * hand regardless of fill color. */
+     * optionally mirrored — experiment 7's shape with the outline and
+     * finger creases that make it read as a hand regardless of fill.
+     * Pass a null stroke for silhouette-only passes (etching). */
     const drawHand = (
       ctx: CanvasRenderingContext2D,
       path: Path2D,
@@ -296,6 +296,7 @@ export function createTouchesSketch(
       rotation: number,
       mirrored: boolean,
       fill: string,
+      stroke: string | null,
     ) => {
       ctx.save();
       ctx.translate(x, y);
@@ -305,19 +306,21 @@ export function createTouchesSketch(
       ctx.translate(-16, -16);
       ctx.fillStyle = fill;
       ctx.fill(path);
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
-      ctx.lineWidth = 0.9;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.stroke(path);
-      ctx.beginPath();
-      ctx.moveTo(19.6, 20.7);
-      ctx.lineTo(19.6, 17.3);
-      ctx.moveTo(17.6, 20.7);
-      ctx.lineTo(17.5, 17.3);
-      ctx.moveTo(15.6, 17.3);
-      ctx.lineTo(15.6, 20.7);
-      ctx.stroke();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 0.9;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke(path);
+        ctx.beginPath();
+        ctx.moveTo(19.6, 20.7);
+        ctx.lineTo(19.6, 17.3);
+        ctx.moveTo(17.6, 20.7);
+        ctx.lineTo(17.5, 17.3);
+        ctx.moveTo(15.6, 17.3);
+        ctx.lineTo(15.6, 20.7);
+        ctx.stroke();
+      }
       ctx.restore();
     };
 
@@ -364,31 +367,74 @@ export function createTouchesSketch(
       }
 
       // The clasp: closed hand reaches from A's side, open hand from B's,
-      // along the axis the cursors actually met on. Background-color
-      // outlines keep layered hands reading as relief.
+      // along the axis the cursors actually met on. Sun-print treatment:
+      // the silhouettes are etched out of whatever has accumulated, then
+      // laid back as a bleached whisper of each cursor's color with a
+      // ghost outline — pale shadows inside the exposed stain.
+      const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
+      const hands: Array<{
+        path: Path2D;
+        x: number;
+        y: number;
+        rotation: number;
+        mirrored: boolean;
+        color: p5.Color;
+      }> = [
+        {
+          path: CLOSED_HAND_PATH,
+          x: touch.x - Math.cos(angle) * HAND_CLASP_OFFSET_PX,
+          y: touch.y - Math.sin(angle) * HAND_CLASP_OFFSET_PX,
+          rotation: angle,
+          mirrored: false,
+          color: colorA,
+        },
+        {
+          path: OPEN_HAND_PATH,
+          x: touch.x + Math.cos(angle) * HAND_CLASP_OFFSET_PX,
+          y: touch.y + Math.sin(angle) * HAND_CLASP_OFFSET_PX,
+          rotation: angle + Math.PI,
+          mirrored: true,
+          color: colorB,
+        },
+      ];
+
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      for (const hand of hands) {
+        drawHand(
+          ctx,
+          hand.path,
+          hand.x,
+          hand.y,
+          hand.rotation,
+          hand.mirrored,
+          "rgba(0, 0, 0, 0.92)",
+          null,
+        );
+      }
+      ctx.restore();
+
       ctx.save();
       ctx.globalCompositeOperation = "source-over";
-      const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
-      colorA.setAlpha(240);
-      drawHand(
-        ctx,
-        CLOSED_HAND_PATH,
-        touch.x - Math.cos(angle) * HAND_CLASP_OFFSET_PX,
-        touch.y - Math.sin(angle) * HAND_CLASP_OFFSET_PX,
-        angle,
-        false,
-        colorA.toString(),
-      );
-      colorB.setAlpha(240);
-      drawHand(
-        ctx,
-        OPEN_HAND_PATH,
-        touch.x + Math.cos(angle) * HAND_CLASP_OFFSET_PX,
-        touch.y + Math.sin(angle) * HAND_CLASP_OFFSET_PX,
-        angle + Math.PI,
-        true,
-        colorB.toString(),
-      );
+      const bleachTarget = night
+        ? p.color(255, 250, 240)
+        : p.color(250, 247, 242);
+      for (const hand of hands) {
+        const bleached = p.lerpColor(hand.color, bleachTarget, 0.62);
+        bleached.setAlpha(night ? 165 : 200);
+        const ghost = hand.color;
+        ghost.setAlpha(night ? 130 : 150);
+        drawHand(
+          ctx,
+          hand.path,
+          hand.x,
+          hand.y,
+          hand.rotation,
+          hand.mirrored,
+          bleached.toString(),
+          ghost.toString(),
+        );
+      }
       ctx.restore();
     };
 
