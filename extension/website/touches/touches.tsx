@@ -9,7 +9,7 @@ import {
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
-import { createTouchesSketch, SketchSettings } from "./sketch";
+import { createTouchesSketch, MarkStyle, SketchSettings } from "./sketch";
 import { createTouchesSketchGlsl } from "./sketchGlsl";
 import { createTouchesSketchPinwheel } from "./sketchPinwheel";
 
@@ -95,7 +95,8 @@ const CursorTouches = () => {
   const [showCursors, setShowCursors] = useState(true);
   const [samePersonOk, setSamePersonOk] = useState(false);
   const [night, setNight] = useState(true);
-  const [renderer, setRenderer] = useState<Renderer>("glsl");
+  const [renderer, setRenderer] = useState<Renderer>("nebula");
+  const [markStyle, setMarkStyle] = useState<MarkStyle>("fingerprint");
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -144,6 +145,7 @@ const CursorTouches = () => {
     afterglowMs: afterglowSec * 1000,
     showCursors,
     night,
+    markStyle,
   });
   useEffect(() => {
     settingsRef.current = {
@@ -151,8 +153,9 @@ const CursorTouches = () => {
       afterglowMs: afterglowSec * 1000,
       showCursors,
       night,
+      markStyle,
     };
-  }, [speed, afterglowSec, showCursors, night]);
+  }, [speed, afterglowSec, showCursors, night, markStyle]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   // The replayed moment's real date/time, written imperatively from the
@@ -189,7 +192,9 @@ const CursorTouches = () => {
       },
     );
     return () => instance.remove();
-  }, [trails, touches, timeline, renderer]);
+    // markStyle restarts the sketch so the whole marks buffer restamps in
+    // one consistent style instead of mixing residues mid-cycle.
+  }, [trails, touches, timeline, renderer, markStyle]);
 
   const statusText = loading
     ? "loading cursor events..."
@@ -246,6 +251,30 @@ const CursorTouches = () => {
               <option value="pinwheel">pinwheel (2d)</option>
             </select>
           </div>
+          {renderer === "nebula" && (
+            <div style={styles.row}>
+              <span>mark</span>
+              <select
+                value={markStyle}
+                onChange={(e) => setMarkStyle(e.target.value as MarkStyle)}
+                style={{
+                  width: 110,
+                  padding: "4px 6px",
+                  border: "1px solid #e0dbd4",
+                  background: "#faf7f2",
+                  fontFamily: "'Martian Mono', monospace",
+                  fontSize: "10px",
+                  color: "#3d3833",
+                }}
+              >
+                <option value="fingerprint">fingerprint</option>
+                <option value="blot">blot</option>
+                <option value="wear">wear</option>
+                <option value="stitch">stitch</option>
+                <option value="nebula">nebula</option>
+              </select>
+            </div>
+          )}
           <div style={styles.row}>
             <span>radius: {touchRadius}px</span>
             <input

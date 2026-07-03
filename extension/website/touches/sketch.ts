@@ -20,6 +20,8 @@ export interface SketchData {
   totalMs: number;
 }
 
+export type MarkStyle = "nebula" | "fingerprint" | "blot" | "wear" | "stitch";
+
 /** Live-tunable settings the sketch reads every frame. */
 export interface SketchSettings {
   speed: number;
@@ -28,6 +30,9 @@ export interface SketchSettings {
   /** Dark sky mode: additive glow against near-black. Off = linen paper,
    * where marks blend like ink instead of light. */
   night: boolean;
+  /** What residue a touch leaves behind. Everything except "nebula" also
+   * quiets the burst down to a soft ring. */
+  markStyle: MarkStyle;
 }
 
 const BURST_LIFE_MS = 1800;
@@ -92,9 +97,175 @@ export function createTouchesSketch(
       return points;
     };
 
-    // Settled nebula remnant stamped at the moment of contact — layered
-    // noisy blobs of both colors, dust speckles, a faint irregular shell.
-    // The burst blooms around it and fades; the remnant stays.
+    /** Wobbly partial arc around (x, y) — the building block of the patina
+     * styles: fingerprint ridges, stitch parentheses. */
+    const wobblyArc = (
+      x: number,
+      y: number,
+      radius: number,
+      startAngle: number,
+      span: number,
+      seed: number,
+    ) => {
+      marks.beginShape();
+      const steps = 12;
+      for (let s = 0; s <= steps; s++) {
+        const angle = startAngle + (s / steps) * span;
+        const sway =
+          (p.noise(angle * 1.9 + (seed % 400) * 0.37, radius * 0.3) - 0.5) *
+          1.8;
+        marks.vertex(
+          x + Math.cos(angle) * (radius + sway),
+          y + Math.sin(angle) * (radius + sway),
+        );
+      }
+      marks.endShape();
+    };
+
+    // Concentric broken arcs, like a smudged thumbprint left on glass.
+    const stampFingerprint = (
+      touch: CursorTouch,
+      seed: number,
+      colorA: p5.Color,
+      colorB: p5.Color,
+      mixed: p5.Color,
+      night: boolean,
+    ) => {
+      const rings = 3 + Math.floor(seededRandom(seed, 1) * 2);
+      marks.noFill();
+      for (let ring = 0; ring < rings; ring++) {
+        const c = ring % 2 === 0 ? colorA : colorB;
+        c.setAlpha(night ? 130 : 100);
+        marks.stroke(c);
+        marks.strokeWeight(0.9);
+        const radius = 3.2 + ring * 3.1 + seededRandom(seed, 10 + ring) * 1.6;
+        const start = seededRandom(seed, 20 + ring) * Math.PI * 2;
+        const span = 1.2 + seededRandom(seed, 30 + ring) * 1.8;
+        wobblyArc(touch.x, touch.y, radius, start, span, seed + ring * 13);
+      }
+      mixed.setAlpha(150);
+      marks.noStroke();
+      marks.fill(mixed);
+      marks.circle(touch.x, touch.y, 2.6);
+    };
+
+    // A soft two-color bleed, like a water ring left by a warm cup.
+    const stampBlot = (
+      touch: CursorTouch,
+      seed: number,
+      colorA: p5.Color,
+      colorB: p5.Color,
+      mixed: p5.Color,
+      night: boolean,
+    ) => {
+      marks.noStroke();
+      const layers: Array<{ c: p5.Color; scale: number; alpha: number }> = [
+        { c: mixed, scale: 1.35, alpha: night ? 30 : 20 },
+        { c: colorA, scale: 0.85, alpha: night ? 44 : 30 },
+        { c: colorB, scale: 0.6, alpha: night ? 44 : 30 },
+      ];
+      layers.forEach(({ c, scale, alpha }, layer) => {
+        const offsetX = layer === 0 ? 0 : (seededRandom(seed, layer * 9) - 0.5) * 9;
+        const offsetY = layer === 0 ? 0 : (seededRandom(seed, layer * 9 + 1) - 0.5) * 9;
+        c.setAlpha(alpha);
+        marks.fill(c);
+        marks.beginShape();
+        for (const v of blobVertices(
+          touch.x + offsetX,
+          touch.y + offsetY,
+          MARK_RADIUS * scale,
+          seed + layer * 41,
+          0.5,
+        )) {
+          marks.vertex(v.x, v.y);
+        }
+        marks.endShape(marks.CLOSE);
+      });
+    };
+
+    // Barely-there tonal wear with two paired dots — density does the
+    // talking, like brass polished smooth where hands keep landing.
+    const stampWear = (
+      touch: CursorTouch,
+      seed: number,
+      colorA: p5.Color,
+      colorB: p5.Color,
+      mixed: p5.Color,
+      night: boolean,
+    ) => {
+      const ctx = marks.drawingContext as CanvasRenderingContext2D;
+      const radius = 13 + seededRandom(seed, 3) * 7;
+      const soft = ctx.createRadialGradient(
+        touch.x,
+        touch.y,
+        1,
+        touch.x,
+        touch.y,
+        radius,
+      );
+      mixed.setAlpha(night ? 34 : 22);
+      soft.addColorStop(0, mixed.toString());
+      mixed.setAlpha(0);
+      soft.addColorStop(1, mixed.toString());
+      ctx.fillStyle = soft;
+      ctx.beginPath();
+      ctx.arc(touch.x, touch.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      const pairAngle = seededRandom(seed, 5) * Math.PI * 2;
+      const dotOffset = 2.2;
+      marks.noStroke();
+      colorA.setAlpha(210);
+      marks.fill(colorA);
+      marks.circle(
+        touch.x + Math.cos(pairAngle) * dotOffset,
+        touch.y + Math.sin(pairAngle) * dotOffset,
+        2.4,
+      );
+      colorB.setAlpha(210);
+      marks.fill(colorB);
+      marks.circle(
+        touch.x - Math.cos(pairAngle) * dotOffset,
+        touch.y - Math.sin(pairAngle) * dotOffset,
+        2.4,
+      );
+    };
+
+    // Two facing parentheses enclosing the meeting point, like a stitch or
+    // a pair of hands cupped around something small.
+    const stampStitch = (
+      touch: CursorTouch,
+      seed: number,
+      colorA: p5.Color,
+      colorB: p5.Color,
+      mixed: p5.Color,
+      night: boolean,
+    ) => {
+      const rotation = seededRandom(seed, 7) * Math.PI * 2;
+      const radius = 4.6 + seededRandom(seed, 8) * 1.6;
+      marks.noFill();
+      colorA.setAlpha(night ? 190 : 160);
+      marks.stroke(colorA);
+      marks.strokeWeight(1.4);
+      wobblyArc(touch.x, touch.y, radius, rotation + 0.5, Math.PI - 1.0, seed);
+      colorB.setAlpha(night ? 190 : 160);
+      marks.stroke(colorB);
+      wobblyArc(
+        touch.x,
+        touch.y,
+        radius,
+        rotation + Math.PI + 0.5,
+        Math.PI - 1.0,
+        seed + 51,
+      );
+      mixed.setAlpha(170);
+      marks.noStroke();
+      marks.fill(mixed);
+      marks.circle(touch.x, touch.y, 1.8);
+    };
+
+    // Settled residue stamped at the moment of contact — style selectable;
+    // the burst blooms around it and fades, the mark stays.
     const stampMark = (touch: CursorTouch) => {
       const ctx = marks.drawingContext as CanvasRenderingContext2D;
       const seed = touchSeed(touch);
@@ -102,6 +273,23 @@ export function createTouchesSketch(
       const colorA = p.color(touch.colorA);
       const colorB = p.color(touch.colorB);
       const mixed = p.lerpColor(colorA, colorB, 0.5);
+      const style = settingsRef.current.markStyle;
+
+      if (style !== "nebula") {
+        ctx.save();
+        ctx.globalCompositeOperation = night ? "source-over" : "multiply";
+        if (style === "fingerprint") {
+          stampFingerprint(touch, seed, colorA, colorB, mixed, night);
+        } else if (style === "blot") {
+          stampBlot(touch, seed, colorA, colorB, mixed, night);
+        } else if (style === "wear") {
+          stampWear(touch, seed, colorA, colorB, mixed, night);
+        } else {
+          stampStitch(touch, seed, colorA, colorB, mixed, night);
+        }
+        ctx.restore();
+        return;
+      }
 
       ctx.save();
       // Remnants composite normally so hundreds of overlaps blend toward
@@ -262,6 +450,40 @@ export function createTouchesSketch(
       const colorB = p.color(touch.colorB);
       const mixed = p.lerpColor(colorA, colorB, 0.5);
       const ctx = p.drawingContext as CanvasRenderingContext2D;
+
+      // Patina styles get a quiet bloom: a small glow and one soft ring,
+      // no filaments — the residue is the point, not the explosion.
+      if (settingsRef.current.markStyle !== "nebula") {
+        ctx.save();
+        ctx.globalCompositeOperation = glowComposite();
+        const coreAlpha = (1 - eased) ** 1.5;
+        if (coreAlpha > 0.01) {
+          const coreRadius = 7 + eased * 16;
+          const core = ctx.createRadialGradient(
+            touch.x,
+            touch.y,
+            0,
+            touch.x,
+            touch.y,
+            coreRadius,
+          );
+          mixed.setAlpha((night ? 150 : 90) * coreAlpha);
+          core.addColorStop(0, mixed.toString());
+          mixed.setAlpha(0);
+          core.addColorStop(1, mixed.toString());
+          ctx.fillStyle = core;
+          ctx.beginPath();
+          ctx.arc(touch.x, touch.y, coreRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        mixed.setAlpha(170 * alpha);
+        p.noFill();
+        p.stroke(mixed);
+        p.strokeWeight(1.3);
+        p.circle(touch.x, touch.y, (12 + eased * 52) * 2);
+        ctx.restore();
+        return;
+      }
 
       ctx.save();
       ctx.globalCompositeOperation = glowComposite();
