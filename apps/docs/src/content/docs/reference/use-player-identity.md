@@ -23,7 +23,7 @@ function Profile() {
 | `pid`   | `string \| undefined` | Participant id (ECDSA public key). `undefined` until cursors sync. |
 | `name`  | `string \| undefined` | The player's chosen name, if set.                                  |
 
-Values update reactively. When the "we were online" browser extension is
+Values update reactively. When the ["we were online"](https://wewere.online) browser extension is
 installed, it injects its identity via the `playhtml:configure-identity`
 event, and this hook reflects the extension's color and PID automatically.
 
