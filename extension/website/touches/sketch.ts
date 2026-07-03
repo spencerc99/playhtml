@@ -43,7 +43,9 @@ export interface SketchSettings {
 
 const BURST_LIFE_MS = 1800;
 const BURST_MAX_RADIUS = 95;
-const CURSOR_TAIL_MS = 900;
+const CURSOR_WAKE_MS = 450;
+/** How far ahead of a touch its before-glow starts building (timeline ms). */
+const FORESHADOW_MS = 3500;
 const MARK_RADIUS = 13;
 
 // The hand-cursor silhouettes from playhtml experiment 7 ("when cursors
@@ -551,7 +553,10 @@ export function createTouchesSketch(
       for (let i = 0; i < nextTouchIndex; i++) stampMark(data.touches[i]);
     };
 
-    const drawCursor = (trail: Trail, realTs: number) => {
+    /** Koi in a pond: moving cursors are a small soft-glowing body with a
+     * thin whisker of a wake — ambient presence, not a comet show. The glow
+     * swells with `imminence` (0-1) as a touch approaches. */
+    const drawCursor = (trail: Trail, realTs: number, imminence: number) => {
       const pos = motionAt(trail, realTs);
       const color = p.color(trail.color);
       const night = settingsRef.current.night;
@@ -566,51 +571,104 @@ export function createTouchesSketch(
         return;
       }
 
-      // Comet tail: segments taper gradually from the head's width down to
-      // a whisker, alpha falling with them.
-      const steps = 14;
+      // Thin wake, quickly fading.
+      const steps = 8;
       let prev: { x: number; y: number } = pos;
       for (let i = 1; i <= steps; i++) {
-        const t = realTs - (CURSOR_TAIL_MS * i) / steps;
+        const t = realTs - (CURSOR_WAKE_MS * i) / steps;
         if (t <= trail.startTime) break;
         const point = positionAt(trail, Math.max(t, trail.startTime));
         const falloff = 1 - i / (steps + 1);
-        color.setAlpha(210 * falloff * falloff);
+        color.setAlpha((night ? 90 : 70) * falloff * falloff);
         p.stroke(color);
-        p.strokeWeight(0.6 + 7 * falloff);
+        p.strokeWeight(0.4 + 1.5 * falloff);
         p.line(prev.x, prev.y, point.x, point.y);
         prev = point;
       }
 
-      // Glow halo around the head.
+      // Soft body glow, swelling as a touch nears.
       const ctx = p.drawingContext as CanvasRenderingContext2D;
       ctx.save();
       ctx.globalCompositeOperation = glowComposite();
+      const haloRadius = 10 + imminence * 8;
       const halo = ctx.createRadialGradient(
         pos.x,
         pos.y,
         1,
         pos.x,
         pos.y,
-        16,
+        haloRadius,
       );
-      color.setAlpha(night ? 120 : 60);
+      color.setAlpha((night ? 60 : 35) + imminence * 80);
       halo.addColorStop(0, color.toString());
       color.setAlpha(0);
       halo.addColorStop(1, color.toString());
       ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 16, 0, Math.PI * 2);
+      ctx.arc(pos.x, pos.y, haloRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // Head: color disc with a hot core.
-      color.setAlpha(255);
+      color.setAlpha(235);
       p.noStroke();
       p.fill(color);
-      p.circle(pos.x, pos.y, 8.5);
-      p.fill(night ? p.color(255, 252, 240, 235) : p.color(255, 255, 255, 200));
-      p.circle(pos.x, pos.y, 3.2);
+      p.circle(pos.x, pos.y, 5.5 + imminence * 1.5);
+    };
+
+    /** The moments before: as a touch nears, the two cursors' upcoming
+     * paths to the meeting point fade in as faint threads and a glimmer
+     * grows where they will meet. */
+    const drawForeglow = (
+      touch: CursorTouch,
+      factor: number,
+      realTs: number,
+    ) => {
+      const night = settingsRef.current.night;
+      for (const trailIndex of [touch.trailA, touch.trailB]) {
+        const trail = data.trails[trailIndex];
+        if (touch.ts <= realTs) continue;
+        const color = p.color(trail.color);
+        color.setAlpha((night ? 85 : 65) * factor);
+        p.noFill();
+        p.stroke(color);
+        p.strokeWeight(1.1);
+        p.beginShape();
+        for (let ts = realTs; ts <= touch.ts; ts += 120) {
+          const pos = positionAt(trail, ts);
+          p.vertex(pos.x, pos.y);
+        }
+        p.vertex(
+          positionAt(trail, touch.ts).x,
+          positionAt(trail, touch.ts).y,
+        );
+        p.endShape();
+      }
+
+      const ctx = p.drawingContext as CanvasRenderingContext2D;
+      ctx.save();
+      ctx.globalCompositeOperation = glowComposite();
+      const mixed = p.lerpColor(
+        p.color(touch.colorA),
+        p.color(touch.colorB),
+        0.5,
+      );
+      const glimmer = ctx.createRadialGradient(
+        touch.x,
+        touch.y,
+        0,
+        touch.x,
+        touch.y,
+        9,
+      );
+      mixed.setAlpha((night ? 90 : 60) * factor);
+      glimmer.addColorStop(0, mixed.toString());
+      mixed.setAlpha(0);
+      glimmer.addColorStop(1, mixed.toString());
+      ctx.fillStyle = glimmer;
+      ctx.beginPath();
+      ctx.arc(touch.x, touch.y, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     };
 
     const drawBurst = (burst: Burst) => {
@@ -809,12 +867,36 @@ export function createTouchesSketch(
           Math.max(BURST_LIFE_MS, settings.afterglowMs),
       );
 
+      // The moments before: touches coming up within the foreshadow window
+      // get a before-glow, and their cursors swell toward the meeting.
+      const imminence = new Map<number, number>();
+      const upcoming: Array<{ touch: CursorTouch; factor: number }> = [];
+      for (
+        let i = nextTouchIndex;
+        i < touchPlayTimes.length &&
+        touchPlayTimes[i] <= playElapsed + FORESHADOW_MS;
+        i++
+      ) {
+        const factor = 1 - (touchPlayTimes[i] - playElapsed) / FORESHADOW_MS;
+        const touch = data.touches[i];
+        upcoming.push({ touch, factor });
+        for (const trailIndex of [touch.trailA, touch.trailB]) {
+          imminence.set(
+            trailIndex,
+            Math.max(imminence.get(trailIndex) ?? 0, factor),
+          );
+        }
+      }
+
       for (const burst of bursts) drawAfterglow(burst, realTs);
+      for (const entry of upcoming) {
+        drawForeglow(entry.touch, entry.factor, realTs);
+      }
 
       if (settings.showCursors) {
-        for (const trail of data.trails) {
+        for (const [index, trail] of data.trails.entries()) {
           if (trail.startTime <= realTs && realTs <= trail.endTime) {
-            drawCursor(trail, realTs);
+            drawCursor(trail, realTs, imminence.get(index) ?? 0);
           }
         }
       }
