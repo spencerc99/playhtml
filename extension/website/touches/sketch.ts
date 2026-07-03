@@ -95,6 +95,12 @@ export function createTouchesSketch(
     const glowComposite = () =>
       settingsRef.current.night ? "lighter" : "multiply";
 
+    /** On linen, pale cursor colors all but vanish — pull live-layer colors
+     * toward the ink brown so every hue reads as pigment on paper. Night
+     * returns the color untouched. */
+    const inkAdjusted = (color: p5.Color, night: boolean) =>
+      night ? color : p.lerpColor(color, p.color(61, 56, 51), 0.3);
+
     /** Organic blob outline: radius perturbed by smooth noise so no two
      * remnants share a silhouette. */
     const blobVertices = (
@@ -558,8 +564,8 @@ export function createTouchesSketch(
      * swells with `imminence` (0-1) as a touch approaches. */
     const drawCursor = (trail: Trail, realTs: number, imminence: number) => {
       const pos = motionAt(trail, realTs);
-      const color = p.color(trail.color);
       const night = settingsRef.current.night;
+      const color = inkAdjusted(p.color(trail.color), night);
 
       // Parked cursors (wide sample bracket) sit dim and still, like faint
       // stars — no tail, no interpolated drift across idle gaps.
@@ -627,8 +633,8 @@ export function createTouchesSketch(
       for (const trailIndex of [touch.trailA, touch.trailB]) {
         const trail = data.trails[trailIndex];
         if (touch.ts <= realTs) continue;
-        const color = p.color(trail.color);
-        color.setAlpha((night ? 85 : 65) * factor);
+        const color = inkAdjusted(p.color(trail.color), night);
+        color.setAlpha((night ? 85 : 80) * factor);
         p.noFill();
         p.stroke(color);
         p.strokeWeight(1.1);
@@ -647,10 +653,9 @@ export function createTouchesSketch(
       const ctx = p.drawingContext as CanvasRenderingContext2D;
       ctx.save();
       ctx.globalCompositeOperation = glowComposite();
-      const mixed = p.lerpColor(
-        p.color(touch.colorA),
-        p.color(touch.colorB),
-        0.5,
+      const mixed = inkAdjusted(
+        p.lerpColor(p.color(touch.colorA), p.color(touch.colorB), 0.5),
+        night,
       );
       const glimmer = ctx.createRadialGradient(
         touch.x,
@@ -682,7 +687,7 @@ export function createTouchesSketch(
 
       const colorA = p.color(touch.colorA);
       const colorB = p.color(touch.colorB);
-      const mixed = p.lerpColor(colorA, colorB, 0.5);
+      const mixed = inkAdjusted(p.lerpColor(colorA, colorB, 0.5), night);
       const ctx = p.drawingContext as CanvasRenderingContext2D;
 
       // Patina styles get a quiet bloom: a small glow and one soft ring,
@@ -812,8 +817,11 @@ export function createTouchesSketch(
         const from = burst.touch.ts;
         const to = Math.min(realTs, trail.endTime);
         if (to <= from) continue;
-        const color = p.color(trail.color);
-        color.setAlpha((settingsRef.current.night ? 90 : 70) * fade);
+        const color = inkAdjusted(
+          p.color(trail.color),
+          settingsRef.current.night,
+        );
+        color.setAlpha((settingsRef.current.night ? 90 : 80) * fade);
         p.noFill();
         p.stroke(color);
         p.strokeWeight(1.5);

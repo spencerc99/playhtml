@@ -94,7 +94,7 @@ const CursorTouches = () => {
   const [afterglowSec, setAfterglowSec] = useState(2);
   const [showCursors, setShowCursors] = useState(true);
   const [samePersonOk, setSamePersonOk] = useState(false);
-  const [night, setNight] = useState(true);
+  const [night, setNight] = useState(false);
   const [renderer, setRenderer] = useState<Renderer>("nebula");
   const [markStyle, setMarkStyle] = useState<MarkStyle>("hands");
 
