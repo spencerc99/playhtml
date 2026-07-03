@@ -169,34 +169,6 @@ describe("can-mirror: attributes", () => {
     expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
   });
 
-  it("does not persist internal inspect classes into shared state", async () => {
-    const source = mountClient(
-      elementFromHTML(`<div id="a" class="card"></div>`)
-    );
-    const sink = mountClient(elementFromHTML(`<div id="a" class="card"></div>`));
-
-    source.element.classList.add(
-      "ph-inspect-highlight",
-      "ph-inspect-highlight-hover"
-    );
-    await sync(source, sink);
-
-    expect((source.state as any).attributes.class).toBe("card");
-    expect(sink.element.className).toBe("card");
-  });
-
-  it("persists user classes changed alongside internal inspect classes", async () => {
-    const source = mountClient(
-      elementFromHTML(`<div id="a" class="card"></div>`)
-    );
-    const sink = mountClient(elementFromHTML(`<div id="a" class="card"></div>`));
-
-    source.element.classList.add("active", "ph-inspect-highlight");
-    await sync(source, sink);
-
-    expect((source.state as any).attributes.class).toBe("card active");
-    expect(sink.element.className).toBe("card active");
-  });
 });
 
 describe("can-mirror: child add/remove", () => {
@@ -211,20 +183,6 @@ describe("can-mirror: child add/remove", () => {
 
     expectMirrored(source.element, sink.element);
     expect(sink.element.children.length).toBe(1);
-  });
-
-  it("does not persist internal inspect labels into shared state", async () => {
-    const source = mountClient(elementFromHTML(`<div id="a"></div>`));
-    const sink = mountClient(elementFromHTML(`<div id="a"></div>`));
-
-    const label = document.createElement("div");
-    label.className = "ph-inspect-label";
-    label.textContent = "#a";
-    source.element.appendChild(label);
-    await sync(source, sink);
-
-    expect((source.state as any).children).toEqual([]);
-    expect(sink.element.children.length).toBe(0);
   });
 
   it("mirrors a removed child", async () => {
@@ -792,22 +750,4 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
     expect(b.proxy().attributes.class).toBe("card");
   });
 
-  it("does not propagate internal inspect classes through a real Yjs merge", async () => {
-    const html = `<div id="d" class="card"></div>`;
-    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
-
-    a.element.classList.add(
-      "ph-inspect-highlight",
-      "ph-inspect-highlight-hover"
-    );
-    await flush();
-    mergeDocs(a, b);
-    b.applyState();
-
-    expect(a.element.className).toBe(
-      "card ph-inspect-highlight ph-inspect-highlight-hover"
-    );
-    expect(b.element.className).toBe("card");
-    expect(b.proxy().attributes.class).toBe("card");
-  });
 });

@@ -258,6 +258,59 @@ describe("duplicate playhtml element IDs", () => {
     expect(dataArea.textContent).not.toContain("count: 0");
   });
 
+  it("clears row hover highlights when the data tree rerenders", async () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "hovered-card";
+    element.setAttribute("can-play", "");
+    element.className = "__playhtml-element";
+    document.body.append(element);
+
+    const handler = new ElementHandler({
+      element,
+      defaultData: { count: 0 },
+      data: { count: 0 },
+      defaultLocalData: {},
+      updateElement: () => {},
+      onChange: () => {},
+      onAwarenessChange: () => {},
+      triggerAwarenessUpdate: () => {},
+    } as any);
+
+    setupDevUI({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "hovered-card",
+              handler,
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const row = document.querySelector<HTMLElement>(
+      '.ph-tree-item[data-element-id="hovered-card"]',
+    )!;
+
+    row.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(true);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(true);
+
+    (handler as any).__data = { count: 1 };
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(false);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(false);
+  });
+
   it("removes inspect highlight classes when dev tools tear down", () => {
     vi.spyOn(console, "table").mockImplementation(() => {});
 

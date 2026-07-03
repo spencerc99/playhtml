@@ -7,12 +7,6 @@ import type { ElementInitializer } from "./index";
 // The MutationObserver must ignore these to avoid polluting
 // persistent state with transient per-user presence.
 const EPHEMERAL_ATTRS = ["data-playhtml-hover", "data-playhtml-focus"];
-const EPHEMERAL_CLASS_NAMES = [
-  "ph-inspect-highlight",
-  "ph-inspect-highlight-hover",
-  "ph-inspect-selected",
-];
-const EPHEMERAL_ELEMENT_CLASS_NAMES = ["ph-inspect-label"];
 
 enum NodeType {
   Text = "Text",
@@ -190,14 +184,15 @@ function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
       return false;
     }
 
-    const attrs1 = getMirroredAttributes(state1.attributes);
-    const attrs2 = getMirroredAttributes(state2.attributes);
-    if (Object.keys(attrs1).length !== Object.keys(attrs2).length) {
+    if (
+      Object.keys(state1.attributes).length !==
+      Object.keys(state2.attributes).length
+    ) {
       return false;
     }
 
-    for (const [key, value] of Object.entries(attrs1)) {
-      if (attrs2[key] !== value) {
+    for (const [key, value] of Object.entries(state1.attributes)) {
+      if (state2.attributes[key] !== value) {
         return false;
       }
     }
@@ -319,12 +314,7 @@ function updateAttributes(state: ElementState, mutation: MutationRecord) {
     const attributeName = mutation.attributeName!;
     const attributeValue = mutation.target.getAttribute(attributeName);
     if (attributeValue !== null) {
-      const mirroredValue = getMirroredAttributeValue(attributeName, attributeValue);
-      if (mirroredValue === null) {
-        delete state.attributes[attributeName];
-      } else {
-        state.attributes[attributeName] = mirroredValue;
-      }
+      state.attributes[attributeName] = attributeValue;
     } else if (attributeName in state.attributes) {
       delete state.attributes[attributeName];
     }
@@ -348,7 +338,7 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
   }
   const newChildren: ElementState[] = [];
   mutation.target.childNodes.forEach((child) => {
-    if (isValidMirroredNode(child)) {
+    if (isValidNode(child)) {
       newChildren.push(constructInitialState(child));
     }
   });
@@ -375,52 +365,6 @@ function updateCharacterData(state: ElementState, mutation: MutationRecord) {
 
 function isValidNode(node: Node): node is HTMLElement | Text {
   return node instanceof HTMLElement || node instanceof Text;
-}
-
-function isEphemeralElement(node: Node): node is HTMLElement {
-  return (
-    node instanceof HTMLElement &&
-    EPHEMERAL_ELEMENT_CLASS_NAMES.some((className) =>
-      node.classList.contains(className)
-    )
-  );
-}
-
-function isValidMirroredNode(node: Node): node is HTMLElement | Text {
-  return isValidNode(node) && !isEphemeralElement(node);
-}
-
-function getMirroredClassName(value: string): string | null {
-  const classNames = value
-    .split(/\s+/)
-    .filter(
-      (className) =>
-        className.length > 0 && !EPHEMERAL_CLASS_NAMES.includes(className)
-    );
-  return classNames.length > 0 ? classNames.join(" ") : null;
-}
-
-function getMirroredAttributeValue(name: string, value: string): string | null {
-  if (EPHEMERAL_ATTRS.includes(name)) {
-    return null;
-  }
-  if (name === "class") {
-    return getMirroredClassName(value);
-  }
-  return value;
-}
-
-function getMirroredAttributes(
-  attributes: Record<string, string>
-): Record<string, string> {
-  const mirrored: Record<string, string> = {};
-  for (const [name, value] of Object.entries(attributes)) {
-    const mirroredValue = getMirroredAttributeValue(name, value);
-    if (mirroredValue !== null) {
-      mirrored[name] = mirroredValue;
-    }
-  }
-  return mirrored;
 }
 
 function captureFormState(
@@ -461,10 +405,7 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
 
   // @ts-ignore
   for (const attr of element.attributes) {
-    const mirroredValue = getMirroredAttributeValue(attr.name, attr.value);
-    if (mirroredValue !== null) {
-      state.attributes[attr.name] = mirroredValue;
-    }
+    state.attributes[attr.name] = attr.value;
   }
 
   // Capture form element IDL properties that aren't reflected as attributes
@@ -474,7 +415,7 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
   }
 
   element.childNodes.forEach((child) => {
-    if (isValidMirroredNode(child)) {
+    if (isValidNode(child)) {
       state.children.push(constructInitialState(child));
     }
   });
@@ -551,7 +492,7 @@ function updateAttributesFromState(
   }
   const attrs: Record<string, string> =
     (state as any).attributes && typeof (state as any).attributes === "object"
-      ? getMirroredAttributes((state as any).attributes as Record<string, string>)
+      ? ((state as any).attributes as Record<string, string>)
       : {};
   for (const [key, value] of Object.entries(attrs)) {
     if (element.getAttribute(key) !== value) element.setAttribute(key, value);
