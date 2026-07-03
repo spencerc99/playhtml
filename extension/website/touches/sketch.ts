@@ -285,7 +285,9 @@ export function createTouchesSketch(
     };
 
     /** One hand cursor, centered at (x, y), rotated toward the clasp and
-     * optionally mirrored — the same transform experiment 7 applies. */
+     * optionally mirrored — the full experiment 7 model: color fill, black
+     * outline, and the three finger-crease lines that make it read as a
+     * hand regardless of fill color. */
     const drawHand = (
       ctx: CanvasRenderingContext2D,
       path: Path2D,
@@ -294,7 +296,6 @@ export function createTouchesSketch(
       rotation: number,
       mirrored: boolean,
       fill: string,
-      outline: string,
     ) => {
       ctx.save();
       ctx.translate(x, y);
@@ -304,9 +305,19 @@ export function createTouchesSketch(
       ctx.translate(-16, -16);
       ctx.fillStyle = fill;
       ctx.fill(path);
-      ctx.strokeStyle = outline;
-      ctx.lineWidth = 1.1 / HAND_SCALE;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      ctx.lineWidth = 0.9;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.stroke(path);
+      ctx.beginPath();
+      ctx.moveTo(19.6, 20.7);
+      ctx.lineTo(19.6, 17.3);
+      ctx.moveTo(17.6, 20.7);
+      ctx.lineTo(17.5, 17.3);
+      ctx.moveTo(15.6, 17.3);
+      ctx.lineTo(15.6, 20.7);
+      ctx.stroke();
       ctx.restore();
     };
 
@@ -358,9 +369,6 @@ export function createTouchesSketch(
       ctx.save();
       ctx.globalCompositeOperation = "source-over";
       const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
-      const outline = night
-        ? "rgba(16, 13, 19, 0.85)"
-        : "rgba(250, 247, 242, 0.9)";
       colorA.setAlpha(240);
       drawHand(
         ctx,
@@ -370,7 +378,6 @@ export function createTouchesSketch(
         angle,
         false,
         colorA.toString(),
-        outline,
       );
       colorB.setAlpha(240);
       drawHand(
@@ -381,7 +388,6 @@ export function createTouchesSketch(
         angle + Math.PI,
         true,
         colorB.toString(),
-        outline,
       );
       ctx.restore();
     };
