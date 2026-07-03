@@ -1,5 +1,6 @@
 # Unreleased
 
+- Restore Wikipedia link patina on pages with absolute article links
 - Bug fixes with the keyboard collector (#217)
 
 <!--
