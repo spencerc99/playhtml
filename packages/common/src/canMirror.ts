@@ -139,6 +139,8 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
       obs.observe(element, {
         childList: true,
         attributes: true,
+        subtree: false,
+        characterData: true,
       });
     }
   },
@@ -235,7 +237,8 @@ function observeElementChanges(
   const defaultOptions = {
     childList: true,
     attributes: true,
-    characterData: false,
+    subtree: false,
+    characterData: true,
   };
 
   const config = { ...defaultOptions, ...options };
@@ -261,6 +264,10 @@ function observeElementChanges(
       }
 
       if (config.characterData && mutation.type === "characterData") {
+        return true;
+      }
+
+      if (config.subtree && mutation.type === "childList") {
         return true;
       }
 
