@@ -11,6 +11,7 @@ import {
 import {
   ExplorationRecord,
   RevealTier,
+  Route,
   ScoutMark,
   WorldSite,
 } from "./types";
@@ -26,6 +27,8 @@ export interface WorldMapProps {
   sites: WorldSite[];
   exploration: ExplorationRecord;
   scoutMarks?: ScoutMark[];
+  /** Hyperlink connections drawn as sea routes once both ends are charted */
+  routes?: Route[];
   /** Debug/dev: lift all fog and reveal every landmark */
   revealAll?: boolean;
   onTravel?: (site: WorldSite) => void;
@@ -42,6 +45,11 @@ const FOG_PAPER = "#f3eee3";
 
 /** Fog clearing radius per tier, world units */
 const TIER_CLEAR: Record<RevealTier, number> = { 0: 0, 1: 48, 2: 100, 3: 170 };
+
+/** Founded on or before this year renders with old-town patina */
+const OLD_YEAR = 2012;
+/** Founded on or after this year renders as a freshly-surveyed settlement */
+const NEW_YEAR = 2025;
 
 interface View {
   cx: number;
@@ -111,6 +119,7 @@ export function WorldMap({
   sites,
   exploration,
   scoutMarks = [],
+  routes = [],
   revealAll = false,
   onTravel,
   onScout,
@@ -122,6 +131,10 @@ export function WorldMap({
   const mistPattern = useMemo(makeMistPattern, []);
 
   const placed = useMemo(() => placeSites(sites), [sites]);
+  const placedByDomain = useMemo(
+    () => new Map(placed.map((p) => [p.site.domain, p])),
+    [placed]
+  );
 
   const viewRef = useRef<View>({ cx: 0, cy: 0, scale: 0.8 });
   const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
@@ -255,7 +268,8 @@ export function WorldMap({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // islands
+      // islands, tinted and stroked by age: old places are darker and
+      // re-inked, new places are lighter with a just-surveyed dotted coast
       for (const p of placed) {
         ctx.beginPath();
         const pts = p.island;
@@ -268,24 +282,62 @@ export function WorldMap({
           ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
         }
         ctx.closePath();
-        ctx.fillStyle = ISLAND_FILL;
+        const founded = p.site.founded;
+        const isOld = founded !== undefined && founded <= OLD_YEAR;
+        const isNew = founded !== undefined && founded >= NEW_YEAR;
+        ctx.fillStyle = isOld ? "#e5dac2" : isNew ? "#f0ead9" : ISLAND_FILL;
         ctx.fill();
         ctx.strokeStyle = COAST;
-        ctx.globalAlpha = 0.55;
-        ctx.lineWidth = 1.4 / v.scale;
+        ctx.globalAlpha = isOld ? 0.75 : 0.55;
+        ctx.lineWidth = (isOld ? 2.1 : 1.4) / v.scale;
+        if (isNew) ctx.setLineDash([5 / v.scale, 4 / v.scale]);
         ctx.stroke();
+        ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
+
+      // sea routes: hyperlinks between charted places, drawn as dashed
+      // voyages with a slight deterministic bow
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.1 / v.scale;
+      ctx.setLineDash([5 / v.scale, 6 / v.scale]);
+      ctx.globalAlpha = 0.24;
+      for (const [a, b] of routes) {
+        const pa = placedByDomain.get(a);
+        const pb = placedByDomain.get(b);
+        if (!pa || !pb) continue;
+        if (tierOf(a) < 2 || tierOf(b) < 2) continue;
+        const mx = (pa.x + pb.x) / 2;
+        const my = (pa.y + pb.y) / 2;
+        const dx = pb.x - pa.x;
+        const dy = pb.y - pa.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const bowSign = (pa.x * pb.y - pa.y * pb.x) % 2 >= 0 ? 1 : -1;
+        const bow = Math.min(dist * 0.14, 55) * bowSign;
+        ctx.beginPath();
+        ctx.moveTo(pa.x, pa.y);
+        ctx.quadraticCurveTo(
+          mx + (-dy / dist) * bow,
+          my + (dx / dist) * bow,
+          pb.x,
+          pb.y
+        );
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
 
       // landmarks
       for (const p of placed) {
         const t = tierOf(p.site.domain);
         if (t === 0) continue;
+        // marks stay ink-sized on screen instead of ballooning with zoom
+        const drawR = Math.min(p.markR, 13 / v.scale);
         if (t === 1) {
           ctx.fillStyle = INK_FADED;
           ctx.globalAlpha = 0.45;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.markR * 0.8, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, drawR * 0.8, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 1;
           continue;
@@ -293,14 +345,30 @@ export function WorldMap({
         // visited/inhabited: inked mark
         ctx.fillStyle = INK;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.markR, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, drawR, 0, Math.PI * 2);
         ctx.fill();
+        // settlement buildings: density shows how lived-in the place is
+        ctx.globalAlpha = 0.72;
+        for (const b of p.buildings) {
+          const bx = p.x + b.dx;
+          const by = p.y + b.dy;
+          ctx.fillRect(bx - b.size / 2, by - b.size, b.size, b.size);
+          if (b.roof) {
+            ctx.beginPath();
+            ctx.moveTo(bx - b.size * 0.7, by - b.size);
+            ctx.lineTo(bx, by - b.size * 1.8);
+            ctx.lineTo(bx + b.size * 0.7, by - b.size);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
         if (t === 3) {
           ctx.strokeStyle = INK;
           ctx.globalAlpha = 0.5;
           ctx.lineWidth = 1.2 / v.scale;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.markR + 4 / v.scale, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, drawR + 4 / v.scale, 0, Math.PI * 2);
           ctx.stroke();
           ctx.globalAlpha = 1;
         }
@@ -311,7 +379,7 @@ export function WorldMap({
             0.25 *
               Math.sin(time / 320 + p.x * 0.13 + p.y * 0.07) *
               Math.sin(time / 173 + p.x);
-          const glowR = (p.markR + 6) * (0.9 + 0.2 * flicker);
+          const glowR = (drawR + 6) * (0.9 + 0.2 * flicker);
           const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
           g.addColorStop(0, `rgba(212, 184, 92, ${0.32 * flicker})`);
           g.addColorStop(1, "rgba(212, 184, 92, 0)");
@@ -321,7 +389,7 @@ export function WorldMap({
           ctx.fill();
           ctx.fillStyle = CANDLE_FLAME;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, Math.max(1.4, p.markR * 0.38), 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, Math.max(1.4, drawR * 0.38), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -359,10 +427,30 @@ export function WorldMap({
         );
         if (collides) continue;
         kept.push(rect);
-        ctx.font = `${t === 3 ? "600 " : ""}${size}px Georgia, 'Times New Roman', serif`;
+        const founded = p.site.founded;
+        const isOld = founded !== undefined && founded <= OLD_YEAR;
+        const nameY = s.y - p.markR * v.scale - 6;
+        const styled = ctx as CanvasRenderingContext2D & {
+          letterSpacing?: string;
+        };
         ctx.fillStyle = INK;
-        ctx.globalAlpha = t === 3 ? 0.95 : 0.8;
-        ctx.fillText(p.site.domain, s.x, s.y - p.markR * v.scale - 6);
+        if (isOld) {
+          // engraved style for old towns: spaced capitals, slightly faded
+          ctx.font = `600 ${size - 1}px Georgia, 'Times New Roman', serif`;
+          styled.letterSpacing = "1.5px";
+          ctx.globalAlpha = 0.78;
+          ctx.fillText(p.site.domain.toUpperCase(), s.x, nameY);
+          styled.letterSpacing = "0px";
+        } else {
+          ctx.font = `${t === 3 ? "600 " : ""}${size}px Georgia, 'Times New Roman', serif`;
+          ctx.globalAlpha = t === 3 ? 0.95 : 0.8;
+          ctx.fillText(p.site.domain, s.x, nameY);
+        }
+        if (founded !== undefined && (t === 3 || isOld) && v.scale > 0.5) {
+          ctx.font = "italic 9px Georgia, serif";
+          ctx.globalAlpha = 0.55;
+          ctx.fillText(`est. ${founded}`, s.x, nameY - size - 1);
+        }
         ctx.globalAlpha = 1;
       }
 
@@ -423,7 +511,7 @@ export function WorldMap({
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [placed, specklePattern, mistPattern, tierOf]);
+  }, [placed, placedByDomain, routes, specklePattern, mistPattern, tierOf]);
 
   // --- interaction --------------------------------------------------------
   useEffect(() => {
@@ -579,9 +667,19 @@ export function WorldMap({
               </span>
             )}
           </div>
+          {hover.tier >= 2 && hover.placed.site.title &&
+            hover.placed.site.title.toLowerCase() !==
+              hover.placed.site.domain && (
+              <div style={{ fontStyle: "italic", color: INK_FADED }}>
+                "{hover.placed.site.title}"
+              </div>
+            )}
           {hover.tier >= 2 && (
             <div style={{ color: INK_FADED }}>
               {settlementClass(hover.placed.site.activity)}
+              {hover.placed.site.founded
+                ? ` · est. ${hover.placed.site.founded}`
+                : ""}
               {hover.placed.site.rooms
                 ? ` · ${hover.placed.site.rooms} room${hover.placed.site.rooms === 1 ? "" : "s"}`
                 : ""}

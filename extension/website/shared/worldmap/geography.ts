@@ -11,7 +11,14 @@ export const SCOUT_RADIUS = 85;
 /** The origin harbor: the library's home sits at the center of the world */
 const ORIGIN_DOMAIN = "playhtml.fun";
 
-function fnv1a(str: string): number {
+/** Domains everyone links to; excluded from community grouping and routes */
+export const GENERIC_LINK_HUBS = new Set([
+  "youtube.com",
+  "google.com",
+  "wikipedia.org",
+]);
+
+export function fnv1a(str: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i);
@@ -40,8 +47,13 @@ export interface PlacedSite {
   markR: number;
   /** Island blob outline in world coordinates */
   island: { x: number; y: number }[];
-  /** Log-scaled activity weight, roughly 0..1 */
+  /** Log-scaled activity weight (how lived-in), roughly 0..1 */
   weight: number;
+  /** Log-scaled extent weight (how much site exists), roughly 0..1 */
+  extentWeight: number;
+  /** Settlement buildings: little ink structures whose density shows how
+   * lived-in a place is. World-relative offsets from the landmark. */
+  buildings: { dx: number; dy: number; size: number; roof: boolean }[];
 }
 
 /** Qualitative size class for tooltips: how settled a place feels */
@@ -77,36 +89,61 @@ function islandOutline(
   return points;
 }
 
-/** Deterministically place every site in the world. Positions never depend on
- * which other sites exist, so the geography is stable as the world grows. */
+/** Fallback position derived purely from the domain string: stable forever,
+ * independent of which other sites exist. */
+export function hashPosition(domain: string): { x: number; y: number } {
+  if (domain === ORIGIN_DOMAIN) return { x: 0, y: 0 };
+  const rand = seededRandom(fnv1a(domain));
+  // Uniform placement in a disc; sqrt keeps density even
+  const r = Math.sqrt(rand()) * WORLD_RADIUS;
+  const theta = rand() * Math.PI * 2;
+  return { x: Math.cos(theta) * r, y: Math.sin(theta) * r };
+}
+
+/** Place every site in the world. Baked coordinates (from the layout tool) win;
+ * anything without them falls back to pure hash placement. */
 export function placeSites(sites: WorldSite[]): PlacedSite[] {
   const maxLog = Math.max(
     ...sites.map((s) => Math.log10(Math.max(s.activity, 10))),
     1
   );
+  const maxExtent = Math.max(
+    ...sites.map((s) => Math.log10(Math.max(s.extent ?? 1, 1))),
+    1
+  );
   return sites.map((site) => {
     const rand = seededRandom(fnv1a(site.domain));
-    let x: number;
-    let y: number;
-    if (site.domain === ORIGIN_DOMAIN) {
-      x = 0;
-      y = 0;
-    } else {
-      // Uniform placement in a disc; sqrt keeps density even
-      const r = Math.sqrt(rand()) * WORLD_RADIUS;
-      const theta = rand() * Math.PI * 2;
-      x = Math.cos(theta) * r;
-      y = Math.sin(theta) * r;
-    }
+    const { x, y } =
+      site.x !== undefined && site.y !== undefined
+        ? { x: site.x, y: site.y }
+        : hashPosition(site.domain);
     const weight = Math.log10(Math.max(site.activity, 10)) / maxLog;
+    const extentWeight =
+      Math.log10(Math.max(site.extent ?? 1, 1)) / maxExtent;
     const markR = 2.5 + weight * 8;
-    const islandR = 10 + weight * 40;
+    // island footprint follows extent (how much site exists); settlement
+    // development (weight) is rendered separately as building density
+    const islandR = 10 + extentWeight * 46 + weight * 10;
+    const buildingCount = weight < 0.28 ? 0 : Math.floor(weight * 11);
+    const buildRand = seededRandom(fnv1a(`buildings:${site.domain}`));
+    const buildings = Array.from({ length: buildingCount }, () => {
+      const theta = buildRand() * Math.PI * 2;
+      const dist = markR + 3.5 + buildRand() * (3 + islandR * 0.28);
+      return {
+        dx: Math.cos(theta) * dist,
+        dy: Math.sin(theta) * dist * 0.8,
+        size: 1.7 + buildRand() * 1.8,
+        roof: buildRand() > 0.45,
+      };
+    });
     return {
       site,
       x,
       y,
       markR,
       weight,
+      extentWeight,
+      buildings,
       island: islandOutline(x, y, islandR, rand),
     };
   });

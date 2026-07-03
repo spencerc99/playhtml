@@ -38,11 +38,57 @@ interface SnapshotEntry {
 
 interface Enrichment {
   founded: number | null;
+  /** Year of first Wayback Machine capture; age backfill when RDAP has nothing */
+  waybackFirst: number | null;
+  /** Unique URLs the Wayback Machine has archived for this domain (capped) */
+  waybackUrls: number | null;
+  /** URL count from sitemap.xml, if the site publishes one (capped) */
+  sitemapUrls: number | null;
   title: string | null;
   favicon: string | null;
   links: string[];
   pagesCrawled: number;
   alive: boolean;
+}
+
+const WAYBACK_URL_CAP = 2000;
+
+async function waybackInfo(
+  domain: string
+): Promise<{ first: number | null; urls: number | null }> {
+  const url =
+    `https://web.archive.org/cdx/search/cdx?url=${domain}&matchType=domain` +
+    `&collapse=urlkey&fl=timestamp&filter=statuscode:200&limit=${WAYBACK_URL_CAP}&output=json`;
+  const res = await waybackSlot(() => fetchWithTimeout(url, "application/json"));
+  if (!res || !res.ok) return { first: null, urls: null };
+  try {
+    const rows = (await res.json()) as string[][];
+    if (!Array.isArray(rows) || rows.length < 2) return { first: null, urls: 0 };
+    let earliest = Infinity;
+    for (let i = 1; i < rows.length; i++) {
+      const year = Number(rows[i][0]?.slice(0, 4));
+      if (year && year < earliest) earliest = year;
+    }
+    return {
+      first: Number.isFinite(earliest) ? earliest : null,
+      urls: rows.length - 1,
+    };
+  } catch {
+    return { first: null, urls: null };
+  }
+}
+
+async function sitemapUrlCount(origin: string): Promise<number | null> {
+  const res = await fetchWithTimeout(`${origin}/sitemap.xml`, "application/xml");
+  if (!res || !res.ok) return null;
+  if (!/xml|text/.test(res.headers.get("content-type") || "")) return null;
+  try {
+    const text = (await res.text()).slice(0, 2_000_000);
+    const count = (text.match(/<loc>/g) || []).length;
+    return count > 0 ? count : null;
+  } catch {
+    return null;
+  }
 }
 
 function baseDomain(host: string): string {
@@ -82,20 +128,30 @@ async function fetchWithTimeout(
   }
 }
 
-// rdap.org rate-limits aggressive clients; keep lookups slow and narrow
-let rdapChain: Promise<unknown> = Promise.resolve();
-const RDAP_SPACING_MS = 300;
-function rdapSlot<T>(task: () => Promise<T>): Promise<T> {
-  const run = rdapChain.then(async () => {
-    const value = await task();
-    await new Promise((r) => setTimeout(r, RDAP_SPACING_MS));
-    return value;
-  });
-  rdapChain = run.catch(() => undefined);
-  return run;
+// Shared-host APIs (rdap.org, web.archive.org) rate-limit aggressive clients;
+// serialize each behind its own slow lane instead of hitting them per-worker.
+function makeLane(spacingMs: number) {
+  let chain: Promise<unknown> = Promise.resolve();
+  return function slot<T>(task: () => Promise<T>): Promise<T> {
+    const run = chain.then(async () => {
+      const value = await task();
+      await new Promise((r) => setTimeout(r, spacingMs));
+      return value;
+    });
+    chain = run.catch(() => undefined);
+    return run;
+  };
+}
+const rdapSlot = makeLane(300);
+const waybackSlot = makeLane(900);
+
+function isPlatformSubdomain(domain: string): boolean {
+  return SITE_SUFFIXES.some((suf) => domain.endsWith("." + suf));
 }
 
 async function rdapFounded(domain: string): Promise<number | null> {
+  // platform subdomains have no registration of their own
+  if (isPlatformSubdomain(domain)) return null;
   let res = await rdapSlot(() =>
     fetchWithTimeout(`https://rdap.org/domain/${domain}`, "application/json")
   );
@@ -190,6 +246,9 @@ async function crawlDomain(
 ): Promise<Enrichment> {
   const result: Enrichment = {
     founded: null,
+    waybackFirst: null,
+    waybackUrls: null,
+    sitemapUrls: null,
     title: null,
     favicon: null,
     links: [],
@@ -198,8 +257,10 @@ async function crawlDomain(
   };
 
   const foundedPromise = rdapFounded(entry.domain);
+  const waybackPromise = waybackInfo(entry.domain);
 
   const origin = `https://${entry.domain}`;
+  const sitemapPromise = sitemapUrlCount(origin);
   const disallows = await robotsDisallows(origin);
   const isAllowed = (url: URL) =>
     !disallows.some((rule) => url.pathname.startsWith(rule));
@@ -259,14 +320,24 @@ async function crawlDomain(
 
   result.links = [...outboundBases].sort();
   result.founded = await foundedPromise;
+  const wayback = await waybackPromise;
+  result.waybackFirst = wayback.first;
+  result.waybackUrls = wayback.urls;
+  result.sitemapUrls = await sitemapPromise;
   return result;
 }
 
 async function main() {
-  const snapshot = JSON.parse(
+  let snapshot = JSON.parse(
     readFileSync(SNAPSHOT, "utf-8")
   ) as SnapshotEntry[];
   const atlasDomains = new Set(snapshot.map((s) => s.domain));
+  const onlyFlag = process.argv.indexOf("--only");
+  const writeOutput = onlyFlag < 0;
+  if (!writeOutput) {
+    const wanted = new Set(process.argv[onlyFlag + 1].split(","));
+    snapshot = snapshot.filter((s) => wanted.has(s.domain));
+  }
   const results: Record<string, Enrichment> = {};
 
   let done = 0;
@@ -281,7 +352,8 @@ async function main() {
   });
   await Promise.all(workers);
 
-  writeFileSync(OUTPUT, JSON.stringify(results, null, 1));
+  if (writeOutput) writeFileSync(OUTPUT, JSON.stringify(results, null, 1));
+  else console.log(JSON.stringify(results, null, 1));
 
   const alive = Object.values(results).filter((r) => r.alive).length;
   const withLinks = Object.values(results).filter(
@@ -294,8 +366,12 @@ async function main() {
   const founded = Object.values(results).filter(
     (r) => r.founded !== null
   ).length;
+  const wayback = Object.values(results).filter(
+    (r) => r.waybackFirst !== null
+  ).length;
   console.log(
-    `done: ${alive}/${snapshot.length} alive, ${withLinks} sites with atlas links, ${edges} edges, ${founded} founding years`
+    `done: ${alive}/${snapshot.length} alive, ${withLinks} sites with atlas links, ` +
+      `${edges} edges, ${founded} rdap years, ${wayback} wayback years`
   );
 }
 

@@ -4,14 +4,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { WorldMap } from "@movement/worldmap/WorldMap";
-import { SCOUT_RADIUS } from "@movement/worldmap/geography";
+import {
+  GENERIC_LINK_HUBS,
+  SCOUT_RADIUS,
+} from "@movement/worldmap/geography";
 import {
   ExplorationRecord,
+  Route,
   ScoutMark,
   WorldSite,
 } from "@movement/worldmap/types";
 import domainSnapshot from "./map-domains.json";
+import enrichmentData from "./map-enrichment.json";
 import "./map.scss";
+
+interface EnrichmentEntry {
+  founded: number | null;
+  waybackFirst: number | null;
+  waybackUrls: number | null;
+  sitemapUrls: number | null;
+  title: string | null;
+  favicon: string | null;
+  links: string[];
+  pagesCrawled: number;
+  alive: boolean;
+}
+
+const enrichment = enrichmentData as unknown as Record<
+  string,
+  EnrichmentEntry
+>;
 
 const STORAGE_KEY = "playhtml-atlas-exploration-v1";
 
@@ -40,16 +62,57 @@ function loadState(): SavedState {
 function Atlas() {
   const sites: WorldSite[] = useMemo(
     () =>
-      (domainSnapshot as { domain: string; rooms: number; activity: number }[]).map(
-        (d) => ({
+      (
+        domainSnapshot as {
+          domain: string;
+          rooms: number;
+          activity: number;
+          x?: number;
+          y?: number;
+        }[]
+      ).map((d) => {
+        const e = enrichment[d.domain];
+        const foundedYears = [e?.founded, e?.waybackFirst].filter(
+          (y): y is number => typeof y === "number"
+        );
+        const extent = Math.max(
+          e?.pagesCrawled ?? 0,
+          e?.waybackUrls ?? 0,
+          e?.sitemapUrls ?? 0
+        );
+        return {
           domain: d.domain,
           rooms: d.rooms,
           activity: d.activity,
           playhtml: true,
-        })
-      ),
+          x: d.x,
+          y: d.y,
+          extent: extent > 0 ? extent : undefined,
+          founded: foundedYears.length
+            ? Math.min(...foundedYears)
+            : undefined,
+          title: e?.title ?? undefined,
+        };
+      }),
     []
   );
+
+  const routes: Route[] = useMemo(() => {
+    const domains = new Set(Object.keys(enrichment));
+    const pairs = new Set<string>();
+    const out: Route[] = [];
+    for (const [domain, e] of Object.entries(enrichment)) {
+      if (GENERIC_LINK_HUBS.has(domain)) continue;
+      for (const target of e.links ?? []) {
+        if (!domains.has(target) || GENERIC_LINK_HUBS.has(target)) continue;
+        const key = [domain, target].sort().join("|");
+        if (pairs.has(key)) continue;
+        pairs.add(key);
+        out.push([domain, target]);
+      }
+    }
+    return out;
+  }, []);
 
   const [state, setState] = useState<SavedState>(loadState);
   const [revealAll, setRevealAll] = useState(false);
@@ -116,6 +179,7 @@ function Atlas() {
         sites={sites}
         exploration={state.exploration}
         scoutMarks={state.scoutMarks}
+        routes={routes}
         revealAll={revealAll}
         onScout={onScout}
         onTravel={onTravel}
