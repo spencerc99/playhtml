@@ -6,7 +6,9 @@ name: Extension Performance Report
 on:
   pull_request:
     paths:
-      - "extension/**"
+      - "extension/src/**"
+      - "extension/package.json"
+      - "extension/wxt.config.ts"
       - "scripts/trace-extension-performance.mjs"
       - "scripts/compare-extension-performance.mjs"
       - "scripts/compare-extension-performance.test.mjs"
