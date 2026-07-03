@@ -62,8 +62,10 @@ const HAND_SCALE = 0.72;
 // the middle of its 32px viewBox, so wider offsets read as two separate
 // hands instead of a hold.
 const HAND_CLASP_OFFSET_PX = 2.6;
-// The collision moment: a large ghost of the clasp settles into the mark...
+// The collision moment: a large ghost of the clasp holds for a beat, then
+// settles into the mark...
 const HAND_AFTERIMAGE_SCALE = 5;
+const HAND_HOLD_MS = 1000;
 // ...inside a click-ripple borrowed from the portrait viz. Geometry (random
 // per-touch size, small jittered core, stop-point compression, bold stroke)
 // comes from CLICK_DEFAULTS so the rings stack tightly like the archive's
@@ -736,11 +738,18 @@ export function createTouchesSketch(
         }
         ctx.restore();
 
-        // Afterimage: the clasp lands large and colorful, then settles —
-        // shrinking and bleaching — into the permanent mark beneath it.
+        // Afterimage: the clasp lands large and colorful, holds for a beat,
+        // then settles — shrinking and bleaching — into the permanent mark
+        // beneath it.
         if (settingsRef.current.markStyle === "hands") {
-          const scaleMul = 1 + (HAND_AFTERIMAGE_SCALE - 1) * (1 - eased);
-          const fade = (1 - progress) ** 1.2;
+          const settleSpan = Math.max(1, BURST_LIFE_MS - HAND_HOLD_MS);
+          const settleProgress = Math.min(
+            1,
+            Math.max(0, (age - HAND_HOLD_MS) / settleSpan),
+          );
+          const settleEased = 1 - (1 - settleProgress) ** 3;
+          const scaleMul = 1 + (HAND_AFTERIMAGE_SCALE - 1) * (1 - settleEased);
+          const fade = (1 - settleProgress) ** 1.2;
           const bleachTarget = night
             ? p.color(255, 250, 240)
             : p.color(250, 247, 242);
@@ -748,7 +757,7 @@ export function createTouchesSketch(
             const bleached = p.lerpColor(
               p.color(hand.colorStr),
               bleachTarget,
-              0.35 + 0.27 * eased,
+              0.35 + 0.27 * settleEased,
             );
             bleached.setAlpha((night ? 165 : 200) * fade);
             const ghost = inkAdjusted(p.color(hand.colorStr), night);
