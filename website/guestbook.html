@@ -86,20 +86,19 @@
     <p class="hint">
       a guestbook where standing <em>accrues naturally</em>, the way it does in
       a real place. nobody signs up for anything — the room simply remembers
-      who keeps coming back. the playhtml server counts your visits against
-      your key (one per day), so the ladder can't be climbed by clearing
-      cookies or refreshing furiously.
+      who keeps coming back. the playhtml server counts verified sessions
+      against your key, so the ladder can't be climbed by clearing cookies.
     </p>
 
     <div id="ladder">
-      <div class="rung" data-rung="visitor"><b>🌒 visitor</b>day one — read the book</div>
-      <div class="rung" data-rung="returning"><b>🌓 returning</b>2nd day — sign the book</div>
-      <div class="rung" data-rung="regular"><b>🌕 regular</b>5th day — sweep up after others</div>
+      <div class="rung" data-rung="visitor"><b>🌒 visitor</b>first session — read the book</div>
+      <div class="rung" data-rung="returning"><b>🌓 returning</b>2nd session — sign the book</div>
+      <div class="rung" data-rung="regular"><b>🌕 regular</b>5th session — sweep up after others</div>
       <div class="rung" data-rung="keeper"><b>🗝️ keeper</b>holds the deed — anything, incl. the rules</div>
     </div>
     <p id="standing">checking your standing…</p>
 
-    <div id="village-guestbook"></div>
+    <div id="village-guestbook" can-play></div>
 
     <div id="sign-box">
       <input id="sign-name" placeholder="your name" maxlength="40" />

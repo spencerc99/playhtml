@@ -1,6 +1,10 @@
 // ABOUTME: The village guestbook — canonical earned-roles example: visitors read,
 // ABOUTME: returning visitors sign, regulars moderate, the keeper (owner pk) holds the deed.
 import { playhtml } from "../packages/playhtml/src";
+import {
+  describeGuestbookStanding,
+  type GuestbookCounterName,
+} from "./utils/guestbookStanding";
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -41,6 +45,8 @@ function myRung(): Rung {
 }
 
 const RUNG_ORDER: Rung[] = ["visitor", "returning", "regular", "keeper"];
+const STANDING_COUNTER: GuestbookCounterName = "sessions";
+const REGULAR_THRESHOLD = 5;
 
 function renderStanding(): void {
   const me = playhtml.me;
@@ -53,24 +59,18 @@ function renderStanding(): void {
     el.classList.toggle("next", idx === rungIndex + 1);
   });
 
-  const days = me.counters?.days;
-  const dayText =
-    days === undefined
-      ? playhtml.permissionsEnforced
-        ? "verifying…"
-        : "client-only mode — the room can't count days without the server"
-      : `the room has seen you on ${days} day${days === 1 ? "" : "s"}`;
-  $("standing").textContent = `you are a ${rung} · ${dayText}`;
-
   const canSign = playhtml.can("create", "#village-guestbook");
   ($("sign-btn") as HTMLButtonElement).disabled = !canSign;
-  $("sign-note").textContent = canSign
-    ? rung === "keeper"
-      ? "the book is yours to tend."
-      : "you may sign. regulars (5 days) may also sweep up."
-    : days === undefined
-      ? ""
-      : "come back tomorrow and the book will take your signature — standing here is earned by returning, not by asking.";
+  const copy = describeGuestbookStanding({
+    rung,
+    counterName: STANDING_COUNTER,
+    counters: me.counters,
+    permissionsEnforced: playhtml.permissionsEnforced,
+    canSign,
+    regularThreshold: REGULAR_THRESHOLD,
+  });
+  $("standing").textContent = copy.standing;
+  $("sign-note").textContent = copy.signNote;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ void playhtml.init({
   cursors: { enabled: true },
   permissions: {
     // Mirrors /.well-known/playhtml.json. `create:returning` is deliberately
-    // NOT mirrored: visit counts only exist server-side, so in client-only
+    // NOT mirrored: earned counters only exist server-side, so in client-only
     // mode signing stays open rather than impossible.
     elements: {
       "village-guestbook": "update:creator, delete:creator|regular|admin",

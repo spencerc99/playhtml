@@ -1,6 +1,6 @@
 // ABOUTME: Verifies server auth policy: room-name parsing, challenge verification,
 // ABOUTME: session pruning, well-known config sanitization, and gated-write evaluation.
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import {
   parseRoomName,
   wellKnownUrlForDomain,
@@ -244,12 +244,15 @@ describe("sanitizeWellKnownConfig", () => {
   });
 
   it("drops CSS-selector patterns (never matchable server-side)", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
     const config = sanitizeWellKnownConfig({
       elements: { "[data-note]": "write:admin", "real-id": "write:admin" },
       rules: [{ match: ".note", write: "admin" }],
     });
     expect(config).not.toBeNull();
     expect(config!.rules!.map((r) => r.match)).toEqual(["real-id"]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
   });
 });
 
