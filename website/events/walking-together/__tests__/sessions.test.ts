@@ -6,6 +6,7 @@ import {
   SESSIONS,
   sessionRoom,
   roomForSession,
+  roomForCurrentPage,
   defaultSession,
   findSession,
   parseSessionId,
@@ -54,5 +55,36 @@ describe("sessions", () => {
     const byod = findSession("2026-06-06-byod")!;
     expect(byod.room).toBeUndefined();
     expect(roomForSession(byod)).toBe("walking-together-2026-06-06-byod");
+  });
+
+  it("roomForCurrentPage accepts testRoom only on local hosts", () => {
+    const byod = findSession("2026-06-06-byod")!;
+
+    expect(
+      roomForCurrentPage(
+        byod,
+        new URL(
+          "http://localhost:5173/events/walking-together/session.html?testRoom=codex",
+        ),
+      ),
+    ).toBe("codex");
+
+    expect(
+      roomForCurrentPage(
+        byod,
+        new URL(
+          "http://127.0.0.1:5173/events/walking-together/session.html?testRoom=codex",
+        ),
+      ),
+    ).toBe("codex");
+
+    expect(
+      roomForCurrentPage(
+        byod,
+        new URL(
+          "https://playhtml.fun/events/walking-together/session.html?testRoom=codex",
+        ),
+      ),
+    ).toBe(roomForSession(byod));
   });
 });

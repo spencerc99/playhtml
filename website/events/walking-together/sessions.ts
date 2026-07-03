@@ -72,6 +72,20 @@ export function roomForSession(session: WorkshopSession): string {
   return session.room ?? sessionRoom(session.id);
 }
 
+export function roomForCurrentPage(
+  session: WorkshopSession,
+  location: URL,
+): string {
+  const testRoom = location.searchParams.get("testRoom");
+  const allowTestRoom =
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1" ||
+    location.hostname === "::1";
+
+  if (testRoom && allowTestRoom) return testRoom;
+  return roomForSession(session);
+}
+
 /** The latest non-archived session. */
 export function defaultSession(): WorkshopSession {
   const active = SESSIONS.filter((s) => !s.archived);
