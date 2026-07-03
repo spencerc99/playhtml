@@ -3,6 +3,7 @@
 
 import p5 from "p5";
 import { Trail } from "../shared/types";
+import { CLICK_DEFAULTS } from "../shared/components/clickDefaults";
 import { hashString, seededRandom } from "../shared/utils/styleUtils";
 import {
   CursorTouch,
@@ -41,7 +42,7 @@ export interface SketchSettings {
   markStyle: MarkStyle;
 }
 
-const BURST_LIFE_MS = 1800;
+const BURST_LIFE_MS = 2800;
 const BURST_MAX_RADIUS = 95;
 const CURSOR_WAKE_MS = 450;
 /** How far ahead of a touch its before-glow starts building (timeline ms). */
@@ -62,14 +63,15 @@ const HAND_SCALE = 0.72;
 // hands instead of a hold.
 const HAND_CLASP_OFFSET_PX = 2.6;
 // The collision moment: a large ghost of the clasp settles into the mark...
-const HAND_AFTERIMAGE_SCALE = 3;
-// ...inside a click-ripple borrowed from the portrait viz (staggered rings
-// easing out to spaced radii), except these fade away instead of persisting.
-const RIPPLE_RINGS = 3;
-const RIPPLE_STAGGER_MS = 140;
-const RIPPLE_CORE_RADIUS = 6;
-const RIPPLE_OUTER_RADIUS = 58;
-const RIPPLE_EXPANSION_MS = 1100;
+const HAND_AFTERIMAGE_SCALE = 5;
+// ...inside a click-ripple borrowed from the portrait viz. Geometry (random
+// per-touch size, small jittered core, stop-point compression, bold stroke)
+// comes from CLICK_DEFAULTS so the rings stack tightly like the archive's
+// clicks; only ring count and timing are this page's own, and these fade
+// away instead of persisting.
+const RIPPLE_RINGS = 8;
+const RIPPLE_STAGGER_MS = 50;
+const RIPPLE_EXPANSION_MS = 1300;
 const NIGHT_BG: [number, number, number] = [16, 13, 19];
 const DAY_BG: [number, number, number] = [250, 247, 242];
 
@@ -765,25 +767,39 @@ export function createTouchesSketch(
           }
         }
 
-        // The borrowed click ripple: staggered rings easing out to spaced
-        // radii like the portrait viz's clicks, but fading away entirely.
-        const velocity = RIPPLE_OUTER_RADIUS / RIPPLE_EXPANSION_MS;
+        // The borrowed click ripple, with the archive's default geometry:
+        // a random per-touch size compressed by the animation stop point so
+        // rings stack tightly, expanding from a small jittered core at
+        // constant shared velocity — but fading away entirely.
+        const radiusFactor = seededRandom(seed, 7);
+        const outerTarget =
+          (CLICK_DEFAULTS.clickMinRadius +
+            radiusFactor *
+              (CLICK_DEFAULTS.clickMaxRadius - CLICK_DEFAULTS.clickMinRadius)) *
+          CLICK_DEFAULTS.clickAnimationStopPoint;
+        const coreRadius = Math.max(
+          1,
+          Math.min(
+            CLICK_DEFAULTS.clickCoreRadius + (radiusFactor - 0.5) * 4,
+            outerTarget,
+          ),
+        );
+        const velocity = outerTarget / RIPPLE_EXPANSION_MS;
         p.noFill();
         for (let i = 0; i < RIPPLE_RINGS; i++) {
           const ringElapsed = age - i * RIPPLE_STAGGER_MS;
           if (ringElapsed < 0) continue;
           const target =
             RIPPLE_RINGS === 1
-              ? RIPPLE_OUTER_RADIUS
-              : RIPPLE_CORE_RADIUS +
-                ((RIPPLE_OUTER_RADIUS - RIPPLE_CORE_RADIUS) * i) /
-                  (RIPPLE_RINGS - 1);
+              ? outerTarget
+              : coreRadius +
+                ((outerTarget - coreRadius) * i) / (RIPPLE_RINGS - 1);
           const ringDuration = Math.max(1, target / velocity);
           const raw = Math.min(1, ringElapsed / ringDuration);
           const radius = target * (1 - (1 - raw) ** 3);
-          mixed.setAlpha((night ? 160 : 130) * alpha);
+          mixed.setAlpha(255 * CLICK_DEFAULTS.clickOpacity * alpha);
           p.stroke(mixed);
-          p.strokeWeight(1.4);
+          p.strokeWeight(CLICK_DEFAULTS.clickStrokeWidth);
           p.circle(touch.x, touch.y, radius * 2);
         }
         return;
