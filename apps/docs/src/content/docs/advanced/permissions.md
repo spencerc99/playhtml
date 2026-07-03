@@ -35,9 +35,20 @@ Put your rules at `https://your-domain/.well-known/playhtml.json`:
 
 ```json
 {
+  "roles": {
+    "admin": ["pk_04a1…"],
+    "returning": { "days": 2 }
+  },
   "elements": {
-    "site-title": "write:pk_04a1…",
-    "guestbook": "create:verified, update:creator, delete:creator|pk_04a1…"
+    "/*": {
+      "site-title": "write:admin"
+    },
+    "/wall": {
+      "guestbook": "create:returning, update:creator, delete:creator|admin"
+    },
+    "/blog/*": {
+      "comment-*": "create:verified, update:creator, delete:creator|admin"
+    }
   }
 }
 ```
@@ -50,13 +61,43 @@ That's the whole setup. It's just a static file — whoever controls the domain 
 
 The same rules arrive in the browser automatically, so `can()`, disabled buttons, and `permissiondenied` events all work **without any init config**.
 
+`elements` is keyed by page path. Use:
+
+- `"/wall"` for one exact page.
+- `"/blog/*"` for a trailing-prefix glob; it matches `/blog`, `/blog/post-1`, and deeper paths.
+- `"/*"` for a site-wide default. If you leave it out, unlisted pages are open unless another rule matches them.
+
+When multiple paths match the same element id, the most specific path wins and replaces the less specific rule for that element. Exact paths beat globs, longer globs beat shorter globs, and `"/*"` is the fallback. The replacement is per element, not per action: a `/blog/post-1` rule for `comment-*` does not inherit `delete` from a broader `/blog/*` rule.
+
+For small sites, the older flat form still works and means `"/*"`:
+
+```json
+{
+  "elements": {
+    "site-title": "write:admin",
+    "guestbook": "create:verified, update:creator"
+  }
+}
+```
+
 ### The spec mini-language
 
 `action:role` pairs, comma-separated; alternatives join with `|`.
 
 - **Actions:** `write` (replace the element's data), and for keyed-map collections `create` / `update` / `delete` (per entry). Entry actions fall back to the `write` requirement when unspecified.
 - **Roles:** `anyone` (default), `verified` (proved key ownership), `creator` (the pid stamped on an entry at create time), any name you define under `roles`, or a **raw `pk_…` key** — so single-owner sites need no role definitions at all.
-- **Targets:** an element id (leading `#` optional) or a trailing-`*` glob (`note-*`). Scope a rule to one page with the rule-object form: `"rules": [{ "path": "/wall", "match": "site-title", "write": "admin" }]`.
+- **Targets:** an element id (leading `#` optional) or a trailing-`*` glob (`note-*`).
+
+The low-level `rules` array is still available as an escape hatch when you want to write normalized rule objects directly:
+
+```json
+{
+  "rules": [
+    { "path": "/wall", "match": "site-title", "write": "admin" },
+    { "path": "/blog/*", "match": "comment-*", "update": "creator" }
+  ]
+}
+```
 
 Named roles, when you want them — defined as explicit key lists **or earned by showing up**:
 
@@ -72,8 +113,12 @@ Earned roles (the `{ "days": N }` / `{ "sessions": N }` counter conditions below
     "regular": { "days": 5 }
   },
   "elements": {
-    "site-title": "write:admin",
-    "guestbook": "create:returning, update:creator, delete:creator|regular|admin"
+    "/*": {
+      "site-title": "write:admin"
+    },
+    "/guestbook": {
+      "guestbook": "create:returning, update:creator, delete:creator|regular|admin"
+    }
   }
 }
 ```

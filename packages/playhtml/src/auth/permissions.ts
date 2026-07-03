@@ -6,7 +6,7 @@ import type {
   PermissionAction,
   PermissionActionSpec,
   PermissionRule,
-  ElementRulesMap,
+  ElementPermissionsMap,
   EnforceableRoles,
   PermissionsStatusMessage,
   PlayerIdentity,
@@ -19,8 +19,10 @@ import {
   matchesRulePattern,
   meetsEarnedCondition,
   normalizeElementRules,
+  pathSpecificity,
   parsePermissionsSpec,
   requiredRolesForAction,
+  ruleAppliesToPath,
   satisfiesRole,
 } from "@playhtml/common";
 
@@ -48,7 +50,7 @@ export interface PermissionsConfig {
    * attribute. Raw "pk_…" keys work anywhere a role name does.
    * Example: { "#site-title": "write:admin" }
    */
-  elements?: ElementRulesMap;
+  elements?: ElementPermissionsMap;
   /** Low-level rule list; `elements` is normalized into this form. */
   rules?: PermissionRule[];
 }
@@ -286,6 +288,11 @@ function resolveTarget(
   return { element: target, elementId: target.id || null };
 }
 
+function getCurrentRoomPath(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.location.pathname || "/";
+}
+
 /**
  * Required roles for an action on a target, or null when unrestricted.
  * Precedence: element `permissions` attribute, then client init rules
@@ -305,15 +312,31 @@ function requiredRolesForTarget(
     }
   }
 
+  let winningClientRule: PermissionRule | null = null;
+  let winningClientSpecificity = -1;
+  const roomPath = getCurrentRoomPath();
+  const effectiveRoomPath = roomPath ?? "";
+
   for (const rule of state.clientRules) {
+    if (!ruleAppliesToPath(rule, roomPath)) continue;
     const matches = element
       ? safeMatches(element, rule.match) ||
         (elementId !== null && matchesRulePattern(rule.match, elementId))
       : elementId !== null && matchesRulePattern(rule.match, elementId);
     if (!matches) continue;
-    const specific = rule[action];
+    const specificity = pathSpecificity(rule.path, effectiveRoomPath);
+    if (specificity > winningClientSpecificity) {
+      winningClientRule = rule;
+      winningClientSpecificity = specificity;
+    }
+  }
+
+  if (winningClientRule) {
+    const specific = winningClientRule[action];
     if (specific !== undefined) return specific;
-    if (action !== "write" && rule.write !== undefined) return rule.write;
+    if (action !== "write" && winningClientRule.write !== undefined) {
+      return winningClientRule.write;
+    }
   }
 
   if (state.serverStatus && elementId !== null) {
@@ -406,7 +429,9 @@ export function isLocallyGated(
   elementId: string,
 ): boolean {
   if (element.hasAttribute("permissions")) return true;
+  const roomPath = getCurrentRoomPath();
   for (const rule of state.clientRules) {
+    if (!ruleAppliesToPath(rule, roomPath)) continue;
     if (
       safeMatches(element, rule.match) ||
       matchesRulePattern(rule.match, elementId)

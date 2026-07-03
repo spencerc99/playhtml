@@ -22,6 +22,9 @@ import {
   satisfiesRole,
   signAuthPayload,
   matchesRulePattern,
+  normalizeElementRules,
+  pathSpecificity,
+  ruleAppliesToPath,
   requiredRolesForAction,
   isVerifiablePublicKey,
   type PermissionRule,
@@ -243,6 +246,26 @@ describe("sanitizeWellKnownConfig", () => {
     expect(config!.rules![1].update).toBe("creator");
   });
 
+  it("accepts path-keyed elements and drops invalid path keys", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const config = sanitizeWellKnownConfig({
+      elements: {
+        "/*": { "site-title": "write:admin" },
+        "/wall": { guestbook: "create:verified" },
+        "/bad/*/path": { broken: "write:admin" },
+        "/bad**": { alsoBroken: "write:admin" },
+      },
+    });
+
+    expect(config).not.toBeNull();
+    expect(config!.rules).toEqual([
+      { match: "site-title", path: "/*", write: "admin" },
+      { match: "guestbook", path: "/wall", create: "verified" },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
   it("drops CSS-selector patterns (never matchable server-side)", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     const config = sanitizeWellKnownConfig({
@@ -421,6 +444,65 @@ describe("rule matching", () => {
     expect(matchesRulePattern("note-*", "other")).toBe(false);
   });
 
+  it("normalizes flat and path-keyed element maps", () => {
+    expect(
+      normalizeElementRules({
+        "site-title": "write:admin",
+        "note-*": { update: "creator" },
+      })
+    ).toEqual([
+      { match: "site-title", write: "admin" },
+      { match: "note-*", update: "creator" },
+    ]);
+
+    expect(
+      normalizeElementRules({
+        "/*": { "site-title": "write:admin" },
+        "/blog/*": { "comment-*": "write:verified" },
+      })
+    ).toEqual([
+      { path: "/*", match: "site-title", write: "admin" },
+      { path: "/blog/*", match: "comment-*", write: "verified" },
+    ]);
+  });
+
+  it("warns and falls back to flat normalization for mixed element maps", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+
+    const rules = normalizeElementRules({
+      "/*": { "site-title": "write:admin" },
+      guestbook: "create:verified",
+    });
+
+    expect(rules).toEqual([{ match: "guestbook", create: "verified" }]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0]).toLowerCase()).toContain("mixed");
+    warn.mockRestore();
+  });
+
+  it("matches rule paths by exact value, trailing glob, /*, and omitted path", () => {
+    expect(ruleAppliesToPath({}, undefined)).toBe(true);
+    expect(ruleAppliesToPath({ path: "/*" }, undefined)).toBe(true);
+    expect(ruleAppliesToPath({ path: "/*" }, "/wall")).toBe(true);
+    expect(ruleAppliesToPath({ path: "/wall" }, "/wall")).toBe(true);
+    expect(ruleAppliesToPath({ path: "/wall" }, "/wall/post")).toBe(false);
+    expect(ruleAppliesToPath({ path: "/blog/*" }, "/blog")).toBe(true);
+    expect(ruleAppliesToPath({ path: "/blog/*" }, "/blog/post-1")).toBe(true);
+    expect(ruleAppliesToPath({ path: "/blog/*" }, "/blogroll")).toBe(false);
+  });
+
+  it("ranks path specificity with exact over longer glob over catch-all", () => {
+    expect(pathSpecificity("/blog/post-1", "/blog/post-1")).toBeGreaterThan(
+      pathSpecificity("/blog/*", "/blog/post-1")
+    );
+    expect(pathSpecificity("/blog/deep/*", "/blog/deep/post-1")).toBeGreaterThan(
+      pathSpecificity("/blog/*", "/blog/deep/post-1")
+    );
+    expect(pathSpecificity("/*", "/blog/post-1")).toBe(
+      pathSpecificity(undefined, "/blog/post-1")
+    );
+  });
+
   it("falls back from entry actions to the write requirement", () => {
     const rules: PermissionRule[] = [{ match: "x", write: "admin" }];
     expect(requiredRolesForAction(rules, "x", "delete")).toBe("admin");
@@ -435,6 +517,39 @@ describe("rule matching", () => {
     expect(requiredRolesForAction(rules, "x", "write", "/other")).toBeNull();
     expect(isElementGated(rules, "x", "/wall")).toBe(true);
     expect(isElementGated(rules, "x", "/other")).toBe(false);
+  });
+
+  it("uses the most specific matching path per element id without merging actions", () => {
+    const rules: PermissionRule[] = [
+      { match: "comment-1", path: "/*", write: "admin", delete: "admin" },
+      { match: "comment-1", path: "/blog/*", write: "verified" },
+      { match: "comment-1", path: "/blog/post-1", update: "creator" },
+    ];
+
+    expect(
+      requiredRolesForAction(rules, "comment-1", "write", "/blog/post-1")
+    ).toBeNull();
+    expect(requiredRolesForAction(rules, "comment-1", "update", "/blog/post-1")).toBe(
+      "creator"
+    );
+    expect(
+      requiredRolesForAction(rules, "comment-1", "delete", "/blog/post-1")
+    ).toBeNull();
+    expect(
+      requiredRolesForAction(rules, "comment-1", "delete", "/blog/post-2")
+    ).toBe("verified");
+    expect(
+      requiredRolesForAction(rules, "comment-1", "delete", "/other")
+    ).toBe("admin");
+  });
+
+  it("keeps the first rule when matching paths tie", () => {
+    const rules: PermissionRule[] = [
+      { match: "x", path: "/wall", write: "admin" },
+      { match: "x", path: "/wall", write: "verified" },
+    ];
+
+    expect(requiredRolesForAction(rules, "x", "write", "/wall")).toBe("admin");
   });
 });
 

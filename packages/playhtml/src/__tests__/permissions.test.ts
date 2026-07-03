@@ -40,6 +40,7 @@ function makeElement(id: string, attrs: Record<string, string> = {}): HTMLElemen
 beforeEach(() => {
   __resetPermissionsForTests();
   document.body.innerHTML = "";
+  window.history.pushState({}, "", "/");
 });
 
 describe("parsePermissionsAttribute", () => {
@@ -175,6 +176,59 @@ describe("ergonomic config forms", () => {
     expect(can("update", notes, { entry: { createdBy: OTHER_PK } })).toBe(true);
     expect(can("update", notes, { entry: { createdBy: ADMIN_PK } })).toBe(false);
   });
+
+  it("applies path-keyed element rules only on matching paths", () => {
+    window.history.pushState({}, "", "/wall");
+    configurePermissions({
+      roles: { admin: [ADMIN_PK] },
+      elements: {
+        "/wall": { title: "write:admin" },
+      },
+    });
+    const title = makeElement("title");
+    setIdentity(identity(OTHER_PK));
+
+    expect(can("write", title)).toBe(false);
+
+    window.history.pushState({}, "", "/other");
+    expect(can("write", title)).toBe(true);
+  });
+
+  it("treats flat element rules as applying on every path", () => {
+    window.history.pushState({}, "", "/other");
+    configurePermissions({
+      roles: { admin: [ADMIN_PK] },
+      elements: { title: "write:admin" },
+    });
+    const title = makeElement("title");
+    setIdentity(identity(OTHER_PK));
+
+    expect(can("write", title)).toBe(false);
+  });
+
+  it("uses the most specific path client-side without merging actions", () => {
+    window.history.pushState({}, "", "/blog/post-1");
+    configurePermissions({
+      roles: { admin: [ADMIN_PK] },
+      elements: {
+        "/*": { comment: "write:admin, delete:admin" },
+        "/blog/*": { comment: "write:verified" },
+        "/blog/post-1": { comment: { update: "creator" } },
+      },
+    });
+    const comment = makeElement("comment");
+    setIdentity(identity(OTHER_PK));
+
+    expect(can("write", comment)).toBe(true);
+    expect(can("delete", comment)).toBe(true);
+    expect(can("update", comment, { creator: OTHER_PK })).toBe(true);
+    expect(can("update", comment, { creator: ADMIN_PK })).toBe(false);
+
+    window.history.pushState({}, "", "/blog/post-2");
+    expect(can("write", comment)).toBe(false);
+    setVerified(true);
+    expect(can("write", comment)).toBe(true);
+  });
 });
 
 describe("earned roles (server-attested days)", () => {
@@ -258,6 +312,36 @@ describe("server gating + local gating detection", () => {
     });
     expect(isServerGated("note-42")).toBe(true);
     expect(isServerGated("other")).toBe(false);
+  });
+
+  it("detects server and local gating with matching glob paths", () => {
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: {},
+      rules: [{ match: "title", path: "/blog/*", write: "admin" }],
+      roomPath: "/blog/post-1",
+    });
+    expect(isServerGated("title")).toBe(true);
+
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: {},
+      rules: [{ match: "title", path: "/blog/*", write: "admin" }],
+      roomPath: "/other",
+    });
+    expect(isServerGated("title")).toBe(false);
+
+    window.history.pushState({}, "", "/blog/post-1");
+    configurePermissions({
+      elements: { "/blog/*": { title: "write:admin" } },
+    });
+    const title = makeElement("title");
+    expect(isLocallyGated(title, "title")).toBe(true);
+
+    window.history.pushState({}, "", "/other");
+    expect(isLocallyGated(title, "title")).toBe(false);
   });
 
   it("isLocallyGated detects attribute, config-rule, and server-rule gating", () => {

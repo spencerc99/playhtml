@@ -151,6 +151,15 @@ export type PermissionActionSpec = Partial<Record<PermissionAction, RoleRef>>;
  */
 export type ElementRulesMap = Record<string, string | PermissionActionSpec>;
 
+/**
+ * Map of room path pattern to an ElementRulesMap. Path keys are exact paths
+ * or trailing-* prefix globs; "/*" scopes rules to all room paths.
+ */
+export type PathKeyedElementRulesMap = Record<string, ElementRulesMap>;
+
+/** The `elements` config accepts either a flat all-path map or a path-keyed map. */
+export type ElementPermissionsMap = ElementRulesMap | PathKeyedElementRulesMap;
+
 export interface PermissionRule {
   /**
    * Element id pattern: an exact element id, or a prefix glob with a trailing
@@ -235,8 +244,11 @@ export type EnforceableRoles = Record<string, EnforceableRoleDefinition>;
 export interface WellKnownPermissionsConfig {
   roles?: EnforceableRoles;
   rules?: PermissionRule[];
-  /** Ergonomic alternative to `rules`: pattern -> spec map (normalized into rules). */
-  elements?: ElementRulesMap;
+  /**
+   * Ergonomic alternative to `rules`: either a flat pattern -> spec map scoped
+   * to all paths, or a path -> ElementRulesMap outer map.
+   */
+  elements?: ElementPermissionsMap;
 }
 
 /**
@@ -293,17 +305,82 @@ export function serializePermissionsSpec(
     .join(", ");
 }
 
+function parseElementActionSpec(spec: unknown): PermissionActionSpec | null {
+  if (typeof spec === "string") return parsePermissionsSpec(spec);
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+    return null;
+  }
+
+  const actionSpec: PermissionActionSpec = {};
+  for (const action of PERMISSION_ACTIONS) {
+    const value = (spec as Record<string, unknown>)[action];
+    if (typeof value === "string") actionSpec[action] = value;
+    else if (
+      Array.isArray(value) &&
+      value.every((v) => typeof v === "string")
+    ) {
+      actionSpec[action] = value as string[];
+    }
+  }
+  return actionSpec;
+}
+
+function getElementRulesMapKind(
+  elements: Record<string, unknown>,
+): "flat" | "path-keyed" | "mixed" {
+  const keys = Object.keys(elements);
+  const pathKeys = keys.filter((key) => key.startsWith("/"));
+  if (pathKeys.length === 0) return "flat";
+  if (pathKeys.length === keys.length) return "path-keyed";
+  return "mixed";
+}
+
+function warnMixedElementRulesMap(): void {
+  console.warn(
+    "[playhtml] Mixed permissions.elements map: top-level keys must be either all room paths or all element patterns. Treating the entire map as flat.",
+  );
+}
+
+function pushNormalizedElementRule(
+  rules: PermissionRule[],
+  match: string,
+  spec: unknown,
+  path?: string,
+): void {
+  if (!match) return;
+  const actionSpec = parseElementActionSpec(spec);
+  if (!actionSpec || Object.keys(actionSpec).length === 0) return;
+  rules.push(
+    path === undefined ? { match, ...actionSpec } : { path, match, ...actionSpec },
+  );
+}
+
 /** Normalizes the ergonomic elements-map form into rule objects. */
 export function normalizeElementRules(
-  elements: ElementRulesMap,
+  elements: ElementPermissionsMap,
 ): PermissionRule[] {
   const rules: PermissionRule[] = [];
-  for (const [match, spec] of Object.entries(elements)) {
-    if (!match) continue;
-    const actionSpec =
-      typeof spec === "string" ? parsePermissionsSpec(spec) : spec;
-    if (!actionSpec || Object.keys(actionSpec).length === 0) continue;
-    rules.push({ match, ...actionSpec });
+  const input = elements as Record<string, unknown>;
+  const kind = getElementRulesMapKind(input);
+
+  if (kind === "mixed") {
+    warnMixedElementRulesMap();
+  }
+
+  if (kind === "path-keyed") {
+    for (const [path, inner] of Object.entries(input)) {
+      if (typeof inner !== "object" || inner === null || Array.isArray(inner)) {
+        continue;
+      }
+      for (const [match, spec] of Object.entries(inner)) {
+        pushNormalizedElementRule(rules, match, spec, path);
+      }
+    }
+    return rules;
+  }
+
+  for (const [match, spec] of Object.entries(input)) {
+    pushNormalizedElementRule(rules, match, spec);
   }
   return rules;
 }
@@ -324,8 +401,30 @@ export function ruleAppliesToPath(
   roomPath: string | undefined,
 ): boolean {
   if (!rule.path) return true;
+  if (rule.path === "/*") return true;
   if (roomPath === undefined) return false;
+  if (rule.path.endsWith("*")) {
+    const prefix = rule.path.slice(0, -1);
+    const exactBase =
+      prefix.length > 1 && prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return roomPath === exactBase || roomPath.startsWith(prefix);
+  }
   return rule.path === roomPath;
+}
+
+export function pathSpecificity(
+  rulePath: string | undefined,
+  roomPath: string,
+): number {
+  if (!rulePath || rulePath === "/*") return 0;
+  if (rulePath.endsWith("*")) {
+    const prefix = rulePath.slice(0, -1);
+    const exactBase =
+      prefix.length > 1 && prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    if (roomPath !== exactBase && !roomPath.startsWith(prefix)) return -1;
+    return 10_000 + exactBase.length;
+  }
+  return rulePath === roomPath ? 1_000_000 + rulePath.length : -1;
 }
 
 export function findRulesForElement(
@@ -352,11 +451,23 @@ export function requiredRolesForAction(
   action: PermissionAction,
   roomPath?: string,
 ): RoleRef | null {
-  for (const rule of findRulesForElement(rules, elementId, roomPath)) {
-    const specific = rule[action];
-    if (specific !== undefined) return specific;
-    if (action !== "write" && rule.write !== undefined) return rule.write;
+  const matchingRules = findRulesForElement(rules, elementId, roomPath);
+  let winner: PermissionRule | null = null;
+  let winnerSpecificity = -1;
+  const effectiveRoomPath = roomPath ?? "";
+
+  for (const rule of matchingRules) {
+    const specificity = pathSpecificity(rule.path, effectiveRoomPath);
+    if (specificity > winnerSpecificity) {
+      winner = rule;
+      winnerSpecificity = specificity;
+    }
   }
+
+  if (!winner) return null;
+  const specific = winner[action];
+  if (specific !== undefined) return specific;
+  if (action !== "write" && winner.write !== undefined) return winner.write;
   return null;
 }
 
@@ -485,28 +596,51 @@ export function sanitizeWellKnownConfig(
     if (rules.length < maxRules) rules.push(rule);
   };
 
-  // Ergonomic map form: { "site-title": "write:admin", … }
+  const isValidPathKey = (path: string): boolean => {
+    if (!path.startsWith("/")) return false;
+    const firstStar = path.indexOf("*");
+    return (
+      firstStar === -1 ||
+      (firstStar === path.length - 1 &&
+        path.indexOf("*", firstStar + 1) === -1)
+    );
+  };
+
+  // Ergonomic map form: { "site-title": "write:admin", … } or { "/wall": { … } }
   if (typeof input.elements === "object" && input.elements !== null) {
-    for (const [match, spec] of Object.entries(input.elements)) {
-      if (!match) continue;
-      let actionSpec: PermissionActionSpec | null = null;
-      if (typeof spec === "string") {
-        actionSpec = parsePermissionsSpec(spec);
-      } else if (typeof spec === "object" && spec !== null) {
-        actionSpec = {};
-        for (const action of PERMISSION_ACTIONS) {
-          const value = (spec as Record<string, unknown>)[action];
-          if (typeof value === "string") actionSpec[action] = value;
-          else if (
-            Array.isArray(value) &&
-            value.every((v) => typeof v === "string")
-          ) {
-            actionSpec[action] = value as string[];
-          }
+    const elements = input.elements as Record<string, unknown>;
+    const kind = getElementRulesMapKind(elements);
+    if (kind === "mixed") {
+      warnMixedElementRulesMap();
+    }
+
+    if (kind === "path-keyed") {
+      for (const [path, inner] of Object.entries(elements)) {
+        if (!isValidPathKey(path)) {
+          console.warn(
+            `[playhtml] Dropping elements rules for invalid path key "${path}". Path keys must start with "/" and may use one trailing "*".`,
+          );
+          continue;
+        }
+        if (
+          typeof inner !== "object" ||
+          inner === null ||
+          Array.isArray(inner)
+        ) {
+          continue;
+        }
+        for (const [match, spec] of Object.entries(inner)) {
+          const actionSpec = parseElementActionSpec(spec);
+          if (!actionSpec || Object.keys(actionSpec).length === 0) continue;
+          pushRule({ match, path, ...actionSpec });
         }
       }
-      if (!actionSpec || Object.keys(actionSpec).length === 0) continue;
-      pushRule({ match, ...actionSpec });
+    } else {
+      for (const [match, spec] of Object.entries(elements)) {
+        const actionSpec = parseElementActionSpec(spec);
+        if (!actionSpec || Object.keys(actionSpec).length === 0) continue;
+        pushRule({ match, ...actionSpec });
+      }
     }
   }
 
