@@ -2067,6 +2067,23 @@ function reportDuplicateElementId(
   );
 }
 
+function removeDisconnectedElementHandlerForReplacement(
+  tag: TagType | string,
+  elementId: string,
+  replacementElement: HTMLElement,
+): void {
+  const existingHandler = elementHandlers.get(tag)?.get(elementId);
+  if (
+    !existingHandler ||
+    existingHandler.element === replacementElement ||
+    existingHandler.element.isConnected
+  ) {
+    return;
+  }
+
+  removePlayElement(existingHandler.element);
+}
+
 /**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
@@ -2109,6 +2126,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
 
   maybeSetupTag(tag);
   const tagElementHandlers = elementHandlers.get(tag)!;
+  removeDisconnectedElementHandlerForReplacement(tag, elementId, element);
 
   const elementInitializerInfo = getElementInitializerInfoForElement(
     tag,
@@ -2671,14 +2689,6 @@ function setupViewDescendants(root: HTMLElement): void {
       const existing = elementHandlers.get(tag)?.get(el.id);
       if (existing) {
         if (existing.element === el) continue; // already bound to this node
-        // Same id, different node: a keyed list reused the id on a fresh DOM
-        // node (lit-html replaced the old one). If the old node is detached,
-        // tear its handler down so the new node can bind — otherwise
-        // setupPlayElementForTag would reject it as a duplicate id and the new
-        // node would silently never bind.
-        if (!existing.element.isConnected) {
-          removePlayElement(existing.element);
-        }
       }
       void setupPlayElementForTag(el, tag);
     }
