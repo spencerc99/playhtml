@@ -379,9 +379,9 @@ function BunnyField() {
 
 ## can-mirror
 
-`can-mirror` syncs every change to the element — attributes, child nodes, and form state — to everyone, and saves them. You don't write any data or callbacks; just change the element with normal HTML, CSS, and JavaScript. Use it when the state you want to share is the DOM itself: a shared textarea, a form, a growing list of children.
+`can-mirror` syncs changes on the element you put it on: its attributes, its direct child list, and form or contenteditable state that surfaces through input/change events. It does not watch arbitrary descendant DOM mutations. If a nested list, card, or editor should own its own changes, put `can-mirror` on that nested element too and give it a stable `id`.
 
-Full treatment with live demos lives on **[Custom elements → can-mirror](/docs/custom-elements/#can-mirror)**, and the [mirror playground](/docs/advanced/mirror-playground/) walks every edge case (hover, focus, every form input, contenteditable, programmatic attribute changes).
+Full treatment with live demos lives on **[Custom elements → can-mirror](/docs/custom-elements/#can-mirror)**, and the [mirror playground](/docs/advanced/mirror-playground/) walks the common edge cases (hover, focus, form inputs, contenteditable, programmatic attribute changes, direct child changes, and nested opt-in elements).
 
 ## can-play
 

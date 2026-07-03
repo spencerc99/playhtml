@@ -1,4 +1,4 @@
-<!-- ABOUTME: Manual test page for can-mirror DOM, form, and subtree sync. -->
+<!-- ABOUTME: Manual test page for can-mirror DOM, form, and explicit child sync. -->
 <!-- ABOUTME: Provides browser controls for checking add, update, and removal behavior. -->
 <!DOCTYPE html>
 <html lang="en">
@@ -201,7 +201,7 @@
       <label>Toggle the details — open/closed state should sync (uses the native <code>open</code> attribute).</label>
       <details can-mirror id="m-details">
         <summary>Click to expand</summary>
-        <p>This content is hidden until the details element is opened. The <code>open</code> attribute is a regular DOM attribute, so the MutationObserver catches it automatically.</p>
+        <p>This content is hidden until the details element is opened. The <code>open</code> attribute lives on the mirrored element, so it syncs automatically.</p>
       </details>
     </section>
 
@@ -329,9 +329,9 @@
     <!-- NESTED CHILD REMOVAL -->
     <h2>Nested child removal</h2>
     <section>
-      <label>Remove children inside a nested list — nested removals should sync.</label>
-      <div can-mirror id="m-nested-removal" class="removal-target">
-        <ul>
+      <label>Remove children inside a nested list — the list itself has can-mirror, so its removals should sync.</label>
+      <div id="m-nested-removal" class="removal-target">
+        <ul can-mirror id="m-nested-removal-list">
           <li>Alpha</li>
           <li>Beta</li>
           <li>Gamma</li>
@@ -343,13 +343,13 @@
       </div>
       <script>
         function removeNestedRemovalItem() {
-          const list = document.querySelector("#m-nested-removal ul");
+          const list = document.getElementById("m-nested-removal-list");
           if (list.lastElementChild) {
             list.removeChild(list.lastElementChild);
           }
         }
         function restoreNestedRemovalItems() {
-          document.querySelector("#m-nested-removal ul").innerHTML =
+          document.getElementById("m-nested-removal-list").innerHTML =
             "<li>Alpha</li><li>Beta</li><li>Gamma</li>";
         }
       </script>

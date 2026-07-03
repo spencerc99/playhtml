@@ -1,9 +1,7 @@
-// ABOUTME: Implements the can-mirror capability for syncing full DOM element
-// ABOUTME: state (attributes, children, form values) across connected clients.
+// ABOUTME: Implements the can-mirror capability for syncing DOM element state
+// ABOUTME: such as attributes, direct children, and form values across clients.
 
 import type { ElementInitializer } from "./index";
-import { deepReplaceIntoProxy } from "./objectUtils";
-
 // Ephemeral attributes managed via awareness, not Yjs state.
 // The MutationObserver must ignore these to avoid polluting
 // persistent state with transient per-user presence.
@@ -52,11 +50,7 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
       );
       if (persistentMutations.length === 0) return;
       setDataAny((draft: any) => {
-        if (persistentMutations.some((m) => m.target !== element)) {
-          deepReplaceIntoProxy(draft, constructInitialState(element));
-        } else {
-          applyMutationsInPlace(draft, persistentMutations);
-        }
+        applyMutationsInPlace(draft, persistentMutations);
       });
     });
     // Store the observer on the element so updateElement can
@@ -145,8 +139,6 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
       obs.observe(element, {
         childList: true,
         attributes: true,
-        subtree: true,
-        characterData: true,
       });
     }
   },
@@ -243,8 +235,7 @@ function observeElementChanges(
   const defaultOptions = {
     childList: true,
     attributes: true,
-    subtree: true,
-    characterData: true,
+    characterData: false,
   };
 
   const config = { ...defaultOptions, ...options };
@@ -252,9 +243,7 @@ function observeElementChanges(
   const mutationCallback = (mutationsList: MutationRecord[]) => {
     const filteredMutations = mutationsList.filter((mutation) => {
       if (mutation.target !== element) {
-        if (!config.subtree || !element.contains(mutation.target)) {
-          return false;
-        }
+        return false;
       }
 
       if (config.childList && mutation.type === "childList") {
@@ -272,10 +261,6 @@ function observeElementChanges(
       }
 
       if (config.characterData && mutation.type === "characterData") {
-        return true;
-      }
-
-      if (config.subtree && mutation.type === "childList") {
         return true;
       }
 

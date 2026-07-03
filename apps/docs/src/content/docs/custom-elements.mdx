@@ -15,7 +15,7 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** state — a counter, a poll, a guestbook, a chat — you build a custom element. There are two approaches:
 
-- **`can-mirror`**: The DOM holds the state. All changes to the element are automatically synced (attributes, children, form state). No fine-grained control over what is synced, but very simple to get started because you can just write normal HTML, CSS, and JavaScript to make realtime, persistent changes.
+- **`can-mirror`**: The DOM holds the state. Changes on the mirrored element sync automatically: attributes, its direct child list, and form or contenteditable state from input/change events. Nested elements do not recursively mirror arbitrary DOM mutations unless you put `can-mirror` on those nested elements too.
 - **`can-play`**: You define shared data shapes that you use to update how the element shows up and behaves. You have full control over how the data affects what happens, which data should be persisted and which are only needed for real-time interactions.
 
 This page covers both. **Vanilla HTML** has the full range — `can-mirror`, `can-play`, and an experimental reactive `view` API. **React** has a single, declarative path: `withSharedState`. Pick your framework below.
@@ -38,9 +38,9 @@ Vanilla has three tools, from least code to most: `can-mirror` syncs the DOM as-
 
 ### can-mirror
 
-`can-mirror` syncs every change to the element — attributes, child nodes, and form state — to everyone, and saves them. You don't write any data or callbacks. Just add `can-mirror` and an `id`, then change the element with normal HTML, CSS, and JavaScript.
+`can-mirror` syncs changes on the element you put it on: its attributes, its direct child list, and form or contenteditable state that surfaces through input/change events. It does not watch arbitrary descendant DOM mutations. You don't write any data or callbacks. Just add `can-mirror` and an `id`, then change that element with normal HTML, CSS, and JavaScript.
 
-Use it when the state you want to share is the DOM itself: a shared textarea, a form, or a growing list of children.
+Use it when the state you want to share is the DOM itself: a shared textarea, a form, or a growing list of direct children. If a nested list, card, or editor should own its own changes, put `can-mirror` on that nested element too and give it a stable `id`.
 
 #### Example: an emoji-only textarea
 
@@ -76,7 +76,7 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 
 #### Example: a list you can add children to
 
-Click "+" to append a new `<li>`. The child addition itself mirrors, so new readers see the whole list, not just the latest.
+Click "+" to append a new `<li>`. The list itself has `can-mirror`, so the direct child addition mirrors and new readers see the whole list, not just the latest.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
   <div class="ph-canmirror-vignette ph-canmirror-vignette--guestbook" data-can-mirror-vignette="guestbook">
@@ -102,7 +102,7 @@ Click "+" to append a new `<li>`. The child addition itself mirrors, so new read
 ">add entry</button>
 ```
 
-If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically.
+If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically. If that child should mirror its own nested DOM changes later, put `can-mirror` on the child too.
 
 :::note[Experimental]
 `can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.
@@ -112,9 +112,9 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
   <span className="ph-composed-card__kicker">Playground</span>
   <span className="ph-composed-card__title">See every can-mirror edge case →</span>
   <span className="ph-composed-card__body">
-    Hover, focus, every form input, contenteditable, programmatic attribute
-    changes: one page with a live demo for each. Open in two tabs to watch it
-    sync.
+    Hover, focus, form inputs, contenteditable, programmatic attribute changes,
+    direct child changes, and nested opt-in elements: one page with a live demo
+    for each. Open in two tabs to watch it sync.
   </span>
 </a>
 

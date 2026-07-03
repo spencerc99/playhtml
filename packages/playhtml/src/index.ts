@@ -1986,9 +1986,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
       handler.observeDescendants();
     }
     if (tag === TagType.CanMirror) {
-      runWithMirrorObservationPaused(element, () => {
-        setupPlayElementDescendants(element);
-      });
+      setupPlayElementDescendants(element);
     }
   }
 
@@ -2018,9 +2016,7 @@ function applySharedElementDataToHandler(
     // @ts-ignore private usage intended
     handler.__data = clonePlain(proxy);
     if (tag === TagType.CanMirror) {
-      runWithMirrorObservationPaused(handler.element, () => {
-        setupPlayElementDescendants(handler.element);
-      });
+      setupPlayElementDescendants(handler.element);
     }
   } finally {
     remoteApplyingKeys.delete(applyKey);
@@ -2177,31 +2173,6 @@ function setupPlayElementDescendants(element: HTMLElement): void {
     setupPlayElement(descendant);
   });
   mirrorDescendantElementsByRoot.set(element, currentDescendants);
-}
-
-function runWithMirrorObservationPaused<T>(
-  element: HTMLElement,
-  action: () => T,
-): T {
-  const observer: MutationObserver | undefined =
-    (element as any).__playhtml_observer;
-  if (!observer) {
-    return action();
-  }
-
-  observer.takeRecords();
-  observer.disconnect();
-  try {
-    return action();
-  } finally {
-    observer.takeRecords();
-    observer.observe(element, {
-      childList: true,
-      attributes: true,
-      subtree: true,
-      characterData: true,
-    });
-  }
 }
 
 /**
