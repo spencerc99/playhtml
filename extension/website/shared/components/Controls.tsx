@@ -828,6 +828,28 @@ export const Controls: React.FC<ControlsProps> = memo(
           selectedTimeRange={selectedTimeRange ?? null}
         />
 
+        {/* Visual Style (color vs monochrome) — top-level since it drives the
+            cursors AND the window/typing visualizations, not just trails. */}
+        <div className="control-group" style={{ marginBottom: "12px" }}>
+          <label htmlFor="trail-visual-style">Visual Style</label>
+          <select
+            id="trail-visual-style"
+            value={settings.trailVisualStyle ?? "color"}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                trailVisualStyle: e.target.value,
+              }))
+            }
+          >
+            {TRAIL_RENDERERS.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Randomize Colors at the very top */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
           <label htmlFor="randomize-colors">
@@ -1042,23 +1064,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           expanded={!!expandedSections["cursorSettings"]}
           onToggle={() => toggleSection("cursorSettings")}
         >
-          <div className="control-group">
-            <label htmlFor="trail-visual-style">Visual Style</label>
-            <select
-              id="trail-visual-style"
-              value={settings.trailVisualStyle ?? "color"}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  trailVisualStyle: e.target.value,
-                }))
-              }
-            >
-              {TRAIL_RENDERERS.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
           {/* Appearance settings */}
           <div className="control-group">
             <label htmlFor="trail-opacity">Trail Opacity</label>
@@ -1572,7 +1577,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="keyboard-max-concurrent"
               type="range"
               min="1"
-              max="40"
+              max="50"
               step="1"
               value={settings.maxConcurrentTyping}
               onChange={(e) =>
@@ -1624,12 +1629,31 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="keyboard-max-aspect">Max Tallness</label>
+            <input
+              id="keyboard-max-aspect"
+              type="range"
+              min="1.2"
+              max="5"
+              step="0.1"
+              value={settings.keyboardMaxAspect ?? 2.2}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  keyboardMaxAspect: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.keyboardMaxAspect ?? 2.2).toFixed(1)}×</span>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="textbox-opacity">Textbox Opacity</label>
             <input
               id="textbox-opacity"
               type="range"
-              min="0.05"
-              max="0.5"
+              min="0.5"
+              max="1"
               step="0.05"
               value={settings.textboxOpacity}
               onChange={(e) =>

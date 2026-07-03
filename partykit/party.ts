@@ -69,7 +69,9 @@ import {
 import {
   getCompactionCommitDecision,
   getNextAlarmTime,
+  getPrunedBridgeLeases,
   isCompactionAutosave,
+  shouldSetAlarm,
   shouldCheckEmergencyCompaction,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
@@ -202,6 +204,8 @@ export class PartyServer extends YServer {
   override async onStart(): Promise<void> {
     await super.onStart();
     await this.attachImmediateBridgeObservers();
+    await this.pruneBridgeLeases();
+    await this.ensureAlarmScheduled();
   }
 
   async getSubscribers(): Promise<Subscriber[]> {
@@ -906,12 +910,13 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleNextAlarm(): Promise<void> {
+    const now = Date.now();
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
     const nextAlarm = getNextAlarmTime({
       compactAfter: await this.getEmptyRoomCompactAfter(),
       hasBridgeLeases: Boolean(subs.length || refs.length),
-      now: Date.now(),
+      now,
       pruneIntervalMs: DEFAULT_PRUNE_INTERVAL_MS,
     });
 
@@ -921,11 +926,7 @@ export class PartyServer extends YServer {
     }
 
     const previousAlarm = await this.ctx.storage.getAlarm?.();
-    if (
-      previousAlarm === null ||
-      previousAlarm === undefined ||
-      nextAlarm < previousAlarm
-    ) {
+    if (shouldSetAlarm({ previousAlarm, nextAlarm, now })) {
       await this.ctx.storage.setAlarm?.(nextAlarm);
     }
   }
@@ -992,6 +993,7 @@ export class PartyServer extends YServer {
         }
       );
       await this.setSharedReferences(merged);
+      await this.ensureAlarmScheduled();
       return { entries: merged, changed: true };
     }
     return { entries: existing, changed: false };
@@ -1239,7 +1241,7 @@ export class PartyServer extends YServer {
       });
       if (subtreesForNew === null) return;
 
-      const subscribers = await this.getSubscribers();
+      const subscribers = await this.pruneBridgeLeases();
       if (!subscribers.length) return;
       await Promise.all(
         subscribers.map(
@@ -1870,6 +1872,7 @@ export class PartyServer extends YServer {
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
+        await this.ensureAlarmScheduled();
         // A resubscribe means a fresh client load on the consumer side. Reopen
         // its circuit so a genuine new visitor always gets a clean bridge attempt
         // even if the pair had previously tripped from a stale-epoch storm.
@@ -2012,7 +2015,7 @@ export class PartyServer extends YServer {
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
-          const subscribers = await this.getSubscribers();
+          const subscribers = await this.pruneBridgeLeases();
           await Promise.all(
             subscribers.map(
               async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
@@ -2325,6 +2328,32 @@ export class PartyServer extends YServer {
     }
   }
 
+  private async pruneBridgeLeases(): Promise<Subscriber[]> {
+    const subscribers = await this.getSubscribers();
+    const sharedReferences = await this.getSharedReferences();
+    const now = Date.now();
+    const prunedSubscribers = getPrunedBridgeLeases({
+      leases: subscribers,
+      now,
+      leaseMs: DEFAULT_SUBSCRIBER_LEASE_MS,
+    });
+    const prunedSharedReferences = getPrunedBridgeLeases({
+      leases: sharedReferences,
+      now,
+      leaseMs: DEFAULT_SUBSCRIBER_LEASE_MS,
+    });
+
+    if (prunedSubscribers.length !== subscribers.length) {
+      await this.setSubscribers(prunedSubscribers);
+    }
+
+    if (prunedSharedReferences.length !== sharedReferences.length) {
+      await this.setSharedReferences(prunedSharedReferences);
+    }
+
+    return prunedSubscribers;
+  }
+
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
     try {
@@ -2337,39 +2366,7 @@ export class PartyServer extends YServer {
         }
       }
 
-      const subscribers = await this.getSubscribers();
-
-      if (subscribers.length) {
-        const now = Date.now();
-        const withinLease = (s: any) => {
-          const leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS;
-          const last = s?.lastSeen || s?.createdAt;
-          const t = last ? Date.parse(last) : NaN;
-          if (!Number.isFinite(t)) return true; // if no timestamp, be permissive but keep once
-          return now - t <= leaseMs;
-        };
-
-        const prunedForLease = subscribers.filter(withinLease);
-        if (prunedForLease.length !== subscribers.length) {
-          await this.setSubscribers(prunedForLease);
-        }
-      }
-
-      // Prune shared references by TTL on consumer rooms
-      const refsRaw = await this.getSharedReferences();
-      const refs: Array<SharedRefEntry> = Array.isArray(refsRaw) ? refsRaw : [];
-      if (refs.length) {
-        const now = Date.now();
-        const leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS; // unified lease
-        const kept = refs.filter((r) => {
-          const t = r?.lastSeen ? Date.parse(r.lastSeen) : NaN;
-          if (!Number.isFinite(t)) return true;
-          return now - t <= leaseMs;
-        });
-        if (kept.length !== refs.length) {
-          await this.setSharedReferences(kept);
-        }
-      }
+      await this.pruneBridgeLeases();
     } finally {
       await this.scheduleNextAlarm();
     }
@@ -2384,8 +2381,9 @@ export class PartyServer extends YServer {
       return;
     }
 
+    const subscribers = await this.pruneBridgeLeases();
+
     // Push to subscribers (source -> consumer direction)
-    const subscribers = await this.getSubscribers();
     if (subscribers.length) {
       const permissions = await this.getSharedPermissions();
       await Promise.all(

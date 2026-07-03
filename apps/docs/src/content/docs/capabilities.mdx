@@ -12,9 +12,6 @@ import { GrowBalloonDemo } from '@/components/react/capability-demos/GrowBalloon
 import { SpinWheelDemo } from '@/components/react/capability-demos/SpinWheelDemo';
 import { HoverCursorColorsDemo } from '@/components/react/capability-demos/HoverCursorColorsDemo';
 import { DuplicateRabbitDemo } from '@/components/react/capability-demos/DuplicateRabbitDemo';
-import { DocsSpinner } from '@/components/react/capability-demos/DocsSpinner';
-import { DocsGuestbook } from '@/components/react/capability-demos/DocsGuestbook';
-import { SmileyRow } from '@/components/react/capability-demos/SmileyRow';
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
@@ -25,7 +22,7 @@ For **many elements that share a selector** (a row of magnets, a list of reactio
 :::
 
 :::tip[Shift-click to reset]
-The built-in interactive capabilities (`can-move`, `can-spin`, `can-toggle`, and `can-grow`) support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](#resetting-custom-elements) option.
+The built-in interactive capabilities (`can-move`, `can-spin`, `can-toggle`, and `can-grow`) support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](/docs/custom-elements/#reset-shortcut) option.
 :::
 
 Every section below has the same shape:
@@ -33,18 +30,6 @@ Every section below has the same shape:
 - A short description of what the capability does and the kind of state it owns.
 - A live demo you can interact with. Open the page in a second tab and watch both update.
 - The **vanilla HTML** form, and the **React** form. Pick the framework you're shipping in; the reader's choice syncs across every snippet on the page.
-
-This page also runs a few `can-play` demos directly in its margins: a [doodle strip](#play-doodle) below, a [guestbook](#play-guestbook) further down, a [prize wheel](#play-spinner) at the bottom, and a shared [tally on every code block](#play-copy) you copy from. They're discussed properly in the [`can-play`](#can-play) section.
-
-<div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
-  <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · doodle strip</span>
-    <p class="ph-canplay-inline__caption">
-      Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
-    </p>
-  </div>
-  <SmileyRow client:only="react" />
-</div>
 
 ## can-move
 
@@ -394,177 +379,15 @@ function BunnyField() {
 
 ## can-mirror
 
-**What it does.** A meta-capability: `can-mirror` auto-syncs **every attribute, child-node change, and form-state change** on the element. You don't write `defaultData`, `setData`, or an `updateElement` callback; the library observes the DOM for you.
+`can-mirror` syncs changes on the element you put it on: its attributes, its direct child list, and form or contenteditable state that surfaces through input/change events. It does not watch arbitrary descendant DOM mutations. If you want to sync nested children changes, put `can-mirror` on that nested element too and give it a stable `id`.
 
-**Use it for:** when the state you want to share _is_ the DOM: a shared textarea, a form, a growing list of children.
-
-### Vignette A: an emoji-only textarea
-
-A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
-
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: emoji textarea">
-  <div class="ph-canmirror-vignette ph-canmirror-vignette--emoji" data-can-mirror-vignette="emoji">
-    <textarea
-      can-mirror
-      id="emoji-pad"
-      class="ph-canmirror-vignette__textarea"
-      rows="4"
-      placeholder="emojis only..."
-      aria-label="Emoji-only shared textarea"
-    ></textarea>
-    <p class="ph-canmirror-vignette__hint">
-      Type anything. Only emojis stick, and the filtered value mirrors to everyone.
-    </p>
-  </div>
-</div>
-
-```html
-<textarea can-mirror id="emoji-pad" rows="4" placeholder="emojis only..."></textarea>
-
-<script>
-  const emojiOnly = /\p{Extended_Pictographic}/gu;
-  document.getElementById("emoji-pad").addEventListener("input", (e) => {
-    const match = e.target.value.match(emojiOnly);
-    e.target.value = match ? match.join("") : "";
-  });
-</script>
-```
-
-### Vignette B: a list you can add children to
-
-Click "+" to append a new `<li>`. The child addition itself mirrors, so new readers see the whole list, not just the latest.
-
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
-  <div class="ph-canmirror-vignette ph-canmirror-vignette--guestbook" data-can-mirror-vignette="guestbook">
-    <ul can-mirror id="guestbook" class="ph-canmirror-vignette__list" aria-label="Shared guestbook entries">
-      <li>first</li>
-    </ul>
-    <button type="button" id="guestbook-add" class="ph-canmirror-vignette__button">
-      add entry
-    </button>
-  </div>
-</div>
-
-<script type="module" src="/docs/can-mirror-vignettes.js"></script>
-
-```html
-<ul can-mirror id="guestbook">
-  <li>first</li>
-</ul>
-<button onclick="
-  document.getElementById('guestbook').appendChild(
-    Object.assign(document.createElement('li'), { textContent: new Date().toLocaleTimeString() })
-  );
-">add entry</button>
-```
-
-If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically.
-
-:::note[Experimental]
-`can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.
-:::
-
-<a className="ph-composed-card" href="/docs/advanced/mirror-playground/">
-  <span className="ph-composed-card__kicker">Playground</span>
-  <span className="ph-composed-card__title">See every can-mirror edge case →</span>
-  <span className="ph-composed-card__body">
-    Hover, focus, every form input, contenteditable, programmatic attribute
-    changes: one page with a live demo for each. Open in two tabs to watch it
-    sync.
-  </span>
-</a>
-
-<div id="play-guestbook" class="ph-canplay-inline" data-label="can-play · guestbook">
-  <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · guestbook</span>
-    <p class="ph-canplay-inline__caption">
-      Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
-    </p>
-  </div>
-  <DocsGuestbook client:only="react" />
-</div>
+Full treatment with live demos lives on **[Custom elements → can-mirror](/docs/custom-elements/#can-mirror)**, and the [mirror playground](/docs/advanced/mirror-playground/) shows examples of all the common native HTML element interactions with it.
 
 ## can-play
 
-**What it does.** The "build your own capability" escape hatch. You define `defaultData`, `onClick` / `onDrag` / `onMount` handlers, and an `updateElement` callback. playhtml syncs the data and fires your handlers.
+Build your own capability: you define a shared `data` shape and how the element renders from it (an imperative `updateElement`, or the newer reactive `view`). You control how the data drives the element and which parts persist. Use it for custom counters, guestbooks, chat, games, reactions, per-user state, and event broadcasts — anything the built-ins don't cover.
 
-**Use it for:** anything the built-ins don't already cover. Custom counters, guestbooks, chat, games, reactions, per-user state, event-based broadcasts.
-
-Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
-
-This page is itself a `can-play` showcase. Four examples live in the margins:
-
-- [**Doodle strip**](#play-doodle): freehand canvas input encoded as a tiny PNG data URL. The shared array caps at 20 via `splice` inside the setData mutator.
-- [**Guestbook**](#play-guestbook): a growing list of short text entries. Same "cap the array" pattern, different payload.
-- [**Prize wheel**](#play-spinner): one shared piece of data (the spin seed + target) animates identically on every tab. Every visitor sees the wheel land on the same label.
-- <a href="#play-copy" id="play-copy">**Tally on every code block**</a>: every `<pre>` on this page is a vanilla `can-play` element. Click <code>copy</code> on any snippet and watch a tally tick appear next to the button. Readers all over the site share that counter, so popular snippets accumulate more marks.
-
-That's four different shapes (short array, blob payload, animation seed, single integer) built on the same primitive. The minimum viable shape is much smaller, though:
-
-<Tabs syncKey="framework">
-  <TabItem label="Vanilla HTML">
-```html
-<button can-play id="cheer" data-count="0">❤️ <span>0</span></button>
-
-<script>
-  const el = document.getElementById("cheer");
-  el.defaultData = { count: 0 };
-  el.onClick = (_e, { setData }) => {
-    setData((draft) => {
-      draft.count += 1;
-    });
-  };
-  el.updateElement = ({ element, data }) => {
-    element.querySelector("span").textContent = data.count;
-  };
-</script>
-```
-  </TabItem>
-  <TabItem label="React">
-```tsx
-import { withSharedState } from "@playhtml/react";
-
-export const CheerButton = withSharedState(
-  { defaultData: { count: 0 }, id: "cheer" },
-  ({ data, setData }) => (
-    <button
-      onClick={() => {
-        setData((draft) => {
-          draft.count += 1;
-        });
-      }}
-    >
-      ❤️ {data.count}
-    </button>
-  ),
-);
-```
-  </TabItem>
-</Tabs>
-
-Counters should use the mutator form of `setData`. It applies the increment to the draft at write time instead of copying a rendered `data` snapshot back into shared data. The same idea applies to pushing list entries, updating nested fields, and upserting keyed collections; see [Merging data changes](/docs/advanced/merging-data/).
-
-Deeper material on custom capabilities lives in [Data essentials](/docs/data/data-essentials/) and [Dynamic elements](/docs/advanced/dynamic-elements/).
-
-### Resetting custom elements
-
-The built-in interactive capabilities support shift-click to reset (see the tip at the top of this page). Opt your own `can-play` element into the same gesture with `resetShortcut`, a modifier key that, when held while clicking, restores the element's `defaultData` for everyone:
-
-```js
-el.defaultData = { count: 0 };
-el.resetShortcut = "shiftKey"; // "shiftKey" | "ctrlKey" | "altKey" | "metaKey"
-```
-
-In React, pass it in the config:
-
-```tsx
-withSharedState(
-  { defaultData: { count: 0 }, id: "cheer", resetShortcut: "shiftKey" },
-  ({ data, setData }) => /* … */,
-);
-```
-
-You can also reset programmatically by calling `element.reset()`.
+Full guide, with the imperative and reactive `view` forms (vanilla) and `withSharedState` (React) side by side — plus live demos: **[Custom elements](/docs/custom-elements/)**.
 
 ---
 
@@ -591,13 +414,3 @@ These capabilities are the building blocks. The best way to see them in concert 
 </div>
 
 These three are highlighted in the homepage experiments index, the fastest way to see playhtml at room-scale.
-
-<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
-  <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · prize wheel</span>
-    <p class="ph-canplay-inline__caption">
-      Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
-    </p>
-  </div>
-  <DocsSpinner client:only="react" />
-</div>

@@ -152,7 +152,7 @@ async function main() {
 
   // --config <name>
   if (args.config) {
-    const configPath = new URL(`../../configs/${args.config}.json`, import.meta.url).pathname;
+    const configPath = new URL(`../configs/${args.config}.json`, import.meta.url).pathname;
     const config = JSON.parse(await Bun.file(configPath).text());
     for (const run of config.runs) {
       const scenario = scenarios[run.scenario];
@@ -190,15 +190,17 @@ async function main() {
 
   console.log(`
 Usage:
-  bun load-test/src/runner.ts --scenario <name> [--users N] [--duration S] [--target local|prod]
-  bun load-test/src/runner.ts --config <name> [--target local|prod]
-  bun load-test/src/runner.ts --compare <run-id-1> <run-id-2>
-  bun load-test/src/runner.ts --history [--scenario <name>] [--target local|prod]
+  bun tools/load-test/src/runner.ts --scenario <name> [--users N] [--duration S] [--target local|prod]
+  bun tools/load-test/src/runner.ts --config <name> [--target local|prod]
+  bun tools/load-test/src/runner.ts --compare <run-id-1> <run-id-2>
+  bun tools/load-test/src/runner.ts --history [--scenario <name>] [--target local|prod]
 
 Scenarios: ${Object.keys(scenarios).join(", ")}
   `);
 }
 
 main()
-  .catch(console.error)
-  .finally(() => process.exit(0));
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

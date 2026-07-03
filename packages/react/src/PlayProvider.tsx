@@ -2,6 +2,7 @@
 // ABOUTME: Bootstraps the playhtml singleton and exposes cursor/presence helpers.
 import {
   createContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -183,6 +184,13 @@ export function PlayProvider({
 
   useEffect(() => {
     let cancelled = false;
+    // Declare config before connecting so it's the single source of truth even
+    // if a `standalone` component elsewhere calls init() (with no options)
+    // first. configure() is a no-op once config is locked, so this is safe to
+    // run regardless of ordering.
+    if (processedInitOptions) {
+      playhtml.configure(processedInitOptions);
+    }
     const initPromise = playhtml.init(processedInitOptions);
     const readyPromise = isReadyPromise(playhtml.ready) ? playhtml.ready : initPromise;
 
@@ -225,13 +233,13 @@ export function PlayProvider({
     return playhtml.cursorClient.triggerCursorAnimation(stableId, animationClass, durationMs);
   };
 
-  const registerCursorZone = (element: HTMLElement, options?: CursorZoneOptions) => {
+  const registerCursorZone = useCallback((element: HTMLElement, options?: CursorZoneOptions) => {
     playhtml.cursorClient?.registerZone(element, options);
-  };
+  }, []);
 
-  const unregisterCursorZone = (elementId: string) => {
+  const unregisterCursorZone = useCallback((elementId: string) => {
     playhtml.cursorClient?.unregisterZone(elementId);
-  };
+  }, []);
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
     allColors: [] as string[],

@@ -566,9 +566,6 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
 
     this.emit(typeData);
 
-    // Expose event to page for testing
-    this.exposeEventToPage(typeData);
-
     if (VERBOSE) {
       console.log('[KeyboardCollector] Type event emitted:', typeData);
     }
@@ -614,20 +611,4 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     }
   }
 
-  /**
-   * Expose event to page for testing (via window.postMessage)
-   */
-  private exposeEventToPage(data: KeyboardEventData): void {
-    try {
-      window.postMessage(
-        {
-          type: 'KEYBOARD_COLLECTOR_EVENT',
-          data: data,
-        },
-        window.location.origin
-      );
-    } catch (error) {
-      // Ignore errors (might fail in some contexts)
-    }
-  }
 }
