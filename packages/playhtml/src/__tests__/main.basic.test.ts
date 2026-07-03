@@ -241,6 +241,23 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
   });
 
+  it("does not add a mouseleave listener on every can-grow hover", async () => {
+    const el = document.createElement("div");
+    el.id = "grow-hover-listeners";
+    el.setAttribute("can-grow", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-grow");
+
+    const addEventListener = vi.spyOn(el, "addEventListener");
+
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+    expect(
+      addEventListener.mock.calls.filter(([type]) => type === "mouseleave"),
+    ).toHaveLength(0);
+  });
+
   it("sets up mirrored chair descendants with playhtml capabilities", async () => {
     const mirror = document.createElement("div");
     mirror.id = "musicalChairs4";
