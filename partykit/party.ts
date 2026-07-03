@@ -78,7 +78,7 @@ import {
 import {
   AUTH_SESSION_TTL_MS,
   AUTH_STORAGE_KEYS,
-  DEFAULT_VISIT_DAY_MS,
+  DEFAULT_DAY_MS,
   GATED_WRITE_ORIGIN,
   collectChangedElementIds,
   createChallenge,
@@ -89,19 +89,20 @@ import {
   isWellKnownCacheFresh,
   parseRoomName,
   pruneSessions,
-  pruneVisitLog,
+  pruneCounterLog,
   recordVisit,
   verifyChallengeResponse,
   MAX_GATED_WRITE_BYTES,
   type AuthSessions,
+  type CounterLog,
   type GatedSnapshots,
   type PendingChallenge,
-  type VisitLog,
   type WellKnownCacheEntry,
 } from "./auth";
 import type {
   AuthResponseMessage,
   AuthResumeMessage,
+  Counters,
   GatedWriteMessage,
   GatedWriteResultMessage,
   PermissionsStatusMessage,
@@ -112,14 +113,14 @@ const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
 const AUTH_CHALLENGE_STATE_KEY = "__playhtmlAuthChallenge";
 const AUTH_VERIFIED_PID_STATE_KEY = "__playhtmlVerifiedPid";
-const AUTH_VISIT_DAYS_STATE_KEY = "__playhtmlVisitDays";
+const AUTH_COUNTERS_STATE_KEY = "__playhtmlCounters";
 
 type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
   [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
   [AUTH_CHALLENGE_STATE_KEY]?: PendingChallenge | null;
   [AUTH_VERIFIED_PID_STATE_KEY]?: string | null;
-  [AUTH_VISIT_DAYS_STATE_KEY]?: number | null;
+  [AUTH_COUNTERS_STATE_KEY]?: Counters | null;
 };
 
 type CompactedDocument = {
@@ -2089,7 +2090,7 @@ export class PartyServer extends YServer {
     updates: {
       challenge?: PendingChallenge | null;
       verifiedPid?: string | null;
-      visitDays?: number | null;
+      counters?: Counters | null;
     }
   ): void {
     const authConnection =
@@ -2101,35 +2102,37 @@ export class PartyServer extends YServer {
       if ("challenge" in updates) next[AUTH_CHALLENGE_STATE_KEY] = updates.challenge;
       if ("verifiedPid" in updates)
         next[AUTH_VERIFIED_PID_STATE_KEY] = updates.verifiedPid;
-      if ("visitDays" in updates)
-        next[AUTH_VISIT_DAYS_STATE_KEY] = updates.visitDays;
+      if ("counters" in updates)
+        next[AUTH_COUNTERS_STATE_KEY] = updates.counters;
       return next;
     });
   }
 
-  private getConnectionVisitDays(connection: Party.Connection): number | undefined {
+  private getConnectionCounters(
+    connection: Party.Connection
+  ): Counters | undefined {
     const state = (connection as Party.Connection<PartyServerConnectionState>)
       .state;
-    const value = state?.[AUTH_VISIT_DAYS_STATE_KEY];
-    return typeof value === "number" ? value : undefined;
+    const value = state?.[AUTH_COUNTERS_STATE_KEY];
+    return value ?? undefined;
   }
 
-  private getVisitDayMs(): number {
-    return readPositiveNumberEnv("AUTH_VISIT_DAY_MS", DEFAULT_VISIT_DAY_MS);
+  private getDayMs(): number {
+    return readPositiveNumberEnv("AUTH_DAY_MS", DEFAULT_DAY_MS);
   }
 
   /**
-   * Counts a verified appearance toward earned roles ({ "visits": N }):
-   * one per distinct day per pid, persisted in DO storage.
+   * Counts a verified appearance toward earned roles ({ "days": N }): bumps
+   * the pid's persisted counters and returns the current totals.
    */
-  private async recordVerifiedVisit(pid: string): Promise<number> {
+  private async recordVerifiedVisit(pid: string): Promise<Counters> {
     const log =
-      ((await this.ctx.storage.get(AUTH_STORAGE_KEYS.visits)) as
-        | VisitLog
+      ((await this.ctx.storage.get(AUTH_STORAGE_KEYS.counters)) as
+        | CounterLog
         | undefined) ?? {};
-    const record = recordVisit(log, pid, Date.now(), this.getVisitDayMs());
-    await this.ctx.storage.put(AUTH_STORAGE_KEYS.visits, pruneVisitLog(log));
-    return record.days;
+    const record = recordVisit(log, pid, Date.now(), this.getDayMs());
+    await this.ctx.storage.put(AUTH_STORAGE_KEYS.counters, pruneCounterLog(log));
+    return { days: record.days, sessions: record.sessions };
   }
 
   /** The cryptographically verified pid for a connection, or null. */
@@ -2182,11 +2185,11 @@ export class PartyServer extends YServer {
     sessions[token] = { pid: message.pid, expiresAt };
     await this.setAuthSessions(sessions);
 
-    const visitDays = await this.recordVerifiedVisit(message.pid);
+    const counters = await this.recordVerifiedVisit(message.pid);
     this.setConnectionAuthState(sender, {
       challenge: null,
       verifiedPid: message.pid,
-      visitDays,
+      counters,
     });
     this.sendCustomMessage(
       sender,
@@ -2195,7 +2198,7 @@ export class PartyServer extends YServer {
         pid: message.pid,
         token,
         expiresAt,
-        stats: { visitDays },
+        stats: { counters },
       })
     );
   }
@@ -2218,11 +2221,11 @@ export class PartyServer extends YServer {
       return;
     }
 
-    const visitDays = await this.recordVerifiedVisit(record.pid);
+    const counters = await this.recordVerifiedVisit(record.pid);
     this.setConnectionAuthState(sender, {
       challenge: null,
       verifiedPid: record.pid,
-      visitDays,
+      counters,
     });
     this.sendCustomMessage(
       sender,
@@ -2231,7 +2234,7 @@ export class PartyServer extends YServer {
         pid: record.pid,
         token: message.token,
         expiresAt: record.expiresAt,
-        stats: { visitDays },
+        stats: { counters },
       })
     );
   }
@@ -2303,7 +2306,7 @@ export class PartyServer extends YServer {
       roomPath,
       elementId: message.elementId,
       pid: pid ?? undefined,
-      visitDays: this.getConnectionVisitDays(sender),
+      counters: this.getConnectionCounters(sender),
       currentData: this.readElementData(message.tag, message.elementId),
       incomingData: message.data,
     });

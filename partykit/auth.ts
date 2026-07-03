@@ -12,6 +12,7 @@ import {
   LOCAL_HOST_IDENTIFIER,
   type AuthChallengeMessage,
   type AuthResponseMessage,
+  type Counters,
   type PermissionRule,
   type EnforceableRoles,
   type WellKnownPermissionsConfig,
@@ -29,42 +30,47 @@ export const AUTH_STORAGE_KEYS = {
   sessions: "authSessions",
   gatedSnapshots: "gatedSnapshots",
   wellKnownPermissions: "wellKnownPermissions",
-  visits: "authVisits",
+  counters: "authCounters",
 } as const;
 
-// Visits power earned roles ({ "visits": N } in the well-known config): one
-// visit per distinct day a verified pid is seen in this room. Day buckets are
-// configurable (AUTH_VISIT_DAY_MS) so tests can compress time.
-export const DEFAULT_VISIT_DAY_MS = 24 * 60 * 60 * 1000;
+// Counters power earned roles ({ "days": N } in the well-known config). The
+// "days" counter increments once per distinct day a verified pid is seen;
+// "sessions" increments on every verified handshake. Day buckets are
+// configurable (AUTH_DAY_MS) so tests can compress time.
+export const DEFAULT_DAY_MS = 24 * 60 * 60 * 1000;
 export const MAX_TRACKED_VISITORS = 5000;
 
-export interface VisitRecord {
+export interface CounterRecord {
   /** Distinct day-buckets this pid has been seen. */
   days: number;
+  /** Total verified handshakes by this pid. */
+  sessions: number;
   /** The last day-bucket counted (floor(now / dayMs)). */
   lastBucket: number;
   firstSeen: number;
   lastSeen: number;
 }
 
-export type VisitLog = Record<string, VisitRecord>;
+export type CounterLog = Record<string, CounterRecord>;
 
 /**
- * Counts a verified appearance of `pid`. Idempotent within a day bucket —
- * reconnects and re-verifications on the same day never inflate the count.
- * Returns the updated record (the log is mutated in place).
+ * Counts a verified appearance of `pid`: always bumps `sessions`, and bumps
+ * `days` only when the day-bucket advanced (so reconnects and same-day
+ * re-verifications never inflate `days`). Returns the updated record (the log
+ * is mutated in place).
  */
 export function recordVisit(
-  log: VisitLog,
+  log: CounterLog,
   pid: string,
   now: number = Date.now(),
-  dayMs: number = DEFAULT_VISIT_DAY_MS,
-): VisitRecord {
+  dayMs: number = DEFAULT_DAY_MS,
+): CounterRecord {
   const bucket = Math.floor(now / dayMs);
   const existing = log[pid];
   if (!existing) {
-    const record: VisitRecord = {
+    const record: CounterRecord = {
       days: 1,
+      sessions: 1,
       lastBucket: bucket,
       firstSeen: now,
       lastSeen: now,
@@ -73,6 +79,7 @@ export function recordVisit(
     return record;
   }
   existing.lastSeen = now;
+  existing.sessions += 1;
   if (bucket > existing.lastBucket) {
     existing.days += 1;
     existing.lastBucket = bucket;
@@ -80,11 +87,11 @@ export function recordVisit(
   return existing;
 }
 
-/** Caps the visit log by dropping the least-recently-seen pids. */
-export function pruneVisitLog(
-  log: VisitLog,
+/** Caps the counter log by dropping the least-recently-seen pids. */
+export function pruneCounterLog(
+  log: CounterLog,
   max: number = MAX_TRACKED_VISITORS,
-): VisitLog {
+): CounterLog {
   const entries = Object.entries(log);
   if (entries.length <= max) return log;
   entries.sort((a, b) => b[1].lastSeen - a[1].lastSeen);
@@ -339,14 +346,14 @@ export function evaluateGatedWrite(args: {
   roomPath: string | undefined;
   elementId: string;
   pid: string | undefined;
-  /** Server-counted distinct visit days for this pid (earned roles). */
-  visitDays?: number;
+  /** Server-attested counter totals for this pid (earned roles). */
+  counters?: Counters;
   currentData: unknown;
   incomingData: unknown;
 }): GatedWriteVerdict {
-  const { rules, roles, roomPath, elementId, pid, visitDays, currentData, incomingData } =
+  const { rules, roles, roomPath, elementId, pid, counters, currentData, incomingData } =
     args;
-  const principal = { pid, verified: pid !== undefined, visitDays };
+  const principal = { pid, verified: pid !== undefined, counters };
   const check = (required: ReturnType<typeof requiredRolesForAction>) =>
     required === null ||
     satisfiesRole(required, principal, roles, {

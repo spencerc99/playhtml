@@ -11,7 +11,7 @@ import {
   PresenceRoom,
   PresenceView,
 } from "@playhtml/common";
-import type { PermissionAction } from "@playhtml/common";
+import type { Counters, PermissionAction } from "@playhtml/common";
 import type { CursorZoneOptions, MeState } from "playhtml";
 
 // Stable protocol event names (duplicated from playhtml so this module only
@@ -192,8 +192,8 @@ export function usePlayerIdentity(): {
   name: string | undefined;
   verified: boolean;
   roles: string[];
-  /** Server-attested distinct days seen in this room (earned roles). */
-  visitDays: number | undefined;
+  /** Server-attested counter totals in this room (earned roles). */
+  counters: Counters | undefined;
 } {
   const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
   const me = useMeState();
@@ -203,7 +203,7 @@ export function usePlayerIdentity(): {
     name: cursors.name,
     verified: me?.verified ?? false,
     roles: me?.roles ?? [],
-    visitDays: me?.visitDays,
+    counters: me?.counters,
   };
 }
 

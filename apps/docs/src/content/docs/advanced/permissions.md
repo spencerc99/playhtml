@@ -60,8 +60,8 @@ Named roles, when you want them — defined as explicit key lists **or earned by
 {
   "roles": {
     "admin": ["pk_04a1…", "pk_9bb2…"],
-    "returning": { "visits": 2 },
-    "regular": { "visits": 5 }
+    "returning": { "days": 2 },
+    "regular": { "days": 5 }
   },
   "elements": {
     "site-title": "write:admin",
@@ -70,7 +70,7 @@ Named roles, when you want them — defined as explicit key lists **or earned by
 }
 ```
 
-`{ "visits": N }` grants the role to any verified identity the server has seen in the room on at least N **distinct days** (counted server-side against the key, once per day — uninflatable by reconnecting or clearing storage). This is how standing accrues naturally: read on your first visit, write once you've returned, moderate once you're a regular. The server reports your count in `playhtml.me.visitDays` after the handshake.
+`{ "days": N }` grants the role to any verified identity the server has seen in the room on at least N **distinct days** (counted server-side against the key, once per day — uninflatable by reconnecting or clearing storage). This is how standing accrues naturally: read on your first visit, write once you've returned, moderate once you're a regular. `days` is one of the built-in server-attested **counters**; `{ "sessions": N }` (total verified handshakes) works the same way. The server reports your totals in `playhtml.me.counters` after the handshake — e.g. `playhtml.me.counters.days`.
 
 ### Other places to declare rules
 
@@ -147,11 +147,11 @@ The end-to-end protocol suite (handshake, gated writes, entry ownership, backsto
 ```bash
 SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
   bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 \
-  --var SUPABASE_LOAD_TIMEOUT_MS:200 --var AUTH_VISIT_DAY_MS:1500 &
-SMOKE_VISIT_DAY_MS=1500 bun run smoke:partykit:auth
+  --var SUPABASE_LOAD_TIMEOUT_MS:200 --var AUTH_DAY_MS:1500 &
+SMOKE_DAY_MS=1500 bun run smoke:partykit:auth
 ```
 
-(`AUTH_VISIT_DAY_MS` compresses the visit "day" so the earned-roles ladder can be exercised in seconds.)
+(`AUTH_DAY_MS` compresses the counter "day" so the earned-roles ladder can be exercised in seconds.)
 
 ## Notes & limits
 

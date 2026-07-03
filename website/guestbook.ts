@@ -53,12 +53,12 @@ function renderStanding(): void {
     el.classList.toggle("next", idx === rungIndex + 1);
   });
 
-  const days = me.visitDays;
+  const days = me.counters?.days;
   const dayText =
     days === undefined
       ? playhtml.permissionsEnforced
         ? "verifying…"
-        : "client-only mode — the room can't count visits without the server"
+        : "client-only mode — the room can't count days without the server"
       : `the room has seen you on ${days} day${days === 1 ? "" : "s"}`;
   $("standing").textContent = `you are a ${rung} · ${dayText}`;
 

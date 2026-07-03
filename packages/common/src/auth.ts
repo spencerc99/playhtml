@@ -169,28 +169,59 @@ export interface PermissionRule {
 }
 
 /**
- * A role that members EARN by showing up: held by any verified identity the
- * server has seen in this room on at least `visits` distinct days. Visits are
- * counted server-side (once per day per verified pid per room), so they can't
- * be spoofed by clearing localStorage or hammering reconnects. This is how
- * "stages of trust" accrue naturally — e.g. write access after a return
- * visit, moderation after becoming a regular.
+ * Server-attested counters that accrue for a verified identity in a room.
+ * The server owns these numbers (it verifies each identity), so they can't be
+ * spoofed by clearing localStorage or reconnecting. Two are built in:
+ * - "days": distinct days the identity has been seen (once per day, max +1/day)
+ * - "sessions": total verified handshakes
  */
-export interface EarnedRoleCondition {
-  visits: number;
-}
+export type CounterName = "days" | "sessions";
+
+export const BUILT_IN_COUNTERS: CounterName[] = ["days", "sessions"];
+
+/** The server-attested counter totals reported to a verified client. */
+export type Counters = Partial<Record<CounterName, number>>;
+
+/**
+ * A role members EARN by showing up: `{ days: 2 }` is held by any verified
+ * identity the server has seen in this room on at least 2 distinct days. The
+ * key names a built-in counter; the value is the minimum to hold the role.
+ * This is how "stages of trust" accrue naturally — e.g. write access after a
+ * return visit, moderation after becoming a regular.
+ */
+export type EarnedRoleCondition = Partial<Record<CounterName, number>>;
 
 export type EnforceableRoleDefinition = string[] | EarnedRoleCondition;
 
 export function isEarnedRoleCondition(
   definition: EnforceableRoleDefinition | undefined,
 ): definition is EarnedRoleCondition {
-  return (
-    typeof definition === "object" &&
-    definition !== null &&
-    !Array.isArray(definition) &&
-    typeof (definition as EarnedRoleCondition).visits === "number"
+  if (
+    typeof definition !== "object" ||
+    definition === null ||
+    Array.isArray(definition)
+  ) {
+    return false;
+  }
+  return BUILT_IN_COUNTERS.some(
+    (counter) => typeof (definition as Counters)[counter] === "number",
   );
+}
+
+/**
+ * True when a verified identity's counter totals meet every threshold in an
+ * earned-role condition (thresholds are minimums, ANDed together).
+ */
+export function meetsEarnedCondition(
+  condition: EarnedRoleCondition,
+  counters: Counters | undefined,
+): boolean {
+  const thresholds = Object.entries(condition) as [CounterName, number][];
+  if (thresholds.length === 0) return false;
+  return thresholds.every(([counter, min]) => {
+    const value = counters?.[counter];
+    return value !== undefined && value >= min;
+  });
 }
 
 /** Role definitions in enforceable configs: explicit pk lists or earned conditions. */
@@ -337,10 +368,10 @@ export interface PermissionPrincipal {
   /** True when the actor is the recorded creator of the targeted entry. */
   isCreator?: boolean;
   /**
-   * Distinct days the server has seen this verified pid in the room.
-   * Server-attested (reported in auth_ok); used by earned-role conditions.
+   * Server-attested counter totals for this pid in the room (reported in
+   * auth_ok); used by earned-role conditions like `{ days: 2 }`.
    */
-  visitDays?: number;
+  counters?: Counters;
 }
 
 /**
@@ -370,13 +401,8 @@ export function satisfiesRole(
     }
     const definition = roles[roleName];
     if (isEarnedRoleCondition(definition)) {
-      // Earned roles only exist through verified, server-counted visits.
-      if (
-        principal.visitDays !== undefined &&
-        principal.visitDays >= definition.visits
-      ) {
-        return true;
-      }
+      // Earned roles only exist through verified, server-attested counters.
+      if (meetsEarnedCondition(definition, principal.counters)) return true;
       continue;
     }
     if (definition && principal.pid && definition.includes(principal.pid)) {
@@ -429,13 +455,15 @@ export function sanitizeWellKnownConfig(
             (m): m is string => typeof m === "string" && isVerifiablePublicKey(m),
           )
           .slice(0, maxRoleMembers);
-      } else if (
-        typeof definition === "object" &&
-        definition !== null &&
-        typeof (definition as { visits?: unknown }).visits === "number" &&
-        (definition as { visits: number }).visits >= 1
-      ) {
-        roles[name] = { visits: Math.floor((definition as { visits: number }).visits) };
+      } else if (typeof definition === "object" && definition !== null) {
+        const condition: EarnedRoleCondition = {};
+        for (const counter of BUILT_IN_COUNTERS) {
+          const value = (definition as Counters)[counter];
+          if (typeof value === "number" && value >= 1) {
+            condition[counter] = Math.floor(value);
+          }
+        }
+        if (Object.keys(condition).length > 0) roles[name] = condition;
       }
     }
   }
@@ -540,10 +568,9 @@ export interface AuthOkMessage {
   pid: string;
   token: string;
   expiresAt: number;
-  /** Server-attested attendance stats for this pid in this room. */
+  /** Server-attested counter totals for this pid in this room. */
   stats?: {
-    /** Distinct days this verified pid has been seen here (today counts). */
-    visitDays: number;
+    counters: Counters;
   };
 }
 

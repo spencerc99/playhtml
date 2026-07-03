@@ -7,7 +7,7 @@ import {
   getMe,
   setIdentity,
   setVerified,
-  setVisitDays,
+  setCounters,
   setServerPermissionsStatus,
   isServerGated,
   isLocallyGated,
@@ -177,13 +177,13 @@ describe("ergonomic config forms", () => {
   });
 });
 
-describe("earned roles (server-attested visits)", () => {
-  it("grants condition roles once visitDays meets the threshold", () => {
+describe("earned roles (server-attested days)", () => {
+  it("grants condition roles once counters.days meets the threshold", () => {
     setIdentity(identity(OTHER_PK));
     setServerPermissionsStatus({
       type: "permissions_status",
       enforced: true,
-      roles: { returning: { visits: 2 }, regular: { visits: 5 } },
+      roles: { returning: { days: 2 }, regular: { days: 5 } },
       rules: [
         { match: "guestbook", create: "returning", delete: ["creator", "regular"] },
       ],
@@ -191,19 +191,19 @@ describe("earned roles (server-attested visits)", () => {
 
     // Day 1: verified but new — can't sign the book yet.
     setVerified(true);
-    setVisitDays(1);
+    setCounters({ days: 1 });
     expect(getMe().roles).toEqual([]);
-    expect(getMe().visitDays).toBe(1);
+    expect(getMe().counters?.days).toBe(1);
     expect(can("create", "#guestbook")).toBe(false);
 
     // Day 2: returning — can sign, still can't moderate.
-    setVisitDays(2);
+    setCounters({ days: 2 });
     expect(getMe().roles).toContain("returning");
     expect(can("create", "#guestbook")).toBe(true);
     expect(can("delete", "#guestbook", { creator: ADMIN_PK })).toBe(false);
 
     // Day 5: a regular — can sweep up other people's entries.
-    setVisitDays(5);
+    setCounters({ days: 5 });
     expect(getMe().roles).toContain("regular");
     expect(can("delete", "#guestbook", { creator: ADMIN_PK })).toBe(true);
   });

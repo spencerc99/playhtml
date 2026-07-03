@@ -14,9 +14,11 @@
     "`bun dev-server` so the local partykit server can fetch and enforce it."
   ],
   "roles": {
-    "admin": ["pk_REPLACE_WITH_YOUR_PID_FROM_playhtml.me.pid"],
-    "returning": { "visits": 2 },
-    "regular": { "visits": 5 }
+    "admin": [
+      "pk_0494b0d6b651671ea6ac0e8540b77f622ef971834e4e4a3d540ea78860b1fcd982a37c5a306070303b7869542697f06987987e51980c08b5f3237dd0fee64dfbe1"
+    ],
+    "returning": { "days": 2 },
+    "regular": { "days": 5 }
   },
   "elements": {
     "locked-title": "write:admin",

@@ -8,8 +8,8 @@
 //
 // To exercise earned roles (visit accrual), launch wrangler with a compressed
 // day bucket and tell the test about it:
-//   ... --var AUTH_VISIT_DAY_MS:1500
-//   SMOKE_VISIT_DAY_MS=1500 node smoke-tests/partykit/auth-permissions-smoke.mjs
+//   ... --var AUTH_DAY_MS:1500
+//   SMOKE_DAY_MS=1500 node smoke-tests/partykit/auth-permissions-smoke.mjs
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -172,8 +172,8 @@ async function main() {
   const wellKnown = {
     roles: {
       admin: [admin.pid],
-      returning: { visits: 2 },
-      regular: { visits: 3 },
+      returning: { days: 2 },
+      regular: { days: 3 },
     },
     elements: {
       "site-title": "write:admin",
@@ -347,10 +347,10 @@ async function main() {
     adminProvider2.destroy();
     badProvider.destroy();
 
-    // --- 11. earned roles: standing accrues from server-counted visits
-    const visitDayMs = Number(process.env.SMOKE_VISIT_DAY_MS || 0);
+    // --- 11. earned roles: standing accrues from server-counted days
+    const visitDayMs = Number(process.env.SMOKE_DAY_MS || 0);
     if (visitDayMs > 0) {
-      console.log("\n[9] earned roles (visit accrual)");
+      console.log("\n[9] earned roles (day accrual)");
       // The visitor verified once above — day 1. A returning-gated create
       // must be rejected today.
       const dayOne = await gatedWrite(visitorClient, "can-play", "village-guestbook", {
@@ -361,7 +361,7 @@ async function main() {
       // Next "day": re-verify to record a second visit.
       await sleep(visitDayMs + 300);
       const day2 = await verifyClient(visitorClient, origin, { fresh: true });
-      check("second visit counted", day2.stats?.visitDays === 2, JSON.stringify(day2.stats));
+      check("second day counted", day2.stats?.counters?.days === 2, JSON.stringify(day2.stats));
 
       const dayTwo = await gatedWrite(visitorClient, "can-play", "village-guestbook", {
         e1: { text: "back again!" },
@@ -371,9 +371,9 @@ async function main() {
       // Day 3: the visitor becomes a regular and can sweep up others' entries.
       await sleep(visitDayMs + 300);
       const day3 = await verifyClient(visitorClient, origin, { fresh: true });
-      check("third visit counted", day3.stats?.visitDays === 3, JSON.stringify(day3.stats));
+      check("third day counted", day3.stats?.counters?.days === 3, JSON.stringify(day3.stats));
 
-      // A stranger earns signing rights (2 visits) and adds an entry.
+      // A stranger earns signing rights (2 days) and adds an entry.
       const stranger = await makeIdentity();
       const strangerDoc = new Y.Doc();
       const strangerProvider = connectRoom(PARTYKIT_HOST, ROOM_ID, strangerDoc);
@@ -393,13 +393,13 @@ async function main() {
       );
       check("returning stranger can add their entry", strangerEntry.ok === true, strangerEntry.reason);
 
-      // The regular (visitor, 3 visits) sweeps up the stranger's entry.
+      // The regular (visitor, 3 days) sweeps up the stranger's entry.
       const sweep = await gatedWrite(visitorClient, "can-play", "village-guestbook", {
         e1: { text: "back again!", createdBy: visitor.pid },
       });
       check("regular can sweep up someone else's entry", sweep.ok === true, sweep.reason);
 
-      // But a mere returning visitor (stranger, 2 visits) can't sweep others'.
+      // But a mere returning visitor (stranger, 2 days) can't sweep others'.
       const failedSweep = await gatedWrite(strangerClient, "can-play", "village-guestbook", {});
       check(
         "returning visitor can't sweep others' entries",
@@ -409,7 +409,7 @@ async function main() {
       strangerProvider.destroy();
     } else {
       console.log(
-        "\n[9] earned roles SKIPPED — set SMOKE_VISIT_DAY_MS and launch wrangler with --var AUTH_VISIT_DAY_MS:<ms>"
+        "\n[9] earned roles SKIPPED — set SMOKE_DAY_MS and launch wrangler with --var AUTH_DAY_MS:<ms>"
       );
     }
 
