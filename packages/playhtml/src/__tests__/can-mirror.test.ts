@@ -241,6 +241,25 @@ describe("can-mirror: attributes", () => {
     expect(state.attributes["loading-class"]).toBe("waiting");
   });
 
+  it("mirrors a custom loading class after loading finishes", async () => {
+    const source = mountClient(
+      elementFromHTML(
+        `<div id="a" class="removal-target" loading-class="ready"></div>`
+      )
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<div id="a" class="removal-target" loading-class="ready"></div>`
+      )
+    );
+
+    source.element.classList.add("ready");
+    await sync(source, sink);
+
+    expect((source.state as any).attributes.class).toBe("removal-target ready");
+    expect(sink.element.className).toBe("removal-target ready");
+  });
+
   it("applies loading-time default state without restoring loading markers", () => {
     const element = elementFromHTML(
       `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
@@ -898,6 +917,39 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
 
     expect(b.element.className).toBe("card");
     expect(b.proxy().attributes.class).toBe("card");
+  });
+
+  it("ignores local inspect class mutations without writing a Yjs update", async () => {
+    const html = `<div id="d" class="card __playhtml-element"></div>`;
+    const { a } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+    let updateCount = 0;
+    a.doc.on("update", () => {
+      updateCount++;
+    });
+
+    a.element.classList.add("ph-inspect-highlight");
+    await flush();
+
+    expect(updateCount).toBe(0);
+    expect(a.proxy().attributes.class).toBe("card");
+  });
+
+  it("ignores local inspect child mutations without writing a Yjs update", async () => {
+    const html = `<div id="d"><span>real</span></div>`;
+    const { a } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+    let updateCount = 0;
+    a.doc.on("update", () => {
+      updateCount++;
+    });
+
+    const label = document.createElement("div");
+    label.className = "ph-inspect-label";
+    label.textContent = "local";
+    a.element.appendChild(label);
+    await flush();
+
+    expect(updateCount).toBe(0);
+    expect(a.proxy().children.length).toBe(1);
   });
 
 });

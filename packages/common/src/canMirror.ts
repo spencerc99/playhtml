@@ -335,7 +335,7 @@ function updateAttributes(state: ElementState, mutation: MutationRecord) {
         if (attributeName in state.attributes) {
           delete state.attributes[attributeName];
         }
-      } else {
+      } else if (state.attributes[attributeName] !== mirroredValue) {
         state.attributes[attributeName] = mirroredValue;
       }
     } else if (attributeName in state.attributes) {
@@ -365,6 +365,13 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
       newChildren.push(constructInitialState(child));
     }
   });
+  const mirroredCurrentChildren = getMirroredChildStates(state.children);
+  if (
+    mirroredCurrentChildren.length === state.children.length &&
+    areChildStatesEqual(mirroredCurrentChildren, newChildren)
+  ) {
+    return;
+  }
   state.children.splice(0, state.children.length, ...newChildren);
 }
 
@@ -415,23 +422,42 @@ function getMirroredChildStates(children: ElementState[]): ElementState[] {
   return children.filter((child) => !isLocalElementState(child));
 }
 
+function areChildStatesEqual(
+  children1: ElementState[],
+  children2: ElementState[],
+): boolean {
+  if (children1.length !== children2.length) {
+    return false;
+  }
+  return children1.every((child, index) =>
+    areStatesEqual(child, children2[index])
+  );
+}
+
 interface MirrorContext {
   classValue?: string;
   localClassNames: Set<string>;
 }
 
-function getLocalClassNames(loadingClass?: string | null): Set<string> {
+function getLocalClassNames(
+  classValue?: string,
+  loadingClass?: string | null,
+): Set<string> {
   const classNames = new Set(LOCAL_CLASS_NAMES);
-  if (loadingClass) {
+  if (loadingClass && hasClassValue(classValue, "playhtml-loading")) {
     classNames.add(loadingClass);
   }
   return classNames;
 }
 
 function getMirrorContextFromElement(element: HTMLElement): MirrorContext {
+  const classValue = element.getAttribute("class") || undefined;
   return {
-    classValue: element.getAttribute("class") || undefined,
-    localClassNames: getLocalClassNames(element.getAttribute("loading-class")),
+    classValue,
+    localClassNames: getLocalClassNames(
+      classValue,
+      element.getAttribute("loading-class"),
+    ),
   };
 }
 
@@ -440,7 +466,10 @@ function getMirrorContextFromAttributes(
 ): MirrorContext {
   return {
     classValue: attributes.class,
-    localClassNames: getLocalClassNames(attributes["loading-class"]),
+    localClassNames: getLocalClassNames(
+      attributes.class,
+      attributes["loading-class"],
+    ),
   };
 }
 
