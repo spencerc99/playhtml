@@ -1,7 +1,12 @@
 // ABOUTME: Verifies playhtml reports duplicate element IDs during setup.
 // ABOUTME: Covers live registration diagnostics and dev UI conflict grouping.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listDuplicatePlayElements, setupDevUI, teardownDevUI } from "../development";
+import {
+  listDuplicatePlayElements,
+  listSharedElements,
+  setupDevUI,
+  teardownDevUI,
+} from "../development";
 import { ElementHandler } from "../elements";
 import { playhtml, resetPlayHTML } from "../index";
 
@@ -152,6 +157,13 @@ describe("duplicate playhtml element IDs", () => {
         elements: [firstToggle, secondToggle],
       },
     ]);
+  });
+
+  it("does not log an empty shared-elements table", () => {
+    const tableSpy = vi.spyOn(console, "table").mockImplementation(() => {});
+
+    expect(listSharedElements()).toEqual([]);
+    expect(tableSpy).not.toHaveBeenCalled();
   });
 
   it("renders duplicate IDs as an error callout in dev tools", () => {

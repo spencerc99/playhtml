@@ -1,5 +1,6 @@
 ---
 "playhtml": patch
+"@playhtml/common": patch
 ---
 
-Clean up development-mode inspect highlight classes and listeners when the dev tools are torn down, so mirrored elements do not keep stale inspector styling after development mode exits.
+Clean up development-mode inspect highlight classes and listeners so mirrored elements do not keep stale inspector styling, and keep PlayHTML's internal inspector UI out of `can-mirror` state.

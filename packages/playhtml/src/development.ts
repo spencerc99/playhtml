@@ -707,17 +707,19 @@ export function listSharedElements() {
     });
   });
 
-  try {
-    console.table(
-      out.map((e) => ({
-        type: e.type,
-        elementId: e.elementId,
-        dataSource: e.dataSource,
-        normalized: e.normalized,
-        permissions: e.permissions || "",
-      }))
-    );
-  } catch {}
+  if (out.length > 0) {
+    try {
+      console.table(
+        out.map((e) => ({
+          type: e.type,
+          elementId: e.elementId,
+          dataSource: e.dataSource,
+          normalized: e.normalized,
+          permissions: e.permissions || "",
+        }))
+      );
+    } catch {}
+  }
   return out;
 }
 
