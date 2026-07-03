@@ -22,7 +22,7 @@ export interface SketchData {
 
 export type MarkStyle =
   | "nebula"
-  | "sunprint"
+  | "hands"
   | "fingerprint"
   | "blot"
   | "wear"
@@ -45,6 +45,17 @@ const BURST_LIFE_MS = 1800;
 const BURST_MAX_RADIUS = 95;
 const CURSOR_TAIL_MS = 900;
 const MARK_RADIUS = 13;
+
+// The hand-cursor silhouettes from playhtml experiment 7 ("when cursors
+// meet"), 32x32 viewBox, drawn clasped like that experiment's hand-holds.
+const CLOSED_HAND_PATH = new Path2D(
+  "M12.6,13c0.5-0.2,1.4-0.1,1.7,0.5c0.2,0.5,0.4,1.2,0.4,1.1c0-0.4,0-1.2,0.1-1.6 c0.1-0.3,0.3-0.6,0.7-0.7c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.3,0.1-1.2,0.3-1.6 c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7 c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8 c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0 c-0.2,0.4-0.7,1.1-1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-1-0.9-1.2-2 c-0.2-0.9-0.2-1.4,0-1.8c0.2-0.4,0.7-0.6,0.9-0.6c0.2,0,0.7,0,0.9,0.1c0.2,0.1,0.3,0.2,0.5,0.4c0.2,0.3,0.3,0.5,0.2,0.1 c-0.1-0.3-0.3-0.6-0.4-1c-0.1-0.4-0.4-0.9-0.4-1.5C11.7,13.9,11.8,13.3,12.6,13",
+);
+const OPEN_HAND_PATH = new Path2D(
+  "M12.6,16.6c-0.1-0.4-0.2-0.8-0.4-1.6c-0.2-0.6-0.3-0.9-0.5-1.2 c-0.2-0.5-0.3-0.7-0.5-1.2c-0.1-0.3-0.4-1-0.5-1.4c-0.1-0.5,0-0.9,0.2-1.2c0.3-0.3,1-0.5,1.4-0.4c0.4,0.1,0.7,0.5,0.9,0.8 c0.3,0.5,0.4,0.6,0.7,1.5c0.4,1,0.6,1.9,0.6,2.2l0.1,0.5c0,0,0-1.1,0-1.2c0-1-0.1-1.8,0-2.9c0-0.1,0.1-0.6,0.1-0.7 c0.1-0.5,0.3-0.8,0.7-1c0.4-0.2,0.9-0.2,1.4,0c0.4,0.2,0.6,0.5,0.7,1c0,0.1,0.1,1,0.1,1.1c0,1,0,1.6,0,2.2c0,0.2,0,1.6,0,1.5 c0.1-0.7,0.1-3.2,0.3-3.9c0.1-0.4,0.4-0.7,0.8-0.9c0.4-0.2,1.1-0.1,1.4,0.2c0.3,0.3,0.4,0.7,0.5,1.2c0,0.4,0,0.9,0,1.2 c0,0.9,0,1.3,0,2.1c0,0,0,0.3,0,0.2c0.1-0.3,0.2-0.5,0.3-0.7c0-0.1,0.2-0.6,0.4-0.9c0.1-0.2,0.2-0.4,0.4-0.7 c0.2-0.3,0.4-0.4,0.7-0.6c0.5-0.2,1.1,0.1,1.3,0.6c0.1,0.2,0,0.7,0,1.1c-0.1,0.6-0.3,1.3-0.4,1.6c-0.1,0.4-0.3,1.2-0.3,1.6 c-0.1,0.4-0.2,1.4-0.4,1.8c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9 s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4 c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1-1.1-1.3-1.6c-0.2-0.4-0.3-1-0.2-1.3 c0.2-0.6,0.7-0.9,1.4-0.8c0.5,0,0.8,0.2,1.2,0.5c0.2,0.2,0.6,0.5,0.8,0.7c0.2,0.2,0.2,0.3,0.4,0.5C12.6,16.8,12.6,16.9,12.6,16.6",
+);
+const HAND_SCALE = 0.72;
+const HAND_CLASP_OFFSET_PX = 6.5;
 const NIGHT_BG: [number, number, number] = [16, 13, 19];
 const DAY_BG: [number, number, number] = [250, 247, 242];
 
@@ -270,30 +281,36 @@ export function createTouchesSketch(
       marks.circle(touch.x, touch.y, 1.8);
     };
 
-    /** The classic pointer silhouette, tip at (x, y), unrotated — cursors
-     * never rotate on screen, so neither do their shadows. */
-    const pointerPath = (
+    /** One hand cursor, centered at (x, y), rotated toward the clasp and
+     * optionally mirrored — the same transform experiment 7 applies. */
+    const drawHand = (
       ctx: CanvasRenderingContext2D,
+      path: Path2D,
       x: number,
       y: number,
-      scale: number,
+      rotation: number,
+      mirrored: boolean,
+      fill: string,
+      outline: string,
     ) => {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, y + 14 * scale);
-      ctx.lineTo(x + 3.8 * scale, y + 10.6 * scale);
-      ctx.lineTo(x + 6.3 * scale, y + 16 * scale);
-      ctx.lineTo(x + 8.6 * scale, y + 15 * scale);
-      ctx.lineTo(x + 6.1 * scale, y + 9.6 * scale);
-      ctx.lineTo(x + 10.8 * scale, y + 9.6 * scale);
-      ctx.closePath();
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+      if (mirrored) ctx.scale(-1, 1);
+      ctx.scale(HAND_SCALE, HAND_SCALE);
+      ctx.translate(-16, -16);
+      ctx.fillStyle = fill;
+      ctx.fill(path);
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 1.1 / HAND_SCALE;
+      ctx.stroke(path);
+      ctx.restore();
     };
 
-    // Sun print: the touch flash "exposes" a soft two-color stain, and the
-    // two cursors' silhouettes — at their true positions at the moment of
-    // contact — stay unexposed inside it, etched as negative space. The
-    // hopeful twin of a shadow left on a surface by a bright event.
-    const stampSunprint = (
+    // Two hands clasped where the cursors met, each in its cursor's color,
+    // over soft stains that merge as touches layer — the emblem from
+    // experiment 7's hand-holds, left behind as wear.
+    const stampHands = (
       touch: CursorTouch,
       seed: number,
       colorA: p5.Color,
@@ -305,15 +322,15 @@ export function createTouchesSketch(
       const posA = positionAt(data.trails[touch.trailA], touch.ts);
       const posB = positionAt(data.trails[touch.trailB], touch.ts);
 
-      // Exposed surface: soft photographic stains, one per color at each
-      // cursor's spot, blended at the middle.
+      // Wear layer: soft stains, one per color at each cursor's spot,
+      // blending in the middle as marks accumulate.
       const stains: Array<{ x: number; y: number; c: p5.Color }> = [
         { x: posA.x, y: posA.y, c: colorA },
         { x: posB.x, y: posB.y, c: colorB },
         { x: touch.x, y: touch.y, c: mixed },
       ];
       for (const [index, stain] of stains.entries()) {
-        const radius = 15 + seededRandom(seed, index * 11) * 8;
+        const radius = 13 + seededRandom(seed, index * 11) * 7;
         const soft = ctx.createRadialGradient(
           stain.x,
           stain.y,
@@ -322,7 +339,7 @@ export function createTouchesSketch(
           stain.y,
           radius,
         );
-        stain.c.setAlpha(night ? 52 : 34);
+        stain.c.setAlpha(night ? 48 : 32);
         soft.addColorStop(0, stain.c.toString());
         stain.c.setAlpha(0);
         soft.addColorStop(1, stain.c.toString());
@@ -332,15 +349,37 @@ export function createTouchesSketch(
         ctx.fill();
       }
 
-      // Unexposed shadows: the arrows punch through the stain to bare
-      // surface, tips at the exact meeting points.
+      // The clasp: closed hand reaches from A's side, open hand from B's,
+      // along the axis the cursors actually met on. Background-color
+      // outlines keep layered hands reading as relief.
       ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
-      pointerPath(ctx, posA.x, posA.y, 0.62);
-      ctx.fill();
-      pointerPath(ctx, posB.x, posB.y, 0.62);
-      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
+      const outline = night
+        ? "rgba(16, 13, 19, 0.85)"
+        : "rgba(250, 247, 242, 0.9)";
+      colorA.setAlpha(240);
+      drawHand(
+        ctx,
+        CLOSED_HAND_PATH,
+        touch.x - Math.cos(angle) * HAND_CLASP_OFFSET_PX,
+        touch.y - Math.sin(angle) * HAND_CLASP_OFFSET_PX,
+        angle,
+        false,
+        colorA.toString(),
+        outline,
+      );
+      colorB.setAlpha(240);
+      drawHand(
+        ctx,
+        OPEN_HAND_PATH,
+        touch.x + Math.cos(angle) * HAND_CLASP_OFFSET_PX,
+        touch.y + Math.sin(angle) * HAND_CLASP_OFFSET_PX,
+        angle + Math.PI,
+        true,
+        colorB.toString(),
+        outline,
+      );
       ctx.restore();
     };
 
@@ -358,8 +397,8 @@ export function createTouchesSketch(
       if (style !== "nebula") {
         ctx.save();
         ctx.globalCompositeOperation = night ? "source-over" : "multiply";
-        if (style === "sunprint") {
-          stampSunprint(touch, seed, colorA, colorB, mixed, night);
+        if (style === "hands") {
+          stampHands(touch, seed, colorA, colorB, mixed, night);
         } else if (style === "fingerprint") {
           stampFingerprint(touch, seed, colorA, colorB, mixed, night);
         } else if (style === "blot") {
