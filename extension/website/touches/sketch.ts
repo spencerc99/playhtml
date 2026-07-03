@@ -61,6 +61,15 @@ const HAND_SCALE = 0.72;
 // the middle of its 32px viewBox, so wider offsets read as two separate
 // hands instead of a hold.
 const HAND_CLASP_OFFSET_PX = 2.6;
+// The collision moment: a large ghost of the clasp settles into the mark...
+const HAND_AFTERIMAGE_SCALE = 3;
+// ...inside a click-ripple borrowed from the portrait viz (staggered rings
+// easing out to spaced radii), except these fade away instead of persisting.
+const RIPPLE_RINGS = 3;
+const RIPPLE_STAGGER_MS = 140;
+const RIPPLE_CORE_RADIUS = 6;
+const RIPPLE_OUTER_RADIUS = 58;
+const RIPPLE_EXPANSION_MS = 1100;
 const NIGHT_BG: [number, number, number] = [16, 13, 19];
 const DAY_BG: [number, number, number] = [250, 247, 242];
 
@@ -305,12 +314,13 @@ export function createTouchesSketch(
       mirrored: boolean,
       fill: string,
       stroke: string | null,
+      scaleMul = 1,
     ) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(rotation);
       if (mirrored) ctx.scale(-1, 1);
-      ctx.scale(HAND_SCALE, HAND_SCALE);
+      ctx.scale(HAND_SCALE * scaleMul, HAND_SCALE * scaleMul);
       ctx.translate(-16, -16);
       ctx.fillStyle = fill;
       ctx.fill(path);
@@ -330,6 +340,34 @@ export function createTouchesSketch(
         ctx.stroke();
       }
       ctx.restore();
+    };
+
+    /** The clasp geometry shared by the settled mark and the collision
+     * afterimage: closed hand from A's side, open hand from B's, along the
+     * axis the cursors actually met on, offsets scaling with the hands. */
+    const claspLayout = (touch: CursorTouch, scaleMul: number) => {
+      const posA = positionAt(data.trails[touch.trailA], touch.ts);
+      const posB = positionAt(data.trails[touch.trailB], touch.ts);
+      const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
+      const offset = HAND_CLASP_OFFSET_PX * scaleMul;
+      return [
+        {
+          path: CLOSED_HAND_PATH,
+          x: touch.x - Math.cos(angle) * offset,
+          y: touch.y - Math.sin(angle) * offset,
+          rotation: angle,
+          mirrored: false,
+          colorStr: touch.colorA,
+        },
+        {
+          path: OPEN_HAND_PATH,
+          x: touch.x + Math.cos(angle) * offset,
+          y: touch.y + Math.sin(angle) * offset,
+          rotation: angle + Math.PI,
+          mirrored: true,
+          colorStr: touch.colorB,
+        },
+      ];
     };
 
     // Two hands clasped where the cursors met, each in its cursor's color,
@@ -379,32 +417,10 @@ export function createTouchesSketch(
       // the silhouettes are etched out of whatever has accumulated, then
       // laid back as a bleached whisper of each cursor's color with a
       // ghost outline — pale shadows inside the exposed stain.
-      const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
-      const hands: Array<{
-        path: Path2D;
-        x: number;
-        y: number;
-        rotation: number;
-        mirrored: boolean;
-        color: p5.Color;
-      }> = [
-        {
-          path: CLOSED_HAND_PATH,
-          x: touch.x - Math.cos(angle) * HAND_CLASP_OFFSET_PX,
-          y: touch.y - Math.sin(angle) * HAND_CLASP_OFFSET_PX,
-          rotation: angle,
-          mirrored: false,
-          color: colorA,
-        },
-        {
-          path: OPEN_HAND_PATH,
-          x: touch.x + Math.cos(angle) * HAND_CLASP_OFFSET_PX,
-          y: touch.y + Math.sin(angle) * HAND_CLASP_OFFSET_PX,
-          rotation: angle + Math.PI,
-          mirrored: true,
-          color: colorB,
-        },
-      ];
+      const hands = claspLayout(touch, 1).map((hand, index) => ({
+        ...hand,
+        color: index === 0 ? colorA : colorB,
+      }));
 
       ctx.save();
       ctx.globalCompositeOperation = "destination-out";
@@ -690,8 +706,9 @@ export function createTouchesSketch(
       const mixed = inkAdjusted(p.lerpColor(colorA, colorB, 0.5), night);
       const ctx = p.drawingContext as CanvasRenderingContext2D;
 
-      // Patina styles get a quiet bloom: a small glow and one soft ring,
-      // no filaments — the residue is the point, not the explosion.
+      // Patina styles make the collision the moment: a soft glow, a fading
+      // click-ripple, and (for hands) a large afterimage of the clasp
+      // shrinking and bleaching into the small mark it leaves behind.
       if (settingsRef.current.markStyle !== "nebula") {
         ctx.save();
         ctx.globalCompositeOperation = glowComposite();
@@ -715,12 +732,60 @@ export function createTouchesSketch(
           ctx.arc(touch.x, touch.y, coreRadius, 0, Math.PI * 2);
           ctx.fill();
         }
-        mixed.setAlpha(170 * alpha);
-        p.noFill();
-        p.stroke(mixed);
-        p.strokeWeight(1.3);
-        p.circle(touch.x, touch.y, (12 + eased * 52) * 2);
         ctx.restore();
+
+        // Afterimage: the clasp lands large and colorful, then settles —
+        // shrinking and bleaching — into the permanent mark beneath it.
+        if (settingsRef.current.markStyle === "hands") {
+          const scaleMul = 1 + (HAND_AFTERIMAGE_SCALE - 1) * (1 - eased);
+          const fade = (1 - progress) ** 1.2;
+          const bleachTarget = night
+            ? p.color(255, 250, 240)
+            : p.color(250, 247, 242);
+          for (const hand of claspLayout(touch, scaleMul)) {
+            const bleached = p.lerpColor(
+              p.color(hand.colorStr),
+              bleachTarget,
+              0.35 + 0.27 * eased,
+            );
+            bleached.setAlpha((night ? 165 : 200) * fade);
+            const ghost = inkAdjusted(p.color(hand.colorStr), night);
+            ghost.setAlpha((night ? 140 : 160) * fade);
+            drawHand(
+              ctx,
+              hand.path,
+              hand.x,
+              hand.y,
+              hand.rotation,
+              hand.mirrored,
+              bleached.toString(),
+              ghost.toString(),
+              scaleMul,
+            );
+          }
+        }
+
+        // The borrowed click ripple: staggered rings easing out to spaced
+        // radii like the portrait viz's clicks, but fading away entirely.
+        const velocity = RIPPLE_OUTER_RADIUS / RIPPLE_EXPANSION_MS;
+        p.noFill();
+        for (let i = 0; i < RIPPLE_RINGS; i++) {
+          const ringElapsed = age - i * RIPPLE_STAGGER_MS;
+          if (ringElapsed < 0) continue;
+          const target =
+            RIPPLE_RINGS === 1
+              ? RIPPLE_OUTER_RADIUS
+              : RIPPLE_CORE_RADIUS +
+                ((RIPPLE_OUTER_RADIUS - RIPPLE_CORE_RADIUS) * i) /
+                  (RIPPLE_RINGS - 1);
+          const ringDuration = Math.max(1, target / velocity);
+          const raw = Math.min(1, ringElapsed / ringDuration);
+          const radius = target * (1 - (1 - raw) ** 3);
+          mixed.setAlpha((night ? 160 : 130) * alpha);
+          p.stroke(mixed);
+          p.strokeWeight(1.4);
+          p.circle(touch.x, touch.y, radius * 2);
+        }
         return;
       }
 
