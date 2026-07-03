@@ -772,4 +772,42 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
     }
     expect(attrMap(a.element)).toEqual(attrMap(b.element));
   });
+
+  it("propagates class removal through a real Yjs merge", async () => {
+    const html = `<div id="d" class="card"></div>`;
+    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+
+    a.element.classList.add("active");
+    await flush();
+    mergeDocs(a, b);
+    b.applyState();
+    expect(b.element.className).toBe("card active");
+
+    a.element.classList.remove("active");
+    await flush();
+    mergeDocs(a, b);
+    b.applyState();
+
+    expect(b.element.className).toBe("card");
+    expect(b.proxy().attributes.class).toBe("card");
+  });
+
+  it("does not propagate internal inspect classes through a real Yjs merge", async () => {
+    const html = `<div id="d" class="card"></div>`;
+    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+
+    a.element.classList.add(
+      "ph-inspect-highlight",
+      "ph-inspect-highlight-hover"
+    );
+    await flush();
+    mergeDocs(a, b);
+    b.applyState();
+
+    expect(a.element.className).toBe(
+      "card ph-inspect-highlight ph-inspect-highlight-hover"
+    );
+    expect(b.element.className).toBe("card");
+    expect(b.proxy().attributes.class).toBe("card");
+  });
 });
