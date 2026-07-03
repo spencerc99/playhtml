@@ -131,6 +131,20 @@ describe("can-mirror: attributes", () => {
     expect(sink.element.hasAttribute("data-temp")).toBe(false);
   });
 
+  it("mirrors a nested attribute removal", async () => {
+    const html = `<div id="root"><span data-temp="x">child</span></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    source.element.querySelector("span")!.removeAttribute("data-temp");
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("span")!.hasAttribute("data-temp")).toBe(
+      false
+    );
+    expectMirrored(source.element, sink.element);
+  });
+
   it("mirrors the native open attribute on <details>", async () => {
     const source = mountClient(
       elementFromHTML(`<details id="d"><summary>x</summary></details>`)
@@ -155,6 +169,24 @@ describe("can-mirror: attributes", () => {
     const attrs = (source.state as any).attributes;
     expect(attrs["data-playhtml-hover"]).toBeUndefined();
     expect(attrs["data-playhtml-focus"]).toBeUndefined();
+  });
+
+  it("does not persist ephemeral attributes during nested resyncs", async () => {
+    const html = `<div id="root"><ul><li>a</li><li>b</li></ul></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    source.element.setAttribute("data-playhtml-hover", "");
+    const list = source.element.querySelector("ul")!;
+    list.removeChild(list.lastElementChild!);
+    await sync(source, sink);
+
+    const attrs = (source.state as any).attributes;
+    expect(attrs["data-playhtml-hover"]).toBeUndefined();
+    expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
+    expect(
+      Array.from(sink.element.querySelectorAll("li")).map((li) => li.textContent)
+    ).toEqual(["a"]);
   });
 
   it("still persists a real attribute changed alongside an ephemeral one", async () => {
@@ -241,6 +273,21 @@ describe("can-mirror: child add/remove", () => {
     expectMirrored(source.element, sink.element);
   });
 
+  it("mirrors a nested child removal", async () => {
+    const html = `<div id="root"><ul><li>a</li><li>b</li></ul></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    const list = source.element.querySelector("ul")!;
+    list.removeChild(list.lastElementChild!);
+    await sync(source, sink);
+
+    expect(
+      Array.from(sink.element.querySelectorAll("li")).map((li) => li.textContent)
+    ).toEqual(["a"]);
+    expectMirrored(source.element, sink.element);
+  });
+
   it("mirrors a reordered child list", async () => {
     const html = `<ul id="l"><li>a</li><li>b</li><li>c</li></ul>`;
     const source = mountClient(elementFromHTML(html));
@@ -304,10 +351,8 @@ describe("can-mirror: mixed text and element children", () => {
 
 describe("can-mirror: character data", () => {
   it("mirrors a text change that surfaces via an input event", async () => {
-    // The observer runs with subtree: false, so a characterData mutation on a
-    // child text node (target = the text node) is not observed directly. It
-    // syncs when the element fires input (e.g. contenteditable), which
-    // re-snapshots the whole subtree.
+    // Contenteditable surfaces browser edits through input events, which
+    // resnapshot form state and child structure together.
     const source = mountClient(
       elementFromHTML(`<p id="p" contenteditable="true">hello</p>`)
     );
@@ -322,15 +367,15 @@ describe("can-mirror: character data", () => {
     expect(sink.element.textContent).toBe("goodbye");
   });
 
-  it("does NOT observe a direct text-child mutation without an input event", async () => {
-    // Documents the subtree: false boundary. A bare text edit on a child node,
-    // with no input event, is invisible to the observer.
+  it("mirrors a direct text-child mutation", async () => {
     const source = mountClient(elementFromHTML(`<p id="p">hello</p>`));
+    const sink = mountClient(elementFromHTML(`<p id="p">hello</p>`));
 
     source.element.firstChild!.textContent = "goodbye";
-    await flush();
+    await sync(source, sink);
 
-    expect((source.state as any).children[0].textContent).toBe("hello");
+    expect(sink.element.textContent).toBe("goodbye");
+    expectMirrored(source.element, sink.element);
   });
 });
 
@@ -543,9 +588,7 @@ describe("can-mirror: sequential operations stay convergent", () => {
     source.element.appendChild(p);
     await sync(source, sink);
 
-    // 3. change a nested child's text, then mutate the root. The root-level
-    // mutation re-snapshots the whole subtree, carrying the nested edit along
-    // even though subtree: false means the nested change wasn't observed alone.
+    // 3. change a nested child's text, then mutate a root attribute.
     source.element.querySelector("h3")!.firstChild!.textContent = "New Title";
     source.element.setAttribute("data-rev", "2");
     await sync(source, sink);

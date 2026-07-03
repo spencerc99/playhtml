@@ -362,4 +362,50 @@ describe("playhtml basic setup with SyncedStore", () => {
       playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
     ).toBe(readdedChair);
   });
+
+  it("rebinds a locally re-added mirrored descendant with the same id", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const mirror = document.createElement("div");
+    mirror.id = "local-mirror-readd";
+    mirror.setAttribute("can-mirror", "");
+    mirror.innerHTML = `
+      <div id="local-mirror-slot">
+        <button id="local-mirror-toggle" can-toggle>Toggle</button>
+      </div>
+    `;
+    document.body.appendChild(mirror);
+    await playhtml.setupPlayElementForTag(mirror, "can-mirror");
+
+    await waitForCondition(
+      () =>
+        playhtml.elementHandlers!.get("can-toggle")!.get("local-mirror-toggle")
+          ?.element === document.getElementById("local-mirror-toggle"),
+      "Expected can-mirror to register the initial toggle",
+    );
+
+    const firstToggle = document.getElementById("local-mirror-toggle")!;
+    document.getElementById("local-mirror-slot")!.replaceChildren();
+    expect(firstToggle.isConnected).toBe(false);
+
+    const secondToggle = document.createElement("button");
+    secondToggle.id = "local-mirror-toggle";
+    secondToggle.setAttribute("can-toggle", "");
+    secondToggle.textContent = "Toggle";
+    document.getElementById("local-mirror-slot")!.appendChild(secondToggle);
+    playhtml.setupPlayElement(secondToggle);
+
+    await waitForCondition(
+      () =>
+        playhtml.elementHandlers!.get("can-toggle")!.get("local-mirror-toggle")
+          ?.element === secondToggle,
+      "Expected can-mirror to bind the re-added toggle",
+    );
+
+    secondToggle.click();
+    await waitForCondition(
+      () => secondToggle.classList.contains("toggled"),
+      "Expected the re-added toggle to respond to clicks",
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
 });

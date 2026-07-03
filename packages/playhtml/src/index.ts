@@ -1877,6 +1877,23 @@ function reportDuplicateElementId(
   );
 }
 
+function removeDisconnectedElementHandlerForReplacement(
+  tag: TagType | string,
+  elementId: string,
+  replacementElement: HTMLElement,
+): void {
+  const existingHandler = elementHandlers.get(tag)?.get(elementId);
+  if (
+    !existingHandler ||
+    existingHandler.element === replacementElement ||
+    existingHandler.element.isConnected
+  ) {
+    return;
+  }
+
+  removePlayElement(existingHandler.element);
+}
+
 /**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
@@ -1919,6 +1936,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
 
   maybeSetupTag(tag);
   const tagElementHandlers = elementHandlers.get(tag)!;
+  removeDisconnectedElementHandlerForReplacement(tag, elementId, element);
 
   const elementInitializerInfo = getElementInitializerInfoForElement(
     tag,
@@ -1968,7 +1986,9 @@ async function setupPlayElementForTag<T extends TagType | string>(
       handler.observeDescendants();
     }
     if (tag === TagType.CanMirror) {
-      setupPlayElementDescendants(element);
+      runWithMirrorObservationPaused(element, () => {
+        setupPlayElementDescendants(element);
+      });
     }
   }
 
@@ -1998,7 +2018,9 @@ function applySharedElementDataToHandler(
     // @ts-ignore private usage intended
     handler.__data = clonePlain(proxy);
     if (tag === TagType.CanMirror) {
-      setupPlayElementDescendants(handler.element);
+      runWithMirrorObservationPaused(handler.element, () => {
+        setupPlayElementDescendants(handler.element);
+      });
     }
   } finally {
     remoteApplyingKeys.delete(applyKey);
@@ -2155,6 +2177,31 @@ function setupPlayElementDescendants(element: HTMLElement): void {
     setupPlayElement(descendant);
   });
   mirrorDescendantElementsByRoot.set(element, currentDescendants);
+}
+
+function runWithMirrorObservationPaused<T>(
+  element: HTMLElement,
+  action: () => T,
+): T {
+  const observer: MutationObserver | undefined =
+    (element as any).__playhtml_observer;
+  if (!observer) {
+    return action();
+  }
+
+  observer.takeRecords();
+  observer.disconnect();
+  try {
+    return action();
+  } finally {
+    observer.takeRecords();
+    observer.observe(element, {
+      childList: true,
+      attributes: true,
+      subtree: true,
+      characterData: true,
+    });
+  }
 }
 
 /**
@@ -2481,14 +2528,6 @@ function setupViewDescendants(root: HTMLElement): void {
       const existing = elementHandlers.get(tag)?.get(el.id);
       if (existing) {
         if (existing.element === el) continue; // already bound to this node
-        // Same id, different node: a keyed list reused the id on a fresh DOM
-        // node (lit-html replaced the old one). If the old node is detached,
-        // tear its handler down so the new node can bind — otherwise
-        // setupPlayElementForTag would reject it as a duplicate id and the new
-        // node would silently never bind.
-        if (!existing.element.isConnected) {
-          removePlayElement(existing.element);
-        }
       }
       void setupPlayElementForTag(el, tag);
     }
