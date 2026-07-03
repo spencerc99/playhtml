@@ -3,7 +3,7 @@
 
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,8 +19,8 @@ const chromePathCandidates = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 ];
 const defaultChromePath =
-  chromePathCandidates.find((candidate) => existsSync(candidate)) ?? chromePathCandidates[0];
-const RUN_TIMEOUT_MS = 60_000;
+  chromePathCandidates.find((candidate) => existsSync(candidate)) ?? chromium.executablePath();
+const DEFAULT_RUN_TIMEOUT_MS = 120_000;
 
 function parseArgs(argv) {
   const args = {
@@ -28,6 +28,9 @@ function parseArgs(argv) {
     runs: 1,
     outDir: "/private/tmp/playhtml-extension-traces",
     labels: [],
+    mouseSteps: 240,
+    scrollSteps: 28,
+    timeoutMs: DEFAULT_RUN_TIMEOUT_MS,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -38,6 +41,12 @@ function parseArgs(argv) {
       args.runs = Number(argv[++i]);
     } else if (arg === "--out-dir") {
       args.outDir = argv[++i];
+    } else if (arg === "--timeout-ms") {
+      args.timeoutMs = Number(argv[++i]);
+    } else if (arg === "--mouse-steps") {
+      args.mouseSteps = Number(argv[++i]);
+    } else if (arg === "--scroll-steps") {
+      args.scrollSteps = Number(argv[++i]);
     } else if (arg === "--extension") {
       const raw = argv[++i];
       const splitAt = raw.indexOf(":");
@@ -58,6 +67,15 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(args.runs) || args.runs < 1) {
     throw new Error("--runs must be a positive integer");
+  }
+  if (!Number.isInteger(args.timeoutMs) || args.timeoutMs < 1_000) {
+    throw new Error("--timeout-ms must be an integer of at least 1000");
+  }
+  if (!Number.isInteger(args.mouseSteps) || args.mouseSteps < 1) {
+    throw new Error("--mouse-steps must be a positive integer");
+  }
+  if (!Number.isInteger(args.scrollSteps) || args.scrollSteps < 1) {
+    throw new Error("--scroll-steps must be a positive integer");
   }
 
   return args;
@@ -265,10 +283,12 @@ async function setExtensionStorage(context, page, url) {
   });
 }
 
-async function runScenario(page, url) {
+async function prepareScenarioPage(page, url) {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(750);
+}
 
+async function runScenario(page, { mouseSteps, scrollSteps }, logPhase = () => {}) {
   const target = page.locator("#hover-target");
   const box = await target.boundingBox();
   if (!box) throw new Error("Trace target did not render");
@@ -277,27 +297,42 @@ async function runScenario(page, url) {
 
   await page.mouse.move(centerX, centerY);
   await page.waitForTimeout(500);
+  logPhase("hover complete");
 
   await page.locator("#typing-target").click();
   await page.keyboard.type("grounded performance trace input", { delay: 15 });
+  logPhase("typing complete");
 
-  for (let i = 0; i < 240; i++) {
+  for (let i = 0; i < mouseSteps; i++) {
     await page.mouse.move(
       centerX - 120 + (i % 24) * 10,
       centerY - 60 + (i % 12) * 10,
     );
     if (i % 12 === 0) await page.waitForTimeout(12);
   }
+  logPhase("mouse path complete");
 
-  for (let i = 0; i < 28; i++) {
+  for (let i = 0; i < scrollSteps; i++) {
     await page.mouse.wheel(0, 160);
     await page.waitForTimeout(35);
   }
+  logPhase("scroll complete");
 
   await page.waitForTimeout(3_000);
+  logPhase("settle complete");
 }
 
-async function runOne({ chromePath, extensionPath, label, outDir, runIndex, url }) {
+async function runOne({
+  chromePath,
+  extensionPath,
+  label,
+  mouseSteps,
+  outDir,
+  runIndex,
+  scrollSteps,
+  timeoutMs,
+  url,
+}) {
   const safeLabel = label.replace(/[^a-z0-9_-]/gi, "_");
   const userDataDir = resolve(outDir, `${safeLabel}-profile-${runIndex}-${process.pid}`);
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -315,6 +350,12 @@ async function runOne({ chromePath, extensionPath, label, outDir, runIndex, url 
       "--no-first-run",
     ],
   });
+  const startedAt = Date.now();
+  const logPhase = (phase) => {
+    const elapsedMs = Date.now() - startedAt;
+    console.log(`Tracing ${label} run ${runIndex}: ${phase} (${elapsedMs}ms)`);
+  };
+  logPhase("browser launched");
 
   let timeoutId;
   let timedOut = false;
@@ -323,9 +364,9 @@ async function runOne({ chromePath, extensionPath, label, outDir, runIndex, url 
       timedOut = true;
       context.close().catch(() => {});
       reject(
-        new Error(`${label} run ${runIndex} timed out after ${RUN_TIMEOUT_MS}ms`),
+        new Error(`${label} run ${runIndex} timed out after ${timeoutMs}ms`),
       );
-    }, RUN_TIMEOUT_MS);
+    }, timeoutMs);
   });
 
   try {
@@ -335,13 +376,19 @@ async function runOne({ chromePath, extensionPath, label, outDir, runIndex, url 
     if (!timedOut) {
       await context.close().catch(() => {});
     }
+    await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
   }
 
   async function runTraceScenario() {
     const page = await context.newPage();
+    logPhase("page opened");
     await setExtensionStorage(context, page, url);
+    logPhase("extension storage ready");
+    await prepareScenarioPage(page, url);
+    logPhase("scenario page ready");
     const client = await context.newCDPSession(page);
     await client.send("Performance.enable");
+    logPhase("performance metrics enabled");
 
     const before = metricsMap(await client.send("Performance.getMetrics"));
     await client.send("Tracing.start", {
@@ -353,13 +400,17 @@ async function runOne({ chromePath, extensionPath, label, outDir, runIndex, url 
         "blink.user_timing",
       ].join(","),
     });
+    logPhase("trace started");
 
-    await runScenario(page, url);
+    await runScenario(page, { mouseSteps, scrollSteps }, logPhase);
+    logPhase("scenario complete");
 
     const after = metricsMap(await client.send("Performance.getMetrics"));
     const traceText = await collectTrace(client);
+    logPhase("trace collected");
     const tracePath = resolve(outDir, `${safeLabel}-run-${runIndex}.trace.json`);
     await writeFile(tracePath, traceText);
+    logPhase("trace written");
 
     return {
       label,
@@ -409,8 +460,11 @@ async function main() {
           chromePath: args.chromePath,
           extensionPath: extension.extensionPath,
           label: extension.label,
+          mouseSteps: args.mouseSteps,
           outDir: args.outDir,
           runIndex,
+          scrollSteps: args.scrollSteps,
+          timeoutMs: args.timeoutMs,
           url,
         }));
       }

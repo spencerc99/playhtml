@@ -45,6 +45,13 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun run -C extension test`: Run extension collector/storage tests (Vitest + jsdom)
 - `bun run lint`: Type-check all packages (`bunx tsc` across workspace)
 
+### Extension Performance
+
+- `bun run perf:extension:trace -- --extension local:extension/dist/chrome-mv3`: Trace a built extension locally. Build packages and the extension first.
+- `bun run perf:extension:compare -- --summary <summary.json>`: Compare trace summaries and write Markdown/JSON reports.
+- `bun run perf:extension:test`: Run comparison logic tests.
+- For extension changes that touch collectors, storage, content-script observers, or page-wide work, check the `Extension Performance Report` workflow or run a local trace before merge. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate. The workflow is report-only unless `--fail-on-regression` is passed locally.
+
 ### Deployment
 
 - `bun deploy-server`: Deploy PartyKit to production
