@@ -10,9 +10,11 @@
 import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import {
+  computeSiteWeights,
   fnv1a,
   hashPosition,
   seededRandom,
+  WORLD_RADIUS,
 } from "../../extension/website/shared/worldmap/geography";
 
 const ROOT = path.join(import.meta.dir, "../..");
@@ -42,6 +44,9 @@ interface SnapshotEntry {
 
 interface EnrichmentEntry {
   links: string[];
+  pagesCrawled: number;
+  waybackUrls: number | null;
+  sitemapUrls: number | null;
 }
 
 const snapshot = JSON.parse(readFileSync(SNAPSHOT, "utf-8")) as SnapshotEntry[];
@@ -126,15 +131,94 @@ for (const community of communities) {
 
 let placed = 0;
 let kept = 0;
+const frozen = new Set<string>([ORIGIN_DOMAIN]);
+const positions = new Map<string, { x: number; y: number }>();
 for (const entry of snapshot) {
   if (!REBAKE && entry.x !== undefined && entry.y !== undefined) {
     kept++;
+    // already-charted coordinates are a promise to explorers; never move them
+    frozen.add(entry.domain);
+    positions.set(entry.domain, { x: entry.x, y: entry.y });
     continue;
   }
-  const c = coords.get(entry.domain) ?? hashPosition(entry.domain);
-  entry.x = Math.round(c.x * 10) / 10;
-  entry.y = Math.round(c.y * 10) / 10;
+  positions.set(
+    entry.domain,
+    coords.get(entry.domain) ?? hashPosition(entry.domain)
+  );
   placed++;
+}
+
+// separation pass: nudge overlapping landmasses apart so islands read as
+// distinct places. Slight overlap is allowed (archipelagos may touch), and
+// grandfathered coordinates never move -- new arrivals flow around them.
+const weights = computeSiteWeights(
+  snapshot.map((s) => {
+    const e = enrichment[s.domain];
+    return {
+      domain: s.domain,
+      activity: s.activity,
+      extent:
+        Math.max(
+          e?.pagesCrawled ?? 0,
+          e?.waybackUrls ?? 0,
+          e?.sitemapUrls ?? 0
+        ) || undefined,
+    };
+  })
+);
+const domains = snapshot.map((s) => s.domain).sort();
+for (let iter = 0; iter < 120; iter++) {
+  let moved = 0;
+  for (let i = 0; i < domains.length; i++) {
+    for (let j = i + 1; j < domains.length; j++) {
+      const a = domains[i];
+      const b = domains[j];
+      const pa = positions.get(a)!;
+      const pb = positions.get(b)!;
+      const desired =
+        (weights.get(a)!.islandR + weights.get(b)!.islandR) * 0.82 + 4;
+      let dx = pb.x - pa.x;
+      let dy = pb.y - pa.y;
+      let dist = Math.hypot(dx, dy);
+      if (dist >= desired) continue;
+      if (dist < 0.01) {
+        // exact stack: pick a deterministic direction
+        const rand = seededRandom(fnv1a(`untangle:${a}|${b}`));
+        const theta = rand() * Math.PI * 2;
+        dx = Math.cos(theta);
+        dy = Math.sin(theta);
+        dist = 1;
+      }
+      const push = (desired - dist) / dist;
+      const aFrozen = frozen.has(a);
+      const bFrozen = frozen.has(b);
+      if (aFrozen && bFrozen) continue;
+      const aShare = aFrozen ? 0 : bFrozen ? 1 : 0.5;
+      pa.x -= dx * push * aShare;
+      pa.y -= dy * push * aShare;
+      pb.x += dx * push * (1 - aShare);
+      pb.y += dy * push * (1 - aShare);
+      moved++;
+    }
+  }
+  if (moved === 0) break;
+}
+
+// keep everything inside the known world
+for (const [domain, p] of positions) {
+  if (frozen.has(domain)) continue;
+  const r = Math.hypot(p.x, p.y);
+  const max = WORLD_RADIUS * 1.02;
+  if (r > max) {
+    p.x *= max / r;
+    p.y *= max / r;
+  }
+}
+
+for (const entry of snapshot) {
+  const p = positions.get(entry.domain)!;
+  entry.x = Math.round(p.x * 10) / 10;
+  entry.y = Math.round(p.y * 10) / 10;
 }
 
 writeFileSync(SNAPSHOT, JSON.stringify(snapshot, null, 0));

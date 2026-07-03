@@ -136,6 +136,19 @@ export function WorldMap({
     [placed]
   );
 
+  // favicon seals load lazily, only once a charted landmark is drawn zoomed-in
+  const iconCache = useRef(new Map<string, HTMLImageElement | null>());
+  const iconFor = useCallback((site: WorldSite): HTMLImageElement | null => {
+    if (!site.favicon || !/^https?:/.test(site.favicon)) return null;
+    const cache = iconCache.current;
+    if (cache.has(site.domain)) return cache.get(site.domain) ?? null;
+    const img = new Image();
+    img.onerror = () => cache.set(site.domain, null);
+    img.src = site.favicon;
+    cache.set(site.domain, img);
+    return img;
+  }, []);
+
   const viewRef = useRef<View>({ cx: 0, cy: 0, scale: 0.8 });
   const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
   const [hover, setHover] = useState<Hover | null>(null);
@@ -342,12 +355,39 @@ export function WorldMap({
           ctx.globalAlpha = 1;
           continue;
         }
-        // visited/inhabited: inked mark
-        ctx.fillStyle = INK;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, drawR, 0, Math.PI * 2);
-        ctx.fill();
+        // visited/inhabited: inked mark, or the site's favicon as a wax-seal
+        // stamp once you're close enough to read the place
+        const icon = v.scale >= 0.9 ? iconFor(p.site) : null;
+        const sealed = !!(icon && icon.complete && icon.naturalWidth > 0);
+        if (sealed) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, drawR, 0, Math.PI * 2);
+          ctx.fillStyle = "#faf7f2";
+          ctx.fill();
+          ctx.clip();
+          ctx.filter = "sepia(0.35) saturate(0.8)";
+          ctx.drawImage(
+            icon,
+            p.x - drawR * 0.86,
+            p.y - drawR * 0.86,
+            drawR * 1.72,
+            drawR * 1.72
+          );
+          ctx.restore();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.4 / v.scale;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, drawR, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = INK;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, drawR, 0, Math.PI * 2);
+          ctx.fill();
+        }
         // settlement buildings: density shows how lived-in the place is
+        ctx.fillStyle = INK;
         ctx.globalAlpha = 0.72;
         for (const b of p.buildings) {
           const bx = p.x + b.dx;
@@ -387,10 +427,12 @@ export function WorldMap({
           ctx.beginPath();
           ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
           ctx.fill();
-          ctx.fillStyle = CANDLE_FLAME;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, Math.max(1.4, drawR * 0.38), 0, Math.PI * 2);
-          ctx.fill();
+          if (!sealed) {
+            ctx.fillStyle = CANDLE_FLAME;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, Math.max(1.4, drawR * 0.38), 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
       ctx.restore();
@@ -511,7 +553,7 @@ export function WorldMap({
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [placed, placedByDomain, routes, specklePattern, mistPattern, tierOf]);
+  }, [placed, placedByDomain, routes, specklePattern, mistPattern, tierOf, iconFor]);
 
   // --- interaction --------------------------------------------------------
   useEffect(() => {
@@ -659,6 +701,19 @@ export function WorldMap({
           }}
         >
           <div style={{ fontWeight: 600, fontSize: 13 }}>
+            {hover.tier >= 2 && hover.placed.site.favicon && (
+              <img
+                src={hover.placed.site.favicon}
+                alt=""
+                style={{
+                  width: 14,
+                  height: 14,
+                  marginRight: 5,
+                  verticalAlign: "-2px",
+                  filter: "sepia(0.3) saturate(0.85)",
+                }}
+              />
+            )}
             {hover.tier >= 2 ? (
               hover.placed.site.domain
             ) : (

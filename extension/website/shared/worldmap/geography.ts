@@ -100,9 +100,21 @@ export function hashPosition(domain: string): { x: number; y: number } {
   return { x: Math.cos(theta) * r, y: Math.sin(theta) * r };
 }
 
-/** Place every site in the world. Baked coordinates (from the layout tool) win;
- * anything without them falls back to pure hash placement. */
-export function placeSites(sites: WorldSite[]): PlacedSite[] {
+export interface SiteWeights {
+  /** How lived-in: log-scaled playhtml activity, 0..1 */
+  weight: number;
+  /** How much site exists: log-scaled page-count extent, 0..1 */
+  extentWeight: number;
+  markR: number;
+  islandR: number;
+}
+
+/** One source of truth for how activity and extent become sizes, shared by
+ * the renderer and the layout baker (which needs island radii to keep
+ * landmasses from stacking). */
+export function computeSiteWeights(
+  sites: Pick<WorldSite, "domain" | "activity" | "extent">[]
+): Map<string, SiteWeights> {
   const maxLog = Math.max(
     ...sites.map((s) => Math.log10(Math.max(s.activity, 10))),
     1
@@ -111,19 +123,39 @@ export function placeSites(sites: WorldSite[]): PlacedSite[] {
     ...sites.map((s) => Math.log10(Math.max(s.extent ?? 1, 1))),
     1
   );
+  return new Map(
+    sites.map((site) => {
+      const weight = Math.log10(Math.max(site.activity, 10)) / maxLog;
+      const extentWeight =
+        Math.log10(Math.max(site.extent ?? 1, 1)) / maxExtent;
+      return [
+        site.domain,
+        {
+          weight,
+          extentWeight,
+          markR: 2.5 + weight * 8,
+          // island footprint follows extent (how much site exists);
+          // development (weight) renders separately as building density
+          islandR: 10 + extentWeight * 46 + weight * 10,
+        },
+      ];
+    })
+  );
+}
+
+/** Place every site in the world. Baked coordinates (from the layout tool) win;
+ * anything without them falls back to pure hash placement. */
+export function placeSites(sites: WorldSite[]): PlacedSite[] {
+  const weights = computeSiteWeights(sites);
   return sites.map((site) => {
     const rand = seededRandom(fnv1a(site.domain));
     const { x, y } =
       site.x !== undefined && site.y !== undefined
         ? { x: site.x, y: site.y }
         : hashPosition(site.domain);
-    const weight = Math.log10(Math.max(site.activity, 10)) / maxLog;
-    const extentWeight =
-      Math.log10(Math.max(site.extent ?? 1, 1)) / maxExtent;
-    const markR = 2.5 + weight * 8;
-    // island footprint follows extent (how much site exists); settlement
-    // development (weight) is rendered separately as building density
-    const islandR = 10 + extentWeight * 46 + weight * 10;
+    const { weight, extentWeight, markR, islandR } = weights.get(
+      site.domain
+    )!;
     const buildingCount = weight < 0.28 ? 0 : Math.floor(weight * 11);
     const buildRand = seededRandom(fnv1a(`buildings:${site.domain}`));
     const buildings = Array.from({ length: buildingCount }, () => {

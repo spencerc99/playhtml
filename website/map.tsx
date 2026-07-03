@@ -92,6 +92,7 @@ function Atlas() {
             ? Math.min(...foundedYears)
             : undefined,
           title: e?.title ?? undefined,
+          favicon: e?.favicon ?? undefined,
         };
       }),
     []

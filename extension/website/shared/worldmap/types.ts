@@ -18,6 +18,8 @@ export interface WorldSite {
   founded?: number;
   /** Site's own title, shown alongside the domain */
   title?: string;
+  /** Favicon URL, drawn as the landmark's seal once the place is charted */
+  favicon?: string;
 }
 
 /** A drawn connection between two sites (a hyperlink route between islands) */
