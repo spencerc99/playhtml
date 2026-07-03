@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Every option below can be passed either to `playhtml.init({…})` (vanilla) or to `<PlayProvider initOptions={{…}}>` (React). The underlying `InitOptions` interface is the same. Init options are captured on the first successful `init()` call; later calls return the existing readiness promise and do not update the active options.
+Every option below can be passed either to `playhtml.init({…})` (vanilla) or to `<PlayProvider initOptions={{…}}>` (React). The underlying `InitOptions` interface is the same. Options are locked to the first declaration: a later call that passes genuinely conflicting options warns and is ignored. Passing the same options again — or none — is fine and silent.
 
 ```js
 import { playhtml } from "playhtml";
@@ -16,6 +16,22 @@ playhtml.init({
   // …
 });
 ```
+
+### Declaring options when there's no single `init()`
+
+If you can't put one `init()` (or one `<PlayProvider>`) at the top of your app — for example with framework "islands", multi-page sites, or several independent component roots — declare your options once with `playhtml.configure({…})`, then let each piece call `init()` (or render a component) to ensure playhtml is running:
+
+```js
+import { playhtml } from "playhtml";
+
+// In a script that runs early (e.g. in <head>), before any component mounts:
+playhtml.configure({ cursors: { enabled: true, room: "domain" } });
+
+// Anywhere later — these just ensure playhtml is running and use the config above:
+playhtml.init();
+```
+
+`configure()` only declares options; it doesn't connect. Connection happens on the first `init()` (or first component mount). Declaring options up front this way means they apply no matter which "ensure running" call happens to run first.
 
 ## `room`
 

@@ -141,6 +141,8 @@ describe("playhtml.handleNavigation", () => {
 
   it("keeps the first explicit room when a later init passes a different room", async () => {
     const origPath = window.location.pathname + window.location.search;
+    // The conflicting second init() warns; capture it so test output stays clean.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       history.replaceState(null, "", "/");
       await playhtml.init({
@@ -158,7 +160,9 @@ describe("playhtml.handleNavigation", () => {
       expect(playhtml.roomId).toEqual(before);
       expect(playhtml.roomId).toContain("%2F");
       expect(playhtml.roomId).not.toContain("%2Fabout");
+      expect(warn).toHaveBeenCalled();
     } finally {
+      warn.mockRestore();
       history.replaceState(null, "", origPath);
     }
   });
@@ -184,36 +188,54 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it("keeps cursor options from the first init when a later init enables cursors", async () => {
-    await playhtml.init({
-      host: "http://localhost:1999",
-      room: "/cursors-toggle",
-      cursors: { enabled: false },
-    } as any);
-    expect(playhtml.cursorClient).toBeNull();
+  it("locks cursor config to the first init; a later conflicting init is ignored", async () => {
+    // Config is first-declaration-wins for ALL options uniformly — cursors are
+    // not special. To enable cursors when you can't put a single init at the
+    // top, declare them up front (here, the first init / or playhtml.configure).
+    // A later init that disagrees warns and is ignored.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/cursors-toggle",
+        cursors: { enabled: false },
+      } as any);
+      expect(playhtml.cursorClient).toBeNull();
 
-    await playhtml.init({
-      host: "http://localhost:1999",
-      cursors: { enabled: true },
-    } as any);
+      await playhtml.init({
+        host: "http://localhost:1999",
+        cursors: { enabled: true },
+      } as any);
 
-    expect(playhtml.cursorClient).toBeNull();
+      // Locked to the first declaration (cursors off) — later enable ignored.
+      expect(playhtml.cursorClient).toBeNull();
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("keeps cursor options from the first init when a later init disables cursors", async () => {
-    await playhtml.init({
-      host: "http://localhost:1999",
-      room: "/cursors-toggle-off",
-      cursors: { enabled: true },
-    } as any);
-    expect(playhtml.cursorClient).not.toBeNull();
+    // The conflicting second init() warns; capture it so test output stays clean.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/cursors-toggle-off",
+        cursors: { enabled: true },
+      } as any);
+      expect(playhtml.cursorClient).not.toBeNull();
 
-    await playhtml.init({
-      host: "http://localhost:1999",
-      cursors: { enabled: false },
-    } as any);
+      await playhtml.init({
+        host: "http://localhost:1999",
+        cursors: { enabled: false },
+      } as any);
 
-    expect(playhtml.cursorClient).not.toBeNull();
+      expect(playhtml.cursorClient).not.toBeNull();
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("strips filename extension from pathname when deriving default room", async () => {

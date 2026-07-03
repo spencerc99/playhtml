@@ -174,10 +174,15 @@ export function CanPlayElement<T extends object, V = any>({
     );
   }
 
-  // Ensure playhtml is initialized if in standalone mode
+  // Ensure playhtml is running when this component is used outside a
+  // PlayProvider. This is purely "ensure running" — it passes NO options, so it
+  // never competes with config the page declared elsewhere (e.g. a global
+  // playhtml.configure({ cursors }) in a <head> script). If playhtml is already
+  // started, init() is a no-op that resolves to the existing readiness. The
+  // element itself is registered separately via setupPlayElement below, which
+  // is what actually wires it up regardless of who started playhtml.
   useEffect(() => {
     if (standalone && playContext.isProviderMissing) {
-      // Initialize playhtml in standalone mode
       playhtml
         .init()
         .catch((err) =>
