@@ -239,6 +239,40 @@ function getMoveBoundsBasePosition(
   };
 }
 
+function getMoveBoundsClamp(
+  element: HTMLElement,
+  boundsRoot: HTMLElement,
+  currentData: MoveData,
+  nextData: MoveData,
+): MoveData {
+  const minVisible = getMinVisibleFraction(element);
+  const minVisiblePx = getMinVisiblePx(element);
+  const w = element.offsetWidth;
+  const h = element.offsetHeight;
+  const basePosition = getMoveBoundsBasePosition(
+    element,
+    boundsRoot,
+    currentData,
+  );
+  const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
+  const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
+  const minX = keepX - w - basePosition.x;
+  const maxX = boundsRoot.clientWidth - keepX - basePosition.x;
+  const minY = keepY - h - basePosition.y;
+  const maxY = boundsRoot.clientHeight - keepY - basePosition.y;
+  return {
+    x: maxX < minX ? 0 : Math.min(maxX, Math.max(minX, nextData.x)),
+    y: maxY < minY ? 0 : Math.min(maxY, Math.max(minY, nextData.y)),
+  };
+}
+
+function roundMoveData(data: MoveData): MoveData {
+  return {
+    x: roundToFirstDecimal(data.x),
+    y: roundToFirstDecimal(data.y),
+  };
+}
+
 /**
  * Custom Capabilities data types
  */
@@ -457,6 +491,18 @@ export const TagTypeToElement: DefaultTagInitializers = {
     updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
     },
+    onMount: ({ getData, getElement, setData }) => {
+      const element = getElement();
+      const boundsRoot = getMoveBoundsRoot(element);
+      if (!boundsRoot) return;
+      const data = getData();
+      const clampedData = roundMoveData(
+        getMoveBoundsClamp(element, boundsRoot, data, data),
+      );
+      if (clampedData.x !== data.x || clampedData.y !== data.y) {
+        setData(clampedData);
+      }
+    },
     onDragStart: (e: MouseEvent | TouchEvent, { setLocalData }) => {
       const { clientX, clientY } = getClientCoordinates(e);
       setLocalData({
@@ -477,26 +523,11 @@ export const TagTypeToElement: DefaultTagInitializers = {
         // The cursor itself is not clamped; only the element's persisted
         // translate is. Lower min-visible values can opt into partial
         // overhang while keeping a visible slice inside the bounds.
-        const minVisible = getMinVisibleFraction(element);
-        const minVisiblePx = getMinVisiblePx(element);
-        const w = element.offsetWidth;
-        const h = element.offsetHeight;
-        const basePosition = getMoveBoundsBasePosition(element, boundsRoot, data);
-        const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
-        const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
-        const minX = keepX - w - basePosition.x;
-        const maxX = boundsRoot.clientWidth - keepX - basePosition.x;
-        const minY = keepY - h - basePosition.y;
-        const maxY = boundsRoot.clientHeight - keepY - basePosition.y;
-        // If the container is narrower than the keep-visible slice, the
-        // min/max can invert. Fall back to pinning at 0 in that case so the
-        // element doesn't shoot off into negative space.
-        const clampedX = maxX < minX ? 0 : Math.min(maxX, Math.max(minX, newX));
-        const clampedY = maxY < minY ? 0 : Math.min(maxY, Math.max(minY, newY));
-        setData({
-          x: roundToFirstDecimal(clampedX),
-          y: roundToFirstDecimal(clampedY),
+        const clampedData = getMoveBoundsClamp(element, boundsRoot, data, {
+          x: newX,
+          y: newY,
         });
+        setData(roundMoveData(clampedData));
         // Only advance the cursor anchor by the portion of the delta that
         // actually translated the element. If the clamp ate some of the
         // delta (cursor went past the bound), hold that "debt" in the
@@ -504,8 +535,8 @@ export const TagTypeToElement: DefaultTagInitializers = {
         // before the element starts moving again. Without this, a fast
         // drag past one edge lets the return drag fling the element to
         // the opposite edge (apparent dt vs. clamped dt mismatch).
-        const usedDx = clampedX - data.x;
-        const usedDy = clampedY - data.y;
+        const usedDx = clampedData.x - data.x;
+        const usedDy = clampedData.y - data.y;
         setLocalData({
           startMouseX: localData.startMouseX + usedDx,
           startMouseY: localData.startMouseY + usedDy,

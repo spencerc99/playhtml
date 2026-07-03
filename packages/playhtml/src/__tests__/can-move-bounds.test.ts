@@ -175,6 +175,29 @@ describe("can-move bounds clamp", () => {
     expect(state.data.y).toBe(-30);
   });
 
+  it("normalizes persisted out-of-bounds data on mount", () => {
+    const { element, state, setData } = makeDragHarness({
+      elementWidth: 400,
+      elementHeight: 400,
+      containerWidth: 1000,
+      containerHeight: 1000,
+      startX: 900,
+      startY: 0,
+    });
+    TagTypeToElement[TagType.CanMove].updateElement!({
+      element,
+      data: state.data,
+    } as any);
+
+    TagTypeToElement[TagType.CanMove].onMount?.({
+      getData: () => state.data,
+      getElement: () => element,
+      setData,
+    } as any);
+
+    expect(setData).toHaveBeenCalledWith({ x: 600, y: 0 });
+  });
+
   it("respects a custom min-visible fraction (floor disabled)", () => {
     // minVisible = 0.5, floor explicitly 0 so fraction always wins.
     // Slice = 50, max x = 300 - 50 = 250, min y = -50.
