@@ -1,0 +1,2756 @@
+{
+ "mycelia.club": {
+  "founded": 2026,
+  "title": null,
+  "favicon": "https://mycelia.club/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "thesozzledsnip.uk": {
+  "founded": 2026,
+  "title": "The Sozzled Snip",
+  "favicon": "https://thesozzledsnip.uk/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "wewere.online": {
+  "founded": null,
+  "title": "we were online",
+  "favicon": "https://wewere.online/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "youtube.com": {
+  "founded": 2005,
+  "title": "YouTube",
+  "favicon": "https://www.youtube.com/s/desktop/1daead2b/img/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "superops.webflow.io": {
+  "founded": null,
+  "title": "Super",
+  "favicon": "https://cdn.prod.website-files.com/69aa59c507e1394268e1f7ca/6a0d507ce5a7e4715580fe35_super-favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "albertocinco.com": {
+  "founded": 2021,
+  "title": "Alberto Cinco Jr.",
+  "favicon": "https://albertocinco.com/favicon.ico",
+  "links": [
+   "are.na",
+   "google.com",
+   "playhtml.fun",
+   "youtube.com"
+  ],
+  "pagesCrawled": 16,
+  "alive": true
+ },
+ "swathiandshivam.com": {
+  "founded": 2025,
+  "title": "Swathi &amp; Shivam - Wedding Website",
+  "favicon": "https://swathiandshivam.com/favicon.ico?v=3",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "wikipedia.org": {
+  "founded": 2001,
+  "title": "Wikipedia",
+  "favicon": "https://wikipedia.org/static/apple-touch/wikipedia.png",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "isabel.li": {
+  "founded": null,
+  "title": "isabel \u73a5 li - kia ora! \ud83d\udc8c",
+  "favicon": "https://isabel.li/assets/YUE.png",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "playhtml.fun": {
+  "founded": null,
+  "title": "playhtml",
+  "favicon": "https://playhtml.fun/icon.png",
+  "links": [
+   "spencer.place",
+   "we-b.site",
+   "wewere.online"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "mmmx.cloud": {
+  "founded": 2023,
+  "title": "welcome to n\u00edm\u2019s memex",
+  "favicon": "data:image/png;base64,iVBORw0KGgo=",
+  "links": [
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "weddingfun.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "grow.wings": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "3vilwini.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "playhtml-whiteboard-test.vercel.app": {
+  "founded": null,
+  "title": "Friend Corkboard",
+  "favicon": "https://playhtml-whiteboard-test.vercel.app/icon.svg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "spencer.place": {
+  "founded": null,
+  "title": "\ua731\u1d18\u1d07\u0274\u1d04\u1d07\u0280 \u1d04\u029c\u1d00\u0274\u0262",
+  "favicon": "https://spencer.place/favicon.svg",
+  "links": [
+   "are.na",
+   "htmls.garden",
+   "playhtml.fun",
+   "spencerchang.me",
+   "we-b.site",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "shrine.computer": {
+  "founded": null,
+  "title": "computing shrines",
+  "favicon": "https://shrine.computer/icons/shrines.svg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "ellamartini.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": "https://ellamartini.github.io/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "sozzledsnip.netlify.app": {
+  "founded": null,
+  "title": "The Sozzled Snip",
+  "favicon": "https://sozzledsnip.netlify.app/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "playhtml.pages.dev": {
+  "founded": null,
+  "title": "playhtml",
+  "favicon": "https://playhtml.pages.dev/icon.png",
+  "links": [
+   "playhtml.fun",
+   "spencer.place",
+   "we-b.site",
+   "wewere.online"
+  ],
+  "pagesCrawled": 24,
+  "alive": true
+ },
+ "jackyzha0.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "oil-wise-branch.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "tilman.me": {
+  "founded": null,
+  "title": "Tilman.me",
+  "favicon": "https://tilman.me/favicon.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "playhtmlfun.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "rustic-hollow-peacock.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "cgco.vercel.app": {
+  "founded": null,
+  "title": "HTML Community Garden",
+  "favicon": "https://cgco.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "oval-melted-rain.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fridayfishing.store": {
+  "founded": null,
+  "title": "Friday Fishing \ud83d\udc1f",
+  "favicon": "https://fridayfishing.store/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "keith.is": {
+  "founded": 2014,
+  "title": "keith is a web developer",
+  "favicon": "https://keith.is/favicon.svg",
+  "links": [
+   "google.com",
+   "playhtml.fun"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "mvdemos.com": {
+  "founded": 2024,
+  "title": "Minimum Viable Demos",
+  "favicon": "https://mvdemos.com/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "sims.computer": {
+  "founded": 2024,
+  "title": "Hello! Welcome to Synology Web Station!",
+  "favicon": "https://sims.computer/#",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "honored-cubic-arthropod.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "spencerchang.me": {
+  "founded": null,
+  "title": "\ua731\u1d18\u1d07\u0274\u1d04\u1d07\u0280 \u1d04\u029c\u1d00\u0274\u0262",
+  "favicon": "https://spencerchang.me/favicon.svg",
+  "links": [
+   "are.na",
+   "htmls.garden",
+   "playhtml.fun",
+   "spencer.place",
+   "we-b.site",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "nikolas.ws": {
+  "founded": null,
+  "title": "Nikolas Wise is an artist, web developer, and engineering manager from Portland, Oregon.",
+  "favicon": "https://nikolas.ws/favicon.png",
+  "links": [
+   "google.com",
+   "mmmx.cloud",
+   "stucco.software",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "artbookpvd.com": {
+  "founded": 2024,
+  "title": "abc pvd",
+  "favicon": "https://artbookpvd.com/assets/favicon.ico",
+  "links": [
+   "playhtml.fun",
+   "youtube.com"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "uncertain.cloud": {
+  "founded": 2025,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "weddinginprogress.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "outer-space-dj.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "annie.ooo": {
+  "founded": 2020,
+  "title": "Annie Oh",
+  "favicon": "https://annie.ooo/images/cd.png",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "ethica-landing-olu26s-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "deathtocursors.netlify.app": {
+  "founded": null,
+  "title": "Death to Cursors",
+  "favicon": "https://deathtocursors.netlify.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "developh.org": {
+  "founded": 2018,
+  "title": "Developh \u2013 Art, Research, & Learning Institution for Creative & Critical Technologies",
+  "favicon": "https://developh.org/favicon.ico",
+  "links": [
+   "are.na",
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 7,
+  "alive": true
+ },
+ "acute-motley-cowl.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "liorio.neocities.org": {
+  "founded": null,
+  "title": "ohai its liorio",
+  "favicon": "https://liorio.neocities.org/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "swift-fire-brush.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "lifelinefoundations.win": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "sequencelorena.vercel.app": {
+  "founded": null,
+  "title": "SEQUENCE Online - Collaborative Multiplayer Board Game",
+  "favicon": "https://sequencelorena.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "conceitedengineering.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "myfireplace.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "new-socratica.vercel.app": {
+  "founded": null,
+  "title": "Socratica",
+  "favicon": "https://new-socratica.vercel.app/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 3,
+  "alive": true
+ },
+ "htmls.garden": {
+  "founded": null,
+  "title": "html garden",
+  "favicon": "https://htmls.garden/apple_touch_icon.png",
+  "links": [
+   "spencerchang.me",
+   "youtube.com"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "turquoise-broken-industry.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "weather-divination.herokuapp.com": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "elemental-woolen-quokka.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "star-cerulean-puppet.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fireplace-desktop-emily-shens-projects.vercel.app": {
+  "founded": null,
+  "title": "Fireplace Desktop",
+  "favicon": "https://fireplace-desktop-emily-shens-projects.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "jblock.ca": {
+  "founded": 2024,
+  "title": "J Block",
+  "favicon": "https://jblock.ca/favicon.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 11,
+  "alive": true
+ },
+ "cdpn.io": {
+  "founded": null,
+  "title": "CodePen: Online Code Editor and Front End Web Developer Community",
+  "favicon": "https://cpwebassets.codepen.io/assets/favicon/favicon-touch-de50acbf5d634ec6791894eba4ba9cf490f709b3d742597c6fc4b734e6492a5a.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "anastassia.info": {
+  "founded": 2018,
+  "title": "anastassia bobokalonova",
+  "favicon": "https://anastassia.info/icon.png",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "gifting-interfaces.pages.dev": {
+  "founded": null,
+  "title": "Gifting Interfaces",
+  "favicon": "https://gifting-interfaces.pages.dev/2d/gift.svg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "my.baby": {
+  "founded": 2019,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "thaliagodbout.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "andrew-boylan.com": {
+  "founded": 2024,
+  "title": "Sharkbite - Internet Delay Pedal",
+  "favicon": "https://sharkbite.andrew-boylan.com/icon.svg?icon.0m9i5zwvm8du0.svg",
+  "links": [],
+  "pagesCrawled": 14,
+  "alive": true
+ },
+ "squarespace.com": {
+  "founded": 2003,
+  "title": "Website Builder \u2013 Easily Create Your Own Website &mdash; Squarespace",
+  "favicon": "https://static1.squarespace.com/static/5134cbefe4b0c6fb04df8065/t/5be0b4d96d2a73f0ce4f95ff/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "melonland.net": {
+  "founded": 2022,
+  "title": "MelonLand Project",
+  "favicon": "https://melonland.net/images/favicon/apple-touch-icon.png",
+  "links": [
+   "nekoweb.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "ali-canva.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "con-fluent-site.vercel.app": {
+  "founded": null,
+  "title": "CON // FLUENT",
+  "favicon": "https://con-fluent-site.vercel.app/favicon.ico?favicon.2vob68tjqpejf.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "ginger-moored-mollusk.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "course-website-pages.pages.dev": {
+  "founded": null,
+  "title": "Veloria Academy \u2014 Practical Learning Library, PDF Notes & Live Classes Soon",
+  "favicon": "https://course-website-pages.pages.dev/brand/veloria-academy-logo.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "ahana-turns-25.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "chiseled-excited-piano.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fun-dm.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fun-fridge.com": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fireplace-desktop.vercel.app": {
+  "founded": null,
+  "title": "Fireplace Desktop",
+  "favicon": "https://fireplace-desktop.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "new-website-sohambasu963s-projects.vercel.app": {
+  "founded": null,
+  "title": "Socratica",
+  "favicon": "https://new-socratica-website-sohambasu963s-projects.vercel.app/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 3,
+  "alive": true
+ },
+ "plume-excessive-estimate.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fun-how.do": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "inconclusive-phrygian-secretary.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "panteonero.com": {
+  "founded": null,
+  "title": "PANTEONERO",
+  "favicon": "https://panteonero.com/favicon.gif",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "hollow-toothsome-raver.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "branched-island-burglar.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "intriguing-little-asiago.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "thegfe.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fun-playhtml.fun": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fun-he.ll": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "ivantschk.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "stucco.software": {
+  "founded": 2023,
+  "title": "Work \u2014 Stucco Software",
+  "favicon": "https://stucco.software/favicon.png",
+  "links": [
+   "wikipedia.org"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "codex-bridge-hibernation.test": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fun-are.na": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "weirdweboctober-starter.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "vanderspie.gl": {
+  "founded": null,
+  "title": "Patrick Van der Spiegel",
+  "favicon": "https://vanderspie.gl/favicon.ico",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "fun-fridge.html": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "translate.goog": {
+  "founded": 2017,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "writefutureslab.com": {
+  "founded": 2025,
+  "title": "Write Futures Lab",
+  "favicon": "https://writefutureslab.com/favicon.ico",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "fun-if.then": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "coherent-reliable-college.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "lataccola.neocities.org": {
+  "founded": null,
+  "title": "La Taccola",
+  "favicon": "https://lataccola.neocities.org/favicon.ico",
+  "links": [
+   "google.com",
+   "melonland.net",
+   "nekoweb.org",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "sbdd-radio-praha.vercel.app": {
+  "founded": null,
+  "title": "Radio Kutululu",
+  "favicon": "https://sbdd-radio-praha.vercel.app/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "statilda-team.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "aliciaguo.com": {
+  "founded": 2021,
+  "title": "Alicia Guo",
+  "favicon": "https://aliciaguo.com/plum_flower.png",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "we-were-online-website.pages.dev": {
+  "founded": null,
+  "title": "we were online",
+  "favicon": "https://we-were-online-website.pages.dev/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "is-a.dev": {
+  "founded": 2020,
+  "title": "is-a.dev - Free subdomains for developers",
+  "favicon": "https://is-a.dev/assets/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "terpconnect.umd.edu": {
+  "founded": null,
+  "title": null,
+  "favicon": "https://terpconnect.umd.edu/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "dalmo.ai": {
+  "founded": 2026,
+  "title": "Dalmo Mendon\u00e7a \u2014 AI, Poetry, Integral Christianity",
+  "favicon": "https://dalmo.ai/images/icon-main.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "ricardolongo.com.br": {
+  "founded": null,
+  "title": "Ricardo Longo - Blog pessoal - Ricardo Longo",
+  "favicon": "https://ricardolongo.com.br/wp-content/uploads/cropped-icon-ricardolongo-32x32.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "dino-markets-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "annieoh.com": {
+  "founded": 2014,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "cgco-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "skillcohort.vercel.app": {
+  "founded": null,
+  "title": "The Learning Collective",
+  "favicon": "https://skillcohort.vercel.app/logo.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "kalthiyaheet.workers.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "gem-sugared-spectacles.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "itspangler.com": {
+  "founded": 2021,
+  "title": "ian spangler",
+  "favicon": "https://itspangler.com/_app/immutable/assets/git.DDf6BzG0.jpg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "crowbitty.neocities.org": {
+  "founded": null,
+  "title": "The web site of crowbitty",
+  "favicon": "https://crowbitty.neocities.org/favicon.ico",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "ethicahq.space": {
+  "founded": null,
+  "title": "Ethica | Open Creative Collective for Makers, Founders &amp; Builders",
+  "favicon": "https://ethicahq.space/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "useful-alder-troodon.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "purduehackers.com": {
+  "founded": 2013,
+  "title": "Purdue Hackers",
+  "favicon": "https://purduehackers.com/glider.svg",
+  "links": [
+   "google.com",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "silly-cat-b152be.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "gardenweb-space.netlify.app": {
+  "founded": null,
+  "title": "Garden Web",
+  "favicon": "https://gardenweb-space.netlify.app/favicon.png",
+  "links": [
+   "are.na"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "we-b.site": {
+  "founded": null,
+  "title": "\u0489 .\uff61\u22c6\u00b0 (\ud835\udccc\ud835\udc52)\ud835\udcb7\ud835\udcc8\ud835\udcbe\ud835\udcc9\ud835\udc52 \u02da\uff61\u22c6 \u25cc",
+  "favicon": "https://we-b.site/tk.svg",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "specula-melitensis.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "scottwhyoung.info": {
+  "founded": null,
+  "title": "Scott W. H. Young - UX Librarian",
+  "favicon": "https://scottwhyoung.info/favicon.ico",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 22,
+  "alive": true
+ },
+ "thinking.living": {
+  "founded": null,
+  "title": "thinking, living",
+  "favicon": "https://thinking.living/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "npwitk.com": {
+  "founded": null,
+  "title": "Nonprawich I.",
+  "favicon": "https://npwitk.com/favicon.ico?favicon.0656r83fgw794.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 10,
+  "alive": true
+ },
+ "projbyzuri.netlify.app": {
+  "founded": null,
+  "title": "projbyzuri",
+  "favicon": "https://projbyzuri.netlify.app/assets/favicon.ico",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 9,
+  "alive": true
+ },
+ "aiadventuremaker-dasilvakareems-projects.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "reflective-green-beef.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "cooperative-young-tangerine.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "rafworkonly.github.io": {
+  "founded": null,
+  "title": "A place to share stories. &mdash; Home",
+  "favicon": "https://rafworkonly.github.io/assets/images/preview.png",
+  "links": [],
+  "pagesCrawled": 23,
+  "alive": true
+ },
+ "large-hexagonal-globe.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "calvin.sh": {
+  "founded": null,
+  "title": "Calvin Liang",
+  "favicon": "https://calvin.sh/favicon.ico",
+  "links": [
+   "google.com",
+   "wikipedia.org"
+  ],
+  "pagesCrawled": 15,
+  "alive": true
+ },
+ "oaiusercontent.com": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "duckdns.org": {
+  "founded": 2013,
+  "title": "Duck DNS",
+  "favicon": "https://duckdns.org/img/ducky_icon.png",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 10,
+  "alive": true
+ },
+ "ad2x.github.io": {
+  "founded": null,
+  "title": "E-CHESS",
+  "favicon": "https://ad2x.github.io/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "annie-dot-com.vercel.app": {
+  "founded": null,
+  "title": "Annie Oh",
+  "favicon": "https://annie-dot-com.vercel.app/images/cd.png",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "expectbest.co.uk": {
+  "founded": 2007,
+  "title": "Web Design Poole \u2013 Expert Web Designers | Expect Best",
+  "favicon": "https://expectbest.co.uk/wp-content/uploads/2026/01/cropped-Group-82-32x32.png",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "stella-and-matilda.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "minimum-viable-demos.vercel.app": {
+  "founded": null,
+  "title": "Minimum Viable Demos",
+  "favicon": "https://minimum-viable-demos.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "hushed-curvy-pepperberry.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "amber-lavender-dime.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "campfire-16j.pages.dev": {
+  "founded": null,
+  "title": "the digital spaces we want",
+  "favicon": "https://campfire-16j.pages.dev/icon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "community-graph-eastmountaincodes-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "artex-studios.com": {
+  "founded": 2026,
+  "title": "Artex Studios",
+  "favicon": "https://artex-studios.com/favicon.ico?v=3",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "tehanu.neocities.org": {
+  "founded": null,
+  "title": "tehanu",
+  "favicon": "https://tehanu.neocities.org/favicon.ico",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "right-evening-challenge.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "community-graph-mu.vercel.app": {
+  "founded": null,
+  "title": "Bandwidth vs IRL",
+  "favicon": "https://community-graph-mu.vercel.app/favicon.ico?favicon.2vob68tjqpejf.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "gwynnie.gay": {
+  "founded": 2023,
+  "title": "tanner caffrey",
+  "favicon": "https://gwynnie.gay/favicon.ico",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "navy-stealth-sternum.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "kutululu.live": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "home-883.pages.dev": {
+  "founded": null,
+  "title": "\ua731\u1d18\u1d07\u0274\u1d04\u1d07\u0280 \u1d04\u029c\u1d00\u0274\u0262",
+  "favicon": "https://home-883.pages.dev/favicon.svg",
+  "links": [
+   "are.na",
+   "htmls.garden",
+   "playhtml.fun",
+   "spencer.place",
+   "spencerchang.me",
+   "we-b.site",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "lead-lily-kite.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "annie-dot-ne-ohs-projects.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "ethicalanding.vercel.app": {
+  "founded": null,
+  "title": "Ethica | Open Creative Collective for Makers, Founders &amp; Builders",
+  "favicon": "https://ethicalanding.vercel.app/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "sequencelorena-6239s-projects.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "mwhite98.github.io": {
+  "founded": null,
+  "title": "myla white",
+  "favicon": "https://mwhite98.github.io/favicon/apple-touch-icon.png",
+  "links": [
+   "are.na",
+   "youtube.com"
+  ],
+  "pagesCrawled": 7,
+  "alive": true
+ },
+ "flossy-positive-magnosaurus.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "past-burly-muscle.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "pottery-website-client.onrender.com": {
+  "founded": null,
+  "title": "My Pottery",
+  "favicon": "https://pottery-website-client.onrender.com/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "polished-polydactyl-subway.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "glittery-handy-atrociraptor.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "radweb-starter.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "weak-meadow-mailman.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "gob.mx": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "lato-mauve.vercel.app": {
+  "founded": null,
+  "title": "Latoria \u2014 SAGE Memory Engine",
+  "favicon": "https://lato-mauve.vercel.app/favicon.svg",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "detailed-square-chair.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "crushed.app": {
+  "founded": 2025,
+  "title": "Crushed \u2014 The Home Base for Cannabis Culture",
+  "favicon": "https://crushed.app/favicon.png",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "es-d-2665189120260326-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "one-letter-texting.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "oval-broadleaf-saguaro.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "play-dot-html-1st-sandbox.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "sequence-one-beige.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "denim-uneven-variraptor.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "playhtml-class.pages.dev": {
+  "founded": null,
+  "title": "Building Benches for the Web",
+  "favicon": "https://playhtml-class.pages.dev/red-stool.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "sinaranugerah.com": {
+  "founded": 2026,
+  "title": "Sinar Anugerah \u2014 Percetakan & Digital Printing Palembang | Offset, Konveksi, Advertising",
+  "favicon": "https://sinaranugerah.com/favicon-32x32.png",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "rehobotemasmakmur.com": {
+  "founded": null,
+  "title": "Rehobot Emas Makmur \u2014 Percetakan & Digital Printing Palembang | Offset, Konveksi, Advertising",
+  "favicon": "https://rehobotemasmakmur.com/favicon-32x32.png",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "bedecked-veil-individual.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "boiling-melodic-schooner.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "jakob.land": {
+  "founded": 2024,
+  "title": "jakob leveille",
+  "favicon": "https://jakob.land/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "bento-site-purdue-hackers.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 210,
+  "alive": true
+ },
+ "sweltering-descriptive-mosquito.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "silent-smart-rate.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "just-fern-latency.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "html-garden-spencerc99s-projects.vercel.app": {
+  "founded": null,
+  "title": "html garden",
+  "favicon": "https://html-garden-spencerc99s-projects.vercel.app/apple_touch_icon.png",
+  "links": [
+   "spencerchang.me",
+   "youtube.com"
+  ],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "ruby-sprinkle-handle.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "knowledgeable-gratis-panther.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "faithful-victorious-mirror.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "chalk-turquoise-airmail.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "breezy-saber-redcurrant.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "omninnection.com": {
+  "founded": 2026,
+  "title": "OMNINNECTION \u00b7 IA, sites e dashboards, num time s\u00f3. \u00b7 OMNINNECTION",
+  "favicon": "https://omninnection.com/favicon.ico?favicon.0x3dzn~oxb6tn.ico",
+  "links": [
+   "are.na"
+  ],
+  "pagesCrawled": 10,
+  "alive": true
+ },
+ "spark-cotton-gigantspinosaurus.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "north-zenith-broker.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "habitual-cobalt-elephant.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "glib-confused-waterlily.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "foremost-evergreen-buckaroo.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "gem-pinnate-weather.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "wooden-luminous-raccoon.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "quark-boulder-secure.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "scarlet-cypress-emperor.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "bead-proximal-law.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "kgambs.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": "https://kgambs.github.io/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "circular-meadow-tango.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "columbus.oh.us": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "horse-cyber-powder.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "desert-uttermost-glade.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "evening-locrian-snagglefoot.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "atom-fringe-cheek.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "clever-flying-client.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "lace-cyan-platypus.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "toothsome-productive-father.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "endurable-rainy-mind.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "flint-cake-neighbor.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "incongruous-real-viper.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fixed-sable-ziconium.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "hilarious-mochi-4c420b.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "observablehq.cloud": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "cooked-inquisitive-canidae.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "elfvira.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "sunset-casspirilla-hq.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "bento-site-three.vercel.app": {
+  "founded": null,
+  "title": "bento",
+  "favicon": "https://bento-site-three.vercel.app/favicon.svg",
+  "links": [
+   "purduehackers.com"
+  ],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "ethica-landing.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "glistening-parfait-519da7.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "ethica-landing-git-main-olu26s-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "8kendall.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "wedding-website-shivams-projects-60c8ad5b.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "computing-shrines.pages.dev": {
+  "founded": null,
+  "title": "computing shrines",
+  "favicon": "https://computing-shrines.pages.dev/icons/shrines.svg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "michaelevy.com": {
+  "founded": null,
+  "title": "Home | Michael Levy",
+  "favicon": "https://michaelevy.com/public/resources/favicon.png",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "circusbaby.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "skillcohort-venim.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 10,
+  "alive": true
+ },
+ "nekoweb.org": {
+  "founded": null,
+  "title": "nekoweb",
+  "favicon": "https://nekoweb.org/favicon.ico",
+  "links": [
+   "google.com",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "pipecleanerarms.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "severed-floor-lloyd-center.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "garden-nikolas-nikolas-wises-projects.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "the-greatest-show-on-earth.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-3649501920260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-7436574420260422-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "radweb2.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "purrmaid-teasis.vercel.app": {
+  "founded": null,
+  "title": "The Secret Ingredient",
+  "favicon": "https://purrmaid-teasis.vercel.app/favicon.ico",
+  "links": [
+   "playhtml.fun"
+  ],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "bossoutside.com": {
+  "founded": 2024,
+  "title": "Default page",
+  "favicon": "https://hpanel.hostinger.com/favicons/hostinger.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "seneth.me": {
+  "founded": null,
+  "title": "Home",
+  "favicon": "https://seneth.me/favicon/favicon-96x96.png",
+  "links": [],
+  "pagesCrawled": 14,
+  "alive": true
+ },
+ "laurenlee.xyz": {
+  "founded": null,
+  "title": "Lauren Lee Portfolio",
+  "favicon": "https://laurenlee.xyz/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "grillzgang.com": {
+  "founded": null,
+  "title": "Grillz Gang",
+  "favicon": "https://framerusercontent.com/images/aJLa8Jec4tPr5UTJJD8mPy63LrY.png",
+  "links": [],
+  "pagesCrawled": 20,
+  "alive": true
+ },
+ "es-d-1333767020260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "barberia-sarias.vercel.app": {
+  "founded": null,
+  "title": "Barber\u00eda SARIAS | Barbero Profesional en Sevilla",
+  "favicon": "https://barberia-sarias.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "es-d-9982295020260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-8015560220260402-019d45dd-a7b5-7d3a-8926.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-8015560220260402-019d45dd-1629-7348-9b5a.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-8015560220260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-3053084220260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-1626083320260402-019d45e0-b398-74bc-9327.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-1626083320260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-1442203820260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-1441524620260402-019d45c7-91ff-718d-90d2.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "es-d-0986634120260402-019d1e75-52f0-7167-8884.codepen.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "sbdd-radio-praha-milangress.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "claudeusercontent.com": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "toggles.pages.dev": {
+  "founded": null,
+  "title": "Toggles",
+  "favicon": "https://toggles.pages.dev/favicon.svg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "cassandra-carter.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "itspangler.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "dino.markets": {
+  "founded": 2026,
+  "title": "dino.markets \u2014 real-time API for cross-venue sports prediction markets",
+  "favicon": "https://dino.markets/icon.svg?icon.0b0wugct-bvac.svg",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "demos.club": {
+  "founded": 2023,
+  "title": "Demos & Chill",
+  "favicon": "https://demos.club/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "meta-jacking.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "purrmaid-teasis-rosstopherkeens-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "plantpettingclub.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "thewayitis.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "ladypipa.com": {
+  "founded": 2017,
+  "title": "Lady Pipa: Vestidos de fiesta, para bodas, monos de fiesta y mucho m\u00e1s",
+  "favicon": "https://ladypipa.com/cdn/shop/files/Favicon-LP-new25-3.jpg?v=1738170702&width=96",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "albertocinco.pages.dev": {
+  "founded": null,
+  "title": "Alberto Cinco Jr.",
+  "favicon": "https://albertocinco.pages.dev/favicon.ico",
+  "links": [
+   "are.na",
+   "google.com",
+   "playhtml.fun",
+   "youtube.com"
+  ],
+  "pagesCrawled": 16,
+  "alive": true
+ },
+ "codeberg.page": {
+  "founded": 2020,
+  "title": "Codeberg Pages - static pages for your projects",
+  "favicon": "https://design.codeberg.org/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "seanzshow1.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "stucco-site-stucco.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": "https://stucco-site-gf9v16n17-stucco.vercel.app/favicon.png",
+  "links": [
+   "nikolas.ws",
+   "stucco.software",
+   "wikipedia.org"
+  ],
+  "pagesCrawled": 396,
+  "alive": true
+ },
+ "newmoonpeepshow.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "the-internet-of-value-foundation.netlify.app": {
+  "founded": null,
+  "title": "Internet of Value Research Foundation | Rebuilding Value from Time, Wellbeing &amp; Contribution",
+  "favicon": "https://the-internet-of-value-foundation.netlify.app/favicon.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "petrichor-foundry.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "clean-grinder.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "maxbo.me": {
+  "founded": null,
+  "title": "\u2736 Max Bo \u2736",
+  "favicon": "https://maxbo.me/favicon.ico",
+  "links": [
+   "are.na",
+   "google.com",
+   "observablehq.cloud",
+   "spencer.place",
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "aiadventuremaker-app.vercel.app": {
+  "founded": null,
+  "title": "AI Adventure Maker",
+  "favicon": "https://aiadventuremaker-app.vercel.app/favicon.ico?favicon.0b3bf435.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "water-lateral-look.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "tail87baf4.ts.net": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "codex-shared-lamp-probe.test": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "jblock-webring.pages.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "lizziemcguired.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "faraway-fastness.netlify.app": {
+  "founded": null,
+  "title": "The Faraway Fastness",
+  "favicon": "data:image/png;base64,iVBORw0KGgo=",
+  "links": [],
+  "pagesCrawled": 20,
+  "alive": true
+ },
+ "nir-vin-website.vercel.app": {
+  "founded": null,
+  "title": "NirVin \u2014 The Sovereign OS for Business &amp; Career Intelligence",
+  "favicon": "https://nir-vin-website.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "osrawest.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "the-doom-experience.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "jshell.net": {
+  "founded": 2009,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "iyimatd.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "dino-markets-git-feat-dino-flame-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "playhtml-r7i.pages.dev": {
+  "founded": null,
+  "title": "playhtml",
+  "favicon": "https://playhtml-r7i.pages.dev/favicon.svg",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "uefa.com": {
+  "founded": 1997,
+  "title": "The official website for European football | UEFA.com",
+  "favicon": "https://img.uefa.com/imgml/favicon/favicon.ico",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "danky-little-ants.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "whats-on-evans-desk.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "mnta.io": {
+  "founded": null,
+  "title": "Moneta Studio",
+  "favicon": "https://moneta.studio/__moneta-static__/apple-touch-icon.png",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "mmorpgxenos.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "github.dev": {
+  "founded": null,
+  "title": null,
+  "favicon": "https://github.dev/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "strtmack.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "dino-markets-git-fix-dino-facing-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "dino-markets-git-feat-landing-d-c8e572-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "dino-markets-git-feat-docs-theme-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "dino-markets-git-feat-dino-404-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "dino-markets-git-feat-brand-fixes-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "google.com": {
+  "founded": 1997,
+  "title": "Google",
+  "favicon": "https://google.com/favicon.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "are.na": {
+  "founded": null,
+  "title": "Are.na",
+  "favicon": "https://are.na/favicon.ico",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "reckziegel.me": {
+  "founded": null,
+  "title": "Kurt Reckziegel",
+  "favicon": "https://reckziegel.me/favicon.svg",
+  "links": [
+   "playhtml.fun",
+   "wewere.online",
+   "youtube.com"
+  ],
+  "pagesCrawled": 13,
+  "alive": true
+ },
+ "silvier.org": {
+  "founded": 2026,
+  "title": "Silvier Linings",
+  "favicon": "https://silvier.org/favicon.ico",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "eileensam.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "laurens-leelaurs-projects.vercel.app": {
+  "founded": null,
+  "title": "Login \u2013 Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "wowie-zowie.glitch.me": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "silvier-org.pages.dev": {
+  "founded": null,
+  "title": "Silvier Linings",
+  "favicon": "https://silvier.org/favicon.ico",
+  "links": [
+   "silvier.org"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "chanelrichardson.github.io": {
+  "founded": null,
+  "title": "Chanel Richardson",
+  "favicon": "https://chanelrichardson.github.io/favicon.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "statichost.page": {
+  "founded": 2025,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "glittery-sundae-aa9932.netlify.app": {
+  "founded": null,
+  "title": "random films",
+  "favicon": "https://glittery-sundae-aa9932.netlify.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "mmorpgxenos-dasilvakareems-projects.vercel.app": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "looptales.com": {
+  "founded": null,
+  "title": "LoopTales Studio | Bem-vindos ao Futuro",
+  "favicon": "https://looptales.com/wp-content/uploads/2026/01/cropped-looptales-logo.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "itspangler-svelte.netlify.app": {
+  "founded": null,
+  "title": null,
+  "favicon": "https://itspangler-svelte.netlify.app/favicon.png",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "site-57p.pages.dev": {
+  "founded": null,
+  "title": "Home",
+  "favicon": "https://site-57p.pages.dev/favicon/favicon-96x96.png",
+  "links": [
+   "seneth.me"
+  ],
+  "pagesCrawled": 4,
+  "alive": true
+ },
+ "co.nz": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "jeseniar.github.io": {
+  "founded": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fiveirongolf.ae": {
+  "founded": null,
+  "title": "Five Iron Golf Dubai",
+  "favicon": "https://www.fiveirongolf.ae/cdn/shop/files/Five_Iron_Icon_Black_1b3d0d73-cd79-4987-8e2d-514d5c458591.png?v=1719340709&width=96",
+  "links": [],
+  "pagesCrawled": 17,
+  "alive": true
+ },
+ "rimowadesignprize.com": {
+  "founded": null,
+  "title": "RIMOWA Design Prize",
+  "favicon": "https://rimowadesignprize.com/221006/favicon.svg",
+  "links": [],
+  "pagesCrawled": 15,
+  "alive": true
+ },
+ "yakkay.com": {
+  "founded": null,
+  "title": "YAKKAY - Stylish Bicycle Helmets with Swappable Covers",
+  "favicon": "https://yakkay.com/favicon.ico",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "originalfavorites.com": {
+  "founded": null,
+  "title": "Luxury, Wholesale T-Shirts and Sweatshirts | Original Favorites",
+  "favicon": "https://originalfavorites.com/cdn/shop/files/Artboard_1_625a335e-2b91-4882-8a23-16a6a23a8215.jpg?v=1731956093&width=96",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "newbalance.ch": {
+  "founded": null,
+  "title": "New Balance Onlineshop Schweiz",
+  "favicon": "https://newbalance.ch/cdn/shop/files/Logo_NB_Favicon_32x32px.png?v=1721743583&width=96",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ }
+}

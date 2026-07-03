@@ -205,6 +205,11 @@
 "activity": 27288
 },
 {
+"domain": "bento-site-purdue-hackers.vercel.app",
+"rooms": 42,
+"activity": 27000
+},
+{
 "domain": "developh.org",
 "rooms": 5,
 "activity": 26608
@@ -370,7 +375,7 @@
 "activity": 6816
 },
 {
-"domain": "new-socratica-website-sohambasu963s-projects.vercel.app",
+"domain": "new-website-sohambasu963s-projects.vercel.app",
 "rooms": 9,
 "activity": 6796
 },
@@ -485,6 +490,11 @@
 "activity": 4388
 },
 {
+"domain": "stucco-site-stucco.vercel.app",
+"rooms": 20,
+"activity": 4320
+},
+{
 "domain": "sbdd-radio-praha.vercel.app",
 "rooms": 1,
 "activity": 4304
@@ -535,7 +545,7 @@
 "activity": 3788
 },
 {
-"domain": "cgco-deployyys-projects.vercel.app",
+"domain": "cgco-projects.vercel.app",
 "rooms": 3,
 "activity": 3776
 },
@@ -643,6 +653,11 @@
 "domain": "rafworkonly.github.io",
 "rooms": 16,
 "activity": 2232
+},
+{
+"domain": "sequencelorena-6239s-projects.vercel.app",
+"rooms": 2,
+"activity": 2116
 },
 {
 "domain": "large-hexagonal-globe.glitch.me",
@@ -760,11 +775,6 @@
 "activity": 1532
 },
 {
-"domain": "sequencelorena-hmrjgpoqk-6239s-projects.vercel.app",
-"rooms": 1,
-"activity": 1532
-},
-{
 "domain": "mwhite98.github.io",
 "rooms": 1,
 "activity": 1460
@@ -802,6 +812,11 @@
 {
 "domain": "weak-meadow-mailman.glitch.me",
 "rooms": 1,
+"activity": 1280
+},
+{
+"domain": "skillcohort-venim.vercel.app",
+"rooms": 2,
 "activity": 1280
 },
 {
@@ -885,41 +900,6 @@
 "activity": 1004
 },
 {
-"domain": "bento-site-arbq1qcmx-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
-"domain": "bento-site-aehs31l8x-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
-"domain": "bento-site-22g6ad2l8-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
-"domain": "bento-site-oq7rs7ygj-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
-"domain": "bento-site-gc50vww8i-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
-"domain": "bento-site-o6cs7bm48-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
-"domain": "bento-site-bgjcx67tk-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 1000
-},
-{
 "domain": "sweltering-descriptive-mosquito.glitch.me",
 "rooms": 1,
 "activity": 988
@@ -948,11 +928,6 @@
 "domain": "knowledgeable-gratis-panther.glitch.me",
 "rooms": 1,
 "activity": 968
-},
-{
-"domain": "bento-site-gwc9qrpwo-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 964
 },
 {
 "domain": "faithful-victorious-mirror.glitch.me",
@@ -1135,111 +1110,6 @@
 "activity": 800
 },
 {
-"domain": "bento-site-a4rzrx86q-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-on2mkh0lm-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-2f1ebd6o3-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-62u35looi-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-6oxl39emt-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-723vpx0vx-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-72tzv0l9t-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-7fj82d8vv-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-8nap10rx1-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-mjtk8wl3a-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-8vk3ov29j-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-l8pxs6mk8-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-i13w3legp-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-hphhxvchq-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-b61d5lhzq-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-bgx963a3k-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-ca43zy1vf-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-cfqvo071s-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-e1e4uq2sb-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-e6oaj4k8s-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
-"domain": "bento-site-fxawhp5x2-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 796
-},
-{
 "domain": "ethica-landing-git-main-olu26s-projects.vercel.app",
 "rooms": 1,
 "activity": 792
@@ -1250,7 +1120,7 @@
 "activity": 776
 },
 {
-"domain": "wedding-website-e90svcuv1-shivams-projects-60c8ad5b.vercel.app",
+"domain": "wedding-website-shivams-projects-60c8ad5b.vercel.app",
 "rooms": 1,
 "activity": 744
 },
@@ -1270,19 +1140,9 @@
 "activity": 660
 },
 {
-"domain": "skillcohort-5hwtgfcpn-venim.vercel.app",
-"rooms": 1,
-"activity": 656
-},
-{
 "domain": "nekoweb.org",
 "rooms": 2,
 "activity": 636
-},
-{
-"domain": "skillcohort-heojzgz78-venim.vercel.app",
-"rooms": 1,
-"activity": 624
 },
 {
 "domain": "pipecleanerarms.github.io",
@@ -1298,11 +1158,6 @@
 "domain": "garden-nikolas-nikolas-wises-projects.vercel.app",
 "rooms": 5,
 "activity": 588
-},
-{
-"domain": "sequencelorena-jfhg3wfnn-6239s-projects.vercel.app",
-"rooms": 1,
-"activity": 584
 },
 {
 "domain": "the-greatest-show-on-earth.glitch.me",
@@ -1410,7 +1265,7 @@
 "activity": 464
 },
 {
-"domain": "sbdd-radio-praha-r8n9z6wjl-milangress.vercel.app",
+"domain": "sbdd-radio-praha-milangress.vercel.app",
 "rooms": 1,
 "activity": 444
 },
@@ -1485,18 +1340,8 @@
 "activity": 340
 },
 {
-"domain": "stucco-site-gf9v16n17-stucco.vercel.app",
-"rooms": 1,
-"activity": 324
-},
-{
 "domain": "newmoonpeepshow.glitch.me",
 "rooms": 2,
-"activity": 320
-},
-{
-"domain": "stucco-site-w7lpngcvn-stucco.vercel.app",
-"rooms": 1,
 "activity": 320
 },
 {
@@ -1508,11 +1353,6 @@
 "domain": "petrichor-foundry.vercel.app",
 "rooms": 1,
 "activity": 304
-},
-{
-"domain": "stucco-site-5hs0fn9z3-stucco.vercel.app",
-"rooms": 1,
-"activity": 292
 },
 {
 "domain": "clean-grinder.glitch.me",
@@ -1528,11 +1368,6 @@
 "domain": "aiadventuremaker-app.vercel.app",
 "rooms": 4,
 "activity": 288
-},
-{
-"domain": "bento-site-9tpvr75yr-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 280
 },
 {
 "domain": "water-lateral-look.glitch.me",
@@ -1570,41 +1405,6 @@
 "activity": 240
 },
 {
-"domain": "stucco-site-4zklne3o0-stucco.vercel.app",
-"rooms": 1,
-"activity": 236
-},
-{
-"domain": "stucco-site-hz8lgfns3-stucco.vercel.app",
-"rooms": 1,
-"activity": 236
-},
-{
-"domain": "stucco-site-669c2h1zj-stucco.vercel.app",
-"rooms": 1,
-"activity": 232
-},
-{
-"domain": "stucco-site-3mvmvdeju-stucco.vercel.app",
-"rooms": 1,
-"activity": 232
-},
-{
-"domain": "stucco-site-87eok82lm-stucco.vercel.app",
-"rooms": 1,
-"activity": 232
-},
-{
-"domain": "stucco-site-ceba1tt5s-stucco.vercel.app",
-"rooms": 1,
-"activity": 232
-},
-{
-"domain": "stucco-site-mur7dizud-stucco.vercel.app",
-"rooms": 1,
-"activity": 232
-},
-{
 "domain": "osrawest.glitch.me",
 "rooms": 1,
 "activity": 224
@@ -1630,41 +1430,6 @@
 "activity": 192
 },
 {
-"domain": "bento-site-9cgjyzqk0-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 188
-},
-{
-"domain": "bento-site-92zemlu9h-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 188
-},
-{
-"domain": "bento-site-ql6u6ig65-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 188
-},
-{
-"domain": "bento-site-m6tid0g4w-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 188
-},
-{
-"domain": "bento-site-675upjadl-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 188
-},
-{
-"domain": "bento-site-hkcj3szvi-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 188
-},
-{
-"domain": "example.com",
-"rooms": 1,
-"activity": 184
-},
-{
 "domain": "dino-markets-git-feat-dino-flame-michaelmustopos-projects.vercel.app",
 "rooms": 1,
 "activity": 180
@@ -1680,51 +1445,6 @@
 "activity": 180
 },
 {
-"domain": "stucco-site-ebuofue48-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-qrkkmy4ln-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-2vok1m01u-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-133gg219g-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-cdmmwxqcc-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-n2uof0bim-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-3um9ywu8g-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-7ptosq63u-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
-"domain": "stucco-site-be1t4tjvc-stucco.vercel.app",
-"rooms": 1,
-"activity": 176
-},
-{
 "domain": "whats-on-evans-desk.glitch.me",
 "rooms": 1,
 "activity": 172
@@ -1733,11 +1453,6 @@
 "domain": "mnta.io",
 "rooms": 1,
 "activity": 172
-},
-{
-"domain": "stucco-site-blendbse5-stucco.vercel.app",
-"rooms": 1,
-"activity": 168
 },
 {
 "domain": "mmorpgxenos.vercel.app",
@@ -1753,36 +1468,6 @@
 "domain": "strtmack.github.io",
 "rooms": 1,
 "activity": 160
-},
-{
-"domain": "bento-site-2qe16yxao-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 152
-},
-{
-"domain": "bento-site-5b3a9gg1i-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 152
-},
-{
-"domain": "bento-site-181kyubfi-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 152
-},
-{
-"domain": "bento-site-pn1l7m8ia-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 152
-},
-{
-"domain": "bento-site-e9ntczv8z-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 152
-},
-{
-"domain": "bento-site-k7kyp15wn-purdue-hackers.vercel.app",
-"rooms": 1,
-"activity": 152
 },
 {
 "domain": "dino-markets-git-fix-dino-facing-michaelmustopos-projects.vercel.app",
@@ -1835,7 +1520,7 @@
 "activity": 136
 },
 {
-"domain": "laurens-portfolio-leelaurs-projects.vercel.app",
+"domain": "laurens-leelaurs-projects.vercel.app",
 "rooms": 1,
 "activity": 132
 },
