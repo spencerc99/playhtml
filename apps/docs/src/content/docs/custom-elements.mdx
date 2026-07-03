@@ -1,0 +1,603 @@
+---
+title: "Custom elements"
+description: "Build your own collaborative element: can-mirror for syncing existing DOM, the imperative can-play API, and the experimental reactive view API. Vanilla and React paths, each in their own section."
+sidebar:
+  order: 5
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
+import { DocsCounter } from "@/components/react/capability-demos/DocsCounter";
+import { DocsGuestbook } from "@/components/react/capability-demos/DocsGuestbook";
+import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
+import { InteractiveToggleDemo } from "@/components/react/InteractiveToggleDemo";
+import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
+
+The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** state — a counter, a poll, a guestbook, a chat — you build a custom element. There are two approaches:
+
+- **`can-mirror`**: The DOM holds the state. Changes on the mirrored element sync automatically: attributes, its direct child list, and form or contenteditable state from input/change events. Nested elements do not recursively mirror arbitrary DOM mutations unless you put `can-mirror` on those nested elements too.
+- **`can-play`**: You define shared data shapes that you use to update how the element shows up and behaves. You have full control over how the data affects what happens, which data should be persisted and which are only needed for real-time interactions.
+
+This page covers both. **Vanilla HTML** has the full range — `can-mirror`, `can-play`, and an experimental reactive `view` API. **React** has a single, declarative path: `withSharedState`. Pick your framework below.
+
+This page runs a few live `can-play` demos in its margins — a doodle strip here, a [guestbook](#play-guestbook) and a [prize wheel](#play-spinner) further down, and a tally on every code block you copy from. Open the page in a second tab to watch them sync.
+
+<div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · doodle strip</span>
+    <p class="ph-canplay-inline__caption">
+      Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
+    </p>
+  </div>
+  <SmileyRow client:only="react" />
+</div>
+
+## Vanilla HTML
+
+Vanilla has three tools, from least code to most: `can-mirror` syncs the DOM as-is, `can-play` gives you a `data` model that you update the DOM from, and the experimental reactive `view` API renders the DOM from that data for you.
+
+### can-mirror
+
+`can-mirror` syncs changes on the element you put it on: its attributes, its direct child list, and form or contenteditable state that surfaces through input/change events. It does not watch arbitrary descendant DOM mutations. You don't write any data or callbacks. Just add `can-mirror` and an `id`, then change that element with normal HTML, CSS, and JavaScript.
+
+Use it when the state you want to share is the DOM itself: a shared textarea, a form, or a growing list of direct children. If a nested list, card, or editor should own its own changes, put `can-mirror` on that nested element too and give it a stable `id`.
+
+#### Example: an emoji-only textarea
+
+A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: emoji textarea">
+  <div class="ph-canmirror-vignette ph-canmirror-vignette--emoji" data-can-mirror-vignette="emoji">
+    <textarea
+      can-mirror
+      id="emoji-pad"
+      class="ph-canmirror-vignette__textarea"
+      rows="4"
+      placeholder="emojis only..."
+      aria-label="Emoji-only shared textarea"
+    ></textarea>
+    <p class="ph-canmirror-vignette__hint">
+      Type anything. Only emojis stick, and the filtered value mirrors to everyone.
+    </p>
+  </div>
+</div>
+
+```html
+<textarea can-mirror id="emoji-pad" rows="4" placeholder="emojis only..."></textarea>
+
+<script>
+  const emojiOnly = /\p{Extended_Pictographic}/gu;
+  document.getElementById("emoji-pad").addEventListener("input", (e) => {
+    const match = e.target.value.match(emojiOnly);
+    e.target.value = match ? match.join("") : "";
+  });
+</script>
+```
+
+#### Example: a list you can add children to
+
+Click "+" to append a new `<li>`. The list itself has `can-mirror`, so the direct child addition mirrors and new readers see the whole list, not just the latest.
+
+<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
+  <div class="ph-canmirror-vignette ph-canmirror-vignette--guestbook" data-can-mirror-vignette="guestbook">
+    <ul can-mirror id="guestbook" class="ph-canmirror-vignette__list" aria-label="Shared guestbook entries">
+      <li>first</li>
+    </ul>
+    <button type="button" id="guestbook-add" class="ph-canmirror-vignette__button">
+      add entry
+    </button>
+  </div>
+</div>
+
+<script type="module" src="/docs/can-mirror-vignettes.js"></script>
+
+```html
+<ul can-mirror id="guestbook">
+  <li>first</li>
+</ul>
+<button onclick="
+  document.getElementById('guestbook').appendChild(
+    Object.assign(document.createElement('li'), { textContent: new Date().toLocaleTimeString() })
+  );
+">add entry</button>
+```
+
+If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically. If that child should mirror its own nested DOM changes later, put `can-mirror` on the child too.
+
+:::note[Experimental]
+`can-mirror` is the newest capability and still evolving. If you need full control over the shape of shared state (e.g. to enforce limits, migrate schemas, or derive values from mutations), reach for `can-play` instead.
+:::
+
+<a className="ph-composed-card" href="/docs/advanced/mirror-playground/">
+  <span className="ph-composed-card__kicker">Playground</span>
+  <span className="ph-composed-card__title">See every can-mirror edge case →</span>
+  <span className="ph-composed-card__body">
+    Hover, focus, form inputs, contenteditable, programmatic attribute changes,
+    direct child changes, and nested opt-in elements: one page with a live demo
+    for each. Open in two tabs to watch it sync.
+  </span>
+</a>
+
+### can-play
+
+You give the element a `defaultData`, handlers like `onClick`, and an `updateElement` callback that writes the DOM from the current `data`. Set those properties on the element **before `playhtml.init()` runs**. playhtml syncs the data and calls `updateElement` whenever it changes — locally or from another tab.
+
+Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
+
+#### A click counter
+
+```html
+<div id="counter" can-play></div>
+
+<script type="module">
+  import { playhtml } from "playhtml";
+
+  const el = document.getElementById("counter");
+  el.defaultData = { count: 0 };
+  el.onClick = (_e, { setData }) => setData((d) => { d.count += 1; });
+  el.updateElement = ({ element, data }) => {
+    element.textContent = `${data.count}`;
+  };
+
+  playhtml.init();
+</script>
+```
+
+`setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
+
+<div id="play-counter" class="ph-canplay-inline" data-label="can-play · counter">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · counter</span>
+    <p class="ph-canplay-inline__caption">
+      Click to add one. The count is shared — everyone reading this page bumps the same number.
+    </p>
+  </div>
+  <DocsCounter client:only="react" />
+</div>
+
+#### State to style
+
+`updateElement` runs on every change, so the simplest pattern is "read `data`, set a class or style."
+
+```html
+<button id="switch" can-play>off</button>
+
+<script type="module">
+  import { playhtml } from "playhtml";
+
+  const el = document.getElementById("switch");
+  el.defaultData = { on: false };
+  el.onClick = (_e, { setData }) => setData((d) => { d.on = !d.on; });
+  el.updateElement = ({ element, data }) => {
+    element.classList.toggle("on", data.on);
+    element.textContent = data.on ? "on" : "off";
+  };
+
+  playhtml.init();
+</script>
+```
+
+<div id="play-toggle" class="ph-canplay-inline" data-label="can-play · toggle">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · toggle</span>
+    <p class="ph-canplay-inline__caption">
+      Click to flip it on/off for everyone.
+    </p>
+  </div>
+  <InteractiveToggleDemo client:only="react" />
+</div>
+
+#### Presence and per-user state
+
+`myDefaultAwareness` seeds a per-user ephemeral value; `setMyAwareness` broadcasts it; `updateElementAwareness` renders everyone's. Awareness does **not** persist — it's "who's here right now."
+
+```html
+<div id="online" can-play></div>
+
+<script type="module">
+  import { playhtml } from "playhtml";
+
+  const el = document.getElementById("online");
+  el.defaultData = {};
+  el.myDefaultAwareness = "#2563eb";
+  el.updateElementAwareness = ({ element, awareness }) => {
+    element.replaceChildren(
+      ...awareness.map((color) => {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = color;
+        return dot;
+      }),
+    );
+  };
+
+  playhtml.init();
+</script>
+```
+
+<div id="play-presence" class="ph-canplay-inline" data-label="can-play · presence">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · presence</span>
+    <p class="ph-canplay-inline__caption">
+      Everyone online shows up as a colored dot — yours is highlighted.
+    </p>
+  </div>
+  <OnlineIndicatorDemo client:only="react" />
+</div>
+
+#### Reset shortcut
+
+Set `resetShortcut` so shift-clicking (or ctrl/alt/meta) resets the element to its `defaultData` for everyone:
+
+```js
+el.resetShortcut = "shiftKey";
+```
+
+#### Dynamically-added elements
+
+`playhtml.init()` scans the DOM once. For elements you add later, call `playhtml.setupPlayElement(el)` after inserting them (and use [`selector-id`](/docs/advanced/dynamic-elements/) for many-of-a-kind elements). See [Dynamic elements](/docs/advanced/dynamic-elements/).
+
+:::note[Lists and data-driven UIs get verbose here]
+With `updateElement` you hand-build and diff the DOM yourself, which is painful for lists, chat, and anything computed from a collection. That's exactly what the [reactive view API](#reactive-view-api-experimental) below is for.
+:::
+
+### Reactive view API (experimental)
+
+<Aside type="caution" title="Experimental">
+  `playhtml.register` / `playhtml.define` and the `view` render function are new
+  and **experimental** — the surface may change in a future minor release based
+  on feedback. The imperative `can-play` API above keeps working unchanged, and
+  React's `withSharedState` is **stable**. Trying the view API? Tell us how it
+  goes in [#95](https://github.com/spencerc99/playhtml/issues/95).
+</Aside>
+
+Instead of hand-writing DOM updates in `updateElement`, you can register a **`view`**: a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template. playhtml patches only what changed when the data updates. It's the vanilla equivalent of what React's `withSharedState` already gives you.
+
+```ts
+import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playhtml";
+```
+
+#### register + view
+
+The element is an empty mount point; everything you see is rendered from state. `register` is callable before or after `init()` and before or after the element exists.
+
+```html
+<div id="counter" can-play></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+
+  playhtml.register("counter", {
+    defaultData: { count: 0 },
+    view: ({ data, setData }) => html`
+      <button @click=${() => setData((d) => { d.count += 1; })}>
+        ${data.count}
+      </button>
+    `,
+  });
+
+  playhtml.init();
+</script>
+```
+
+`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `setMyAwareness`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
+
+#### Local UI state
+
+Per-user, un-synced state (a panel toggle, a text draft) goes in `localData`; `setLocalData` re-renders the view.
+
+```js
+playhtml.register("panel", {
+  defaultData: {},
+  defaultLocalData: { open: false },
+  view: ({ localData, setLocalData }) => html`
+    <button @click=${() => setLocalData((d) => { d.open = !d.open; })}>
+      ${localData.open ? "hide" : "show"}
+    </button>
+    ${localData.open ? html`<div class="body">…</div>` : nothing}
+  `,
+});
+```
+
+#### Lists
+
+This is where the view API earns its keep — `repeat(items, keyFn, template)` is lit-html's keyed list, versus hand-diffing DOM in `updateElement`. **Key by a stable unique id** (`crypto.randomUUID()`), never an index or timestamp.
+
+```js
+const guestbook = playhtml.register("guestbook", {
+  defaultData: { entries: [] },
+  view: ({ data }) => html`
+    <ul>
+      ${repeat(data.entries, (e) => e.id, (e) => html`<li>${e.text}</li>`)}
+    </ul>
+  `,
+});
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = new FormData(e.target).get("text");
+  guestbook.setData((d) => {
+    d.entries.unshift({ id: crypto.randomUUID(), text });
+  });
+  e.target.reset();
+});
+```
+
+<div id="play-guestbook" class="ph-canplay-inline" data-label="can-play · guestbook">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · guestbook</span>
+    <p class="ph-canplay-inline__caption">
+      Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
+    </p>
+  </div>
+  <DocsGuestbook client:only="react" />
+</div>
+
+#### Reusing the element many times: `define`
+
+`playhtml.define(name, init)` registers a capability under an attribute, so every `[name]` element gets it (including ones added later).
+
+```html
+<div id="note-1" can-note data-color="yellow"></div>
+<div id="note-2" can-note data-color="pink"></div>
+
+<script type="module">
+  import { playhtml, html } from "playhtml";
+  playhtml.define("can-note", {
+    defaultData: (el) => ({ text: "", color: el.dataset.color }),
+    view: ({ data, setData }) => html`
+      <textarea
+        class="note note--${data.color}"
+        .value=${data.text}
+        @input=${(e) => setData((d) => { d.text = e.target.value; })}
+      ></textarea>
+    `,
+  });
+  playhtml.init();
+</script>
+```
+
+#### Clock-driven views: `requestUpdate`
+
+A view re-renders on state change — but a running timer's display changes every frame while its data doesn't. Call `requestUpdate()` from an `onMount` loop. **Return the cleanup** so the loop stops when the element goes away.
+
+```js
+playhtml.register("timer", {
+  defaultData: { startAt: 0, running: false },
+  view: ({ data }) => {
+    const elapsed = data.running ? Date.now() - data.startAt : 0;
+    return html`<span>${(elapsed / 1000).toFixed(1)}s</span>`;
+  },
+  onMount: ({ getData, requestUpdate }) => {
+    let raf;
+    const tick = () => {
+      if (getData().running) requestUpdate();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  },
+});
+```
+
+<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
+  <div class="ph-canplay-inline__head">
+    <span class="ph-canplay-inline__kicker">CAN-PLAY · prize wheel</span>
+    <p class="ph-canplay-inline__caption">
+      Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
+    </p>
+  </div>
+  <DocsSpinner client:only="react" />
+</div>
+
+#### Composition: views that render other elements
+
+A view can render mount points for **other** custom elements, and playhtml binds them as they appear (and tears them down when a keyed list removes them, preserving their shared data). A chat app is the classic case: a parent renders one room per name, each room its own independently-synced element.
+
+```js
+playhtml.define("can-chat", {
+  defaultData: { messages: [] },
+  view: ({ data, element }) => html`
+    <strong>${element.dataset.name}</strong>
+    ${repeat(data.messages, (m) => m.id, (m) => html`<div>${m.text}</div>`)}
+  `,
+});
+
+playhtml.register("chats", {
+  defaultData: { rooms: ["general"] },
+  view: ({ data }) => html`
+    ${repeat(data.rooms, (n) => n, (n) =>
+      html`<div id="chat-${n}" can-chat data-name=${n}></div>`)}
+  `,
+});
+```
+
+**Rules for vanilla capability children:** render them keyed and empty (let the child own its contents), and give each a stable id. Adding one binds it; removing it from a keyed list tears its handler down while preserving its shared data, so re-adding the same id rehydrates it.
+
+#### Rules and gotchas (view API)
+
+- **Renders must be pure.** Don't call `setData` / `setLocalData` / `setMyAwareness` while rendering — it's an infinite re-render loop. playhtml rejects such writes with a console error. Drive writes from `@event` handlers or `onMount`.
+- **Key lists by a stable id**, never index or timestamp.
+- **Security:** interpolated text and attribute values are auto-escaped (and `unsafeHTML` is deliberately not exported). Two sharp edges remain about a binding's *content*: `style` from a user-controlled string is CSS-injectable (prefer `styleMap`), and `href`/`src` from user data isn't URL-sanitized (validate the scheme).
+- **Changing the shape of already-live data** needs a migration or a new field name — see [Data essentials](/docs/data/data-essentials/).
+
+## React
+
+In React there's a single, declarative path: **`withSharedState`**. It wraps a component, owns a piece of shared `data`, and hands the component `data` + `setData`. You render JSX from `data`; playhtml syncs it and re-renders on every change, local or remote. There's no `updateElement` to hand-write and no separate view API — JSX _is_ the declarative view.
+
+### A click counter
+
+```tsx
+import { withSharedState } from "@playhtml/react";
+
+export const Counter = withSharedState(
+  { defaultData: { count: 0 } },
+  ({ data, setData }) => (
+    <button onClick={() => setData((d) => { d.count += 1; })}>
+      {data.count}
+    </button>
+  ),
+);
+```
+
+`setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
+
+[▶ Live demo ↑](#play-counter)
+
+### State to style
+
+The component re-renders on every change, so the simplest pattern is "read `data`, set a class or style."
+
+```tsx
+export const Switch = withSharedState(
+  { defaultData: { on: false } },
+  ({ data, setData }) => (
+    <button
+      className={data.on ? "is-on" : "is-off"}
+      onClick={() => setData((d) => { d.on = !d.on; })}
+    >
+      {data.on ? "on" : "off"}
+    </button>
+  ),
+);
+```
+
+[▶ Live demo ↑](#play-toggle)
+
+### Local UI state
+
+Per-user, un-synced state (a panel toggle, a text draft) is plain React `useState` — keep it out of the shared `data`.
+
+```tsx
+import { useState } from "react";
+
+export const Panel = withSharedState({ defaultData: {} }, () => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen((o) => !o)}>{open ? "hide" : "show"}</button>
+      {open && <div className="body">…</div>}
+    </>
+  );
+});
+```
+
+### Lists
+
+Render the collection straight from `data`. **Key by a stable unique id** (`crypto.randomUUID()`), never an index or timestamp.
+
+```tsx
+export const Guestbook = withSharedState(
+  { defaultData: { entries: [] } },
+  ({ data, setData }) => {
+    const [text, setText] = useState("");
+    const submit = (e) => {
+      e.preventDefault();
+      setData((d) => { d.entries.unshift({ id: crypto.randomUUID(), text }); });
+      setText("");
+    };
+    return (
+      <>
+        <ul>{data.entries.map((e) => <li key={e.id}>{e.text}</li>)}</ul>
+        <form onSubmit={submit}>
+          <input value={text} onChange={(e) => setText(e.target.value)} />
+        </form>
+      </>
+    );
+  },
+);
+```
+
+[▶ Live demo ↑](#play-guestbook)
+
+### Presence and per-user state
+
+`myDefaultAwareness` seeds a per-user ephemeral value; `setMyAwareness` broadcasts it; the `awareness` prop renders everyone's. Awareness does **not** persist — it's "who's here right now."
+
+```tsx
+export const Online = withSharedState(
+  { defaultData: {}, myDefaultAwareness: "#2563eb" },
+  ({ awareness }) => (
+    <div className="row">
+      {awareness.map((color, i) => (
+        <span key={i} className="dot" style={{ background: color }} />
+      ))}
+    </div>
+  ),
+);
+```
+
+[▶ Live demo ↑](#play-presence)
+
+### Reusing the component many times
+
+Render the component as many times as you like — give each a stable `id`. `defaultData` can be a function of the component's props.
+
+```tsx
+const Note = withSharedState(
+  ({ color }) => ({ defaultData: { text: "", color } }),
+  ({ data, setData }) => (
+    <textarea
+      className={`note note--${data.color}`}
+      value={data.text}
+      onChange={(e) => setData((d) => { d.text = e.target.value; })}
+    />
+  ),
+);
+
+// render as many as you want — give each a stable id
+<Note id="note-1" color="yellow" />
+<Note id="note-2" color="pink" />
+```
+
+### Clock-driven views
+
+A component re-renders on state change — but a running timer's display changes every frame while its data doesn't. Drive a render loop with a `useState` tick. **Return the cleanup** so the loop stops when the element goes away.
+
+```tsx
+export const Timer = withSharedState(
+  { defaultData: { startAt: 0, running: false } },
+  ({ data }) => {
+    const [, tick] = useState(0);
+    useEffect(() => {
+      let raf;
+      const loop = () => {
+        if (data.running) tick((n) => n + 1); // force a re-render
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+      return () => cancelAnimationFrame(raf);
+    }, [data.running]);
+    const elapsed = data.running ? Date.now() - data.startAt : 0;
+    return <span>{(elapsed / 1000).toFixed(1)}s</span>;
+  },
+);
+```
+
+[▶ Live demo ↑](#play-spinner)
+
+### Composition: components that render other elements
+
+A component can nest **other** `withSharedState` components, each with its own independently-synced `data`. A chat app is the classic case: a parent renders one room per name, each room its own element.
+
+```tsx
+const Chat = withSharedState(
+  ({ name }) => ({ defaultData: { messages: [] } }),
+  ({ data }, { name }) => (
+    <>
+      <strong>{name}</strong>
+      {data.messages.map((m) => <div key={m.id}>{m.text}</div>)}
+    </>
+  ),
+);
+
+const Chats = withSharedState(
+  { defaultData: { rooms: ["general"] } },
+  ({ data }) => data.rooms.map((n) => <Chat key={n} id={`chat-${n}`} name={n} />),
+);
+```
+
+## Reference
+
+- Vanilla view API: [`register` / `define` / `view`](/docs/reference/view-api/)
+- React: [`@playhtml/react` API](/docs/reference/react-api/)

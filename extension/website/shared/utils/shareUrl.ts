@@ -80,6 +80,30 @@ export function buildShareUrl({
     clean === true ? 1 : typeof clean === "number" ? clean : 0;
   if (cleanLevel > 0) url.searchParams.set("clean", String(cleanLevel));
 
+  // Preserve capture/scope params that aren't settings-shaped, so the URL
+  // rewrite (which reconstructs from settings) doesn't drop them. These are
+  // the day selection, the recurring time-of-day window, and the cinematic
+  // camera family — all of which a capture link needs to survive reload.
+  if (typeof window !== "undefined") {
+    const current = new URLSearchParams(window.location.search);
+    const PRESERVE = [
+      "day",
+      "tod",
+      "todRadius",
+      "cinematic",
+      "cinemaZoom",
+      "cinemaTransition",
+      "cinemaLerp",
+      "cinemaVelZoom",
+      "cinemaReveal",
+      "cinemaStartZoom",
+    ];
+    for (const key of PRESERVE) {
+      const val = current.get(key);
+      if (val !== null) url.searchParams.set(key, val);
+    }
+  }
+
   // When `baseUrl` was a placeholder (no window), strip the scheme so the
   // caller can't accidentally surface "http://placeholder/" — return just
   // the search portion.
