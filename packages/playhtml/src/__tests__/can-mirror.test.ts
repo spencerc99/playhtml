@@ -199,6 +199,67 @@ describe("can-mirror: attributes", () => {
     expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
   });
 
+  it("keeps local inspect classes while applying mirrored class state", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a" class="__playhtml-element"></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<div id="a" class="__playhtml-element ph-inspect-highlight"></div>`
+      )
+    );
+
+    source.element.setAttribute("data-rev", "1");
+    await sync(source, sink);
+
+    expect(sink.element.classList.contains("ph-inspect-highlight")).toBe(true);
+    expect(sink.element.getAttribute("data-rev")).toBe("1");
+    expect(sink.element.classList.contains("__playhtml-element")).toBe(true);
+    expect((sink.state as any).attributes.class).toBeUndefined();
+  });
+
+  it("excludes playhtml loading markers from mirrored state", () => {
+    const element = elementFromHTML(
+      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
+    );
+
+    const state = canMirrorInitializer.defaultData!(element) as any;
+
+    expect(state.attributes.class).toBe("removal-target");
+    expect(state.attributes["aria-busy"]).toBeUndefined();
+    expect(state.attributes["aria-live"]).toBeUndefined();
+  });
+
+  it("excludes custom loading classes from mirrored state", () => {
+    const element = elementFromHTML(
+      `<div id="a" class="removal-target playhtml-loading waiting" loading-class="waiting"></div>`
+    );
+
+    const state = canMirrorInitializer.defaultData!(element) as any;
+
+    expect(state.attributes.class).toBe("removal-target");
+    expect(state.attributes["loading-class"]).toBe("waiting");
+  });
+
+  it("applies loading-time default state without restoring loading markers", () => {
+    const element = elementFromHTML(
+      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
+    );
+    const defaultState = canMirrorInitializer.defaultData!(element) as ElementState;
+    element.className = "removal-target __playhtml-element is-active";
+    element.removeAttribute("aria-busy");
+    element.removeAttribute("aria-live");
+
+    canMirrorInitializer.updateElement!({
+      element,
+      data: defaultState,
+    } as any);
+
+    expect(element.className).toBe("removal-target __playhtml-element");
+    expect(element.hasAttribute("aria-busy")).toBe(false);
+    expect(element.hasAttribute("aria-live")).toBe(false);
+  });
+
 });
 
 describe("can-mirror: child add/remove", () => {
@@ -269,6 +330,55 @@ describe("can-mirror: child add/remove", () => {
 
     expect(sink.element.children.length).toBe(0);
     expectMirrored(source.element, sink.element);
+  });
+
+  it("keeps local inspect labels while applying mirrored children", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a"><span>real</span></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<div id="a"><span>real</span><div class="ph-inspect-label">#a</div></div>`
+      )
+    );
+
+    const remoteChild = document.createElement("span");
+    remoteChild.textContent = "remote";
+    source.element.appendChild(remoteChild);
+    await sync(source, sink);
+
+    expect(
+      Array.from(sink.element.querySelectorAll(":scope > span")).map(
+        (span) => span.textContent
+      )
+    ).toEqual(["real", "remote"]);
+    expect(
+      sink.element.querySelectorAll(":scope > .ph-inspect-label")
+    ).toHaveLength(1);
+    expect((sink.state as any).children).toHaveLength(1);
+  });
+
+  it("does not recreate inspect labels from incoming mirrored state", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a"><span>real</span></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="a"><span>real</span></div>`)
+    );
+    const incoming = wire(source.state) as any;
+    incoming.children.push({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: { class: "ph-inspect-label" },
+      children: [{ nodeType: "Text", textContent: "#a" }],
+    });
+
+    sink.applyRemote(incoming);
+
+    expect(sink.element.querySelectorAll(":scope > span")).toHaveLength(1);
+    expect(
+      sink.element.querySelectorAll(":scope > .ph-inspect-label")
+    ).toHaveLength(0);
   });
 
   it("does not mirror a nested child removal by itself", async () => {

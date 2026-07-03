@@ -3,4 +3,4 @@
 "playhtml": patch
 ---
 
-Clean up development-mode inspect highlight classes and listeners so mirrored elements do not keep stale inspector styling, and keep PlayHTML-managed hover/focus attributes out of mirrored persistent state.
+Keep PlayHTML-managed local DOM state out of `can-mirror` persistence, including inspector highlights, devtools labels, loading markers, and hover/focus attributes, so mirrored elements can still be inspected and reset without saving tool UI state.

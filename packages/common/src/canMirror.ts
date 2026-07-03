@@ -6,6 +6,18 @@ import type { ElementInitializer } from "./index";
 // The MutationObserver must ignore these to avoid polluting
 // persistent state with transient per-user presence.
 const EPHEMERAL_ATTRS = ["data-playhtml-hover", "data-playhtml-focus"];
+const LOCAL_CLASS_NAMES = [
+  "__playhtml-element",
+  "ph-flash",
+  "ph-inspect-highlight",
+  "ph-inspect-highlight-hover",
+  "ph-inspect-selected",
+  "playhtml-loading",
+];
+const LOCAL_LOADING_ATTRIBUTE_VALUES: Record<string, string> = {
+  "aria-busy": "true",
+  "aria-live": "polite",
+};
 
 enum NodeType {
   Text = "Text",
@@ -208,12 +220,14 @@ function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
       }
     }
 
-    if (state1.children.length !== state2.children.length) {
+    const children1 = getMirroredChildStates(state1.children);
+    const children2 = getMirroredChildStates(state2.children);
+    if (children1.length !== children2.length) {
       return false;
     }
 
-    for (let i = 0; i < state1.children.length; i++) {
-      if (!areStatesEqual(state1.children[i], state2.children[i])) {
+    for (let i = 0; i < children1.length; i++) {
+      if (!areStatesEqual(children1[i], children2[i])) {
         return false;
       }
     }
@@ -310,13 +324,17 @@ function updateAttributes(state: ElementState, mutation: MutationRecord) {
   if (mutation.target instanceof HTMLElement) {
     const attributeName = mutation.attributeName!;
     const attributeValue = mutation.target.getAttribute(attributeName);
+    const context = getMirrorContextFromElement(mutation.target);
     if (attributeValue !== null) {
       const mirroredValue = getMirroredAttributeValue(
         attributeName,
         attributeValue,
+        context,
       );
       if (mirroredValue === null) {
-        delete state.attributes[attributeName];
+        if (attributeName in state.attributes) {
+          delete state.attributes[attributeName];
+        }
       } else {
         state.attributes[attributeName] = mirroredValue;
       }
@@ -343,7 +361,7 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
   }
   const newChildren: ElementState[] = [];
   mutation.target.childNodes.forEach((child) => {
-    if (isValidNode(child)) {
+    if (isMirroredNode(child)) {
       newChildren.push(constructInitialState(child));
     }
   });
@@ -372,9 +390,88 @@ function isValidNode(node: Node): node is HTMLElement | Text {
   return node instanceof HTMLElement || node instanceof Text;
 }
 
-function getMirroredAttributeValue(name: string, value: string): string | null {
+function isLocalNode(node: Node): boolean {
+  return (
+    node instanceof HTMLElement && node.classList.contains("ph-inspect-label")
+  );
+}
+
+function isMirroredNode(node: Node): node is HTMLElement | Text {
+  return isValidNode(node) && !isLocalNode(node);
+}
+
+function hasClassValue(value: string | undefined, className: string): boolean {
+  return Boolean(value?.split(/\s+/).includes(className));
+}
+
+function isLocalElementState(state: ElementState): boolean {
+  return (
+    state.nodeType === NodeType.HTMLElement &&
+    hasClassValue(state.attributes.class, "ph-inspect-label")
+  );
+}
+
+function getMirroredChildStates(children: ElementState[]): ElementState[] {
+  return children.filter((child) => !isLocalElementState(child));
+}
+
+interface MirrorContext {
+  classValue?: string;
+  localClassNames: Set<string>;
+}
+
+function getLocalClassNames(loadingClass?: string | null): Set<string> {
+  const classNames = new Set(LOCAL_CLASS_NAMES);
+  if (loadingClass) {
+    classNames.add(loadingClass);
+  }
+  return classNames;
+}
+
+function getMirrorContextFromElement(element: HTMLElement): MirrorContext {
+  return {
+    classValue: element.getAttribute("class") || undefined,
+    localClassNames: getLocalClassNames(element.getAttribute("loading-class")),
+  };
+}
+
+function getMirrorContextFromAttributes(
+  attributes: Record<string, string>,
+): MirrorContext {
+  return {
+    classValue: attributes.class,
+    localClassNames: getLocalClassNames(attributes["loading-class"]),
+  };
+}
+
+function isLocalAttribute(
+  name: string,
+  value: string,
+  context: MirrorContext,
+): boolean {
   if (EPHEMERAL_ATTRS.includes(name)) {
+    return true;
+  }
+  return (
+    hasClassValue(context.classValue, "playhtml-loading") &&
+    LOCAL_LOADING_ATTRIBUTE_VALUES[name] === value
+  );
+}
+
+function getMirroredAttributeValue(
+  name: string,
+  value: string,
+  context: MirrorContext,
+): string | null {
+  if (isLocalAttribute(name, value, context)) {
     return null;
+  }
+  if (name === "class") {
+    const mirroredClassValue = getMirroredClassValue(
+      value,
+      context.localClassNames,
+    );
+    return mirroredClassValue || null;
   }
   return value;
 }
@@ -383,13 +480,48 @@ function getMirroredAttributes(
   attributes: Record<string, string>,
 ): Record<string, string> {
   const mirrored: Record<string, string> = {};
+  const context = getMirrorContextFromAttributes(attributes);
   for (const [name, value] of Object.entries(attributes)) {
-    const mirroredValue = getMirroredAttributeValue(name, value);
+    const mirroredValue = getMirroredAttributeValue(name, value, context);
     if (mirroredValue !== null) {
       mirrored[name] = mirroredValue;
     }
   }
   return mirrored;
+}
+
+function getMirroredClassValue(
+  value: string,
+  localClassNames: Set<string>,
+): string {
+  return value
+    .split(/\s+/)
+    .filter((className) => className && !localClassNames.has(className))
+    .join(" ");
+}
+
+function getLocalClassValue(
+  value: string,
+  localClassNames: Set<string>,
+): string {
+  return value
+    .split(/\s+/)
+    .filter((className) => localClassNames.has(className))
+    .join(" ");
+}
+
+function mergeClassValue(
+  mirroredValue: string,
+  currentValue: string,
+  localClassNames: Set<string>,
+): string {
+  const classNames = [
+    ...mirroredValue.split(/\s+/).filter(Boolean),
+    ...getLocalClassValue(currentValue, localClassNames)
+      .split(/\s+/)
+      .filter(Boolean),
+  ];
+  return Array.from(new Set(classNames)).join(" ");
 }
 
 function captureFormState(
@@ -429,8 +561,13 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
   };
 
   // @ts-ignore
+  const context = getMirrorContextFromElement(element);
   for (const attr of element.attributes) {
-    const mirroredValue = getMirroredAttributeValue(attr.name, attr.value);
+    const mirroredValue = getMirroredAttributeValue(
+      attr.name,
+      attr.value,
+      context,
+    );
     if (mirroredValue !== null) {
       state.attributes[attr.name] = mirroredValue;
     }
@@ -443,7 +580,7 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
   }
 
   element.childNodes.forEach((child) => {
-    if (isValidNode(child)) {
+    if (isMirroredNode(child)) {
       state.children.push(constructInitialState(child));
     }
   });
@@ -522,13 +659,34 @@ function updateAttributesFromState(
     (state as any).attributes && typeof (state as any).attributes === "object"
       ? getMirroredAttributes((state as any).attributes as Record<string, string>)
       : {};
+  const context = getMirrorContextFromElement(element);
   for (const [key, value] of Object.entries(attrs)) {
-    if (element.getAttribute(key) !== value) element.setAttribute(key, value);
+    const nextValue =
+      key === "class"
+        ? mergeClassValue(
+            value,
+            element.getAttribute("class") || "",
+            context.localClassNames,
+          )
+        : value;
+    if (element.getAttribute(key) !== nextValue) {
+      element.setAttribute(key, nextValue);
+    }
   }
 
   Array.from(element.attributes).forEach((attr) => {
-    if (EPHEMERAL_ATTRS.includes(attr.name)) {
+    if (isLocalAttribute(attr.name, attr.value, context)) {
       return;
+    }
+    if (attr.name === "class") {
+      const localClassValue = getLocalClassValue(
+        attr.value,
+        context.localClassNames,
+      );
+      if (!("class" in attrs) && localClassValue) {
+        element.setAttribute("class", localClassValue);
+        return;
+      }
     }
     if (!(attr.name in attrs)) element.removeAttribute(attr.name);
   });
@@ -558,14 +716,15 @@ function updateChildrenFromState(
   element: HTMLElement,
   state: HTMLElementState
 ) {
-  const domChildren = Array.from(element.childNodes).filter(isValidNode);
+  const domChildren = Array.from(element.childNodes).filter(isMirroredNode);
+  const childStates = getMirroredChildStates(state.children);
 
   // Reconcile existing children in place by position, replacing any whose
   // kind no longer matches the target state.
-  const commonLen = Math.min(domChildren.length, state.children.length);
+  const commonLen = Math.min(domChildren.length, childStates.length);
   for (let i = 0; i < commonLen; i++) {
     const domChild = domChildren[i] as HTMLElement | Text;
-    const childState = state.children[i];
+    const childState = childStates[i];
     if (canUpdateInPlace(domChild, childState)) {
       updateElementFromState(domChild, childState);
     } else {
@@ -576,10 +735,11 @@ function updateChildrenFromState(
   }
 
   // Append any extra children from state
-  for (let i = commonLen; i < state.children.length; i++) {
-    const childState = state.children[i];
+  for (let i = commonLen; i < childStates.length; i++) {
+    const childState = childStates[i];
     const newChild = createNodeForState(childState);
-    element.appendChild(newChild);
+    const localChild = Array.from(element.childNodes).find(isLocalNode);
+    element.insertBefore(newChild, localChild ?? null);
     updateElementFromState(newChild, childState);
   }
 
