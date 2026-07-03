@@ -20,7 +20,13 @@ export interface SketchData {
   totalMs: number;
 }
 
-export type MarkStyle = "nebula" | "fingerprint" | "blot" | "wear" | "stitch";
+export type MarkStyle =
+  | "nebula"
+  | "sunprint"
+  | "fingerprint"
+  | "blot"
+  | "wear"
+  | "stitch";
 
 /** Live-tunable settings the sketch reads every frame. */
 export interface SketchSettings {
@@ -264,6 +270,80 @@ export function createTouchesSketch(
       marks.circle(touch.x, touch.y, 1.8);
     };
 
+    /** The classic pointer silhouette, tip at (x, y), unrotated — cursors
+     * never rotate on screen, so neither do their shadows. */
+    const pointerPath = (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      scale: number,
+    ) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + 14 * scale);
+      ctx.lineTo(x + 3.8 * scale, y + 10.6 * scale);
+      ctx.lineTo(x + 6.3 * scale, y + 16 * scale);
+      ctx.lineTo(x + 8.6 * scale, y + 15 * scale);
+      ctx.lineTo(x + 6.1 * scale, y + 9.6 * scale);
+      ctx.lineTo(x + 10.8 * scale, y + 9.6 * scale);
+      ctx.closePath();
+    };
+
+    // Sun print: the touch flash "exposes" a soft two-color stain, and the
+    // two cursors' silhouettes — at their true positions at the moment of
+    // contact — stay unexposed inside it, etched as negative space. The
+    // hopeful twin of a shadow left on a surface by a bright event.
+    const stampSunprint = (
+      touch: CursorTouch,
+      seed: number,
+      colorA: p5.Color,
+      colorB: p5.Color,
+      mixed: p5.Color,
+      night: boolean,
+    ) => {
+      const ctx = marks.drawingContext as CanvasRenderingContext2D;
+      const posA = positionAt(data.trails[touch.trailA], touch.ts);
+      const posB = positionAt(data.trails[touch.trailB], touch.ts);
+
+      // Exposed surface: soft photographic stains, one per color at each
+      // cursor's spot, blended at the middle.
+      const stains: Array<{ x: number; y: number; c: p5.Color }> = [
+        { x: posA.x, y: posA.y, c: colorA },
+        { x: posB.x, y: posB.y, c: colorB },
+        { x: touch.x, y: touch.y, c: mixed },
+      ];
+      for (const [index, stain] of stains.entries()) {
+        const radius = 15 + seededRandom(seed, index * 11) * 8;
+        const soft = ctx.createRadialGradient(
+          stain.x,
+          stain.y,
+          2,
+          stain.x,
+          stain.y,
+          radius,
+        );
+        stain.c.setAlpha(night ? 52 : 34);
+        soft.addColorStop(0, stain.c.toString());
+        stain.c.setAlpha(0);
+        soft.addColorStop(1, stain.c.toString());
+        ctx.fillStyle = soft;
+        ctx.beginPath();
+        ctx.arc(stain.x, stain.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Unexposed shadows: the arrows punch through the stain to bare
+      // surface, tips at the exact meeting points.
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
+      pointerPath(ctx, posA.x, posA.y, 0.62);
+      ctx.fill();
+      pointerPath(ctx, posB.x, posB.y, 0.62);
+      ctx.fill();
+      ctx.restore();
+    };
+
     // Settled residue stamped at the moment of contact — style selectable;
     // the burst blooms around it and fades, the mark stays.
     const stampMark = (touch: CursorTouch) => {
@@ -278,7 +358,9 @@ export function createTouchesSketch(
       if (style !== "nebula") {
         ctx.save();
         ctx.globalCompositeOperation = night ? "source-over" : "multiply";
-        if (style === "fingerprint") {
+        if (style === "sunprint") {
+          stampSunprint(touch, seed, colorA, colorB, mixed, night);
+        } else if (style === "fingerprint") {
           stampFingerprint(touch, seed, colorA, colorB, mixed, night);
         } else if (style === "blot") {
           stampBlot(touch, seed, colorA, colorB, mixed, night);

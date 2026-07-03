@@ -96,7 +96,7 @@ const CursorTouches = () => {
   const [samePersonOk, setSamePersonOk] = useState(false);
   const [night, setNight] = useState(true);
   const [renderer, setRenderer] = useState<Renderer>("nebula");
-  const [markStyle, setMarkStyle] = useState<MarkStyle>("fingerprint");
+  const [markStyle, setMarkStyle] = useState<MarkStyle>("sunprint");
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -267,6 +267,7 @@ const CursorTouches = () => {
                   color: "#3d3833",
                 }}
               >
+                <option value="sunprint">sun print</option>
                 <option value="fingerprint">fingerprint</option>
                 <option value="blot">blot</option>
                 <option value="wear">wear</option>
