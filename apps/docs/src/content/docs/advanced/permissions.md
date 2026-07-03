@@ -56,6 +56,10 @@ The same rules arrive in the browser automatically, so `can()`, disabled buttons
 
 Named roles, when you want them — defined as explicit key lists **or earned by showing up**:
 
+:::caution[Experimental]
+Earned roles (the `{ "days": N }` / `{ "sessions": N }` counter conditions below) are experimental — the counter vocabulary and wire shape may change. Explicit key-list roles are stable.
+:::
+
 ```json
 {
   "roles": {
