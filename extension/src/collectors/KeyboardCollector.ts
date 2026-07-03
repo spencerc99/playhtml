@@ -52,6 +52,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   private keydownHandler?: (e: KeyboardEvent) => void;
   private inputHandler?: (e: Event) => void;
   private beforeUnloadHandler?: (e: Event) => void;
+  private storageChangedHandler?: Parameters<typeof browser.storage.onChanged.addListener>[0];
 
   // Typing sequence tracking
   private sequence: TypingAction[] = [];
@@ -72,7 +73,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     });
 
     // Listen for storage changes to update cache
-    browser.storage.onChanged.addListener((changes, areaName) => {
+    this.storageChangedHandler = (changes, areaName) => {
       if (areaName === 'local') {
         if (changes[PRIVACY_LEVEL_KEY]) {
           this.legibilityPct = parseLegibility(changes[PRIVACY_LEVEL_KEY].newValue);
@@ -84,7 +85,8 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
           }
         }
       }
-    });
+    };
+    browser.storage.onChanged.addListener(this.storageChangedHandler);
 
     // Set up focus handler
     this.focusHandler = (e: FocusEvent) => {
@@ -180,6 +182,11 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
       this.beforeUnloadHandler = undefined;
+    }
+
+    if (this.storageChangedHandler) {
+      browser.storage.onChanged.removeListener(this.storageChangedHandler);
+      this.storageChangedHandler = undefined;
     }
 
     // Clear debounce timer

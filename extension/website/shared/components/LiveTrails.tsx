@@ -19,8 +19,6 @@ import {
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
 
-const HIDDEN_TAB_TICK_MS = 100;
-
 // A trail that hasn't gained a point in this long (and has drawn up to its tip)
 // has finished tracing and settles from the live full opacity to the completed
 // dim (cursor hidden). Kept comfortably longer than the stream's ~1s batch gaps
@@ -94,7 +92,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
-    const timeoutRef = useRef<number | undefined>(undefined);
     const consecutiveErrorsRef = useRef(0);
 
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
@@ -289,19 +286,25 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           cancelAnimationFrame(animationRef.current);
           animationRef.current = undefined;
         }
-        if (timeoutRef.current !== undefined) {
-          window.clearTimeout(timeoutRef.current);
-          timeoutRef.current = undefined;
+      };
+
+      const pauseDrawClock = (perfNow: number) => {
+        if (pauseStartedAtRef.current === null) {
+          pauseStartedAtRef.current = perfNow;
+        }
+      };
+
+      const resumeDrawClock = (perfNow: number) => {
+        if (pauseStartedAtRef.current !== null) {
+          pausedAccumMsRef.current += perfNow - pauseStartedAtRef.current;
+          pauseStartedAtRef.current = null;
         }
       };
 
       const scheduleNext = () => {
         clearScheduled();
         if (document.visibilityState === "hidden") {
-          timeoutRef.current = window.setTimeout(
-            () => tick(performance.now()),
-            HIDDEN_TAB_TICK_MS,
-          );
+          pauseDrawClock(performance.now());
           return;
         }
         animationRef.current = requestAnimationFrame(tick);
@@ -332,15 +335,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
       const runFrame = (perfNow: number) => {
         if (frozenRef.current) {
-          if (pauseStartedAtRef.current === null) {
-            pauseStartedAtRef.current = perfNow;
-          }
+          pauseDrawClock(perfNow);
           return;
         }
-        if (pauseStartedAtRef.current !== null) {
-          pausedAccumMsRef.current += perfNow - pauseStartedAtRef.current;
-          pauseStartedAtRef.current = null;
-        }
+        resumeDrawClock(perfNow);
 
         const entries = keptRef.current;
         const clockMs = perfNow - pausedAccumMsRef.current;

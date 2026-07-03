@@ -75,4 +75,23 @@ describe("KeyboardCollector", () => {
 
     collector.disable();
   });
+
+  it("removes storage change listeners when disabled", () => {
+    const collector = new KeyboardCollector();
+
+    collector.enable();
+    expect(storageChangeListener.addListener).toHaveBeenCalledTimes(1);
+    const firstHandler = storageChangeListener.addListener.mock.calls[0][0];
+
+    collector.disable();
+    expect(storageChangeListener.removeListener).toHaveBeenCalledWith(firstHandler);
+
+    collector.enable();
+    expect(storageChangeListener.addListener).toHaveBeenCalledTimes(2);
+    const secondHandler = storageChangeListener.addListener.mock.calls[1][0];
+
+    collector.disable();
+    expect(storageChangeListener.removeListener).toHaveBeenCalledWith(secondHandler);
+    expect(storageChangeListener.removeListener).toHaveBeenCalledTimes(2);
+  });
 });

@@ -57,6 +57,7 @@ const mockedPlayhtml = {
     mockReadyResolve();
     return mockReady;
   }),
+  configure: vi.fn(),
   setupPlayElements: vi.fn(),
   setupPlayElement: vi.fn(),
   removePlayElement: vi.fn(),
