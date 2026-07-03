@@ -129,7 +129,7 @@ When a write is denied, `setData` becomes a no-op and the element fires a `permi
 Four live examples on this site exercise the whole system (their rules live in [`/.well-known/playhtml.json`](https://playhtml.fun/.well-known/playhtml.json)):
 
 - [`/permissions`](https://playhtml.fun/permissions) — **the locked room**: identity panel, an admin-gated title, creator-owned notes, and a live event log. The best place to watch the handshake and denials happen.
-- [`/guestbook`](https://playhtml.fun/guestbook) — **the village guestbook**: the canonical earned-roles example. Visitors read, returning visitors (2 days) sign, regulars (5 days) sweep up after others, and the keeper's key can do anything — including changing the rules, which is just editing the well-known file.
+- [`/guestbook`](https://playhtml.fun/guestbook) — **the village guestbook**: the canonical earned-roles example. Visitors read, returning visitors (2 sessions) sign, regulars (5 sessions) sweep up after others, and the keeper's key can do anything — including changing the rules, which is just editing the well-known file.
 - [`/garden`](https://playhtml.fun/garden) — **community garden**: claim a plot (one per pid), water only your own plant (`update:creator`).
 - [`/shop`](https://playhtml.fun/shop) — **the corner shop**: a single owner key gates the sign and marquee; the doorbell stays open to everyone.
 

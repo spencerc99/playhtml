@@ -207,6 +207,22 @@ describe("earned roles (server-attested days)", () => {
     expect(getMe().roles).toContain("regular");
     expect(can("delete", "#guestbook", { creator: ADMIN_PK })).toBe(true);
   });
+
+  it("does not resolve earned roles while the identity is unverified", () => {
+    setIdentity(identity(OTHER_PK));
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: { returning: { sessions: 2 } },
+      rules: [{ match: "guestbook", create: "returning" }],
+    });
+
+    setCounters({ sessions: 2 });
+
+    expect(getMe().verified).toBe(false);
+    expect(getMe().roles).not.toContain("returning");
+    expect(can("create", "#guestbook")).toBe(false);
+  });
 });
 
 describe("client/server drift warnings", () => {

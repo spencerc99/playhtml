@@ -402,7 +402,12 @@ export function satisfiesRole(
     const definition = roles[roleName];
     if (isEarnedRoleCondition(definition)) {
       // Earned roles only exist through verified, server-attested counters.
-      if (meetsEarnedCondition(definition, principal.counters)) return true;
+      if (
+        principal.verified &&
+        meetsEarnedCondition(definition, principal.counters)
+      ) {
+        return true;
+      }
       continue;
     }
     if (definition && principal.pid && definition.includes(principal.pid)) {

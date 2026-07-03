@@ -314,6 +314,13 @@ describe("earned roles (visit-counted)", () => {
     ).toBe(false);
     expect(
       satisfiesRole(
+        "returning",
+        { pid: visitorPk, verified: false, counters: { days: 2 } },
+        roles
+      )
+    ).toBe(false);
+    expect(
+      satisfiesRole(
         "regular",
         { pid: visitorPk, verified: true, counters: { days: 7 } },
         roles
@@ -364,6 +371,24 @@ describe("earned roles (visit-counted)", () => {
     });
     expect(secondDay.ok).toBe(true);
     expect((secondDay as any).data.e1.createdBy).toBe(visitorPk);
+  });
+
+  it("does not grant earned roles from counters without a verified pid", () => {
+    const rules = [{ match: "guestbook", create: "returning" }];
+    const roles = { returning: { sessions: 2 } };
+
+    const verdict = evaluateGatedWrite({
+      rules,
+      roles,
+      roomPath: undefined,
+      elementId: "guestbook",
+      pid: undefined,
+      counters: { sessions: 2 },
+      currentData: {},
+      incomingData: { e1: { text: "hi" } },
+    });
+
+    expect(verdict.ok).toBe(false);
   });
 });
 

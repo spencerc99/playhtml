@@ -234,7 +234,9 @@ function resolveRoles(): void {
     state.serverStatus?.roles ?? {},
   )) {
     if (isEarnedRoleCondition(definition)) {
-      if (meetsEarnedCondition(definition, state.counters)) roles.add(name);
+      if (state.verified && meetsEarnedCondition(definition, state.counters)) {
+        roles.add(name);
+      }
     } else if (pid && definition.includes(pid)) {
       roles.add(name);
     }
