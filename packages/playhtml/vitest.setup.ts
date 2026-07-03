@@ -1,33 +1,35 @@
 // ABOUTME: Configures browser API shims and provider fakes for playhtml tests.
 // ABOUTME: Keeps unit tests deterministic without opening real network providers.
 // JSDOM doesn't implement some layout APIs; mock minimal ones we use.
-Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
-Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
+  Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
 
-const appendHeadChild = document.head.appendChild.bind(document.head);
-document.head.appendChild = ((child: Node) => {
-  if (
-    child instanceof HTMLLinkElement &&
-    child.href.includes("https://unpkg.com/playhtml@latest/dist/style.css")
-  ) {
-    child.href = "data:text/css,/* playhtml */";
+  const appendHeadChild = document.head.appendChild.bind(document.head);
+  document.head.appendChild = ((child: Node) => {
+    if (
+      child instanceof HTMLLinkElement &&
+      child.href.includes("https://unpkg.com/playhtml@latest/dist/style.css")
+    ) {
+      child.href = "data:text/css,/* playhtml */";
+    }
+    return appendHeadChild(child);
+  }) as typeof document.head.appendChild;
+
+  // Basic getBoundingClientRect mock for created elements in tests
+  if (!HTMLElement.prototype.getBoundingClientRect) {
+    // @ts-ignore
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return {
+        top: 0,
+        left: 0,
+        bottom: 100,
+        right: 100,
+        width: 100,
+        height: 100,
+      } as DOMRect;
+    };
   }
-  return appendHeadChild(child);
-}) as typeof document.head.appendChild;
-
-// Basic getBoundingClientRect mock for created elements in tests
-if (!HTMLElement.prototype.getBoundingClientRect) {
-  // @ts-ignore
-  HTMLElement.prototype.getBoundingClientRect = function () {
-    return {
-      top: 0,
-      left: 0,
-      bottom: 100,
-      right: 100,
-      width: 100,
-      height: 100,
-    } as DOMRect;
-  };
 }
 
 // Global mocks for modules that rely on browser-only features
