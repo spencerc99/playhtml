@@ -1,6 +1,38 @@
 {
+ "playhtml.fun": {
+  "founded": null,
+  "waybackFirst": 2023,
+  "waybackUrls": 473,
+  "sitemapUrls": null,
+  "title": "playhtml",
+  "favicon": "https://playhtml.fun/icon.png",
+  "links": [
+   "spencer.place",
+   "we-b.site",
+   "wewere.online"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "wikipedia.org": {
+  "founded": 2001,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Wikipedia",
+  "favicon": "https://wikipedia.org/static/apple-touch/wikipedia.png",
+  "links": [
+   "google.com",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "mycelia.club": {
   "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": "https://mycelia.club/favicon.ico",
   "links": [],
@@ -9,6 +41,9 @@
  },
  "thesozzledsnip.uk": {
   "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "The Sozzled Snip",
   "favicon": "https://thesozzledsnip.uk/favicon.png",
   "links": [],
@@ -17,14 +52,34 @@
  },
  "wewere.online": {
   "founded": null,
+  "waybackFirst": 2026,
+  "waybackUrls": 56,
+  "sitemapUrls": null,
   "title": "we were online",
   "favicon": "https://wewere.online/favicon.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
+ "mmmx.cloud": {
+  "founded": 2023,
+  "waybackFirst": 2024,
+  "waybackUrls": 1566,
+  "sitemapUrls": null,
+  "title": "welcome to ním’s memex",
+  "favicon": "data:image/png;base64,iVBORw0KGgo=",
+  "links": [
+   "wikipedia.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "youtube.com": {
   "founded": 2005,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "YouTube",
   "favicon": "https://www.youtube.com/s/desktop/1daead2b/img/favicon.ico",
   "links": [],
@@ -33,6 +88,9 @@
  },
  "superops.webflow.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "Super",
   "favicon": "https://cdn.prod.website-files.com/69aa59c507e1394268e1f7ca/6a0d507ce5a7e4715580fe35_super-favicon.png",
   "links": [],
@@ -41,6 +99,9 @@
  },
  "albertocinco.com": {
   "founded": 2021,
+  "waybackFirst": 2022,
+  "waybackUrls": 179,
+  "sitemapUrls": null,
   "title": "Alberto Cinco Jr.",
   "favicon": "https://albertocinco.com/favicon.ico",
   "links": [
@@ -52,28 +113,12 @@
   "pagesCrawled": 16,
   "alive": true
  },
- "swathiandshivam.com": {
-  "founded": 2025,
-  "title": "Swathi &amp; Shivam - Wedding Website",
-  "favicon": "https://swathiandshivam.com/favicon.ico?v=3",
-  "links": [],
-  "pagesCrawled": 1,
-  "alive": true
- },
- "wikipedia.org": {
-  "founded": 2001,
-  "title": "Wikipedia",
-  "favicon": "https://wikipedia.org/static/apple-touch/wikipedia.png",
-  "links": [
-   "google.com",
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
- },
  "isabel.li": {
   "founded": null,
-  "title": "isabel \u73a5 li - kia ora! \ud83d\udc8c",
+  "waybackFirst": 2005,
+  "waybackUrls": 39,
+  "sitemapUrls": null,
+  "title": "isabel 玥 li - kia ora! 💌",
   "favicon": "https://isabel.li/assets/YUE.png",
   "links": [
    "google.com"
@@ -81,31 +126,22 @@
   "pagesCrawled": 25,
   "alive": true
  },
- "playhtml.fun": {
-  "founded": null,
-  "title": "playhtml",
-  "favicon": "https://playhtml.fun/icon.png",
-  "links": [
-   "spencer.place",
-   "we-b.site",
-   "wewere.online"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
- },
- "mmmx.cloud": {
-  "founded": 2023,
-  "title": "welcome to n\u00edm\u2019s memex",
-  "favicon": "data:image/png;base64,iVBORw0KGgo=",
-  "links": [
-   "wikipedia.org",
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
+ "swathiandshivam.com": {
+  "founded": 2025,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Swathi &amp; Shivam - Wedding Website",
+  "favicon": "https://swathiandshivam.com/favicon.ico?v=3",
+  "links": [],
+  "pagesCrawled": 1,
   "alive": true
  },
  "weddingfun.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -114,14 +150,33 @@
  },
  "grow.wings": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "tilman.me": {
+  "founded": null,
+  "waybackFirst": 2009,
+  "waybackUrls": 611,
+  "sitemapUrls": null,
+  "title": "Tilman.me",
+  "favicon": "https://tilman.me/favicon.ico",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "3vilwini.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -130,6 +185,9 @@
  },
  "playhtml-whiteboard-test.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "Friend Corkboard",
   "favicon": "https://playhtml-whiteboard-test.vercel.app/icon.svg",
   "links": [],
@@ -137,8 +195,11 @@
   "alive": true
  },
  "spencer.place": {
-  "founded": null,
-  "title": "\ua731\u1d18\u1d07\u0274\u1d04\u1d07\u0280 \u1d04\u029c\u1d00\u0274\u0262",
+  "founded": 2023,
+  "waybackFirst": 2021,
+  "waybackUrls": 1032,
+  "sitemapUrls": null,
+  "title": "ꜱᴘᴇɴᴄᴇʀ ᴄʜᴀɴɢ",
   "favicon": "https://spencer.place/favicon.svg",
   "links": [
    "are.na",
@@ -153,7 +214,10 @@
   "alive": true
  },
  "shrine.computer": {
-  "founded": null,
+  "founded": 2024,
+  "waybackFirst": 2024,
+  "waybackUrls": 25,
+  "sitemapUrls": null,
   "title": "computing shrines",
   "favicon": "https://shrine.computer/icons/shrines.svg",
   "links": [],
@@ -162,6 +226,9 @@
  },
  "ellamartini.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": "https://ellamartini.github.io/favicon.ico",
   "links": [],
@@ -170,6 +237,9 @@
  },
  "sozzledsnip.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "The Sozzled Snip",
   "favicon": "https://sozzledsnip.netlify.app/favicon.png",
   "links": [],
@@ -178,6 +248,9 @@
  },
  "playhtml.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "playhtml",
   "favicon": "https://playhtml.pages.dev/icon.png",
   "links": [
@@ -191,6 +264,9 @@
  },
  "jackyzha0.github.io": {
   "founded": null,
+  "waybackFirst": 2024,
+  "waybackUrls": 90,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -199,32 +275,20 @@
  },
  "oil-wise-branch.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
- },
- "tilman.me": {
-  "founded": null,
-  "title": "Tilman.me",
-  "favicon": "https://tilman.me/favicon.ico",
-  "links": [
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
  },
  "playhtmlfun.netlify.app": {
   "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "rustic-hollow-peacock.glitch.me": {
-  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -233,30 +297,20 @@
  },
  "cgco.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "HTML Community Garden",
   "favicon": "https://cgco.vercel.app/favicon.ico",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "oval-melted-rain.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "fridayfishing.store": {
-  "founded": null,
-  "title": "Friday Fishing \ud83d\udc1f",
-  "favicon": "https://fridayfishing.store/favicon.ico",
-  "links": [],
-  "pagesCrawled": 1,
-  "alive": true
- },
  "keith.is": {
   "founded": 2014,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "keith is a web developer",
   "favicon": "https://keith.is/favicon.svg",
   "links": [
@@ -268,6 +322,9 @@
  },
  "mvdemos.com": {
   "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Minimum Viable Demos",
   "favicon": "https://mvdemos.com/favicon.ico",
   "links": [],
@@ -276,23 +333,21 @@
  },
  "sims.computer": {
   "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Hello! Welcome to Synology Web Station!",
   "favicon": "https://sims.computer/#",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "honored-cubic-arthropod.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
  "spencerchang.me": {
   "founded": null,
-  "title": "\ua731\u1d18\u1d07\u0274\u1d04\u1d07\u0280 \u1d04\u029c\u1d00\u0274\u0262",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "ꜱᴘᴇɴᴄᴇʀ ᴄʜᴀɴɢ",
   "favicon": "https://spencerchang.me/favicon.svg",
   "links": [
    "are.na",
@@ -308,6 +363,9 @@
  },
  "nikolas.ws": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Nikolas Wise is an artist, web developer, and engineering manager from Portland, Oregon.",
   "favicon": "https://nikolas.ws/favicon.png",
   "links": [
@@ -322,6 +380,9 @@
  },
  "artbookpvd.com": {
   "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "abc pvd",
   "favicon": "https://artbookpvd.com/assets/favicon.ico",
   "links": [
@@ -331,8 +392,55 @@
   "pagesCrawled": 2,
   "alive": true
  },
+ "rustic-hollow-peacock.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "oval-melted-rain.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "fridayfishing.store": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Friday Fishing 🐟",
+  "favicon": "https://fridayfishing.store/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "honored-cubic-arthropod.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
  "uncertain.cloud": {
   "founded": 2025,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -341,6 +449,9 @@
  },
  "weddinginprogress.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -349,6 +460,9 @@
  },
  "outer-space-dj.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -357,6 +471,9 @@
  },
  "annie.ooo": {
   "founded": 2020,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Annie Oh",
   "favicon": "https://annie.ooo/images/cd.png",
   "links": [],
@@ -365,7 +482,10 @@
  },
  "ethica-landing-olu26s-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -373,15 +493,32 @@
  },
  "deathtocursors.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Death to Cursors",
   "favicon": "https://deathtocursors.netlify.app/favicon.ico",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
+ "bento-site-purdue-hackers.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
  "developh.org": {
   "founded": 2018,
-  "title": "Developh \u2013 Art, Research, & Learning Institution for Creative & Critical Technologies",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 20,
+  "title": "Developh – Art, Research, & Learning Institution for Creative & Critical Technologies",
   "favicon": "https://developh.org/favicon.ico",
   "links": [
    "are.na",
@@ -393,6 +530,9 @@
  },
  "acute-motley-cowl.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -401,6 +541,9 @@
  },
  "liorio.neocities.org": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "ohai its liorio",
   "favicon": "https://liorio.neocities.org/favicon.ico",
   "links": [],
@@ -409,6 +552,9 @@
  },
  "swift-fire-brush.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -416,7 +562,10 @@
   "alive": false
  },
  "lifelinefoundations.win": {
-  "founded": null,
+  "founded": 2018,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -425,6 +574,9 @@
  },
  "sequencelorena.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "SEQUENCE Online - Collaborative Multiplayer Board Game",
   "favicon": "https://sequencelorena.vercel.app/favicon.ico",
   "links": [],
@@ -433,6 +585,9 @@
  },
  "conceitedengineering.github.io": {
   "founded": null,
+  "waybackFirst": 2020,
+  "waybackUrls": 40,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -440,7 +595,10 @@
   "alive": false
  },
  "myfireplace.app": {
-  "founded": null,
+  "founded": 2025,
+  "waybackFirst": 2025,
+  "waybackUrls": 17,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -449,6 +607,9 @@
  },
  "new-socratica.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Socratica",
   "favicon": "https://new-socratica.vercel.app/favicon.ico",
   "links": [
@@ -459,7 +620,10 @@
   "alive": true
  },
  "htmls.garden": {
-  "founded": null,
+  "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "html garden",
   "favicon": "https://htmls.garden/apple_touch_icon.png",
   "links": [
@@ -471,6 +635,9 @@
  },
  "turquoise-broken-industry.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -479,6 +646,9 @@
  },
  "weather-divination.herokuapp.com": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -487,6 +657,9 @@
  },
  "elemental-woolen-quokka.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -495,22 +668,20 @@
  },
  "star-cerulean-puppet.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "fireplace-desktop-emily-shens-projects.vercel.app": {
-  "founded": null,
-  "title": "Fireplace Desktop",
-  "favicon": "https://fireplace-desktop-emily-shens-projects.vercel.app/favicon.ico",
-  "links": [],
-  "pagesCrawled": 1,
-  "alive": true
- },
  "jblock.ca": {
   "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "J Block",
   "favicon": "https://jblock.ca/favicon.ico",
   "links": [
@@ -519,16 +690,11 @@
   "pagesCrawled": 11,
   "alive": true
  },
- "cdpn.io": {
-  "founded": null,
-  "title": "CodePen: Online Code Editor and Front End Web Developer Community",
-  "favicon": "https://cpwebassets.codepen.io/assets/favicon/favicon-touch-de50acbf5d634ec6791894eba4ba9cf490f709b3d742597c6fc4b734e6492a5a.png",
-  "links": [],
-  "pagesCrawled": 1,
-  "alive": true
- },
  "anastassia.info": {
   "founded": 2018,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "anastassia bobokalonova",
   "favicon": "https://anastassia.info/icon.png",
   "links": [
@@ -539,22 +705,20 @@
  },
  "gifting-interfaces.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Gifting Interfaces",
   "favicon": "https://gifting-interfaces.pages.dev/2d/gift.svg",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "my.baby": {
-  "founded": 2019,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
  "thaliagodbout.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -563,6 +727,9 @@
  },
  "andrew-boylan.com": {
   "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Sharkbite - Internet Delay Pedal",
   "favicon": "https://sharkbite.andrew-boylan.com/icon.svg?icon.0m9i5zwvm8du0.svg",
   "links": [],
@@ -570,8 +737,11 @@
   "alive": true
  },
  "squarespace.com": {
-  "founded": 2003,
-  "title": "Website Builder \u2013 Easily Create Your Own Website &mdash; Squarespace",
+  "founded": null,
+  "waybackFirst": 2000,
+  "waybackUrls": 2000,
+  "sitemapUrls": 6287,
+  "title": "Website Builder – Easily Create Your Own Website &mdash; Squarespace",
   "favicon": "https://static1.squarespace.com/static/5134cbefe4b0c6fb04df8065/t/5be0b4d96d2a73f0ce4f95ff/favicon.ico",
   "links": [
    "google.com",
@@ -580,19 +750,11 @@
   "pagesCrawled": 25,
   "alive": true
  },
- "melonland.net": {
-  "founded": 2022,
-  "title": "MelonLand Project",
-  "favicon": "https://melonland.net/images/favicon/apple-touch-icon.png",
-  "links": [
-   "nekoweb.org",
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
- },
  "ali-canva.github.io": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -601,14 +763,79 @@
  },
  "con-fluent-site.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "CON // FLUENT",
   "favicon": "https://con-fluent-site.vercel.app/favicon.ico?favicon.2vob68tjqpejf.ico",
   "links": [],
   "pagesCrawled": 5,
   "alive": true
  },
+ "fireplace-desktop-emily-shens-projects.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Fireplace Desktop",
+  "favicon": "https://fireplace-desktop-emily-shens-projects.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "cdpn.io": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "melonland.net": {
+  "founded": 2022,
+  "waybackFirst": 2022,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
+  "title": "MelonLand Project",
+  "favicon": "https://melonland.net/images/favicon/apple-touch-icon.png",
+  "links": [
+   "lataccola.neocities.org",
+   "nekoweb.org",
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "my.baby": {
+  "founded": 2019,
+  "waybackFirst": 2021,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
  "ginger-moored-mollusk.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "ahana-turns-25.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -617,22 +844,20 @@
  },
  "course-website-pages.pages.dev": {
   "founded": null,
-  "title": "Veloria Academy \u2014 Practical Learning Library, PDF Notes & Live Classes Soon",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": 6,
+  "title": "Veloria Academy — Practical Learning Library, PDF Notes & Live Classes Soon",
   "favicon": "https://course-website-pages.pages.dev/brand/veloria-academy-logo.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "ahana-turns-25.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
  "chiseled-excited-piano.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -641,6 +866,9 @@
  },
  "fun-dm.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -649,6 +877,9 @@
  },
  "fun-fridge.com": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -657,6 +888,9 @@
  },
  "fireplace-desktop.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "Fireplace Desktop",
   "favicon": "https://fireplace-desktop.vercel.app/favicon.ico",
   "links": [],
@@ -665,17 +899,20 @@
  },
  "new-website-sohambasu963s-projects.vercel.app": {
   "founded": null,
-  "title": "Socratica",
-  "favicon": "https://new-socratica-website-sohambasu963s-projects.vercel.app/favicon.ico",
-  "links": [
-   "google.com",
-   "youtube.com"
-  ],
-  "pagesCrawled": 3,
-  "alive": true
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
  },
  "plume-excessive-estimate.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -684,14 +921,9 @@
  },
  "fun-how.do": {
   "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "inconclusive-phrygian-secretary.glitch.me": {
-  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -700,14 +932,31 @@
  },
  "panteonero.com": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "PANTEONERO",
   "favicon": "https://panteonero.com/favicon.gif",
   "links": [],
   "pagesCrawled": 25,
   "alive": true
  },
+ "inconclusive-phrygian-secretary.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
  "hollow-toothsome-raver.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -716,22 +965,9 @@
  },
  "branched-island-burglar.glitch.me": {
   "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "intriguing-little-asiago.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "thegfe.glitch.me": {
-  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -740,6 +976,9 @@
  },
  "fun-playhtml.fun": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -748,32 +987,9 @@
  },
  "fun-he.ll": {
   "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "ivantschk.github.io": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "stucco.software": {
-  "founded": 2023,
-  "title": "Work \u2014 Stucco Software",
-  "favicon": "https://stucco.software/favicon.png",
-  "links": [
-   "wikipedia.org"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
- },
- "codex-bridge-hibernation.test": {
-  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -782,56 +998,31 @@
  },
  "fun-are.na": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
- },
- "weirdweboctober-starter.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "vanderspie.gl": {
-  "founded": null,
-  "title": "Patrick Van der Spiegel",
-  "favicon": "https://vanderspie.gl/favicon.ico",
-  "links": [],
-  "pagesCrawled": 25,
-  "alive": true
  },
  "fun-fridge.html": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
- },
- "translate.goog": {
-  "founded": 2017,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "writefutureslab.com": {
-  "founded": 2025,
-  "title": "Write Futures Lab",
-  "favicon": "https://writefutureslab.com/favicon.ico",
-  "links": [
-   "google.com"
-  ],
-  "pagesCrawled": 1,
-  "alive": true
  },
  "fun-if.then": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -840,14 +1031,123 @@
  },
  "coherent-reliable-college.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "intriguing-little-asiago.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "thegfe.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "ivantschk.github.io": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "codex-bridge-hibernation.test": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "weirdweboctober-starter.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "vanderspie.gl": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 161,
+  "title": "Patrick Van der Spiegel",
+  "favicon": "https://vanderspie.gl/favicon.ico",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "stucco.software": {
+  "founded": 2023,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Work — Stucco Software",
+  "favicon": "https://stucco.software/favicon.png",
+  "links": [
+   "wikipedia.org"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
+ "translate.goog": {
+  "founded": 2017,
+  "waybackFirst": 2013,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "writefutureslab.com": {
+  "founded": 2025,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Write Futures Lab",
+  "favicon": "https://writefutureslab.com/favicon.ico",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 1,
+  "alive": true
+ },
  "lataccola.neocities.org": {
   "founded": null,
+  "waybackFirst": 2021,
+  "waybackUrls": 972,
+  "sitemapUrls": null,
   "title": "La Taccola",
   "favicon": "https://lataccola.neocities.org/favicon.ico",
   "links": [
@@ -860,8 +1160,25 @@
   "pagesCrawled": 25,
   "alive": true
  },
+ "stucco-site-stucco.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Work — Stucco Software",
+  "favicon": "https://stucco-site-stucco.vercel.app/favicon.png",
+  "links": [
+   "stucco.software",
+   "wikipedia.org"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "sbdd-radio-praha.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "Radio Kutululu",
   "favicon": "https://sbdd-radio-praha.vercel.app/favicon.png",
   "links": [],
@@ -870,6 +1187,9 @@
  },
  "statilda-team.glitch.me": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -878,6 +1198,9 @@
  },
  "aliciaguo.com": {
   "founded": 2021,
+  "waybackFirst": 2023,
+  "waybackUrls": 490,
+  "sitemapUrls": null,
   "title": "Alicia Guo",
   "favicon": "https://aliciaguo.com/plum_flower.png",
   "links": [
@@ -889,6 +1212,9 @@
  },
  "we-were-online-website.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "we were online",
   "favicon": "https://we-were-online-website.pages.dev/favicon.png",
   "links": [],
@@ -897,6 +1223,9 @@
  },
  "is-a.dev": {
   "founded": 2020,
+  "waybackFirst": 2020,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": "is-a.dev - Free subdomains for developers",
   "favicon": "https://is-a.dev/assets/favicon.ico",
   "links": [
@@ -908,6 +1237,9 @@
  },
  "terpconnect.umd.edu": {
   "founded": null,
+  "waybackFirst": 2008,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": null,
   "favicon": "https://terpconnect.umd.edu/favicon.ico",
   "links": [],
@@ -916,14 +1248,20 @@
  },
  "dalmo.ai": {
   "founded": 2026,
-  "title": "Dalmo Mendon\u00e7a \u2014 AI, Poetry, Integral Christianity",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": 14,
+  "title": "Dalmo Mendonça — AI, Poetry, Integral Christianity",
   "favicon": "https://dalmo.ai/images/icon-main.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
  "ricardolongo.com.br": {
-  "founded": null,
+  "founded": 2012,
+  "waybackFirst": 2013,
+  "waybackUrls": 441,
+  "sitemapUrls": 5,
   "title": "Ricardo Longo - Blog pessoal - Ricardo Longo",
   "favicon": "https://ricardolongo.com.br/wp-content/uploads/cropped-icon-ricardolongo-32x32.png",
   "links": [],
@@ -932,7 +1270,10 @@
  },
  "dino-markets-michaelmustopos-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -940,6 +1281,9 @@
  },
  "annieoh.com": {
   "founded": 2014,
+  "waybackFirst": 2008,
+  "waybackUrls": 27,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -948,14 +1292,20 @@
  },
  "cgco-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
   "links": [],
-  "pagesCrawled": 5,
-  "alive": true
+  "pagesCrawled": 0,
+  "alive": false
  },
  "skillcohort.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "The Learning Collective",
   "favicon": "https://skillcohort.vercel.app/logo.png",
   "links": [],
@@ -964,6 +1314,9 @@
  },
  "kalthiyaheet.workers.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -972,6 +1325,9 @@
  },
  "gem-sugared-spectacles.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -980,6 +1336,9 @@
  },
  "itspangler.com": {
   "founded": 2021,
+  "waybackFirst": 2021,
+  "waybackUrls": 114,
+  "sitemapUrls": null,
   "title": "ian spangler",
   "favicon": "https://itspangler.com/_app/immutable/assets/git.DDf6BzG0.jpg",
   "links": [],
@@ -988,6 +1347,9 @@
  },
  "crowbitty.neocities.org": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "The web site of crowbitty",
   "favicon": "https://crowbitty.neocities.org/favicon.ico",
   "links": [],
@@ -996,6 +1358,9 @@
  },
  "ethicahq.space": {
   "founded": null,
+  "waybackFirst": 2026,
+  "waybackUrls": 2,
+  "sitemapUrls": 2,
   "title": "Ethica | Open Creative Collective for Makers, Founders &amp; Builders",
   "favicon": "https://ethicahq.space/favicon.ico",
   "links": [
@@ -1007,6 +1372,9 @@
  },
  "useful-alder-troodon.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1015,6 +1383,9 @@
  },
  "purduehackers.com": {
   "founded": 2013,
+  "waybackFirst": 2013,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": "Purdue Hackers",
   "favicon": "https://purduehackers.com/glider.svg",
   "links": [
@@ -1027,6 +1398,9 @@
  },
  "silly-cat-b152be.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1035,6 +1409,9 @@
  },
  "gardenweb-space.netlify.app": {
   "founded": null,
+  "waybackFirst": 2026,
+  "waybackUrls": 19,
+  "sitemapUrls": null,
   "title": "Garden Web",
   "favicon": "https://gardenweb-space.netlify.app/favicon.png",
   "links": [
@@ -1045,7 +1422,10 @@
  },
  "we-b.site": {
   "founded": null,
-  "title": "\u0489 .\uff61\u22c6\u00b0 (\ud835\udccc\ud835\udc52)\ud835\udcb7\ud835\udcc8\ud835\udcbe\ud835\udcc9\ud835\udc52 \u02da\uff61\u22c6 \u25cc",
+  "waybackFirst": 2021,
+  "waybackUrls": 109,
+  "sitemapUrls": null,
+  "title": "҉ .｡⋆° (𝓌𝑒)𝒷𝓈𝒾𝓉𝑒 ˚｡⋆ ◌",
   "favicon": "https://we-b.site/tk.svg",
   "links": [],
   "pagesCrawled": 2,
@@ -1053,14 +1433,33 @@
  },
  "specula-melitensis.glitch.me": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "duckdns.org": {
+  "founded": 2013,
+  "waybackFirst": 2013,
+  "waybackUrls": 2000,
+  "sitemapUrls": 22,
+  "title": "Duck DNS",
+  "favicon": "https://duckdns.org/img/ducky_icon.png",
+  "links": [
+   "google.com"
+  ],
+  "pagesCrawled": 10,
+  "alive": true
+ },
  "scottwhyoung.info": {
-  "founded": null,
+  "founded": 2025,
+  "waybackFirst": 2025,
+  "waybackUrls": 41,
+  "sitemapUrls": 33,
   "title": "Scott W. H. Young - UX Librarian",
   "favicon": "https://scottwhyoung.info/favicon.ico",
   "links": [
@@ -1071,6 +1470,9 @@
  },
  "thinking.living": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "thinking, living",
   "favicon": "https://thinking.living/favicon.ico",
   "links": [],
@@ -1079,6 +1481,9 @@
  },
  "npwitk.com": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Nonprawich I.",
   "favicon": "https://npwitk.com/favicon.ico?favicon.0656r83fgw794.ico",
   "links": [
@@ -1089,6 +1494,9 @@
  },
  "projbyzuri.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "projbyzuri",
   "favicon": "https://projbyzuri.netlify.app/assets/favicon.ico",
   "links": [
@@ -1099,6 +1507,9 @@
  },
  "aiadventuremaker-dasilvakareems-projects.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1107,6 +1518,9 @@
  },
  "reflective-green-beef.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1115,6 +1529,9 @@
  },
  "cooperative-young-tangerine.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1123,14 +1540,31 @@
  },
  "rafworkonly.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "A place to share stories. &mdash; Home",
   "favicon": "https://rafworkonly.github.io/assets/images/preview.png",
   "links": [],
   "pagesCrawled": 23,
   "alive": true
  },
+ "sequencelorena-6239s-projects.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
  "large-hexagonal-globe.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1139,6 +1573,9 @@
  },
  "calvin.sh": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Calvin Liang",
   "favicon": "https://calvin.sh/favicon.ico",
   "links": [
@@ -1149,42 +1586,33 @@
   "alive": true
  },
  "oaiusercontent.com": {
-  "founded": null,
+  "founded": 2023,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "duckdns.org": {
-  "founded": 2013,
-  "title": "Duck DNS",
-  "favicon": "https://duckdns.org/img/ducky_icon.png",
-  "links": [
-   "google.com"
-  ],
-  "pagesCrawled": 10,
-  "alive": true
- },
  "ad2x.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "E-CHESS",
   "favicon": "https://ad2x.github.io/favicon.ico",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "annie-dot-com.vercel.app": {
-  "founded": null,
-  "title": "Annie Oh",
-  "favicon": "https://annie-dot-com.vercel.app/images/cd.png",
-  "links": [],
-  "pagesCrawled": 2,
-  "alive": true
- },
  "expectbest.co.uk": {
   "founded": 2007,
-  "title": "Web Design Poole \u2013 Expert Web Designers | Expect Best",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 7,
+  "title": "Web Design Poole – Expert Web Designers | Expect Best",
   "favicon": "https://expectbest.co.uk/wp-content/uploads/2026/01/cropped-Group-82-32x32.png",
   "links": [
    "youtube.com"
@@ -1192,32 +1620,11 @@
   "pagesCrawled": 1,
   "alive": true
  },
- "stella-and-matilda.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "minimum-viable-demos.vercel.app": {
-  "founded": null,
-  "title": "Minimum Viable Demos",
-  "favicon": "https://minimum-viable-demos.vercel.app/favicon.ico",
-  "links": [],
-  "pagesCrawled": 1,
-  "alive": true
- },
  "hushed-curvy-pepperberry.glitch.me": {
   "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "amber-lavender-dime.glitch.me": {
-  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1226,22 +1633,20 @@
  },
  "campfire-16j.pages.dev": {
   "founded": null,
+  "waybackFirst": 2024,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": "the digital spaces we want",
   "favicon": "https://campfire-16j.pages.dev/icon.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "community-graph-eastmountaincodes-projects.vercel.app": {
-  "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
-  "links": [],
-  "pagesCrawled": 5,
-  "alive": true
- },
  "artex-studios.com": {
   "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Artex Studios",
   "favicon": "https://artex-studios.com/favicon.ico?v=3",
   "links": [],
@@ -1250,6 +1655,9 @@
  },
  "tehanu.neocities.org": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "tehanu",
   "favicon": "https://tehanu.neocities.org/favicon.ico",
   "links": [],
@@ -1258,6 +1666,9 @@
  },
  "right-evening-challenge.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1266,14 +1677,75 @@
  },
  "community-graph-mu.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Bandwidth vs IRL",
   "favicon": "https://community-graph-mu.vercel.app/favicon.ico?favicon.2vob68tjqpejf.ico",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
+ "annie-dot-com.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Annie Oh",
+  "favicon": "https://annie-dot-com.vercel.app/images/cd.png",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "stella-and-matilda.glitch.me": {
+  "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "minimum-viable-demos.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Minimum Viable Demos",
+  "favicon": "https://minimum-viable-demos.vercel.app/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "amber-lavender-dime.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "community-graph-eastmountaincodes-projects.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
  "gwynnie.gay": {
   "founded": 2023,
+  "waybackFirst": 2023,
+  "waybackUrls": 337,
+  "sitemapUrls": null,
   "title": "tanner caffrey",
   "favicon": "https://gwynnie.gay/favicon.ico",
   "links": [],
@@ -1282,6 +1754,9 @@
  },
  "navy-stealth-sternum.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1290,6 +1765,9 @@
  },
  "kutululu.live": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1298,7 +1776,10 @@
  },
  "home-883.pages.dev": {
   "founded": null,
-  "title": "\ua731\u1d18\u1d07\u0274\u1d04\u1d07\u0280 \u1d04\u029c\u1d00\u0274\u0262",
+  "waybackFirst": 2024,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
+  "title": "ꜱᴘᴇɴᴄᴇʀ ᴄʜᴀɴɢ",
   "favicon": "https://home-883.pages.dev/favicon.svg",
   "links": [
    "are.na",
@@ -1315,6 +1796,9 @@
  },
  "lead-lily-kite.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1323,6 +1807,9 @@
  },
  "annie-dot-ne-ohs-projects.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1331,6 +1818,9 @@
  },
  "ethicalanding.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": 2,
   "title": "Ethica | Open Creative Collective for Makers, Founders &amp; Builders",
   "favicon": "https://ethicalanding.vercel.app/favicon.ico",
   "links": [
@@ -1340,16 +1830,11 @@
   "pagesCrawled": 2,
   "alive": true
  },
- "sequencelorena-6239s-projects.vercel.app": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
  "mwhite98.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "myla white",
   "favicon": "https://mwhite98.github.io/favicon/apple-touch-icon.png",
   "links": [
@@ -1361,6 +1846,9 @@
  },
  "flossy-positive-magnosaurus.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1369,6 +1857,9 @@
  },
  "past-burly-muscle.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1377,6 +1868,9 @@
  },
  "pottery-website-client.onrender.com": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "My Pottery",
   "favicon": "https://pottery-website-client.onrender.com/favicon.ico",
   "links": [],
@@ -1385,6 +1879,9 @@
  },
  "polished-polydactyl-subway.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1393,6 +1890,9 @@
  },
  "glittery-handy-atrociraptor.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1401,6 +1901,9 @@
  },
  "radweb-starter.glitch.me": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1409,14 +1912,31 @@
  },
  "weak-meadow-mailman.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "skillcohort-venim.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
  "gob.mx": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1425,7 +1945,10 @@
  },
  "lato-mauve.vercel.app": {
   "founded": null,
-  "title": "Latoria \u2014 SAGE Memory Engine",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Latoria — SAGE Memory Engine",
   "favicon": "https://lato-mauve.vercel.app/favicon.svg",
   "links": [],
   "pagesCrawled": 25,
@@ -1433,6 +1956,9 @@
  },
  "detailed-square-chair.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1441,7 +1967,10 @@
  },
  "crushed.app": {
   "founded": 2025,
-  "title": "Crushed \u2014 The Home Base for Cannabis Culture",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 29,
+  "title": "Crushed — The Home Base for Cannabis Culture",
   "favicon": "https://crushed.app/favicon.png",
   "links": [],
   "pagesCrawled": 25,
@@ -1449,6 +1978,9 @@
  },
  "es-d-2665189120260326-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1457,6 +1989,9 @@
  },
  "one-letter-texting.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1465,6 +2000,9 @@
  },
  "oval-broadleaf-saguaro.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1473,6 +2011,9 @@
  },
  "play-dot-html-1st-sandbox.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1481,6 +2022,9 @@
  },
  "sequence-one-beige.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1489,6 +2033,9 @@
  },
  "denim-uneven-variraptor.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1497,34 +2044,20 @@
  },
  "playhtml-class.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Building Benches for the Web",
   "favicon": "https://playhtml-class.pages.dev/red-stool.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "sinaranugerah.com": {
-  "founded": 2026,
-  "title": "Sinar Anugerah \u2014 Percetakan & Digital Printing Palembang | Offset, Konveksi, Advertising",
-  "favicon": "https://sinaranugerah.com/favicon-32x32.png",
-  "links": [
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
- },
- "rehobotemasmakmur.com": {
-  "founded": null,
-  "title": "Rehobot Emas Makmur \u2014 Percetakan & Digital Printing Palembang | Offset, Konveksi, Advertising",
-  "favicon": "https://rehobotemasmakmur.com/favicon-32x32.png",
-  "links": [
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
-  "alive": true
- },
  "bedecked-veil-individual.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1533,6 +2066,9 @@
  },
  "boiling-melodic-schooner.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1541,22 +2077,20 @@
  },
  "jakob.land": {
   "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "jakob leveille",
   "favicon": "https://jakob.land/favicon.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
- "bento-site-purdue-hackers.vercel.app": {
-  "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
-  "links": [],
-  "pagesCrawled": 210,
-  "alive": true
- },
  "sweltering-descriptive-mosquito.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1565,6 +2099,9 @@
  },
  "silent-smart-rate.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1573,14 +2110,33 @@
  },
  "just-fern-latency.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "sinaranugerah.com": {
+  "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 65,
+  "title": "Sinar Anugerah — Percetakan & Digital Printing Palembang | Offset, Konveksi, Advertising",
+  "favicon": "https://sinaranugerah.com/favicon-32x32.png",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "html-garden-spencerc99s-projects.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "html garden",
   "favicon": "https://html-garden-spencerc99s-projects.vercel.app/apple_touch_icon.png",
   "links": [
@@ -1592,6 +2148,9 @@
  },
  "ruby-sprinkle-handle.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1600,6 +2159,9 @@
  },
  "knowledgeable-gratis-panther.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1608,6 +2170,9 @@
  },
  "faithful-victorious-mirror.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1616,14 +2181,33 @@
  },
  "chalk-turquoise-airmail.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "rehobotemasmakmur.com": {
+  "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 65,
+  "title": "Rehobot Emas Makmur — Percetakan & Digital Printing Palembang | Offset, Konveksi, Advertising",
+  "favicon": "https://rehobotemasmakmur.com/favicon-32x32.png",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "breezy-saber-redcurrant.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1632,7 +2216,10 @@
  },
  "omninnection.com": {
   "founded": 2026,
-  "title": "OMNINNECTION \u00b7 IA, sites e dashboards, num time s\u00f3. \u00b7 OMNINNECTION",
+  "waybackFirst": 2026,
+  "waybackUrls": 7,
+  "sitemapUrls": null,
+  "title": "OMNINNECTION · IA, sites e dashboards, num time só. · OMNINNECTION",
   "favicon": "https://omninnection.com/favicon.ico?favicon.0x3dzn~oxb6tn.ico",
   "links": [
    "are.na"
@@ -1642,6 +2229,9 @@
  },
  "spark-cotton-gigantspinosaurus.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1650,6 +2240,9 @@
  },
  "north-zenith-broker.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1658,6 +2251,9 @@
  },
  "habitual-cobalt-elephant.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1666,6 +2262,9 @@
  },
  "glib-confused-waterlily.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1674,6 +2273,9 @@
  },
  "foremost-evergreen-buckaroo.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1682,6 +2284,9 @@
  },
  "gem-pinnate-weather.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1690,6 +2295,9 @@
  },
  "wooden-luminous-raccoon.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1698,6 +2306,9 @@
  },
  "quark-boulder-secure.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1706,6 +2317,9 @@
  },
  "scarlet-cypress-emperor.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1714,6 +2328,9 @@
  },
  "bead-proximal-law.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1722,6 +2339,9 @@
  },
  "kgambs.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": "https://kgambs.github.io/favicon.ico",
   "links": [],
@@ -1730,6 +2350,9 @@
  },
  "circular-meadow-tango.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1738,6 +2361,9 @@
  },
  "columbus.oh.us": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1746,6 +2372,9 @@
  },
  "horse-cyber-powder.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1754,6 +2383,9 @@
  },
  "desert-uttermost-glade.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1762,6 +2394,9 @@
  },
  "evening-locrian-snagglefoot.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1770,6 +2405,9 @@
  },
  "atom-fringe-cheek.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1778,6 +2416,9 @@
  },
  "clever-flying-client.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1786,6 +2427,9 @@
  },
  "lace-cyan-platypus.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1794,6 +2438,9 @@
  },
  "toothsome-productive-father.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1802,6 +2449,9 @@
  },
  "endurable-rainy-mind.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1810,6 +2460,9 @@
  },
  "flint-cake-neighbor.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1818,6 +2471,9 @@
  },
  "incongruous-real-viper.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1826,6 +2482,9 @@
  },
  "fixed-sable-ziconium.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1834,6 +2493,9 @@
  },
  "hilarious-mochi-4c420b.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1841,7 +2503,10 @@
   "alive": false
  },
  "observablehq.cloud": {
-  "founded": null,
+  "founded": 2024,
+  "waybackFirst": 2024,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1850,6 +2515,9 @@
  },
  "cooked-inquisitive-canidae.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1858,6 +2526,9 @@
  },
  "elfvira.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1866,6 +2537,9 @@
  },
  "sunset-casspirilla-hq.glitch.me": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 2,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1874,6 +2548,9 @@
  },
  "bento-site-three.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "bento",
   "favicon": "https://bento-site-three.vercel.app/favicon.svg",
   "links": [
@@ -1884,6 +2561,9 @@
  },
  "ethica-landing.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1892,6 +2572,9 @@
  },
  "glistening-parfait-519da7.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1900,7 +2583,10 @@
  },
  "ethica-landing-git-main-olu26s-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -1908,6 +2594,9 @@
  },
  "8kendall.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1916,14 +2605,20 @@
  },
  "wedding-website-shivams-projects-60c8ad5b.vercel.app": {
   "founded": null,
-  "title": null,
-  "favicon": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
-  "pagesCrawled": 0,
-  "alive": false
+  "pagesCrawled": 5,
+  "alive": true
  },
  "computing-shrines.pages.dev": {
   "founded": null,
+  "waybackFirst": 2024,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": "computing shrines",
   "favicon": "https://computing-shrines.pages.dev/icons/shrines.svg",
   "links": [],
@@ -1931,7 +2626,10 @@
   "alive": true
  },
  "michaelevy.com": {
-  "founded": null,
+  "founded": 2025,
+  "waybackFirst": 2005,
+  "waybackUrls": 87,
+  "sitemapUrls": null,
   "title": "Home | Michael Levy",
   "favicon": "https://michaelevy.com/public/resources/favicon.png",
   "links": [
@@ -1942,25 +2640,24 @@
  },
  "circusbaby.glitch.me": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "skillcohort-venim.vercel.app": {
-  "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
-  "links": [],
-  "pagesCrawled": 10,
-  "alive": true
- },
  "nekoweb.org": {
-  "founded": null,
+  "founded": 2023,
+  "waybackFirst": 2009,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": "nekoweb",
   "favicon": "https://nekoweb.org/favicon.ico",
   "links": [
+   "codeberg.page",
    "google.com",
    "wikipedia.org",
    "youtube.com"
@@ -1970,6 +2667,9 @@
  },
  "pipecleanerarms.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1978,6 +2678,9 @@
  },
  "severed-floor-lloyd-center.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1986,6 +2689,9 @@
  },
  "garden-nikolas-nikolas-wises-projects.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -1994,6 +2700,9 @@
  },
  "the-greatest-show-on-earth.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2002,6 +2711,9 @@
  },
  "es-d-3649501920260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2010,6 +2722,9 @@
  },
  "es-d-7436574420260422-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2018,6 +2733,9 @@
  },
  "radweb2.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2026,6 +2744,9 @@
  },
  "purrmaid-teasis.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "The Secret Ingredient",
   "favicon": "https://purrmaid-teasis.vercel.app/favicon.ico",
   "links": [
@@ -2036,6 +2757,9 @@
  },
  "bossoutside.com": {
   "founded": 2024,
+  "waybackFirst": 2025,
+  "waybackUrls": 3,
+  "sitemapUrls": null,
   "title": "Default page",
   "favicon": "https://hpanel.hostinger.com/favicons/hostinger.png",
   "links": [],
@@ -2044,6 +2768,9 @@
  },
  "seneth.me": {
   "founded": null,
+  "waybackFirst": 2026,
+  "waybackUrls": 15,
+  "sitemapUrls": null,
   "title": "Home",
   "favicon": "https://seneth.me/favicon/favicon-96x96.png",
   "links": [],
@@ -2051,7 +2778,10 @@
   "alive": true
  },
  "laurenlee.xyz": {
-  "founded": null,
+  "founded": 2024,
+  "waybackFirst": 2024,
+  "waybackUrls": 3,
+  "sitemapUrls": null,
   "title": "Lauren Lee Portfolio",
   "favicon": "https://laurenlee.xyz/favicon.ico",
   "links": [],
@@ -2059,7 +2789,10 @@
   "alive": true
  },
  "grillzgang.com": {
-  "founded": null,
+  "founded": 2021,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 54,
   "title": "Grillz Gang",
   "favicon": "https://framerusercontent.com/images/aJLa8Jec4tPr5UTJJD8mPy63LrY.png",
   "links": [],
@@ -2068,6 +2801,9 @@
  },
  "es-d-1333767020260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2076,7 +2812,10 @@
  },
  "barberia-sarias.vercel.app": {
   "founded": null,
-  "title": "Barber\u00eda SARIAS | Barbero Profesional en Sevilla",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Barbería SARIAS | Barbero Profesional en Sevilla",
   "favicon": "https://barberia-sarias.vercel.app/favicon.ico",
   "links": [],
   "pagesCrawled": 1,
@@ -2084,6 +2823,9 @@
  },
  "es-d-9982295020260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2092,6 +2834,9 @@
  },
  "es-d-8015560220260402-019d45dd-a7b5-7d3a-8926.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2100,6 +2845,9 @@
  },
  "es-d-8015560220260402-019d45dd-1629-7348-9b5a.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2108,6 +2856,9 @@
  },
  "es-d-8015560220260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2116,6 +2867,9 @@
  },
  "es-d-3053084220260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2124,6 +2878,9 @@
  },
  "es-d-1626083320260402-019d45e0-b398-74bc-9327.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2132,6 +2889,9 @@
  },
  "es-d-1626083320260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2140,6 +2900,9 @@
  },
  "es-d-1442203820260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2148,6 +2911,9 @@
  },
  "es-d-1441524620260402-019d45c7-91ff-718d-90d2.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2156,6 +2922,9 @@
  },
  "es-d-0986634120260402-019d1e75-52f0-7167-8884.codepen.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2164,14 +2933,20 @@
  },
  "sbdd-radio-praha-milangress.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Radio Kutululu",
+  "favicon": "https://sbdd-radio-praha-milangress.vercel.app/favicon.png",
   "links": [],
-  "pagesCrawled": 5,
+  "pagesCrawled": 1,
   "alive": true
  },
  "claudeusercontent.com": {
-  "founded": null,
+  "founded": 2024,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2180,6 +2955,9 @@
  },
  "toggles.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Toggles",
   "favicon": "https://toggles.pages.dev/favicon.svg",
   "links": [],
@@ -2188,6 +2966,9 @@
  },
  "cassandra-carter.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2196,22 +2977,20 @@
  },
  "itspangler.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "dino.markets": {
-  "founded": 2026,
-  "title": "dino.markets \u2014 real-time API for cross-venue sports prediction markets",
-  "favicon": "https://dino.markets/icon.svg?icon.0b0wugct-bvac.svg",
-  "links": [],
-  "pagesCrawled": 25,
-  "alive": true
- },
  "demos.club": {
   "founded": 2023,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Demos & Chill",
   "favicon": "https://demos.club/favicon.ico",
   "links": [],
@@ -2220,6 +2999,9 @@
  },
  "meta-jacking.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2228,7 +3010,10 @@
  },
  "purrmaid-teasis-rosstopherkeens-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -2236,6 +3021,9 @@
  },
  "plantpettingclub.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2244,22 +3032,31 @@
  },
  "thewayitis.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "ladypipa.com": {
-  "founded": 2017,
-  "title": "Lady Pipa: Vestidos de fiesta, para bodas, monos de fiesta y mucho m\u00e1s",
-  "favicon": "https://ladypipa.com/cdn/shop/files/Favicon-LP-new25-3.jpg?v=1738170702&width=96",
+ "dino.markets": {
+  "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 17,
+  "title": "dino.markets — real-time API for cross-venue sports prediction markets",
+  "favicon": "https://dino.markets/icon.svg?icon.0b0wugct-bvac.svg?dpl=dpl_xvrKUUYDYL7qoLLSwdHY343daG9K",
   "links": [],
   "pagesCrawled": 25,
   "alive": true
  },
  "albertocinco.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Alberto Cinco Jr.",
   "favicon": "https://albertocinco.pages.dev/favicon.ico",
   "links": [
@@ -2273,6 +3070,9 @@
  },
  "codeberg.page": {
   "founded": 2020,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": "Codeberg Pages - static pages for your projects",
   "favicon": "https://design.codeberg.org/favicon.ico",
   "links": [],
@@ -2281,26 +3081,20 @@
  },
  "seanzshow1.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "stucco-site-stucco.vercel.app": {
-  "founded": null,
-  "title": null,
-  "favicon": "https://stucco-site-gf9v16n17-stucco.vercel.app/favicon.png",
-  "links": [
-   "nikolas.ws",
-   "stucco.software",
-   "wikipedia.org"
-  ],
-  "pagesCrawled": 396,
-  "alive": true
- },
  "newmoonpeepshow.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2309,6 +3103,9 @@
  },
  "the-internet-of-value-foundation.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 182,
   "title": "Internet of Value Research Foundation | Rebuilding Value from Time, Wellbeing &amp; Contribution",
   "favicon": "https://the-internet-of-value-foundation.netlify.app/favicon.ico",
   "links": [
@@ -2319,6 +3116,9 @@
  },
  "petrichor-foundry.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2327,6 +3127,9 @@
  },
  "clean-grinder.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2335,7 +3138,10 @@
  },
  "maxbo.me": {
   "founded": null,
-  "title": "\u2736 Max Bo \u2736",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 27,
+  "title": "✶ Max Bo ✶",
   "favicon": "https://maxbo.me/favicon.ico",
   "links": [
    "are.na",
@@ -2350,6 +3156,9 @@
  },
  "aiadventuremaker-app.vercel.app": {
   "founded": null,
+  "waybackFirst": 2026,
+  "waybackUrls": 29,
+  "sitemapUrls": null,
   "title": "AI Adventure Maker",
   "favicon": "https://aiadventuremaker-app.vercel.app/favicon.ico?favicon.0b3bf435.ico",
   "links": [],
@@ -2358,6 +3167,9 @@
  },
  "water-lateral-look.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2366,6 +3178,9 @@
  },
  "tail87baf4.ts.net": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2374,6 +3189,9 @@
  },
  "codex-shared-lamp-probe.test": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2382,6 +3200,9 @@
  },
  "jblock-webring.pages.dev": {
   "founded": null,
+  "waybackFirst": 2024,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2390,6 +3211,9 @@
  },
  "lizziemcguired.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2398,6 +3222,9 @@
  },
  "faraway-fastness.netlify.app": {
   "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
   "title": "The Faraway Fastness",
   "favicon": "data:image/png;base64,iVBORw0KGgo=",
   "links": [],
@@ -2406,7 +3233,10 @@
  },
  "nir-vin-website.vercel.app": {
   "founded": null,
-  "title": "NirVin \u2014 The Sovereign OS for Business &amp; Career Intelligence",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "NirVin — The Sovereign OS for Business &amp; Career Intelligence",
   "favicon": "https://nir-vin-website.vercel.app/favicon.ico",
   "links": [],
   "pagesCrawled": 1,
@@ -2414,14 +3244,31 @@
  },
  "osrawest.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
+ "ladypipa.com": {
+  "founded": 2017,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 17,
+  "title": "Lady Pipa: Vestidos de fiesta, para bodas, monos de fiesta y mucho más",
+  "favicon": "https://ladypipa.com/cdn/shop/files/Favicon-LP-new25-3.jpg?v=1738170702&width=96",
+  "links": [],
+  "pagesCrawled": 25,
+  "alive": true
+ },
  "the-doom-experience.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2430,6 +3277,9 @@
  },
  "jshell.net": {
   "founded": 2009,
+  "waybackFirst": 2010,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2438,6 +3288,9 @@
  },
  "iyimatd.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2446,7 +3299,10 @@
  },
  "dino-markets-git-feat-dino-flame-michaelmustopos-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -2454,14 +3310,108 @@
  },
  "playhtml-r7i.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "playhtml",
   "favicon": "https://playhtml-r7i.pages.dev/favicon.svg",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
+ "danky-little-ants.glitch.me": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "whats-on-evans-desk.glitch.me": {
+  "founded": null,
+  "waybackFirst": 2025,
+  "waybackUrls": 2,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "mnta.io": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Moneta Studio",
+  "favicon": "https://moneta.studio/__moneta-static__/apple-touch-icon.png",
+  "links": [],
+  "pagesCrawled": 2,
+  "alive": true
+ },
+ "mmorpgxenos.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "github.dev": {
+  "founded": 2019,
+  "waybackFirst": 2013,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": "https://github.dev/favicon.ico",
+  "links": [],
+  "pagesCrawled": 1,
+  "alive": true
+ },
+ "strtmack.github.io": {
+  "founded": null,
+  "waybackFirst": 2021,
+  "waybackUrls": 1,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
+  "links": [],
+  "pagesCrawled": 0,
+  "alive": false
+ },
+ "dino-markets-git-fix-dino-facing-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
+ "dino-markets-git-feat-landing-d-c8e572-michaelmustopos-projects.vercel.app": {
+  "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "links": [],
+  "pagesCrawled": 5,
+  "alive": true
+ },
  "uefa.com": {
   "founded": 1997,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 9687,
   "title": "The official website for European football | UEFA.com",
   "favicon": "https://img.uefa.com/imgml/favicon/favicon.ico",
   "links": [
@@ -2471,73 +3421,12 @@
   "pagesCrawled": 25,
   "alive": true
  },
- "danky-little-ants.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "whats-on-evans-desk.glitch.me": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "mnta.io": {
-  "founded": null,
-  "title": "Moneta Studio",
-  "favicon": "https://moneta.studio/__moneta-static__/apple-touch-icon.png",
-  "links": [],
-  "pagesCrawled": 2,
-  "alive": true
- },
- "mmorpgxenos.vercel.app": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "github.dev": {
-  "founded": null,
-  "title": null,
-  "favicon": "https://github.dev/favicon.ico",
-  "links": [],
-  "pagesCrawled": 1,
-  "alive": true
- },
- "strtmack.github.io": {
-  "founded": null,
-  "title": null,
-  "favicon": null,
-  "links": [],
-  "pagesCrawled": 0,
-  "alive": false
- },
- "dino-markets-git-fix-dino-facing-michaelmustopos-projects.vercel.app": {
-  "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
-  "links": [],
-  "pagesCrawled": 5,
-  "alive": true
- },
- "dino-markets-git-feat-landing-d-c8e572-michaelmustopos-projects.vercel.app": {
-  "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
-  "links": [],
-  "pagesCrawled": 5,
-  "alive": true
- },
  "dino-markets-git-feat-docs-theme-michaelmustopos-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -2545,7 +3434,10 @@
  },
  "dino-markets-git-feat-dino-404-michaelmustopos-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -2553,7 +3445,10 @@
  },
  "dino-markets-git-feat-brand-fixes-michaelmustopos-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": null,
+  "title": "Login – Vercel",
   "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
   "links": [],
   "pagesCrawled": 5,
@@ -2561,6 +3456,9 @@
  },
  "google.com": {
   "founded": 1997,
+  "waybackFirst": null,
+  "waybackUrls": null,
+  "sitemapUrls": 21,
   "title": "Google",
   "favicon": "https://google.com/favicon.ico",
   "links": [
@@ -2571,6 +3469,9 @@
  },
  "are.na": {
   "founded": null,
+  "waybackFirst": 2012,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": "Are.na",
   "favicon": "https://are.na/favicon.ico",
   "links": [
@@ -2581,6 +3482,9 @@
  },
  "reckziegel.me": {
   "founded": null,
+  "waybackFirst": 2013,
+  "waybackUrls": 32,
+  "sitemapUrls": null,
   "title": "Kurt Reckziegel",
   "favicon": "https://reckziegel.me/favicon.svg",
   "links": [
@@ -2593,6 +3497,9 @@
  },
  "silvier.org": {
   "founded": 2026,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": 32,
   "title": "Silvier Linings",
   "favicon": "https://silvier.org/favicon.ico",
   "links": [],
@@ -2601,6 +3508,9 @@
  },
  "eileensam.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2609,14 +3519,20 @@
  },
  "laurens-leelaurs-projects.vercel.app": {
   "founded": null,
-  "title": "Login \u2013 Vercel",
-  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
+  "title": null,
+  "favicon": null,
   "links": [],
-  "pagesCrawled": 5,
-  "alive": true
+  "pagesCrawled": 0,
+  "alive": false
  },
  "wowie-zowie.glitch.me": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2625,6 +3541,9 @@
  },
  "silvier-org.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": 32,
   "title": "Silvier Linings",
   "favicon": "https://silvier.org/favicon.ico",
   "links": [
@@ -2635,6 +3554,9 @@
  },
  "chanelrichardson.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "Chanel Richardson",
   "favicon": "https://chanelrichardson.github.io/favicon.ico",
   "links": [
@@ -2645,6 +3567,9 @@
  },
  "statichost.page": {
   "founded": 2025,
+  "waybackFirst": 2025,
+  "waybackUrls": 1020,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2653,6 +3578,9 @@
  },
  "glittery-sundae-aa9932.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "random films",
   "favicon": "https://glittery-sundae-aa9932.netlify.app/favicon.ico",
   "links": [],
@@ -2661,6 +3589,9 @@
  },
  "mmorpgxenos-dasilvakareems-projects.vercel.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
@@ -2669,14 +3600,31 @@
  },
  "looptales.com": {
   "founded": null,
+  "waybackFirst": 2022,
+  "waybackUrls": 352,
+  "sitemapUrls": 1,
   "title": "LoopTales Studio | Bem-vindos ao Futuro",
   "favicon": "https://looptales.com/wp-content/uploads/2026/01/cropped-looptales-logo.png",
   "links": [],
   "pagesCrawled": 1,
   "alive": true
  },
+ "yakkay.com": {
+  "founded": 2006,
+  "waybackFirst": 2007,
+  "waybackUrls": 2000,
+  "sitemapUrls": 21,
+  "title": "YAKKAY - Stylish Bicycle Helmets with Swappable Covers",
+  "favicon": "https://yakkay.com/favicon.ico",
+  "links": [],
+  "pagesCrawled": 21,
+  "alive": true
+ },
  "itspangler-svelte.netlify.app": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": "https://itspangler-svelte.netlify.app/favicon.png",
   "links": [],
@@ -2685,6 +3633,9 @@
  },
  "site-57p.pages.dev": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": "Home",
   "favicon": "https://site-57p.pages.dev/favicon/favicon-96x96.png",
   "links": [
@@ -2695,56 +3646,66 @@
  },
  "co.nz": {
   "founded": null,
+  "waybackFirst": 1996,
+  "waybackUrls": 2000,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
+ },
+ "originalfavorites.com": {
+  "founded": 2014,
+  "waybackFirst": 2015,
+  "waybackUrls": 2000,
+  "sitemapUrls": 5,
+  "title": "Luxury, Wholesale T-Shirts and Sweatshirts | Original Favorites",
+  "favicon": "https://originalfavorites.com/cdn/shop/files/Artboard_1_625a335e-2b91-4882-8a23-16a6a23a8215.jpg?v=1731956093&width=96",
+  "links": [
+   "youtube.com"
+  ],
+  "pagesCrawled": 15,
+  "alive": true
  },
  "jeseniar.github.io": {
   "founded": null,
+  "waybackFirst": null,
+  "waybackUrls": 0,
+  "sitemapUrls": null,
   "title": null,
   "favicon": null,
   "links": [],
   "pagesCrawled": 0,
   "alive": false
  },
- "fiveirongolf.ae": {
-  "founded": null,
-  "title": "Five Iron Golf Dubai",
-  "favicon": "https://www.fiveirongolf.ae/cdn/shop/files/Five_Iron_Icon_Black_1b3d0d73-cd79-4987-8e2d-514d5c458591.png?v=1719340709&width=96",
-  "links": [],
-  "pagesCrawled": 17,
-  "alive": true
- },
  "rimowadesignprize.com": {
-  "founded": null,
+  "founded": 2022,
+  "waybackFirst": 2022,
+  "waybackUrls": 275,
+  "sitemapUrls": null,
   "title": "RIMOWA Design Prize",
   "favicon": "https://rimowadesignprize.com/221006/favicon.svg",
   "links": [],
   "pagesCrawled": 15,
   "alive": true
  },
- "yakkay.com": {
+ "fiveirongolf.ae": {
   "founded": null,
-  "title": "YAKKAY - Stylish Bicycle Helmets with Swappable Covers",
-  "favicon": "https://yakkay.com/favicon.ico",
+  "waybackFirst": 2024,
+  "waybackUrls": 742,
+  "sitemapUrls": 3,
+  "title": "Five Iron Golf Dubai",
+  "favicon": "https://www.fiveirongolf.ae/cdn/shop/files/Five_Iron_Icon_Black_1b3d0d73-cd79-4987-8e2d-514d5c458591.png?v=1719340709&width=96",
   "links": [],
-  "pagesCrawled": 25,
-  "alive": true
- },
- "originalfavorites.com": {
-  "founded": null,
-  "title": "Luxury, Wholesale T-Shirts and Sweatshirts | Original Favorites",
-  "favicon": "https://originalfavorites.com/cdn/shop/files/Artboard_1_625a335e-2b91-4882-8a23-16a6a23a8215.jpg?v=1731956093&width=96",
-  "links": [
-   "youtube.com"
-  ],
-  "pagesCrawled": 25,
+  "pagesCrawled": 15,
   "alive": true
  },
  "newbalance.ch": {
   "founded": null,
+  "waybackFirst": 2007,
+  "waybackUrls": 2000,
+  "sitemapUrls": 9,
   "title": "New Balance Onlineshop Schweiz",
   "favicon": "https://newbalance.ch/cdn/shop/files/Logo_NB_Favicon_32x32px.png?v=1721743583&width=96",
   "links": [
