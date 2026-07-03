@@ -74,7 +74,7 @@ describe("checkMessageRate", () => {
     expect(second.state).toEqual({ windowStartedAt: 2_000, messageCount: 1 });
   });
 
-  it("leaves oversized WebSocket messages to the platform limit", () => {
+  it("does not reject messages by byte size before rate limiting", () => {
     const result = checkMessageRate({
       limits,
       now: 1_000,
@@ -82,6 +82,7 @@ describe("checkMessageRate", () => {
     });
 
     expect(result.violation).toBe(null);
+    expect(result.state).toEqual({ windowStartedAt: 1_000, messageCount: 1 });
   });
 
   it("does not reject ordinary messages just because the document is near its limit", () => {
@@ -110,6 +111,15 @@ describe("checkMessageRate", () => {
       expect(result.violation).toBe(null);
       state = result.state;
     }
+  });
+});
+
+describe("WebSocket payload limits", () => {
+  it("does not expose an app-level message-size guard", async () => {
+    const limitsModule = await import("../serverLimits");
+
+    expect("checkWebSocketMessage" in limitsModule).toBe(false);
+    expect("getWebSocketMessageSizeBytes" in limitsModule).toBe(false);
   });
 });
 

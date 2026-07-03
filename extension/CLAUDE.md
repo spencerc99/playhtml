@@ -21,7 +21,13 @@ The extension ships independently of the core packages, mirroring the
 changesets release-PR flow but on a separate cadence.
 
 **Day-to-day:** when a PR touches `extension/**`, add a bullet to
-`extension/PENDING.md` describing the user-facing change. That's it.
+`extension/PENDING.md` describing the user-facing change. If the change should
+show public media in release notes, add the finished image or video under
+`extension/website/public/changelog/media/` and reference it from
+`PENDING.md`. Use normal Markdown images for photos/screenshots and the
+`![video: Title](/changelog/media/file.mp4)` convention for videos. The public
+changelog page renders those media references after release prep copies the
+pending notes into `CHANGELOG.md`.
 
 **What the bot does:**
 
@@ -35,7 +41,8 @@ changesets release-PR flow but on a separate cadence.
   which builds Chrome + Firefox zips, submits Chrome through
   `scripts/submitChrome.mjs`, submits Edge through `scripts/submitEdge.mjs`,
   submits Firefox through `wxt submit`, and pushes a
-  `@playhtml/extension@x.y.z` tag.
+  `@playhtml/extension@x.y.z` tag. Non-dry-run releases also announce the
+  version in Discord with a link to the public changelog.
 
 **To bump minor or major instead of patch:** edit `extension/package.json`
 on the release branch directly (in the GitHub PR UI is fine). The prep
@@ -85,6 +92,9 @@ hatch (uses `.env.submit` instead of GitHub secrets, requires a manual
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
+- `extension/website/changelog/` — public extension release notes rendered
+  from `extension/CHANGELOG.md`; supports Markdown images and
+  `![video: Title](...)` media references.
 - `extension/website/portrait/` — live cursor-trail portrait, fed by the
   worker's `/stream` WebSocket (no history/calendar surface)
 - `extension/website/archive/` — historical cursor-trail portrait with

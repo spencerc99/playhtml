@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/common",
   "description": "Common types for playhtml packages",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "license": "MIT",
   "type": "module",
   "author": "Spencer Chang <spencerc99@gmail.com>",
@@ -35,6 +35,6 @@
   "devDependencies": {
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-dts": "^3.0.3"
+    "vite-plugin-dts": "^4.5.4"
   }
 }

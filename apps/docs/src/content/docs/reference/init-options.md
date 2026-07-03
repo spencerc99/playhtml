@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Every option below can be passed either to `playhtml.init({…})` (vanilla) or to `<PlayProvider initOptions={{…}}>` (React). The underlying `InitOptions` interface is the same.
+Every option below can be passed either to `playhtml.init({…})` (vanilla) or to `<PlayProvider initOptions={{…}}>` (React). The underlying `InitOptions` interface is the same. Options are locked to the first declaration: a later call that passes genuinely conflicting options warns and is ignored. Passing the same options again — or none — is fine and silent.
 
 ```js
 import { playhtml } from "playhtml";
@@ -17,19 +17,43 @@ playhtml.init({
 });
 ```
 
+### Declaring options when there's no single `init()`
+
+If you can't put one `init()` (or one `<PlayProvider>`) at the top of your app — for example with framework "islands", multi-page sites, or several independent component roots — declare your options once with `playhtml.configure({…})`, then let each piece call `init()` (or render a component) to ensure playhtml is running:
+
+```js
+import { playhtml } from "playhtml";
+
+// In a script that runs early (e.g. in <head>), before any component mounts:
+playhtml.configure({ cursors: { enabled: true, room: "domain" } });
+
+// Anywhere later — these just ensure playhtml is running and use the config above:
+playhtml.init();
+```
+
+`configure()` only declares options; it doesn't connect. Connection happens on the first `init()` (or first component mount). Declaring options up front this way means they apply no matter which "ensure running" call happens to run first.
+
 ## `room`
 
-**Type:** `string` &nbsp; **Default:** `window.location.pathname + window.location.search`
+**Type:** `string | (() => string)` &nbsp; **Default:** `window.location.pathname + window.location.search`
 
-The room to connect users to — users sharing a room share state. Every room is automatically prefixed with `window.location.hostname` so your rooms can never collide with another site's rooms.
+The room to connect users to. Users sharing a room share state. Every room is automatically prefixed with `window.location.hostname` so your rooms can never collide with another site's rooms.
 
 If you leave this blank, playhtml derives the room from the URL. Two readers on `/docs/capabilities` share state; a reader on `/docs/concepts` is in a different room.
 
-Override it when you want to decouple state from the URL — for example, a site-wide guestbook that should behave the same no matter which page it's embedded on:
+Override it when you want to decouple state from the URL, for example a site-wide guestbook that should behave the same no matter which page it's embedded on:
 
 ```js
 playhtml.init({ room: "global-guestbook" });
 ```
+
+A **string** stays fixed across [client-side navigation](/docs/advanced/navigation/). Pass a **function** to compute the room on each navigation, so a custom URL-derived room follows the route the way the default does:
+
+```js
+playhtml.init({ room: () => `notes${window.location.pathname}` });
+```
+
+When navigation changes the room, the document resets to the new room (page and element data alike). See [Navigation & SPAs](/docs/advanced/navigation/).
 
 ## `host`
 
@@ -43,7 +67,7 @@ playhtml.init({
 });
 ```
 
-You're responsible for deploying a compatible PartyKit worker — see the [playhtml repo](https://github.com/spencerc99/playhtml) for the current worker implementation.
+You're responsible for deploying a compatible PartyKit worker. See the [playhtml repo](https://github.com/spencerc99/playhtml) for the current worker implementation.
 
 ## `events`
 
@@ -68,7 +92,9 @@ You can also register events imperatively later with `playhtml.registerPlayEvent
 
 **Type:** `Record<string, ElementInitializer>` &nbsp; **Default:** `undefined`
 
-Ship your own `can-*` capability alongside the built-ins. Most authors never need this — use `can-play` on individual elements first. Reach for `extraCapabilities` when you're packaging a capability you want to reuse across many elements and want the shorter `can-mything` attribute form.
+Ship your own `can-*` capability alongside the built-ins. Most authors never need this; use `can-play` on individual elements first. Reach for `extraCapabilities` when you're packaging a capability you want to reuse across many elements and want the shorter `can-mything` attribute form.
+
+`playhtml.define(name, init)` is the runtime equivalent (callable any time, not just at init) and the recommended way to register a reusable capability — and like `register`, its `init` can use a declarative [`view`](/docs/custom-elements/) instead of the imperative `updateElement` / `onClick` shown below.
 
 ```js
 playhtml.init({
@@ -109,7 +135,7 @@ playhtml.init({
 
 **Type:** `boolean` &nbsp; **Default:** `false`
 
-Enable the in-page devtools panel. Shows element inspector, live data tree, connection status, and tag-type badges — modeled after RollerCoaster Tycoon's inspect UI. Useful while debugging.
+Enable the in-page devtools panel. Shows element inspector, live data tree, connection status, and tag-type badges, modeled after RollerCoaster Tycoon's inspect UI. Useful while debugging.
 
 ```js
 playhtml.init({ developmentMode: true });
@@ -189,4 +215,4 @@ import { PlayProvider } from "@playhtml/react";
 </PlayProvider>;
 ```
 
-No React-specific options on the provider itself — all config flows through the shared `InitOptions` shape.
+No React-specific options on the provider itself; all config flows through the shared `InitOptions` shape.

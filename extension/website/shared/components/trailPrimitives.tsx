@@ -10,7 +10,7 @@ import {
 } from "../cursors";
 import { type TrailRenderer } from "../styles/trailRenderers";
 import {
-  buildStraightPathSegment,
+  buildFreehandPathSegment,
   type FinishedTrailOrderEntry,
 } from "../utils/trailAnimation";
 
@@ -25,9 +25,12 @@ export const COMPLETION_FADE_MS = 3000;
 export const TAIL_LENGTH = 1000;
 
 // Compute visible points and path data for a trail at a given elapsed time.
+// strokeSize is baked into the freehand outline geometry, so the path must be
+// rebuilt whenever it changes.
 export function computeTrailFrame(
   trailState: TrailState,
   elapsedTimeMs: number,
+  strokeSize: number,
   // When provided, the trail's progress (0..1) is used directly instead of
   // deriving it from `elapsedTimeMs - startOffsetMs`. The live animator passes
   // this so the frame never depends on `startOffsetMs` matching across the
@@ -75,10 +78,12 @@ export function computeTrailFrame(
   const pointCount = tailEnd - tailStart + 1 + (interpolatedHead ? 1 : 0);
   const pathData =
     pointCount >= 2
-      ? buildStraightPathSegment(
+      ? buildFreehandPathSegment(
           variedPoints,
           tailStart,
           tailEnd,
+          strokeSize,
+          isFinished,
           interpolatedHead,
         )
       : "";
@@ -136,9 +141,11 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     const lastCursorTypeRef = useRef<string | undefined>(undefined);
     const lastTrailColorRef = useRef("");
     const finishedFrameRef = useRef<ReturnType<typeof computeTrailFrame>>(null);
+    const finishedFrameSizeRef = useRef<number | null>(null);
 
     useEffect(() => {
       finishedFrameRef.current = null;
+      finishedFrameSizeRef.current = null;
       lastPathDataRef.current = "";
       lastRendererIdRef.current = "";
       lastTrailOpacityRef.current = null;
@@ -171,15 +178,29 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
             return null;
           }
 
+          const strokeSize = renderer.getStrokeSize(
+            strokeWidth,
+            fixedMonoStrokeWidth,
+          );
+
           const isPastEnd =
             progressOverride !== undefined
               ? progressOverride >= 1
               : elapsedTimeMs - trailState.startOffsetMs >= trailState.durationMs;
-          let frame = isPastEnd ? finishedFrameRef.current : null;
+          let frame =
+            isPastEnd && finishedFrameSizeRef.current === strokeSize
+              ? finishedFrameRef.current
+              : null;
           if (!frame) {
-            frame = computeTrailFrame(trailState, elapsedTimeMs, progressOverride);
+            frame = computeTrailFrame(
+              trailState,
+              elapsedTimeMs,
+              strokeSize,
+              progressOverride,
+            );
             if (isPastEnd) {
               finishedFrameRef.current = frame;
+              finishedFrameSizeRef.current = strokeSize;
             }
           }
 
@@ -244,19 +265,11 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
       <g ref={groupRef} opacity="0">
         <path
           ref={haloRef}
-          fill="none"
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{ display: "none" }}
         />
-        <path
-          ref={pathRef}
-          fill="none"
-          stroke={color}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ display: "none" }}
-        />
+        <path ref={pathRef} fill={color} style={{ display: "none" }} />
       </g>
     );
   },

@@ -4,8 +4,17 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useStickyState } from "./hooks/useStickyState";
 import { findDocumentRowInBackup } from "./utils/backup";
+import {
+  createComparisonSummary,
+  createInlineDiffLookup,
+  type InlineDiffLookup,
+} from "./utils/adminComparison";
 import { deriveRoomId } from "@playhtml/common";
 import { extractRecords, type ModerationRecord } from "@moderation";
+import {
+  formatAdminResetSuccess,
+  formatAdminResetWarning,
+} from "./adminMessages";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -35,8 +44,8 @@ interface DebugLog {
 type EnvName = "production" | "staging" | "development";
 
 const HOSTS: Record<EnvName, string> = {
-  production: "https://playhtml.spencerc99.partykit.dev",
-  staging: "https://staging.playhtml.spencerc99.partykit.dev",
+  production: "https://playhtml.spencerc99.workers.dev",
+  staging: "https://playhtml-staging.spencerc99.workers.dev",
   development: "http://localhost:1999",
 };
 
@@ -100,10 +109,15 @@ const EnvironmentDisplay: React.FC<{
 const JSONViewer: React.FC<{
   data: any;
   depth?: number;
-}> = ({ data, depth = 0 }) => {
+  inlineDiff?: InlineDiffLookup["admin"];
+}> = ({ data, depth = 0, inlineDiff }) => {
   // Track explicitly toggled items: true = collapsed, false = expanded
   const [toggledItems, setToggledItems] = useState<Map<string, boolean>>(
     new Map()
+  );
+  const inlineDiffPaths = React.useMemo(
+    () => Object.keys(inlineDiff ?? {}),
+    [inlineDiff]
   );
 
   const toggleCollapsed = (id: string, currentState: boolean) => {
@@ -114,10 +128,25 @@ const JSONViewer: React.FC<{
     });
   };
 
+  const getRowClassName = (path: string): string | undefined => {
+    const marker = inlineDiff?.[path];
+    return marker ? `json-diff-row ${marker}` : undefined;
+  };
+
+  const pathContainsInlineDiff = (path: string): boolean => {
+    if (!path) return inlineDiffPaths.length > 0;
+    return inlineDiffPaths.some(
+      (diffPath) =>
+        diffPath === path ||
+        diffPath.startsWith(`${path}.`) ||
+        diffPath.startsWith(`${path}[`)
+    );
+  };
+
   const renderValue = (
     obj: any,
     currentDepth: number = 0,
-    path: string = "root"
+    path: string = ""
   ): React.ReactNode => {
     if (obj === null) {
       return <span className="json-null">null</span>;
@@ -155,7 +184,8 @@ const JSONViewer: React.FC<{
       }
 
       const id = `array-${path}`;
-      const shouldAutoExpand = obj.length <= 7 && currentDepth <= 4;
+      const shouldAutoExpand =
+        pathContainsInlineDiff(path) || (obj.length <= 7 && currentDepth <= 4);
       // If user has toggled, use that; otherwise use auto-expand logic
       const isCollapsed = toggledItems.has(id)
         ? toggledItems.get(id)!
@@ -177,12 +207,19 @@ const JSONViewer: React.FC<{
             style={{ marginLeft: "12px" }}
           >
             {!isCollapsed &&
-              obj.map((item, index) => (
-                <div key={index} style={{ marginLeft: "20px" }}>
-                  <span className="json-index">{index}:</span>{" "}
-                  {renderValue(item, currentDepth + 1, `${path}[${index}]`)}
-                </div>
-              ))}
+              obj.map((item, index) => {
+                const itemPath = `${path}[${index}]`;
+                return (
+                  <div
+                    key={index}
+                    className={getRowClassName(itemPath)}
+                    style={{ marginLeft: "20px" }}
+                  >
+                    <span className="json-index">{index}:</span>{" "}
+                    {renderValue(item, currentDepth + 1, itemPath)}
+                  </div>
+                );
+              })}
           </div>
         </>
       );
@@ -195,7 +232,8 @@ const JSONViewer: React.FC<{
       }
 
       const id = `object-${path}`;
-      const shouldAutoExpand = keys.length <= 7 && currentDepth <= 4;
+      const shouldAutoExpand =
+        pathContainsInlineDiff(path) || (keys.length <= 7 && currentDepth <= 4);
       // If user has toggled, use that; otherwise use auto-expand logic
       const isCollapsed = toggledItems.has(id)
         ? toggledItems.get(id)!
@@ -217,13 +255,20 @@ const JSONViewer: React.FC<{
             style={{ marginLeft: "12px" }}
           >
             {!isCollapsed &&
-              keys.map((key) => (
-                <div key={key} style={{ marginLeft: "20px" }}>
-                  <span className="json-key">"{key}"</span>
-                  <span className="json-colon">:</span>{" "}
-                  {renderValue(obj[key], currentDepth + 1, `${path}.${key}`)}
-                </div>
-              ))}
+              keys.map((key) => {
+                const childPath = path ? `${path}.${key}` : key;
+                return (
+                  <div
+                    key={key}
+                    className={getRowClassName(childPath)}
+                    style={{ marginLeft: "20px" }}
+                  >
+                    <span className="json-key">"{key}"</span>
+                    <span className="json-colon">:</span>{" "}
+                    {renderValue(obj[key], currentDepth + 1, childPath)}
+                  </div>
+                );
+              })}
           </div>
         </>
       );
@@ -508,10 +553,6 @@ const AdminConsole: React.FC = () => {
     type: "loading" | "success" | "error" | "empty";
   } | null>(null);
 
-  // Debug sections visibility
-  const [showRawDbData, setShowRawDbData] = useState(false);
-  const [showYDocDebug, setShowYDocDebug] = useState(false);
-  const [showDataComparison, setShowDataComparison] = useState(false);
   const [_showBackupComparison, setShowBackupComparison] = useState(false);
 
   // Section collapse/expand state
@@ -521,9 +562,8 @@ const AdminConsole: React.FC = () => {
     ydocData: true,
     roomMetadata: true,
     sharedData: true,
-    rawDbData: true,
-    yDocDebug: true,
-    dataComparison: true,
+    rawDbData: false,
+    dataComparison: false,
     backupComparison: true,
     cleanupTools: false, // Collapsed by default
   });
@@ -537,11 +577,9 @@ const AdminConsole: React.FC = () => {
 
   // Debug data
   const [rawDbData, setRawDbData] = useState<any>(null);
-  const [debugSteps, setDebugSteps] = useState<
-    Array<{ message: string; type: string }>
-  >([]);
-  const [reconstructedDoc, setReconstructedDoc] = useState<any>(null);
   const [comparisonData, setComparisonData] = useState<any>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
   const [backupComparisonData, setBackupComparisonData] = useState<any>(null);
 
   const [debugToolsEnabled, setDebugToolsEnabled] = useState(false);
@@ -566,7 +604,13 @@ const AdminConsole: React.FC = () => {
   const [modSelected, setModSelected] = useState<Set<string>>(new Set());
   const [modPaste, setModPaste] = useState("");
   const [modResult, setModResult] = useState<
-    { removed: number; skipped: { key: string; reason: string }[] } | null
+    {
+      removed: number;
+      skipped: { key: string; reason: string }[];
+      closedConnections?: number | null;
+      documentSize?: number | null;
+      resetEpoch?: number | null;
+    } | null
   >(null);
   const [modExpanded, setModExpanded] = useState<Set<string>>(new Set());
   const [activeToolTab, setActiveToolTab] = useStickyState<"moderate" | "tools">(
@@ -630,6 +674,19 @@ const AdminConsole: React.FC = () => {
 
   const getPartykitHost = () => HOSTS[hostEnv];
 
+  const getActiveConnectionCount = () => roomData?.connections ?? 0;
+
+  const confirmAdminReset = (options: {
+    action: string;
+    detail?: string;
+  }) =>
+    confirm(
+      formatAdminResetWarning({
+        ...options,
+        activeConnections: getActiveConnectionCount(),
+      })
+    );
+
   const decodeRoomId = (encodedId: string): string => {
     try {
       return decodeURIComponent(encodedId);
@@ -653,6 +710,9 @@ const AdminConsole: React.FC = () => {
       return encodeURIComponent(roomId);
     }
   };
+
+  const getRoomBaseUrl = (roomId: string): string =>
+    `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(roomId)}`;
 
   // Derive room ID from URL
   const deriveRoomIdFromUrl = (urlString: string): string | null => {
@@ -733,9 +793,9 @@ const AdminConsole: React.FC = () => {
         // Clear previous room data immediately
         setRoomData(null);
         setRoomStatus(null);
-        setShowRawDbData(false);
-        setShowYDocDebug(false);
-        setShowDataComparison(false);
+        setRawDbData(null);
+        setComparisonData(null);
+        setComparisonError(null);
         setShowBackupComparison(false);
         setBackupComparisonData(null);
         setBackupBase64(null);
@@ -748,9 +808,9 @@ const AdminConsole: React.FC = () => {
         setCurrentRoomId("");
         setRoomData(null);
         setRoomStatus(null);
-        setShowRawDbData(false);
-        setShowYDocDebug(false);
-        setShowDataComparison(false);
+        setRawDbData(null);
+        setComparisonData(null);
+        setComparisonError(null);
         setShowBackupComparison(false);
         setBackupComparisonData(null);
         setBackupBase64(null);
@@ -927,9 +987,14 @@ const AdminConsole: React.FC = () => {
     // Clear previous data immediately when starting a new load
     setRoomData(null);
     setDebugToolsEnabled(false);
-    setShowRawDbData(false);
-    setShowYDocDebug(false);
-    setShowDataComparison(false);
+    setRawDbData(null);
+    setComparisonData(null);
+    setComparisonError(null);
+    setSectionsExpanded((prev) => ({
+      ...prev,
+      rawDbData: false,
+      dataComparison: false,
+    }));
     setShowBackupComparison(false);
     setBackupComparisonData(null);
     setBackupBase64(null);
@@ -961,6 +1026,7 @@ const AdminConsole: React.FC = () => {
         type: "success",
       });
       addLog("info", `Loaded room data for ${displayRoomId}`, data);
+      void compareDataMethods({ roomId: encodedRoomId });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       const displayRoomId = decodeRoomId(encodedRoomId);
@@ -977,7 +1043,7 @@ const AdminConsole: React.FC = () => {
       );
     }
 
-    const baseUrl = `${getPartykitHost()}/parties/main/${roomId}`;
+    const baseUrl = getRoomBaseUrl(roomId);
     const url = `${baseUrl}/admin/inspect?token=${encodeURIComponent(
       adminToken
     )}`;
@@ -1029,9 +1095,7 @@ const AdminConsole: React.FC = () => {
     if (!currentRoomId || !adminToken) return;
 
     try {
-      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-        currentRoomId
-      )}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1080,15 +1144,15 @@ const AdminConsole: React.FC = () => {
   const restoreRawDocument = async () => {
     if (!currentRoomId || !adminToken) return;
 
-    const ok = confirm(
-      "⚠️ Restore Raw Document\n\n" +
+    const ok = confirmAdminReset({
+      action: "Restore raw document",
+      detail:
         "This will replace the current room's document with the uploaded base64 document.\n\n" +
         "This is a DESTRUCTIVE operation that will:\n" +
         "- Overwrite the current database document\n" +
         "- Replace the live server's document\n" +
-        "- May cause data loss if the uploaded document is incorrect\n\n" +
-        "Continue?"
-    );
+        "- May cause data loss if the uploaded document is incorrect",
+    });
     if (!ok) return;
 
     try {
@@ -1114,9 +1178,7 @@ const AdminConsole: React.FC = () => {
           `Restoring raw document (${base64Document.length} chars)...`
         );
 
-        const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-          currentRoomId
-        )}`;
+        const baseUrl = getRoomBaseUrl(currentRoomId);
         const url = `${baseUrl}/admin/restore-raw-document?token=${encodeURIComponent(
           adminToken
         )}`;
@@ -1137,11 +1199,11 @@ const AdminConsole: React.FC = () => {
         const result = await response.json();
         addLog("info", "Raw document restored successfully", result);
         alert(
-          `✅ Raw document restored!\n\n` +
-            `Document size: ${(result.documentSize / 1024 / 1024).toFixed(
-              2
-            )}MB\n\n` +
-            `Reloading room data...`
+          formatAdminResetSuccess({
+            action: "Raw document restored.",
+            closedConnections: result.closedConnections,
+            documentSize: result.documentSize,
+          }) + "\n\nReloading room data..."
         );
 
         // Reload room data to show updated state
@@ -1162,7 +1224,7 @@ const AdminConsole: React.FC = () => {
     if (!currentRoomId || !adminToken) return;
 
     try {
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1180,7 +1242,7 @@ const AdminConsole: React.FC = () => {
 
       const data = await response.json();
       setRawDbData(data);
-      setShowRawDbData(true);
+      setSectionsExpanded((prev) => ({ ...prev, rawDbData: true }));
       addLog("info", "Loaded raw database data", data);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -1188,112 +1250,18 @@ const AdminConsole: React.FC = () => {
     }
   };
 
-  const debugYDocLoading = async () => {
-    if (!currentRoomId || !adminToken) return;
-
-    setShowYDocDebug(true);
-    setDebugSteps([]);
-    setReconstructedDoc(null);
-
-    const addStep = (
-      message: string,
-      type: "info" | "success" | "warning" | "error" = "info"
-    ) => {
-      setDebugSteps((prev) => [
-        ...prev,
-        { message: `[${new Date().toLocaleTimeString()}] ${message}`, type },
-      ]);
-      const level: DebugLog["level"] =
-        type === "success" ? "info" : type === "warning" ? "warn" : type;
-      addLog(level, message);
-    };
+  const compareDataMethods = async (
+    options: { roomId?: string; forceShow?: boolean } = {}
+  ) => {
+    const targetRoomId = options.roomId || currentRoomId;
+    if (!targetRoomId || !adminToken) return;
 
     try {
-      addStep("🔍 Starting Y.Doc reconstruction debug...", "info");
-      addStep("📁 Fetching raw database document...", "info");
-
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
-      const rawUrl = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
-        adminToken
-      )}`;
-
-      const rawResponse = await fetch(rawUrl);
-      const rawData = await rawResponse.json();
-
-      if (!rawData.document) {
-        addStep("❌ No document found in database", "error");
-        return;
-      }
-
-      addStep(
-        `✅ Found document: ${rawData.document.base64Length} bytes`,
-        "success"
-      );
-      addStep("🔧 Attempting to reconstruct Y.Doc from base64...", "info");
-
-      try {
-        // Import Y.js dynamically
-        const Y = await import("yjs");
-        const doc = new Y.Doc();
-
-        const base64 = rawData.document.document;
-        const buffer = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-
-        addStep(`📦 Decoded ${buffer.length} bytes from base64`, "success");
-
-        Y.applyUpdate(doc, buffer);
-        addStep("✅ Successfully applied update to new Y.Doc", "success");
-
-        addStep("🔧 Using SyncedStore to extract data...", "info");
-        const { syncedStore } = await import("@syncedstore/core");
-        const store = syncedStore<{ play: Record<string, any> }>(
-          { play: {} },
-          doc
-        );
-
-        // Clone using same logic as original
-        const reconstructedData = JSON.parse(JSON.stringify(store.play));
-        const hasAnyData = Object.keys(reconstructedData).some(
-          (tag) => Object.keys(reconstructedData[tag] || {}).length > 0
-        );
-
-        if (hasAnyData) {
-          addStep(
-            `🎯 Extracted ${
-              Object.keys(reconstructedData).length
-            } capability types`,
-            "success"
-          );
-          const totalElements = Object.values(reconstructedData).reduce(
-            (sum: number, tagData: any) => sum + Object.keys(tagData).length,
-            0
-          );
-          addStep(`📊 Found ${totalElements} total elements`, "success");
-        } else {
-          addStep("⚠️  Y.Doc loaded but contains no PlayHTML data", "warning");
-        }
-
-        setReconstructedDoc(reconstructedData);
-        addStep("✅ Debug reconstruction complete!", "success");
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        addStep(`❌ Y.Doc reconstruction failed: ${msg}`, "error");
-        addLog("error", "Y.Doc reconstruction error", error);
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      addStep(`❌ Debug process failed: ${msg}`, "error");
-      addLog("error", "Debug Y.Doc loading error", error);
-    }
-  };
-
-  const compareDataMethods = async () => {
-    if (!currentRoomId || !adminToken) return;
-
-    try {
+      setComparisonLoading(true);
+      setComparisonError(null);
       addLog("info", "Comparing data extraction methods...");
 
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
+      const baseUrl = getRoomBaseUrl(targetRoomId);
       const url = `${baseUrl}/admin/live-compare?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1311,53 +1279,20 @@ const AdminConsole: React.FC = () => {
 
       const comparison = await response.json();
       setComparisonData(comparison);
-      setShowDataComparison(true);
+      const summary = createComparisonSummary(comparison);
+      const shouldShowDetails = options.forceShow || summary.shouldShowDetails;
+      setSectionsExpanded((prev) => ({
+        ...prev,
+        dataComparison: shouldShowDetails ? true : prev.dataComparison,
+      }));
       addLog("info", "Data method comparison results:", comparison);
-
-      // Show summary alert
-      const directHasData = comparison.methods?.direct?.hasData;
-      const liveHasData = comparison.methods?.live?.hasData;
-      const dataMatch = comparison.differences?.dataMatch;
-
-      const directData = comparison.methods?.direct?.data || {};
-      const liveData = comparison.methods?.live?.data || {};
-      const directKeyCount = Object.keys(directData).reduce(
-        (sum, tag) => sum + Object.keys(directData[tag] || {}).length,
-        0
-      );
-      const liveKeyCount = Object.keys(liveData).reduce(
-        (sum, tag) => sum + Object.keys(liveData[tag] || {}).length,
-        0
-      );
-
-      let summary = "🔍 Data Comparison Results:\n\n";
-      summary += `Direct method: ${
-        directHasData ? `✅ ${directKeyCount} elements` : "❌ No data"
-      }\n`;
-      summary += `Live method: ${
-        liveHasData ? `✅ ${liveKeyCount} elements` : "❌ No data"
-      }\n`;
-      summary += `Data match: ${
-        dataMatch ? "✅ Identical" : "❌ Different"
-      }\n\n`;
-
-      if (!dataMatch && directHasData && liveHasData) {
-        const keyDiffs = comparison.differences?.sameKeys;
-        if (keyDiffs) {
-          summary += `Capability differences:\n`;
-          summary += `- Direct only: ${
-            keyDiffs.directOnly.join(", ") || "none"
-          }\n`;
-          summary += `- Live only: ${keyDiffs.liveOnly.join(", ") || "none"}\n`;
-          summary += `- Common: ${keyDiffs.common.join(", ") || "none"}\n`;
-        }
-      }
-
-      summary += "\nSee comparison section below for detailed view.";
-      alert(summary);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
+      setComparisonError(msg);
+      setSectionsExpanded((prev) => ({ ...prev, dataComparison: true }));
       addLog("error", `Failed to compare data methods: ${msg}`, error);
+    } finally {
+      setComparisonLoading(false);
     }
   };
 
@@ -1369,7 +1304,7 @@ const AdminConsole: React.FC = () => {
     if (!ok) return;
 
     try {
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/force-save-live?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1387,20 +1322,29 @@ const AdminConsole: React.FC = () => {
 
   const handleForceReloadLive = async () => {
     if (!currentRoomId || !adminToken) return;
-    const ok = confirm(
-      "Force reload LIVE doc from DB? This merges DB snapshot into memory."
-    );
+    const ok = confirmAdminReset({
+      action: "Force reload live document from database",
+      detail:
+        "This will replace the live in-memory document with the current database snapshot.",
+    });
     if (!ok) return;
 
     try {
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/force-reload-live?token=${encodeURIComponent(
         adminToken
       )}`;
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      addLog("info", "Force-reloaded live doc from DB");
-      alert("✅ Live doc reloaded from DB. Re-running comparison.");
+      const result = await res.json();
+      addLog("info", "Force-reloaded live doc from DB", result);
+      alert(
+        formatAdminResetSuccess({
+          action: "Live document reloaded from database.",
+          closedConnections: result.closedConnections,
+          documentSize: result.documentSize,
+        }) + "\n\nRe-running comparison."
+      );
       await compareDataMethods();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -1411,22 +1355,20 @@ const AdminConsole: React.FC = () => {
 
   const handleHardReset = async () => {
     if (!currentRoomId || !adminToken) return;
-    const ok = confirm(
-      "⚠️ Hard Reset (Garbage Collection)\n\n" +
+    const ok = confirmAdminReset({
+      action: "Hard reset room document",
+      detail:
         "This will recreate the Y.Doc from scratch, removing all history and tombstones.\n\n" +
         "This is a DESTRUCTIVE operation that:\n" +
         "- Strips all YJS deletion history\n" +
         "- Reduces document size significantly\n" +
-        "- May cause offline clients to need a refresh\n\n" +
-        "Continue?"
-    );
+        "- May cause offline clients to need a refresh",
+    });
     if (!ok) return;
 
     try {
       addLog("info", "Starting Hard Reset (GC)...");
-      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-        currentRoomId
-      )}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/hard-reset?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1452,7 +1394,12 @@ const AdminConsole: React.FC = () => {
         result
       );
       alert(
-        `✅ Hard Reset completed!\n\n` +
+        formatAdminResetSuccess({
+          action: "Hard reset completed.",
+          closedConnections: result.closedConnections,
+          documentSize: result.afterSize,
+        }) +
+          "\n\n" +
           `Size: ${beforeMB}MB -> ${afterMB}MB\n` +
           `Reduction: ${result.sizeReductionPercent}\n\n` +
           `Reloading room data...`
@@ -1473,10 +1420,8 @@ const AdminConsole: React.FC = () => {
       addLog("info", "Parsing edited JSON...");
       const parsedData = JSON.parse(editedJson);
 
-      addLog("info", "Saving to database via admin endpoint...");
-      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-        currentRoomId
-      )}`;
+      addLog("info", "Saving authoritative database snapshot...");
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/save-edited-data?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1492,10 +1437,19 @@ const AdminConsole: React.FC = () => {
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
-      addLog("info", "Successfully saved edited data to live doc and database");
+      const result = await response.json();
+      addLog(
+        "info",
+        "Successfully saved edited data and reset clients",
+        result
+      );
 
       alert(
-        "✅ Edited data saved! The live doc has been updated and persisted to the database."
+        formatAdminResetSuccess({
+          action: "Edited data saved.",
+          closedConnections: result.closedConnections,
+          documentSize: result.documentSize,
+        })
       );
 
       // Reload room data to show updated state
@@ -1574,9 +1528,10 @@ const AdminConsole: React.FC = () => {
   const removeSelectedRecords = async () => {
     if (!currentRoomId || !adminToken || modSelected.size === 0) return;
     if (
-      !window.confirm(
-        `Remove ${modSelected.size} record(s) from the live document? This cannot be undone.`
-      )
+      !confirmAdminReset({
+        action: "Remove selected records",
+        detail: `Remove ${modSelected.size} record(s) from the database snapshot. This cannot be undone.`,
+      })
     ) {
       return;
     }
@@ -1586,9 +1541,7 @@ const AdminConsole: React.FC = () => {
       .map((r) => ({ key: r.key, contentHash: r.contentHash }));
 
     try {
-      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-        currentRoomId
-      )}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/moderation-remove?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1605,7 +1558,7 @@ const AdminConsole: React.FC = () => {
       setModSelected(new Set());
       addLog(
         "info",
-        `Removed ${json.removed}, skipped ${json.skipped?.length ?? 0}`
+        `Removed ${json.removed}, skipped ${json.skipped?.length ?? 0}, reset ${json.closedConnections ?? 0} clients`
       );
       await loadRoom(currentRoomId);
     } catch (error: unknown) {
@@ -1669,9 +1622,7 @@ const AdminConsole: React.FC = () => {
 
       addLog("info", `Running dry run cleanup for ${selectedCleanupTag}...`);
 
-      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-        currentRoomId
-      )}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/cleanup-orphans?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1719,15 +1670,17 @@ const AdminConsole: React.FC = () => {
       return;
     }
 
-    const confirmed = confirm(
-      `Are you sure you want to remove ${cleanupDryRunResult.orphaned} orphaned entries?\n\n` +
+    const confirmed = confirmAdminReset({
+      action: "Remove orphaned database entries",
+      detail:
+        `Remove ${cleanupDryRunResult.orphaned} orphaned entries?\n\n` +
         `This will permanently delete data for tag "${selectedCleanupTag}".` +
         (cleanupDryRunResult.orphanedIds?.length > 0
           ? `\n\nFirst 5 IDs to be removed:\n${cleanupDryRunResult.orphanedIds
               .slice(0, 5)
               .join("\n")}`
-          : "")
-    );
+          : ""),
+    });
 
     if (!confirmed) return;
 
@@ -1738,9 +1691,7 @@ const AdminConsole: React.FC = () => {
 
       addLog("info", `Executing cleanup for ${selectedCleanupTag}...`);
 
-      const baseUrl = `${getPartykitHost()}/parties/main/${ensureEncodedRoomId(
-        currentRoomId
-      )}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/cleanup-orphans?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -1767,7 +1718,11 @@ const AdminConsole: React.FC = () => {
         result
       );
       alert(
-        `✅ Cleanup completed!\n\nRemoved ${result.removed} orphaned entries.`
+        formatAdminResetSuccess({
+          action: `Cleanup completed. Removed ${result.removed} orphaned entries.`,
+          closedConnections: result.closedConnections,
+          documentSize: result.documentSize,
+        })
       );
 
       // Clear dry run result and reload room data
@@ -2043,7 +1998,7 @@ const AdminConsole: React.FC = () => {
     if (!currentRoomId || !adminToken) return;
 
     try {
-      const baseUrl = `${getPartykitHost()}/parties/main/${currentRoomId}`;
+      const baseUrl = getRoomBaseUrl(currentRoomId);
       const url = `${baseUrl}/admin/remove-subscriber?token=${encodeURIComponent(
         adminToken
       )}`;
@@ -2149,6 +2104,15 @@ const AdminConsole: React.FC = () => {
       </div>
     ));
   };
+
+  const comparisonSummary = React.useMemo(
+    () => createComparisonSummary(comparisonData),
+    [comparisonData]
+  );
+  const comparisonInlineDiff = React.useMemo(
+    () => createInlineDiffLookup(comparisonSummary.differences),
+    [comparisonSummary.differences]
+  );
 
   if (!adminToken) {
     return (
@@ -2399,170 +2363,184 @@ const AdminConsole: React.FC = () => {
             </>
           )}
 
-          {showRawDbData && rawDbData && (
+          {roomData && (
             <div className="data-section">
               <SectionHeader
                 title="Raw Database Data"
                 sectionKey="rawDbData"
                 isExpanded={sectionsExpanded.rawDbData}
                 onToggle={toggleSection}
+                actions={
+                  <button
+                    className="tool-btn"
+                    disabled={!debugToolsEnabled}
+                    onClick={loadRawDatabaseData}
+                  >
+                    Load Raw DB Data
+                  </button>
+                }
               />
               {sectionsExpanded.rawDbData && (
-                <>
-                  <div className="debug-info">
-                    <div className="debug-item">
-                      <strong>Document Size:</strong>
-                      <span>
-                        {rawDbData.document
-                          ? `${
-                              Math.round(
-                                (rawDbData.document.base64Length / 1024) * 100
-                              ) / 100
-                            } KB`
-                          : "No data"}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Base64 Length:</strong>
-                      <span>
-                        {rawDbData.document
-                          ? rawDbData.document.base64Length.toLocaleString()
-                          : "0"}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Last Updated:</strong>
-                      <span>
-                        {rawDbData.document
-                          ? new Date(
-                              rawDbData.document.created_at
-                            ).toLocaleString()
-                          : "Never"}
-                      </span>
-                    </div>
-                  </div>
-                  <JSONViewer data={rawDbData} />
-                </>
-              )}
-            </div>
-          )}
-
-          {showYDocDebug && (
-            <div className="data-section">
-              <SectionHeader
-                title="Y.Doc Loading Debug"
-                sectionKey="yDocDebug"
-                isExpanded={sectionsExpanded.yDocDebug}
-                onToggle={toggleSection}
-              />
-              {sectionsExpanded.yDocDebug && (
-                <>
-                  <div className="debug-steps">
-                    {debugSteps.map((step, index) => (
-                      <div key={index} className={`debug-step ${step.type}`}>
-                        {step.message}
+                rawDbData ? (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Document Size:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? `${
+                                Math.round(
+                                  (rawDbData.document.base64Length / 1024) *
+                                    100
+                                ) / 100
+                              } KB`
+                            : "No data"}
+                        </span>
                       </div>
-                    ))}
+                      <div className="debug-item">
+                        <strong>Base64 Length:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? rawDbData.document.base64Length.toLocaleString()
+                            : "0"}
+                        </span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Last Updated:</strong>
+                        <span>
+                          {rawDbData.document
+                            ? new Date(
+                                rawDbData.document.created_at
+                              ).toLocaleString()
+                            : "Never"}
+                        </span>
+                      </div>
+                    </div>
+                    <JSONViewer data={rawDbData} />
+                  </>
+                ) : (
+                  <div className="empty">
+                    Load raw database data to inspect the stored base64
+                    snapshot.
                   </div>
-                  {reconstructedDoc && <JSONViewer data={reconstructedDoc} />}
-                </>
+                )
               )}
             </div>
           )}
 
-          {showDataComparison && comparisonData && (
+          {roomData && (
             <div className="data-section">
               <SectionHeader
                 title="Live vs Admin Data Comparison"
                 sectionKey="dataComparison"
                 isExpanded={sectionsExpanded.dataComparison}
                 onToggle={toggleSection}
-              />
-              {sectionsExpanded.dataComparison && (
-                <>
-                  <div className="debug-info">
-                    <div className="debug-item">
-                      <strong>Direct Method Keys:</strong>
-                      <span>
-                        {Object.keys(
-                          comparisonData.methods?.direct?.data || {}
-                        ).reduce(
-                          (sum, tag) =>
-                            sum +
-                            Object.keys(
-                              comparisonData.methods.direct.data[tag] || {}
-                            ).length,
-                          0
-                        )}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Live Method Keys:</strong>
-                      <span>
-                        {Object.keys(
-                          comparisonData.methods?.live?.data || {}
-                        ).reduce(
-                          (sum, tag) =>
-                            sum +
-                            Object.keys(
-                              comparisonData.methods.live.data[tag] || {}
-                            ).length,
-                          0
-                        )}
-                      </span>
-                    </div>
-                    <div className="debug-item">
-                      <strong>Data Match:</strong>
-                      <span
-                        style={{
-                          color: comparisonData.differences?.dataMatch
-                            ? "#38a169"
-                            : "#e53e3e",
-                        }}
-                      >
-                        {comparisonData.differences?.dataMatch
-                          ? "✅ Yes"
-                          : "❌ No"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="tool-grid" style={{ marginBottom: "10px" }}>
-                    <button
-                      className="tool-btn destructive"
-                      disabled={!debugToolsEnabled}
-                      onClick={handleForceReloadLive}
+                actions={
+                  <div className="section-actions">
+                    <span
+                      className={`comparison-status ${
+                        comparisonError
+                          ? "error"
+                          : comparisonLoading
+                            ? "checking"
+                            : comparisonSummary.status
+                      }`}
                     >
-                      Force DB → Live
-                    </button>
+                      {comparisonError
+                        ? "Comparison failed"
+                        : comparisonLoading
+                          ? "Checking..."
+                          : comparisonSummary.statusLabel}
+                    </span>
                     <button
                       className="tool-btn"
-                      disabled={!debugToolsEnabled}
-                      onClick={handleForceSaveLive}
+                      disabled={!debugToolsEnabled || comparisonLoading}
+                      onClick={() => compareDataMethods({ forceShow: true })}
                     >
-                      Force Save DB ← Live
+                      {comparisonLoading ? "Checking..." : "Compare Now"}
                     </button>
                   </div>
-                  <div className="shared-data-grid">
-                    <div className="shared-section">
-                      <h4>Direct Method Data (Admin Console)</h4>
-                      <JSONViewer
-                        data={comparisonData.methods?.direct?.data || {}}
-                      />
+                }
+              />
+              {sectionsExpanded.dataComparison && (
+                comparisonError ? (
+                  <div className="status-display error">{comparisonError}</div>
+                ) : comparisonData ? (
+                  <>
+                    <div className="debug-info">
+                      <div className="debug-item">
+                        <strong>Direct Method Keys:</strong>
+                        <span>{comparisonSummary.directElementCount}</span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Live Method Keys:</strong>
+                        <span>{comparisonSummary.liveElementCount}</span>
+                      </div>
+                      <div className="debug-item">
+                        <strong>Data Match:</strong>
+                        <span
+                          style={{
+                            color: comparisonSummary.dataMatch
+                              ? "#38a169"
+                              : "#e53e3e",
+                          }}
+                        >
+                          {comparisonSummary.dataMatch ? "Yes" : "No"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="shared-section">
-                      <h4>Live Method Data (unstable_getYDoc)</h4>
-                      {comparisonData.methods?.live?.data?.error ? (
-                        <div className="empty">
-                          Error: {comparisonData.methods.live.data.error}
-                        </div>
-                      ) : (
+                    <div
+                      className="tool-grid"
+                      style={{ marginBottom: "10px" }}
+                    >
+                      <button
+                        className="tool-btn destructive"
+                        disabled={!debugToolsEnabled}
+                        onClick={handleForceReloadLive}
+                      >
+                        Force DB → Live
+                      </button>
+                      <button
+                        className="tool-btn"
+                        disabled={!debugToolsEnabled}
+                        onClick={handleForceSaveLive}
+                      >
+                        Force Save DB ← Live
+                      </button>
+                    </div>
+                    <div className="comparison-data-grid">
+                      <div className="shared-section">
+                        <h4>Direct Method Data (Admin Console)</h4>
                         <JSONViewer
-                          data={comparisonData.methods?.live?.data || {}}
+                          data={comparisonData.methods?.direct?.data || {}}
+                          inlineDiff={comparisonInlineDiff.admin}
                         />
-                      )}
+                      </div>
+                      <div className="shared-section">
+                        <h4>Live Method Data (unstable_getYDoc)</h4>
+                        {comparisonData.methods?.live?.data?.error ? (
+                          <div className="empty">
+                            Error: {comparisonData.methods.live.data.error}
+                          </div>
+                        ) : (
+                          <JSONViewer
+                            data={comparisonData.methods?.live?.data || {}}
+                            inlineDiff={comparisonInlineDiff.live}
+                          />
+                        )}
+                      </div>
                     </div>
+                  </>
+                ) : comparisonLoading ? (
+                  <div className="status-display loading">
+                    Comparing live and admin data...
                   </div>
-                </>
+                ) : (
+                  <div className="empty">
+                    The comparison runs automatically after room load. Use
+                    Compare Now to run it again.
+                  </div>
+                )
               )}
             </div>
           )}
@@ -2921,9 +2899,11 @@ const AdminConsole: React.FC = () => {
                           return;
                         }
                         setJsonError("");
-                        const ok = confirm(
-                          "Save this edited data to the database? This will overwrite the current database state."
-                        );
+                        const ok = confirmAdminReset({
+                          action: "Save edited database data",
+                          detail:
+                            "This will make the edited JSON authoritative and overwrite the current database state.",
+                        });
                         if (ok) saveEditedDataToDb(editableJson);
                       }}
                       disabled={!editableJson.trim()}
@@ -3117,33 +3097,12 @@ const AdminConsole: React.FC = () => {
               Export Raw Document
             </button>
             <button
-              className="tool-btn"
-              disabled={!debugToolsEnabled}
-              onClick={loadRawDatabaseData}
-            >
-              Load Raw DB Data
-            </button>
-            <button
               className="tool-btn destructive"
               disabled={!debugToolsEnabled}
               onClick={restoreRawDocument}
               title="Restore from a raw base64-encoded YJS document file"
             >
               Restore Raw Document
-            </button>
-            <button
-              className="tool-btn"
-              disabled={!debugToolsEnabled}
-              onClick={debugYDocLoading}
-            >
-              Debug Y.Doc Loading
-            </button>
-            <button
-              className="tool-btn"
-              disabled={!debugToolsEnabled}
-              onClick={compareDataMethods}
-            >
-              Compare Live vs Admin Data
             </button>
             <button
               className="tool-btn destructive"

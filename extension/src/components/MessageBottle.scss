@@ -1,0 +1,386 @@
+// ABOUTME: Styles for MessageBottle — a tiny-text card half-buried in the page.
+// ABOUTME: One elliptical cast shadow at the slot; mask hides the buried portion below the slot line.
+
+$capsuleW: 32px;
+$visibleH: 64px;
+$hiddenH: 110px;
+$capsuleH: $visibleH + $hiddenH;
+
+$moundTopGap: 18px;
+$slotY: $moundTopGap + $visibleH;
+
+.mb-mound {
+  position: relative;
+  display: inline-block;
+  width: $capsuleW + 40px;
+  height: $slotY + 14px;
+  // no perspective — we're not doing 3D, just clean 2D + one cast shadow
+}
+
+// ============================
+// THE CAST SHADOW — one shadow, sits *at* the slot line on the page
+// ============================
+.mb-castShadow {
+  position: absolute;
+  left: 50%;
+  top: $slotY;
+  width: $capsuleW * 2.6;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.38) 0%,
+    rgba(0, 0, 0, 0.18) 40%,
+    transparent 70%
+  );
+  filter: blur(1.5px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+// thin dark seam across the page where the object pokes through
+.mb-slotCrack {
+  position: absolute;
+  left: 50%;
+  top: $slotY;
+  width: $capsuleW * 2.4;
+  height: 1.5px;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(20, 15, 10, 0.06) 12%,
+    rgba(20, 15, 10, 0.42) 38%,
+    rgba(20, 15, 10, 0.55) 50%,
+    rgba(20, 15, 10, 0.42) 62%,
+    rgba(20, 15, 10, 0.06) 88%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 3;
+}
+
+// ============================
+// Mask: hides the capsule below the slot line via mask-image (gradient).
+// We avoid `overflow: hidden` so the lift-and-pop animation can move the
+// bottle above the mask without being clipped at its top edge.
+// ============================
+.mb-capsuleMask {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: $capsuleW + 24px;
+  // Tall enough to contain the full hidden+visible capsule. The mask-image
+  // gradient is what makes the buried portion invisible.
+  height: $capsuleH + $moundTopGap;
+  pointer-events: none;
+  z-index: 2;
+
+  // Mask: opaque from top down to the slot line, transparent below.
+  // Uses px so the gradient stop matches the slot line exactly.
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 #{$slotY - 1},
+    transparent #{$slotY}
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 #{$slotY - 1},
+    transparent #{$slotY}
+  );
+
+  > button {
+    pointer-events: auto;
+  }
+}
+
+// ============================
+// Base capsule — minimal, variants override almost everything
+// ============================
+.mb-capsule {
+  position: absolute;
+  left: 50%;
+  top: $moundTopGap;
+  transform: translateX(-50%);
+  width: $capsuleW;
+  height: $capsuleH;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: system-ui, -apple-system, sans-serif;
+  transition: transform 320ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  outline: none;
+
+  // hover: lift the object — bottom slides up out of the slot, more emerges
+  &:hover {
+    transform: translateX(-50%) translateY(-22px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #4a90e2;
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
+}
+
+
+// thin colored bar along the left edge — author identity surface
+.mb-authorStripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+  z-index: 4;
+  border-radius: 2px 0 0 2px;
+}
+
+// ============================
+// The card surface — vertical columns of tiny apparent-letters
+// ============================
+.mb-variant-tinytextV {
+  width: 32px;
+  background: #ffffff;
+  border: 1px solid #767676;
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.06),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+.mb-tinyTextVWrap {
+  position: absolute;
+  inset: 4px 3px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: row;
+  gap: 1.5px;
+  overflow: hidden;
+}
+.mb-tinyTextVCol {
+  display: flex;
+  flex-direction: column;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 3.5px;
+  line-height: 4px;
+  color: #2a2a2a;
+  letter-spacing: 0;
+
+  // rotate each character 90deg so individual letters stand upright while reading down
+  span {
+    display: block;
+    transform: rotate(90deg);
+    transform-origin: center;
+    width: 4px;
+    height: 4px;
+    text-align: center;
+    line-height: 4px;
+  }
+}
+
+
+// ============================
+// Click animation: lift further out of the slot
+// ============================
+.mb-capsuleUnrolling {
+  animation: liftOutOfSlot 620ms cubic-bezier(0.3, 0.05, 0.4, 1) forwards;
+}
+
+.mb-capsuleOpen {
+  visibility: hidden;
+}
+
+@keyframes liftOutOfSlot {
+  0% {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  55% {
+    transform: translateX(-50%) translateY(-40px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-50%) translateY(-65px);
+    opacity: 0;
+  }
+}
+
+// ============================
+// Overlay + dialog
+// ============================
+.mb-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2147483646;
+  font-family: system-ui, -apple-system, sans-serif;
+  animation: overlayFadeIn 480ms ease-out;
+  // Re-enable pointer events here — the shadow host has pointer-events:none
+  // so the page stays interactive when only bottles are visible.
+  pointer-events: auto;
+}
+
+.mb-overlayClosing {
+  animation: overlayFadeOut 360ms ease-out forwards;
+}
+
+.mb-paper {
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  background: #ffffff;
+  border: 1px solid #b0b0b0;
+  border-radius: 4px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  --dx: var(--origin-dx, 0px);
+  --dy: var(--origin-dy, 0px);
+  animation: expandFromOrigin 480ms cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  .mb-overlayClosing & {
+    animation: collapseToOrigin 360ms cubic-bezier(0.6, 0, 0.8, 0.4) forwards;
+  }
+}
+
+.mb-label {
+  font-size: 13px;
+  color: #555;
+}
+
+// The bottle's thread of notes — oldest first, newest at the bottom.
+.mb-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mb-note {
+  padding: 8px 10px;
+  border: 1px solid #e2e2e2;
+  border-left: 3px solid #bbb;
+  border-radius: 2px;
+  background: #fafafa;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #111;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mb-messageField {
+  width: 100%;
+  min-height: 200px;
+  padding: 8px 10px;
+  border: 1px solid #767676;
+  border-radius: 2px;
+  background: #ffffff;
+  resize: vertical;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #111;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: 2px solid #4a90e2;
+    outline-offset: -1px;
+  }
+
+  &[readonly] {
+    background: #f6f6f6;
+    cursor: default;
+  }
+}
+
+.mb-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+
+  button {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    padding: 6px 14px;
+    border: 1px solid #767676;
+    background: #f0f0f0;
+    color: #111;
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: #e4e4e4;
+    }
+
+    &:active:not(:disabled) {
+      background: #d4d4d4;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .mb-primary {
+    background: #4a90e2;
+    color: #fff;
+    border-color: #3a7bc8;
+
+    &:hover:not(:disabled) {
+      background: #3a7bc8;
+    }
+  }
+}
+
+.mb-readPane,
+.mb-writePane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes overlayFadeIn {
+  from { background: rgba(0, 0, 0, 0); }
+  to   { background: rgba(0, 0, 0, 0.45); }
+}
+
+@keyframes overlayFadeOut {
+  from { background: rgba(0, 0, 0, 0.45); }
+  to   { background: rgba(0, 0, 0, 0); }
+}
+
+@keyframes expandFromOrigin {
+  0% {
+    transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.04);
+    opacity: 0;
+  }
+  30% { opacity: 1; }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes collapseToOrigin {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.04);
+    opacity: 0;
+  }
+}

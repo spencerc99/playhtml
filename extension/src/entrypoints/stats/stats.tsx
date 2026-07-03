@@ -12,6 +12,10 @@ interface DomainEntry {
   domain: string;
   eventCount: number;
   lastVisit: number;
+  firstVisit: number;
+  totalTimeMs: number;
+  uniquePageCount: number;
+  eventCounts: { cursor?: number; keyboard?: number; viewport?: number };
 }
 
 interface PageSession {
@@ -24,10 +28,10 @@ interface PageSession {
 interface DomainStats {
   domain: string;
   totalTimeMs: number | null;
-  sessions: PageSession[];
+  sessions?: PageSession[];
   uniquePageCount: number;
   dateRange: { oldest: string; newest: string } | null;
-  eventCounts: { cursor: number; keyboard: number; viewport: number };
+  eventCounts: { cursor?: number; keyboard?: number; viewport?: number };
 }
 
 interface PageStat {
@@ -40,6 +44,7 @@ interface PageStat {
 interface EnrichedDomain extends DomainEntry {
   stats: DomainStats | null;
   loading: boolean;
+  pagesLoading: boolean;
 }
 
 function formatDuration(ms: number): string {
@@ -95,6 +100,24 @@ function computeTopPages(sessions: PageSession[], limit = 10): PageStat[] {
 const TOP_DOMAINS = 30;
 const TOP_PAGES = 10;
 
+function dateRangeFromDomain(domain: DomainEntry): DomainStats["dateRange"] {
+  if (!domain.firstVisit || !domain.lastVisit) return null;
+  return {
+    oldest: new Date(domain.firstVisit).toLocaleDateString(),
+    newest: new Date(domain.lastVisit).toLocaleDateString(),
+  };
+}
+
+function statsFromDomainEntry(domain: DomainEntry): DomainStats {
+  return {
+    domain: domain.domain,
+    totalTimeMs: domain.totalTimeMs,
+    uniquePageCount: domain.uniquePageCount,
+    dateRange: dateRangeFromDomain(domain),
+    eventCounts: domain.eventCounts ?? {},
+  };
+}
+
 const StatsPage = () => {
   const [domains, setDomains] = useState<EnrichedDomain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,25 +144,12 @@ const StatsPage = () => {
         .sort((a, b) => b.eventCount - a.eventCount)
         .slice(0, TOP_DOMAINS);
 
-      // Show domain names immediately while stats load
-      setDomains(topDomains.map((d) => ({ ...d, stats: null, loading: true })));
-      setLoading(false);
-
-      // Fetch per-domain stats in parallel
-      const statsResults = await Promise.allSettled(
-        topDomains.map((d) =>
-          browser.runtime.sendMessage({ type: "GET_DOMAIN_STATS", domain: d.domain }),
-        ),
-      );
-
-      const enrichedWithStats: EnrichedDomain[] = topDomains.map((d, i) => {
-        const result = statsResults[i];
-        const stats =
-          result.status === "fulfilled" && result.value?.success
-            ? (result.value.stats as DomainStats | null)
-            : null;
-        return { ...d, stats, loading: false };
-      });
+      const enrichedWithStats: EnrichedDomain[] = topDomains.map((d) => ({
+        ...d,
+        stats: statsFromDomainEntry(d),
+        loading: false,
+        pagesLoading: false,
+      }));
 
       const sorted = [...enrichedWithStats].sort((a, b) => {
         const ta = a.stats?.totalTimeMs ?? -1;
@@ -157,6 +167,73 @@ const StatsPage = () => {
     }
   };
 
+  const loadPageSessions = async (domain: string) => {
+    const target = domains.find((d) => d.domain === domain);
+    if (!target || target.pagesLoading || target.stats?.sessions) return;
+
+    setDomains((current) =>
+      current.map((d) =>
+        d.domain === domain ? { ...d, pagesLoading: true } : d,
+      ),
+    );
+
+    try {
+      const res = await browser.runtime.sendMessage({
+        type: "GET_DOMAIN_STATS",
+        domain,
+        includePageSessions: true,
+      });
+      if (!res?.success || !res.stats) {
+        setDomains((current) =>
+          current.map((d) =>
+            d.domain === domain
+              ? {
+                  ...d,
+                  stats: {
+                    ...(d.stats ?? statsFromDomainEntry(d)),
+                    sessions: [],
+                  },
+                  pagesLoading: false,
+                }
+              : d,
+          ),
+        );
+        return;
+      }
+
+      setDomains((current) =>
+        current.map((d) =>
+          d.domain === domain
+            ? {
+                ...d,
+                stats: {
+                  ...(d.stats ?? statsFromDomainEntry(d)),
+                  sessions: (res.stats as DomainStats).sessions ?? [],
+                },
+                pagesLoading: false,
+              }
+            : d,
+        ),
+      );
+    } catch (e) {
+      console.error("[Stats] Failed to load page sessions:", e);
+      setDomains((current) =>
+        current.map((d) =>
+          d.domain === domain
+            ? {
+                ...d,
+                stats: {
+                  ...(d.stats ?? statsFromDomainEntry(d)),
+                  sessions: [],
+                },
+                pagesLoading: false,
+              }
+            : d,
+        ),
+      );
+    }
+  };
+
   const sortedDomains = [...domains].sort((a, b) => {
     if (sortBy === "time") {
       return (b.stats?.totalTimeMs ?? -1) - (a.stats?.totalTimeMs ?? -1);
@@ -167,7 +244,13 @@ const StatsPage = () => {
   const maxTime = Math.max(1, ...sortedDomains.map((d) => d.stats?.totalTimeMs ?? 0));
 
   const toggleDomain = (domain: string) => {
-    setExpandedDomain((prev) => (prev === domain ? null : domain));
+    setExpandedDomain((prev) => {
+      const next = prev === domain ? null : domain;
+      if (next) {
+        void loadPageSessions(next);
+      }
+      return next;
+    });
   };
 
   return (
@@ -302,7 +385,13 @@ const StatsPage = () => {
                     </div>
 
                     {/* Expanded pages list */}
-                    {isExpanded && topPages && (
+                    {isExpanded && domain.pagesLoading && (
+                      <div className="domain-row__pages">
+                        <p className="domain-row__pages-empty">loading page sessions…</p>
+                      </div>
+                    )}
+
+                    {isExpanded && !domain.pagesLoading && topPages && (
                       <div className="domain-row__pages">
                         {topPages.length === 0 ? (
                           <p className="domain-row__pages-empty">no page sessions recorded</p>

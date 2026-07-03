@@ -4,16 +4,43 @@ import { canMirrorInitializer, type ElementState } from "./canMirror";
 export type { ElementState } from "./canMirror";
 
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
+export * from "./presence-protocol";
 
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
+/**
+ * The value a `view` function returns. This is a lit-html `TemplateResult`
+ * (from the `html` tagged template), but we type it as `unknown` here so the
+ * shared types package stays free of a lit-html dependency — the `playhtml`
+ * runtime is what imports lit-html's `render` and patches it into the element.
+ */
+export type ViewTemplate = unknown;
+
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
-  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * Imperative update path: receives the current state and mutates the DOM
+   * directly. Required unless `view` is provided. `view` and `updateElement`
+   * are mutually exclusive — providing both is a registration-time error.
+   */
+  updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * Declarative render path: a pure function from state to a lit-html
+   * template. playhtml patches the returned template into the element whenever
+   * data, localData, or awareness changes (and on explicit `requestUpdate()`).
+   *
+   * Must be pure — do NOT call `setData`/`setLocalData` synchronously during
+   * render (it loops, and is a dev-mode error). Drive writes from `@event`
+   * handlers in the template instead. Mutually exclusive with `updateElement`,
+   * `onClick`, and `onDrag` (use `@click` etc. in the template).
+   *
+   * @experimental New and subject to change in a future minor release.
+   */
+  view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
   ) => void;
@@ -35,8 +62,10 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   ) => void;
   // @deprecated use onMount instead
   additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
-  // Used to set up any additional event handlers
-  onMount?: (eventData: ElementSetupData<T, U, V>) => void;
+  // Used to set up any additional event handlers. May return a cleanup
+  // function (to cancel rAF loops, timers, listeners) that runs when the
+  // element is removed/unregistered.
+  onMount?: (eventData: ElementSetupData<T, U, V>) => void | (() => void);
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -54,6 +83,9 @@ export interface ElementData<T = any, U = any, V = any>
   onAwarenessChange: (data: V) => void;
   // Gets the current set of awareness data for the element.
   triggerAwarenessUpdate: () => void;
+  // When true, the handler emits dev-only warnings (e.g. writing during a
+  // view render, or returning a value from a setData mutator).
+  devMode?: boolean;
 }
 
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
@@ -79,8 +111,15 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
    */
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
-  setLocalData: (data: U) => void;
+  setLocalData: (data: U | ((draft: U) => void)) => void;
   setMyAwareness: (data: V) => void;
+  /**
+   * Re-runs the element's `view` and patches the result into the DOM, even
+   * when no state has changed. Use for views that render from state *plus* an
+   * external source — the wall clock (timers, "5 minutes ago" labels),
+   * animation frames, etc. No-op for elements without a `view`.
+   */
+  requestUpdate: () => void;
 }
 
 export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
@@ -94,8 +133,14 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
-  setLocalData: (data: U) => void;
+  setLocalData: (data: U | ((draft: U) => void)) => void;
   setMyAwareness: (data: V) => void;
+  /**
+   * Re-runs the element's `view` and patches the result into the DOM. See
+   * `ElementEventHandlerData.requestUpdate`. Available in `onMount` so a
+   * `requestAnimationFrame` loop can drive clock-based views.
+   */
+  requestUpdate: () => void;
 }
 
 interface EventData<T = any> {
@@ -123,11 +168,23 @@ function roundToFirstDecimal(n: number): number {
   return Math.round(n * 10) / 10 + 0;
 }
 
+/**
+ * Resolves an attribute value that names another element to that element.
+ * Accepts a bare id (`arena`), an id with leading `#` (`#arena`), or any CSS
+ * selector (`.container`): an id lookup is tried first, then a selector match.
+ */
+function resolveElementRef(raw: string | null | undefined): HTMLElement | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const forId = value.startsWith("#") ? value.slice(1) : value;
+  return (
+    document.getElementById(forId) ??
+    (document.querySelector(value) as HTMLElement | null)
+  );
+}
+
 function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
-  const raw = element.getAttribute(CanMoveBounds)?.trim();
-  if (!raw) return null;
-  const forId = raw.startsWith("#") ? raw.slice(1) : raw;
-  return document.getElementById(forId) ?? document.querySelector(raw);
+  return resolveElementRef(element.getAttribute(CanMoveBounds));
 }
 
 /**
@@ -185,6 +242,10 @@ export type GrowData = {
   maxScale: number;
   isHovering: boolean;
 };
+/**
+ * Optional container for clones: an element id (with or without leading `#`)
+ * or any CSS selector. Defaults to inserting clones after the template.
+ */
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
@@ -506,6 +567,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
     updateElement: ({ element, data }) => {
       // handling migration from "boolean" to "{on: boolean}" type
       const on = typeof data === "object" ? data.on : data;
+      element.classList.toggle("toggled", on);
       element.classList.toggle("clicked", on);
     },
     onClick: (e: MouseEvent, { data, setData }) => {
@@ -564,27 +626,24 @@ export const TagTypeToElement: DefaultTagInitializers = {
     defaultData: [],
     defaultLocalData: [],
     updateElement: ({ data, localData, setLocalData, element }) => {
-      const duplicateElementId = element.getAttribute(TagType.CanDuplicate)!;
-      const elementToDuplicate = document.getElementById(duplicateElementId);
+      const duplicateRef = element.getAttribute(TagType.CanDuplicate)!;
+      const elementToDuplicate = resolveElementRef(duplicateRef);
       let lastElement: HTMLElement | null =
         document.getElementById(localData.slice(-1)?.[0]) ?? null;
       if (!elementToDuplicate) {
         console.error(
-          `Element with id ${duplicateElementId} not found. Cannot duplicate.`,
+          `Element ${duplicateRef} not found. Cannot duplicate.`,
         );
         return;
       }
 
-      const canDuplicateTo = element.getAttribute(CanDuplicateTo);
+      const duplicateToElement = resolveElementRef(
+        element.getAttribute(CanDuplicateTo),
+      );
       function insertDuplicatedElement(newElement: Node) {
-        if (canDuplicateTo) {
-          const duplicateToElement =
-            document.getElementById(canDuplicateTo) ||
-            document.querySelector(canDuplicateTo);
-          if (duplicateToElement) {
-            duplicateToElement.appendChild(newElement);
-            return;
-          }
+        if (duplicateToElement) {
+          duplicateToElement.appendChild(newElement);
+          return;
         }
 
         // By default insert after the latest element inserted (or the element to duplicate if none yet)
@@ -612,9 +671,14 @@ export const TagTypeToElement: DefaultTagInitializers = {
       setLocalData(localData);
     },
     onClick: (_e: MouseEvent, { data, element, setData }) => {
-      const duplicateElementId = element.getAttribute(TagType.CanDuplicate)!;
+      const elementToDuplicate = resolveElementRef(
+        element.getAttribute(TagType.CanDuplicate),
+      );
+      if (!elementToDuplicate) return;
+      // Clone ids are prefixed with the template's own id (not the raw
+      // attribute) so a `#id` or selector value still yields a valid id.
       const newElementId =
-        duplicateElementId + "-" + Math.random().toString(36).substr(2, 9);
+        elementToDuplicate.id + "-" + Math.random().toString(36).substr(2, 9);
 
       setData((draft) => {
         draft.push(newElementId);
@@ -626,7 +690,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
         return false;
       }
 
-      if (!document.getElementById(tagAttribute)) {
+      if (!resolveElementRef(tagAttribute)) {
         console.warn(
           `${TagType.CanDuplicate} element (${element.id}) duplicate element ("${tagAttribute}") not found.`,
         );

@@ -53,6 +53,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "playhtml",
+      favicon: "/icon.png",
       description:
         "Interactive, collaborative HTML elements with a single attribute.",
       // Turn off Expressive Code so every fenced ``` block goes through Astro's
@@ -126,7 +127,10 @@ export default defineConfig({
         },
         {
           label: "Capabilities",
-          items: [{ label: "All capabilities", slug: "capabilities" }],
+          items: [
+            { label: "All capabilities", slug: "capabilities" },
+            { label: "Custom elements", slug: "custom-elements" },
+          ],
         },
         { label: "Data", autogenerate: { directory: "data" } },
         { label: "Advanced", autogenerate: { directory: "advanced" } },

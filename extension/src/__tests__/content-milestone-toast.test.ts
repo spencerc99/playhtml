@@ -91,6 +91,12 @@ const milestone = {
   period: "alltime",
 } as const;
 
+type RuntimeMessageListener = (
+  message: unknown,
+  sender: unknown,
+  sendResponse: (response?: unknown) => void,
+) => boolean | void;
+
 describe("content milestone toasts", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -109,22 +115,31 @@ describe("content milestone toasts", () => {
     contentScript.main();
 
     const addListener = vi.mocked(browser.runtime.onMessage.addListener);
-    const listener = addListener.mock.calls[0][0];
-    const sendResponse = vi.fn();
+    const listener = addListener.mock.calls[0][0] as RuntimeMessageListener;
 
-    listener({ type: "SHOW_MILESTONE", milestone }, {}, sendResponse);
+    const firstResponse = await new Promise((resolve) => {
+      listener({ type: "SHOW_MILESTONE", milestone }, {}, (response) => {
+        resolve(response);
+      });
+    });
 
+    expect(firstResponse).toEqual({ success: true });
     expect(document.body.childElementCount).toBe(1);
 
-    listener(
-      {
-        type: "SHOW_MILESTONE",
-        milestone: { ...milestone, copy: "You crossed another milestone." },
-      },
-      {},
-      sendResponse,
-    );
+    const secondResponse = await new Promise((resolve) => {
+      listener(
+        {
+          type: "SHOW_MILESTONE",
+          milestone: { ...milestone, copy: "You crossed another milestone." },
+        },
+        {},
+        (response) => {
+          resolve(response);
+        },
+      );
+    });
 
+    expect(secondResponse).toEqual({ success: true });
     expect(document.body.childElementCount).toBe(1);
   });
 });

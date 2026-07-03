@@ -1,8 +1,10 @@
+// ABOUTME: Exposes the core React bindings for playhtml components.
+// ABOUTME: Registers can-play elements and shared-state helpers for React apps.
 // TODO: idk why but this is not getting registered otherwise??
-import React from "react";
+import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement, serializePermissionsSpec } from "@playhtml/common";
-import type { PermissionAction, PermissionActionSpec } from "@playhtml/common";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement, serializePermissionsSpec } from "playhtml";
+import type { PermissionAction, PermissionActionSpec } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -14,6 +16,51 @@ import type {
   ReactElementEventHandlerData,
 } from "./utils";
 import { PlayContext } from "./PlayProvider";
+
+// Structural equality used to decide whether a sync actually changed React
+// state. Capability data can arrive as a fresh object/array reference on every
+// sync (e.g. a Yjs collection snapshot for can-duplicate), so a reference check
+// would mark every sync as a change and drive an infinite render loop. Compare
+// by value instead and bail when nothing changed.
+function isDeepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  ) {
+    return false;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    return a.every((item, i) => isDeepEqual(item, b[i]));
+  }
+  // Maps have no enumerable own keys, so the Object.keys path below would treat
+  // any two Maps as equal and drop real updates (e.g. awarenessByStableId).
+  if (a instanceof Map || b instanceof Map) {
+    if (!(a instanceof Map) || !(b instanceof Map) || a.size !== b.size) {
+      return false;
+    }
+    for (const [key, value] of a) {
+      if (!b.has(key) || !isDeepEqual(value, b.get(key))) return false;
+    }
+    return true;
+  }
+  const aKeys = Object.keys(a as Record<string, unknown>);
+  const bKeys = Object.keys(b as Record<string, unknown>);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(b, key) &&
+      isDeepEqual(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key]
+      )
+  );
+}
 
 // Loading configuration options for React components
 export interface LoadingOptions {
@@ -50,6 +97,56 @@ export type CanPlayProps<T extends object, V = any> =
       tagInfo?: Partial<{ [k in TagType]: string }> | TagType[];
       defaultData: undefined;
     } & WithPlayOptionalProps);
+
+type ElementBinding = {
+  effectiveId: string;
+  domId: string;
+  dataSource: string | null;
+};
+
+function getDataSourceElementId(dataSource?: string): string | undefined {
+  if (!dataSource) return undefined;
+  const [, elementId] = dataSource.split("#");
+  return elementId || undefined;
+}
+
+function getElementBinding(element: HTMLElement): ElementBinding | undefined {
+  const effectiveId = getIdForElement(element);
+  if (!effectiveId) return undefined;
+
+  return {
+    effectiveId,
+    domId: element.id,
+    dataSource: element.getAttribute("data-source"),
+  };
+}
+
+function withElementBinding(
+  element: HTMLElement,
+  binding: ElementBinding,
+  callback: () => void,
+) {
+  const currentId = element.id;
+  const currentDataSource = element.getAttribute("data-source");
+
+  element.id = binding.domId;
+  if (binding.dataSource === null) {
+    element.removeAttribute("data-source");
+  } else {
+    element.setAttribute("data-source", binding.dataSource);
+  }
+
+  try {
+    callback();
+  } finally {
+    element.id = currentId;
+    if (currentDataSource === null) {
+      element.removeAttribute("data-source");
+    } else {
+      element.setAttribute("data-source", currentDataSource);
+    }
+  }
+}
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
@@ -105,10 +202,15 @@ export function CanPlayElement<T extends object, V = any>({
     );
   }
 
-  // Ensure playhtml is initialized if in standalone mode
+  // Ensure playhtml is running when this component is used outside a
+  // PlayProvider. This is purely "ensure running" — it passes NO options, so it
+  // never competes with config the page declared elsewhere (e.g. a global
+  // playhtml.configure({ cursors }) in a <head> script). If playhtml is already
+  // started, init() is a no-op that resolves to the existing readiness. The
+  // element itself is registered separately via setupPlayElement below, which
+  // is what actually wires it up regardless of who started playhtml.
   useEffect(() => {
     if (standalone && playContext.isProviderMissing) {
-      // Initialize playhtml in standalone mode
       playhtml
         .init()
         .catch((err) =>
@@ -143,6 +245,8 @@ export function CanPlayElement<T extends object, V = any>({
     loadingAttributes["loading-style"] = loading.style;
   }
   const ref = useRef<HTMLElement>(null);
+  const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
+  const warningKeysRef = useRef<Set<string>>(new Set());
   const { defaultData, myDefaultAwareness } = elementProps;
   const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
     typeof fnOrValue === "function"
@@ -189,10 +293,25 @@ export function CanPlayElement<T extends object, V = any>({
     | undefined;
 
   const syncReactState = (handlerData: ElementAwarenessEventHandlerData) => {
-    setData(handlerData.data);
-    setAwareness(handlerData.awareness);
-    setAwarenessByStableId(handlerData.awarenessByStableId);
-    setMyAwareness(handlerData.myAwareness);
+    // Bail when the synced value matches current state. The handler can hand us
+    // a fresh reference for unchanged data, and setting it would re-render and
+    // re-run the setup effect, looping forever for reference-unstable data.
+    setData((prev) =>
+      isDeepEqual(prev, handlerData.data) ? prev : (handlerData.data as T)
+    );
+    setAwareness((prev) =>
+      isDeepEqual(prev, handlerData.awareness) ? prev : handlerData.awareness
+    );
+    setAwarenessByStableId((prev) =>
+      isDeepEqual(prev, handlerData.awarenessByStableId)
+        ? prev
+        : handlerData.awarenessByStableId
+    );
+    setMyAwareness((prev) =>
+      isDeepEqual(prev, handlerData.myAwareness)
+        ? prev
+        : handlerData.myAwareness
+    );
   };
 
   const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
@@ -209,21 +328,37 @@ export function CanPlayElement<T extends object, V = any>({
 
   useEffect(() => {
     if (ref.current) {
+      const element = ref.current;
       for (const [key, value] of Object.entries(elementProps)) {
         // Skip updateElement/updateElementAwareness — they are set below as
         // composed versions that include both React state updates and DOM updates.
         if (key === "updateElement" || key === "updateElementAwareness") continue;
         // @ts-ignore
-        ref.current[key] = value;
+        element[key] = value;
       }
       // @ts-ignore
-      ref.current.updateElement = updateElement;
+      element.updateElement = updateElement;
       // @ts-ignore
-      ref.current.updateElementAwareness = updateElementAwareness;
+      element.updateElementAwareness = updateElementAwareness;
 
       // Setup the element, which will handle data-source discovery if needed
       try {
-        playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
+        const currentBinding = getElementBinding(element);
+        const registeredBinding = registeredBindingRef.current;
+        if (
+          registeredBinding &&
+          currentBinding &&
+          registeredBinding.effectiveId !== currentBinding.effectiveId
+        ) {
+          withElementBinding(element, registeredBinding, () => {
+            playhtml.removePlayElement(element);
+          });
+        }
+
+        playhtml.setupPlayElement(element, {
+          ignoreIfAlreadySetup: true,
+        });
+        registeredBindingRef.current = currentBinding;
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
 
@@ -235,13 +370,18 @@ export function CanPlayElement<T extends object, V = any>({
         }
       }
     }
+  });
+
+  useEffect(() => {
+    const mountedElement = ref.current;
+
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!ref.current || !playhtml.elementHandlers) return;
-      playhtml.removePlayElement(ref.current);
+      if (!mountedElement || !playhtml.elementHandlers) return;
+      playhtml.removePlayElement(mountedElement);
     };
-  }, [elementProps, ref.current]);
+  }, []);
   const renderedChildren = children({
     // @ts-ignore
     data,
@@ -305,6 +445,31 @@ export function CanPlayElement<T extends object, V = any>({
   // browsers and break real-time collaboration.
   const childProps = renderedChildren?.props as { id?: string; className?: string } | undefined;
   const childId = childProps?.id;
+  const hasConfiguredId = id !== undefined;
+  const hasConfiguredDomId = hasConfiguredId && id !== "";
+  const warnOnce = (key: string, message: string) => {
+    if (warningKeysRef.current.has(key)) return;
+    warningKeysRef.current.add(key);
+    console.warn(message);
+  };
+  if (hasConfiguredId && id === "") {
+    warnOnce(
+      "empty-id",
+      `[@playhtml/react] <${primaryTag}> received an empty id prop. ` +
+      `Pass a non-empty id to bind shared state to a configured element id.`,
+    );
+  }
+  if (hasConfiguredDomId && childId && id !== childId) {
+    const dataSourceElementId = getDataSourceElementId(dataSource);
+    const bindingMessage = dataSourceElementId
+      ? `Using data-source="${dataSource}" with shared state id="${dataSourceElementId}".`
+      : `Using id="${id}" for shared state.`;
+    warnOnce(
+      `id-conflict:${id}:${childId}:${dataSource ?? ""}`,
+      `[@playhtml/react] <${primaryTag}> received id="${id}" but its child element has id="${childId}". ` +
+      bindingMessage,
+    );
+  }
   if (!id && !childId && !dataSource) {
     const childType = typeof renderedChildren?.type === "string"
       ? `<${renderedChildren.type}>`
@@ -338,6 +503,7 @@ export function CanPlayElement<T extends object, V = any>({
       ...(permissions
         ? { permissions: serializePermissionsSpec(permissions) }
         : {}),
+      ...(hasConfiguredDomId ? { id } : {}),
     },
     { fragmentId: id },
   );

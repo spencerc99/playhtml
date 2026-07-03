@@ -1,7 +1,8 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, RefObject } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
@@ -10,9 +11,8 @@ import {
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
-} from "@playhtml/common";
-import type { Counters, PermissionAction } from "@playhtml/common";
-import type { CursorZoneOptions, MeState } from "playhtml";
+} from "playhtml";
+import type { Counters, CursorZoneOptions, MeState, PermissionAction } from "playhtml";
 
 // Stable protocol event names (duplicated from playhtml so this module only
 // has type-level imports from it — keeps vi.mock("playhtml") setups working).
@@ -38,7 +38,7 @@ export function useCursorPresences(): Map<string, CursorPresenceView> {
  * own copy of the same element (matched by element id).
  */
 export function useCursorZone(
-  ref: RefObject<HTMLElement | null>,
+  ref: React.RefObject<HTMLElement | null>,
   options?: CursorZoneOptions,
 ): void {
   const { registerCursorZone, unregisterCursorZone } = useContext(PlayContext);
@@ -46,13 +46,14 @@ export function useCursorZone(
   useEffect(() => {
     const element = ref.current;
     if (!element || !element.id) return;
+    const elementId = element.id;
 
     registerCursorZone(element, options);
 
     return () => {
-      unregisterCursorZone(element.id);
+      unregisterCursorZone(elementId);
     };
-  }, [ref.current, ref.current?.id]);
+  }, [ref, options, registerCursorZone, unregisterCursorZone]);
 }
 
 /**
@@ -244,7 +245,7 @@ function readMe(): MeState | null {
  */
 export function useCan(
   action: PermissionAction,
-  target: string | HTMLElement | RefObject<HTMLElement | null>,
+  target: string | HTMLElement | React.RefObject<HTMLElement | null>,
   options?: { creator?: string; entry?: unknown },
 ): boolean {
   const me = useMeState();

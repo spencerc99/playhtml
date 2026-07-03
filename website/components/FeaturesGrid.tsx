@@ -1,10 +1,10 @@
+// ABOUTME: Renders the homepage feature gallery for core PlayHTML capabilities.
+// ABOUTME: Hosts embedded demos and links to example source for each feature.
 import React from "react";
 import { RainSprinkler } from "../../packages/react/examples/RainSprinkler";
 import { ReactiveOrb } from "../../packages/react/examples/ReactiveOrb";
 import { DataModes } from "./DataModes";
 import { ComponentStore } from "./ComponentStore";
-import { ScheduledBehaviors } from "./ScheduledBehaviors";
-import { Permissions } from "./Permissions";
 import "./FeaturesGrid.scss";
 import { withSharedState } from "@playhtml/react";
 import { invertColor } from "../utils/color";
@@ -21,7 +21,7 @@ interface ExperimentOneData {
 
 // Component to fetch shared color data and make it available to parent
 // TODO: fix this, somehow it is clearing the data with the defaultData?
-const _SharedColorProvider = withSharedState<
+export const SharedColorProvider = withSharedState<
   ExperimentOneData,
   undefined,
   { children: React.ReactNode }

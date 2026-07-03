@@ -14,6 +14,11 @@ import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import { DownloadGate } from "./components/DownloadGate";
+import {
+  CHANGELOG_URL,
+  isNavigationPathActive,
+  LIVE_PORTRAIT_URL,
+} from "./navigation";
 import styles from "./App.module.scss";
 
 const ALIVE_INTERNET_ESSAY_URL =
@@ -166,6 +171,7 @@ export default function App() {
   // how many people, and the geographic spread of their timezones.
   const activity = useMemo(() => summarizeActiveLocations(events), [events]);
 
+  const currentPath = window.location.pathname;
 
   return (
     <div className={styles.page}>
@@ -204,6 +210,29 @@ export default function App() {
       </div>
 
       <div className={styles.content}>
+        <nav className={styles.siteNav} aria-label="Site navigation">
+          <a
+            aria-current={
+              isNavigationPathActive(currentPath, LIVE_PORTRAIT_URL)
+                ? "page"
+                : undefined
+            }
+            href={LIVE_PORTRAIT_URL}
+          >
+            live portrait
+          </a>
+          <a
+            aria-current={
+              isNavigationPathActive(currentPath, CHANGELOG_URL)
+                ? "page"
+                : undefined
+            }
+            href={CHANGELOG_URL}
+          >
+            changelog
+          </a>
+        </nav>
+
         <section className={styles.hero}>
           <h1 className={styles.wordmark}>we were online</h1>
           <p className={styles.tagline}>
@@ -224,9 +253,29 @@ export default function App() {
             install the extension to try it out!
           </div>
           <DownloadGate />
+          <span
+            className={styles.scrollCue}
+            aria-hidden="true"
+          >
+            <svg
+              className={styles.scrollCueMark}
+              viewBox="0 0 72 48"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                className={styles.scrollCueTrail}
+                d="M8 10 C 23 16, 16 30, 34 32 S 54 26, 55 38"
+              />
+              <path
+                className={styles.scrollCueArrow}
+                d="M45 30 L55 39 L65 30"
+              />
+            </svg>
+          </span>
         </section>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="homepage-essay">
           <div className={styles.essayBlock}>
             <p>
               It's controversial to have hope for the internet these days.{" "}

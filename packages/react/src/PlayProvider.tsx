@@ -1,14 +1,14 @@
 // ABOUTME: Provides React context for playhtml state and lifecycle readiness.
 // ABOUTME: Bootstraps the playhtml singleton and exposes cursor/presence helpers.
 import {
-  PropsWithChildren,
   createContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type RefObject,
 } from "react";
+import type * as React from "react";
 import playhtml from "./playhtml-singleton";
 import {
   InitOptions,
@@ -17,16 +17,16 @@ import {
   CursorZoneOptions,
 } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
-import { CursorEvents, CursorPresenceView, PlayerIdentity } from "@playhtml/common";
+import { CursorEvents, CursorPresenceView, PlayerIdentity } from "playhtml";
 
-type PlayProviderCursorContainer = CursorContainer | RefObject<HTMLElement>;
+type PlayProviderCursorContainer = CursorContainer | React.RefObject<HTMLElement>;
 
 function normalizeCursorContainer(
   c: PlayProviderCursorContainer | undefined,
 ): CursorContainer | undefined {
   if (!c) return undefined;
   if (typeof c === "object" && "current" in (c as object)) {
-    const ref = c as RefObject<HTMLElement>;
+    const ref = c as React.RefObject<HTMLElement>;
     return () => ref.current;
   }
   return c as CursorContainer;
@@ -42,7 +42,7 @@ function isReadyPromise(value: unknown): value is Promise<void> {
 }
 
 type PlayProviderCursorOptions = Omit<CursorOptions, "container"> & {
-  container?: CursorContainer | RefObject<HTMLElement>;
+  container?: CursorContainer | React.RefObject<HTMLElement>;
 };
 
 type PlayProviderInitOptions = Omit<InitOptions, "cursors"> & {
@@ -142,7 +142,7 @@ export function PlayProvider({
   children,
   initOptions,
   pathname: pathnameProp,
-}: PropsWithChildren<Props>) {
+}: React.PropsWithChildren<Props>) {
   const previousPathname = useRef<string | undefined>(pathnameProp);
 
   useEffect(() => {
@@ -184,6 +184,13 @@ export function PlayProvider({
 
   useEffect(() => {
     let cancelled = false;
+    // Declare config before connecting so it's the single source of truth even
+    // if a `standalone` component elsewhere calls init() (with no options)
+    // first. configure() is a no-op once config is locked, so this is safe to
+    // run regardless of ordering.
+    if (processedInitOptions) {
+      playhtml.configure(processedInitOptions);
+    }
     const initPromise = playhtml.init(processedInitOptions);
     const readyPromise = isReadyPromise(playhtml.ready) ? playhtml.ready : initPromise;
 
@@ -226,13 +233,13 @@ export function PlayProvider({
     return playhtml.cursorClient.triggerCursorAnimation(stableId, animationClass, durationMs);
   };
 
-  const registerCursorZone = (element: HTMLElement, options?: CursorZoneOptions) => {
+  const registerCursorZone = useCallback((element: HTMLElement, options?: CursorZoneOptions) => {
     playhtml.cursorClient?.registerZone(element, options);
-  };
+  }, []);
 
-  const unregisterCursorZone = (elementId: string) => {
+  const unregisterCursorZone = useCallback((elementId: string) => {
     playhtml.cursorClient?.unregisterZone(elementId);
-  };
+  }, []);
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
     allColors: [] as string[],

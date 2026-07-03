@@ -242,6 +242,9 @@
               name="name"
               placeholder="your name"
               style="width: 80px"
+              pattern="[A-Za-z0-9]+"
+              title="Letters and numbers only"
+              inputmode="text"
               required
             />,
             <span>
@@ -262,18 +265,6 @@
           </form>
           <div id="guestbookMessages"></div>
         </div>
-        <script>
-          // TODO: convert the guestbook to react and make the hook to make that possible
-          function saveName(e) {
-            localStorage.setItem("name", JSON.stringify(e.currentTarget.value));
-          }
-
-          const nameInput = document.getElementsByName("name")[0];
-          nameInput.value = localStorage.getItem("name")
-            ? JSON.parse(localStorage.getItem("name"))
-            : "";
-          nameInput.addEventListener("change", saveName);
-        </script>
       </div>
     </div>
     <footer>

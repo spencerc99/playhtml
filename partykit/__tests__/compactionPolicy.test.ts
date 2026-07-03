@@ -1,10 +1,13 @@
 // ABOUTME: Verifies pure scheduling and snapshot decisions for PartyServer compaction.
 // ABOUTME: Keeps hibernation-safe compaction rules testable outside Cloudflare runtime.
 import { describe, expect, it } from "bun:test";
+import { STORAGE_KEYS } from "../const";
 import {
   getNextAlarmTime,
+  getCompactionCommitDecision,
   isCompactionAutosave,
   shouldCheckEmergencyCompaction,
+  shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
 } from "../compactionPolicy";
@@ -22,6 +25,65 @@ describe("isCompactionAutosave", () => {
     expect(isCompactionAutosave("snapshot-a", "snapshot-a")).toBe(true);
     expect(isCompactionAutosave("snapshot-b", "snapshot-a")).toBe(false);
     expect(isCompactionAutosave("snapshot-a", null)).toBe(false);
+  });
+});
+
+describe("shouldCommitCompactionSnapshot", () => {
+  it("only commits when the persisted document still matches the compacted source", () => {
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+      })
+    ).toBe(true);
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+      })
+    ).toBe(false);
+    expect(
+      shouldCommitCompactionSnapshot({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: null,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("getCompactionCommitDecision", () => {
+  it("persists the live document before compaction when persisted data changed", () => {
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "source",
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "commit-compaction" });
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        sourceContainsPersistedDocument: true,
+      })
+    ).toEqual({ kind: "persist-live-document" });
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: null,
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "persist-live-document" });
+  });
+
+  it("leaves persisted data untouched when the live source is missing database updates", () => {
+    expect(
+      getCompactionCommitDecision({
+        sourceDocumentBase64: "source",
+        persistedDocumentBase64: "newer",
+        sourceContainsPersistedDocument: false,
+      })
+    ).toEqual({ kind: "skip-compaction" });
   });
 });
 
@@ -62,6 +124,15 @@ describe("shouldCheckEmergencyCompaction", () => {
         now: 5_000,
       })
     ).toBe(true);
+  });
+});
+
+describe("STORAGE_KEYS", () => {
+  it("uses a cooldown independent from connected-room emergency compaction", () => {
+    expect(STORAGE_KEYS.persistedDocumentCompactCheckAfter).toBeDefined();
+    expect(STORAGE_KEYS.persistedDocumentCompactCheckAfter).not.toBe(
+      STORAGE_KEYS.emergencyCompactCheckAfter
+    );
   });
 });
 

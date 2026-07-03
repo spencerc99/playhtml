@@ -1,3 +1,6 @@
+// ABOUTME: Vanilla starter behavior for the static HTML template.
+// ABOUTME: Wires local UI interactions (guestbook, shooting-star event).
+
 // Print a message in the dev panel's console panel
 console.log("playhtml starter loaded");
 
@@ -53,32 +56,6 @@ function addGuestbook() {
   document.getElementById("guestbook").appendChild(newMessage);
 }
 
-// Reaction button setup
-window.playhtml.setupCustomElement({
-  selector: "#reactionBtn",
-  defaultData: { count: 0 },
-  onClick: (element, data, setData) => {
-    const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-
-    if (hasReacted) {
-      setData({ count: data.count - 1 });
-      localStorage.removeItem("reacted-reaction");
-      element.classList.remove("reacted");
-    } else {
-      setData({ count: data.count + 1 });
-      localStorage.setItem("reacted-reaction", "true");
-      element.classList.add("reacted");
-    }
-  },
-  onUpdate: (element, data) => {
-    document.getElementById("reactionCount").textContent = data.count;
-  },
-  onMount: (element, data) => {
-    // Set initial state based on localStorage
-    const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-    if (hasReacted) {
-      element.classList.add("reacted");
-    }
-    document.getElementById("reactionCount").textContent = data.count;
-  }
-});
+// The reaction button (#reactionBtn) is a custom collaborative element built
+// with the `view` API — it's registered in the module script in index.html
+// (where `html` is imported alongside `playhtml`).

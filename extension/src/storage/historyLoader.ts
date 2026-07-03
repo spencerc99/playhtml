@@ -45,33 +45,40 @@ export async function loadHistoricalData(
 
   const allEvents: CollectionEvent[] = [];
 
-  // Query background service worker for each event type
-  for (const type of types) {
-    let localEvents: CollectionEvent[] = [];
-    try {
-      if (actualMode === 'domain') {
-        const res: any = await browser.runtime.sendMessage({
-          type: 'QUERY_EVENTS_BY_DOMAIN',
-          domain,
-          options: { type, limit },
-        });
-        localEvents = res?.events || [];
-      } else {
-        const res: any = await browser.runtime.sendMessage({
-          type: 'QUERY_EVENTS_BY_URL',
-          url: normalizedCurrentUrl,
-          options: { type, limit },
-        });
-        localEvents = res?.events || [];
+  const eventGroups = await Promise.all(
+    types.map(async (type): Promise<CollectionEvent[]> => {
+      try {
+        if (actualMode === 'domain') {
+          const res: any = await browser.runtime.sendMessage({
+            type: 'QUERY_EVENTS_BY_DOMAIN',
+            domain,
+            options: { type, limit },
+          });
+          const localEvents = res?.events || [];
+          if (VERBOSE) console.log(
+            `[HistoryLoader] Found ${localEvents.length} local ${type} events`,
+          );
+          return localEvents;
+        } else {
+          const res: any = await browser.runtime.sendMessage({
+            type: 'QUERY_EVENTS_BY_URL',
+            url: normalizedCurrentUrl,
+            options: { type, limit },
+          });
+          const localEvents = res?.events || [];
+          if (VERBOSE) console.log(
+            `[HistoryLoader] Found ${localEvents.length} local ${type} events`,
+          );
+          return localEvents;
+        }
+      } catch (e) {
+        console.error(`[HistoryLoader] Failed to query ${type} from background:`, e);
+        return [];
       }
-    } catch (e) {
-      console.error(`[HistoryLoader] Failed to query ${type} from background:`, e);
-    }
+    }),
+  );
 
-    if (VERBOSE) console.log(
-      `[HistoryLoader] Found ${localEvents.length} local ${type} events`,
-    );
-
+  for (const localEvents of eventGroups) {
     allEvents.push(...localEvents);
   }
 

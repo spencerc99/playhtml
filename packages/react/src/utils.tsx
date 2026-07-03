@@ -1,11 +1,13 @@
+// ABOUTME: Provides React element helpers used by the playhtml component bindings.
+// ABOUTME: Clones children through fragments and normalizes playable child renderers.
 import {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
   TagType,
-} from "@playhtml/common";
-import type { PermissionAction } from "@playhtml/common";
+} from "playhtml";
+import type { PermissionAction } from "playhtml";
 import playhtml from "./playhtml-singleton";
-import React, { PropsWithChildren } from "react";
+import * as React from "react";
 
 export type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
@@ -108,7 +110,7 @@ export function isReactFragment(element: React.ReactElement): boolean {
 
 export function cloneThroughFragments<P = any>(
   element: React.ReactElement<P>,
-  props: PropsWithChildren<P>,
+  props: React.PropsWithChildren<P>,
   { fragmentId }: { fragmentId?: string } = {}
 ): React.ReactElement<P> {
   if (isReactFragment(element)) {
@@ -156,7 +158,7 @@ function domProps(
 
   // Clone the element and pass down the props to the first DOM element
   const clonedChildren = React.Children.map(
-    (element.props as PropsWithChildren).children,
+    (element.props as React.PropsWithChildren).children,
     (child: React.ReactNode) => {
       // Skip non-React elements (text, numbers, null, etc.)
       if (!React.isValidElement(child)) {

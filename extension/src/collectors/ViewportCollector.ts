@@ -19,10 +19,10 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
 
   private scrollHandler?: () => void;
   private resizeHandler?: () => void;
-  private lastResizeTime = 0;
-  private scrollThrottle = 100; // ms
+  private scrollThrottle = 500; // ms
   private scrollTimer: number | null = null;
-  private resizeDebounce = 200; // ms - wait for resize to settle
+  private resizeDebounce = 1000; // ms - wait for resize to settle
+  private resizeMinChangePx = 50;
   private resizeTimer: number | null = null;
   private resizeQuantity = 0; // Count resize events during debounce window
 
@@ -36,9 +36,7 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
 
   // Zoom tracking
   private lastZoomLevel: number | null = null;
-  private lastZoomEmitTime = -Infinity;
-  private zoomDebounce = 2000; // ms - wait for zoom to settle before emitting
-  private zoomQuantity = 0; // Count zoom changes during debounce window
+  private zoomMinChange = 0.05;
   private visualViewport: VisualViewport | null = null;
 
   start(): void {
@@ -115,6 +113,14 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
       this.resizeHandler = undefined;
     }
 
+    this.flushPendingEvents();
+  }
+
+  protected drainPendingEvents(): void {
+    this.flushPendingEvents();
+  }
+
+  private flushPendingEvents(): void {
     // Flush any pending scroll event that was waiting in the throttle timer
     if (this.scrollTimer !== null) {
       clearTimeout(this.scrollTimer);
@@ -127,6 +133,8 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = null;
       this.emitResizeEvent();
+      this.checkZoomChange();
+      this.resizeQuantity = 0;
     }
   }
 
@@ -192,7 +200,7 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
 
   /**
    * Emit resize event
-   * Only emits if there's actual size change (delta > 0)
+   * Only emits if there's a meaningful size change
    */
   private emitResizeEvent(): void {
     if (!this.enabled) return;
@@ -204,16 +212,17 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
     const deltaWidth = Math.abs(currentWidth - this.lastResizeWidth);
     const deltaHeight = Math.abs(currentHeight - this.lastResizeHeight);
 
-    // Only emit if there's actual size change (at least 1 pixel)
-    // This filters out resize events that fire but don't actually change size
-    if (deltaWidth === 0 && deltaHeight === 0) {
+    // Only emit if there's a meaningful resize.
+    // This filters out resize events that fire for tiny browser chrome changes.
+    if (
+      deltaWidth < this.resizeMinChangePx &&
+      deltaHeight < this.resizeMinChangePx
+    ) {
       if (VERBOSE) {
         console.log(
-          "[ViewportCollector] Resize event fired but no size change detected, skipping",
+          "[ViewportCollector] Resize event fired but no meaningful size change detected, skipping",
         );
       }
-      // Reset quantity counter since no actual resize occurred
-      this.resizeQuantity = 0;
       return;
     }
 
@@ -243,70 +252,47 @@ export class ViewportCollector extends BaseCollector<ViewportEventData> {
   }
 
   /**
-   * Check for zoom level changes and emit if changed
-   * Debounced to prevent spam during continuous zooming
-   * Only emits if there's actual zoom change (delta > 0)
+   * Check for settled zoom level changes and emit if changed.
+   * Called after resize debounce so continuous zoom gestures emit their final state.
    */
   private checkZoomChange(): void {
     const currentZoom = this.getZoomLevel();
-    const now = Date.now();
 
-    // Check if zoom actually changed (with small threshold to avoid floating point issues)
     const zoomDelta =
       this.lastZoomLevel !== null
         ? Math.abs(currentZoom - this.lastZoomLevel)
         : 0;
-    const hasZoomChange = zoomDelta > 0.001; // 0.1% threshold for zoom changes
+    const hasZoomChange = zoomDelta >= this.zoomMinChange;
 
     if (hasZoomChange) {
-      // Debounce: only emit if enough time has passed since last zoom event
-      const timeSinceLastEmit = now - this.lastZoomEmitTime;
+      const data: ViewportEventData = {
+        event: "zoom",
+        zoom: currentZoom,
+        previous_zoom: this.lastZoomLevel ?? undefined,
+        quantity: Math.max(1, this.resizeQuantity),
+      };
 
-      if (timeSinceLastEmit >= this.zoomDebounce) {
-        // New debounce window — reset counter and count just this zoom
-        this.zoomQuantity = 1;
-
-        const data: ViewportEventData = {
-          event: "zoom",
-          zoom: currentZoom,
-          previous_zoom: this.lastZoomLevel ?? undefined,
-          quantity: this.zoomQuantity,
-        };
-
-        if (VERBOSE) {
-          console.log(
-            `[ViewportCollector] Emitting zoom event (${this.zoomQuantity} zooms):`,
-            {
-              ...data,
-              zoomDelta,
-            },
-          );
-        }
-
-        this.emit(data);
-        this.lastZoomEmitTime = now;
-        this.zoomQuantity = 0; // Reset counter
-      } else {
-        if (VERBOSE) {
-          console.log(
-            `[ViewportCollector] Zoom change detected but debounced (${timeSinceLastEmit}ms < ${this.zoomDebounce}ms, total: ${this.zoomQuantity})`,
-          );
-        }
-      }
-    } else {
-      // No zoom change detected, reset quantity counter
-      if (this.zoomQuantity > 0 && VERBOSE) {
+      if (VERBOSE) {
         console.log(
-          `[ViewportCollector] Zoom check fired but no change detected (delta: ${zoomDelta.toFixed(
-            6,
-          )}), resetting quantity counter`,
+          `[ViewportCollector] Emitting settled zoom event (${data.quantity} resize events):`,
+          {
+            ...data,
+            zoomDelta,
+          },
         );
       }
-      this.zoomQuantity = 0;
-    }
 
-    // Always update last zoom level to track changes
-    this.lastZoomLevel = currentZoom;
+      this.emit(data);
+      this.lastZoomLevel = currentZoom;
+    } else {
+      if (VERBOSE) {
+        console.log(
+          `[ViewportCollector] Zoom check fired but no meaningful change detected (delta: ${zoomDelta.toFixed(
+            6,
+          )})`,
+        );
+      }
+    }
   }
 
   /**

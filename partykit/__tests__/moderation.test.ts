@@ -178,6 +178,16 @@ describe("removeRecordsByTargets", () => {
     expect(words).toEqual(["remove-me"]);
   });
 
+  it("does not delete a neighboring record when the same target is repeated", () => {
+    const play = makePlay();
+    const key = "can-play.newWords#1";
+    const target = { key, contentHash: hashFor(play, key) };
+    const result = removeRecordsByTargets(play, [target, target]);
+    expect(result.removed).toBe(1);
+    const words = (result.play["can-play"] as any).newWords.map((r: any) => r.word);
+    expect(words).toEqual(["keep", "also-keep"]);
+  });
+
   it("skips a target whose hash no longer matches", () => {
     const play = makePlay();
     const key = "can-play.newWords#1";

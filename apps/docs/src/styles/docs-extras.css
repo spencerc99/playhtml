@@ -318,8 +318,8 @@ header.header {
 .ph-wordmark__letter:hover {
   transform: translateY(-1px);
 }
-/* playhtml adds the `clicked` class when a can-toggle element is toggled on */
-.ph-wordmark__letter.clicked {
+/* playhtml adds the `toggled` class when a can-toggle element is toggled on */
+.ph-wordmark__letter.toggled {
   color: var(--ph-mustard);
   text-shadow: 0 0 0.6rem rgba(232, 166, 58, 0.55),
     0 0 1.6rem rgba(232, 166, 58, 0.25);
@@ -1726,6 +1726,81 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.6;
 }
 
+.ph-canmirror-vignette {
+  width: min(100%, 34rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+.ph-canmirror-vignette__textarea {
+  width: 100%;
+  min-height: 8rem;
+  resize: vertical;
+  padding: 0.85rem 0.95rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  box-shadow: var(--ph-shadow-small);
+  font-family: var(--ph-font-body);
+  font-size: 1.75rem;
+  line-height: 1.35;
+}
+.ph-canmirror-vignette__textarea:focus {
+  outline: 3px solid color-mix(in srgb, var(--ph-sage-deep) 45%, transparent);
+  outline-offset: 2px;
+}
+.ph-canmirror-vignette__hint {
+  margin: 0;
+  font-family: var(--ph-font-mono);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--ph-ink-3);
+  text-align: center;
+}
+.ph-canmirror-vignette__list {
+  display: flex;
+  min-height: 8.5rem;
+  max-height: 14rem;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.75rem 0.9rem 0.75rem 1.8rem;
+  overflow: auto;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  box-shadow: var(--ph-shadow-small);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-mono);
+  font-size: 0.86rem;
+}
+.ph-canmirror-vignette__list li::marker {
+  color: var(--ph-coral);
+}
+.ph-canmirror-vignette__button {
+  align-self: flex-start;
+  min-height: 2.4rem;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  background: var(--ph-sun);
+  color: var(--ph-ink);
+  box-shadow: var(--ph-shadow-small);
+  font-family: var(--ph-font-mono);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ph-canmirror-vignette__button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-canmirror-vignette__button:active {
+  transform: translate(0, 0);
+  box-shadow: var(--ph-shadow-small);
+}
+
 /* Media placeholder: renders where a real photo will eventually sit. The
    author grep's for "TODO-IMAGE" to find every instance. Keep this VERY
    obviously a placeholder — we don't want it to read as finished. */
@@ -3033,10 +3108,10 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   gap: 0.6rem;
   margin: 1.6rem 0;
   padding: 0.85rem 1rem 1rem;
-  border: 1px solid var(--ph-hairline);
-  border-left: 3px solid var(--ph-ink, #1a1a1a);
+  border: 1px solid var(--ph-sage-wash);
+  border-left: 3px solid var(--ph-sage-deep);
   border-radius: 4px;
-  background: var(--ph-paper, #fff);
+  background: var(--ph-sage-wash);
   scroll-margin-top: 5rem;
 }
 
@@ -3055,7 +3130,33 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ph-ink-3);
+  color: var(--ph-sage-deep);
+}
+
+/* Shared click-counter demo button (DocsCounter). */
+.ph-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-family: var(--ph-font-mono);
+  font-size: 1.1rem;
+  color: var(--ph-ink);
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-sage-deep);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.12s ease;
+}
+.ph-counter:hover {
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-counter:active {
+  transform: translateY(1px);
+}
+.ph-counter__count {
+  font-weight: 600;
+  color: var(--ph-sage-deep);
 }
 
 .ph-canplay-inline__caption {

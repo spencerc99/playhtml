@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { playhtml } from '@playhtml/react';
-import type { CursorPresenceView } from '@playhtml/common';
+import type { CursorPresenceView } from 'playhtml';
 
 // Cross-page reader presence for the Starlight sidebar.
 //

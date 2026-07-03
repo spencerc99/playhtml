@@ -17,7 +17,7 @@
     <title>playhtml starter</title>
 
     <!-- The website stylesheet -->
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <!--
@@ -187,14 +187,14 @@
         <div>
           here's a reaction button! everyone can see how many people have reacted
         </div>
-        <button id="reactionBtn" can-play class="reaction" style="font-size: 24px; padding: 10px 20px; margin: 10px 0;">
-          💖 <span id="reactionCount">0</span>
-        </button>
+        <!-- Empty mount point — the reaction button below is rendered by its
+             `view` (registered in the script). -->
+        <div id="reactionBtn" can-play></div>
     </div>
 
         <!-- Option 1 (simplest, no customization) -->
     <script type="module">
-      import { playhtml } from "https://unpkg.com/playhtml@2.9.0";
+      import { playhtml, html } from "https://unpkg.com/playhtml@latest";
 
       // Initialize with cursor tracking
       playhtml.init({
@@ -204,10 +204,40 @@
         }
       });
 
+      // Reaction button — a custom collaborative element built with the `view`
+      // API: register a render function and playhtml re-renders it whenever the
+      // shared `count` changes (locally or from another tab). Writes are driven
+      // from the @click handler in the template. `register` works before or
+      // after init(). (This is the new experimental vanilla view API.)
+      playhtml.register("reactionBtn", {
+        defaultData: { count: 0 },
+        view: ({ data, setData }) => {
+          const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
+          const react = () => {
+            if (localStorage.getItem("reacted-reaction")) {
+              setData((d) => { d.count -= 1; });
+              localStorage.removeItem("reacted-reaction");
+            } else {
+              setData((d) => { d.count += 1; });
+              localStorage.setItem("reacted-reaction", "true");
+            }
+          };
+          return html`
+            <button
+              class="reaction ${hasReacted ? "reacted" : ""}"
+              style="font-size: 24px; padding: 10px 20px; margin: 10px 0;"
+              @click=${react}
+            >
+              💖 ${data.count}
+            </button>
+          `;
+        },
+      });
+
       // Make playhtml available globally for script.js
       window.playhtml = playhtml;
     </script>
     <!-- The website JavaScript file -->
-    <script src="/script.js" defer></script>
+    <script src="script.js" defer></script>
   </body>
 </html>

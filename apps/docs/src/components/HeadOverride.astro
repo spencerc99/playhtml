@@ -18,29 +18,25 @@ const { head } = Astro.locals.starlightRoute;
   // it initialises before playhtml.init awaits window.load.
   import '../scripts/enhance-code-blocks';
 
-  // Defer playhtml.init() until after the document is idle so every React
-  // island (`client:load`) has a chance to hydrate and stamp its `can-*`
-  // attributes into the DOM. If we init eagerly at module-execution time,
-  // the WebSocket handshake goes out with `sharedElements=[]` and the server
-  // misses the initial snapshot for React-driven elements. Vanilla elements
-  // (the wordmark `can-toggle` letters) are already in the DOM at this point,
-  // so they still get picked up correctly.
-  function boot() {
-    void playhtml.init({
-      cursors: {
-        enabled: true,
-        // Domain-wide cursor room so the header presence HUD counts ALL readers
-        // across the docs site, and cursors follow you between /docs/* pages
-        // without losing awareness. The per-page shared-data room still keys on
-        // the pathname via the main room — only cursor awareness is widened.
-        room: "domain",
-      },
-    });
-  }
-  if (document.readyState === 'complete') {
-    // Next microtask — lets React's client:load hydrators flush first.
-    queueMicrotask(boot);
-  } else {
-    window.addEventListener('load', () => queueMicrotask(boot), { once: true });
-  }
+  // Declare playhtml's config synchronously, here, before anything connects.
+  //
+  // The React islands on these pages render @playhtml/react `standalone`
+  // components, which call `playhtml.init()` (with NO options) on mount to
+  // ensure playhtml is running. There's no single React root we can put a
+  // <PlayProvider> on, so this <head> script is the one place that owns the
+  // config. configure() is connection-free and config-only, so declaring it
+  // here means the islands' "ensure running" calls pick up OUR config no matter
+  // which runs first — no ordering race.
+  playhtml.configure({
+    cursors: {
+      enabled: true,
+      // Domain-wide cursor room so the header presence HUD counts ALL readers
+      // across the docs site, and cursors follow you between /docs/* pages
+      // without losing awareness. The per-page shared-data room still keys on
+      // the pathname via the main room — only cursor awareness is widened.
+      room: "domain",
+    },
+  });
+  // Connect now; islands that mount later just call init() (no-op once running).
+  void playhtml.init();
 </script>

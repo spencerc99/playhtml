@@ -26,6 +26,52 @@ $accent-rust: #c4724e;
   z-index: 1;
 }
 
+.siteNav {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  color: $text-muted;
+  backdrop-filter: blur(4px);
+
+  a {
+    color: inherit;
+    position: relative;
+    text-decoration: none;
+    transition: color 0.15s;
+
+    &:hover {
+      color: $accent-teal;
+    }
+
+    &[aria-current="page"] {
+      color: $text;
+
+      &::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -4px;
+        height: 1px;
+        background: rgba($accent-teal, 0.7);
+      }
+    }
+  }
+
+  @media (max-width: 520px) {
+    top: 14px;
+    right: 14px;
+    gap: 12px;
+    font-size: 0.75rem;
+  }
+}
+
 .hero {
   position: relative;
   min-height: 100vh;
@@ -124,6 +170,75 @@ $accent-rust: #c4724e;
   @media (max-width: 480px) {
     bottom: 14%;
     left: 4%;
+  }
+}
+
+.scrollCue {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  width: 72px;
+  height: 48px;
+  color: #3a7d6f;
+  transform: translateX(-50%);
+  opacity: 0.82;
+  pointer-events: none;
+
+  @media (max-width: 480px) {
+    bottom: 18px;
+    width: 64px;
+    height: 42px;
+  }
+}
+
+.scrollCueMark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.scrollCueTrail,
+.scrollCueArrow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.scrollCueTrail {
+  stroke: rgba($accent-teal, 0.42);
+  stroke-width: 2;
+  stroke-dasharray: 2 6;
+  animation: scroll-cue-trail 1.8s linear infinite;
+}
+
+.scrollCueArrow {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  animation: scroll-cue-arrow 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrollCueTrail,
+  .scrollCueArrow {
+    animation: none;
+  }
+}
+
+@keyframes scroll-cue-trail {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@keyframes scroll-cue-arrow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(6px);
   }
 }
 

@@ -10,6 +10,13 @@ import React, {
 } from "react";
 import { ScrollAnimation, ActiveViewport, ViewportPhase } from "../types";
 import { RISO_COLORS, extractDomain } from "../utils/eventUtils";
+import {
+  isMonochromeStyle,
+  colorWash,
+  colorShade,
+  colorizeLuminosity,
+} from "../utils/colorStyle";
+import { getViewportTitleText } from "../utils/titleText";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -39,6 +46,7 @@ interface AnimatedScrollViewportsProps {
     windowScale?: number;
     windowBleed?: number;
     showTitleBar?: boolean;
+    trailVisualStyle?: string;
   };
   // Live URL → metadata lookup. Read at render time so title bars update as
   // navigation events stream in, even for viewports that were added before
@@ -284,9 +292,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
 
         // Filter by enabled event types
         const s = settingsRef.current;
-        const hasScroll = s.showScrollEvents !== false && animation.scrollEvents.length > 0;
-        const hasResize = s.showResizeEvents !== false && (animation.resizeEvents?.length ?? 0) > 0;
-        const hasZoom = s.showZoomEvents !== false && (animation.zoomEvents?.length ?? 0) > 0;
+        const hasScroll =
+          s.showScrollEvents !== false && animation.scrollEvents.length > 0;
+        const hasResize =
+          s.showResizeEvents !== false &&
+          (animation.resizeEvents?.length ?? 0) > 0;
+        const hasZoom =
+          s.showZoomEvents !== false && (animation.zoomEvents?.length ?? 0) > 0;
         if (!hasScroll && !hasResize && !hasZoom) return;
 
         // Calculate size for this viewport
@@ -319,24 +331,28 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           // whose center is farthest from any currently-active viewport.
           // Cheap (4 samples × N active), keeps placements from clumping.
           const activeCenters = visibleViewports.map((v) => ({
-              cx: v.rect.x + v.rect.width / 2,
-              cy: v.rect.y + v.rect.height / 2,
-            }));
+            cx: v.rect.x + v.rect.width / 2,
+            cy: v.rect.y + v.rect.height / 2,
+          }));
           const NUM_CANDIDATES = 4;
           let best: { x: number; y: number } | null = null;
           let bestScore = -Infinity;
           for (let c = 0; c < NUM_CANDIDATES; c++) {
-            const cx =
-              seededRandom(seed, c * 2) * canvasSize.width;
-            const cy =
-              seededRandom(seed, c * 2 + 1) * canvasSize.height;
+            const cx = seededRandom(seed, c * 2) * canvasSize.width;
+            const cy = seededRandom(seed, c * 2 + 1) * canvasSize.height;
             const x = Math.max(
               -overhangX,
-              Math.min(canvasSize.width - size.width + overhangX, cx - size.width / 2),
+              Math.min(
+                canvasSize.width - size.width + overhangX,
+                cx - size.width / 2,
+              ),
             );
             const y = Math.max(
               -overhangY,
-              Math.min(canvasSize.height - size.height + overhangY, cy - size.height / 2),
+              Math.min(
+                canvasSize.height - size.height + overhangY,
+                cy - size.height / 2,
+              ),
             );
             let nearest = Infinity;
             for (const a of activeCenters) {
@@ -497,18 +513,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
       >
         <defs>
-          <filter id="scrollNoise">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.9"
-              numOctaves="3"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix
-              type="matrix"
-              values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 2 -1"
-            />
-          </filter>
           <filter id="scrollGrain">
             <feTurbulence
               type="turbulence"
@@ -521,6 +525,37 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
               <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
             </feComponentTransfer>
           </filter>
+
+          {/* Shared, STATIC paper-grain tile. The turbulence is computed ONCE
+              into a small 220px tile and then GPU-tiled across every window —
+              replacing the old per-window, per-frame `scrollNoise` feTurbulence
+              over the full (huge) background rect, which was ~half the 4K paint
+              cost for a barely-visible effect. Multiply-blended where used so it
+              modulates the colored fill's brightness (the paper tooth). */}
+          <filter id="grainTileFilter" x="0" y="0" width="100%" height="100%">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.9"
+              numOctaves="3"
+              stitchTiles="stitch"
+              result="n"
+            />
+            <feColorMatrix in="n" type="saturate" values="0" result="g" />
+            <feComponentTransfer in="g">
+              <feFuncR type="linear" slope="0.3" intercept="0.7" />
+              <feFuncG type="linear" slope="0.3" intercept="0.7" />
+              <feFuncB type="linear" slope="0.3" intercept="0.7" />
+              <feFuncA type="linear" slope="0" intercept="1" />
+            </feComponentTransfer>
+          </filter>
+          <pattern
+            id="paperGrain"
+            patternUnits="userSpaceOnUse"
+            width="220"
+            height="220"
+          >
+            <rect width="220" height="220" filter="url(#grainTileFilter)" />
+          </pattern>
         </defs>
 
         {activeViewports.map((viewport) => {
@@ -539,29 +574,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       </svg>
     );
   });
-
-// Best-effort title derivation purely from the URL — used as a fallback when
-// no captured page title is available. Currently handles Wikipedia articles
-// since the article slug IS the title; everything else returns null so the
-// caller can fall through to the domain.
-function deriveTitleFromUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.endsWith("wikipedia.org")) {
-      const m = parsed.pathname.match(/^\/wiki\/(.+)$/);
-      if (m) {
-        const slug = decodeURIComponent(m[1]).replace(/_/g, " ");
-        // Skip namespace pages (Special:, Talk:, User:, Category:, etc.) and
-        // the Main Page — neither is useful as a title-bar label.
-        if (/^[A-Za-z_]+:/.test(slug) || slug === "Main Page") return null;
-        return slug;
-      }
-    }
-  } catch {
-    // ignore malformed URLs
-  }
-  return null;
-}
 
 type ScrollKeyframe = ScrollAnimation["scrollEvents"][number];
 type ResizeKeyframe = NonNullable<ScrollAnimation["resizeEvents"]>[number];
@@ -618,8 +630,10 @@ export function buildViewportAnimationTimeline(
   };
 
   for (const event of animation.scrollEvents) includeTimestamp(event.timestamp);
-  for (const event of animation.resizeEvents ?? []) includeTimestamp(event.timestamp);
-  for (const event of animation.zoomEvents ?? []) includeTimestamp(event.timestamp);
+  for (const event of animation.resizeEvents ?? [])
+    includeTimestamp(event.timestamp);
+  for (const event of animation.zoomEvents ?? [])
+    includeTimestamp(event.timestamp);
 
   let minScrollY = 0;
   let maxScrollY = 1;
@@ -754,6 +768,7 @@ const DynamicViewportRect = memo(
       showResizeEvents?: boolean;
       showZoomEvents?: boolean;
       showTitleBar?: boolean;
+      trailVisualStyle?: string;
     };
     livePageTitle?: string;
     liveFaviconUrl?: string;
@@ -799,23 +814,14 @@ const DynamicViewportRect = memo(
       timeline.minTime + animProgress * timeline.timeRange;
     const scrollRange = timeline.scrollRange;
 
-    // Calculate scroll position and check if actively scrolling
+    // Calculate scroll position
     let scrollY = 0;
-    let isActivelyScrolling = false;
     if (animation.scrollEvents.length > 0) {
       const scrollResult = getScrollPositionAtTime(
         animation.scrollEvents,
         currentAnimTime,
       );
       scrollY = scrollResult.scrollY;
-
-      // Check if scroll position is changing (compare to slightly earlier time)
-      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
-      const prevScroll = getScrollPositionAtTime(
-        animation.scrollEvents,
-        prevTime,
-      ).scrollY;
-      isActivelyScrolling = Math.abs(scrollY - prevScroll) > 0.001;
     }
 
     // Calculate resize and check if actively resizing
@@ -870,7 +876,10 @@ const DynamicViewportRect = memo(
     // Page height based on scroll range (bigger range = taller page)
     // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
     const pageMultiplier = 2 + scrollRange * 4;
-    const bgHeight = Math.max(0, Math.min(10000, visualHeight * pageMultiplier));
+    const bgHeight = Math.max(
+      0,
+      Math.min(10000, visualHeight * pageMultiplier),
+    );
     const scrollableHeight = bgHeight - visualHeight;
     const bgOffsetY = scrollY * scrollableHeight;
 
@@ -884,49 +893,78 @@ const DynamicViewportRect = memo(
         : undefined;
 
     // Seeded random for visual variety
-    const localSeededRandom = useCallback((offset: number = 0) => {
-      const x = Math.sin(backgroundSeed + offset * 12.9898) * 43758.5453;
-      return x - Math.floor(x);
-    }, [backgroundSeed]);
+    const localSeededRandom = useCallback(
+      (offset: number = 0) => {
+        const x = Math.sin(backgroundSeed + offset * 12.9898) * 43758.5453;
+        return x - Math.floor(x);
+      },
+      [backgroundSeed],
+    );
 
     // Determine edge tint color (participant color or random RISO color)
     const edgeTintColor = settings.randomizeColors
       ? RISO_COLORS[Math.floor(localSeededRandom(20) * RISO_COLORS.length)]
       : animation.color;
 
+    // Color mode washes the whole window in the participant hue so the inner
+    // (grayscale) content reads as a study in that color; monochrome keeps the
+    // original near-white paper look.
+    const mono = isMonochromeStyle(settings.trailVisualStyle);
+
+    // Fill helper for the page-content elements (bands, blocks, depth layers):
+    // grayscale in monochrome mode, re-hued into the window color in color mode
+    // (preserving the original luminosity so contrast/structure is unchanged).
+    // `satScale` lets light elements stay pale while darker ones saturate.
+    const contentFill = useCallback(
+      (lum: number, satScale = 0.7) =>
+        mono
+          ? `rgb(${Math.round(lum * 255)}, ${Math.round(lum * 255)}, ${Math.round(lum * 255)})`
+          : colorizeLuminosity(edgeTintColor, lum, satScale),
+      [mono, edgeTintColor],
+    );
+
     const baseLuminosity = 0.85 + localSeededRandom(1) * 0.15;
     const colorValue = Math.round(baseLuminosity * 255);
-    const backgroundColor = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
+    // Color mode: a BOLD, clearly-colored window background. Mid lightness +
+    // full hue saturation so that after the paper-tooth grain and any blending
+    // it still reads as a distinct color (not a washed-out near-gray). Per-
+    // window lightness jitter keeps panels from looking identical.
+    // Targets the rich, deep look the cloud-mottle gave (its multiply layers
+    // darkened/saturated the fill); baked into the flat background so it reads
+    // the same without the clouds. Lower lightness + higher saturation.
+    const backgroundColor = mono
+      ? `rgb(${colorValue}, ${colorValue}, ${colorValue})`
+      : edgeTintColor;
     const opacityVariation = 0.92 + localSeededRandom(2) * 0.08;
+    // In color mode the fill is rendered near-opaque so the warm paper doesn't
+    // bleach the hue; monochrome keeps the original translucent paper look.
+    const bgRenderOpacity = mono
+      ? settings.backgroundOpacity * opacityVariation
+      : Math.min(1, settings.backgroundOpacity + 0.25) * opacityVariation;
 
-    // Border style based on active animation type
-    let borderStrokeWidth = 2;
-    let borderDashArray = "none";
-    let borderColor = `rgb(180, 180, 180)`; // Default gray
+    // Resize gets a dotted border without changing viewport brightness.
+    // Neutral soft gray in both modes — a colored outline is too much once the
+    // whole window is colored.
+    const borderStrokeWidth = 2;
+    const borderDashArray = isActivelyResizing ? "2 2" : "none";
+    const borderColor = `rgb(180, 180, 180)`;
 
-    if (isActivelyZooming) {
-      borderStrokeWidth = 4;
-      borderDashArray = "6 3"; // Dashed for zoom
-      borderColor = edgeTintColor;
-    } else if (isActivelyResizing) {
-      borderStrokeWidth = 4;
-      borderDashArray = "2 2"; // Dotted for resize
-      borderColor = edgeTintColor;
-    } else if (isActivelyScrolling) {
-      borderStrokeWidth = 3;
-      borderDashArray = "none"; // Solid for scroll
-      borderColor = edgeTintColor;
-    }
-
-    // Content pattern variation based on seed
-    const bandSpacing = Math.max(1, 60 + localSeededRandom(15) * 80); // 60-140px spacing
-    const hasContentBlocks = localSeededRandom(16) > 0.4; // 60% chance of content blocks
+    // Content pattern variation based on seed. Denser in color mode so the
+    // content blocks scatter more structure across the flat color fill (added
+    // variation/texture), tuned via a single multiplier.
+    const contentDensity = mono ? 1 : 1.8;
+    const bandSpacing = Math.max(
+      1,
+      (60 + localSeededRandom(15) * 80) / contentDensity,
+    ); // tighter bands in color mode
+    // Always show content blocks in color mode (they're what break up the
+    // color); keep the 60% chance in monochrome.
+    const hasContentBlocks = mono ? localSeededRandom(16) > 0.4 : true;
 
     const bandRects = useMemo(
       () =>
         Array.from({ length: Math.ceil(bgHeight / bandSpacing) }, (_, i) => {
           const bandLuminosity = 0.4 + localSeededRandom(8 + i) * 0.2;
-          const bandColorValue = Math.round(bandLuminosity * 255);
           const bandWidth =
             visualWidth * (0.3 + localSeededRandom(30 + i) * 0.6); // 30-90% width
           const bandX =
@@ -938,248 +976,285 @@ const DynamicViewportRect = memo(
               y={visualY + i * bandSpacing}
               width={bandWidth}
               height={2}
-              fill={`rgb(${bandColorValue}, ${bandColorValue}, ${bandColorValue})`}
+              fill={contentFill(bandLuminosity)}
               opacity={0.25 + localSeededRandom(9 + i) * 0.15}
             />
           );
         }),
-      [bgHeight, bandSpacing, localSeededRandom, visualWidth, visualX, visualY],
+      [
+        bgHeight,
+        bandSpacing,
+        localSeededRandom,
+        visualWidth,
+        visualX,
+        visualY,
+        contentFill,
+      ],
     );
+
+    // Circular page elements (avatars / buttons / media) — scattered
+    // individually throughout the window at varied positions, NOT lined up in a
+    // row, so they read as round elements interspersed through a page. Only in
+    // color mode; sparse (each slot rolls a chance to actually place one).
+    const circleElements = useMemo(() => {
+      if (mono) return null;
+      const slotHeight = 130;
+      return Array.from(
+        { length: Math.ceil(bgHeight / slotHeight) },
+        (_, i) => {
+          if (localSeededRandom(420 + i) < 0.55) return null; // ~45% of slots
+          const radius = 7 + localSeededRandom(421 + i) * 16; // 7–23px
+          const cx =
+            visualX +
+            radius +
+            localSeededRandom(422 + i) * (visualWidth - radius * 2);
+          const cy =
+            visualY +
+            i * slotHeight +
+            radius +
+            localSeededRandom(423 + i) * (slotHeight - radius * 2);
+          const lum = 0.45 + localSeededRandom(424 + i) * 0.3;
+          return (
+            <circle
+              key={`circle-${i}`}
+              cx={cx}
+              cy={cy}
+              r={radius}
+              fill={contentFill(lum)}
+              opacity={0.28 + localSeededRandom(425 + i) * 0.18}
+            />
+          );
+        },
+      );
+    }, [
+      bgHeight,
+      localSeededRandom,
+      visualWidth,
+      visualX,
+      visualY,
+      contentFill,
+      mono,
+    ]);
 
     const contentBlocks = useMemo(() => {
       if (!hasContentBlocks) return null;
 
-      return Array.from({ length: Math.ceil(bgHeight / 180) }, (_, i) => {
-        const blockY = visualY + i * 180 + 30;
-        const sectionSeed = localSeededRandom(50 + i);
+      // Tighter vertical spacing in color mode = more blocks scattered through
+      // the window, adding variation over the flat color.
+      const blockSpacing = mono ? 180 : 110;
+      return Array.from(
+        { length: Math.ceil(bgHeight / blockSpacing) },
+        (_, i) => {
+          const blockY = visualY + i * blockSpacing + 30;
+          const sectionSeed = localSeededRandom(50 + i);
 
-        // Determine section type: 70% light content, 20% medium, 10% dark accent
-        const isDarkAccent = sectionSeed < 0.1;
-        const isMediumBlock = sectionSeed >= 0.1 && sectionSeed < 0.3;
+          // Determine section type: 70% light content, 20% medium, 10% dark accent
+          const isDarkAccent = sectionSeed < 0.1;
+          const isMediumBlock = sectionSeed >= 0.1 && sectionSeed < 0.3;
 
-        // Light content colors (most common)
-        const lightLuminosity = 0.55 + localSeededRandom(51 + i) * 0.25; // 0.55-0.8
-        const lightColorValue = Math.round(lightLuminosity * 255);
-        const lightFill = `rgb(${lightColorValue}, ${lightColorValue}, ${lightColorValue})`;
+          // Light content colors (most common)
+          const lightLuminosity = 0.55 + localSeededRandom(51 + i) * 0.25; // 0.55-0.8
+          const lightFill = contentFill(lightLuminosity);
 
-        // Dark accent colors (rare, dramatic)
-        const darkLuminosity = 0.08 + localSeededRandom(52 + i) * 0.2; // 0.08-0.28
-        const darkColorValue = Math.round(darkLuminosity * 255);
-        const darkFill = `rgb(${darkColorValue}, ${darkColorValue}, ${darkColorValue})`;
+          // Dark accent colors (rare, dramatic) — saturate more so they read.
+          const darkLuminosity = 0.08 + localSeededRandom(52 + i) * 0.2; // 0.08-0.28
+          const darkFill = contentFill(darkLuminosity, 0.9);
 
-        if (isDarkAccent) {
-          // Atmospheric dark accent with gradient layers (cohesive with wash effects)
-          const isLeft = localSeededRandom(63 + i) > 0.5;
-          const blotchHeight = 60 + localSeededRandom(64 + i) * 80;
-          const blotchWidth =
-            visualWidth * (0.4 + localSeededRandom(65 + i) * 0.3);
-          const xPos = isLeft
-            ? visualX + visualWidth * 0.02
-            : visualX + visualWidth - blotchWidth - visualWidth * 0.02;
+          if (isDarkAccent) {
+            // Atmospheric dark accent with gradient layers (cohesive with wash effects)
+            const isLeft = localSeededRandom(63 + i) > 0.5;
+            const blotchHeight = 60 + localSeededRandom(64 + i) * 80;
+            const blotchWidth =
+              visualWidth * (0.4 + localSeededRandom(65 + i) * 0.3);
+            const xPos = isLeft
+              ? visualX + visualWidth * 0.02
+              : visualX + visualWidth - blotchWidth - visualWidth * 0.02;
 
-          // Choose gradient direction based on position
-          const gradientId = isLeft
-            ? `wash-horizontal-${viewport.id}`
-            : `wash-reverse-${viewport.id}`;
-          const altGradientId =
-            localSeededRandom(66 + i) > 0.5
-              ? `wash-diagonal-${viewport.id}`
-              : `wash-vertical-${viewport.id}`;
+            // Choose gradient direction based on position
+            const gradientId = isLeft
+              ? `wash-horizontal-${viewport.id}`
+              : `wash-reverse-${viewport.id}`;
+            const altGradientId =
+              localSeededRandom(66 + i) > 0.5
+                ? `wash-diagonal-${viewport.id}`
+                : `wash-vertical-${viewport.id}`;
 
-          return (
-            <g key={`block-${i}`}>
-              {/* Outermost layer - soft, large, lighter */}
-              <g filter={`url(#ink-wash-${viewport.id})`}>
+            return (
+              <g key={`block-${i}`}>
+                {/* Outermost layer - soft, large, lighter */}
+                <g filter={`url(#ink-wash-${viewport.id})`}>
+                  <rect
+                    x={xPos - blotchWidth * 0.1}
+                    y={blockY - blotchHeight * 0.1}
+                    width={blotchWidth * 1.2}
+                    height={blotchHeight * 1.2}
+                    fill={`url(#${gradientId})`}
+                    opacity={0.4}
+                  />
+                </g>
+
+                {/* Middle layer - medium size, uses alt gradient */}
+                <g filter={`url(#ink-wash-${viewport.id})`}>
+                  <rect
+                    x={xPos + blotchWidth * 0.05}
+                    y={blockY + blotchHeight * 0.08}
+                    width={blotchWidth * 0.85}
+                    height={blotchHeight * 0.8}
+                    fill={`url(#${altGradientId})`}
+                    opacity={0.55}
+                  />
+                </g>
+
+                {/* Core layer - smallest, darkest solid for depth */}
+                <g filter={`url(#ink-wash-${viewport.id})`}>
+                  <rect
+                    x={xPos + blotchWidth * 0.15}
+                    y={blockY + blotchHeight * 0.2}
+                    width={blotchWidth * 0.55}
+                    height={blotchHeight * 0.5}
+                    fill={darkFill}
+                    opacity={0.7}
+                  />
+                </g>
+
+                {/* Accent gradient overlay - adds color variation */}
+                <rect
+                  x={xPos}
+                  y={blockY}
+                  width={blotchWidth}
+                  height={blotchHeight}
+                  fill={`url(#${isLeft ? "wash-diagonal-" : "wash-reverse-"}${viewport.id})`}
+                  opacity={0.25}
+                />
+
+                {/* Speckle texture across all layers */}
                 <rect
                   x={xPos - blotchWidth * 0.1}
                   y={blockY - blotchHeight * 0.1}
                   width={blotchWidth * 1.2}
                   height={blotchHeight * 1.2}
-                  fill={`url(#${gradientId})`}
-                  opacity={0.4}
+                  fill="white"
+                  opacity={0.12}
+                  filter={`url(#speckle-${viewport.id})`}
                 />
               </g>
+            );
+          } else if (isMediumBlock) {
+            // Medium-toned block - single block, simple
+            const mediumLuminosity = 0.4 + localSeededRandom(55 + i) * 0.2;
+            const mediumFill = contentFill(mediumLuminosity);
+            const blockHeight = 25 + localSeededRandom(61 + i) * 35;
+            const isLeft = localSeededRandom(62 + i) > 0.5;
 
-              {/* Middle layer - medium size, uses alt gradient */}
-              <g filter={`url(#ink-wash-${viewport.id})`}>
+            return (
+              <g key={`block-${i}`}>
                 <rect
-                  x={xPos + blotchWidth * 0.05}
-                  y={blockY + blotchHeight * 0.08}
-                  width={blotchWidth * 0.85}
-                  height={blotchHeight * 0.8}
-                  fill={`url(#${altGradientId})`}
-                  opacity={0.55}
-                />
-              </g>
-
-              {/* Core layer - smallest, darkest solid for depth */}
-              <g filter={`url(#ink-wash-${viewport.id})`}>
-                <rect
-                  x={xPos + blotchWidth * 0.15}
-                  y={blockY + blotchHeight * 0.2}
-                  width={blotchWidth * 0.55}
-                  height={blotchHeight * 0.5}
-                  fill={darkFill}
-                  opacity={0.7}
-                />
-              </g>
-
-              {/* Accent gradient overlay - adds color variation */}
-              <rect
-                x={xPos}
-                y={blockY}
-                width={blotchWidth}
-                height={blotchHeight}
-                fill={`url(#${isLeft ? "wash-diagonal-" : "wash-reverse-"}${viewport.id})`}
-                opacity={0.25}
-              />
-
-              {/* Speckle texture across all layers */}
-              <rect
-                x={xPos - blotchWidth * 0.1}
-                y={blockY - blotchHeight * 0.1}
-                width={blotchWidth * 1.2}
-                height={blotchHeight * 1.2}
-                fill="white"
-                opacity={0.12}
-                filter={`url(#speckle-${viewport.id})`}
-              />
-
-              {/* Scattered light dots for texture variation */}
-              {[0, 1, 2].map((j) => {
-                const dotX =
-                  xPos + localSeededRandom(100 + i + j) * blotchWidth * 0.7;
-                const dotY =
-                  blockY +
-                  localSeededRandom(110 + i + j) * blotchHeight * 0.7;
-                const dotSize = 3 + localSeededRandom(120 + i + j) * 5;
-                return (
-                  <circle
-                    key={`dot-${j}`}
-                    cx={dotX + blotchWidth * 0.15}
-                    cy={dotY + blotchHeight * 0.15}
-                    r={dotSize}
-                    fill="white"
-                    opacity={0.1 + localSeededRandom(130 + i + j) * 0.15}
-                  />
-                );
-              })}
-            </g>
-          );
-        } else if (isMediumBlock) {
-          // Medium-toned block - single block, simple
-          const mediumLuminosity = 0.4 + localSeededRandom(55 + i) * 0.2;
-          const mediumColorValue = Math.round(mediumLuminosity * 255);
-          const mediumFill = `rgb(${mediumColorValue}, ${mediumColorValue}, ${mediumColorValue})`;
-          const blockHeight = 25 + localSeededRandom(61 + i) * 35;
-          const isLeft = localSeededRandom(62 + i) > 0.5;
-
-          return (
-            <g key={`block-${i}`}>
-              <rect
-                x={
-                  isLeft
-                    ? visualX + visualWidth * 0.08
-                    : visualX + visualWidth * 0.45
-                }
-                y={blockY}
-                width={visualWidth * 0.47}
-                height={blockHeight}
-                fill={mediumFill}
-                opacity={0.35}
-                rx={2}
-              />
-            </g>
-          );
-        }
-
-        // Light content blocks (most common) - varied layouts, sparse
-        const layoutVariant = Math.floor(localSeededRandom(56 + i) * 5);
-
-        if (layoutVariant === 0) {
-          // Empty/whitespace - adds breathing room
-          return <g key={`block-${i}`} />;
-        } else if (layoutVariant === 1) {
-          // Single wide block
-          return (
-            <g key={`block-${i}`}>
-              <rect
-                x={visualX + visualWidth * 0.1}
-                y={blockY}
-                width={visualWidth * 0.7}
-                height={20 + localSeededRandom(60 + i) * 30}
-                fill={lightFill}
-                opacity={0.28}
-                rx={2}
-              />
-            </g>
-          );
-        } else if (layoutVariant === 2) {
-          // Two scattered rectangles (reduced from 3)
-          return (
-            <g key={`block-${i}`}>
-              {[0, 1].map((j) => (
-                <rect
-                  key={`sub-${j}`}
                   x={
-                    visualX +
-                    visualWidth * (0.08 + j * 0.45) +
-                    localSeededRandom(65 + i + j) * 15
+                    isLeft
+                      ? visualX + visualWidth * 0.08
+                      : visualX + visualWidth * 0.45
                   }
-                  y={blockY + localSeededRandom(66 + i + j) * 10}
-                  width={
-                    visualWidth *
-                    (0.2 + localSeededRandom(67 + i + j) * 0.15)
-                  }
-                  height={15 + localSeededRandom(68 + i + j) * 20}
-                  fill={lightFill}
-                  opacity={0.25 + localSeededRandom(69 + i + j) * 0.1}
+                  y={blockY}
+                  width={visualWidth * 0.47}
+                  height={blockHeight}
+                  fill={mediumFill}
+                  opacity={0.35}
                   rx={2}
                 />
-              ))}
-            </g>
-          );
-        } else if (layoutVariant === 3) {
-          // Two text-like lines (reduced from 4)
+              </g>
+            );
+          }
+
+          // Light content blocks (most common) - varied layouts. In color mode
+          // we roll across only the content variants (1–4), skipping the empty
+          // whitespace one so the window stays busy with structure.
+          const layoutVariant = mono
+            ? Math.floor(localSeededRandom(56 + i) * 5)
+            : 1 + Math.floor(localSeededRandom(56 + i) * 4);
+
+          if (layoutVariant === 0) {
+            // Empty/whitespace - adds breathing room
+            return <g key={`block-${i}`} />;
+          } else if (layoutVariant === 1) {
+            // Single wide block
+            return (
+              <g key={`block-${i}`}>
+                <rect
+                  x={visualX + visualWidth * 0.1}
+                  y={blockY}
+                  width={visualWidth * 0.7}
+                  height={20 + localSeededRandom(60 + i) * 30}
+                  fill={lightFill}
+                  opacity={0.28}
+                  rx={2}
+                />
+              </g>
+            );
+          } else if (layoutVariant === 2) {
+            // Two scattered rectangles (reduced from 3)
+            return (
+              <g key={`block-${i}`}>
+                {[0, 1].map((j) => (
+                  <rect
+                    key={`sub-${j}`}
+                    x={
+                      visualX +
+                      visualWidth * (0.08 + j * 0.45) +
+                      localSeededRandom(65 + i + j) * 15
+                    }
+                    y={blockY + localSeededRandom(66 + i + j) * 10}
+                    width={
+                      visualWidth * (0.2 + localSeededRandom(67 + i + j) * 0.15)
+                    }
+                    height={15 + localSeededRandom(68 + i + j) * 20}
+                    fill={lightFill}
+                    opacity={0.25 + localSeededRandom(69 + i + j) * 0.1}
+                    rx={2}
+                  />
+                ))}
+              </g>
+            );
+          } else if (layoutVariant === 3) {
+            // Two text-like lines (reduced from 4)
+            return (
+              <g key={`block-${i}`}>
+                {[0, 1].map((j) => (
+                  <rect
+                    key={`line-${j}`}
+                    x={visualX + visualWidth * 0.1}
+                    y={blockY + j * 10}
+                    width={
+                      visualWidth * (0.35 + localSeededRandom(80 + i + j) * 0.4)
+                    }
+                    height={2}
+                    fill={lightFill}
+                    opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
+                  />
+                ))}
+              </g>
+            );
+          }
+
+          // Single side block (simplified from image + text)
+          const isLeft = localSeededRandom(57 + i) > 0.5;
+          const blockX = isLeft
+            ? visualX + visualWidth * 0.08
+            : visualX + visualWidth * 0.5;
           return (
             <g key={`block-${i}`}>
-              {[0, 1].map((j) => (
-                <rect
-                  key={`line-${j}`}
-                  x={visualX + visualWidth * 0.1}
-                  y={blockY + j * 10}
-                  width={
-                    visualWidth *
-                    (0.35 + localSeededRandom(80 + i + j) * 0.4)
-                  }
-                  height={2}
-                  fill={lightFill}
-                  opacity={0.2 + localSeededRandom(81 + i + j) * 0.1}
-                />
-              ))}
+              <rect
+                x={blockX}
+                y={blockY}
+                width={visualWidth * 0.42}
+                height={30 + localSeededRandom(58 + i) * 25}
+                fill={lightFill}
+                opacity={0.3}
+                rx={3}
+              />
             </g>
           );
-        }
-
-        // Single side block (simplified from image + text)
-        const isLeft = localSeededRandom(57 + i) > 0.5;
-        const blockX = isLeft
-          ? visualX + visualWidth * 0.08
-          : visualX + visualWidth * 0.5;
-        return (
-          <g key={`block-${i}`}>
-            <rect
-              x={blockX}
-              y={blockY}
-              width={visualWidth * 0.42}
-              height={30 + localSeededRandom(58 + i) * 25}
-              fill={lightFill}
-              opacity={0.3}
-              rx={3}
-            />
-          </g>
-        );
-      });
+        },
+      );
     }, [
       bgHeight,
       hasContentBlocks,
@@ -1188,6 +1263,7 @@ const DynamicViewportRect = memo(
       visualX,
       visualY,
       viewport.id,
+      contentFill,
     ]);
 
     const gradientWashes = useMemo(() => {
@@ -1247,7 +1323,14 @@ const DynamicViewportRect = memo(
           </g>
         );
       });
-    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY, viewport.id]);
+    }, [
+      bgHeight,
+      localSeededRandom,
+      visualWidth,
+      visualX,
+      visualY,
+      viewport.id,
+    ]);
 
     const depthLayers = useMemo(() => {
       if (localSeededRandom(300) <= 0.5) return null;
@@ -1276,9 +1359,7 @@ const DynamicViewportRect = memo(
               y={layerY - 8}
               width={baseWidth + 20}
               height={baseHeight + 16}
-              fill={`rgb(${Math.round(layer3Lum * 255)}, ${Math.round(
-                layer3Lum * 255,
-              )}, ${Math.round(layer3Lum * 255)})`}
+              fill={contentFill(layer3Lum)}
               opacity={0.25}
               rx={3}
             />
@@ -1288,9 +1369,7 @@ const DynamicViewportRect = memo(
               y={layerY + 4}
               width={baseWidth - 5}
               height={baseHeight - 5}
-              fill={`rgb(${Math.round(layer2Lum * 255)}, ${Math.round(
-                layer2Lum * 255,
-              )}, ${Math.round(layer2Lum * 255)})`}
+              fill={contentFill(layer2Lum)}
               opacity={0.35}
               rx={2}
             />
@@ -1300,16 +1379,21 @@ const DynamicViewportRect = memo(
               y={layerY + 12}
               width={baseWidth - 25}
               height={baseHeight - 20}
-              fill={`rgb(${Math.round(layer1Lum * 255)}, ${Math.round(
-                layer1Lum * 255,
-              )}, ${Math.round(layer1Lum * 255)})`}
+              fill={contentFill(layer1Lum, 0.85)}
               opacity={0.45}
               rx={2}
             />
           </g>
         );
       });
-    }, [bgHeight, localSeededRandom, visualWidth, visualX, visualY]);
+    }, [
+      bgHeight,
+      localSeededRandom,
+      visualWidth,
+      visualX,
+      visualY,
+      contentFill,
+    ]);
 
     // Scrollbar thumb size based on page length (smaller thumb = longer page)
     // Direct mapping: scrollRange 0.1 (short scroll) → 36px, scrollRange 1.0 (full page) → 6px
@@ -1320,11 +1404,15 @@ const DynamicViewportRect = memo(
     const thumbHeight = Math.round(36 - normalizedRange * 30);
     const thumbTravel = trackHeight - thumbHeight;
 
-    // Scrollbar colors (monochrome)
-    const scrollbarTrackColor = `rgb(200, 200, 200)`;
+    // Scrollbar colors — tinted to the window hue in color mode.
+    const scrollbarTrackColor = mono
+      ? `rgb(200, 200, 200)`
+      : colorWash(edgeTintColor, 0.3, 20);
     const scrollbarThumbLuminosity = 0.4 + localSeededRandom(21) * 0.2; // 0.4-0.6
     const scrollbarThumbColorValue = Math.round(scrollbarThumbLuminosity * 255);
-    const scrollbarThumbColor = `rgb(${scrollbarThumbColorValue}, ${scrollbarThumbColorValue}, ${scrollbarThumbColorValue})`;
+    const scrollbarThumbColor = mono
+      ? `rgb(${scrollbarThumbColorValue}, ${scrollbarThumbColorValue}, ${scrollbarThumbColorValue})`
+      : colorShade(edgeTintColor, 45);
 
     const debug = useDebugHover();
     const showDebug = () => {
@@ -1416,6 +1504,35 @@ const DynamicViewportRect = memo(
               xChannelSelector="R"
               yChannelSelector="G"
             />
+          </filter>
+          {/* Color-mottle filter: turns a solid fill into organic, splotchy
+              patches by using high-contrast fractal noise as the alpha. Low
+              frequency = big blobs; the discrete alpha ramp makes hard-edged
+              patches (paint-soak look) rather than a smooth gradient. */}
+          <filter
+            id={`color-mottle-${viewport.id}`}
+            x="-10%"
+            y="-10%"
+            width="120%"
+            height="120%"
+          >
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.012 0.018"
+              numOctaves="4"
+              seed={backgroundSeed + 37}
+              result="blobs"
+            />
+            <feColorMatrix
+              in="blobs"
+              type="matrix"
+              values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.6 -0.5"
+              result="mask"
+            />
+            <feComponentTransfer in="mask" result="rampedMask">
+              <feFuncA type="discrete" tableValues="0 0.25 0.5 0.7 0.9 1" />
+            </feComponentTransfer>
+            <feComposite in="SourceGraphic" in2="rampedMask" operator="in" />
           </filter>
           {/* Speckle texture filter */}
           <filter
@@ -1542,25 +1659,71 @@ const DynamicViewportRect = memo(
         <g clipPath={`url(#viewport-clip-${viewport.id})`}>
           <g transform={zoomTransform || undefined}>
             <g transform={scrolledContentTransform}>
-              {/* Background */}
+              {/* Background — near-opaque + full-saturation hue in color mode so
+                  the paper doesn't bleach the color. */}
               <rect
                 x={visualX}
                 y={visualY}
                 width={visualWidth}
                 height={bgHeight}
                 fill={backgroundColor}
-                filter="url(#scrollNoise)"
-                opacity={settings.backgroundOpacity * opacityVariation}
+                opacity={bgRenderOpacity}
               />
+              {/* Paper-tooth grain: the cheap shared static tile, multiplied
+                  over the fill so it modulates brightness (replaces the costly
+                  per-window per-frame scrollNoise feTurbulence). */}
               <rect
                 x={visualX}
                 y={visualY}
                 width={visualWidth}
                 height={bgHeight}
-                fill="#000"
-                filter="url(#scrollGrain)"
-                opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
+                fill="url(#paperGrain)"
+                style={{ mixBlendMode: "multiply" }}
+                opacity={bgRenderOpacity}
               />
+              {/* Extra black-noise grain — only in monochrome, where the bg is
+                  pale paper. In color mode it just grays out the hue, so skip. */}
+              {mono && (
+                <rect
+                  x={visualX}
+                  y={visualY}
+                  width={visualWidth}
+                  height={bgHeight}
+                  fill="#000"
+                  filter="url(#scrollGrain)"
+                  opacity={settings.backgroundOpacity * 0.15 * opacityVariation}
+                />
+              )}
+
+              {/* Color mode: splotchy hue mottle over the colored background
+                  (behind the page content). Two multiply layers give organic,
+                  cloudy patches. DISABLED — the bold background color above bakes
+                  in the deep look the mottle gave. Flip `false` to revive the
+                  cloud/speckle texture. */}
+              {false && !mono && (
+                <>
+                  <rect
+                    x={visualX}
+                    y={visualY}
+                    width={visualWidth}
+                    height={bgHeight}
+                    fill={colorShade(edgeTintColor, 40)}
+                    style={{ mixBlendMode: "multiply" }}
+                    opacity={settings.backgroundOpacity * 0.55}
+                    filter={`url(#color-mottle-${viewport.id})`}
+                  />
+                  <rect
+                    x={visualX}
+                    y={visualY}
+                    width={visualWidth}
+                    height={bgHeight}
+                    fill={colorShade(edgeTintColor, 56)}
+                    style={{ mixBlendMode: "multiply" }}
+                    opacity={settings.backgroundOpacity * 0.35}
+                    filter={`url(#speckle-${viewport.id})`}
+                  />
+                </>
+              )}
 
               {/* Content pattern - horizontal bands with varied spacing */}
               <g
@@ -1579,6 +1742,13 @@ const DynamicViewportRect = memo(
                 </g>
               )}
 
+              {/* Circular page elements scattered through the window */}
+              {circleElements && (
+                <g opacity={settings.backgroundOpacity * 0.6}>
+                  {circleElements}
+                </g>
+              )}
+
               {/* Gradient washes - occasional large atmospheric areas */}
               {gradientWashes && (
                 <g opacity={settings.backgroundOpacity * 0.6}>
@@ -1588,9 +1758,7 @@ const DynamicViewportRect = memo(
 
               {/* Overlapping depth layers - scattered semi-transparent shapes */}
               {depthLayers && (
-                <g opacity={settings.backgroundOpacity * 0.4}>
-                  {depthLayers}
-                </g>
+                <g opacity={settings.backgroundOpacity * 0.4}>{depthLayers}</g>
               )}
             </g>
           </g>
@@ -1608,35 +1776,41 @@ const DynamicViewportRect = memo(
             />
           )}
 
-          {/* Edge tint overlays - inner glow effect */}
-          <rect
-            x={visualX}
-            y={visualY}
-            width={12}
-            height={visualHeight}
-            fill={`url(#edge-tint-left-${viewport.id})`}
-          />
-          <rect
-            x={visualX + visualWidth - 12}
-            y={visualY}
-            width={12}
-            height={visualHeight}
-            fill={`url(#edge-tint-right-${viewport.id})`}
-          />
-          <rect
-            x={visualX}
-            y={visualY}
-            width={visualWidth}
-            height={12}
-            fill={`url(#edge-tint-top-${viewport.id})`}
-          />
-          <rect
-            x={visualX}
-            y={visualY + visualHeight - 12}
-            width={visualWidth}
-            height={12}
-            fill={`url(#edge-tint-bottom-${viewport.id})`}
-          />
+          {/* Edge tint overlays — inner glow. Only in monochrome mode, where
+              it's the sole color accent; in color mode the whole window is
+              already colored, so the glow is too much. */}
+          {mono && (
+            <>
+              <rect
+                x={visualX}
+                y={visualY}
+                width={12}
+                height={visualHeight}
+                fill={`url(#edge-tint-left-${viewport.id})`}
+              />
+              <rect
+                x={visualX + visualWidth - 12}
+                y={visualY}
+                width={12}
+                height={visualHeight}
+                fill={`url(#edge-tint-right-${viewport.id})`}
+              />
+              <rect
+                x={visualX}
+                y={visualY}
+                width={visualWidth}
+                height={12}
+                fill={`url(#edge-tint-top-${viewport.id})`}
+              />
+              <rect
+                x={visualX}
+                y={visualY + visualHeight - 12}
+                width={visualWidth}
+                height={12}
+                fill={`url(#edge-tint-bottom-${viewport.id})`}
+              />
+            </>
+          )}
         </g>
 
         {/* Window title bar — favicon + page title, browser-chrome style */}
@@ -1654,7 +1828,7 @@ const DynamicViewportRect = memo(
           />
         )}
 
-        {/* Border with activity-based styling */}
+        {/* Viewport border */}
         <rect
           x={visualX}
           y={visualY}
@@ -1685,9 +1859,7 @@ const DynamicViewportRect = memo(
               width={4}
               height={thumbHeight}
               fill={scrollbarThumbColor}
-              opacity={
-                isActivelyScrolling ? 0.9 : 0.6 + localSeededRandom(6) * 0.2
-              }
+              opacity={0.6 + localSeededRandom(6) * 0.2}
               rx={2}
             />
           </>
@@ -1733,14 +1905,12 @@ const ViewportTitleBar = memo(
     const fontSize = Math.max(8, Math.round(barHeight * 0.55));
 
     const domain = extractDomain(pageUrl);
-    const displayTitle =
-      (pageTitle && pageTitle.trim()) ||
-      deriveTitleFromUrl(pageUrl) ||
-      domain ||
-      pageUrl;
+    const displayTitle = getViewportTitleText(pageUrl, pageTitle);
     const resolvedFavicon =
       faviconUrl ||
-      (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : undefined);
+      (domain
+        ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+        : undefined);
 
     const clipId = `titlebar-clip-${viewportId}`;
     const washId = `titlebar-wash-${viewportId}`;
@@ -1753,13 +1923,23 @@ const ViewportTitleBar = memo(
           </clipPath>
           <linearGradient id={washId} x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor="rgb(245,240,232)" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="rgb(210,204,193)" stopOpacity="0.85" />
+            <stop
+              offset="100%"
+              stopColor="rgb(210,204,193)"
+              stopOpacity="0.85"
+            />
           </linearGradient>
         </defs>
 
         <g clipPath={`url(#${clipId})`}>
           {/* Base wash */}
-          <rect x={x} y={y} width={width} height={barHeight} fill={`url(#${washId})`} />
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={barHeight}
+            fill={`url(#${washId})`}
+          />
           {/* Subtle paper noise to match the textured aesthetic */}
           <rect
             x={x}

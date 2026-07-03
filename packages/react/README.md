@@ -7,8 +7,8 @@ A react provider for [`playhtml`](https://github.com/spencerc99/playhtml).
 Install by using your preferred package manager
 
 ```bash
-npm install @playhtml/react # or
-# yarn add @playhtml/react
+npm install playhtml @playhtml/react # or
+# yarn add playhtml @playhtml/react
 ```
 
 ## Compatibility
@@ -127,15 +127,18 @@ export const ReactionView = withSharedState(
     return (
       <button
         onClick={(_e) => {
-          const { count } = data;
           if (hasReacted) {
-            setData({ count: count - 1 });
+            setData((draft) => {
+              draft.count -= 1;
+            });
             if (ref.current) {
               localStorage.removeItem(ref.current.id);
             }
             setHasReacted(false);
           } else {
-            setData({ count: count + 1 });
+            setData((draft) => {
+              draft.count += 1;
+            });
             if (ref.current) {
               localStorage.setItem(ref.current.id, "true");
             }

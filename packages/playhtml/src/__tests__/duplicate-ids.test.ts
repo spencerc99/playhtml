@@ -2,6 +2,7 @@
 // ABOUTME: Covers live registration diagnostics and dev UI conflict grouping.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listDuplicatePlayElements, setupDevUI } from "../development";
+import { ElementHandler } from "../elements";
 import { playhtml, resetPlayHTML } from "../index";
 
 describe("duplicate playhtml element IDs", () => {
@@ -17,6 +18,7 @@ describe("duplicate playhtml element IDs", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     await resetPlayHTML();
     document.body.innerHTML = "";
   });
@@ -47,6 +49,51 @@ describe("duplicate playhtml element IDs", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Duplicate element id "duplicate-card"'),
       { existingElement: first, duplicateElement: second },
+    );
+  });
+
+  it("does not remove the registered element handler when an ignored duplicate is removed", async () => {
+    await playhtml.init({});
+
+    const first = document.createElement("div");
+    first.id = "duplicate-removal";
+    first.setAttribute("can-move", "");
+
+    const second = document.createElement("div");
+    second.id = "duplicate-removal";
+    second.setAttribute("can-move", "");
+
+    document.body.append(first, second);
+
+    await playhtml.setupPlayElementForTag(first, "can-move");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await playhtml.setupPlayElementForTag(second, "can-move");
+
+    playhtml.removePlayElement(second);
+
+    const handler = playhtml.elementHandlers
+      .get("can-move")!
+      .get("duplicate-removal")!;
+    expect(handler.element).toBe(first);
+  });
+
+  it("cancels shared hydration warnings when a data-source element is removed", async () => {
+    await playhtml.init({ developmentMode: true });
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "shared-consumer";
+    element.setAttribute("can-move", "");
+    element.setAttribute("data-source", "/source#shared-removal");
+    document.body.append(element);
+
+    await playhtml.setupPlayElementForTag(element, "can-move");
+    playhtml.removePlayElement(element);
+    vi.advanceTimersByTime(3000);
+
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("Shared reference can-move:shared-removal"),
     );
   });
 
@@ -120,5 +167,53 @@ describe("duplicate playhtml element IDs", () => {
     expect(warning!.textContent).toContain("Duplicate playhtml IDs");
     expect(warning!.textContent).toContain("shared-id");
     expect(warning!.textContent).toContain("can-toggle");
+  });
+
+  it("updates the dev tools data tree when handler data changes", async () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "counter";
+    element.setAttribute("can-play", "");
+    document.body.append(element);
+
+    const handler = new ElementHandler({
+      element,
+      defaultData: { count: 0 },
+      data: { count: 0 },
+      defaultLocalData: {},
+      updateElement: () => {},
+      onChange: () => {},
+      onAwarenessChange: () => {},
+      triggerAwarenessUpdate: () => {},
+    } as any);
+
+    setupDevUI({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "counter",
+              handler,
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const dataArea = document.querySelector<HTMLElement>(".ph-data")!;
+
+    expect(dataArea.textContent).toContain("count: 0");
+
+    (handler as any).__data = { count: 1 };
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(dataArea.textContent).toContain("count: 1");
+    expect(dataArea.textContent).not.toContain("count: 0");
   });
 });

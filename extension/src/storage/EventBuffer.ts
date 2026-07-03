@@ -6,6 +6,23 @@ import { VERBOSE } from '../config';
 import browser from 'webextension-polyfill';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
+const STORE_BATCH_INTERVAL_MS = 250;
+const STORE_BATCH_MAX_EVENTS = 25;
+
+interface EventMetadataBase {
+  pid: string;
+  sid: string;
+  tz: string;
+}
+
+function shouldStoreWithoutDelay(event: CollectionEvent): boolean {
+  return (
+    event.type === 'cursor' &&
+    typeof event.data === 'object' &&
+    event.data !== null &&
+    (event.data as { event?: unknown }).event === 'click'
+  );
+}
 
 /**
  * EventBuffer manages event creation and batching
@@ -16,6 +33,10 @@ const BATCH_INTERVAL_MS = 3000; // 3 seconds
  */
 export class EventBuffer {
   private batchTimer: number | null = null;
+  private storeTimer: number | null = null;
+  private pendingEvents: CollectionEvent[] = [];
+  private storeFlushPromise: Promise<boolean> | null = null;
+  private metadataBasePromise: Promise<EventMetadataBase> | null = null;
 
   /**
    * Add an event — stores it in the background service worker and schedules a flush
@@ -23,12 +44,64 @@ export class EventBuffer {
   async addEvent(event: CollectionEvent): Promise<void> {
     const eventWithFlag = { ...event, uploaded: false };
 
-    browser.runtime.sendMessage({
-      type: 'STORE_EVENTS',
-      events: [eventWithFlag],
-    }).catch(console.error);
+    this.pendingEvents.push(eventWithFlag);
+    if (
+      shouldStoreWithoutDelay(eventWithFlag) ||
+      this.pendingEvents.length >= STORE_BATCH_MAX_EVENTS
+    ) {
+      void this.flushStoredEvents();
+    } else {
+      this.scheduleStoreFlush();
+    }
 
     this.scheduleBatch();
+  }
+
+  private scheduleStoreFlush(): void {
+    if (this.storeTimer !== null) return;
+
+    this.storeTimer = window.setTimeout(() => {
+      this.storeTimer = null;
+      void this.flushStoredEvents();
+    }, STORE_BATCH_INTERVAL_MS);
+  }
+
+  private async flushStoredEvents(): Promise<boolean> {
+    if (this.storeTimer !== null) {
+      clearTimeout(this.storeTimer);
+      this.storeTimer = null;
+    }
+
+    if (this.storeFlushPromise) {
+      const stored = await this.storeFlushPromise;
+      if (!stored) return false;
+    }
+
+    if (this.pendingEvents.length === 0) return true;
+
+    const events = this.pendingEvents.splice(0, this.pendingEvents.length);
+    const flushPromise = browser.runtime
+      .sendMessage({
+        type: 'STORE_EVENTS',
+        events,
+      })
+      .then(
+        () => true,
+        (error) => {
+          this.pendingEvents.unshift(...events);
+          console.error(error);
+          return false;
+        },
+      );
+
+    this.storeFlushPromise = flushPromise;
+    try {
+      return await flushPromise;
+    } finally {
+      if (this.storeFlushPromise === flushPromise) {
+        this.storeFlushPromise = null;
+      }
+    }
   }
 
   /**
@@ -51,7 +124,27 @@ export class EventBuffer {
    * Trigger upload of pending events via background service worker
    */
   async flushBatch(): Promise<void> {
+    const stored = await this.flushStoredEvents();
+    if (!stored) return;
     browser.runtime.sendMessage({ type: 'FLUSH_PENDING_UPLOADS' }).catch(console.error);
+  }
+
+  private async getMetadataBase(): Promise<EventMetadataBase> {
+    if (!this.metadataBasePromise) {
+      this.metadataBasePromise = Promise.all([
+        getParticipantId(),
+        getSessionId(),
+      ]).then(([pid, sid]) => ({
+        pid,
+        sid,
+        tz: getTimezone(),
+      }));
+    }
+    const metadata = await this.metadataBasePromise;
+    if (metadata.pid.startsWith('pk_temp_')) {
+      this.metadataBasePromise = null;
+    }
+    return metadata;
   }
 
   /**
@@ -61,10 +154,7 @@ export class EventBuffer {
     type: CollectionEventType,
     data: unknown
   ): Promise<CollectionEvent> {
-    const [pid, sid] = await Promise.all([
-      getParticipantId(),
-      getSessionId(),
-    ]);
+    const { pid, sid, tz } = await this.getMetadataBase();
 
     const { generateULID } = await import('../collectors/types');
 
@@ -79,7 +169,7 @@ export class EventBuffer {
         url: window.location.href,
         vw: window.innerWidth,
         vh: window.innerHeight,
-        tz: getTimezone(),
+        tz,
       },
     };
   }

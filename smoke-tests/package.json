@@ -10,9 +10,11 @@
     "test:partykit:limits": "node partykit/server-limits-smoke.mjs",
     "test:partykit:hibernation": "node partykit/hibernation-bridge-smoke.mjs",
     "test:partykit:compaction": "node partykit/empty-room-compaction-smoke.mjs",
+    "test:partykit:stale-compaction": "node partykit/stale-compaction-source-smoke.mjs",
     "test:partykit:emergency": "node partykit/emergency-compaction-smoke.mjs",
     "test:partykit:transient": "node partykit/supabase-transient-smoke.mjs",
     "test:partykit:soak": "node partykit/multi-client-soak-smoke.mjs",
+    "test:partykit:presence-cursor": "node partykit/presence-cursor-soak-smoke.mjs",
     "install-browsers": "playwright install chromium --with-deps",
     "test:partykit:auth": "node partykit/auth-permissions-smoke.mjs"
   },

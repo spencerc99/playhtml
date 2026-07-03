@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-Shared elements are a way to share data between different pages on the same site and even across different domains. Effectively, this allows for cross-origin data sharing that can be rendered with custom markup and styles. These are defined by a source page and can be referenced on the consumer page by their domain and path (the playhtml room that they are assigned to).
+Shared elements let you share data between different pages on the same site, and even across different domains. The same state can be rendered with different markup and styles on each page. You define a shared element on a source page, then reference it on a consumer page by its domain and path (the playhtml room it's assigned to).
 
 ```html
 <!-- Source page (thissite.com) -->
@@ -97,6 +97,8 @@ export const Status = withSharedState(
   }
 );
 ```
+
+The prop names map to the HTML attributes: `shared` → `shared`, `dataSource` → `data-source`. For forcing read-only, `CanToggleElement` exposes a convenience `readOnly` prop, while `CanPlayElement` / `withSharedState` use `dataSourceReadOnly` (both set `data-source-read-only`). See the [React API reference](/docs/reference/react-api/#shared-data-props).
 
 #### Troubleshooting
 
